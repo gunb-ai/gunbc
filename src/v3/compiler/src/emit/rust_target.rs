@@ -3732,6 +3732,14 @@ impl<'a> Ctx<'a> {
         rendered_binding: &str,
         payload_shape: &VariantPayloadShape,
     ) -> Result<Option<String>, EmitError> {
+        // Substrate still models `Cardinality` as `{ element, bound }`, but the
+        // hand-authored Rust enum is `Cardinality(CardinalityPayload)` (tuple).
+        if qualified_name == "TypeConnective::Cardinality" {
+            return Ok(Some(render_named_template(
+                &self.indexes.syntax.patterns.variant_pattern_positional,
+                &[("name", qualified_name), ("binding", rendered_binding)],
+            )));
+        }
         if !matches!(
             payload_shape,
             VariantPayloadShape::NamedFields { _0: ref fields } if fields.len() > 1
@@ -5096,8 +5104,8 @@ impl<'a> Ctx<'a> {
                         && !self.is_partial_function_template(*template)
                         && self.decl_includes_first_class_arrow_data(*template, visited))
             }
-            TypeConnective::Cardinality { element, .. } => {
-                self.decl_includes_first_class_arrow_data(*element, visited)
+            TypeConnective::Cardinality(p) => {
+                self.decl_includes_first_class_arrow_data(p.element(), visited)
             }
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
@@ -5230,12 +5238,11 @@ impl<'a> Ctx<'a> {
                 template,
                 arguments,
             } => self.render_instantiated_type(*template, arguments, depth + 1, arrow_policy),
-            TypeConnective::Cardinality {
-                element,
-                bound: crate::dag::CardinalityBound::AtMostOne,
-            } => {
+            TypeConnective::Cardinality(p)
+                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
                 let inner =
-                    self.rust_type_name_for_decl_with_policy(*element, depth + 1, arrow_policy)?;
+                    self.rust_type_name_for_decl_with_policy(p.element(), depth + 1, arrow_policy)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.type_applications.optional,
                     &[("element", &inner)],
@@ -5398,7 +5405,7 @@ impl<'a> Ctx<'a> {
             TypeConnective::Conj { .. }
             | TypeConnective::Disj { .. }
             | TypeConnective::Instantiation { .. }
-            | TypeConnective::Cardinality { .. }
+            | TypeConnective::Cardinality(_)
             | TypeConnective::Arrow { .. } => Ok(false),
             _ => Ok(false),
         }

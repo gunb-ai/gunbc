@@ -56,6 +56,83 @@ use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 
+/// Outcome of [`try_reconcile_int_literal_decision_set`].
+enum IntLiteralSetReconciliation {
+    /// Reconciled without changing the port (narrow annotation already wins over default `Int`).
+    Keep,
+    /// Applied `set_port_type` to narrow a default-`Int` literal port to `ty`.
+    SetNarrow,
+    /// `mark_unresolved` with a magnitude or other diagnostic.
+    Marked,
+}
+
+/// Reconcile `Decision::Set` for ports backed by an integer literal when the proposed
+/// and existing [`TypeShape`] would otherwise `TypeMismatch`: (a) `let`/`data`
+/// pre-seed vs default `Int`, (b) call-sites that propose a callee's narrow
+/// type over a default-`Int` argument.
+fn try_reconcile_int_literal_decision_set(
+    dag: &mut Dag,
+    port: PortId,
+    existing: TypeShape,
+    ty: TypeShape,
+) -> Option<IntLiteralSetReconciliation> {
+    let default_int = dag.int_shape()?;
+    let literal = literal_int_at(dag, port)?;
+    if type_shapes_equivalent(dag, &ty, &default_int) {
+        match int_literal_fits_expected_type(dag, literal, existing.declaration) {
+            Ok(Some(true)) => Some(IntLiteralSetReconciliation::Keep),
+            Ok(Some(false)) => {
+                if let IntegerRangeLookup::Found(range) =
+                    integer_range_for_decl(dag, existing.declaration)
+                {
+                    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
+                    dag.mark_unresolved(
+                        port,
+                        magnitude_out_of_range(literal, existing, range, span),
+                    );
+                    Some(IntLiteralSetReconciliation::Marked)
+                } else {
+                    None
+                }
+            }
+            Ok(None) => None,
+            Err(diag) => {
+                if !matches!(dag.port(port).state(), PortState::Unresolved) {
+                    dag.mark_unresolved(port, diag);
+                }
+                Some(IntLiteralSetReconciliation::Marked)
+            }
+        }
+    } else if type_shapes_equivalent(dag, &existing, &default_int) {
+        match int_literal_fits_expected_type(dag, literal, ty.declaration) {
+            Ok(Some(true)) => {
+                dag.set_port_type(port, ty);
+                Some(IntLiteralSetReconciliation::SetNarrow)
+            }
+            Ok(Some(false)) => {
+                if let IntegerRangeLookup::Found(range) =
+                    integer_range_for_decl(dag, ty.declaration)
+                {
+                    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
+                    dag.mark_unresolved(port, magnitude_out_of_range(literal, ty, range, span));
+                    Some(IntLiteralSetReconciliation::Marked)
+                } else {
+                    None
+                }
+            }
+            Ok(None) => None,
+            Err(diag) => {
+                if !matches!(dag.port(port).state(), PortState::Unresolved) {
+                    dag.mark_unresolved(port, diag);
+                }
+                Some(IntLiteralSetReconciliation::Marked)
+            }
+        }
+    } else {
+        None
+    }
+}
+
 pub fn infer(dag: &mut Dag) {
     // Fixpoint loop. Runs decide for every node, then pattern
     // resolution + exhaustiveness + uniqueness for every Branch.
@@ -84,17 +161,24 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Resolved(existing)
                             if type_shapes_equivalent(dag, &existing, &ty) => {}
                         PortState::Resolved(existing) => {
-                            if int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
-                                dag.set_port_type(port, ty);
-                                changed = true;
-                                continue;
-                            }
                             if is_retryable_generic_decl(dag, existing.declaration)
                                 || is_retryable_generic_decl(dag, ty.declaration)
                             {
                                 dag.set_port_type(port, ty);
                                 changed = true;
                                 continue;
+                            }
+                            if let Some(outcome) =
+                                try_reconcile_int_literal_decision_set(dag, port, existing, ty)
+                            {
+                                match outcome {
+                                    IntLiteralSetReconciliation::Keep => continue,
+                                    IntLiteralSetReconciliation::SetNarrow
+                                    | IntLiteralSetReconciliation::Marked => {
+                                        changed = true;
+                                        continue;
+                                    }
+                                }
                             }
                             let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                             let fixes = witness_correction_for_decl(
@@ -196,10 +280,11 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return existing_optional_match_disj_decl(dag, current),
+            TypeConnective::Cardinality(p)
+                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                return existing_optional_match_disj_decl(dag, current);
+            }
             TypeConnective::Instantiation { template, .. } => {
                 current = *template;
             }
@@ -224,10 +309,11 @@ fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<
     let mut current = start;
     for _ in 0..WALK_DEPTH_LIMIT {
         match &dag.declaration(current).connective {
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return Some(current),
+            TypeConnective::Cardinality(p)
+                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                return Some(current);
+            }
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
@@ -245,10 +331,10 @@ fn ensure_optional_match_disj(
         return Some(existing);
     }
     let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
-        TypeConnective::Cardinality {
-            element,
-            bound: crate::dag::CardinalityBound::AtMostOne,
-        } => (element, dag.declaration(cardinality_decl_id).span.clone()),
+        TypeConnective::Cardinality(p) if p.bound() == crate::dag::CardinalityBound::AtMostOne => (
+            p.element(),
+            dag.declaration(cardinality_decl_id).span.clone(),
+        ),
         _ => return None,
     };
 
@@ -717,30 +803,6 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     changed
 }
 
-/// T-Modeling int-lit / PR #806 consumer: allow `i64` default-typed int
-/// literal output ports to refine to a range-backed fixed-width `IntegerPrimitive`
-/// when the magnitude fits, without treating it as a conflicting resolution.
-fn int_literal_magnitude_narrow_merge(
-    dag: &Dag,
-    port: PortId,
-    from: &TypeShape,
-    to: &TypeShape,
-) -> bool {
-    let Some(lit) = literal_int_at(dag, port) else {
-        return false;
-    };
-    let Some(int_shape) = dag.int_shape() else {
-        return false;
-    };
-    if !type_shapes_equivalent(dag, from, &int_shape) {
-        return false;
-    }
-    matches!(
-        int_literal_fits_expected_type(dag, lit, to.declaration),
-        Ok(Some(true))
-    )
-}
-
 enum Decision {
     Set(PortId, TypeShape),
     Fail(PortId, Diagnostic),
@@ -753,59 +815,6 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
     let behavior = dag.nodes()[index].clone();
     match &behavior {
         Behavior::Value(v) => {
-            // `let x: UInt8 = 5` seeds the value port to `UInt8` after lowering;
-            // the Int literal Value node would otherwise re-stamp `Int64` here and
-            // clobber host narrowing. If the port is already a non-`Int` type, only
-            // defer (Retry) when range facts prove the literal fits that type.
-            // Otherwise fail closed with `MagnitudeOutOfRange` (same contract as
-            // call-site narrowing) or fall through so normal mismatch handling
-            // applies when there is no range-backed check.
-            if let LiteralBits::Int(literal) = &v.data {
-                if let PortState::Resolved(existing) = dag.port(v.output).state() {
-                    if let Some(int_sh) = dag.int_shape() {
-                        if !type_shapes_equivalent(dag, existing, &int_sh) {
-                            match int_literal_fits_expected_type(
-                                dag,
-                                *literal,
-                                existing.declaration,
-                            ) {
-                                Ok(Some(true)) => return Decision::Retry,
-                                Ok(Some(false)) => {
-                                    match integer_range_for_decl(dag, existing.declaration) {
-                                        IntegerRangeLookup::Found(range) => {
-                                            return Decision::Fail(
-                                                v.output,
-                                                magnitude_out_of_range(
-                                                    *literal,
-                                                    *existing,
-                                                    range,
-                                                    v.span.clone(),
-                                                ),
-                                            );
-                                        }
-                                        IntegerRangeLookup::Invalid(diag) => {
-                                            return Decision::Fail(v.output, diag);
-                                        }
-                                        IntegerRangeLookup::Missing => {
-                                            return Decision::Fail(
-                                                v.output,
-                                                Diagnostic::ResolveError {
-                                                    name: "(internal: integer literal out of range but no range fact)"
-                                                        .to_string(),
-                                                    span: v.span.clone(),
-                                                    fixes: Vec::new(),
-                                                },
-                                            );
-                                        }
-                                    }
-                                }
-                                Err(diag) => return Decision::Fail(v.output, diag),
-                                Ok(None) => {}
-                            }
-                        }
-                    }
-                }
-            }
             let shape_and_name = match &v.data {
                 // Unconstrained integer literals keep the existing explicit
                 // default to Int64. Expected-type narrowing happens at
@@ -1172,6 +1181,9 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
+                                // Default literal shape is `Int`; align the argument port with
+                                // the callee's narrow range-backed type (same as `let` / `data`
+                                // pre-seed + `Decision::Set` reunion for annotated literals).
                                 return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
@@ -1800,7 +1812,7 @@ fn declaration_is_callable(dag: &Dag, current: DeclarationId, depth: usize) -> b
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => false,
+        | TypeConnective::Cardinality(_) => false,
     }
 }
 
@@ -1831,8 +1843,8 @@ fn is_retryable_generic_decl_walk(
         TypeConnective::Instantiation { arguments, .. } => arguments
             .iter()
             .any(|arg| is_retryable_generic_decl_walk(dag, arg.value, depth + 1, visiting)),
-        TypeConnective::Cardinality { element, .. } => {
-            is_retryable_generic_decl_walk(dag, *element, depth + 1, visiting)
+        TypeConnective::Cardinality(p) => {
+            is_retryable_generic_decl_walk(dag, p.element(), depth + 1, visiting)
         }
         TypeConnective::Conj { children } => children
             .iter()
@@ -1984,8 +1996,17 @@ fn resolve_arrow_decl_walk(
         | TypeConnective::Atom(AtomPayload::Literal(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => None,
+        | TypeConnective::Cardinality(_) => None,
     }
+}
+
+fn literal_decl_id(dag: &Dag, literal: &LiteralBits) -> Option<DeclarationId> {
+    let name = match literal {
+        LiteralBits::Int(_) => "Int",
+        LiteralBits::Bool(_) => "Bool",
+        LiteralBits::String(_) => "String",
+    };
+    dag.declaration_by_name(name).map(|decl| decl.id)
 }
 
 fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
@@ -2000,14 +2021,8 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
         });
     };
     match dag.node(produced_by) {
-        // Use the port's resolved declaration, not the literal's default
-        // substrate type (`Int` for all int literals). After range narrowing the
-        // literal port may already be `UInt8` / etc.; `literal_decl_id`-style
-        // `Int` here makes `resolve_callable_target` think the argument is still
-        // the default `Int`, producing spurious implicit-template conflicts against
-        // a `UInt8` parameter (e.g. `id_u8(7)`).
-        Behavior::Value(_) => Some(PortTypeContext {
-            decl: resolved_decl,
+        Behavior::Value(v) => Some(PortTypeContext {
+            decl: literal_decl_id(dag, &v.data)?,
             subst: SubstStack::new(),
         }),
         Behavior::Transform(t) => match &t.target {
@@ -2291,7 +2306,9 @@ fn bind_expected_decl_to_actual_context(
             }
             true
         }
-        TypeConnective::Cardinality { element, bound } => {
+        TypeConnective::Cardinality(p) => {
+            let element = p.element();
+            let bound = p.bound();
             let actual_decl = match &dag.declaration(actual.decl).connective {
                 TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
                     let Some(bound) = actual.subst.lookup(actual.decl) else {
@@ -2323,21 +2340,18 @@ fn bind_expected_decl_to_actual_context(
                 }
                 _ => actual.decl,
             };
-            let TypeConnective::Cardinality {
-                element: actual_element,
-                bound: actual_bound,
-            } = &dag.declaration(actual_decl).connective
+            let TypeConnective::Cardinality(actual_p) = &dag.declaration(actual_decl).connective
             else {
                 return false;
             };
-            if bound != actual_bound {
+            if bound != actual_p.bound() {
                 return false;
             }
             bind_expected_decl_to_actual_context(
                 dag,
-                *element,
+                element,
                 &PortTypeContext {
-                    decl: *actual_element,
+                    decl: actual_p.element(),
                     subst: actual.subst.clone(),
                 },
                 arguments,
@@ -2380,30 +2394,36 @@ fn callable_instantiation_conflict(
     }
 }
 
-/// `resolve_callable_target` runs before `decide_transform`'s per-input narrowing
-/// pass can restamp a literal port. When the port is still the default `Int`
-/// literal type but the source literal is known to fit a range-backed expected
-/// parameter (via substrate range facts), treat the binding as compatible so
-/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
-/// authoritative in the transform `decide_transform` path.
-fn range_compatible_default_int_literal_argument(
+/// `port_type_context` reports the default `Int` type shape for integer literals, so
+/// [`bind_expected_decl_to_actual_context`] can reject a callee that expects a range-backed
+/// narrow type (`UInt8`, …). The main transform decision path already allows in-range
+/// literal narrowing; mirror that here so [`resolve_callable_target`] can succeed. Out-of-range
+/// literals surface as [`Diagnostic::MagnitudeOutOfRange`] to match
+/// `decide(Transform)`-style call checks.
+fn int_literal_implicit_bind_tolerated_for_expected(
     dag: &Dag,
+    expected: DeclarationId,
     input_port: PortId,
-    expected_param_decl: DeclarationId,
-) -> bool {
-    let Some(int_ty) = dag.int_shape() else {
-        return false;
+    span: &SourceSpan,
+) -> Result<bool, Diagnostic> {
+    let Some(literal) = literal_int_at(dag, input_port) else {
+        return Ok(false);
     };
-    if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
-        return false;
+    match int_literal_fits_expected_type(dag, literal, expected) {
+        Ok(Some(true)) => Ok(true),
+        Ok(Some(false)) => match integer_range_for_decl(dag, expected) {
+            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range(
+                literal,
+                TypeShape::new(expected),
+                range,
+                span.clone(),
+            )),
+            IntegerRangeLookup::Invalid(diag) => Err(diag),
+            IntegerRangeLookup::Missing => Ok(false),
+        },
+        Ok(None) => Ok(false),
+        Err(diag) => Err(diag),
     }
-    let Some(lit) = literal_int_at(dag, input_port) else {
-        return false;
-    };
-    matches!(
-        int_literal_fits_expected_type(dag, lit, expected_param_decl),
-        Ok(Some(true))
-    )
 }
 
 fn resolve_callable_target(
@@ -2496,25 +2516,31 @@ fn resolve_callable_target(
             let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                 return CallableTargetResolution::Retry;
             };
-            let binds = bind_expected_decl_to_actual_context(
+            if !bind_expected_decl_to_actual_context(
                 dag,
                 expected_input,
                 &actual_ctx,
                 &mut arguments,
                 0,
-            ) || range_compatible_default_int_literal_argument(
-                dag,
-                *input_port,
-                expected_input,
-            );
-            if !binds {
-                return CallableTargetResolution::Fail(callable_instantiation_conflict(
+            ) {
+                match int_literal_implicit_bind_tolerated_for_expected(
                     dag,
-                    target,
                     expected_input,
-                    &actual_ctx,
+                    *input_port,
                     span,
-                ));
+                ) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return CallableTargetResolution::Fail(callable_instantiation_conflict(
+                            dag,
+                            target,
+                            expected_input,
+                            &actual_ctx,
+                            span,
+                        ));
+                    }
+                    Err(diag) => return CallableTargetResolution::Fail(diag),
+                }
             }
         }
     } else {
@@ -2571,25 +2597,33 @@ fn resolve_callable_target(
                 let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                     return CallableTargetResolution::Retry;
                 };
-                let binds = bind_expected_decl_to_actual_context(
+                if !bind_expected_decl_to_actual_context(
                     dag,
                     expected_input.declaration,
                     &actual_ctx,
                     &mut arguments,
                     0,
-                ) || range_compatible_default_int_literal_argument(
-                    dag,
-                    *input_port,
-                    expected_input.declaration,
-                );
-                if !binds {
-                    return CallableTargetResolution::Fail(callable_instantiation_conflict(
+                ) {
+                    match int_literal_implicit_bind_tolerated_for_expected(
                         dag,
-                        target,
                         expected_input.declaration,
-                        &actual_ctx,
+                        *input_port,
                         span,
-                    ));
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            return CallableTargetResolution::Fail(
+                                callable_instantiation_conflict(
+                                    dag,
+                                    target,
+                                    expected_input.declaration,
+                                    &actual_ctx,
+                                    span,
+                                ),
+                            );
+                        }
+                        Err(diag) => return CallableTargetResolution::Fail(diag),
+                    }
                 }
                 continue;
             };
@@ -3160,10 +3194,11 @@ fn walk_to_disj_decl_with_subst(
         let decl = dag.declaration(current);
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: crate::dag::CardinalityBound::AtMostOne,
-                ..
-            } => return existing_optional_match_disj_decl(dag, current),
+            TypeConnective::Cardinality(p)
+                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                return existing_optional_match_disj_decl(dag, current);
+            }
             TypeConnective::Instantiation {
                 template,
                 arguments,
@@ -3347,32 +3382,16 @@ pub(crate) fn concretize_decl_with_subst(
             });
             id
         }
-        TypeConnective::Cardinality { element, bound } => {
+        TypeConnective::Cardinality(p) => {
+            let element = p.element();
+            let bound = p.bound();
             let specialized_element = concretize_decl_with_subst(dag, element, subst, depth + 1);
             if let Some(existing) =
                 find_equivalent_anonymous_cardinality(dag, specialized_element, &bound)
             {
                 return existing;
             }
-            let id = dag.alloc_declaration_id();
-            dag.push_declaration(Declaration {
-                id,
-                name: None,
-                connective: TypeConnective::Cardinality {
-                    element: specialized_element,
-                    bound,
-                },
-                type_params: Vec::new(),
-                phantom_params: Vec::new(),
-                meta_tag: None,
-                specialization_parent: None,
-                inhabits: None,
-                value_body: None,
-                refinement: None,
-                nominal_opacity: None,
-                span: decl.span,
-            });
-            id
+            dag.alloc_cardinality_decl(specialized_element, bound, decl.span.clone())
         }
         _ => current,
     }
@@ -3428,9 +3447,7 @@ fn refinement_base_walk(
         TypeConnective::Instantiation { arguments, .. } => arguments
             .iter()
             .any(|arg| refinement_base_walk(dag, arg.value, subst, depth + 1)),
-        TypeConnective::Cardinality { element, .. } => {
-            refinement_base_walk(dag, *element, subst, depth + 1)
-        }
+        TypeConnective::Cardinality(p) => refinement_base_walk(dag, p.element(), subst, depth + 1),
         _ => false,
     }
 }
@@ -3929,14 +3946,10 @@ fn find_equivalent_anonymous_cardinality(
         if decl.name.is_some() {
             return None;
         }
-        let TypeConnective::Cardinality {
-            element: existing_element,
-            bound: existing_bound,
-        } = &decl.connective
-        else {
+        let TypeConnective::Cardinality(existing) = &decl.connective else {
             return None;
         };
-        (element == *existing_element && existing_bound == bound).then_some(decl.id)
+        (element == existing.element() && existing.bound() == *bound).then_some(decl.id)
     })
 }
 
@@ -4277,7 +4290,7 @@ fn resolve_operator_arrow(
             | TypeConnective::Atom(AtomPayload::Literal(_))
             | TypeConnective::Disj { .. }
             | TypeConnective::Arrow { .. }
-            | TypeConnective::Cardinality { .. } => {
+            | TypeConnective::Cardinality(_) => {
                 if let Some(inh) = decl.inhabits {
                     current = inh;
                 } else {
@@ -4483,6 +4496,20 @@ fn substitute_receiver(
                 None
             }
         }
+<<<<<<< HEAD
+=======
+        // Non-receiver TypeParam in an algebra field (e.g., a
+        // second generic parameter) isn't resolvable at M1(2.7).
+        // Multi-parameter algebra operator dispatch is a class-5
+        // gap; M2 will refine `substitute_receiver` to cover it.
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => None,
+        TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
+        TypeConnective::Atom(AtomPayload::Literal(_)) => None,
+        TypeConnective::Conj { .. } => None,
+        TypeConnective::Disj { .. } => None,
+        TypeConnective::Arrow { .. } => None,
+        TypeConnective::Cardinality(_) => None,
+>>>>>>> refs/remotes/origin/main
     }
 }
 
@@ -4569,7 +4596,7 @@ fn resolve_arrow_walk(
         TypeConnective::Atom(AtomPayload::Literal(_)) => None,
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
-        TypeConnective::Cardinality { .. } => None,
+        TypeConnective::Cardinality(_) => None,
     }
 }
 
@@ -4633,7 +4660,7 @@ fn walk_to_type_shape(
         TypeConnective::Conj { .. } => None,
         TypeConnective::Disj { .. } => None,
         TypeConnective::Arrow { .. } => None,
-        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
+        TypeConnective::Cardinality(_) => Some(TypeShape::new(current)),
     }
 }
 
@@ -4701,7 +4728,7 @@ fn signature_type_shape(
         // keep the anonymous Cardinality declaration id as the port's type
         // identity. Mirrors `walk_to_type_shape`'s Cardinality case —
         // optional returns are legal throughout the substrate.
-        TypeConnective::Cardinality { .. } => Some(TypeShape::new(current)),
+        TypeConnective::Cardinality(_) => Some(TypeShape::new(current)),
     }
 }
 
@@ -4747,12 +4774,19 @@ fn resolve_decl_with_subst(
             find_equivalent_decl_instantiation(dag, *template, &specialized_arguments)
                 .or(Some(current))
         }
-        TypeConnective::Cardinality { element, bound } => {
-            let specialized_element = resolve_decl_with_subst(dag, *element, subst, depth + 1)?;
-            if specialized_element == *element {
+        TypeConnective::Cardinality(p) => {
+            let element = p.element();
+            let bound = p.bound();
+            let specialized_element = resolve_decl_with_subst(dag, element, subst, depth + 1)?;
+            if specialized_element == element {
                 return Some(current);
             }
-            find_equivalent_decl_cardinality(dag, specialized_element, bound).or(Some(current))
+            if let Some(idempotent) =
+                crate::dag::cardinality_idempotent_target(dag, specialized_element, bound)
+            {
+                return Some(idempotent);
+            }
+            find_equivalent_decl_cardinality(dag, specialized_element, &bound).or(Some(current))
         }
         _ => Some(current),
     }
@@ -4787,14 +4821,10 @@ fn find_equivalent_decl_cardinality(
     bound: &crate::dag::CardinalityBound,
 ) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
-        let TypeConnective::Cardinality {
-            element: existing_element,
-            bound: existing_bound,
-        } = &decl.connective
-        else {
+        let TypeConnective::Cardinality(existing) = &decl.connective else {
             return None;
         };
-        (element == *existing_element && existing_bound == bound).then_some(decl.id)
+        (element == existing.element() && existing.bound() == *bound).then_some(decl.id)
     })
 }
 
@@ -4895,18 +4925,9 @@ fn declaration_shapes_equivalent(
                         declaration_shapes_equivalent(dag, lhs_arg.value, rhs_arg.value, depth + 1)
                     })
         }
-        (
-            TypeConnective::Cardinality {
-                element: lhs_element,
-                bound: lhs_bound,
-            },
-            TypeConnective::Cardinality {
-                element: rhs_element,
-                bound: rhs_bound,
-            },
-        ) => {
-            lhs_bound == rhs_bound
-                && declaration_shapes_equivalent(dag, *lhs_element, *rhs_element, depth + 1)
+        (TypeConnective::Cardinality(lhs_p), TypeConnective::Cardinality(rhs_p)) => {
+            lhs_p.bound() == rhs_p.bound()
+                && declaration_shapes_equivalent(dag, lhs_p.element(), rhs_p.element(), depth + 1)
         }
         (
             TypeConnective::Conj {
