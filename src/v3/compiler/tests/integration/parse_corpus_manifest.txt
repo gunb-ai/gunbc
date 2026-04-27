@@ -2,12 +2,12 @@
 # SG-2 parser staging: snapshots generated-parser surface output over the parse corpus.
 # path\titems\tdebug_bytes\tfnv1a64
 dsl/std/algebra.dag	33	162853	0244d937ec8db7c8
-dsl/std/bit.dag	9	7752	ff2df06b7e1bc45c
-dsl/std/float.dag	6	3245	43ce6e9bb208c122
-dsl/std/integer.dag	13	9230	eba821a2febee2ce
+dsl/std/bit.dag	9	7787	09279906a3939377
+dsl/std/float.dag	6	3350	3c45f61f17751329
+dsl/std/integer.dag	13	9580	c83bd1649b6f724a
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
-dsl/std/string_type.dag	4	1875	dc3160da1c6e43fa
-dsl/std/types.dag	108	208752	1be49a78ce3e3ddd
+dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
+dsl/std/types.dag	108	210361	bbadc5e63d8d4d2a
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	2364c4858f6b9e3d
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
@@ -33,11 +33,11 @@ src/v3/std/extdeps_bootstrap_fixtures.dag	4	4912	e2b6d96f5900a70a
 src/v3/std/induction.dag	56	88794	546f74c63c189c50
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
-src/v3/std/parse_surface.dag	18	98962	c7e4e29300b66dbd
+src/v3/std/parse_surface.dag	18	99510	b73114d5b178303d
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
-src/v3/std/substrate.dag	54	116421	438b971e40f25a6b
+src/v3/std/substrate.dag	54	119114	3be2c9b164c6687c
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
-src/v3/std/verification.dag	29	58941	d96f3dd31d258ce3
+src/v3/std/verification.dag	29	59011	d51d85cd43685a9d
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
