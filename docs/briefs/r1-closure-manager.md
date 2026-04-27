@@ -65,7 +65,7 @@ Authored — all 6 lane worker briefs landed on PR #847:
 - R1C-A: [`r1c-a-t-testgen-schema-extensions-worker.md`](r1c-a-t-testgen-schema-extensions-worker.md) (M-L; **CLOSED on main** — receipts in Owned deliverables table above)
 - R1C-B: [`r1c-b-t-p0-fixtures-worker.md`](r1c-b-t-p0-fixtures-worker.md) (S; 3 fixtures; dispatchable with audit step for `[ext]` gates)
 - R1C-C: [`r1c-c-t-sub-fixture-worker.md`](r1c-c-t-sub-fixture-worker.md) (XS; 1 fixture; **closed by PR #879**)
-- R1C-D: [`r1c-d-t-pb-census-as-dag-worker.md`](r1c-d-t-pb-census-as-dag-worker.md) (M-L; 6 fixtures; dispatch gated on R1C-A Sub-deliverable B landing)
+- R1C-D: [`r1c-d-t-pb-census-as-dag-worker.md`](r1c-d-t-pb-census-as-dag-worker.md) (M-L; 6 fixtures; **dispatchable** — R1C-A Sub-deliverable B is on main (#939); same as Owned deliverables row)
 - R1C-E: [`r1c-e-t-emit-dag-wrappers-worker.md`](r1c-e-t-emit-dag-wrappers-worker.md) (S; 3 wrappers; dispatchable Day-1)
 - R1C-F: [`r1c-f-t-demo-user-lens-fixture-worker.md`](r1c-f-t-demo-user-lens-fixture-worker.md) (S; 1 fixture; dispatchable Day-1)
 
