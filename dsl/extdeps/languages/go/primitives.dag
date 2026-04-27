@@ -66,11 +66,6 @@ type GoTargetCarrier
   | GoUtf8TextCarrier
 
 
-type GoFloatCarrier
-  = GoFloat32BitsCarrier
-  | GoFloat64BitsCarrier
-
-
 // Go spec fixed-width numerics (this tranche): overflow at the type witness is
 // two’s-complement wrap for ordinary non-constant operations (go.dev/ref/spec
 // §Overflow). Rust’s `IntegerOverflow` also lists Saturating/Trap because the
@@ -115,8 +110,11 @@ type GoPrimitive
     }
   | GoFloatPrimitive {
       target_name: String
+      // Width is single-sourced on `algebra` (`GoApproximateField32Algebra` ↔
+      // float32, `GoApproximateField64Algebra` ↔ float64). Bit carriers
+      // (`GoFloat32BitsCarrier` / `GoFloat64BitsCarrier`) are implied — a second
+      // field would admit mismatched pairs (INVARIANTS / illegal states).
       algebra: GoFloatAlgebra
-      carrier: GoFloatCarrier
     }
   | GoComplexPrimitive {
       target_name: String
@@ -258,10 +256,8 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
     carrier: GoWord32Carrier, range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647",
     overflow: GoTwoComplementWrap },
 
-  GoFloatPrimitive { target_name: "float32", algebra: GoApproximateField32Algebra,
-    carrier: GoFloat32BitsCarrier },
-  GoFloatPrimitive { target_name: "float64", algebra: GoApproximateField64Algebra,
-    carrier: GoFloat64BitsCarrier },
+  GoFloatPrimitive { target_name: "float32", algebra: GoApproximateField32Algebra },
+  GoFloatPrimitive { target_name: "float64", algebra: GoApproximateField64Algebra },
 
   GoComplexPrimitive { target_name: "complex64", component_width: GoComplex64Components },
   GoComplexPrimitive { target_name: "complex128", component_width: GoComplex128Components },
