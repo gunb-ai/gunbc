@@ -462,9 +462,40 @@ pub enum TypeConnective {
     },
 }
 
+/// Maximum alias / resolution hops when peeling before cardinality idempotence.
+const CARDINALITY_IDEMPOTENCE_PEEL_DEPTH: usize = 64;
+
+/// Peel `ResolvedBy*` atoms and zero-argument `Instantiation` aliases (surface
+/// `type Alias = Target` lowering) to the denoted declaration. Stops at the
+/// first non-transparent connective or at [`CARDINALITY_IDEMPOTENCE_PEEL_DEPTH`].
+fn peel_alias_for_cardinality_idempotence(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= CARDINALITY_IDEMPOTENCE_PEEL_DEPTH {
+        return current;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            peel_alias_for_cardinality_idempotence(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => {
+            peel_alias_for_cardinality_idempotence(dag, *template, depth + 1)
+        }
+        _ => current,
+    }
+}
+
 /// `AtMostOne ∧ AtMostOne` idempotence: nested optional uses the inner declaration.
 ///
-/// Single rule authority for T-ImpossibleBugs nested-optional flatten.
+/// Single rule authority for T-ImpossibleBugs nested-optional flatten. Applies
+/// after peeling zero-arg instantiation / resolved-atom indirection so
+/// `type Opt = Int?; type Alias = Opt; … Alias?` collapses like `Opt?`.
 pub(crate) fn cardinality_idempotent_target(
     dag: &Dag,
     element: DeclarationId,
@@ -473,8 +504,9 @@ pub(crate) fn cardinality_idempotent_target(
     if bound != CardinalityBound::AtMostOne {
         return None;
     }
-    match &dag.declaration(element).connective {
-        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(element),
+    let subject = peel_alias_for_cardinality_idempotence(dag, element, 0);
+    match &dag.declaration(subject).connective {
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(subject),
         _ => None,
     }
 }
@@ -3775,6 +3807,99 @@ mod tests {
             )),
             "expected duplicate TargetCleanEmissionBinding diagnostic, got {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn cardinality_idempotent_target_peels_empty_instantiation_alias() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let opt_decl = dag.alloc_cardinality_decl(
+            int_decl,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_alias_peel_test", 0, 0),
+        );
+        let alias_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alias_decl,
+            name: Some("Alias".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: opt_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_alias_peel_test", 0, 0),
+        });
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, alias_decl, CardinalityBound::AtMostOne),
+            Some(opt_decl),
+            "Alias = Opt (Instantiation with empty args) should peel to Opt before idempotence"
+        );
+    }
+
+    #[test]
+    fn cardinality_idempotent_target_peels_chained_instantiation_aliases() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let int_opt_decl = dag.alloc_cardinality_decl(
+            int_decl,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        );
+        // type Alias = Int?   →  empty-arg alias to the `Int?` declaration
+        let alias_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alias_decl,
+            name: Some("Alias".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: int_opt_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        });
+        // type Wrap = Alias  →  second empty-arg alias
+        let wrap_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: wrap_decl,
+            name: Some("Wrap".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: alias_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        });
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, wrap_decl, CardinalityBound::AtMostOne),
+            Some(int_opt_decl),
+            "Wrap = Alias; Alias = Int? should peel through both Instantiations to the \
+             canonical `Int?` decl (recursive alias chain, not one step)"
         );
     }
 }
