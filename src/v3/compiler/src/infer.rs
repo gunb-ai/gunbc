@@ -26,8 +26,8 @@ use std::collections::HashSet;
 
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective,
+    LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -3302,7 +3302,7 @@ pub(crate) fn concretize_decl_with_subst(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
-                nominal_opacity: None,
+                nominal_opacity: decl.nominal_opacity.clone(),
                 span: decl.span,
             });
             id
@@ -3935,6 +3935,15 @@ fn resolve_field_project(
     };
 
     let mut subst = SubstStack::new();
+    if let Some(opaque_decl) = first_nominal_opaque_on_conj_walk(dag, input_ty.declaration, &subst)
+    {
+        return FieldProjectResolution::Fail(Diagnostic::NominalOpacityViolation {
+            declaration: opaque_decl,
+            accessor: None,
+            span: t.span.clone(),
+            fixes: Vec::new(),
+        });
+    }
     let Some(actual_conj_id) = walk_to_conj_decl_with_subst(dag, input_ty.declaration, &mut subst)
     else {
         return FieldProjectResolution::Fail(Diagnostic::ResolveError {
@@ -3999,6 +4008,35 @@ fn resolve_field_project(
         field_child: field_decl_id,
         output_ty,
     }
+}
+
+fn first_nominal_opaque_on_conj_walk(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &SubstStack,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..WALK_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if decl.nominal_opacity.is_some() {
+            return Some(current);
+        }
+        match &decl.connective {
+            TypeConnective::Conj { .. } => return None,
+            TypeConnective::Instantiation { template, .. } => {
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                current = *next;
+            }
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+                current = subst.lookup(current)?;
+            }
+            _ => return None,
+        }
+    }
+    None
 }
 
 fn decide_field_project(
@@ -4869,6 +4907,89 @@ mod bool_logical_operator_arrow_tests {
     use crate::dag::PhantomParameter;
     use crate::infer_helpers::filter_non_self_template_arguments;
     use crate::operators::ArithmeticOp;
+
+    #[test]
+    fn nominal_opaque_field_project_fails_closed_before_structural_descent() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<nominal-opacity-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: payload,
+            name: Some("OpaquePayload".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: int,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let opaque = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: opaque,
+            name: Some("OpaqueWrapper".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(payload)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: Some(NominalOpacity {
+                permitted_accessors: Vec::new(),
+            }),
+            span: span.clone(),
+        });
+
+        let input = dag.alloc_port_with_shape(TypeShape::new(opaque));
+        let output = dag.push_transform(
+            TransformTarget::FieldProject {
+                field_label: "value".to_string(),
+                field_child: None,
+            },
+            vec![input],
+            span,
+        );
+
+        infer(&mut dag);
+
+        assert!(matches!(
+            dag.diagnostics().get(output),
+            Some(Diagnostic::NominalOpacityViolation {
+                declaration,
+                accessor: None,
+                ..
+            }) if *declaration == opaque
+        ));
+        assert!(
+            matches!(dag.port(output).state(), PortState::Unresolved),
+            "opacity violation must leave the projected output unresolved"
+        );
+    }
+
+    #[test]
+    fn bootstrapped_secret_is_marked_nominal_opaque() {
+        let dag = Dag::new();
+        let secret = dag
+            .declaration_by_name("Secret")
+            .expect("bootstrap Secret declaration");
+        assert!(
+            secret.nominal_opacity.is_some(),
+            "Secret must consume the nominal-opacity carrier before Modeling dispatch"
+        );
+    }
 
     #[test]
     fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {

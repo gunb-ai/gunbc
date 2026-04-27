@@ -2229,6 +2229,7 @@ pub struct Dag {
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
@@ -2239,6 +2240,7 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
 // sole writer and the PB-1 equivalence tests ratchet generated == runtime.
 static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     dag.populate_primitive_cache();
     dag
 });
@@ -2246,6 +2248,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
+    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     dag
@@ -2284,6 +2287,19 @@ impl Dag {
 
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
+    }
+
+    fn mark_bootstrap_secret_nominal_opacity(&mut self) {
+        let Some(secret) = self
+            .declarations
+            .iter()
+            .position(|decl| decl.name.as_deref() == Some("Secret"))
+        else {
+            return;
+        };
+        self.declarations[secret].nominal_opacity = Some(NominalOpacity {
+            permitted_accessors: Vec::new(),
+        });
     }
 
     /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
