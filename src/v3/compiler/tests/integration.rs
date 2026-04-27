@@ -87,6 +87,8 @@ mod m1_5_verification_test;
 mod m1_fn_external_body_reconciliation_test;
 #[path = "integration/m1_lens_structural_resolution_test.rs"]
 mod m1_lens_structural_resolution_test;
+#[path = "integration/loop_construction_closure_test.rs"]
+mod loop_construction_closure_test;
 #[path = "integration/m1_substrate_test.rs"]
 mod m1_substrate_test;
 #[path = "boundary/m2_emit_multi_field_struct_variant_test.rs"]
