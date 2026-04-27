@@ -239,6 +239,18 @@ let x: R = 6 / 2",
 }
 
 #[test]
+fn emit_rust_emits_diverror_prelude_for_explicit_result_without_division() {
+    let out = emit(
+        "import std.error_primitives { DivError, Result }\n\
+fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
+    );
+    assert!(
+        out.contains("pub enum DivError"),
+        "explicit Result<Int, DivError> usage needs DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
 fn emit_rust_omits_div_prelude_without_division() {
     let out = emit(
         "type DivError = Bad | Worse\n\

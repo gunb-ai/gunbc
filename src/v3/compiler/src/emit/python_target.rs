@@ -680,8 +680,7 @@ pub(crate) fn emit_python_with_mode(
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
-    let needs_int_div_prelude =
-        dag_needs_div_error_prelude(dag, &top_level_binds, &function_decls);
+    let needs_int_div_prelude = dag_needs_div_error_prelude(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(type_decls.iter(), function_decls.iter(), "__v3_idiv"),

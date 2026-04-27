@@ -166,11 +166,9 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
                     .iter()
                     .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited))
         }
-        TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => {
-            children
-                .iter()
-                .any(|field| decl_uses_substrate_result_or_div_error(dag, field.ty, visited))
-        }
+        TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => children
+            .iter()
+            .any(|field| decl_uses_substrate_result_or_div_error(dag, field.ty, visited)),
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             decl_uses_substrate_result_or_div_error(dag, *next, visited)
@@ -204,9 +202,9 @@ pub(crate) fn dag_needs_div_error_prelude(
         || top_level_binds
             .iter()
             .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
-        || function_decls.iter().any(|decl| {
-            decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new())
-        })
+        || function_decls
+            .iter()
+            .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
 }
 
 fn substrate_result_variant_payload_is_value_of(
