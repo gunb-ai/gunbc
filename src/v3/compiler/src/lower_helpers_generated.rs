@@ -2,11 +2,11 @@
 // `emit_rust_module`. Regenerate instead of hand-editing.
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum DivError {
+pub enum DivError {
     DivideByZero,
     Overflow,
 }
-fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
+pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
     if r == 0 {
         return ::core::result::Result::Err(DivError::DivideByZero);
     }

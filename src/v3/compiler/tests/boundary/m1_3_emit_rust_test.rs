@@ -371,6 +371,22 @@ fn emit_rust_single_int_binding() {
     assert!(out.contains("println!(\"{}\", x)"), "got: {out}");
 }
 
+#[test]
+fn emit_rust_result_top_level_binding_prints_debug_string() {
+    let out = emit(
+        "import std.error_primitives { DivError, Result }\n\
+let x: Result<Int, DivError> = 6 / 2",
+    );
+    assert!(
+        out.contains("let x: ::core::result::Result<i64, DivError> = (__v3_int_div(6, 2));"),
+        "top-level division should lower to the typed Result carrier; got: {out}"
+    );
+    assert!(
+        out.contains("println!(\"{}\", format!(\"{:?}\", x))"),
+        "top-level Result should be converted to a displayable debug string before printing; got: {out}"
+    );
+}
+
 /// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function
 /// parameter** position must lower to `impl Fn(A) -> B + Clone`, not
 /// `&impl Fn…` (review #676). Other positions use `std::rc::Rc<dyn Fn…>`;
