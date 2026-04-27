@@ -351,7 +351,7 @@ impl Drop for OmniTmpDir {
 
 /// Monotonic tag for each `OmniTmpDir` (`v3_r1c_e_omni_{tag}_{pid}`). Rust, Go, and
 /// Python paths each `fetch_add` so concurrent scratch dirs never share one `tag`.
-static OMNI_RUST_ID: AtomicUsize = AtomicUsize::new(0);
+static OMNI_TMP_TAG: AtomicUsize = AtomicUsize::new(0);
 
 fn omni_fixtures() -> Vec<&'static ProgramFixture> {
     PROGRAM_FIXTURES
@@ -362,7 +362,7 @@ fn omni_fixtures() -> Vec<&'static ProgramFixture> {
 }
 
 fn omni_rust_stdout(source: &str) -> Result<String, String> {
-    let id = OMNI_RUST_ID.fetch_add(1, Ordering::Relaxed) as u64;
+    let id = OMNI_TMP_TAG.fetch_add(1, Ordering::Relaxed) as u64;
     let dag =
         compile_to_dag(source, "omni_parity_r1c_e.v3").map_err(|e| format!("compile: {e:?}"))?;
     let rendered = emit_rust(&dag).map_err(|e| format!("Rust emit: {e:?}"))?;
@@ -399,7 +399,7 @@ fn omni_go_stdout(fixture_name: &str, source: &str) -> Result<String, String> {
     let rendered = emit(&dag, EmitTarget::Go)
         .map_err(|e| format!("Go emit `{fixture_name}`: {e:?}"))?
         .text;
-    let id = OMNI_RUST_ID.fetch_add(1, Ordering::Relaxed) as u64;
+    let id = OMNI_TMP_TAG.fetch_add(1, Ordering::Relaxed) as u64;
     let tmp = OmniTmpDir::new(id);
     let src_path = tmp.path().join("main.go");
     std::fs::File::create(&src_path)
@@ -427,7 +427,7 @@ fn omni_python_stdout(fixture_name: &str, source: &str) -> Result<String, String
     let rendered = emit(&dag, EmitTarget::Python)
         .map_err(|e| format!("Python emit `{fixture_name}`: {e:?}"))?
         .text;
-    let id = OMNI_RUST_ID.fetch_add(1, Ordering::Relaxed) as u64;
+    let id = OMNI_TMP_TAG.fetch_add(1, Ordering::Relaxed) as u64;
     let tmp = OmniTmpDir::new(id);
     let src_path = tmp.path().join("main.py");
     std::fs::File::create(&src_path)
