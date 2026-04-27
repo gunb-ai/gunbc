@@ -27,10 +27,10 @@ use std::collections::{HashMap, HashSet};
 use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
-    Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound, LoopNode,
-    MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path, PayloadBinding,
-    PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
-    ValueNode,
+    Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
+    LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
+    PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
