@@ -84,6 +84,11 @@ pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
 /// (name + type-parameter identities + `Ok`/`Err` payload wiring), not `span.file`
 /// suffixes — so unrelated modules named `errors.dag` cannot collide, and renaming
 /// the std file alone does not silently retarget suppression.
+///
+/// **Policy:** the fingerprint is **global**, not std-scoped: any other declaration
+/// named `Result` that matches this exact shape is also suppressed (intentional — the
+/// substrate owns one canonical `Result<ok, err>` carrier; a user-defined twin with
+/// the same fingerprint would not emit as a separate `type Result`).
 pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
     dag: &Dag,
     decl: &Declaration,
@@ -1210,6 +1215,10 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
     // (and friends) emit through the same type-decl path as user code — i.e. std is no
     // longer source-filtered for these carriers.
+    //
+    // M2: gate on emitted `v3intdiv(...)` (or equivalent) so division-free programs skip
+    // this block; today it is unconditional for simplicity. `v3intdiv` is fixed to `int64`
+    // — see `go.dag` / `go_result_instantiation` for the matching structural assumption.
     sections.push(
         "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := DivideByZero; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Overflow; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
     );

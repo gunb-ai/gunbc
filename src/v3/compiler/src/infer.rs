@@ -21,6 +21,13 @@
 // and the post-invariant
 //   state != Uninferred after infer completes
 // both hold.
+//
+// **M1 extension — inference mutates `Dag.declarations`:** operator / algebra
+// resolution may `push_declaration` for anonymous `Instantiation` shapes (e.g.
+// `Result<T, DivError>` for totalizing `div`); `find_equivalent_anonymous_instantiation`
+// deduplicates so fixpoint growth stays bounded. `decide` takes `&mut Dag` and clones
+// each `Behavior` before matching so borrows stay sound — inference is not read-only
+// over the declaration table.
 
 use std::collections::HashSet;
 
