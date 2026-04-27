@@ -735,7 +735,8 @@ mod tests {
     }
 
     /// `GoIntegerRangeFact` data rows duplicate range fields on `GoIntegerPrimitive` / alias rows in
-    /// `go_spec_predeclared_primitives` until the ValueBody sub-lane makes the list structurally
+    /// `go_spec_predeclared_primitives` (spec-predeclared slice only; `struct{}` / Unit lives in
+    /// `go_dag_unit_target_primitive`) until the ValueBody sub-lane makes the list structurally
     /// walkable — keep them self-consistent.
     #[test]
     fn go_integer_range_facts_match_predeclared_list() {

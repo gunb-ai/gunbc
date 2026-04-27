@@ -3,7 +3,10 @@
 //
 // TRANCHE 1 (this file): Go spec predeclared types with fixed machine
 // representations — booleans, fixed-width integers, floats, complex, string,
-// empty struct, and the byte/rune aliases (go.dev/ref/spec §Types).
+// and the byte/rune aliases (go.dev/ref/spec §Types, §Predeclared_identifiers).
+// The empty struct type `struct{}` is **not** predeclared; it is the canonical
+// **DAG Unit → Go target** realization (same authority edge as `go/types.dag`)
+// and lives in a **separate** top-level row `go_dag_unit_target_primitive` below.
 // Implementation-sized int, uint, and uintptr are intentionally omitted from the
 // data table: their width / value set is implementation-defined (spec §Numeric
 // types, https://go.dev/ref/spec#Numeric_types), so a fixed Word* carrier +
@@ -18,9 +21,9 @@
 //       dedicated stdlib-authority slice lands; do not cite stdlib paths here.
 //
 // CONSUMER BOUNDARY: same Path-2 honest state as rust/primitives.dag — the
-// top-level `go_spec_predeclared_primitives` list lowers as ValueBody::Unparsed
-// until R2 T-Substrate’s top-level aggregate sub-lane lands; type-structure
-// (GoPrimitive = …) is walkable for Engine / future loaders.
+// top-level `go_spec_predeclared_primitives` list and `go_dag_unit_target_primitive`
+// lower as ValueBody::Unparsed until R2 T-Substrate’s top-level aggregate sub-lane
+// lands; type-structure (GoPrimitive = …) is walkable for Engine / future loaders.
 //
 // LESSON 5 (grounding-pilot-receipt.md): subset-only axes are structurally
 // partitioned — integer overflow lives only on integer variants; float width
@@ -224,8 +227,8 @@ data go_uint64_integer_range: GoIntegerRangeFact = {
 
 
 // Predeclared fixed-width numerics + aliases + floats + complex + bool + string
-// + empty struct (struct{}). Order: signed ints, unsigned ints, aliases, floats,
-// complex, bool, string, unit. (int/uint/uintptr omitted — implementation width.)
+// only (spec §Predeclared_identifiers / §Types). Order: signed ints, unsigned ints,
+// aliases, floats, complex, bool, string. (int/uint/uintptr omitted — implementation width.)
 data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoIntegerPrimitive { target_name: "int8", algebra: GoOrderedRingAlgebra, carrier: GoByteCarrier,
     range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoTwoComplementWrap },
@@ -265,7 +268,14 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
     carrier: GoBitCarrier },
 
   GoStringPrimitive { target_name: "string", algebra: GoImmutableByteSequenceMonoidAlgebra,
-    carrier: GoImmutableByteSequenceCarrier },
-
-  GoUnitPrimitive { target_name: "struct{}", algebra: GoTerminalAlgebra, carrier: GoTerminalCarrier }
+    carrier: GoImmutableByteSequenceCarrier }
 ]
+
+// DAG Unit → Go: `struct{}` is the target spelling for DagName `Unit` in
+// `go/types.dag`; it is not a predeclared identifier, so it must not share the
+// `go_spec_predeclared_primitives` table with spec-predeclared types.
+data go_dag_unit_target_primitive: GoUnitPrimitive = {
+  target_name: "struct{}",
+  algebra: GoTerminalAlgebra,
+  carrier: GoTerminalCarrier
+}
