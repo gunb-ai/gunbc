@@ -6538,10 +6538,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(273),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(42),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(42), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -6573,10 +6570,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(275),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(42),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(42), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -7163,10 +7157,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(307),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(45),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(45), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -7224,10 +7215,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(310),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(45),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(45), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -8002,10 +7990,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(355),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(50),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(50), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -8019,10 +8004,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(356),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(51),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(51), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -8036,10 +8018,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(357),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(71),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(71), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -8079,10 +8058,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(359),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(71),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(71), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -8116,10 +8092,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(361),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(186),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(186), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -8133,10 +8106,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(362),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(186),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(186), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -8486,10 +8456,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(385),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(138),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(138), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9134,10 +9101,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(428),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(147),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(147), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9427,10 +9391,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(448),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(122),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(122), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9444,10 +9405,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(449),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(186),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(186), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9481,10 +9439,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(451),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(71),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(71), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9538,10 +9493,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(454),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(186),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(186), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9635,10 +9587,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(459),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(186),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(186), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9652,10 +9601,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(460),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(186),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(186), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9729,10 +9675,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(464),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(183),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(183), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9746,10 +9689,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(465),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(149),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(149), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9763,10 +9703,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(466),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(148),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(148), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
@@ -9836,10 +9773,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
             Declaration {
                 id: DeclarationId(471),
                 name: None,
-                connective: TypeConnective::Cardinality {
-                    element: DeclarationId(186),
-                    bound: CardinalityBound::AtMostOne,
-                },
+                connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(DeclarationId(186), CardinalityBound::AtMostOne)),
                 type_params: vec![],
                 phantom_params: Vec::new(),
                 meta_tag: None,
