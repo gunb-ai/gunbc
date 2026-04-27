@@ -108,9 +108,10 @@ fn sum_nsl(a: SymbolicCost, b: SymbolicCost, c: SymbolicCost) -> SymbolicCost {
     }
 }
 
-/// `dominates` on `ProductCost` / `SumCost` mirrors `algebra.dag` `any_dominates`
-/// over `NonSingletonList` (`first`, `second`, `rest`). Regression: template /
-/// regen must not skip `second` or `rest` when checking child dominance.
+/// `dominates` on `ProductCost` / `SumCost` matches the `.dag` composite branch
+/// (`nsl_to_list` + `fold_or_dominate_scan` over `NonSingletonList`). The Rust
+/// helper is still named `any_dominates` in `dag_cost_generated.rs`. Regression:
+/// template / regen must not skip `second` or `rest` when checking child dominance.
 #[test]
 fn composite_dominance_considers_all_nsl_children() {
     let (p0, _) = two_distinct_ports();
