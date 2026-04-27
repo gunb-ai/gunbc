@@ -1,7 +1,34 @@
 //! **Layer:** integration
 
-use v3_compiler::dag::LiteralBits;
+use v3_compiler::dag::{Behavior, LiteralBits, PortState};
+use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, CompileError};
+
+fn assert_int_value_port_resolves_to_uint8(
+    dag: &v3_compiler::dag::Dag,
+    literal: i64,
+    context: &str,
+) {
+    let value = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Value(v) if v.data == LiteralBits::Int(literal) => Some(v),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("{context}: int literal {literal} value node not found in DAG");
+        });
+    let ty = match dag.port(value.output).state() {
+        PortState::Resolved(ty) => ty,
+        other => panic!("{context}: literal {literal} should resolve, got {other:?}"),
+    };
+    assert_eq!(
+        dag.declaration(ty.declaration).name.as_deref(),
+        Some("UInt8"),
+        "{context}: in-range u8 should resolve the value port to UInt8, not default Int"
+    );
+}
 
 #[test]
 fn int_literals_fit_declared_integer_ranges() {
