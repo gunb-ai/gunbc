@@ -21,7 +21,7 @@ src/v3/spec/go.dag	122	1126317	82d4ec71acfdd80e
 src/v3/spec/python.dag	88	579466	4d7f9bb14b85da04
 src/v3/spec/rust.dag	140	1199314	5bd6bf1bf8a928b5
 src/v3/spec/v3_l1.dag	8	2238	1f55d782265c3bfe
-src/v3/std/algebra.dag	41	311567	8d3b3af71e7353a9
+src/v3/std/algebra.dag	41	311603	75200dd528791056
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	0d38639c1f631609
 src/v3/std/computation_model.dag	12	17291	30cd3a0f7cc08eae
