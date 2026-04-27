@@ -49,6 +49,11 @@ pub enum Witness<C> {
 }
 
 /// Report carrier — mirrors `DimensionReport<Carrier>` in `std/dimensions.dag`.
+///
+/// 🟢 TERMINAL (aggregate from DB-3 dimension evaluation; see `dimensions.dag`).
+/// Pass/fail partition: success carries `composed`; failure carries `violations`
+/// and must not fabricate a carrier when witnesses violate or root composition
+/// misses (R2 fail-closed).
 #[derive(Debug, Clone)]
 pub enum DimensionReport<C> {
     DimensionOk {
