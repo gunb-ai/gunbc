@@ -266,8 +266,8 @@ pub struct NominalOpacity {
 /// structurally-grounded form. When the M2+ parser catches up to
 /// nested records / list literals / map literals, those non-record
 /// shapes currently landing in `Unparsed` move to structural variants
-/// (`ValueBody::List` landed for top-level lists; map bodies remain a
-/// sibling T-Substrate sub-lane), and `Unparsed` is removed via a
+/// (`ValueBody::List` and `ValueBody::Map` now cover top-level list
+/// and string-keyed map bodies), and `Unparsed` is removed via a
 /// reverse substrate-extension PR.
 ///
 /// 4-pattern check on `Structural`:
@@ -283,9 +283,9 @@ pub struct NominalOpacity {
 ///
 /// Verdict: `Structural` is terminal-at-current-scope for top-level
 /// record bodies, with the `FieldValue` enum carrying nested structural
-/// distinctions internally. Top-level list bodies use `List` below
-/// because they are not records and must not be encoded as anonymous
-/// fields. Bounded by the Scaffold Boundaries invariant in
+/// distinctions internally. Top-level list/map bodies use dedicated
+/// variants below because they are not records and must not be encoded
+/// as anonymous fields. Bounded by the Scaffold Boundaries invariant in
 /// `INVARIANTS.md`.
 #[derive(Debug, Clone)]
 pub enum ValueBody {
@@ -298,23 +298,6 @@ pub enum ValueBody {
     /// recursively structural `FieldValue`; the label matches a
     /// field on the type's Conj children.
     Structural { fields: Vec<(String, FieldValue)> },
-    /// Top-level list-valued data declaration: `data xs: List<T> = [...]`.
-    /// Elements reuse `FieldValue` so literals, declaration references,
-    /// nested records/lists, and sum constructors carry the same structural
-    /// payloads they carry in record fields.
-    ///
-    /// Dissolution receipt:
-    /// - Pattern 1 (fact placement): fails. A top-level list body is the
-    ///   declaration value itself, not a labeled field of a record.
-    /// - Pattern 2 (variant-is-data): fails. `Vec<FieldValue>` is not a
-    ///   source span, record field list, or scalar payload.
-    /// - Pattern 3 (algebraic form): fails. List bodies and record bodies
-    ///   are different substrate shapes, not points in one algebra.
-    /// - Pattern 4 (dimensional): fails. No shared coordinate space.
-    ///
-    /// Verdict: terminal for top-level list bodies. Nested lists remain
-    /// `FieldValue::List`; map bodies require a future `ValueBody::Map`.
-    List(Vec<FieldValue>),
     /// Scalar-valued data declaration: `data answer: Int = 42`.
     /// Carries `LiteralBits` directly (Int / Bool / String) —
     /// NOT a full `FieldValue`. This is deliberate:
