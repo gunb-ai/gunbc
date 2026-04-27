@@ -6194,7 +6194,7 @@ mod bool_logical_operator_arrow_tests {
 
         // Exact arguments match → dedup hit.
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &args),
+            find_equivalent_anonymous_instantiation(&dag, template, &args, None),
             Some(anon_id),
         );
 
@@ -6202,14 +6202,23 @@ mod bool_logical_operator_arrow_tests {
         let mut value_diff = args.clone();
         value_diff[1].value = v0;
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &value_diff),
+            find_equivalent_anonymous_instantiation(&dag, template, &value_diff, None),
             None,
         );
 
         // Length differs → no hit.
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &args[..1]),
+            find_equivalent_anonymous_instantiation(&dag, template, &args[..1], None),
             None,
+        );
+
+        let opaque = NominalOpacity {
+            permitted_accessors: Vec::new(),
+        };
+        assert_eq!(
+            find_equivalent_anonymous_instantiation(&dag, template, &args, Some(&opaque)),
+            None,
+            "anonymous instantiation interning must not collapse distinct nominal-opacity carriers"
         );
 
         // Self-binding normalization: a `parameter == value` entry is a
@@ -6225,7 +6234,7 @@ mod bool_logical_operator_arrow_tests {
             value: p0,
         });
         assert_eq!(
-            find_equivalent_anonymous_instantiation(&dag, template, &with_self),
+            find_equivalent_anonymous_instantiation(&dag, template, &with_self, None),
             None,
         );
     }
