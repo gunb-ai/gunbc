@@ -14,7 +14,7 @@ import v3.std.emit_model {
 }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
-  SourceFiltering, ExecutionModelRequirement
+  ShapeATargetSourceFiltering, ExecutionModelRequirement
 }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -41,14 +41,9 @@ data go_execution_model: TargetExecutionModel = {
   scope: LexicalScoping
 }
 
-data go_source_filtering: SourceFiltering = {
-  excluded_prefixes: [
-    "dsl/std/",
-    "dsl/extdeps/",
-    "src/v3/std/",
-    "src/v3/spec/",
-    "src/v3/compiler/",
-  ]
+data go_source_filtering: ShapeATargetSourceFiltering = {
+  internal: internal_source_filtering
+  additional_excluded_prefixes: ["src/v3/compiler/"]
 }
 
 data go_execution_requirement: ExecutionModelRequirement = GarbageCollected

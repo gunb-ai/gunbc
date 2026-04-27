@@ -12,7 +12,7 @@ import std.algebra { BooleanAlgebra, OrderedRing }
 import v3.std.computation_model {
   TargetExecutionModel, MemoryModel,
   GarbageCollected, LexicalScoping,
-  SourceFiltering, ExecutionModelRequirement
+  ShapeATargetSourceFiltering, ExecutionModelRequirement
 }
 import v3.std.emit_model {
   TypeRealization, OperatorRealization, CallableRealization,
