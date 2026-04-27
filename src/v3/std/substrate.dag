@@ -106,6 +106,7 @@ type FieldValue
   | Reference(DeclarationId)
   | Record(List<FieldEntry>)
   | List(List<FieldValue>)
+  | Map(List<FieldEntry>)
   | Variant {
       constructor: DeclarationId
       payload: List<FieldValue>
@@ -116,6 +117,7 @@ type FieldValue
 type ValueBody
   = ValueBodyUnparsed(SourceSpan)
   | ValueBodyStructural { fields: List<FieldEntry> }
+  | ValueBodyMap(List<FieldEntry>)
 
 // Type substrate.
 // 🟡 MIXED. `ArrowBody` carries the durable user/external/no-body
