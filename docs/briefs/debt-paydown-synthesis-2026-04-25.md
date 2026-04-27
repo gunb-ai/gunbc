@@ -119,8 +119,7 @@ coordination needed with R2 Grounding Manager.**
 |---|---|---|---|
 | `patch_lower_helpers_generated_type_alias_refinement` exact-string rustfmt patching | retired by PR #1014 | ✅ fired — generated `lower_helpers` emits the type-alias `refinement` field natively; helper, `regen_lens` special case, and SG-6 special case deleted | PR #809 (P5 Progress Is Dissolution); closed by PB Tier 2 / B7 |
 
-Trigger present; class belongs to **Zero-Floor Manager (`stern-swift-335`)
-PB-* lane**.
+Trigger fired; this class is closed by **PB Tier 2 / B7** via PR #1014.
 
 ### 1.5 Host-Rust mirrors of std `.dag` carriers (`src/v3/compiler/src/dag.rs`)
 
@@ -455,10 +454,9 @@ managers consume the discipline as part of their normal lane intake.
   Grounding lane sequencing stays as planned. **No change requested.**
 - **Zero-Floor Manager (`stern-swift-335`):** §1.4 (`patch_lower_helpers_*`)
   + §1.5 (host-Rust mirrors) + §1.6 (effect-carrier mirror) all dissolve
-  through PB-* lanes. Synthesis recommends Tier 2 item #7
-  (`patch_lower_helpers_*`) be lifted to PB-Tier1-Sweep priority since
-  it is explicitly named "first PB cleanup target." **One priority hint
-  requested.**
+  through PB-* lanes. **2026-04-27 update:** Tier 2 item #7
+  (`patch_lower_helpers_*`) was lifted to PB-Tier1-Sweep priority and
+  closed by PR #1014; remaining PB-* mirror lanes are tracked separately.
 
 ---
 

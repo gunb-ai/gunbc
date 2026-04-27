@@ -62,7 +62,9 @@ Authored:
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map`)
-- Tier 2 `patch_lower_helpers_*` retirement worker brief (if survives R1)
+
+Closed:
+- Tier 2 `patch_lower_helpers_*` retirement (PR #1014)
 
 ## Working state (fill on spawn)
 

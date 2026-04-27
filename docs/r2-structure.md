@@ -219,7 +219,7 @@ Pure Bootstrap Manager (T-PB) — POST-R1 only (R1 owns census-reduction lanes p
     Tier 3 mirror dissolutions (parallel-dispatchable):
         termination / computation / induction / effect-carrier Rust mirrors
         kernel_algebra_profile (gated on Substrate Manager: ValueBody::Map carrier; future T-Substrate sub-lane)
-    Tier 2 patch_lower_helpers_* retirement (if survives R1)
+    Tier 2 patch_lower_helpers_* retirement (closed by PR #1014)
     Post-R1 emergent dissolutions
     Cross-program: B4's §0.7 file-preference rank carrier touches PB territory; coordinate with Substrate Manager.
 
