@@ -2215,6 +2215,11 @@ pub fn emit_enum_from_children(
         } else {
             v2_rt::concat(serde_enum_tag.clone(), "\n".to_string())
         };
+        let type_param_naming_allow = if type_params.is_empty() {
+            "".to_string()
+        } else {
+            "#[allow(non_camel_case_types)]\n".to_string()
+        };
         let enum_def = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -2223,26 +2228,27 @@ pub fn emit_enum_from_children(
                             v2_rt::concat(
                                 v2_rt::concat(
                                     v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(derives, "\n".to_string()),
-                                            tag_line,
-                                        ),
-                                        rust_visibility_prefix(),
+                                        v2_rt::concat(derives, "\n".to_string()),
+                                        tag_line,
                                     ),
-                                    rust_items().enum_keyword.clone(),
+                                    type_param_naming_allow,
                                 ),
-                                " ".to_string(),
+                                rust_visibility_prefix(),
                             ),
-                            name.clone(),
+                            rust_items().enum_keyword.clone(),
                         ),
-                        type_params.clone(),
+                        " ".to_string(),
                     ),
-                    " {\n".to_string(),
+                    name.clone(),
                 ),
-                variants_str,
+                type_params.clone(),
             ),
-            "\n}".to_string(),
-        );
+            " {\n".to_string(),
+        ),
+        variants_str,
+    ),
+    "\n}".to_string(),
+);
         let accessor_impl = emit_enum_shared_accessors(
             &name,
             &type_params,
