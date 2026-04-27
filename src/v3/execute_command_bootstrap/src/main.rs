@@ -60,13 +60,7 @@ mod linux {
         if flags < 0 {
             return Err(std::io::Error::last_os_error());
         }
-        let rc = unsafe {
-            libc::fcntl(
-                SENTINEL_FD,
-                libc::F_SETFD,
-                flags | libc::FD_CLOEXEC,
-            )
-        };
+        let rc = unsafe { libc::fcntl(SENTINEL_FD, libc::F_SETFD, flags | libc::FD_CLOEXEC) };
         if rc < 0 {
             return Err(std::io::Error::last_os_error());
         }
