@@ -242,9 +242,16 @@ let x: R = 6 / 2",
 fn emit_rust_checked_division_roundtrips_ok_and_errors() {
     assert_eq!(roundtrip_stdout("let x = 6 / 2\n"), "Ok(3)");
     assert_eq!(roundtrip_stdout("let x = 6 / 0\n"), "Err(DivideByZero)");
+}
+
+#[test]
+fn emit_rust_checked_division_prelude_maps_overflow() {
+    let out = emit("let x = 6 / 2\n");
     assert_eq!(
-        roundtrip_stdout("let x = -9223372036854775808 / -1\n"),
-        "Err(Overflow)"
+        out.matches("return ::core::result::Result::Err(DivError::Overflow);")
+            .count(),
+        1,
+        "Rust checked-division prelude must map i64::MIN / -1 to Overflow; got: {out}"
     );
 }
 

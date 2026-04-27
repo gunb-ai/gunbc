@@ -197,12 +197,18 @@ fn emit_python_checked_division_roundtrips_ok_and_errors() {
         python_stdout("let x = 6 / 0\n", "python_div_zero.v3"),
         "('Err', <DivError.DivideByZero: 0>)"
     );
+}
+
+#[test]
+fn emit_python_checked_division_prelude_maps_overflow() {
+    let out = emit_python_text(
+        &compile_to_dag("let x = 6 / 2\n", "python_div_overflow_prelude.v3").expect("compiles"),
+    )
+    .expect("emits python");
     assert_eq!(
-        python_stdout(
-            "let x = -9223372036854775808 / -1\n",
-            "python_div_overflow.v3"
-        ),
-        "('Err', <DivError.Overflow: 1>)"
+        out.matches("return ('Err', DivError.Overflow)").count(),
+        1,
+        "Python checked-division prelude must map min-int / -1 to Overflow; got: {out}"
     );
 }
 
