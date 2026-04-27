@@ -18,7 +18,7 @@
 
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
@@ -32,7 +32,7 @@ use v3_compiler::types::TypeShape;
 use crate::common::determinism_fixtures::{
     ReflectedExpected, PROGRAM_FIXTURES, REFLECTED_FIXTURES,
 };
-use crate::common::{HarnessLinkMode, RustcHarness};
+use crate::common::RustcHarness;
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 fn harness() -> &'static RustcHarness {

@@ -191,6 +191,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
+    // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
+    "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/infer.rs",
     "src/v3/compiler/src/int_literal_ranges.rs",
     "src/v3/compiler/src/lens_apply.rs",
