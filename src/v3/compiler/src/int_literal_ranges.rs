@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::dag::{
     AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TypeConnective,
     ValueBody,
@@ -332,6 +334,228 @@ fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic
         message,
         span,
         fixes: Vec::new(),
+    }
+}
+
+/// Bootstrap-only gate: walk **every** `IntegerPrimitive` row in
+/// `rust_pilot_primitives` and fail closed if any row is structurally
+/// ill-formed, range strings do not parse to `i128`, `min > max`, or
+/// `(algebra, carrier)` witness pairs collide.
+///
+/// Call this once when constructing the extdeps-including bootstrapped `Dag`
+/// so drift or corruption in the pilot list surfaces at `Dag::new()`,
+/// not only when a particular std type is queried.
+pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
+    const EXPECTED_INTEGER_ROWS: usize = 8;
+    const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
+
+    let Some(pilot) = dag.rust_pilot_primitives() else {
+        return;
+    };
+    let default_span = pilot.span.clone();
+    let Some(body) = pilot.value_body.as_ref() else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: rust_pilot_primitives is missing a value body".to_string(),
+            default_span,
+        ));
+        return;
+    };
+    let ValueBody::List(elements) = body else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: rust_pilot_primitives must be ValueBody::List".to_string(),
+            default_span,
+        ));
+        return;
+    };
+
+    let Some(integer_ctor) = rust_primitive_integer_variant_ty(dag) else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: RustPrimitive.IntegerPrimitive variant is unavailable".to_string(),
+            default_span,
+        ));
+        return;
+    };
+
+    let Some(ord_algebra) = disj_variant_payload_ty(dag, "IntegerAlgebra", "OrderedRingAlgebra")
+    else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: IntegerAlgebra.OrderedRingAlgebra is unavailable for pilot validation"
+                .to_string(),
+            default_span,
+        ));
+        return;
+    };
+    let Some(sem_algebra) = disj_variant_payload_ty(dag, "IntegerAlgebra", "SemiringAlgebra")
+    else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: IntegerAlgebra.SemiringAlgebra is unavailable for pilot validation"
+                .to_string(),
+            default_span,
+        ));
+        return;
+    };
+    let mut allowed_carriers: HashSet<DeclarationId> = HashSet::new();
+    for label in [
+        "ByteCarrier",
+        "Word16Carrier",
+        "Word32Carrier",
+        "Word64Carrier",
+    ] {
+        if let Some(c) = disj_variant_payload_ty(dag, "TargetCarrier", label) {
+            allowed_carriers.insert(c);
+        }
+    }
+    if allowed_carriers.is_empty() {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: no TargetCarrier word variant payload types for pilot validation"
+                .to_string(),
+            default_span,
+        ));
+        return;
+    }
+
+    let mut witnesses: HashSet<(DeclarationId, DeclarationId)> = HashSet::new();
+    let mut integer_rows: usize = 0;
+
+    for element in elements {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = element
+        else {
+            continue;
+        };
+        if *constructor != integer_ctor {
+            continue;
+        }
+        integer_rows += 1;
+
+        if payload.len() < INTEGER_PRIMITIVE_FIELD_COUNT {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                format!(
+                    "rust_pilot_primitives IntegerPrimitive row has {} fields; expected {}",
+                    payload.len(),
+                    INTEGER_PRIMITIVE_FIELD_COUNT
+                ),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let FieldValue::Variant {
+            constructor: algebra_ctor,
+            ..
+        } = &payload[1]
+        else {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `algebra` must be a variant value".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        };
+        if *algebra_ctor != ord_algebra && *algebra_ctor != sem_algebra {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `algebra` must be OrderedRingAlgebra or SemiringAlgebra (variant payload type id)".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let FieldValue::Variant {
+            constructor: carrier_ctor,
+            ..
+        } = &payload[2]
+        else {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `carrier` must be a variant value".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        };
+        if !allowed_carriers.contains(carrier_ctor) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `carrier` must be a word TargetCarrier (Byte/Word16/Word32/Word64) variant payload type id".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        if literal_string(&payload[0]).is_none() {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `target_name` must be a string literal"
+                    .to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let (min_s, max_s) = match (literal_string(&payload[3]), literal_string(&payload[4])) {
+            (Some(a), Some(b)) => (a, b),
+            _ => {
+                dag.attach_diagnostic(malformed_integer_range_fact(
+                    "rust_pilot_primitives IntegerPrimitive range bounds must be string literals"
+                        .to_string(),
+                    default_span.clone(),
+                ));
+                continue;
+            }
+        };
+
+        if !matches!(payload[5], FieldValue::Literal(LiteralBits::Bool(_))) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `is_copy` must be a bool literal".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        if !matches!(&payload[6], FieldValue::Variant { .. }) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `overflow` must be a variant value".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let (min_n, max_n) = match (min_s.parse::<i128>(), max_s.parse::<i128>()) {
+            (Ok(mn), Ok(mx)) => (mn, mx),
+            _ => {
+                dag.attach_diagnostic(malformed_integer_range_fact(
+                    format!(
+                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse to i128"
+                    ),
+                    default_span.clone(),
+                ));
+                continue;
+            }
+        };
+        if min_n > max_n {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                format!(
+                    "rust_pilot_primitives IntegerPrimitive range order invalid: min {min_s} > max {max_s}"
+                ),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        if !witnesses.insert((*algebra_ctor, *carrier_ctor)) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                format!(
+                    "duplicate rust_pilot_primitives IntegerPrimitive (algebra, carrier) witness: ({algebra_ctor:?}, {carrier_ctor:?})"
+                ),
+                default_span.clone(),
+            ));
+        }
+    }
+
+    if integer_rows != EXPECTED_INTEGER_ROWS {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            format!(
+                "rust_pilot_primitives must list exactly {EXPECTED_INTEGER_ROWS} IntegerPrimitive rows (pilot int scope); found {integer_rows}"
+            ),
+            default_span,
+        ));
     }
 }
 

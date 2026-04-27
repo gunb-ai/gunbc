@@ -2232,6 +2232,7 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
+    crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
     dag
 });
 
@@ -2251,6 +2252,7 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
     dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
+    crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
     dag
 });
 
