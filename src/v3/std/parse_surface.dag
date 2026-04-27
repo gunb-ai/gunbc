@@ -288,6 +288,7 @@ type SurfaceItem
   | TypeAlias {
       name: String
       type_params: List<String>
+      nominal_opaque: Bool
       target: SurfaceType
       refinement: SurfaceExpr?
       span: SourceSpan

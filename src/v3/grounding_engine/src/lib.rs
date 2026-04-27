@@ -596,6 +596,7 @@ fn value_body_kind(body: &ValueBody) -> String {
         ValueBody::Structural { .. } => "ValueBody::Structural".to_string(),
         ValueBody::Scalar(_) => "ValueBody::Scalar".to_string(),
         ValueBody::List(_) => "ValueBody::List".to_string(),
+        ValueBody::Map(_) => "ValueBody::Map".to_string(),
     }
 }
 
@@ -605,6 +606,7 @@ fn field_value_kind(value: &FieldValue) -> String {
         FieldValue::Reference(_) => "FieldValue::Reference".to_string(),
         FieldValue::Record(_) => "FieldValue::Record".to_string(),
         FieldValue::List(_) => "FieldValue::List".to_string(),
+        FieldValue::Map(_) => "FieldValue::Map".to_string(),
         FieldValue::Variant { .. } => "FieldValue::Variant".to_string(),
     }
 }

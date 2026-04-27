@@ -228,6 +228,7 @@ pub enum SurfaceItem {
     TypeAlias {
         name: String,
         type_params: Vec<String>,
+        nominal_opaque: bool,
         target: SurfaceType,
         refinement: Option<SurfaceExpr>,
         span: SourceSpan,

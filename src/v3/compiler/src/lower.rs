@@ -28,8 +28,9 @@ use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
     Declaration, DeclarationId, Field, IntraClusterCall, LiteralBits, LoopBound, LoopNode,
-    MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PhantomParameter,
-    PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path, PayloadBinding,
+    PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -939,6 +940,13 @@ fn value_body_contains_undischarged_scalar_literal(
                 })
             })
         }
+        crate::dag::ValueBody::Map(entries) => {
+            map_value_type(dag, expected_type).is_some_and(|value_type| {
+                entries.iter().any(|(_, value)| {
+                    field_value_contains_undischarged_scalar_literal(dag, value_type, value)
+                })
+            })
+        }
         crate::dag::ValueBody::Unparsed(_) => false,
     }
 }
@@ -979,6 +987,13 @@ fn field_value_contains_undischarged_scalar_literal(
             list_element_type(dag, expected_type).is_some_and(|element_type| {
                 values.iter().any(|element| {
                     field_value_contains_undischarged_scalar_literal(dag, element_type, element)
+                })
+            })
+        }
+        crate::dag::FieldValue::Map(entries) => {
+            map_value_type(dag, expected_type).is_some_and(|value_type| {
+                entries.iter().any(|(_, value)| {
+                    field_value_contains_undischarged_scalar_literal(dag, value_type, value)
                 })
             })
         }
@@ -1939,10 +1954,11 @@ fn lower_item(
         SurfaceItem::TypeAlias {
             name,
             type_params,
+            nominal_opaque,
             target,
             ..
         } => {
-            lower_type_alias(dag, symbols, name, type_params, target);
+            lower_type_alias(dag, symbols, name, type_params, *nominal_opaque, target);
             scope
         }
     }
@@ -2222,12 +2238,18 @@ fn lower_type_alias(
     symbols: &HashMap<String, DeclarationId>,
     name: &str,
     _type_params: &[String],
+    nominal_opaque: bool,
     target: &SurfaceType,
 ) {
     let decl_id = symbols[name];
     let local = local_scope_from_parent(dag, decl_id);
     let connective = type_to_connective(target, symbols, &local, dag);
     dag.declaration_mut(decl_id).connective = connective;
+    if nominal_opaque {
+        dag.declaration_mut(decl_id).nominal_opacity = Some(NominalOpacity {
+            permitted_accessors: Vec::new(),
+        });
+    }
 }
 
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
@@ -2731,9 +2753,7 @@ fn lower_data_item(
     //   - Record literal → ValueBody::Structural (existing path).
     //   - List literal   → ValueBody::List (top-level aggregate path).
     //   - Scalar literal  → ValueBody::Scalar (new path, DB-10).
-    //   - Map literal     → ValueBody::Unparsed (parser sub-lane: the
-    //     parser emits `SurfaceExpr::Map`; the sibling substrate
-    //     sub-lane converts this arm to `ValueBody::Map`).
+    //   - Map literal     → ValueBody::Map (top-level string-keyed map path).
     //   - Anything else   → ValueBody::Unparsed fallback.
     let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
@@ -2756,15 +2776,9 @@ fn lower_data_item(
                 }
             }
         }
-        // Parser sub-lane: `SurfaceExpr::Map` parses today but does NOT
-        // yet lower to `ValueBody::Map` — the substrate sub-lane lands
-        // that variant + its lowering in a follow-up PR. Until then,
-        // map-bodied declarations route to `ValueBody::Unparsed`,
-        // identical to the wildcard fallback below; the explicit arm
-        // exists so `feedback_missing_checks_review_heuristic` flags
-        // this as the substrate sub-lane's edit point rather than
-        // hiding the variant under a wildcard.
-        Some(SurfaceExpr::Map { .. }) => None,
+        Some(map_expr @ SurfaceExpr::Map { .. }) => {
+            lower_map_to_structural(name, map_expr, ty_decl_id, symbols, dag)
+        }
         _ => None,
     };
     dag.declaration_mut(decl_id).value_body = match value_body {
@@ -2811,6 +2825,76 @@ fn lower_list_to_structural(
         )?);
     }
     Some(crate::dag::ValueBody::List(lowered))
+}
+
+fn lower_map_to_structural(
+    name: &str,
+    expr: &SurfaceExpr,
+    ty_decl_id: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> Option<crate::dag::ValueBody> {
+    let Some(value_type) = map_value_type(dag, ty_decl_id) else {
+        let expected_shape = if map_key_type_is_not_string(dag, ty_decl_id) {
+            "Map<String, _>; non-String map keys are not supported by ValueBody::Map"
+        } else {
+            "Map<String, _>"
+        };
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{name}` has a map body but its declared type is not a {expected_shape}"
+                ),
+                span: expr_span(expr),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
+    };
+    let SurfaceExpr::Map { entries, .. } = expr else {
+        unreachable!("lower_map_to_structural only accepts SurfaceExpr::Map");
+    };
+    let lowered = lower_string_map_entries(name, entries, value_type, symbols, dag)?;
+    Some(crate::dag::ValueBody::Map(lowered))
+}
+
+fn lower_string_map_entries(
+    data_name: &str,
+    entries: &[crate::parse_surface::SurfaceMapEntry],
+    value_type: DeclarationId,
+    symbols: &HashMap<String, DeclarationId>,
+    dag: &mut Dag,
+) -> Option<Vec<(String, crate::dag::FieldValue)>> {
+    let mut seen = HashSet::new();
+    let mut lowered = Vec::with_capacity(entries.len());
+    for entry in entries {
+        if !seen.insert(entry.key.clone()) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!("data `{data_name}` map body repeats key `{}`", entry.key),
+                    span: entry.key_span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
+        lowered.push((
+            entry.key.clone(),
+            lower_structural_field_value(
+                data_name,
+                &entry.key,
+                &entry.value,
+                value_type,
+                symbols,
+                dag,
+                None,
+                &expr_span(&entry.value),
+            )?,
+        ));
+    }
+    Some(lowered)
 }
 
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
@@ -3239,6 +3323,38 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::List(lowered));
     }
 
+    if let Some(value_type) = map_value_type(dag, expected_type) {
+        let SurfaceExpr::Map { entries, .. } = expr else {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` must be a map literal matching the declared Map<String, _> type"
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        };
+        let lowered = lower_string_map_entries(data_name, entries, value_type, symbols, dag)?;
+        return Some(crate::dag::FieldValue::Map(lowered));
+    }
+
+    if map_key_type_is_not_string(dag, expected_type) {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` field `{field_label}` has a map value but the declared map key type is not String"
+                ),
+                span: span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
+    }
+
     if let Some(conj_id) = walk_to_conj_decl(dag, expected_type) {
         let SurfaceExpr::Record { fields, .. } = expr else {
             report_declaration_error(
@@ -3608,6 +3724,47 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => list_element_type(dag, *next),
         _ => None,
+    }
+}
+
+fn map_value_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
+    let map_id = dag.declaration_by_name("Map")?.id;
+    let string_id = dag.declaration_by_name("String")?.id;
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if *template == map_id
+            && arguments.len() == 2
+            && walks_to(dag, arguments[0].value, string_id) =>
+        {
+            Some(arguments[1].value)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => map_value_type(dag, *next),
+        _ => None,
+    }
+}
+
+fn map_key_type_is_not_string(dag: &Dag, expected_type: DeclarationId) -> bool {
+    let Some(map_id) = dag.declaration_by_name("Map").map(|decl| decl.id) else {
+        return false;
+    };
+    let Some(string_id) = dag.declaration_by_name("String").map(|decl| decl.id) else {
+        return false;
+    };
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if *template == map_id && arguments.len() == 2 => {
+            !walks_to(dag, arguments[0].value, string_id)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            map_key_type_is_not_string(dag, *next)
+        }
+        _ => false,
     }
 }
 
@@ -5179,6 +5336,7 @@ fn resolve_data_path(
             resolve_structural_field_path(dag, fields, segments, span)
         }
         crate::dag::ValueBody::List(_) => None,
+        crate::dag::ValueBody::Map(_) => None,
     }
 }
 
@@ -7119,6 +7277,7 @@ mod tests {
             items: vec![SurfaceItem::TypeAlias {
                 name: "Dimension".to_string(),
                 type_params: vec!["Unit".to_string(), "Carrier".to_string()],
+                nominal_opaque: false,
                 target: surface_named_type("Carrier"),
                 refinement: None,
                 span: SourceSpan::new(file, 0, 1),
