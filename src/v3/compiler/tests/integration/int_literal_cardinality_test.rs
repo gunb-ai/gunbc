@@ -1,8 +1,32 @@
 //! **Layer:** integration
 
-use v3_compiler::dag::{Behavior, LiteralBits, PortState};
+use v3_compiler::dag::{Behavior, LiteralBits, PortState, ValueBody};
 use v3_compiler::emit_rust;
 use v3_compiler::{compile_to_dag, CompileError};
+
+fn assert_data_value_scalar_inhabits_u8(
+    dag: &v3_compiler::dag::Dag,
+    name: &str,
+    literal: i64,
+    context: &str,
+) {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{context}: no declaration named `{name}`"));
+    assert!(
+        matches!(&decl.value_body, Some(ValueBody::Scalar(LiteralBits::Int(n))) if *n == literal),
+        "{context}: {name} value should be int literal {literal}, got {:?}",
+        decl.value_body
+    );
+    let inhabits = decl
+        .inhabits
+        .unwrap_or_else(|| panic!("{context}: {name} missing `inhabits` type link"));
+    assert_eq!(
+        dag.declaration(inhabits).name.as_deref(),
+        Some("UInt8"),
+        "{context}: data item should inhabit UInt8, not default Int"
+    );
+}
 
 fn assert_int_value_port_resolves_to_uint8(
     dag: &v3_compiler::dag::Dag,
@@ -98,6 +122,7 @@ fn let_annotated_uint8_in_range_literal_narrows_against_preseed() {
     let dag = compile_to_dag("let x: UInt8 = 5", "let_u8_in_range.v3")
         .expect("in-range annotated u8 `let` must not spuriously report Int vs narrow mismatch");
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+    assert_int_value_port_resolves_to_uint8(&dag, 5, "let u8 in-range");
 }
 
 #[test]
@@ -105,6 +130,86 @@ fn data_annotated_uint8_in_range_literal_narrows_against_preseed() {
     let dag = compile_to_dag("data d: UInt8 = 5", "data_u8_in_range.v3")
         .expect("in-range annotated u8 `data` must not spuriously report Int vs narrow mismatch");
     assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+    // Data bodies use declaration `value` nodes / `inhabits` edges — not always a
+    // top-level `Behavior::Value` with the same wiring as `let`.
+    assert_data_value_scalar_inhabits_u8(&dag, "d", 5, "data u8 in-range");
+}
+
+/// Call-site literal: `decide_transform` must narrow the argument `7` to `UInt8` when
+/// the callee parameter is `UInt8` (same range facts as `let` / `data`, different site).
+#[test]
+fn call_site_u8_literal_narrows_against_uint8_parameter() {
+    let dag = compile_to_dag(
+        "fn id_u8(x: UInt8) -> UInt8 = x\n\
+         let r: UInt8 = id_u8(7)\n",
+        "call_u8_narrow.v3",
+    )
+    .expect("call with u8-sized literal at UInt8 parameter should compile");
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+    assert_int_value_port_resolves_to_uint8(&dag, 7, "call id_u8(7) argument literal");
+}
+
+/// OOB for `data` is covered in `out_of_range_uint8_literal_emits_magnitude_diagnostic`.
+/// This pins the same `MagnitudeOutOfRange` contract for a **let** (pre-seeded path).
+#[test]
+fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
+    let err = compile_to_dag("let x: UInt8 = 256", "int_literal_u8_oob_let.v3")
+        .expect_err("let UInt8 OOB must fail closed");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostic, got {err:?}");
+    };
+    let messages: Vec<String> = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, diagnostic)| diagnostic.message())
+        .collect();
+    assert_eq!(
+        messages.len(),
+        1,
+        "out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
+    );
+    assert!(
+        messages.iter().any(|message| {
+            message.contains("integer literal `256`")
+                && message.contains("u8")
+                && message.contains("0..=255")
+        }),
+        "expected MagnitudeOutOfRange details, got {messages:?}"
+    );
+    assert!(
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange {
+                    literal,
+                    target,
+                    range_min_inclusive,
+                    range_max_inclusive,
+                    fixes,
+                    ..
+                } if literal == "256"
+                    && target == "u8"
+                    && range_min_inclusive == "0"
+                    && range_max_inclusive == "255"
+                    && fixes.is_empty()
+            )
+        }),
+        "MagnitudeOutOfRange for let should match `data` OOB shape"
+    );
+}
+
+/// Emit must surface narrow Rust backing (`u8`) for UInt8 — this ratchets the
+/// `TypeConnective::Cardinality` + rust primitive bridge without a full `rustc` roundtrip.
+#[test]
+fn emit_rust_uint8_let_mentions_rust_u8() {
+    let dag = compile_to_dag("let x: UInt8 = 5", "emit_rust_u8_let.v3")
+        .expect("emit u8: let compiles");
+    let out = emit_rust::emit_rust(&dag).expect("emit");
+    assert!(
+        out.contains("u8") || out.contains("UInt8"),
+        "expected `u8` (or v3 `UInt8` trace) in emit output; got: {}",
+        &out.chars().take(800).collect::<String>()
+    );
 }
 
 #[test]
