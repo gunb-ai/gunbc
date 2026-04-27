@@ -2,7 +2,26 @@
 // `regen_tokenize`. Regenerate instead of hand-editing.
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
-use crate::tokenize_char_class::{byte_matches, TokenizerCharClass};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ScannerCharClass {
+    Whitespace,
+    Digit,
+    IdentStart,
+    IdentContinue,
+}
+
+#[inline]
+pub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
+    match class {
+        ScannerCharClass::Whitespace => matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' '),
+        ScannerCharClass::Digit => byte.is_ascii_digit(),
+        ScannerCharClass::IdentStart => {
+            byte.is_ascii_lowercase() || byte.is_ascii_uppercase() || byte == 0x5f
+        }
+        ScannerCharClass::IdentContinue => byte.is_ascii_alphanumeric() || byte == 0x5f,
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TokenKind {
@@ -67,36 +86,16 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     while pos < bytes.len() {
         let byte = bytes[pos];
 
-        if byte_matches(byte, TokenizerCharClass::Whitespace) {
+        let start = pos;
+
+        if byte_matches(byte, ScannerCharClass::Whitespace) {
             pos += 1;
             continue;
         }
 
-        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).
-        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()
-            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()].eq(LINE_COMMENT_PREFIX)
-        {
-            pos += LINE_COMMENT_PREFIX.len();
-            while pos < bytes.len() && bytes[pos] != b'\n' {
-                pos += 1;
-            }
-            continue;
-        }
-
-        let start = pos;
-
-        if let Some((kind, width)) = punctuation_token(bytes, pos) {
-            tokens.push(Token {
-                kind,
-                span: SourceSpan::new(file, start as u32, (start + width) as u32),
-            });
-            pos += width;
-            continue;
-        }
-
-        if byte_matches(byte, TokenizerCharClass::Digit) {
+        if byte_matches(byte, ScannerCharClass::Digit) {
             let mut end = pos;
-            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::Digit) {
+            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {
                 end += 1;
             }
             let literal = &source[start..end];
@@ -113,9 +112,9 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
-        if byte_matches(byte, TokenizerCharClass::IdentStart) {
+        if byte_matches(byte, ScannerCharClass::IdentStart) {
             let mut end = pos;
-            while end < bytes.len() && byte_matches(bytes[end], TokenizerCharClass::IdentContinue) {
+            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {
                 end += 1;
             }
             let text = &source[start..end];
@@ -140,6 +139,56 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 span: SourceSpan::new(file, start as u32, end as u32),
             });
             pos = end;
+            continue;
+        }
+
+        if byte_matches(byte, ScannerCharClass::IdentContinue) {
+            let mut end = pos;
+            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {
+                end += 1;
+            }
+            let text = &source[start..end];
+            let kind = match text {
+                "data" => TokenKind::KwData,
+                "else" => TokenKind::KwElse,
+                "false" => TokenKind::KwFalse,
+                "fn" => TokenKind::KwFn,
+                "if" => TokenKind::KwIf,
+                "import" => TokenKind::KwImport,
+                "let" => TokenKind::KwLet,
+                "match" => TokenKind::KwMatch,
+                "module" => TokenKind::KwModule,
+                "then" => TokenKind::KwThen,
+                "true" => TokenKind::KwTrue,
+                "type" => TokenKind::KwType,
+                "where" => TokenKind::KwWhere,
+                _ => TokenKind::Ident(text.to_string()),
+            };
+            tokens.push(Token {
+                kind,
+                span: SourceSpan::new(file, start as u32, end as u32),
+            });
+            pos = end;
+            continue;
+        }
+
+        // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).
+        if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()
+            && bytes[pos..pos + LINE_COMMENT_PREFIX.len()].eq(LINE_COMMENT_PREFIX)
+        {
+            pos += LINE_COMMENT_PREFIX.len();
+            while pos < bytes.len() && bytes[pos] != b'\n' {
+                pos += 1;
+            }
+            continue;
+        }
+
+        if let Some((kind, width)) = punctuation_token(bytes, pos) {
+            tokens.push(Token {
+                kind,
+                span: SourceSpan::new(file, start as u32, (start + width) as u32),
+            });
+            pos += width;
             continue;
         }
 
