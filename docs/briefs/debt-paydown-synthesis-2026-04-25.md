@@ -152,7 +152,7 @@ to PB-* lane.
 Summary citations to existing tracking:
 
 - File-preference rank (`dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols` — line cites drift on `main`) — ROADMAP `:368`. Trigger: convergence of every duplicated `src/v3/std/` ↔ `dsl/std/` module listed in those doc comments. **PR #809 undercount (computation + induction + termination) closed 2026-04-26** — checklist extended in source + ROADMAP exploratory row.
-- Loop emission semantic invariant (Python/Go) — PR #809 row. **RESOLVED 2026-04-27:** structural integration test landed in `src/v3/compiler/tests/integration/m1_substrate_test.rs` (`every_loop_node_originates_from_recursive_function_lowering`); audit found closure already holds in production, marker retired. See Tier 2 §5.
+- Loop emission semantic invariant (Python/Go) — PR #809 row. **Risk-shaped:** comment-level invariant, not structural.
 - `bootstrap.rs::patch_kernel_bool_boolean_algebra_inhabits` Rust patching (`bootstrap.rs:211-291`) — ROADMAP `:364` (Class 5 Gap 1). Trigger: structural `inhabits` edge.
 - `EXTDEPS_BOOTSTRAP_FIXTURES` manual list — ROADMAP `:365` (Class 5 Gap 3 `std.unicode` bootstrap/load-set decision is the parent).
 
@@ -298,24 +298,16 @@ dispatch in parallel. Each PR is small.
 ### Tier 2 — risk-shaped + R2-coupled (S-scope each, dispatch with R2 lanes)
 
 5. **Loop emission semantic invariant** (PR #809 entry). **RESOLVED
-   (2026-04-27):** construction-closure audit by W-B5 (PR #953) found
-   exactly two production `Behavior::Loop` construction sites — both in
-   `src/v3/compiler/src/lower.rs`: `finalize_mutual_clusters` (line 391,
-   `LoopBound::Descent`, mutual-recursion cluster) and
-   `lower_fn_item_expr_body` (line 4236, `LoopBound::Cardinality`,
-   single recursive function). All other `push_loop` callers
-   (`lib.rs`, `emit.rs`, `dag/builder.rs`) are inside `#[test]` blocks.
-   **Closure holds**: every production Loop carries provenance traceable
-   to recursive-function lowering, structurally observable as
-   "loop.output is the value port of some Behavior::Bind". Receipt
-   landed in
-   `src/v3/compiler/tests/integration/m1_substrate_test.rs` as
-   `every_loop_node_originates_from_recursive_function_lowering` (folded
-   in alongside the existing substrate receipts to satisfy the SG-0
-   census ratchet on hand-authored .rs test files). The
-   speculative `LoopKind` lowering-marker idea is **retired** as a
-   ratchet-against-not-yet-real-violations per
-   `feedback_construction_over_ratchets`.
+   (2026-04-27, B5 audit):** construction-closure holds — live lowering
+   materializes `Behavior::Loop` at exactly two `lower.rs` call sites
+   (single-fn `LoopBound::Cardinality` + mutual-cluster
+   `LoopBound::Descent`), both under `lower_bodies_phase`; `Dag::push_loop`
+   remains test-only (`dag/builder.rs`); bootstrap snapshots are regen
+   literals from the same pipeline, not a third algorithm. Structural
+   integration gate: `r2_b5_loop_construction_closure_test.rs` (substring
+   ratchet on `lower.rs` + DAG walk for bounds + provenance
+   `Accumulated`). Speculative `LoopKind` marker idea **retired** for
+   this risk item (per `feedback_construction_over_ratchets`).
 6. **`src/v3/std` vs `dsl/std` checklist undercount fix** (PR #809
    entry). **RESOLVED (2026-04-26):** convergence checklist in
    `dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols`
