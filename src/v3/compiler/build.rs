@@ -460,5 +460,4 @@ fn main() {
     let gunbc_out = out_dir.join("v3_gunbc_files.rs");
     fs::write(&gunbc_out, gunbc_generated)
         .unwrap_or_else(|e| panic!("failed to write {}: {}", gunbc_out.display(), e));
-
 }
