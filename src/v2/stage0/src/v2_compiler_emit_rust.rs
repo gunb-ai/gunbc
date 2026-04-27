@@ -1210,14 +1210,18 @@ pub fn emit_module_full(
         .cloned()
         .or_else(|| {
             // `data wire_contract: VariantEncoding = …` can lose `ident_span` on the binding
-            // node, making `authored_name` empty — fall back to the (typically unique) data
-            // item whose type annotation is `VariantEncoding`.
+            // node, making `authored_name` empty. Fall back to the module's `data … = <record>`
+            // item whose initializer is a record literal (`StringVariant { naming: … }`, etc.).
             typed_module.items.clone().iter().cloned().find(|i| {
-                is_data_def_item(i)
-                    && i.type_annotation.clone().is_some()
-                    && (authored_name(scope.type_env.clone(), i.type_annotation.clone().unwrap())
-                        .as_str()
-                        == "VariantEncoding".to_string().as_str())
+                if (!is_data_def_item(&i)) {
+                    return false;
+                }
+                match i.body.clone() {
+                    Some(body) => {
+                        matches!((*body.expr_data.clone()).clone(), ExprRecordLit { .. })
+                    }
+                    None => false,
+                }
             })
         });
         let items_str = Rc::new({
