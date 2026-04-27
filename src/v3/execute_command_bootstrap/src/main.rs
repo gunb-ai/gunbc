@@ -99,7 +99,7 @@ mod linux {
             }
         };
 
-        if let Err(_) = write_all(SENTINEL_FD, b"s") {
+        if write_all(SENTINEL_FD, b"s").is_err() {
             exit(124);
         }
 
@@ -109,12 +109,12 @@ mod linux {
             .collect();
         argv.push(std::ptr::null());
 
-        if let Err(_) = write_all(SENTINEL_FD, b"e") {
+        if write_all(SENTINEL_FD, b"e").is_err() {
             let _ = write_all(SENTINEL_FD, b"f");
             exit(123);
         }
 
-        if let Err(_) = set_cloexec_on_sentinel_fd() {
+        if set_cloexec_on_sentinel_fd().is_err() {
             let _ = write_all(SENTINEL_FD, b"f");
             exit(122);
         }
