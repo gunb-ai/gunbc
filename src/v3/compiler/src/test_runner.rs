@@ -616,32 +616,29 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 /// The bootstrap `sh` emits up to three bytes on fd 3, classifying the run structurally with
 /// no string authority:
 ///
-///   1. `s` — sh started executing.
-///   2. Probe: matches `execvp(3)` lookup rules to keep parity with
-///      `std::process::Command`:
-///        * `command` containing `/` → `[ -x "$0" ]` (direct file test; `execvp` does not
-///          consult `PATH` for paths, and `command -v` of a path string can be sh-relative).
-///        * bare name → `command -v -- "$0"` (`PATH` search, matching `execvp`).
-///      Probe fail → exit 126 immediately. Sentinel = `s`.
-///   3. `e` — probe passed; sh is committed to `exec(2)`.
-///   4. EXIT trap installed: `printf f >&3` if sh ever exits *after* this point. fd 3 has
-///      `FD_CLOEXEC` set in `pre_exec`, so a successful `exec` atomically closes it (no
-///      leak to the user process and no `f` write); a failed `exec` leaves fd 3 open in sh,
-///      sh exits, trap fires, `f` is written.
-///   5. `exec "$0" "$@"`.
+/// 1. `s` — sh started executing.
+/// 2. Probe: matches `execvp(3)` lookup rules to keep parity with `std::process::Command`.
+///    Path operands (containing `/`) use `[ -x "$0" ]` (direct file test; `execvp` does not
+///    consult `PATH` for paths). Bare names use `command -v -- "$0"` (`PATH` search, matching
+///    `execvp`). Probe fail → exit 126 immediately. Sentinel = `s`.
+/// 3. `e` — probe passed; sh is committed to `exec(2)`.
+/// 4. EXIT trap installed: `printf f >&3` if sh ever exits *after* this point. fd 3 has
+///    `FD_CLOEXEC` set in `pre_exec`, so a successful `exec` atomically closes it (no leak
+///    to the user process and no `f` write); a failed `exec` leaves fd 3 open in sh, sh
+///    exits, trap fires, `f` is written.
+/// 5. `exec "$0" "$@"`.
 ///
 /// After wait, parent reads up to [`UNSHARE_READY_PIPE_MAX`] bytes:
 ///
-///   * `b""`     → util-linux exited before sh ran → `NamespaceSetupFailed`.
-///   * `b"s"`    → sh ran, probe rejected → `LogicalCommandNotExecutable`.
-///   * `b"se"`   → sh exec'd the user command (kernel closed fd 3 atomically) → exit is
-///                 logical → `LogicalCommandExeced`.
-///   * `b"sef"`  → sh's `exec` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.)
-///                 → exec failed post-probe → `LogicalExecFailed`. **Closes the P2(c) gap
-///                 manager raised on draft review:** post-`exec` failure can no longer be
-///                 mistaken for a logical exit (a claim expecting 126 cannot Match an
-///                 unexec'd command).
-///   * anything else → fail-closed to `NamespaceSetupFailed`.
+/// - `b""`    → util-linux exited before sh ran → `NamespaceSetupFailed`.
+/// - `b"s"`   → sh ran, probe rejected → `LogicalCommandNotExecutable`.
+/// - `b"se"`  → sh exec'd the user command (kernel closed fd 3 atomically) → exit is
+///   logical → `LogicalCommandExeced`.
+/// - `b"sef"` → sh's `exec` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.) →
+///   exec failed post-probe → `LogicalExecFailed`. Closes the P2(c) gap manager raised on
+///   draft review: post-`exec` failure can no longer be mistaken for a logical exit (a
+///   claim expecting 126 cannot Match an unexec'd command).
+/// - anything else → fail-closed to `NamespaceSetupFailed`.
 ///
 /// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`. The only
 /// structural channel between bootstrap and parent is the typed sentinel pipe; classification
