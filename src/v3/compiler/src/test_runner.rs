@@ -978,7 +978,7 @@ fn child_wait_for_execute_command(
 /// - **No stdout/stderr capture** — `stdin`/`stdout`/`stderr` are the null device. Only the
 ///   exit code is read.
 /// - **Wall clock** — [`EXECUTE_COMMAND_WALL_TIMEOUT`].
-/// - **Linux**: user+PID namespace via `unshare(1)` + a bootstrap sh that signals setup
+/// - **Linux**: user+PID namespace via `unshare(1)` + the `gunbc_execute_command_bootstrap` helper binary that signals setup
 ///   progress on a sentinel ready-pipe (fd 3). On namespace setup failure the runner falls
 ///   back to a direct `Child` once as the *first* logical run (P2(d): no implicit re-exec
 ///   of an already-run logical command).
@@ -1006,7 +1006,7 @@ pub const EXECUTE_COMMAND_EXIT_CODE_MISMATCH_MSG_PREFIX: &str =
 /// `Fail(String)` is rendered only at the reporting edge by [`Self::into_claim_result`].
 /// **P2(a)–(e) realization (T-PB-B Worker 4):**
 /// - (a) typed results: variants only; no `Other(ClaimResult)` partial carrier.
-/// - (b) isolated logical-child I/O: wrapper stderr is `/dev/null`; bootstrap sh redirects
+/// - (b) isolated logical-child I/O: wrapper stderr is `/dev/null`; the helper binary inherits stdio normally and
 ///   logical stderr to `/dev/null` before `exec`. The only structural channel between
 ///   bootstrap and parent is the [`UnshareReadyPipe`] sentinel (typed bytes, not strings).
 /// - (c) setup ≠ logical exit: `SetupFailed` and `SpawnFailed` are distinct from
@@ -1280,7 +1280,7 @@ fn run_linux_unshare_then_direct(
             }
         }
         UnshareBootstrapStage::NamespaceSetupFailed => {
-            // util-linux exited before the bootstrap sh ran. Direct fallback is the *first*
+            // util-linux exited before the helper binary ran. Direct fallback is the *first*
             // logical run, not a recovery re-exec (P2(d)).
             match build_execute_command_process(command, args).spawn() {
                 Ok(mut direct_child) => {
@@ -3322,7 +3322,7 @@ mod execute_command_timebound_tests {
     /// `/dev/null` (and `child_wait` still drains the **wrapper** pipe for util-linux/bootstrap only).
     /// If logical `>&2` were still the piped handle, the loop below would fill the pipe and stall
     /// until the wall cap — this test passing is the receipt that they are **not** the same
-    /// authority (PR #792; c.f. `UNSHARE_LOGICAL_BOOTSTRAP_SH` module doc).
+    /// authority (PR #792; c.f. the helper-binary protocol described in `build_execute_command_unshare`).
     #[test]
     #[cfg(target_os = "linux")]
     fn unshare_path_drains_piped_stderr_so_huge_logical_stderr_does_not_stall() {
@@ -3344,7 +3344,7 @@ mod execute_command_timebound_tests {
     }
 
     /// Linux receipt that the unshare PID-namespace path is **actually engaged**, not
-    /// silently bypassed via direct fallback. `unshare -f -p` makes the bootstrap sh's
+    /// silently bypassed via direct fallback. `unshare -f -p` makes the helper's
     /// fork PID 1 in the new namespace; `exec` of the user command preserves PID 1. So
     /// `sh -c '[ "$$" = "1" ]'` exits 0 *only* when the unshare path reached the user
     /// command. If the bootstrap-sentinel pipe were broken (e.g. fd 3 closed by parent's
