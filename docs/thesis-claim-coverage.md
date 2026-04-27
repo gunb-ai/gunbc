@@ -2,7 +2,7 @@
 
 **Status:** PROPOSAL pre-R1-close. Promotes to ACTIVE on R1 closure → R2 promotion transition per [`docs/r2-structure.md` §"Open calls" item 1](r2-structure.md). Authoritative **union receipt + disposition map** for THESIS claims; source-of-truth for each claim remains the cited gate / lane / authority doc.
 
-**Last refresh:** 2026-04-26 against main HEAD `407a8bcb1`. Refresh discipline below.
+**Last refresh:** 2026-04-27 against main HEAD `242c65d0`. Refresh discipline below.
 
 ## Purpose
 
@@ -74,23 +74,23 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 |---|---|---|---|---|
 | 6 | Type mismatches, field typos, non-exhaustive, bare containers, circular deps, stale imports, cross-target drift caught at compile | R1-closed | T-Emit `emit_omni_demo_fixtures_green` + T-Demo fixtures | green |
 | 7 | CX gate: every recursive function terminates with proven bound | R1-closed | T-LaneE `complexity_merge_sort_is_nlogn`, `complexity_merge_sort_v3_matches_v2_oracle` | green |
-| 8 | Coercion = emission: compiler reads target spec, translates; no separate coercion engine | R2-gated | ROADMAP §"Post-R1 Program — Grounding Completeness" T-Ground-Dissolve lane | not-started |
+| 8 | Coercion = emission: compiler reads target spec, translates; no separate coercion engine | R2-gated | ROADMAP §"Post-R1 Program — Grounding Completeness" T-Ground-Dissolve lane | blocked on T-Ground critical path |
 | 9 | Ownership: compiler proves no aliased mutation in emitted code | R1-closed | T-LaneE E-family carrier port (ownership substrate) | partial |
-| 10 | Grounding completeness: target primitives structurally modeled, inhabits-search coercion, fail-closed | R2-gated | ROADMAP §"Post-R1 Program — Grounding Completeness" T-Ground-Pilot through T-Ground-Dissolve | not-started |
+| 10 | Grounding completeness: target primitives structurally modeled, inhabits-search coercion, fail-closed | R2-gated | ROADMAP §"Post-R1 Program — Grounding Completeness" T-Ground-Pilot through T-Ground-Dissolve | in-flight (pilot closed; Rust/Engine/Tests/Dissolve remain) |
 
 ### Tier 2 — Runtime safety
 
 | # | Claim | Disposition | Evidence | Status |
 |---|---|---|---|---|
-| 11 | Division by zero, overflow, OOB, force-unwrap, partial functions proven safe or made total | R2-gated | `docs/r2-structure.md` Goal 4 (T-ImpossibleBugs unhandled-diagnostic-paths class); Tier 2 substrate | not-started |
+| 11 | Division by zero, overflow, OOB, force-unwrap, partial functions proven safe or made total | R2-gated | `docs/r2-structure.md` Goal 4 (T-ImpossibleBugs unhandled-diagnostic-paths class); Tier 2 substrate | in-flight (Int division Result carrier PR tail active) |
 
 ### Tier 3 — Verification from structure
 
 | # | Claim | Disposition | Evidence | Status |
 |---|---|---|---|---|
-| 12 | L4: emitted code executes and matches `.dag` evaluation | R2-gated | T-Ground-Tests lane | not-started |
-| 13 | L5: same `.dag` produces same behavior in Rust/Python/Go | R2-gated | T-Ground-Rust / T-Ground-Python / T-Ground-Go lanes | not-started |
-| 14 | L6: every structural form compiles to every target | R2-gated | T-Ground-Engine (inhabitance-search walker) | not-started |
+| 12 | L4: emitted code executes and matches `.dag` evaluation | R2-gated | T-Ground-Tests lane | blocked on earlier T-Ground lanes |
+| 13 | L5: same `.dag` produces same behavior in Rust/Python/Go | R2-gated | T-Ground-Rust / T-Ground-Python / T-Ground-Go lanes | in-flight (Go tranche green/open; Rust/Engine tails remain) |
+| 14 | L6: every structural form compiles to every target | R2-gated | T-Ground-Engine (inhabitance-search walker) | in-flight (ValueBody list/sum producer landed; Engine consumer active) |
 | 15 | L7: operations obey declared algebraic laws | R1-closed | T-LensAPI `lens_composition_associative` | green |
 
 ### Concept unifications
@@ -98,8 +98,8 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 | # | Claim | Disposition | Evidence | Status |
 |---|---|---|---|---|
 | 16 | Coercion cost = complexity | R1-closed | T-LaneE complexity lens (realization costs compose with `.dag`-level CX) | green |
-| 17 | Coercion = emission | R2-gated | T-Ground-Dissolve dissolves coercion scaffolding | not-started |
-| 18 | Target language spec = transport spec = interpreter runtime | R2-gated | T-Ground lanes (Rust/Python/Go structural modeling) | not-started |
+| 17 | Coercion = emission | R2-gated | T-Ground-Dissolve dissolves coercion scaffolding | blocked on T-Ground critical path |
+| 18 | Target language spec = transport spec = interpreter runtime | R2-gated | T-Ground lanes (Rust/Python/Go structural modeling) | in-flight |
 | 19 | Idempotency + cancellation + redundancy = algebraic simplification | R1-closed | T-Demo impossible-bugs idempotency-violation demo | green |
 
 ### Epistemic stacking
@@ -130,7 +130,7 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 | 31 | Automatic parallelism from dependency graph | R1-closed | T-Demo `fixture_integration_canonical` parallelism demo | green |
 | 32 | Automatic memoization from purity + cost | R1-closed | Purity structural; cost via T-LaneE complexity lens | green |
 | 33 | Space bound proofs from CX | R1-closed | T-LaneE complexity dimension includes space tracking | green |
-| 34 | Cross-language optimization from shared cost algebra | R2-gated | T-Ground-Engine (inhabitance-search composing cost across targets) | not-started |
+| 34 | Cross-language optimization from shared cost algebra | R2-gated | T-Ground-Engine (inhabitance-search composing cost across targets) | in-flight (Engine prerequisite landed; consumer tail active) |
 
 ### Omni-emission
 
@@ -140,7 +140,7 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 | 36 | Coherence structural, not checked; drift impossible (same Node tree source) | R1-closed | T-Emit multi-target structural coherence | green |
 | 37 | Shape A — language targets (Rust/Python/Go/TypeScript/Swift/HDL); cost O(1) per spec | R1-closed | T-Emit Rust/Python/Go gates; TypeScript/Swift/HDL post-R1 | partial (3 of 6+ targets) |
 | 38 | Shape B — user-program artifacts (YAML/Terraform/K8s/SQL/OpenAPI) via `.dag` emitter programs | post-R2-external | ROADMAP Track 16 (user code, not compiler targets); pressure-test via `../ctrl/` | not-started |
-| 39 | Target-level cost complexity composes with `.dag`-level CX statically | R2-gated | T-Ground-Engine (realization costs from language specs) | not-started |
+| 39 | Target-level cost complexity composes with `.dag`-level CX statically | R2-gated | T-Ground-Engine (realization costs from language specs) | in-flight |
 | 40 | Distinction Shape A vs Shape B; compiler emits languages, user code emits other artifacts | post-R2-external | ROADMAP Track 16 design decision | unknown |
 | 41 | Cost scaling O(1) per target, not O(N × M); effort scales with conceptual content | R1-closed | Structural property of substrate (emit pass per target, not per layer count) | green |
 | 42 | Emission independent of intent (what ≠ how) | R1-closed | Separation of program declaration from realization specs | green |
@@ -198,9 +198,9 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 | 64 | (R1) Suboptimal-complexity contract violation: function annotated bound errors at compile | R1-closed | T-Demo `impossible_bug_class_suite_r1` includes suboptimal-complexity demo | partial (CostBounded receipt is runner-fail) |
 | 65 | (R1) Idempotency-contract violation: marked `@idempotent` function structure errors | R1-closed | T-Demo impossible-bugs suite (`compose_effects` + `AppendEffect` violation) | green |
 | 66 | (R1) Transport/type-drift: client/server cannot hold different types for same field | R1-closed | T-Demo impossible-bugs suite (`TypeMismatch` multi-target) | green |
-| 67 | (R2+) Nested-optional flatten: `Option<Option<T>>` patterns error at compile | R2-gated | `docs/r2-structure.md` Goal 4; gated on cardinality refinement | not-started |
-| 68 | (R2+) Unenumerated effects: operations intrinsically read/write via type signature | R2-gated | `docs/r2-structure.md` Goal 4; per `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` | not-started |
-| 69 | (R2+) Unhandled diagnostic paths: Tier 2 runtime-safety proofs | R2-gated | `docs/r2-structure.md` Goal 4; Tier 2 substrate post-R1 | not-started |
+| 67 | (R2+) Nested-optional flatten: `Option<Option<T>>` patterns error at compile | R2-gated | `docs/r2-structure.md` Goal 4; gated on cardinality refinement; closed by PR #890 / `6562081e` | green |
+| 68 | (R2+) Unenumerated effects: operations intrinsically read/write via type signature | R2-gated | `docs/r2-structure.md` Goal 4; per `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md`; substrate scoping unblocked by #893/#901 | in-flight (consumer/lens PR active) |
+| 69 | (R2+) Unhandled diagnostic paths: Tier 2 runtime-safety proofs | R2-gated | `docs/r2-structure.md` Goal 4; Tier 2 substrate post-R1 | in-flight (Int division Result carrier tail active) |
 | 70 | Governance: classes added require thesis commitment; removal requires named dissolution | R1-closed | THESIS authority on scheduling tags `[R1]` vs `[R2+]` | green |
 
 ### Modeling discipline
@@ -219,7 +219,9 @@ Four claims with partial-status notes worth tracking (NOT pre-promotion blockers
 1. **Ownership (Tier 1, claim 9)** — marked R1-closed via E-family carrier port; full ownership-dimension infrastructure may have post-R1 tail. Within T-LaneE scope is R1-committed.
 2. **Shape A omni-emission (claim 37)** — R1 demonstrates 3 of 6+ Shape A targets (Rust/Python/Go). TypeScript/Swift/HDL targets explicitly listed in THESIS but not in R1 T-Emit scope ("Rust production-grade; Python/Go demonstrably working"). Full Shape A scope defers post-R1.
 3. **Self-hosting fixed-point (claim 47) + tests-as-data (claim 48)** — both `[ext]` predicates pending T-TestGen runner closure; structural commitment is R1, evaluation green-status delivery-dependent on T-TestGen.
-4. **Grounding completeness (claim 10)** — Tier 1 claim, R2-gated. Intentional per ROADMAP §"Post-R1 Program — Grounding Completeness" — substantial program blocked on post-R1 substrate (DB-11, cardinality-substrate). R2 absorbs as the single co-anchor thesis claim per `docs/r2-structure.md` §Summary.
+4. **Grounding completeness (claim 10)** — Tier 1 claim, R2-gated. Intentional per ROADMAP §"Post-R1 Program — Grounding Completeness" — substantial program formerly blocked on post-R1 substrate. As of the 2026-04-27 refresh, `ValueBody` list/sum + `std.unicode` landed via #920 and tokenizer charclass phase-2 closed via #1002; T-Ground still owns the Pilot → Rust → Engine → Tests → Dissolve critical path before this claim can close.
+5. **R2 impossible-bug classes (claims 67-69)** — one class is now closed: nested-optional flatten via #890 / `6562081e`. Unenumerated effects and unhandled diagnostic paths remain R2-gated and in-flight rather than not-started.
+6. **Release-owned follow-through outside the 74 disposition rows** — §6a `MethodContract` pick + receipt remains closed; follow-through advanced via #990 (per-field dissolution triggers + v3 lens inventory). B-wave Release closures also advanced via #968 (B5 loop construction-closure audit), #909 (B6 file-preference checklist), and #1014 (B7 `patch_lower_helpers_generated_type_alias_refinement` retirement through PB relay).
 
 ## Refresh discipline
 
