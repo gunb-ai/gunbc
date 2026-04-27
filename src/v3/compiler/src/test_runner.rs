@@ -3261,7 +3261,8 @@ mod execute_command_timebound_tests {
             .status();
         let probe_ok = matches!(probe, Ok(s) if s.success());
         if !probe_ok {
-            eprintln!("skip: unshare(1) -c -f -p PID-namespace not permitted on this host");
+            // unshare PID-namespace not permitted on this host (restricted CI / sandbox);
+            // skip silently. clippy::disallowed_macros bans eprintln/println in lib crates.
             return;
         }
         // Probe succeeded → unshare PID-namespace works on this host. Our runner MUST
