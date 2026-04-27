@@ -463,6 +463,11 @@ data suite: TestSuite = {
 #[test]
 fn test_runner_dispatches_pb_census_predicate_shapes() {
     let source = r#"
+import std.verification {
+  compiler_std_positive_set_ratchet,
+  lens_producer_files_subset_predicate
+}
+
 data census_authority: Int = 0
 
 data census_bound_claim: TestClaim = {
