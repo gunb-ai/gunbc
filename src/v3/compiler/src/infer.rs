@@ -248,7 +248,8 @@ fn ensure_optional_match_disj(
     }
     let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
         TypeConnective::Cardinality(payload)
-            if payload.bound() == crate::dag::CardinalityBound::AtMostOne => {
+            if payload.bound() == crate::dag::CardinalityBound::AtMostOne =>
+        {
             (payload.element(), dag.declaration(cardinality_decl_id).span.clone())
         }
         _ => return None,
@@ -2326,7 +2327,8 @@ fn bind_expected_decl_to_actual_context(
                 }
                 _ => actual.decl,
             };
-            let TypeConnective::Cardinality(actual_payload) = &dag.declaration(actual_decl).connective
+            let TypeConnective::Cardinality(actual_payload) =
+                &dag.declaration(actual_decl).connective
             else {
                 return false;
             };
@@ -3350,10 +3352,10 @@ pub(crate) fn concretize_decl_with_subst(
             });
             id
         }
-            TypeConnective::Cardinality(payload) => {
-                let specialized_element =
-                    concretize_decl_with_subst(dag, payload.element(), subst, depth + 1);
-                let bound = payload.bound();
+        TypeConnective::Cardinality(payload) => {
+            let specialized_element =
+                concretize_decl_with_subst(dag, payload.element(), subst, depth + 1);
+            let bound = payload.bound();
             if let Some(existing) =
                 find_equivalent_anonymous_cardinality(dag, specialized_element, &bound)
             {
@@ -3916,8 +3918,7 @@ fn find_equivalent_anonymous_cardinality(
         if decl.name.is_some() {
             return None;
         }
-        let TypeConnective::Cardinality(existing_payload) = &decl.connective
-        else {
+        let TypeConnective::Cardinality(existing_payload) = &decl.connective else {
             return None;
         };
         (element == existing_payload.element() && existing_payload.bound() == *bound)
@@ -4734,12 +4735,8 @@ fn resolve_decl_with_subst(
                 .or(Some(current))
         }
         TypeConnective::Cardinality(payload) => {
-            let specialized_element = resolve_decl_with_subst(
-                dag,
-                payload.element(),
-                subst,
-                depth + 1,
-            )?;
+            let specialized_element =
+                resolve_decl_with_subst(dag, payload.element(), subst, depth + 1)?;
             if specialized_element == payload.element() {
                 return Some(current);
             }
@@ -4779,8 +4776,7 @@ fn find_equivalent_decl_cardinality(
     bound: &crate::dag::CardinalityBound,
 ) -> Option<DeclarationId> {
     dag.declarations().iter().find_map(|decl| {
-        let TypeConnective::Cardinality(existing_payload) = &decl.connective
-        else {
+        let TypeConnective::Cardinality(existing_payload) = &decl.connective else {
             return None;
         };
         (element == existing_payload.element() && existing_payload.bound() == *bound)
@@ -4885,10 +4881,7 @@ fn declaration_shapes_equivalent(
                         declaration_shapes_equivalent(dag, lhs_arg.value, rhs_arg.value, depth + 1)
                     })
         }
-        (
-            TypeConnective::Cardinality(lhs_payload),
-            TypeConnective::Cardinality(rhs_payload),
-        ) => {
+        (TypeConnective::Cardinality(lhs_payload), TypeConnective::Cardinality(rhs_payload)) => {
             lhs_payload.bound() == rhs_payload.bound()
                 && declaration_shapes_equivalent(
                     dag,
@@ -6394,19 +6387,13 @@ mod bool_logical_operator_arrow_tests {
         let mut dag = Dag::new();
         let int = dag.int_shape().expect("bootstrap Int").declaration;
         let lhs = TypeShape::new(int);
-        let first = resolve_operator_arrow(
-            &mut dag,
-            OperatorKind::Arithmetic(ArithmeticOp::Div),
-            &lhs,
-        )
-            .expect("division must resolve");
+        let first =
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
+                .expect("division must resolve");
         let after_first = dag.declarations().len();
-        let second = resolve_operator_arrow(
-            &mut dag,
-            OperatorKind::Arithmetic(ArithmeticOp::Div),
-            &lhs,
-        )
-            .expect("division must resolve");
+        let second =
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
+                .expect("division must resolve");
 
         assert_eq!(first.output.declaration, second.output.declaration);
         assert_eq!(
@@ -6416,7 +6403,11 @@ mod bool_logical_operator_arrow_tests {
         );
 
         let result_shape_decl = dag.declaration(first.output.declaration);
-        let TypeConnective::Instantiation { template, arguments } = &result_shape_decl.connective else {
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &result_shape_decl.connective
+        else {
             panic!("division output must remain an instantiation");
         };
         let std_result = declaration_by_name_in_file(&dag, ERROR_PRIMITIVES_FILE, "Result")
