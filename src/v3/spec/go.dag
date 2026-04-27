@@ -14,7 +14,8 @@ import v3.std.emit_model {
 }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
-  ShapeATargetSourceFiltering, ExecutionModelRequirement
+  ShapeATargetSourceFiltering, ExecutionModelRequirement,
+  internal_source_filtering
 }
 import v3.std.clean_emission {
   CleanEmissionContract,

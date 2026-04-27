@@ -51,7 +51,8 @@ module v3.spec.rust
 import v3.spec.v3_l1 { Bind, Branch, Main }
 import v3.std.computation_model { TargetExecutionModel, OwnershipBased, LexicalScoping }
 import v3.std.computation_model {
-  ShapeATargetSourceFiltering, ExecutionModelRequirement
+  ShapeATargetSourceFiltering, ExecutionModelRequirement,
+  internal_source_filtering
 }
 import v3.std.emit_model {
   TypeRealization, FieldBinding, FieldAccess,
