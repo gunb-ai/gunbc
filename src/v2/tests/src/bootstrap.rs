@@ -750,11 +750,14 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     ci_timing("PASS2: copy done, start workspace rebuild");
 
     // Rebuild workspace binary — incremental, all deps already compiled.
+    let stage1_target_dir = std::env::temp_dir().join("v2-ci-pass2-target");
+    let _ = std::fs::remove_dir_all(&stage1_target_dir);
     let build1 = std::process::Command::new("cargo")
         .arg("build")
         .arg("-p")
         .arg("v2-compiler")
         .arg("--release")
+        .env("CARGO_TARGET_DIR", &stage1_target_dir)
         .output()
         .expect("stage1 build failed");
     ci_timing(&format!(
@@ -766,7 +769,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-    let stage1_bin = ws.join("target/release/v2-compiler");
+    let stage1_bin = stage1_target_dir.join("release/v2-compiler");
 
     // Self-compile pass 2
     ci_timing("PASS2: start self-compile");
