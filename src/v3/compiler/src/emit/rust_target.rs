@@ -2754,6 +2754,15 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
     let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
+    if needs_int_div_prelude
+        && type_decls
+            .iter()
+            .any(|decl| decl.name.as_deref() == Some("DivError"))
+    {
+        return Err(EmitError::UnsupportedBehavior(
+            "Rust checked-division prelude would collide with user-defined `DivError`".to_string(),
+        ));
+    }
 
     // `DivError` and other `dsl/std` types are excluded from `type_decls` (see
     // `rust_source_filtering`); the division helper must still compile, so the

@@ -416,6 +416,22 @@ let x: Int = 42",
     );
 }
 
+#[test]
+fn emit_rust_fails_closed_on_div_prelude_diverror_collision() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+let x = 6 / 2",
+        "test.v3",
+    )
+    .expect("compiles");
+    let err = emit_rust(&dag).expect_err("Rust emit must reject DivError prelude collision");
+    assert!(
+        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(message)
+            if message.contains("DivError")),
+        "expected explicit DivError collision error, got {err:?}"
+    );
+}
+
 /// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function
 /// parameter** position must lower to `impl Fn(A) -> B + Clone`, not
 /// `&impl Fn…` (review #676). Other positions use `std::rc::Rc<dyn Fn…>`;
