@@ -161,10 +161,12 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
         TypeConnective::Instantiation {
             template,
             arguments,
-        } => substrate_result_type_decl_suppressed_for_emit(dag, dag.declaration(*template))
-            || arguments
-            .iter()
-            .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited)),
+        } => {
+            substrate_result_type_decl_suppressed_for_emit(dag, dag.declaration(*template))
+                || arguments
+                    .iter()
+                    .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited))
+        }
         TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => children
             .iter()
             .any(|field| decl_uses_substrate_result_or_div_error(dag, field.ty, visited)),
