@@ -5,11 +5,12 @@
 // zero/narrow/wide block tables, and `char_display_width`). UAX #9
 // (Bidirectional Algorithm) is NOT consulted: this file does not model
 // bidi properties. Code-point ranges below are a local 15.x-compatible
-// subset, not a full East_Asian_Width data-file mirror: UAX #11 §6.1
-// classifies unassigned CJK ideographic ranges as Wide, while this helper
-// returns `Narrow` for code points outside the enumerated tables below.
-// Full UAX #11 coverage requires modeling those unassigned ranges or loading
-// the UCD `EastAsianWidth.txt` data directly.
+// subset, not a full East_Asian_Width data-file mirror: code points inside
+// an already-enumerated wide or zero-width range inherit that block's class,
+// but code points outside every enumerated table fall through to `Narrow`.
+// UAX #11 §6.1 classifies unassigned CJK ideographic ranges as Wide, so full
+// UAX #11 coverage requires modeling those unassigned ranges or loading the
+// UCD `EastAsianWidth.txt` data directly.
 //
 // Follows the same modelling pattern as Encoding (std/encoding.dag) + @file_types:
 // structured types for the domain, `data` for lookup tables, `fn` for

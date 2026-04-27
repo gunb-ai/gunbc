@@ -277,6 +277,7 @@ See [docs/history/roadmap-post-ab-lane-plan.md](docs/history/roadmap-post-ab-lan
 
 The full deferral ledger moved to [docs/history/roadmap-active-deferrals.md](docs/history/roadmap-active-deferrals.md). The live DB-track status lines are kept here for quick review.
 
+- **W-C1 cleanup follow-up harvest (2026-04-27)**: post-merge cleanup rows from the Director/PM spot-check catalog for #900/#901/#920/#897/#824/#825 live in [`docs/audit/w-c1-followup-harvest-2026-04-27.md`](docs/audit/w-c1-followup-harvest-2026-04-27.md). That file is the control surface for row status and acceptance checks; ROADMAP keeps this pointer so the table is discoverable under the tracker rule.
 - `DB-1`: diagnostics-as-corrections shipped end to end; malformed-correction production carrier remains follow-up. See [docs/db-history/db-1.md](docs/db-history/db-1.md).
 - `DB-3`: user-declared dimensions core shipped; generic `.dag` lowering and example-authoring follow-ups remain. See [docs/db-history/db-3.md](docs/db-history/db-3.md).
 - `DB-7`: symbolic-cost algebra shipped; typed polynomial-degree and related carrier cleanups remain follow-up. See [docs/db-history/db-7.md](docs/db-history/db-7.md).
