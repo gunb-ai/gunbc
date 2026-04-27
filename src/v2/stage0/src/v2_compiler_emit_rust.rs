@@ -295,7 +295,7 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                 match wc.body.clone() {
                     None => rust_serde_tag_attr(),
                     Some(init) => match init.inferred.clone() {
-                        None => rust_serde_tag_attr(),
+                        None => resolve_wire_serde_tag(init.clone(), &source_indices),
                         Some(inf) => match (*inf.clone()).clone() {
                             InferredNode::Resolved { node, .. } => {
                                 resolve_wire_serde_tag(node.clone(), &source_indices)
