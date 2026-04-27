@@ -1,7 +1,7 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, PortState,
-    TransformTarget, TypeConnective,
+    ArrowBody, AtomPayload, Behavior, BranchPattern, Dag, DeclarationId, LoopBound, LoopNode,
+    PortState, TransformTarget, TypeConnective,
 };
 use v3_compiler::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use v3_compiler::Diagnostic;
@@ -3202,5 +3202,96 @@ fn behavior_port(behavior: Behavior) -> PortId =
         dag.diagnostics().is_empty(),
         "referenced-port walk over the real helper stack should compile cleanly, got diagnostics: {:?}",
         dag.diagnostics()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// B5 — Loop construction-closure structural receipt.
+//
+// Audit (W-B5, 2026-04-27): every `Behavior::Loop` in a lowered Dag originates
+// from recursive-function lowering. Two production construction sites in
+// `src/v3/compiler/src/lower.rs`: `finalize_mutual_clusters` (mutual cluster,
+// `LoopBound::Descent`) and `lower_fn_item_expr_body` (single recursion,
+// `LoopBound::Cardinality`). All other `push_loop` callers are `#[test]` code.
+// Structural signature of recursive-function lowering: the loop's `output`
+// port is the `value` port of some `Behavior::Bind` node.
+//
+// This receipt is the closure-holds proof that retires the speculative
+// `LoopKind` marker — closure is structurally observable, no marker needed.
+// ---------------------------------------------------------------------------
+
+fn loops_in(dag: &Dag) -> Vec<&LoopNode> {
+    dag.nodes().iter().filter_map(Behavior::as_loop).collect()
+}
+
+fn loop_output_is_a_bind_value(dag: &Dag, loop_node: &LoopNode) -> bool {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .any(|bind| bind.value == loop_node.output)
+}
+
+#[test]
+fn every_loop_node_originates_from_recursive_function_lowering() {
+    let src = "\
+type IntList = Empty | Cons { head: Int, tail: IntList }
+
+fn count(list: IntList) -> Int = match list {
+    Empty => 0,
+    Cons(payload) => 1 + count(payload.tail),
+}
+
+fn even(list: IntList) -> Bool = match list {
+    Empty => true,
+    Cons(payload) => odd(payload.tail),
+}
+
+fn odd(list: IntList) -> Bool = match list {
+    Empty => false,
+    Cons(payload) => even(payload.tail),
+}
+";
+    let dag = cached_compile_to_dag(src, "loop_construction_closure_receipt.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "fixture should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+
+    let loop_nodes = loops_in(&dag);
+    assert!(
+        !loop_nodes.is_empty(),
+        "fixture must produce at least one Behavior::Loop, otherwise the closure assertion is vacuous"
+    );
+
+    let mut saw_cardinality = false;
+    let mut saw_descent = false;
+    for loop_node in &loop_nodes {
+        assert!(
+            loop_output_is_a_bind_value(&dag, loop_node),
+            "Behavior::Loop {:?} output port {:?} is not the value of any Behavior::Bind \
+             — would indicate a construction site outside recursive-function lowering",
+            loop_node.id,
+            loop_node.output
+        );
+        match loop_node.bound {
+            LoopBound::Cardinality { .. } => saw_cardinality = true,
+            LoopBound::Descent { cluster } => {
+                saw_descent = true;
+                assert!(
+                    (cluster.raw() as usize) < dag.clusters().len(),
+                    "LoopBound::Descent cluster id {:?} must reference a real cluster",
+                    cluster
+                );
+            }
+        }
+    }
+    assert!(
+        saw_cardinality,
+        "fixture's single-recursive `count` should produce a LoopBound::Cardinality"
+    );
+    assert!(
+        saw_descent,
+        "fixture's mutual-recursive `even`/`odd` should produce a LoopBound::Descent"
     );
 }

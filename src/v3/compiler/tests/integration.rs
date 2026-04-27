@@ -63,8 +63,6 @@ mod lane2_stage_2e_parallelism_test;
 mod lane3_stage_3b_db1_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
-#[path = "integration/loop_construction_closure_test.rs"]
-mod loop_construction_closure_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
 #[path = "boundary/m1_3_emit_go_test.rs"]
