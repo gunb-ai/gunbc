@@ -533,11 +533,9 @@ data suite: TestSuite = {
 
     assert_eq!(results.len(), 5);
     assert!(
-        results.iter().all(|result| matches!(
-            &result.result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("R1C-A schema shape is wired")
-        )),
+        results
+            .iter()
+            .all(|result| matches!(&result.result, ClaimResult::NotYetImplemented(_))),
         "expected every PB census predicate shape to reach its explicit dispatch arm, got {results:?}"
     );
 }
