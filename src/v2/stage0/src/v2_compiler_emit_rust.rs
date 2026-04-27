@@ -1194,6 +1194,14 @@ pub fn emit_module_full(
         } else {
             raw_filename.clone()
         };
+        let module_inner_attrs =
+            if authored_name(scope.type_env.clone(), m.clone()).as_str()
+                == "std.error_primitives".to_string().as_str()
+            {
+                "\n\n#![allow(non_camel_case_types)]\n\n".to_string()
+            } else {
+                "\n\n".to_string()
+            };
         let content = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -1210,7 +1218,7 @@ pub fn emit_module_full(
                                             ),
                                             authored_name(scope.type_env.clone(), m.clone()),
                                         ),
-                                        "\n\n".to_string(),
+                                        module_inner_attrs,
                                     ),
                                     prelude,
                                 ),
@@ -2215,11 +2223,6 @@ pub fn emit_enum_from_children(
         } else {
             v2_rt::concat(serde_enum_tag.clone(), "\n".to_string())
         };
-        let type_param_naming_allow = if type_params.is_empty() {
-            "".to_string()
-        } else {
-            "#[allow(non_camel_case_types)]\n".to_string()
-        };
         let enum_def = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -2229,11 +2232,8 @@ pub fn emit_enum_from_children(
                                 v2_rt::concat(
                                     v2_rt::concat(
                                         v2_rt::concat(
-                                            v2_rt::concat(
-                                                v2_rt::concat(derives, "\n".to_string()),
-                                                tag_line,
-                                            ),
-                                            type_param_naming_allow,
+                                            v2_rt::concat(derives, "\n".to_string()),
+                                            tag_line,
                                         ),
                                         rust_visibility_prefix(),
                                     ),
