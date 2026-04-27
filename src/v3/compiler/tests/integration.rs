@@ -297,7 +297,7 @@ mod lane2_stage_2f_dimension_test {
     use v3_compiler::analyze_symbolic_cost_dimension;
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortId, TypeConnective};
-    use v3_compiler::dimension::{DimensionReport, Witness};
+    use v3_compiler::dimension::DimensionReport;
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
 
     fn find_bind_port(dag: &Dag, name: &str) -> PortId {
@@ -417,9 +417,57 @@ mod lane2_stage_2f_dimension_test {
             SymbolicCostLookup::Hit(cost) => cost,
             SymbolicCostLookup::Miss => panic!("expected Hit"),
         };
-        assert_eq!(report.composed, lens);
-        assert_eq!(report.dimension_name, "symbolic_cost");
-        assert_eq!(report.witnesses.len(), dag.nodes().len());
+        let DimensionReport::DimensionOk {
+            composed,
+            dimension_name,
+            witnesses,
+        } = report
+        else {
+            panic!("expected DimensionOk for well-typed program, got {report:?}");
+        };
+        assert_eq!(composed, lens);
+        assert_eq!(dimension_name, "symbolic_cost");
+        assert_eq!(witnesses.len(), dag.nodes().len());
+    }
+
+    #[test]
+    fn dimension_report_carrier_is_pass_fail_sum_in_bootstrap() {
+        let dag = Dag::new();
+        let decl = dag
+            .declaration_by_name("DimensionReport")
+            .expect("bootstrap loads DimensionReport");
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            panic!(
+                "DimensionReport must be a pass/fail sum (Disj), got {:?}",
+                decl.connective
+            );
+        };
+        let labels: Vec<_> = variants.iter().map(|v| v.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            vec!["DimensionOk", "DimensionFail"],
+            "expected DimensionOk | DimensionFail variants"
+        );
+        let ok_payload = dag.declaration(variants[0].ty);
+        let TypeConnective::Conj { children } = &ok_payload.connective else {
+            panic!("DimensionOk payload should be a record");
+        };
+        let ok_fields: Vec<_> = children.iter().map(|c| c.label.as_str()).collect();
+        assert_eq!(
+            ok_fields,
+            vec!["dimension_name", "composed", "witnesses"],
+            "DimensionOk should carry composed only on the pass arm"
+        );
+        let fail_payload = dag.declaration(variants[1].ty);
+        let TypeConnective::Conj { children: fail_children } = &fail_payload.connective else {
+            panic!("DimensionFail payload should be a record");
+        };
+        let fail_fields: Vec<_> = fail_children.iter().map(|c| c.label.as_str()).collect();
+        assert_eq!(
+            fail_fields,
+            vec!["dimension_name", "violations", "witnesses"],
+            "DimensionFail must not admit composed; violations carry proof failure"
+        );
     }
 }
 
