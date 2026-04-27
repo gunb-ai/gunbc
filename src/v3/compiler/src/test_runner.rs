@@ -3325,6 +3325,64 @@ mod execute_command_timebound_tests {
         );
     }
 
+    /// **P2(d) behavior-level regression (api-review openai-pro/gpt-5-5-pro sha 7297b04a).**
+    /// A logical command that writes to the inherited fd 3 *after* `exec` must NOT trigger a
+    /// direct-fallback re-run via the catch-all sentinel arm. The bec8bda classifier fix
+    /// maps any `b"se*"` pattern to `LogicalCommandExeced` (canonical or stray); this test
+    /// proves the fix end-to-end, not just at the unit-classifier layer.
+    ///
+    /// Construction: a sh script that asserts it is PID 1 (proving the unshare path engaged
+    /// — `[ "$$" = "1" ]`), writes a stray byte `x` to fd 3, then exits 0. With the fix:
+    /// sentinel `b"sex"` → `LogicalCommandExeced` → wrapper exit (0) → `Matched`. **Without**
+    /// the fix: sentinel `b"sex"` → `NamespaceSetupFailed` → direct fallback re-runs sh,
+    /// which is no longer in the PID namespace, so `$$ != 1`, exits 99, surfacing
+    /// `Mismatch`. The test correctly distinguishes the two paths.
+    ///
+    /// Probed-skipped on hosts where `unshare -c -f -p` is not permitted (same probe as
+    /// `unshare_path_actually_engages_...`).
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_post_exec_fd3_write_does_not_trigger_implicit_rerun() {
+        use super::evaluate_execute_command_host_outcome;
+        use super::ExecuteCommandHostOutcome;
+        let probe = std::process::Command::new("unshare")
+            .args([
+                "-c",
+                "-f",
+                "-p",
+                "--",
+                "sh",
+                "-c",
+                "[ \"$$\" = \"1\" ]",
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if !matches!(probe, Ok(s) if s.success()) {
+            return;
+        }
+        // First run inside unshare PID-namespace: $$ == 1, write x to fd 3, exit 0.
+        // If a buggy classifier triggered direct fallback, the re-run would NOT be in a
+        // PID namespace, $$ != 1, exit 99 → Mismatch (caught by this assertion).
+        let r = evaluate_execute_command_host_outcome(
+            "sh",
+            &[
+                String::from("-c"),
+                String::from(
+                    r#"[ "$$" = "1" ] || exit 99; printf x >&3 2>/dev/null; exit 0"#,
+                ),
+            ],
+            0,
+            Duration::from_secs(5),
+        );
+        assert_eq!(
+            r,
+            ExecuteCommandHostOutcome::Matched,
+            "post-`se` fd-3 write must not trigger implicit re-run; expected Matched (single run, $$ == 1, exit 0), got {r:?}"
+        );
+    }
+
     /// Linux receipt: a `command` containing `/` (absolute path) reaches `execvp` with the
     /// literal path — the bootstrap probe must NOT route it through `command -v`'s `PATH`
     /// search. With the absolute-path branch (`[ -x "$0" ]`) the run completes and Matches.
