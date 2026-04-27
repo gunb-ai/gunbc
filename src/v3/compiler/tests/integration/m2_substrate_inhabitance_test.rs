@@ -1350,6 +1350,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                 vec![
                     String::from("name"),
                     String::from("type_params"),
+                    String::from("nominal_opaque"),
                     String::from("target"),
                     String::from("refinement"),
                     String::from("span"),
