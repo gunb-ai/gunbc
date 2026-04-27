@@ -2759,7 +2759,12 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(body),
                 ..
-            } => port_depends_on_rust_int_div(dag, super::behavior_result_port(dag.node(*body))),
+            } => {
+                port_depends_on_rust_int_div(
+                    dag,
+                    super::behavior_result_port(dag.node(*body)),
+                )
+            }
             _ => false,
         });
 

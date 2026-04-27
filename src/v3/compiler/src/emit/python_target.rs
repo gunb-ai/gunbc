@@ -687,6 +687,9 @@ pub(crate) fn emit_python_with_mode(
     //
     // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
     // the normal type-decl path (no separate prelude strings).
+    //
+    // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip
+    // this block; today it is unconditional for parity with the Go M1 prelude scaffold.
     sections
         .push("class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string());
     sections.push(
