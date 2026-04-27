@@ -32,6 +32,15 @@ import v3.std.substrate {
   lane2_workflow_at
 }
 
+// `UnknownEffect` remains an explicit unknown-carrying variant while transaction
+// witness depth and read/write threading stabilize. This prevents format-driven
+// behavior from being projected as a complete terminal fact set before the
+// substrate-side witness shape is first-class.
+//
+// Classification: 🟡 workaround-shaped coproduct (§modeling-discipline Practice 4).
+// Dissolution trigger: when the tracked begin/commit witness and write/read
+// threading facts land as durable `std` substrate carriers, replace this enum with
+// a narrower structural `EffectShape` whose variants are all terminal in scope.
 type EffectShape
   = NoEffect
   | ReadShaped
@@ -43,6 +52,8 @@ type EffectFact {
   shape: EffectShape
 }
 
+// Coverage reasons are terminal at this scope and intentionally do not use a
+// coproduct in the same way as surface facts.
 type CoverageGap {
   node: NodeId
   reason: String
@@ -54,6 +65,15 @@ type RedundantReadError {
   reason: String
 }
 
+// Transaction detection is scaffold-shaped at this stage: any callsite with
+// observable `lane2_workflow` evidence is marked as `BeginModifyCommit`.
+// The current evidence is authority-limited and must dissolve once explicit
+// begin/modify/commit witness carriers become durable in `std.effects`.
+//
+// Classification: 🟡 workaround-shaped coproduct (§modeling-discipline Practice 4).
+// Dissolution trigger: replace with a terminal `std` witness-backed transaction
+// sum once the `v3.std.substrate`/`v3.std.effects` pipeline exposes begin,
+// modify, and commit markers as authoritative, parseable rows.
 type TransactionalPattern
   = NoTransaction
   | BeginModifyCommit { root: NodeId }
