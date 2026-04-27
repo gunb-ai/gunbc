@@ -2,12 +2,12 @@ use std::collections::BTreeSet;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::generated_files::GENERATED_FILES;
 use crate::dag::{
     Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId, PortState,
     TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::generated_files::GENERATED_FILES;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
     reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
@@ -2318,17 +2318,13 @@ impl<'a> TestRunner<'a> {
         let pass1 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
             Ok(snapshots) => snapshots,
             Err(err) => {
-                return ClaimResult::Fail(format!(
-                    "FixedPointConverges pass1 failed: {err:?}"
-                ))
+                return ClaimResult::Fail(format!("FixedPointConverges pass1 failed: {err:?}"))
             }
         };
         let pass2 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
             Ok(snapshots) => snapshots,
             Err(err) => {
-                return ClaimResult::Fail(format!(
-                    "FixedPointConverges pass2 failed: {err:?}"
-                ))
+                return ClaimResult::Fail(format!("FixedPointConverges pass2 failed: {err:?}"))
             }
         };
         match compare_stage_snapshots(&pass1, &pass2) {
@@ -2396,10 +2392,7 @@ impl<'a> TestRunner<'a> {
                 }
             }
         }
-        if let Some(path) = named_paths
-            .iter()
-            .find(|path| !generated.contains(**path))
-        {
+        if let Some(path) = named_paths.iter().find(|path| !generated.contains(**path)) {
             return ClaimResult::Fail(format!(
                 "GeneratedFromDag path `{path}` is not in the generated-file authority"
             ));
