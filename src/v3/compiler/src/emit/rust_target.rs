@@ -46,9 +46,10 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    algebra_field_for_operator_shared, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    algebra_field_for_operator_shared, dag_uses_arithmetic_div, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId,
@@ -2752,16 +2753,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         .iter()
         .map(|decl| ctx.render_function_declaration(decl))
         .collect::<Result<Vec<_>, _>>()?;
-    let needs_int_div_prelude = top_level_binds
-        .iter()
-        .any(|bind| port_depends_on_rust_int_div(dag, bind.value))
-        || function_decls.iter().any(|decl| match &decl.connective {
-            TypeConnective::Arrow {
-                body: ArrowBody::UserDefined(body),
-                ..
-            } => port_depends_on_rust_int_div(dag, super::behavior_result_port(dag.node(*body))),
-            _ => false,
-        });
+    let needs_int_div_prelude = dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls);
 
     // `DivError` and other `dsl/std` types are excluded from `type_decls` (see
     // `rust_source_filtering`); the division helper must still compile, so the
@@ -2818,6 +2810,9 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
             // `std.error_primitives.Result` lowers to Rust's core Result, which
             // does not implement Display. Keep the substrate Main template
             // unchanged and pass it a displayable String.
+            //
+            // Dissolution trigger (M1 scaffold): delete this Debug wrapper when
+            // Result has a target-owned display realization consumed by Main emission.
             format!("format!(\"{{:?}}\", {final_bind_name})")
         } else {
             final_bind_name
@@ -2841,44 +2836,6 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
         sections.push(main_program);
     }
     Ok(join_rendered(&sections, " "))
-}
-
-fn port_depends_on_rust_int_div(dag: &Dag, root: PortId) -> bool {
-    let mut visited = HashSet::new();
-    let mut queue = vec![root];
-    while let Some(port) = queue.pop() {
-        if !visited.insert(port) {
-            continue;
-        }
-        let Some(producer) = dag.port(port).produced_by else {
-            continue;
-        };
-        match dag.node(producer) {
-            Behavior::Value(_) => {}
-            Behavior::Transform(t) => {
-                if matches!(
-                    t.target,
-                    TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div))
-                ) {
-                    return true;
-                }
-                queue.extend(t.inputs.iter().copied());
-            }
-            Behavior::Branch(b) => {
-                queue.push(b.input);
-                queue.extend(b.paths.iter().map(|path| path.output));
-            }
-            Behavior::Loop(l) => {
-                queue.push(l.source);
-                queue.push(l.init);
-                queue.push(super::behavior_result_port(dag.node(l.body)));
-            }
-            Behavior::Bind(b) => {
-                queue.push(b.value);
-            }
-        }
-    }
-    false
 }
 
 /// Bundled emission context. Carries the typed indexes, substrate

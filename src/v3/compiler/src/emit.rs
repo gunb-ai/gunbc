@@ -1266,7 +1266,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     Ok(sections.join("\n\n"))
 }
 
-fn dag_uses_arithmetic_div(
+pub(crate) fn dag_uses_arithmetic_div(
     dag: &Dag,
     top_level_binds: &[&BindNode],
     function_decls: &[&Declaration],
@@ -1299,7 +1299,7 @@ fn port_depends_on_arithmetic_div(dag: &Dag, root: PortId) -> bool {
                 if matches!(
                     t.target,
                     TransformTarget::Operator(OperatorKind::Arithmetic(
-                        crate::dag::ArithmeticOp::Div
+                        crate::operators::ArithmeticOp::Div
                     ))
                 ) {
                     return true;

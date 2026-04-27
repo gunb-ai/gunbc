@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, optional_match_variant_roles, parse_pattern_strategy,
-    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    algebra_field_for_operator_shared, dag_uses_arithmetic_div, optional_match_variant_roles,
+    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
     SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
@@ -720,63 +720,6 @@ pub(crate) fn emit_python_with_mode(
     }
 
     Ok(sections.join("\n\n"))
-}
-
-fn dag_uses_arithmetic_div(
-    dag: &Dag,
-    top_level_binds: &[&BindNode],
-    function_decls: &[&Declaration],
-) -> bool {
-    top_level_binds
-        .iter()
-        .any(|bind| port_depends_on_arithmetic_div(dag, bind.value))
-        || function_decls.iter().any(|decl| match &decl.connective {
-            TypeConnective::Arrow {
-                body: ArrowBody::UserDefined(body),
-                ..
-            } => port_depends_on_arithmetic_div(dag, super::behavior_result_port(dag.node(*body))),
-            _ => false,
-        })
-}
-
-fn port_depends_on_arithmetic_div(dag: &Dag, root: PortId) -> bool {
-    let mut visited = std::collections::HashSet::new();
-    let mut queue = vec![root];
-    while let Some(port) = queue.pop() {
-        if !visited.insert(port) {
-            continue;
-        }
-        let Some(producer) = dag.port(port).produced_by else {
-            continue;
-        };
-        match dag.node(producer) {
-            Behavior::Value(_) => {}
-            Behavior::Transform(t) => {
-                if matches!(
-                    t.target,
-                    TransformTarget::Operator(OperatorKind::Arithmetic(
-                        crate::operators::ArithmeticOp::Div
-                    ))
-                ) {
-                    return true;
-                }
-                queue.extend(t.inputs.iter().copied());
-            }
-            Behavior::Branch(b) => {
-                queue.push(b.input);
-                queue.extend(b.paths.iter().map(|path| path.output));
-            }
-            Behavior::Loop(l) => {
-                queue.push(l.source);
-                queue.push(l.init);
-                queue.push(super::behavior_result_port(dag.node(l.body)));
-            }
-            Behavior::Bind(b) => {
-                queue.push(b.value);
-            }
-        }
-    }
-    false
 }
 
 impl<'a> Ctx<'a> {
