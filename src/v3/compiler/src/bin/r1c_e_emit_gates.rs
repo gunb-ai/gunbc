@@ -1,3 +1,9 @@
+// `eprintln!` is on the project's disallowed-macros list (library code must
+// use structured error returns). Binary entrypoints may opt in per the lint
+// note; this bin is a host-shim whose only behavior is exit-code + stderr
+// for human debugging when a gate fails.
+#![allow(clippy::disallowed_macros)]
+
 //! R1C-E — `ExecuteCommand` logical child for the T-Emit `.dag` `TestClaim`
 //! wrappers. The on-disk `.dag` template (path resolved by the matching
 //! integration-test driver) substitutes `env!("CARGO_BIN_EXE_r1c_e_emit_gates")`
