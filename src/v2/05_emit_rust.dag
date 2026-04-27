@@ -666,11 +666,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   )
   let svc_imports_str = if extern_svc_imports |> count == 0 { "" }
     else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
-  // RC1: For enums defined in this module, add `use EnumName::*;` so
+  // RC1: For enums defined in this module, add `use self::EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
-    |> map(item => concat("use ", authored_name(env: scope.type_env, node: item), "::*;"))
+    |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   // Wire contract: find the module's wire_contract data item (if any)
