@@ -19,6 +19,7 @@ import v3.std.substrate {
   Dag,
   Behavior,
   BranchPath,
+  BindNode,
   TransformNode,
   TransformTarget,
   TypeConnective,
@@ -28,8 +29,8 @@ import v3.std.substrate {
   NodeId,
   node,
   port,
-  declaration_by_id,
-  lane2_workflow_at
+  resolve_producer,
+  declaration_by_id
 }
 
 // `UnknownEffect` remains an explicit unknown-carrying variant while transaction
@@ -65,10 +66,10 @@ type RedundantReadError {
   reason: String
 }
 
-// Transaction detection is scaffold-shaped at this stage: any callsite with
-// observable `lane2_workflow` evidence is marked as `BeginModifyCommit`.
-// The current evidence is authority-limited and must dissolve once explicit
-// begin/modify/commit witness carriers become durable in `std.effects`.
+// Transaction detection is scaffold-shaped at this stage: the report carries a
+// transaction slot, but the current substrate has no begin/modify/commit witness
+// that can distinguish transactional binds from ordinary bind composition.
+// Generic `lane2_workflow` evidence is intentionally insufficient authority.
 //
 // Classification: 🟡 workaround-shaped coproduct (§modeling-discipline Practice 4).
 // Dissolution trigger: replace with a terminal `std` witness-backed transaction
@@ -108,13 +109,18 @@ fn effect_fact_for(
     Transform(t) => { port: t.result_port, shape: transform_effect(d, t) }
     Branch(b) => { port: b.result_port, shape: branch_effect(acc, b.paths) }
     Loop(l) => { port: l.result_port, shape: loop_effect(d, acc, l.body) }
-    Bind(bind) => { port: bind.result_port, shape: bind_effect(acc, bind.params) }
+    Bind(bind) => { port: bind.result_port, shape: bind_effect(d, acc, bind) }
   }
 
-fn bind_effect(acc: List<EffectFact>, params: List<PortId>) -> EffectShape =
-  fold(params, NoEffect, |running, port|
-    combine_effects(running, effect_at(acc, port))
-  )
+fn bind_effect(d: Dag, acc: List<EffectFact>, bind: BindNode) -> EffectShape =
+  match resolve_producer(d, bind.result_port) {
+    None => UnknownEffect { reason: "bind result producer missing from substrate" }
+    Some(producer) =>
+      if behavior_node_id(producer) == bind.id then
+        UnknownEffect { reason: "bind result producer self-shadows bind output" }
+      else
+        effect_at(acc, behavior_result_port(producer))
+  }
 
 fn transform_effect(d: Dag, t: TransformNode) -> EffectShape =
   match t.target {
@@ -230,20 +236,7 @@ fn compute_coverage_gaps(d: Dag) -> List<CoverageGap> =
   )
 
 fn transaction_pattern(d: Dag) -> TransactionalPattern =
-  match first_transaction_root(d, d.nodes) {
-    None => NoTransaction
-    Some(root) => BeginModifyCommit { root: root }
-  }
-
-fn first_transaction_root(d: Dag, nodes: List<Behavior>) -> NodeId? =
-  match nodes {
-    Empty => None
-    Cons(payload) =>
-      match lane2_workflow_at(d, behavior_node_id(payload.head)) {
-        None => first_transaction_root(d, payload.tail)
-        Some(_) => Some(behavior_node_id(payload.head))
-      }
-  }
+  NoTransaction
 
 fn behavior_node_id(behavior: Behavior) -> NodeId =
   match behavior {
