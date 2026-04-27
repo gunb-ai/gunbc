@@ -3,7 +3,7 @@
 
 use crate::diagnostics::{Diagnostic, SourceSpan};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ScannerCharClass {
+pub(crate) enum ScannerCharClass {
     Whitespace,
     Digit,
     IdentStart,
@@ -11,7 +11,7 @@ enum ScannerCharClass {
 }
 
 #[inline]
-fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
+pub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
     match class {
         ScannerCharClass::Whitespace => matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' '),
         ScannerCharClass::Digit => (byte >= b'0' && byte <= b'9'),
