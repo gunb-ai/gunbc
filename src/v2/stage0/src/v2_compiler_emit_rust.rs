@@ -1226,9 +1226,12 @@ pub fn emit_module_full(
             // node, making `authored_name`/`name` matching unreliable. Provider modules place
             // this binding first among `data` items (before `models`, gap lists, etc.); take the
             // first typed data binding with a body.
-            typed_module.items.clone().iter().cloned().find(|i| {
-                is_data_def_item(i) && i.body.clone().is_some()
-            })
+            typed_module
+                .items
+                .clone()
+                .iter()
+                .cloned()
+                .find(|i| is_data_def_item(i) && i.body.clone().is_some())
         });
         let items_str = Rc::new({
             let mut __result = Vec::new();
