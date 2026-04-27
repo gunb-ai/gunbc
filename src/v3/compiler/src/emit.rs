@@ -157,15 +157,11 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
     }
     match &decl.connective {
         TypeConnective::Instantiation {
-            template,
+            template: _,
             arguments,
-        } => {
-            substrate_result_type_decl_suppressed_for_emit(dag, dag.declaration(*template))
-                || decl_uses_substrate_result_or_div_error(dag, *template, visited)
-                || arguments
-                    .iter()
-                    .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited))
-        }
+        } => arguments
+            .iter()
+            .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited)),
         TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => children
             .iter()
             .any(|field| decl_uses_substrate_result_or_div_error(dag, field.ty, visited)),
@@ -198,28 +194,13 @@ pub(crate) fn dag_needs_div_error_prelude(
     top_level_binds: &[&BindNode],
     function_decls: &[&Declaration],
 ) -> bool {
-    if dag_uses_arithmetic_div(dag, top_level_binds, function_decls) {
-        eprintln!("DEBUG div trigger");
-        return true;
-    }
-    if let Some(bind) = top_level_binds
-        .iter()
-        .find(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
-    {
-        eprintln!("DEBUG bind trigger {} {}", bind.name, bind.span.file);
-        return true;
-    }
-    if let Some(decl) = function_decls
-        .iter()
-        .find(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
-    {
-        eprintln!(
-            "DEBUG fn trigger {:?} {} {:?}",
-            decl.name, decl.span.file, decl.connective
-        );
-        return true;
-    }
-    false
+    dag_uses_arithmetic_div(dag, top_level_binds, function_decls)
+        || top_level_binds
+            .iter()
+            .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
+        || function_decls
+            .iter()
+            .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
 }
 
 fn substrate_result_variant_payload_is_value_of(
