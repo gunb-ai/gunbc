@@ -152,7 +152,7 @@ to PB-* lane.
 Summary citations to existing tracking:
 
 - File-preference rank (`dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols` — line cites drift on `main`) — ROADMAP `:368`. Trigger: convergence of every duplicated `src/v3/std/` ↔ `dsl/std/` module listed in those doc comments. **PR #809 undercount (computation + induction + termination) closed 2026-04-26** — checklist extended in source + ROADMAP exploratory row.
-- Loop emission semantic invariant (Python/Go) — PR #809 row. **RESOLVED 2026-04-27:** structural integration test landed (`loop_construction_closure_test.rs`); audit found closure already holds in production, marker retired. See Tier 2 §5.
+- Loop emission semantic invariant (Python/Go) — PR #809 row. **RESOLVED 2026-04-27:** structural integration test landed in `src/v3/compiler/tests/integration/m1_substrate_test.rs` (`every_loop_node_originates_from_recursive_function_lowering`); audit found closure already holds in production, marker retired. See Tier 2 §5.
 - `bootstrap.rs::patch_kernel_bool_boolean_algebra_inhabits` Rust patching (`bootstrap.rs:211-291`) — ROADMAP `:364` (Class 5 Gap 1). Trigger: structural `inhabits` edge.
 - `EXTDEPS_BOOTSTRAP_FIXTURES` manual list — ROADMAP `:365` (Class 5 Gap 3 `std.unicode` bootstrap/load-set decision is the parent).
 
