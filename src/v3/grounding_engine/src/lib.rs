@@ -171,11 +171,13 @@ pub fn validate_mirror_consistency() -> StructureResult<()> {
 /// `RUST_PILOT_PRIMITIVES[0]` (authority ordering in `primitives.dag`).
 pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
     let dag = Dag::new();
-    let pilot_list = dag.rust_pilot_primitives().ok_or_else(|| StructureMismatch {
-        location: "Dag::rust_pilot_primitives".to_string(),
-        expected: "loaded rust_pilot_primitives declaration".to_string(),
-        actual: "missing".to_string(),
-    })?;
+    let pilot_list = dag
+        .rust_pilot_primitives()
+        .ok_or_else(|| StructureMismatch {
+            location: "Dag::rust_pilot_primitives".to_string(),
+            expected: "loaded rust_pilot_primitives declaration".to_string(),
+            actual: "missing".to_string(),
+        })?;
 
     let rust_primitive_id = rust_primitive_element_id(pilot_list)?;
     let rust_primitive = dag.declaration(rust_primitive_id);
@@ -185,11 +187,14 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
         &["IntegerPrimitive", "NonIntegerPrimitive"],
     )?;
 
-    let body = pilot_list.value_body.as_ref().ok_or_else(|| StructureMismatch {
-        location: "rust_pilot_primitives.value_body".to_string(),
-        expected: "data body present".to_string(),
-        actual: "None".to_string(),
-    })?;
+    let body = pilot_list
+        .value_body
+        .as_ref()
+        .ok_or_else(|| StructureMismatch {
+            location: "rust_pilot_primitives.value_body".to_string(),
+            expected: "data body present".to_string(),
+            actual: "None".to_string(),
+        })?;
     let ValueBody::List(elements) = body else {
         return Err(StructureMismatch {
             location: "rust_pilot_primitives.value_body".to_string(),
@@ -215,11 +220,13 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
     };
 
     let variant_label = rust_primitive_variant_label(&disj_variants, *constructor)?;
-    let mirror0 = RUST_PILOT_PRIMITIVES.first().ok_or_else(|| StructureMismatch {
-        location: "RUST_PILOT_PRIMITIVES".to_string(),
-        expected: "non-empty mirror slice".to_string(),
-        actual: "empty".to_string(),
-    })?;
+    let mirror0 = RUST_PILOT_PRIMITIVES
+        .first()
+        .ok_or_else(|| StructureMismatch {
+            location: "RUST_PILOT_PRIMITIVES".to_string(),
+            expected: "non-empty mirror slice".to_string(),
+            actual: "empty".to_string(),
+        })?;
 
     let label = variant_label.as_str();
     match mirror0 {
@@ -653,7 +660,11 @@ fn expect_literal_bool_at(payload: &[FieldValue], idx: usize, ctx: &str) -> Stru
     Ok(*b)
 }
 
-fn expect_nullary_variant_name(dag: &Dag, value: &FieldValue, ctx: &str) -> StructureResult<String> {
+fn expect_nullary_variant_name(
+    dag: &Dag,
+    value: &FieldValue,
+    ctx: &str,
+) -> StructureResult<String> {
     let FieldValue::Variant {
         constructor,
         payload,
