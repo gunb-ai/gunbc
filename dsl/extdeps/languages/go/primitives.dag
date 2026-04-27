@@ -36,9 +36,11 @@
 // is source text / `[]rune` conversion and belongs in operator or stdlib
 // slices, not parallel sum arms on `GoStringPrimitive`.
 //
-// SUBSTRATE-GAP FLAGS: IntegerOverflow / terminal / text carriers mirror the
-// Rust pilot’s bridge pattern (algebra.dag + bit.dag by tag); post-DB-11 these
-// become refinements on carriers / algebras.
+// SUBSTRATE-GAP FLAGS: Integer overflow / terminal / numeric carriers still use
+// structural tag bridges (algebra.dag + bit.dag by tag), same honest-state
+// pattern as rust/primitives.dag — but Go’s overflow enum is spec-only
+// (`GoModularWrapOnFixedWidth`), not Rust’s three-way operator zoo. Post-DB-11
+// these become refinements on carriers / algebras.
 
 module extdeps.languages.go.primitives
 
