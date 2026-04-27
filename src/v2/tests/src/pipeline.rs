@@ -6059,9 +6059,8 @@ fn shell_emit_cron_upsert_script() {
 }
 
 // ── RE-4b: OpenAI Chat Completions narrow row — request wire ratchet (#901) ─
-// `wire_contract` is inlined as `StringVariant { naming: SnakeCase }` (same wire as
-// `llm_snake_wire_contract` in extdeps.llm.llm) so the emitter attaches serde
-// `rename_all = "snake_case"` to `OpenAiChatMessageRole` (System→"system", …).
+// `wire_contract` aliases `llm_snake_wire_contract` in `extdeps.llm.llm` so the emitter
+// attaches serde `rename_all = "snake_case"` to `OpenAiChatMessageRole` (System→"system", …).
 #[test]
 fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let ws = crate::helpers::workspace_root();
@@ -6124,6 +6123,67 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
         content.contains("/v1/chat/completions"),
         "expected ChatCompletion path in emitted module"
     );
+}
+
+// Golden JSON for the narrow `OpenAiChatMessage { role, content }` row under the same
+// serde policy as emitted code (`#[serde(rename_all = "snake_case")]` on the role enum).
+// Guards Chat Completions `messages[].role` strings without provider string branching.
+#[test]
+fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
+    #[derive(Copy, Clone, serde::Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum OpenAiChatMessageRole {
+        System,
+        Developer,
+        User,
+        Assistant,
+    }
+
+    #[derive(serde::Serialize)]
+    struct OpenAiChatMessage {
+        role: OpenAiChatMessageRole,
+        content: String,
+    }
+
+    let cases: &[(&str, OpenAiChatMessageRole)] = &[
+        ("system", OpenAiChatMessageRole::System),
+        ("developer", OpenAiChatMessageRole::Developer),
+        ("user", OpenAiChatMessageRole::User),
+        ("assistant", OpenAiChatMessageRole::Assistant),
+    ];
+
+    for &(wire_tag, role) in cases {
+        let msg = OpenAiChatMessage {
+            role,
+            content: "x".to_string(),
+        };
+        let v = serde_json::to_value(&msg).expect("serialize OpenAiChatMessage");
+        assert_eq!(
+            v.get("role").and_then(Value::as_str),
+            Some(wire_tag),
+            "messages[].role must match OpenAI Chat Completions wire for {wire_tag:?}"
+        );
+        assert_eq!(
+            v.get("content").and_then(Value::as_str),
+            Some("x"),
+            "content must pass through as JSON string"
+        );
+    }
+
+    let messages: Vec<OpenAiChatMessage> = cases
+        .iter()
+        .map(|&(wire_tag, role)| OpenAiChatMessage {
+            role,
+            content: wire_tag.to_string(),
+        })
+        .collect();
+    let body = serde_json::json!({ "messages": messages });
+    let arr = body["messages"].as_array().expect("messages array");
+    assert_eq!(arr.len(), cases.len());
+    for (i, &(wire_tag, _)) in cases.iter().enumerate() {
+        assert_eq!(arr[i]["role"], wire_tag);
+        assert_eq!(arr[i]["content"], wire_tag);
+    }
 }
 
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────

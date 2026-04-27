@@ -8,13 +8,14 @@
 //
 module extdeps.llm.openai
 
-import extdeps.llm.llm { StopReason, TokenUsage }
+import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
 import std.errors { OpenAiErrorShape }
 import std.serialization { VariantEncoding }
 import std.types { HttpMethod, AuthScheme }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
-data wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
+// Alias shared LLM authority (`extdeps.llm.llm`) — same encoding as Anthropic.
+data wire_contract: VariantEncoding = llm_snake_wire_contract
 
 // -- Models --------------------------------------------------------
 
@@ -85,9 +86,9 @@ type ToolCall {
 // `structural_coverage_gap_openai_chat_message_full_api_surface`.
 //
 // Request wire for this row (`messages[].role` as system/developer/user/assistant)
-// is ratcheted by `openai_chat_message_role_wire_matches_llm_snake_contract` in
-// `src/v2/tests/src/pipeline.rs` (module `llm_snake_wire_contract` → serde
-// `rename_all = "snake_case"` on `OpenAiChatMessageRole`).
+// is ratcheted by pipeline tests in `src/v2/tests/src/pipeline.rs`:
+// `openai_chat_message_role_wire_matches_llm_snake_contract` (emitted serde attr)
+// and `openai_chat_message_row_json_matches_chat_completions_wire_tags` (golden JSON).
 type OpenAiChatMessageRole = System | Developer | User | Assistant
 
 // Chat Completions API message row: wire accepts plain-string `content` for
