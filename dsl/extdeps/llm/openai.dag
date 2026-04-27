@@ -8,17 +8,14 @@
 //
 module extdeps.llm.openai
 
-import extdeps.llm.llm { StopReason, TokenUsage }
+import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
 import std.errors { OpenAiErrorShape }
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, SnakeCase }
+import std.serialization { VariantEncoding }
 import std.types { HttpMethod, AuthScheme }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
-// Inline `StringVariant { naming: SnakeCase }` matches `llm_snake_wire_contract` in
-// `extdeps.llm.llm` structurally. (An imported alias is not used here: compiling this
-// module in isolation — e.g. pipeline ratchet tests — does not always populate
-// `Resolved` on the initializer, which would skip snake_case serde on coproducts.)
-data wire_contract: VariantEncoding = StringVariant { naming: SnakeCase }
+// Alias shared LLM authority (`extdeps.llm.llm`) — same encoding as Anthropic.
+data wire_contract: VariantEncoding = llm_snake_wire_contract
 
 // -- Models --------------------------------------------------------
 
