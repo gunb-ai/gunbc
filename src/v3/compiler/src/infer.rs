@@ -4169,8 +4169,8 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// a missed structural match would mint fresh `DeclarationId`s each
 /// iteration and the fixpoint loop would not terminate.
 fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<TypeShape> {
-    let result_template = dag.declaration_by_name("Result")?.id;
-    let div_error = dag.declaration_by_name("DivError")?.id;
+    let result_template = declaration_in_error_primitives(dag, "Result")?;
+    let div_error = declaration_in_error_primitives(dag, "DivError")?;
     let (t_ok, t_err, span) = {
         let rdecl = dag.declaration(result_template);
         (
@@ -4213,6 +4213,17 @@ fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<T
         span,
     });
     Some(TypeShape::new(id))
+}
+
+fn declaration_in_error_primitives(dag: &Dag, name: &str) -> Option<DeclarationId> {
+    const ERROR_PRIMITIVES_DAG: &str = "dsl/std/error_primitives.dag";
+    dag.declarations()
+        .iter()
+        .find(|declaration| {
+            declaration.name.as_deref() == Some(name)
+                && declaration.span.file == ERROR_PRIMITIVES_DAG
+        })
+        .map(|declaration| declaration.id)
 }
 
 fn resolve_operator_arrow(

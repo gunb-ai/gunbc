@@ -682,19 +682,21 @@ pub(crate) fn emit_python_with_mode(
     for decl in type_decls {
         sections.push(ctx.render_type_declaration(decl)?);
     }
-    // `std.error_primitives` is filtered out of `type_decls`; v3 `DivError` + checked `/` are
-    // prelude-only (names align with `python.dag` / `python_int_div` carrier for `__v3_idiv`).
-    //
-    // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
-    // the normal type-decl path (no separate prelude strings).
-    //
-    // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip
-    // this block; today it is unconditional for parity with the Go M1 prelude scaffold.
-    sections
-        .push("class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string());
-    sections.push(
-        "def __v3_idiv(a: int, b: int) -> typing.Union[typing.Tuple[typing.Literal['Ok'], int], typing.Tuple[typing.Literal['Err'], DivError]]:\n    if b == 0:\n        return ('Err', DivError.DivideByZero)\n    if a == -2 ** 63 and b == -1:\n        return ('Err', DivError.Overflow)\n    q, r = divmod(a, b)\n    w = q + (1 if r != 0 and (a < 0) != (b < 0) else 0)\n    return ('Ok', w)".to_string(),
-    );
+    if dag_uses_arithmetic_div(dag, &top_level_binds, &function_decls) {
+        // `std.error_primitives` is filtered out of `type_decls`; v3 `DivError` + checked `/` are
+        // prelude-only (names align with `python.dag` / `python_int_div` carrier for `__v3_idiv`).
+        //
+        // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
+        // the normal type-decl path (no separate prelude strings).
+        //
+        // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip
+        // this block.
+        sections
+            .push("class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string());
+        sections.push(
+            "def __v3_idiv(a: int, b: int) -> typing.Union[typing.Tuple[typing.Literal['Ok'], int], typing.Tuple[typing.Literal['Err'], DivError]]:\n    if b == 0:\n        return ('Err', DivError.DivideByZero)\n    if a == -2 ** 63 and b == -1:\n        return ('Err', DivError.Overflow)\n    q, r = divmod(a, b)\n    w = q + (1 if r != 0 and (a < 0) != (b < 0) else 0)\n    return ('Ok', w)".to_string(),
+        );
+    }
     for decl in function_decls {
         sections.push(ctx.render_function_declaration(decl)?);
     }
@@ -717,6 +719,63 @@ pub(crate) fn emit_python_with_mode(
     }
 
     Ok(sections.join("\n\n"))
+}
+
+fn dag_uses_arithmetic_div(
+    dag: &Dag,
+    top_level_binds: &[&BindNode],
+    function_decls: &[&Declaration],
+) -> bool {
+    top_level_binds
+        .iter()
+        .any(|bind| port_depends_on_arithmetic_div(dag, bind.value))
+        || function_decls.iter().any(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(body),
+                ..
+            } => port_depends_on_arithmetic_div(dag, super::behavior_result_port(dag.node(*body))),
+            _ => false,
+        })
+}
+
+fn port_depends_on_arithmetic_div(dag: &Dag, root: PortId) -> bool {
+    let mut visited = std::collections::HashSet::new();
+    let mut queue = vec![root];
+    while let Some(port) = queue.pop() {
+        if !visited.insert(port) {
+            continue;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                if matches!(
+                    t.target,
+                    TransformTarget::Operator(OperatorKind::Arithmetic(
+                        crate::operators::ArithmeticOp::Div
+                    ))
+                ) {
+                    return true;
+                }
+                queue.extend(t.inputs.iter().copied());
+            }
+            Behavior::Branch(b) => {
+                queue.push(b.input);
+                queue.extend(b.paths.iter().map(|path| path.output));
+            }
+            Behavior::Loop(l) => {
+                queue.push(l.source);
+                queue.push(l.init);
+                queue.push(super::behavior_result_port(dag.node(l.body)));
+            }
+            Behavior::Bind(b) => {
+                queue.push(b.value);
+            }
+        }
+    }
+    false
 }
 
 impl<'a> Ctx<'a> {
