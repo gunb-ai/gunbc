@@ -676,6 +676,10 @@ struct UnshareReadyPipe {
     write_fd: Option<std::os::fd::RawFd>,
 }
 
+/// One byte beyond the longest valid sentinel (`b"sef"` = 3 bytes). The extra slot lets
+/// stray-byte patterns like `b"sefx"` be observed and rejected via the exact-byte
+/// classifier rather than silently absorbed by a prefix match. (api-review claude-opus-4-7
+/// non-blocking observation, sha 793a57ef.)
 #[cfg(target_os = "linux")]
 const UNSHARE_READY_PIPE_MAX: usize = 4;
 
