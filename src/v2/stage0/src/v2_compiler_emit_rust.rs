@@ -1223,24 +1223,11 @@ pub fn emit_module_full(
         .cloned()
         .or_else(|| {
             // `data wire_contract: VariantEncoding = …` can lose `ident_span` on the binding
-            // node, making `authored_name`/`name` matching unreliable. Fall back to the module's
-            // `data` item typed as `VariantEncoding` (alias or record initializer — unique in
-            // provider modules like `extdeps.llm.openai`).
+            // node, making `authored_name`/`name` matching unreliable. Provider modules place
+            // this binding first among `data` items (before `models`, gap lists, etc.); take the
+            // first typed data binding with a body.
             typed_module.items.clone().iter().cloned().find(|i| {
-                if (!is_data_def_item(&i)) {
-                    return false;
-                }
-                match i.type_annotation.clone() {
-                    Some(ann) => {
-                        let t = authored_name(scope.type_env.clone(), ann.clone());
-                        let r = authored_name(scope.type_env.clone(), resolved_type(ann));
-                        (t.as_str() == "VariantEncoding".to_string().as_str())
-                            || (r.as_str() == "VariantEncoding".to_string().as_str())
-                            || t.ends_with(".VariantEncoding")
-                            || r.ends_with(".VariantEncoding")
-                    }
-                    None => false,
-                }
+                is_data_def_item(i) && i.body.clone().is_some()
             })
         });
         let items_str = Rc::new({

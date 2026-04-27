@@ -733,15 +733,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     Some { value: v } => Some { value: v }
     None =>
       typed_module.items
-        |> filter(i =>
-             is_data_def_item(item: i)
-             && match i.type_annotation {
-               Some { value: ann } =>
-                 let t = authored_name(env: scope.type_env, node: ann)
-                 let r = authored_name(env: scope.type_env, node: resolved_type(n: ann))
-                 t == "VariantEncoding" || r == "VariantEncoding"
-               None => false
-             })
+        |> filter(i => is_data_def_item(item: i) && match i.body { Some { value: _ } => true, None => false })
         |> first
   }
   let items_str = typed_module.items
