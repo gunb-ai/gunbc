@@ -4182,8 +4182,8 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// a missed structural match would mint fresh `DeclarationId`s each
 /// iteration and the fixpoint loop would not terminate.
 fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<TypeShape> {
-    let result_template = declaration_in_error_primitives(dag, "Result")?;
-    let div_error = declaration_in_error_primitives(dag, "DivError")?;
+    let result_template = canonical_result_decl(dag)?.id;
+    let div_error = canonical_div_error_decl(dag)?.id;
     let (t_ok, t_err, span) = {
         let rdecl = dag.declaration(result_template);
         (
@@ -4226,17 +4226,6 @@ fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<T
         span,
     });
     Some(TypeShape::new(id))
-}
-
-fn declaration_in_error_primitives(dag: &Dag, name: &str) -> Option<DeclarationId> {
-    const ERROR_PRIMITIVES_DAG: &str = "dsl/std/error_primitives.dag";
-    dag.declarations()
-        .iter()
-        .find(|declaration| {
-            declaration.name.as_deref() == Some(name)
-                && declaration.span.file == ERROR_PRIMITIVES_DAG
-        })
-        .map(|declaration| declaration.id)
 }
 
 fn resolve_operator_arrow(
@@ -4445,8 +4434,7 @@ fn substitute_receiver(
             let mut new_args: Vec<TemplateArgument> = Vec::with_capacity(arguments.len());
             let mut any_change = false;
             for arg in arguments {
-                let new_val = substitute_receiver(dag, arg.value, receiver_param, source_id)
-                    .unwrap_or(arg.value);
+                let new_val = substitute_receiver(dag, arg.value, receiver_param, source_id)?;
                 if new_val != arg.value {
                     any_change = true;
                 }
@@ -4489,6 +4477,8 @@ fn substitute_receiver(
             });
             Some(id)
         }
+        TypeConnective::Atom(AtomPayload::TypeParam(_))
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_)) => None,
         _ => {
             if decl.name.is_some() {
                 Some(current)
@@ -4497,6 +4487,35 @@ fn substitute_receiver(
             }
         }
     }
+}
+
+fn canonical_result_decl(dag: &Dag) -> Option<&Declaration> {
+    let mut matches = dag
+        .declarations()
+        .iter()
+        .filter(|decl| crate::emit::substrate_result_type_decl_suppressed_for_emit(dag, decl));
+    let result = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(result)
+}
+
+fn canonical_div_error_decl(dag: &Dag) -> Option<&Declaration> {
+    let mut matches = dag.declarations().iter().filter(|decl| {
+        decl.name.as_deref() == Some("DivError")
+            && decl.type_params.is_empty()
+            && matches!(&decl.connective, TypeConnective::Disj { variants } if {
+                variants.len() == 2
+                    && variants.iter().any(|variant| variant.label == "DivideByZero")
+                    && variants.iter().any(|variant| variant.label == "Overflow")
+            })
+    });
+    let div_error = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(div_error)
 }
 
 /// Dispatch-time invariant check on an `ExternalRealization` target:
@@ -6405,5 +6424,138 @@ mod bool_logical_operator_arrow_tests {
             find_equivalent_anonymous_instantiation(&dag, template, &with_self, None),
             None,
         );
+    }
+
+    #[test]
+    fn arithmetic_division_uses_totalized_result_shape() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let lhs = TypeShape::new(int);
+        let first =
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
+                .expect("division must resolve");
+        let after_first = dag.declarations().len();
+        let second =
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs)
+                .expect("division must resolve");
+
+        assert_eq!(first.output.declaration, second.output.declaration);
+        assert_eq!(
+            after_first,
+            dag.declarations().len(),
+            "div resolution should dedup anonymous instantiation",
+        );
+
+        let result_shape_decl = dag.declaration(first.output.declaration);
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &result_shape_decl.connective
+        else {
+            panic!("division output must remain an instantiation");
+        };
+        let std_result = canonical_result_decl(&dag).expect("std Result").id;
+        let std_div_error = canonical_div_error_decl(&dag).expect("std DivError").id;
+        assert_eq!(*template, std_result);
+        assert_eq!(arguments.len(), 2);
+        assert_eq!(arguments[0].value, int);
+        assert_eq!(arguments[1].value, std_div_error);
+    }
+
+    #[test]
+    fn read_algebra_field_fails_closed_on_unresolved_instantiation_argument() {
+        let mut dag = Dag::new();
+        let span = synthetic_span();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        let receiver_param = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: receiver_param,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("Self".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let unresolved = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: unresolved,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(
+                "Missing".to_string(),
+            )),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let arithmetic_field = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: arithmetic_field,
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![receiver_param, unresolved],
+                output: int,
+                body: ArrowBody::NoBody,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let algebra = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: algebra,
+            name: Some("DivProbeAlgebra".to_string()),
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "div".to_string(),
+                    ty: arithmetic_field,
+                }],
+            },
+            type_params: vec![receiver_param],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+
+        let before = dag.declarations().len();
+        let algebra_decl = dag.declaration(algebra).clone();
+        assert_eq!(
+            read_algebra_field(
+                &mut dag,
+                &algebra_decl,
+                arithmetic_field,
+                int,
+                OperatorKind::Arithmetic(ArithmeticOp::Div),
+                &TypeShape::new(int),
+            ),
+            None
+        );
+        assert_eq!(dag.declarations().len(), before);
     }
 }
