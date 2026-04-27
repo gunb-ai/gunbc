@@ -16,13 +16,13 @@ fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {
         ScannerCharClass::Whitespace => matches!(byte, b'\t' | b'\n' | b'\x0c' | b'\r' | b' '),
         ScannerCharClass::Digit => (byte >= b'0' && byte <= b'9'),
         ScannerCharClass::IdentStart => {
-            (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == b'_'
+            (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == 0x5f
         }
         ScannerCharClass::IdentContinue => {
             (byte >= b'0' && byte <= b'9')
                 || (byte >= b'a' && byte <= b'z')
                 || (byte >= b'A' && byte <= b'Z')
-                || byte == b'_'
+                || byte == 0x5f
         }
     }
 }

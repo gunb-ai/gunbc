@@ -192,10 +192,10 @@ fn ascii_scan_class_predicate(class_name: &str) -> &'static str {
         }
         "Digit" => "(byte >= b'0' && byte <= b'9')",
         "IdentStart" => {
-            "(byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == b'_"
+            "(byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == 0x5f"
         }
         "IdentContinue" => {
-            "(byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == b'_"
+            "(byte >= b'0' && byte <= b'9') || (byte >= b'a' && byte <= b'z') || (byte >= b'A' && byte <= b'Z') || byte == 0x5f"
         }
         _ => panic!("unsupported scanner class `{class_name}` in `ascii_scan_order`"),
     }
