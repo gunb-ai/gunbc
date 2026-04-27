@@ -168,13 +168,13 @@ fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
 
     let mut out = String::new();
     out.push_str("\n#[derive(Debug, Clone, Copy, PartialEq, Eq)]\n");
-    out.push_str("enum ScannerCharClass {\n");
+    out.push_str("pub(crate) enum ScannerCharClass {\n");
     for class in scan_order {
         out.push_str(&format!("    {class},\n"));
     }
     out.push_str("}\n\n");
 
-    out.push_str("#[inline]\nfn byte_matches(byte: u8, class: ScannerCharClass) -> bool {\n");
+    out.push_str("#[inline]\npub(crate) fn byte_matches(byte: u8, class: ScannerCharClass) -> bool {\n");
     out.push_str("    match class {\n");
     for class in scan_order {
         let expr = ascii_scan_class_predicate(class);
