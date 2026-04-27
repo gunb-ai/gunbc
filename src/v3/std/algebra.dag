@@ -345,8 +345,9 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
     // `any_dominates` (same cluster as `drop_dominated` / #519 list
     // descent); `dominates` and `any_dominates` are mutually recursive
     // on strictly smaller `SymbolicCost` / list-tail measures. The
-    // generated Rust in `dag_cost_generated.rs` is emitted from this
-    // `fn dominates` and stays byte-aligned with the `.dag` authority.
+    // generated Rust in `dag_cost_generated.rs` lowers this cluster via
+    // `any_dominates` (same name as here) on `NonSingletonList` children,
+    // staying aligned with the `.dag` authority.
     ProductCost(terms) => any_dominates(nsl_to_list(terms), b)
     SumCost(terms) => any_dominates(nsl_to_list(terms), b)
   }

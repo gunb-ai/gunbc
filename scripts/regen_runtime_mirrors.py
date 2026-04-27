@@ -273,6 +273,21 @@ fn drop_dominated_in_sum(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
     keep
 }
 
+/// Structural mirror of `v3.std.algebra::any_dominates` / `nsl_to_list` —
+/// `ProductCost` / `SumCost` dominate `b` iff any list child dominates `b`.
+fn any_dominates(terms: &BoxedSymbolicCostList, b: &SymbolicCost) -> bool {
+    if dominates(terms.first.as_ref(), b) {
+        return true;
+    }
+    if dominates(terms.second.as_ref(), b) {
+        return true;
+    }
+    terms
+        .rest
+        .iter()
+        .any(|child| dominates(child.as_ref(), b))
+}
+
 pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
     match a {
         SymbolicCost::UnknownCost { .. } => true,
@@ -301,7 +316,7 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
             _ => false,
         },
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
-            terms.iter().any(|child| dominates(child.as_ref(), b))
+            any_dominates(terms, b)
         }
     }
 }

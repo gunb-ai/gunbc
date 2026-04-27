@@ -133,3 +133,54 @@ pub fn analyze_symbolic_cost_dimension(
         witnesses,
     }
 }
+
+#[cfg(test)]
+mod fail_closed_tests {
+    use super::*;
+    use crate::dag::{Dag, LiteralBits, TransformTarget};
+    use crate::operators::{ArithmeticOp, OperatorKind};
+
+    #[test]
+    fn missing_symbolic_cost_surfaces_as_dimension_fail_with_violates_witnesses() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("dimension_fail_closed_test", 0, 0);
+        let int_shape = dag.int_shape().expect("bootstrap Int");
+        let lhs = dag.push_value(LiteralBits::Int(1), span.clone());
+        let ghost_input = dag.alloc_port_with_shape(int_shape);
+        let bad_add = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, ghost_input],
+            span.clone(),
+        );
+        let bind_id = dag.push_bind("x", bad_add, vec![], span);
+
+        let report = analyze_symbolic_cost_dimension(&dag, bind_id);
+        let DimensionReport::DimensionFail {
+            violations,
+            witnesses,
+            ..
+        } = report
+        else {
+            panic!("expected DimensionFail when cost lens misses an input port, got {report:?}");
+        };
+
+        assert!(
+            violations.iter().any(|v| {
+                matches!(
+                    v,
+                    Diagnostic::ParseError { message, .. }
+                        if message.contains("symbolic_cost dimension:")
+                )
+            }),
+            "expected structured dimension diagnostics, got {violations:?}"
+        );
+        assert!(
+            witnesses.iter().any(|w| matches!(w, Witness::Violates { .. })),
+            "expected at least one Violates witness, got {witnesses:?}"
+        );
+        assert!(
+            witnesses.iter().all(|w| !matches!(w, Witness::Inhabits(SymbolicCost::UnknownCost { .. }))),
+            "dimension witnesses must not fabricate UnknownCost carriers"
+        );
+    }
+}
