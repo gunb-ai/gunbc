@@ -41,9 +41,9 @@ three dispositions below — not a mix, not a vague umbrella phrase.
     `#fragment` that resolves in `ROADMAP.md`). A reviewer must open the
     cited row in one hop.
 
-**Insufficient (do not use as the sole gate answer):** "see ROADMAP",
-"TBD", "tracked elsewhere", "follow-up PR", lane name alone, or any
-uncited narrative deferral without the row/link above.
+**Insufficient (do not use as the sole gate answer):** `future cleanup`,
+`follow-up PR`, `manager will decide`, lane name alone, `see ROADMAP` /
+`TBD` without a cited row, or any other uncited narrative deferral.
 
 If the PR introduces a string/path/name identity bridge (sentinel,
 fixture-name routing, `span.file ==` check, `include_str!` side-channel),
