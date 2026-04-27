@@ -94,6 +94,60 @@ fn constant(n: i64) -> SymbolicCost {
     SymbolicCost::ConstantCost { _0: n }
 }
 
+fn product_nsl(a: SymbolicCost, b: SymbolicCost, c: SymbolicCost) -> SymbolicCost {
+    SymbolicCost::ProductCost {
+        _0: NonSingletonList::from_vec(vec![Box::new(a), Box::new(b), Box::new(c)])
+            .expect("product NSL requires at least two terms"),
+    }
+}
+
+fn sum_nsl(a: SymbolicCost, b: SymbolicCost, c: SymbolicCost) -> SymbolicCost {
+    SymbolicCost::SumCost {
+        _0: NonSingletonList::from_vec(vec![Box::new(a), Box::new(b), Box::new(c)])
+            .expect("sum NSL requires at least two terms"),
+    }
+}
+
+/// `dominates` on `ProductCost` / `SumCost` mirrors `algebra.dag` `any_dominates`
+/// over `NonSingletonList` (`first`, `second`, `rest`). Regression: template /
+/// regen must not skip `second` or `rest` when checking child dominance.
+#[test]
+fn composite_dominance_considers_all_nsl_children() {
+    let (p0, _) = two_distinct_ports();
+    let rhs = linear(p0);
+
+    let only_first = product_nsl(linear(p0), constant(1), constant(1));
+    assert!(
+        dominates(&only_first, &rhs),
+        "ProductCost `first` must count toward dominance"
+    );
+
+    let only_second = product_nsl(constant(1), linear(p0), constant(1));
+    assert!(
+        dominates(&only_second, &rhs),
+        "ProductCost `second` must count toward dominance"
+    );
+
+    let only_rest = product_nsl(constant(1), constant(1), linear(p0));
+    assert!(
+        dominates(&only_rest, &rhs),
+        "ProductCost `rest` must count toward dominance"
+    );
+
+    assert!(
+        dominates(&sum_nsl(linear(p0), constant(1), constant(1)), &rhs),
+        "SumCost `first` must count toward dominance"
+    );
+    assert!(
+        dominates(&sum_nsl(constant(1), linear(p0), constant(1)), &rhs),
+        "SumCost `second` must count toward dominance"
+    );
+    assert!(
+        dominates(&sum_nsl(constant(1), constant(1), linear(p0)), &rhs),
+        "SumCost `rest` must count toward dominance"
+    );
+}
+
 fn boxed_terms_to_vec(terms: &NonSingletonList<Box<SymbolicCost>>) -> Vec<SymbolicCost> {
     terms.iter().map(|term| term.as_ref().clone()).collect()
 }

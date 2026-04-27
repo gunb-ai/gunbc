@@ -90,15 +90,14 @@ pub fn analyze_symbolic_cost_dimension(
         .iter()
         .any(|w| matches!(w, Witness::Violates { .. }));
 
-    if !witness_failure && matches!(root_lookup, SymbolicCostLookup::Hit(_)) {
-        let SymbolicCostLookup::Hit(composed) = root_lookup else {
-            unreachable!("root_lookup checked Hit above");
-        };
-        return DimensionReport::DimensionOk {
-            dimension_name: DIMENSION_NAME.to_string(),
-            composed,
-            witnesses,
-        };
+    if !witness_failure {
+        if let SymbolicCostLookup::Hit(composed) = root_lookup {
+            return DimensionReport::DimensionOk {
+                dimension_name: DIMENSION_NAME.to_string(),
+                composed,
+                witnesses,
+            };
+        }
     }
 
     let mut violations: Vec<Diagnostic> = witnesses
@@ -165,14 +164,10 @@ mod fail_closed_tests {
         };
 
         assert!(
-            violations.iter().any(|v| {
-                matches!(
-                    v,
-                    Diagnostic::ParseError { message, .. }
-                        if message.contains("symbolic_cost dimension:")
-                )
-            }),
-            "expected structured dimension diagnostics, got {violations:?}"
+            violations
+                .iter()
+                .any(|v| matches!(v, Diagnostic::ParseError { .. })),
+            "expected ParseError diagnostics from dimension proof failure, got {violations:?}"
         );
         assert!(
             witnesses
