@@ -17,7 +17,7 @@ pub enum AtomPayload {
     TypeParam(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardinalityBound {
     Exact(u32),
     AtMostOne,
