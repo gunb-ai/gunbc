@@ -190,6 +190,7 @@ impl Dag {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
         id
@@ -218,6 +219,7 @@ impl Dag {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
         id
@@ -769,6 +771,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span(),
         });
         id
@@ -1027,6 +1030,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: Some(predicate),
+            nominal_opacity: None,
             span: span(),
         });
         let generic_callable = push_test_declaration(

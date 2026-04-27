@@ -549,6 +549,7 @@ fn build_refinement_predicate_declaration(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: pred_span,
     });
     pred_decl_id
@@ -581,6 +582,7 @@ fn alloc_deferred_types_dag_refinement_placeholder(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
     id
@@ -633,6 +635,7 @@ fn lower_parameter_refinement(
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
+        nominal_opacity: None,
         span: param_span,
     });
     refined_id
@@ -1276,6 +1279,7 @@ fn build_narrowed_refinement(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: pred_span.clone(),
     });
 
@@ -1293,6 +1297,7 @@ fn build_narrowed_refinement(
         inhabits: None,
         value_body: None,
         refinement: Some(pred_decl_id),
+        nominal_opacity: None,
         span: pred_span,
     });
     Some(refined_id)
@@ -1687,6 +1692,7 @@ fn collect_symbols(
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -1715,6 +1721,7 @@ fn collect_symbols(
 
                     value_body: None,
                     refinement: None,
+                    nominal_opacity: None,
                     span: span.clone(),
                 });
                 param_ids.push(param_id);
@@ -2088,6 +2095,7 @@ fn attach_dimension_phantom_parameter(dag: &mut Dag, decl_id: DeclarationId, nam
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span,
     });
     dag.declaration_mut(decl_id)
@@ -2192,6 +2200,7 @@ fn lower_type_sum(
 
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: variant.span.clone(),
         });
         variant_fields.push(Field {
@@ -2267,6 +2276,7 @@ fn type_to_declaration_id(
 
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span.clone(),
             });
             id
@@ -2289,6 +2299,7 @@ fn type_to_declaration_id(
 
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span.clone(),
             });
             id
@@ -2327,6 +2338,7 @@ fn type_to_declaration_id(
 
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: span.clone(),
             });
             id
@@ -2492,6 +2504,7 @@ fn alloc_identifier_stub(dag: &mut Dag, name: &str, span: &SourceSpan) -> Declar
 
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
     id
@@ -4606,6 +4619,7 @@ fn lower_lambda_expr(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
     Ok(lambda_decl_id)
@@ -4951,6 +4965,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -4985,6 +5000,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -5025,6 +5041,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -5064,6 +5081,7 @@ fn specialize_decl_for_lowering(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -5561,6 +5579,7 @@ fn lower_expr(
                     inhabits: None,
                     value_body: None,
                     refinement: None,
+                    nominal_opacity: None,
                     span: span.clone(),
                 });
                 instantiation_id
@@ -6187,6 +6206,7 @@ fn resolve_expected_variant_constructor(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: expected_span,
             });
             Some(instantiation_id)
@@ -7082,6 +7102,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: test_span(),
         });
         id
@@ -7363,6 +7384,7 @@ mod tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: test_span(),
         });
         let int_id = dag.int_shape().expect("bootstrap Int").declaration;
