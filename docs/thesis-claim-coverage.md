@@ -23,9 +23,9 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 
 | Disposition | Count |
 |---|---|
-| **R1-closed** | 52 |
-| **R2-gated** | 18 |
-| **post-R2-external** | 4 |
+| **R1-closed** | 55 |
+| **R2-gated** | 13 |
+| **post-R2-external** | 6 |
 | **GAP (no disposition)** | **0** ✓ |
 | **TOTAL CLAIMS** | 74 |
 
@@ -35,10 +35,12 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 
 | Tier/Category | R1-closed | R2-gated | post-R2-external | Total |
 |---|---|---|---|---|
-| Tier 1 (Structural correctness) | 9 | 1 | 0 | 10 |
-| Tier 2 (Runtime safety) | 0 | 0 | 1 | 1 |
+| Core abstraction | 1 | 0 | 0 | 1 |
+| Correctness is structural — meta-claim | 4 | 0 | 0 | 4 |
+| Tier 1 (Structural correctness) | 3 | 2 | 0 | 5 |
+| Tier 2 (Runtime safety) | 0 | 1 | 0 | 1 |
 | Tier 3 (Verification) | 1 | 3 | 0 | 4 |
-| Concept unifications | 3 | 1 | 0 | 4 |
+| Concept unifications | 2 | 2 | 0 | 4 |
 | Epistemic stacking | 6 | 0 | 0 | 6 |
 | Substrate shape | 4 | 0 | 1 | 5 |
 | Free consequences | 3 | 1 | 0 | 4 |
@@ -89,7 +91,7 @@ This doc is that audit. Every thesis claim in `THESIS.md §"Thesis claims — co
 | # | Claim | Disposition | Evidence | Status |
 |---|---|---|---|---|
 | 12 | L4: emitted code executes and matches `.dag` evaluation | R2-gated | T-Ground-Tests lane | blocked on earlier T-Ground lanes |
-| 13 | L5: same `.dag` produces same behavior in Rust/Python/Go | R2-gated | T-Ground-Rust / T-Ground-Python / T-Ground-Go lanes | in-flight (Go tranche green/open; Rust/Engine tails remain) |
+| 13 | L5: same `.dag` produces same behavior in Rust/Python/Go | R2-gated | T-Ground-Rust / T-Ground-Python / T-Ground-Go lanes | pending/fill queue per T-Ground; Rust/Engine tails remain |
 | 14 | L6: every structural form compiles to every target | R2-gated | T-Ground-Engine (inhabitance-search walker) | in-flight (ValueBody list/sum producer landed; Engine consumer active) |
 | 15 | L7: operations obey declared algebraic laws | R1-closed | T-LensAPI `lens_composition_associative` | green |
 
