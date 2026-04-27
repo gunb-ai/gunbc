@@ -30,10 +30,7 @@ pub fn check_declaration(p0: &Declaration) -> Vec<UnresolvedArrowBody> {
             output: __a_output,
             body: __a_body,
         } => check_arrow_body(p0, __a_body),
-        TypeConnective::Cardinality {
-            element: _,
-            bound: _,
-        } => Vec::new(),
+        TypeConnective::Cardinality(_) => Vec::new(),
         TypeConnective::Instantiation {
             template: _,
             arguments: _,
@@ -99,10 +96,7 @@ pub fn check_name_keyed_declaration(p0: &Declaration) -> Vec<NameKeyedReference>
             output: _,
             body: _,
         } => Vec::new(),
-        TypeConnective::Cardinality {
-            element: _,
-            bound: _,
-        } => Vec::new(),
+        TypeConnective::Cardinality(_) => Vec::new(),
         TypeConnective::Instantiation {
             template: _,
             arguments: _,
