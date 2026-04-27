@@ -94,11 +94,34 @@ type OpenAiChatMessage {
   content: String
 }
 
-// Typed inputs close the Json bypass; outputs still JSON-path-project until
-// `response { 200 => Typed... }` lands. Queryable receipt for lenses/audits.
-data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
-  "closure:rest_typed_response_body|llm.OpenAI.ChatCompletion|residue:output_fields_use_json_path_projection"
-]
+// Narrow 200-OK wire slice for Chat Completions (`response { 200 => … }` + serde).
+// Tool calls / multimodal message bodies remain outside this carrier (same narrow
+// slice as the historical `from` JSON-pointer paths).
+type OpenAiChatCompletion200Message {
+  role: String
+  content: String
+}
+
+type OpenAiChatCompletion200Choice {
+  index: Int
+  message: OpenAiChatCompletion200Message
+  finish_reason: OpenAiFinishReason
+}
+
+type OpenAiChatCompletion200Usage {
+  prompt_tokens: Int
+  completion_tokens: Int
+  total_tokens: Int?
+}
+
+type OpenAiChatCompletion200Body {
+  choices: List<OpenAiChatCompletion200Choice>
+  model: String
+  usage: OpenAiChatCompletion200Usage
+}
+
+// Receipt cleared for ChatCompletion: 200 body is `OpenAiChatCompletion200Body` (typed serde).
+data structural_coverage_gap_openai_chat_completion_outputs: List<String> = []
 
 // Full Chat Completions message coproduct (tool_call_id, tool role, function,
 // multimodal content parts) is not this row — downstream closure trigger.
@@ -147,7 +170,7 @@ service llm.OpenAI {
       body: { model: model, messages: messages, temperature: temperature, max_tokens: max_tokens }
     }
     response {
-      200 => Json
+      200 => OpenAiChatCompletion200Body
       400 => OpenAiErrorShape
       401 => OpenAiErrorShape
       403 => OpenAiErrorShape

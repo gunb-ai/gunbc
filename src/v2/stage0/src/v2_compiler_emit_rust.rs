@@ -11772,6 +11772,59 @@ pub fn has_from_key_fields(
     }
 }
 
+/// Resolved type for `response { 200 => T }` on a service operation, if present.
+pub fn operation_response_200_resolved_type(
+    op_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    for p in op_node.properties.iter().cloned() {
+        if field_init_node_name_at(p.clone(), source_indices.clone()).as_str() == "response_200" {
+            let v = field_init_node_value(&p);
+            return match v.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: tn, .. }) => Some(tn),
+                _ => None,
+            };
+        }
+    }
+    None
+}
+
+pub fn is_json_wire_declaration_type(
+    type_node: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    let normed = normalize_access_type_node(type_node.clone());
+    let name = authored_name_at(source_indices.clone(), &normed);
+    name.as_str() == "Json" || name.ends_with(".Json")
+}
+
+/// Build a Rust field/index chain from a slash-separated path (same segments as
+/// `from` / `from_key` JSON-pointer style paths, without a leading `/`).
+pub fn emit_wire_struct_path_chain(base: &str, from_path: &str) -> String {
+    let segments: Vec<&str> = from_path.split('/').filter(|s| !s.is_empty()).collect();
+    let mut acc = base.to_string();
+    for seg in segments {
+        if seg.chars().all(|c| c.is_ascii_digit()) {
+            acc = format!(
+                "({}).get({}).ok_or_else(|| format!(\"REST path missing index {} at `{}`\"))?",
+                acc, seg, seg, from_path
+            );
+        } else {
+            acc = format!("({}).{}", acc, seg);
+        }
+    }
+    acc
+}
+
+pub fn emit_typed_wire_field_extract(
+    field_name: String,
+    from_path: &String,
+    _dag_type_name: String,
+) -> String {
+    let chain = emit_wire_struct_path_chain("__rest_wire", from_path.as_str());
+    format!("let {} = {}.clone();\n", field_name, chain)
+}
+
 pub fn escape_json_pointer_segment(seg: String) -> String {
     v2_rt::replace(
         v2_rt::replace(seg, "~".to_string(), "~0".to_string()),

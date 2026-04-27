@@ -106,10 +106,27 @@ type AnthropicChatMessage
   = UserMessage { content: List<AnthropicUserContentBlock> }
   | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
-// Outputs still JSON-path-project; same downstream closure as OpenAI slice.
-data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
-  "closure:rest_typed_response_body|llm.Anthropic.Messages|residue:output_fields_use_json_path_projection"
-]
+// Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
+// Tool-use / image assistant rows remain outside this carrier.
+type AnthropicMessages200TextBlock {
+  type: String
+  text: String
+}
+
+type AnthropicMessages200Usage {
+  input_tokens: Int
+  output_tokens: Int
+}
+
+type AnthropicMessages200Body {
+  content: List<AnthropicMessages200TextBlock>
+  model: String
+  stop_reason: StopReason
+  usage: AnthropicMessages200Usage
+}
+
+// Receipt cleared for Messages: 200 body is `AnthropicMessages200Body` (typed serde).
+data structural_coverage_gap_anthropic_messages_outputs: List<String> = []
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
 // keyed by `type` (https://docs.anthropic.com/en/api/messages). `type` is not
@@ -164,7 +181,7 @@ service llm.Anthropic {
       headers: { "anthropic-version": current_api_version.version }
     }
     response {
-      200 => Json
+      200 => AnthropicMessages200Body
       400 => AnthropicErrorShape
       401 => AnthropicErrorShape
       403 => AnthropicErrorShape
