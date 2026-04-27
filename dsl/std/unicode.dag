@@ -4,11 +4,12 @@
 // Width" for the display-width classification (`DisplayWidth`, the
 // zero/narrow/wide block tables, and `char_display_width`). UAX #9
 // (Bidirectional Algorithm) is NOT consulted: this file does not model
-// bidi properties. Code-point ranges below are intentionally `15.x`
-// compatible -- no minor version pin -- because every range/block listed
-// is stable across UCD 15.0/15.1 (additions in later UCD minors land
-// outside the enumerated ranges and fall to `Narrow` by default, which is
-// the documented fallback).
+// bidi properties. Code-point ranges below are a local 15.x-compatible
+// subset, not a full East_Asian_Width data-file mirror: UAX #11 §6.1
+// classifies unassigned CJK ideographic ranges as Wide, while this helper
+// returns `Narrow` for code points outside the enumerated tables below.
+// Full UAX #11 coverage requires modeling those unassigned ranges or loading
+// the UCD `EastAsianWidth.txt` data directly.
 //
 // Follows the same modelling pattern as Encoding (std/encoding.dag) + @file_types:
 // structured types for the domain, `data` for lookup tables, `fn` for
