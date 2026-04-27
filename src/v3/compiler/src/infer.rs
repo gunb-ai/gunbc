@@ -262,6 +262,7 @@ fn ensure_optional_match_disj(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
 
@@ -279,6 +280,7 @@ fn ensure_optional_match_disj(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: span.clone(),
     });
 
@@ -305,6 +307,7 @@ fn ensure_optional_match_disj(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span,
     });
     dag.set_optional_match_disj(cardinality_decl_id, disj_id);
@@ -2713,6 +2716,7 @@ fn resolve_callable_targets(dag: &mut Dag) -> bool {
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: synthetic_span(),
             });
             instantiation_id
@@ -3236,6 +3240,7 @@ fn materialize_specialized_payload_record(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: variant_decl.span,
     });
     TypeShape::new(id)
@@ -3297,6 +3302,7 @@ pub(crate) fn concretize_decl_with_subst(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -3323,6 +3329,7 @@ pub(crate) fn concretize_decl_with_subst(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span: decl.span,
             });
             id
@@ -3535,6 +3542,7 @@ fn materialize_substituted_refined_decl(
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span: template_span.clone(),
     });
 
@@ -3551,6 +3559,7 @@ fn materialize_substituted_refined_decl(
         inhabits: None,
         value_body: None,
         refinement: Some(fresh_pred_decl_id),
+        nominal_opacity: None,
         span: template_span,
     });
 
@@ -4917,6 +4926,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let usd = dag.alloc_declaration_id();
@@ -4934,6 +4944,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let eur = dag.alloc_declaration_id();
@@ -4951,6 +4962,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let currency_abelian_group = dag.alloc_declaration_id();
@@ -4977,6 +4989,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let int_abelian_group = dag.alloc_declaration_id();
@@ -4997,6 +5010,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let money = dag.alloc_declaration_id();
@@ -5020,6 +5034,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         dag.push_declaration(Declaration {
@@ -5033,6 +5048,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -5054,6 +5070,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let money_eur = dag.alloc_declaration_id();
@@ -5074,6 +5091,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let money_c = dag.alloc_declaration_id();
@@ -5094,6 +5112,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_c_param = dag.alloc_declaration_id();
@@ -5108,6 +5127,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_money = dag.alloc_declaration_id();
@@ -5130,6 +5150,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_money_usd = dag.alloc_declaration_id();
@@ -5150,6 +5171,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let alt_money_eur = dag.alloc_declaration_id();
@@ -5170,6 +5192,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let other_algebra_money = dag.alloc_declaration_id();
@@ -5192,6 +5215,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let other_algebra_money_usd = dag.alloc_declaration_id();
@@ -5212,6 +5236,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
 
@@ -5265,6 +5290,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let malformed_lhs = dag.alloc_port_with_shape(TypeShape::new(money_missing_arg));
@@ -5286,6 +5312,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let bad_money = dag.alloc_declaration_id();
@@ -5308,6 +5335,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: span.clone(),
         });
         let bad_money_usd = dag.alloc_declaration_id();
@@ -5328,6 +5356,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span,
         });
         let invalid_lhs = dag.alloc_port_with_shape(TypeShape::new(bad_money_usd));
@@ -5349,6 +5378,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 2, 3),
         });
         let unsupported_money = dag.alloc_declaration_id();
@@ -5371,6 +5401,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 2, 3),
         });
         let unsupported_money_usd = dag.alloc_declaration_id();
@@ -5391,6 +5422,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 2, 3),
         });
         let unsupported_lhs = dag.alloc_port_with_shape(TypeShape::new(unsupported_money_usd));
@@ -5412,6 +5444,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let fake_algebra_money = dag.alloc_declaration_id();
@@ -5434,6 +5467,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let fake_algebra_money_usd = dag.alloc_declaration_id();
@@ -5454,6 +5488,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let fake_lhs = dag.alloc_port_with_shape(TypeShape::new(fake_algebra_money_usd));
@@ -5479,6 +5514,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 3, 4),
         });
         let callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
@@ -5503,6 +5539,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let generic_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(money_usd));
@@ -5523,6 +5560,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let untracked_money = dag.alloc_declaration_id();
@@ -5542,6 +5580,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let untracked_money_usd = dag.alloc_declaration_id();
@@ -5562,6 +5601,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: SourceSpan::new("<money-unit-test>", 4, 5),
         });
         let untracked_callable_lhs = dag.alloc_port_with_shape(TypeShape::new(untracked_money_usd));
@@ -5851,6 +5891,7 @@ mod bool_logical_operator_arrow_tests {
             inhabits: None,
             value_body: None,
             refinement: None,
+            nominal_opacity: None,
             span: synthetic_span(),
         });
 
