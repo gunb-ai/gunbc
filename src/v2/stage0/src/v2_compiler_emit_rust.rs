@@ -1194,6 +1194,13 @@ pub fn emit_module_full(
         } else {
             raw_filename.clone()
         };
+        let module_attrs = if (authored_name(scope.type_env.clone(), m.clone()).as_str()
+            == "std.error_primitives".to_string().as_str())
+        {
+            "#![allow(non_camel_case_types)]\n\n".to_string()
+        } else {
+            "".to_string()
+        };
         let content = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -1212,19 +1219,19 @@ pub fn emit_module_full(
                                         ),
                                         "\n\n".to_string(),
                                     ),
-                                    prelude,
+                                    module_attrs,
                                 ),
-                                imports_section,
+                                prelude,
                             ),
-                            svc_imports_str,
+                            imports_section,
                         ),
-                        local_uses_str,
+                        svc_imports_str,
                     ),
-                    "\n\n".to_string(),
+                    local_uses_str,
                 ),
-                items_str,
+                "\n\n".to_string(),
             ),
-            "\n".to_string(),
+            v2_rt::concat(items_str, "\n".to_string()),
         );
         Rc::new(TextFile {
             path: v2_rt::concat(
