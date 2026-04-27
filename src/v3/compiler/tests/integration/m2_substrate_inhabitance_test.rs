@@ -1814,6 +1814,12 @@ fn map_body_data_item_parses_and_lowers_to_value_body_map() {
     }
 
     let dag = compile_to_dag(source, "map_literal_data.v3").expect("lower map-literal data");
+    let algebra_profile = dag
+        .declaration_by_name("AlgebraProfile")
+        .expect("AlgebraProfile exists");
+    let v3_compiler::dag::TypeConnective::Disj { variants } = &algebra_profile.connective else {
+        panic!("expected AlgebraProfile to be a sum type");
+    };
     let decl = dag
         .declaration_by_name("kernel_algebra_profile")
         .expect("kernel_algebra_profile declaration exists");
@@ -1829,9 +1835,13 @@ fn map_body_data_item_parses_and_lowers_to_value_body_map() {
         let FieldValue::Reference(value_decl) = value else {
             panic!("expected map value for {key} to lower as FieldValue::Reference, got {value:?}");
         };
+        let expected_variant = variants
+            .iter()
+            .find(|variant| variant.label == *expected_value_name)
+            .unwrap_or_else(|| panic!("missing AlgebraProfile variant {expected_value_name}"));
         assert_eq!(
-            dag.declaration(*value_decl).name.as_deref(),
-            Some(*expected_value_name)
+            *value_decl, expected_variant.ty,
+            "map value for {key} should reference AlgebraProfile::{expected_value_name}"
         );
     }
 }

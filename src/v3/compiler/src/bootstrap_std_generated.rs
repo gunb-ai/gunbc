@@ -1314,11 +1314,36 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(349)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Unparsed(SourceSpan::new(
-                    "dsl/std/algebra.dag",
-                    18375,
-                    18626,
-                ))),
+                value_body: Some(ValueBody::Map(vec![
+                    (
+                        "Int".to_string(),
+                        FieldValue::Reference(DeclarationId(318)),
+                    ),
+                    (
+                        "Float".to_string(),
+                        FieldValue::Reference(DeclarationId(319)),
+                    ),
+                    (
+                        "Bool".to_string(),
+                        FieldValue::Reference(DeclarationId(320)),
+                    ),
+                    (
+                        "String".to_string(),
+                        FieldValue::Reference(DeclarationId(322)),
+                    ),
+                    (
+                        "List".to_string(),
+                        FieldValue::Reference(DeclarationId(323)),
+                    ),
+                    (
+                        "Set".to_string(),
+                        FieldValue::Reference(DeclarationId(321)),
+                    ),
+                    (
+                        "Map".to_string(),
+                        FieldValue::Reference(DeclarationId(324)),
+                    ),
+                ])),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/algebra.dag", 18316, 18626),
