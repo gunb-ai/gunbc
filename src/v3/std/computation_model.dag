@@ -85,6 +85,24 @@ type SourceFiltering {
   excluded_prefixes: List<String>
 }
 
+// Shape-A emit targets share `internal_source_filtering` for the
+// invariant internal/bootstrap prefix set; target-only prefixes (e.g.
+// `src/v3/compiler/` for Rust/Go declaration walks) append here so the
+// base list is not forked across `rust.dag` / `go.dag` / `python.dag`.
+type ShapeATargetSourceFiltering {
+  internal: SourceFiltering
+  additional_excluded_prefixes: List<String>
+}
+
+data internal_source_filtering: SourceFiltering = {
+  excluded_prefixes: [
+    "dsl/std/",
+    "dsl/extdeps/",
+    "src/v3/std/",
+    "src/v3/spec/",
+  ]
+}
+
 // 🟡 PHASE 2 PREP. Coarser-than-MemoryModel summary of whether a
 // target takes the ownership-sensitive render path or the GC/value
 // path. Added for Lane 1e PR-2.1; the current emitters still read the
