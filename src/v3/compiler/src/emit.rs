@@ -442,6 +442,8 @@ struct RealizationIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: GoLanguageSyntax,
     execution_model: TargetExecutionModelBinding,
+    /// Source exclusion policy loaded from
+    /// `data go_source_filtering: ShapeATargetSourceFiltering`.
     source_filtering: SourceFilteringBinding,
     /// The Go clean-emission contract loaded from `data
     /// go_clean_emission: CleanEmissionContract` (E-5 / Lane 1 Stage
