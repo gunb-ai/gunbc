@@ -4725,7 +4725,7 @@ fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: M
   }
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>) -> String {
   let name = field_init_node_name_at(n: prop, source_indices: source_indices)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   // RFC 9110: 2xx = success, everything else = error
@@ -4740,7 +4740,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: N
     else { code_str }
   if is_success {
     if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices), " },")
+      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types), " },")
     } else {
       concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
     }
