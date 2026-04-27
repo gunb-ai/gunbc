@@ -152,7 +152,7 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
         return false;
     }
     let decl = dag.declaration(declaration);
-    if decl.name.as_deref() == Some("DivError") {
+    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
         return true;
     }
     match &decl.connective {
@@ -180,6 +180,17 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
         }
         _ => false,
     }
+}
+
+pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
+    if decl.name.as_deref() != Some("DivError") || !decl.type_params.is_empty() {
+        return false;
+    }
+    matches!(&decl.connective, TypeConnective::Disj { variants } if {
+        variants.len() == 2
+            && variants.iter().any(|variant| variant.label == "DivideByZero")
+            && variants.iter().any(|variant| variant.label == "Overflow")
+    })
 }
 
 pub(crate) fn port_uses_substrate_result_or_div_error(dag: &Dag, port: PortId) -> bool {

@@ -404,6 +404,27 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
 }
 
 #[test]
+fn emit_go_omits_div_prelude_for_user_diverror_signature_without_division() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+fn passthrough(x: DivError) -> DivError = x\n",
+        "go_user_diverror_signature_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        !out.contains("func v3intdiv"),
+        "user DivError signatures should not trigger integer division prelude; got: {out}"
+    );
+    assert!(
+        out.matches("type DivError").count() == 1,
+        "user DivError should emit once without colliding with a std prelude; got: {out}"
+    );
+}
+
+#[test]
 fn emit_go_fails_closed_on_div_prelude_helper_collision() {
     let dag = compile_to_dag(
         "fn v3intdiv(a: Int, b: Int) -> Int = a + b\n\

@@ -188,6 +188,25 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
 }
 
 #[test]
+fn emit_python_omits_div_prelude_for_user_diverror_signature_without_division() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+fn passthrough(x: DivError) -> DivError = x\n",
+        "python_user_diverror_signature_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_python_module(&dag).expect("emits python module");
+    assert!(
+        !out.contains("def __v3_idiv"),
+        "user DivError signatures should not trigger integer division prelude; got: {out}"
+    );
+    assert!(
+        out.matches("class DivError").count() == 1,
+        "user DivError should emit once without colliding with a std prelude; got: {out}"
+    );
+}
+
+#[test]
 fn emit_python_fails_closed_on_div_prelude_helper_collision() {
     let dag = compile_to_dag(
         "fn __v3_idiv(a: Int, b: Int) -> Int = a + b\n\

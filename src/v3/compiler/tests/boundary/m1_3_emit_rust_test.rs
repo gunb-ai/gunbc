@@ -267,6 +267,22 @@ let x: Int = 42",
 }
 
 #[test]
+fn emit_rust_omits_div_prelude_for_user_diverror_signature_without_division() {
+    let out = emit_module(
+        "type DivError = Bad | Worse\n\
+fn passthrough(x: DivError) -> DivError = x\n",
+    );
+    assert!(
+        !out.contains("__v3_int_div"),
+        "user DivError signatures should not trigger integer division prelude; got: {out}"
+    );
+    assert!(
+        out.matches("pub enum DivError").count() == 1,
+        "user DivError should emit once without colliding with a std prelude; got: {out}"
+    );
+}
+
+#[test]
 fn emit_rust_fails_closed_on_div_prelude_diverror_collision() {
     let dag = compile_to_dag(
         "type DivError = Bad | Worse\n\
