@@ -4142,6 +4142,7 @@ fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<T
         inhabits: None,
         value_body: None,
         refinement: None,
+        nominal_opacity: None,
         span,
     });
     Some(TypeShape::new(id))
@@ -4387,6 +4388,7 @@ fn substitute_receiver(
                 inhabits: None,
                 value_body: None,
                 refinement: None,
+                nominal_opacity: None,
                 span,
             });
             Some(id)
