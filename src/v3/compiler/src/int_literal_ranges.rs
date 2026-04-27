@@ -45,7 +45,10 @@ pub(crate) struct IntegerRoutingWitness {
 
 /// Integration / structural tests: witness for `decl`'s resolved integer
 /// instantiation (`OrderedRing` / `Semiring` + word carrier), if any.
-pub(crate) fn integer_routing_witness_for_decl(dag: &Dag, decl: DeclarationId) -> Option<IntegerRoutingWitness> {
+pub(crate) fn integer_routing_witness_for_decl(
+    dag: &Dag,
+    decl: DeclarationId,
+) -> Option<IntegerRoutingWitness> {
     integer_routing_witness_walk(dag, decl, 0)
 }
 
@@ -67,8 +70,7 @@ pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerR
         Some(id) => id,
         None => {
             return IntegerRangeLookup::Invalid(malformed_integer_range_fact(
-                "bootstrap: RustPrimitive.IntegerPrimitive variant type is unavailable"
-                    .to_string(),
+                "bootstrap: RustPrimitive.IntegerPrimitive variant type is unavailable".to_string(),
                 pilot.span.clone(),
             ));
         }
@@ -175,7 +177,11 @@ fn integer_instantiation_witness(
     })
 }
 
-fn disj_variant_payload_ty(dag: &Dag, sum_name: &str, variant_label: &str) -> Option<DeclarationId> {
+fn disj_variant_payload_ty(
+    dag: &Dag,
+    sum_name: &str,
+    variant_label: &str,
+) -> Option<DeclarationId> {
     let decl = dag.declaration_by_name(sum_name)?;
     let TypeConnective::Disj { variants } = &decl.connective else {
         return None;
@@ -364,16 +370,10 @@ mod tests {
             if *constructor != integer_primitive_ctor {
                 continue;
             }
-            let FieldValue::Variant {
-                constructor: a, ..
-            } = &payload[1]
-            else {
+            let FieldValue::Variant { constructor: a, .. } = &payload[1] else {
                 continue;
             };
-            let FieldValue::Variant {
-                constructor: c, ..
-            } = &payload[2]
-            else {
+            let FieldValue::Variant { constructor: c, .. } = &payload[2] else {
                 continue;
             };
             if *a == witness.algebra_variant_ty && *c == witness.carrier_variant_ty {
