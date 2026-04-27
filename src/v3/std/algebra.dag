@@ -174,13 +174,15 @@ type SymbolicCost
   | LogCost(SizeVariable)
   | UnknownCost(String)
 
-// Scan state for composite `dominates` / `drop_dominated_step`. The second
-// variant is an uninhabited exhaustiveness anchor: the parser rejects a
-// one-variant sum with a `{ … }` payload at this position, and a plain
-// record type would lower `scan.any` to uncovered `FieldProject` nodes.
-type DominateScanAcc
-  = ScanAcc { any: Bool, pivot: SymbolicCost }
-  | ScanAccNever
+// Scan state for composite `dominates` / `drop_dominated_step`.
+// Modeled as a conjunctive nominal (not a one-variant sum): the surface
+// parser rejects a single `Disj` arm carrying a `{ … }` payload here, and an
+// earlier two-arm sum used a phantom “never” variant for exhaustiveness — that
+// admitted an illegal substrate state (`docs/modeling-discipline.md` practice 2).
+type DominateScanAcc {
+  any: Bool
+  pivot: SymbolicCost
+}
 
 // SymbolicCost-monomorphized `Lookup` constructors. Same shim story
 // as `miss_int_lookup` / `hit_int_lookup` in `v3.std.lookup`: v3 infer
@@ -356,7 +358,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       scan_hit(
         fold(
           nsl_to_list(terms),
-          ScanAcc { any: False, pivot: b },
+          DominateScanAcc { any: False, pivot: b },
           fold_or_dominate_scan
         )
       )
@@ -364,7 +366,7 @@ fn dominates(a: SymbolicCost, b: SymbolicCost) -> Bool =
       scan_hit(
         fold(
           nsl_to_list(terms),
-          ScanAcc { any: False, pivot: b },
+          DominateScanAcc { any: False, pivot: b },
           fold_or_dominate_scan
         )
       )
@@ -521,15 +523,13 @@ fn product_pair(a: SymbolicCost, b: SymbolicCost) -> SymbolicCost =
 
 fn fold_or_dominate_scan(acc: DominateScanAcc, c: SymbolicCost) -> DominateScanAcc =
   match acc {
-    ScanAcc { any: prev, pivot: p } =>
-      ScanAcc { any: prev || dominates(c, p), pivot: p }
-    ScanAccNever => ScanAccNever
+    DominateScanAcc { any: prev, pivot: p } =>
+      DominateScanAcc { any: prev || dominates(c, p), pivot: p }
   }
 
 fn scan_hit(scan: DominateScanAcc) -> Bool =
   match scan {
-    ScanAcc { any: hit, pivot: _ } => hit
-    ScanAccNever => False
+    DominateScanAcc { any: hit, pivot: _ } => hit
   }
 
 fn filter_not_dominated_by(
@@ -549,7 +549,7 @@ fn drop_dominated_step(
   acc: List<SymbolicCost>,
   term: SymbolicCost
 ) -> List<SymbolicCost> =
-  if scan_hit(fold(acc, ScanAcc { any: False, pivot: term }, fold_or_dominate_scan)) then
+  if scan_hit(fold(acc, DominateScanAcc { any: False, pivot: term }, fold_or_dominate_scan)) then
     acc
   else
     cons(term, filter_not_dominated_by(acc, term))
