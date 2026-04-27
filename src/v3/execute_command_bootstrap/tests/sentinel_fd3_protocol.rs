@@ -16,7 +16,12 @@ fn pipe() -> (i32, i32) {
     (fds[0], fds[1])
 }
 
-fn spawn_bootstrap_with_sentinel_fd(bin: &str, read_fd: i32, write_fd: i32, args: &[&str]) -> std::process::Child {
+fn spawn_bootstrap_with_sentinel_fd(
+    bin: &str,
+    read_fd: i32,
+    write_fd: i32,
+    args: &[&str],
+) -> std::process::Child {
     let mut cmd = Command::new(bin);
     for a in args {
         cmd.arg(a);
