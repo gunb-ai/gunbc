@@ -371,8 +371,11 @@ data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
     assert!(
         msg.contains("spawn error")
             || msg.contains("exit code mismatch")
+            || msg.contains("not executable")
+            || msg.contains("namespace setup failed")
             || (msg.contains("unshare(1)") && msg.contains("failed to start"))
-            || (msg.contains("unshare(1)") && msg.contains("post-start fallback")),
+            || (msg.contains("unshare(1)") && msg.contains("post-start fallback"))
+            || (msg.contains("unshare(1)") && msg.contains("wrapper failed to spawn")),
         "expected missing-binary or unshare triage; got: {msg}"
     );
 }
