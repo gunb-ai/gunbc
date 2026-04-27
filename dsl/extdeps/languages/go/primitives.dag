@@ -91,8 +91,10 @@ type GoFloatCarrier
   | GoFloat64BitsCarrier
 
 // Tranche-1 predeclared integer rows use GoTwoComplementWrap only (Go built-in
-// arithmetic). GoSaturating / GoTrap are reserved for non-tranche-1 refinements
-// (e.g. conversion paths, alternate lowering) — not used in this authority slice.
+// wrap). The tag mirrors rust `TwoComplementWrap` for pilot symmetry: it means
+// modular wrap on the row's fixed-width carrier (unsigned ≡ mod 2^N per spec, not
+// a claim that u* uses two's-complement *encoding*). GoSaturating / GoTrap stay for
+// non-tranche-1 refinements — unused in this authority slice.
 type GoIntegerOverflow
   = GoTwoComplementWrap
   | GoSaturating
