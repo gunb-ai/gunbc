@@ -697,7 +697,15 @@ impl UnshareReadyPipe {
     }
 
     /// Reads up to [`UNSHARE_READY_PIPE_MAX`] bytes after the child exits and the parent's
-    /// write end is closed. Bounded — the bootstrap writes at most 2 sentinel bytes.
+    /// write end is closed. Bounded — the bootstrap writes at most 3 sentinel bytes.
+    ///
+    /// **Caller ordering contract.** This is a *blocking* `libc::read` loop. It must be
+    /// called only after both (a) [`Self::close_write_end_in_parent`] has run and (b) the
+    /// child has been reaped (either via `child_wait_for_execute_command` returning
+    /// successfully, or after `kill_process_group_on_timeout` + `child.wait`). Together
+    /// those guarantee EOF on the read end. Calling this *before* the child is reaped while
+    /// the child still holds an open fd 3 (e.g. pre-`exec` sh, or post-failed-`exec` sh
+    /// after the EXIT trap fires) would deadlock if the child has not yet exited.
     fn read_sentinel(&self) -> Vec<u8> {
         let mut buf = [0u8; UNSHARE_READY_PIPE_MAX];
         let mut total = 0usize;
