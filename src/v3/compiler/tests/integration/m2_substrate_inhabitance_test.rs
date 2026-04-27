@@ -85,15 +85,18 @@ fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
     }
 }
 
-fn semantic_diagnostics_for(source: &str, file: &str) -> Vec<Diagnostic> {
+fn semantic_dag_for(source: &str, file: &str) -> Dag {
     let err = compile_to_dag(source, file).expect_err("source must fail semantically");
     let CompileError::Semantic(dag) = err else {
         panic!("expected semantic diagnostics, got {err:?}");
     };
+    dag
+}
+
+fn has_resolve_error(dag: &Dag) -> bool {
     dag.diagnostics()
         .iter()
-        .map(|(_, diagnostic)| diagnostic.clone())
-        .collect()
+        .any(|(_, diagnostic)| matches!(diagnostic, Diagnostic::ResolveError { .. }))
 }
 
 #[test]
@@ -1926,36 +1929,45 @@ fn map_body_data_item_parses_and_lowers_to_value_body_map() {
 
 #[test]
 fn map_body_duplicate_keys_fail_closed() {
-    let diagnostics = semantic_diagnostics_for(
+    let dag = semantic_dag_for(
         "data duplicate_keys: Map<String, Bool> = {\n  \"same\": true,\n  \"same\": false\n}\n",
         "map_duplicate_keys.v3",
     );
+    let decl = dag
+        .declaration_by_name("duplicate_keys")
+        .expect("duplicate_keys declaration should be allocated before lowering fails");
 
     assert!(
-        diagnostics.iter().any(|diagnostic| matches!(
-            diagnostic,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("data `duplicate_keys` map body repeats key `same`")
-        )),
-        "expected duplicate-key ResolveError, got {diagnostics:?}"
+        has_resolve_error(&dag),
+        "expected duplicate-key lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Map(_))),
+        "duplicate-key map must not construct ValueBody::Map, got {:?}",
+        decl.value_body
     );
 }
 
 #[test]
 fn map_body_on_non_map_type_fails_closed() {
-    let diagnostics = semantic_diagnostics_for(
+    let dag = semantic_dag_for(
         "data not_a_map: Bool = {\n  \"x\": true\n}\n",
         "map_body_non_map_type.v3",
     );
+    let decl = dag
+        .declaration_by_name("not_a_map")
+        .expect("not_a_map declaration should be allocated before lowering fails");
 
     assert!(
-        diagnostics.iter().any(|diagnostic| matches!(
-            diagnostic,
-            Diagnostic::ResolveError { name, .. }
-                if name.contains("data `not_a_map` has a map body")
-                    && name.contains("declared type is not a Map<String, _>")
-        )),
-        "expected non-map-body ResolveError, got {diagnostics:?}"
+        has_resolve_error(&dag),
+        "expected non-map body lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Map(_))),
+        "non-map type must not construct ValueBody::Map, got {:?}",
+        decl.value_body
     );
 }
 
