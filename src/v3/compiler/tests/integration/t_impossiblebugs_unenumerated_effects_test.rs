@@ -45,8 +45,7 @@ fn audit_receipt_proves_path_ii_existence_case() {
     let github_auth = read_workspace_file("dsl/extdeps/github/auth.dag");
 
     assert!(
-        resources.contains("capability write")
-            && resources.contains("output { written: Bool }"),
+        resources.contains("capability write") && resources.contains("output { written: Bool }"),
         "Filesystem.write remains a non-resource-threaded write-shaped primitive"
     );
     assert!(
