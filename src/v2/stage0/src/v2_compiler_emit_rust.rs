@@ -1143,7 +1143,7 @@ pub fn emit_module_full(
             {
                 __result.push(v2_rt::concat(
                     v2_rt::concat(
-                        "use self::".to_string(),
+                        "use ".to_string(),
                         authored_name(scope.type_env.clone(), item.clone()),
                     ),
                     "::*;".to_string(),
@@ -1194,13 +1194,6 @@ pub fn emit_module_full(
         } else {
             raw_filename.clone()
         };
-        let module_inner_attrs = if authored_name(scope.type_env.clone(), m.clone()).as_str()
-            == "std.error_primitives".to_string().as_str()
-        {
-            "\n\n#![allow(non_camel_case_types)]\n\n".to_string()
-        } else {
-            "\n\n".to_string()
-        };
         let content = v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
@@ -1217,7 +1210,7 @@ pub fn emit_module_full(
                                             ),
                                             authored_name(scope.type_env.clone(), m.clone()),
                                         ),
-                                        module_inner_attrs,
+                                        "\n\n".to_string(),
                                     ),
                                     prelude,
                                 ),

@@ -551,8 +551,9 @@ pub fn topological_sort(
                                 }
                                 __found
                             };
-                            if (((m_name.clone().as_str() != "std.types".to_string().as_str())
-                                && (m_name.clone().as_str() != "std.algebra".to_string().as_str())
+                            if ((((m_name.clone().as_str() != "std.types".to_string().as_str())
+                                && (m_name.clone().as_str()
+                                    != "std.algebra".to_string().as_str()))
                                 && (m_name.clone().as_str()
                                     != "std.error_primitives".to_string().as_str()))
                                 && (imports_std_types.clone() == false))
@@ -599,9 +600,9 @@ pub fn topological_sort(
                     }
                     __found
                 };
-                let implicit_std_types_in_degree = if (((has_std_types.clone()
+                let implicit_std_types_in_degree = if ((((has_std_types.clone()
                     && (m_name.clone().as_str() != "std.types".to_string().as_str()))
-                    && (m_name.clone().as_str() != "std.algebra".to_string().as_str())
+                    && (m_name.clone().as_str() != "std.algebra".to_string().as_str()))
                     && (m_name.clone().as_str() != "std.error_primitives".to_string().as_str()))
                     && (imports_std_types.clone() == false))
                 {
