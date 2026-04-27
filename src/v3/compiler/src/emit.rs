@@ -50,7 +50,7 @@ impl<T> VariantPayloadBinding<T> {
     }
 }
 
-use self::python_target::EmitPythonError;
+pub use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,

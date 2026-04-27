@@ -166,7 +166,7 @@ let x = 6 / 2",
     let err =
         emit_python_text(&dag).expect_err("Python emit must reject DivError prelude collision");
     assert!(
-        matches!(err, v3_compiler::emit_python::EmitPythonError::Unsupported(ref message)
+        matches!(err, v3_compiler::emit::EmitPythonError::Unsupported(ref message)
             if message.contains("DivError")),
         "expected explicit DivError collision error, got {err:?}"
     );
@@ -183,7 +183,7 @@ let x = 6 / 2",
     let err =
         emit_python_text(&dag).expect_err("Python emit must reject division helper collision");
     assert!(
-        matches!(err, v3_compiler::emit_python::EmitPythonError::Unsupported(ref message)
+        matches!(err, v3_compiler::emit::EmitPythonError::Unsupported(ref message)
             if message.contains("__v3_idiv")),
         "expected explicit __v3_idiv collision error, got {err:?}"
     );
