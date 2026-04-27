@@ -110,31 +110,7 @@ pub fn callable_signature_effect(p0: &Dag, p1: &DeclarationId) -> StructuralEffe
                 inputs: __a_inputs,
                 output: __a_output,
                 body: __a_body,
-            } => {
-                if output_in_inputs(__a_inputs, __a_output) {
-                    StructuralEffectShape::WriteShaped
-                } else {
-                    match __a_body {
-                        ArrowBody::ExternalRealization(_) => StructuralEffectShape::ReadShaped,
-                        ArrowBody::UserDefined(_) => StructuralEffectShape::ReadShaped,
-                        ArrowBody::NoBody => StructuralEffectShape::UnknownEffect {
-                            reason: String::from(
-                                "callable has no body and no external realization",
-                            ),
-                        },
-                        ArrowBody::Pending => StructuralEffectShape::UnknownEffect {
-                            reason: String::from(
-                                "callable body pending; signature coverage incomplete",
-                            ),
-                        },
-                        ArrowBody::Unparsed(_) => StructuralEffectShape::UnknownEffect {
-                            reason: String::from(
-                                "callable body unparsed; signature coverage incomplete",
-                            ),
-                        },
-                    }
-                }
-            }
+            } => callable_arrow_effect(__a_inputs, __a_output, __a_body),
             TypeConnective::Atom(_) => StructuralEffectShape::UnknownEffect {
                 reason: String::from("transform target is not an arrow declaration"),
             },
@@ -156,16 +132,35 @@ pub fn callable_signature_effect(p0: &Dag, p1: &DeclarationId) -> StructuralEffe
         },
     }
 }
-pub fn output_in_inputs(p0: &[DeclarationId], p1: &DeclarationId) -> bool {
+pub fn callable_arrow_effect(
+    p0: &[DeclarationId],
+    p1: &DeclarationId,
+    p2: &ArrowBody,
+) -> StructuralEffectShape {
     match p0 {
-        [] => false,
+        [] => body_default_effect(p2),
         [__list_head, __list_tail @ ..] => {
             if ((*(__list_head)) == (*(p1))) {
-                true
+                StructuralEffectShape::WriteShaped
             } else {
-                output_in_inputs(__list_tail, p1)
+                callable_arrow_effect(__list_tail, p1, p2)
             }
         }
+    }
+}
+pub fn body_default_effect(p0: &ArrowBody) -> StructuralEffectShape {
+    match p0 {
+        ArrowBody::ExternalRealization(_) => StructuralEffectShape::ReadShaped,
+        ArrowBody::UserDefined(_) => StructuralEffectShape::ReadShaped,
+        ArrowBody::NoBody => StructuralEffectShape::UnknownEffect {
+            reason: String::from("callable has no body and no external realization"),
+        },
+        ArrowBody::Pending => StructuralEffectShape::UnknownEffect {
+            reason: String::from("callable body pending; signature coverage incomplete"),
+        },
+        ArrowBody::Unparsed(_) => StructuralEffectShape::UnknownEffect {
+            reason: String::from("callable body unparsed; signature coverage incomplete"),
+        },
     }
 }
 pub fn branch_effect(p0: &[EffectFact], p1: &[Path]) -> StructuralEffectShape {

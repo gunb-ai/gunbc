@@ -135,16 +135,7 @@ fn callable_signature_effect(d: Dag, id: DeclarationId) -> StructuralEffectShape
     Some(decl) =>
       match decl.connective {
         Arrow(a) =>
-          if output_in_inputs(a.inputs, a.output) then
-            WriteShaped
-          else
-            match a.body {
-              ExternalRealization(_) => ReadShaped
-              UserDefined(_) => ReadShaped
-              NoBody => UnknownEffect { reason: "callable has no body and no external realization" }
-              Pending => UnknownEffect { reason: "callable body pending; signature coverage incomplete" }
-              Unparsed(_) => UnknownEffect { reason: "callable body unparsed; signature coverage incomplete" }
-            }
+          callable_arrow_effect(a.inputs, a.output, a.body)
         Atom(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
         Conj(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
         Disj(_) => UnknownEffect { reason: "transform target is not an arrow declaration" }
@@ -153,14 +144,27 @@ fn callable_signature_effect(d: Dag, id: DeclarationId) -> StructuralEffectShape
       }
   }
 
-fn output_in_inputs(inputs: List<DeclarationId>, output: DeclarationId) -> Bool =
+fn callable_arrow_effect(
+  inputs: List<DeclarationId>,
+  output: DeclarationId,
+  body: ArrowBody
+) -> StructuralEffectShape =
   match inputs {
-    Empty => false
+    Empty => body_default_effect(body)
     Cons(payload) =>
       if payload.head == output then
-        true
+        WriteShaped
       else
-        output_in_inputs(payload.tail, output)
+        callable_arrow_effect(payload.tail, output, body)
+  }
+
+fn body_default_effect(body: ArrowBody) -> StructuralEffectShape =
+  match body {
+    ExternalRealization(_) => ReadShaped
+    UserDefined(_) => ReadShaped
+    NoBody => UnknownEffect { reason: "callable has no body and no external realization" }
+    Pending => UnknownEffect { reason: "callable body pending; signature coverage incomplete" }
+    Unparsed(_) => UnknownEffect { reason: "callable body unparsed; signature coverage incomplete" }
   }
 
 fn branch_effect(acc: List<EffectFact>, paths: List<BranchPath>) -> StructuralEffectShape =
