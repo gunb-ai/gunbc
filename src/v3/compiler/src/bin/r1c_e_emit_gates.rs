@@ -14,8 +14,10 @@
 //! `ExecuteCommand` reads only the exit code — stderr is for human debugging
 //! when a gate flips red.
 //!
-//! Subcommands (one per `.dag` `TestClaim`):
+//! Subcommands (one per `.dag` `TestClaim` in the R1C-E template set):
 //!   - `generic-bounds`  → `check_generic_bounds_survive`
+//!   - `rust-fixtures`  → `check_emit_rust_fixtures_rustc_green`
+//!   - `omni-demo`  → `check_omni_demo_fixtures_green` (requires `go` + `python3`)
 //!
 //! Adding a subcommand: extend the `match` below and the `.dag` template in
 //! lockstep. **Do not** add stdin/stdout capture or recursive `cargo` here —
@@ -28,7 +30,7 @@ use v3_compiler::r1c_e_gates;
 fn usage() -> ! {
     eprintln!(
         "usage: r1c_e_emit_gates <subcommand>\n\
-         subcommands: generic-bounds"
+         subcommands: generic-bounds | rust-fixtures | omni-demo"
     );
     std::process::exit(2);
 }
@@ -42,6 +44,8 @@ fn main() -> ExitCode {
 
     let result = match sub.as_str() {
         "generic-bounds" => r1c_e_gates::check_generic_bounds_survive(),
+        "rust-fixtures" => r1c_e_gates::check_emit_rust_fixtures_rustc_green(),
+        "omni-demo" => r1c_e_gates::check_omni_demo_fixtures_green(),
         _ => usage(),
     };
 
