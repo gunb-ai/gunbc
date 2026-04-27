@@ -478,7 +478,11 @@ fn main() {
     if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("linux") {
         let cargo = env::var("CARGO").unwrap_or_else(|_| "cargo".into());
         let profile = env::var("PROFILE").unwrap_or_default();
-        let cargo_profile = if profile == "release" { "release" } else { "dev" };
+        let cargo_profile = if profile == "release" {
+            "release"
+        } else {
+            "dev"
+        };
         let helper_manifest = repo_root
             .join("src")
             .join("v3")
