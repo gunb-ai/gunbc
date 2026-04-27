@@ -284,6 +284,7 @@ pub mod lens_unused_parameters {
 }
 
 pub mod post_emit_verifier;
+pub mod r1c_e_gates;
 pub mod test_runner;
 pub mod serialize {
     use crate::dag::{Behavior, Dag};
