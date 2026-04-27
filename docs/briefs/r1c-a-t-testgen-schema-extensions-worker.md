@@ -2,6 +2,8 @@
 
 > **R1 Closure Manager dispatch.** Per [`docs/briefs/r1-closure-manager.md`](r1-closure-manager.md) §"Owned deliverables" lane R1C-A. Critical-path enabler — unblocks R1C-D (T-PB census-as-`.dag`). Reports to R1 Closure Manager.
 
+**Closure status:** **COMPLETE on main.** Aggregated receipts live in [`r1-closure-manager.md`](r1-closure-manager.md) (R1C-A row + working-state table): Sub-B **PR #939**; mock-backed gate **`3a18fa80b`** + `r1_mock_backed_invariant_gate.dag`; Sub-A list lowering tied to substrate/list work (e.g. `5bf0ec8d0`). The **Pre-author audit receipt** section below is historical context from brief authoring time.
+
 ## Read first
 
 - **[`docs/briefs/r1-closure-manager.md`](r1-closure-manager.md)** — manager scope + lane structure + dependency edge `R1C-A → R1C-D`.
