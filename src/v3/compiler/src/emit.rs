@@ -147,7 +147,7 @@ pub(crate) fn dag_uses_arithmetic_div(dag: &Dag) -> bool {
                 Behavior::Transform(TransformNode {
                     target: TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
                     ..
-                })
+                }),
             )
         })
 }
