@@ -163,7 +163,7 @@ pub const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
     },
     ReflectedFixture {
         module: &MODULE_RESULT_PORT_IS_PARAM,
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() && bind.emit_participation() == Some(v3_compiler::dag::BindEmitParticipation::UserCallable) => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
+        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if bind.name == \"id\" && bind.emit_participation() == Some(v3_compiler::dag::BindEmitParticipation::UserCallable) => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
         expected_stdout: ReflectedExpected::Exact("1"),
     },
     ReflectedFixture {
