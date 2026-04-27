@@ -965,8 +965,10 @@ data go_list_instantiation: TypeInstantiationRealization = {
   cost: 1
 }
 
-// v3 `type Result<ok, err> = ...` in `std/errors` — Go uses a pointer-or tagged struct.
-// `go_source_filtering` omits `dsl/std/`; `v3intdiv` + this carrier match `struct{ … }` prelude.
+// v3 `type Result<ok, err> = ...` lives in `std.error_primitives`; Go uses this struct carrier.
+// `go_source_filtering` omits `dsl/std/`. M1: int-div prelude `v3intdiv` returns the same concrete
+// `struct{ Ok *int64; Err *DivError }` shape — structural interchange with this template is only
+// guaranteed for that specialization until a richer Go lowering exists.
 data go_result_instantiation: TypeInstantiationRealization = {
   language: go_language
   target: Result
