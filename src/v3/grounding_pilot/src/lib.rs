@@ -675,21 +675,27 @@ mod tests {
                     .find('{')
                     .expect("open brace in variant");
             let mut d = 0i32;
+            let mut end: Option<usize> = None;
             for (k, c) in list_inner[open..].char_indices() {
                 match c {
                     '{' => d += 1,
                     '}' => {
                         d -= 1;
                         if d == 0 {
-                            let end = open + k + 1;
-                            out.push(&list_inner[start..end]);
-                            at = end;
+                            end = Some(open + k + 1);
                             break;
                         }
                     }
                     _ => {}
                 }
             }
+            let end = end.unwrap_or_else(|| {
+                panic!(
+                    "unterminated `{{` block for needle {needle:?} starting at byte {start} in go list slice"
+                )
+            });
+            out.push(&list_inner[start..end]);
+            at = end;
         }
         out
     }
