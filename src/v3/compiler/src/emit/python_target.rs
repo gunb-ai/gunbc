@@ -691,8 +691,7 @@ pub(crate) fn emit_python_with_mode(
     // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip this block.
     if super::dag_uses_arithmetic_div(dag) {
         sections.push(
-            "class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1"
-                .to_string(),
+            "class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string(),
         );
         sections.push(
             "def __v3_idiv(a: int, b: int) -> typing.Union[typing.Tuple[typing.Literal['Ok'], int], typing.Tuple[typing.Literal['Err'], DivError]]:\n    if b == 0:\n        return ('Err', DivError.DivideByZero)\n    if a == -2 ** 63 and b == -1:\n        return ('Err', DivError.Overflow)\n    q, r = divmod(a, b)\n    w = q + (1 if r != 0 and (a < 0) != (b < 0) else 0)\n    return ('Ok', w)".to_string(),

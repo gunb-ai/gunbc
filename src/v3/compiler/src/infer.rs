@@ -4479,8 +4479,8 @@ fn substitute_receiver(
 
 fn declaration_by_name_in_file<'a>(
     dag: &'a Dag,
-    file: &str,
-    name: &str,
+    file: &'a str,
+    name: &'a str,
 ) -> Option<&'a Declaration> {
     dag.declarations()
         .iter()
