@@ -1699,6 +1699,7 @@ fn refinement_targets_equal(dag: &Dag, lhs: &TransformTarget, rhs: &TransformTar
     }
 }
 
+#[derive(Debug, PartialEq)]
 struct ResolvedArrow {
     inputs: Vec<TypeShape>,
     output: TypeShape,
@@ -6418,12 +6419,10 @@ mod bool_logical_operator_arrow_tests {
         let TypeConnective::Instantiation { template, arguments } = &result_shape_decl.connective else {
             panic!("division output must remain an instantiation");
         };
-        let std_result = dag
-            .declaration_by_name_in_file("dsl/std/error_primitives.dag", "Result")
+        let std_result = declaration_by_name_in_file(&dag, ERROR_PRIMITIVES_FILE, "Result")
             .expect("std Result")
             .id;
-        let std_div_error = dag
-            .declaration_by_name_in_file("dsl/std/error_primitives.dag", "DivError")
+        let std_div_error = declaration_by_name_in_file(&dag, ERROR_PRIMITIVES_FILE, "DivError")
             .expect("std DivError")
             .id;
         assert_eq!(*template, std_result);
