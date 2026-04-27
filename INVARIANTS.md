@@ -150,6 +150,13 @@ A downstream stage reads a lower layer not through its declared accessors but by
 - **E-9: External Realization Lives On Arrow.body** — declares the single authority for external semantics
 - **DB-14: Substrate External Primitives Materialize Through Declared Arrow.body Plus Target Bindings** — same single-authority principle for external primitives
 
+### Reflection evidence is not structural proof
+
+`reflect_program_dag_nodes_in_file` in `lens_apply.rs` currently emits a **shallow behavior spine** (`result_port` plus limited tags) and intentionally drops structural fields (`target`, `inputs`, `input`, `paths`, `source`, `init`, `body`, `bound`, etc.). Consumers that rely on this view — in practice `LensOutputEquals` and `AlgebraicLaw` runners in `test_runner.rs` — therefore only gain **regression evidence** from the current reflection path, not structural self-inspection parity with
+`src/v3/std/substrate.dag`.
+
+**Confidence tag for these gates:** treat these paths as `StructuralEvidence::Shallow` until full substrate reflection is landed. PRs using them should state that status explicitly in their acceptance notes and route dissolution via the dedicated lossy-reflection closure row (`ROADMAP.md`), not by claiming by-construction proof.
+
 ---
 
 ## P3: Fail-Closed

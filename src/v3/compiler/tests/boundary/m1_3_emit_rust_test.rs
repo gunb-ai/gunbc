@@ -377,19 +377,13 @@ fn emit_rust_single_int_binding() {
 /// `docs/postmortems/pr-650-emitter-callable-clone-bound.md`.
 #[test]
 fn emit_generic_bounds_survive() {
-    // Body avoids higher-order `f(...)` calls — those are a separate emit
-    // seam; this receipt only pins the **Rust type line** for callable params.
-    let src = "fn twice(f: fn(Int) -> Int) -> Int = 0\n";
-    let out = emit_module(src);
-    let sig = "fn twice(p0: impl Fn(i64) -> i64 + Clone) -> i64";
-    assert!(
-        out.contains(sig),
-        "callable param should carry synthesized + Clone (downstream rustc / stage0 contract); got:\n{out}"
-    );
-    assert!(
-        !out.contains("&impl Fn"),
-        "borrowed callable param type must not be spelled as &impl Fn; got:\n{out}"
-    );
+    // Single source of truth: `r1c_e_gates::check_generic_bounds_survive` is also
+    // the body of the `r1c_e_emit_gates generic-bounds` subcommand invoked by the
+    // matching `.dag` `TestClaim` wrapper (`tests/dag/r1c_e_emit_gates.template.dag`,
+    // R1C-E). Do not duplicate the assertion here.
+    if let Err(detail) = v3_compiler::r1c_e_gates::check_generic_bounds_survive() {
+        panic!("emit_generic_bounds_survive: {detail}");
+    }
 }
 
 /// Codex #676 / INVARIANTS P3: callable param `impl Fn + Clone` does not compose
