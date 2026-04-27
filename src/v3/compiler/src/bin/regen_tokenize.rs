@@ -158,7 +158,11 @@ fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
         "`ascii_scan_order` in `tokenize.dag` must list exactly 4 class names"
     );
     assert!(
-        scan_order.iter().collect::<std::collections::BTreeSet<_>>().len() == scan_order.len(),
+        scan_order
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            == scan_order.len(),
         "`ascii_scan_order` in `tokenize.dag` must not contain duplicates"
     );
 
@@ -202,9 +206,7 @@ fn collect_ascii_scan_order(dag: &Dag) -> Vec<String> {
         .declarations()
         .iter()
         .find(|d| d.name.as_deref() == Some("ascii_scan_order"))
-        .unwrap_or_else(|| {
-            panic!("missing `ascii_scan_order` in `{TOKENIZE_AUTHORITY_FILE}`")
-        });
+        .unwrap_or_else(|| panic!("missing `ascii_scan_order` in `{TOKENIZE_AUTHORITY_FILE}`"));
 
     let char_class_decl = dag
         .declarations()
@@ -212,7 +214,10 @@ fn collect_ascii_scan_order(dag: &Dag) -> Vec<String> {
         .find(|d| d.name.as_deref() == Some("CharClass"))
         .unwrap_or_else(|| panic!("missing `CharClass` in `{TOKENIZE_AUTHORITY_FILE}`"));
 
-    let TypeConnective::Disj { variants: char_class_variants } = &char_class_decl.connective else {
+    let TypeConnective::Disj {
+        variants: char_class_variants,
+    } = &char_class_decl.connective
+    else {
         panic!("`CharClass` should be a disj declaration");
     };
 
@@ -229,7 +234,10 @@ fn collect_ascii_scan_order(dag: &Dag) -> Vec<String> {
         else {
             panic!("`ascii_scan_order` elements must be constructor values");
         };
-        assert!(payload.is_empty(), "`ascii_scan_order` class entries must be nullary constructors");
+        assert!(
+            payload.is_empty(),
+            "`ascii_scan_order` class entries must be nullary constructors"
+        );
         let label = char_class_variants
             .iter()
             .find(|field| field.ty == *constructor)
@@ -243,12 +251,7 @@ fn collect_ascii_scan_order(dag: &Dag) -> Vec<String> {
         out.push(label);
     }
 
-    let expected = [
-        "Whitespace",
-        "Digit",
-        "IdentStart",
-        "IdentContinue",
-    ];
+    let expected = ["Whitespace", "Digit", "IdentStart", "IdentContinue"];
     for class in &expected {
         assert!(
             out.contains(&class.to_string()),
