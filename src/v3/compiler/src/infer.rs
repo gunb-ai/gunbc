@@ -2391,26 +2391,39 @@ fn callable_instantiation_conflict(
 /// pass can restamp a literal port. When the port is still the default `Int`
 /// literal type but the source literal is known to fit a range-backed expected
 /// parameter (via substrate range facts), treat the binding as compatible so
-/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
-/// authoritative in the transform `decide_transform` path.
+/// callable resolution can proceed; out-of-range and malformed range facts still
+/// surface through their typed diagnostics instead of collapsing into callable
+/// overload conflict.
 fn range_compatible_default_int_literal_argument(
     dag: &Dag,
     input_port: PortId,
     expected_param_decl: DeclarationId,
-) -> bool {
+    span: &SourceSpan,
+) -> Result<bool, Diagnostic> {
     let Some(int_ty) = dag.int_shape() else {
-        return false;
+        return Ok(false);
     };
     if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
-        return false;
+        return Ok(false);
     }
     let Some(lit) = literal_int_at(dag, input_port) else {
-        return false;
+        return Ok(false);
     };
-    matches!(
-        int_literal_fits_expected_type(dag, lit, expected_param_decl),
-        Ok(Some(true))
-    )
+    match int_literal_fits_expected_type(dag, lit, expected_param_decl) {
+        Ok(Some(true)) => Ok(true),
+        Ok(Some(false)) => match integer_range_for_decl(dag, expected_param_decl) {
+            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range(
+                lit,
+                int_ty,
+                range,
+                span.clone(),
+            )),
+            IntegerRangeLookup::Malformed(diag) => Err(diag),
+            IntegerRangeLookup::NotRange => Ok(false),
+        },
+        Ok(None) => Ok(false),
+        Err(diag) => Err(diag),
+    }
 }
 
 fn resolve_callable_target(
@@ -2509,11 +2522,20 @@ fn resolve_callable_target(
                 &actual_ctx,
                 &mut arguments,
                 0,
-            ) || range_compatible_default_int_literal_argument(
-                dag,
-                *input_port,
-                expected_input,
             );
+            let binds = if binds {
+                true
+            } else {
+                match range_compatible_default_int_literal_argument(
+                    dag,
+                    *input_port,
+                    expected_input,
+                    span,
+                ) {
+                    Ok(compatible) => compatible,
+                    Err(diag) => return CallableTargetResolution::Fail(diag),
+                }
+            };
             if !binds {
                 return CallableTargetResolution::Fail(callable_instantiation_conflict(
                     dag,
@@ -2584,11 +2606,20 @@ fn resolve_callable_target(
                     &actual_ctx,
                     &mut arguments,
                     0,
-                ) || range_compatible_default_int_literal_argument(
-                    dag,
-                    *input_port,
-                    expected_input.declaration,
                 );
+                let binds = if binds {
+                    true
+                } else {
+                    match range_compatible_default_int_literal_argument(
+                        dag,
+                        *input_port,
+                        expected_input.declaration,
+                        span,
+                    ) {
+                        Ok(compatible) => compatible,
+                        Err(diag) => return CallableTargetResolution::Fail(diag),
+                    }
+                };
                 if !binds {
                     return CallableTargetResolution::Fail(callable_instantiation_conflict(
                         dag,
@@ -4158,9 +4189,8 @@ const WALK_DEPTH_LIMIT: usize = 32;
 /// a missed structural match would mint fresh `DeclarationId`s each
 /// iteration and the fixpoint loop would not terminate.
 fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<TypeShape> {
-    const ERROR_PRIMITIVES_FILE: &str = "dsl/std/error_primitives.dag";
-    let result_template = declaration_by_name_in_file(dag, ERROR_PRIMITIVES_FILE, "Result")?.id;
-    let div_error = declaration_by_name_in_file(dag, ERROR_PRIMITIVES_FILE, "DivError")?.id;
+    let result_template = canonical_result_decl(dag)?.id;
+    let div_error = canonical_div_error_decl(dag)?.id;
     let (t_ok, t_err, span) = {
         let rdecl = dag.declaration(result_template);
         (
@@ -4466,14 +4496,33 @@ fn substitute_receiver(
     }
 }
 
-fn declaration_by_name_in_file<'a>(
-    dag: &'a Dag,
-    file: &'a str,
-    name: &'a str,
-) -> Option<&'a Declaration> {
-    dag.declarations()
+fn canonical_result_decl(dag: &Dag) -> Option<&Declaration> {
+    let mut matches = dag
+        .declarations()
         .iter()
-        .find(|decl| decl.name.as_deref() == Some(name) && decl.span.file == file)
+        .filter(|decl| crate::emit::substrate_result_type_decl_suppressed_for_emit(dag, decl));
+    let result = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(result)
+}
+
+fn canonical_div_error_decl(dag: &Dag) -> Option<&Declaration> {
+    let mut matches = dag.declarations().iter().filter(|decl| {
+        decl.name.as_deref() == Some("DivError")
+            && decl.type_params.is_empty()
+            && matches!(&decl.connective, TypeConnective::Disj { variants } if {
+                variants.len() == 2
+                    && variants.iter().any(|variant| variant.label == "DivideByZero")
+                    && variants.iter().any(|variant| variant.label == "Overflow")
+            })
+    });
+    let div_error = matches.next()?;
+    if matches.next().is_some() {
+        return None;
+    }
+    Some(div_error)
 }
 
 /// Dispatch-time invariant check on an `ExternalRealization` target:
@@ -6413,12 +6462,8 @@ mod bool_logical_operator_arrow_tests {
         else {
             panic!("division output must remain an instantiation");
         };
-        let std_result = declaration_by_name_in_file(&dag, ERROR_PRIMITIVES_FILE, "Result")
-            .expect("std Result")
-            .id;
-        let std_div_error = declaration_by_name_in_file(&dag, ERROR_PRIMITIVES_FILE, "DivError")
-            .expect("std DivError")
-            .id;
+        let std_result = canonical_result_decl(&dag).expect("std Result").id;
+        let std_div_error = canonical_div_error_decl(&dag).expect("std DivError").id;
         assert_eq!(*template, std_result);
         assert_eq!(arguments.len(), 2);
         assert_eq!(arguments[0].value, int);
@@ -6507,11 +6552,11 @@ mod bool_logical_operator_arrow_tests {
         });
 
         let before = dag.declarations().len();
-        let algebra_decl = dag.declaration(algebra);
+        let algebra_decl = dag.declaration(algebra).clone();
         assert_eq!(
             read_algebra_field(
                 &mut dag,
-                algebra_decl,
+                &algebra_decl,
                 arithmetic_field,
                 int,
                 OperatorKind::Arithmetic(ArithmeticOp::Div),
