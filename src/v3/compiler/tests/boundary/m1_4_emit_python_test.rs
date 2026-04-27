@@ -188,9 +188,28 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
 }
 
 #[test]
+fn emit_python_checked_division_roundtrips_ok_and_errors() {
+    assert_eq!(
+        python_stdout("let x = 6 / 2\n", "python_div_ok.v3"),
+        "('Ok', 3)"
+    );
+    assert_eq!(
+        python_stdout("let x = 6 / 0\n", "python_div_zero.v3"),
+        "('Err', <DivError.DivideByZero: 0>)"
+    );
+    assert_eq!(
+        python_stdout(
+            "let x = -9223372036854775808 / -1\n",
+            "python_div_overflow.v3"
+        ),
+        "('Err', <DivError.Overflow: 1>)"
+    );
+}
+
+#[test]
 fn emit_python_omits_div_prelude_for_user_diverror_signature_without_division() {
     let dag = compile_to_dag(
-        "type DivError = Bad | Worse\n\
+        "type DivError = DivideByZero | Overflow\n\
 fn passthrough(x: DivError) -> DivError = x\n",
         "python_user_diverror_signature_no_div.v3",
     )

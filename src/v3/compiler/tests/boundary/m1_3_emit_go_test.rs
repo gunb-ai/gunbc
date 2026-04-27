@@ -404,9 +404,27 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
 }
 
 #[test]
+fn emit_go_checked_division_roundtrips_ok_and_errors_when_go_is_available() {
+    let Some(ok) = go_stdout("let x = 6 / 2\n") else {
+        return;
+    };
+    assert_eq!(ok, "{3}");
+
+    let Some(divide_by_zero) = go_stdout("let x = 6 / 0\n") else {
+        return;
+    };
+    assert_eq!(divide_by_zero, "{0}");
+
+    let Some(overflow) = go_stdout("let x = -9223372036854775808 / -1\n") else {
+        return;
+    };
+    assert_eq!(overflow, "{1}");
+}
+
+#[test]
 fn emit_go_omits_div_prelude_for_user_diverror_signature_without_division() {
     let dag = compile_to_dag(
-        "type DivError = Bad | Worse\n\
+        "type DivError = DivideByZero | Overflow\n\
 fn passthrough(x: DivError) -> DivError = x\n",
         "go_user_diverror_signature_no_div.v3",
     )

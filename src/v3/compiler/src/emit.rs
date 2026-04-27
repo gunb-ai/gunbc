@@ -64,6 +64,8 @@ use crate::variant_payload::{
 };
 use crate::Dag;
 
+const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
+
 /// Result port of a finished `behavior` subgraph — shared by Go and Rust emit
 /// paths for [`port_is_consumed_from`] (including `Behavior::Loop` body walks).
 pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
@@ -183,7 +185,10 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
 }
 
 pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
-    if decl.name.as_deref() != Some("DivError") || !decl.type_params.is_empty() {
+    if decl.span.file != ERROR_PRIMITIVES_AUTHORITY_FILE
+        || decl.name.as_deref() != Some("DivError")
+        || !decl.type_params.is_empty()
+    {
         return false;
     }
     matches!(&decl.connective, TypeConnective::Disj { variants } if {
@@ -1308,13 +1313,13 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }
     if needs_int_div_prelude {
         // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
-        // minimal v3 hooks so `v3intdiv` and `struct{ Ok *T; Err *E }` compile.
+        // minimal v3 hooks so `v3intdiv` and `v3Result[T, E]` compile.
         //
         // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
         // (and friends) emit through the same type-decl path as user code — i.e. std is no
         // longer source-filtered for these carriers.
         sections.push(
-            "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) struct{ Ok *int64; Err *DivError } {\n  if r == 0 { e := DivideByZero; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  if l == -9223372036854775808 && r == -1 { e := Overflow; return struct{ Ok *int64; Err *DivError }{Err: &e} }\n  q := l / r; return struct{ Ok *int64; Err *DivError }{Ok: &q} }\n".to_string(),
+            "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\ntype v3Result[T any, E any] interface{ isV3Result() }\ntype v3Ok[T any, E any] struct{ Value T }\ntype v3Err[T any, E any] struct{ Value E }\nfunc (v3Ok[T, E]) isV3Result() {}\nfunc (v3Err[T, E]) isV3Result() {}\n\nfunc v3intdiv(l, r int64) v3Result[int64, DivError] {\n  if r == 0 { return v3Err[int64, DivError]{Value: DivideByZero} }\n  if l == -9223372036854775808 && r == -1 { return v3Err[int64, DivError]{Value: Overflow} }\n  q := l / r; return v3Ok[int64, DivError]{Value: q} }\n".to_string(),
         );
     }
 

@@ -239,6 +239,16 @@ let x: R = 6 / 2",
 }
 
 #[test]
+fn emit_rust_checked_division_roundtrips_ok_and_errors() {
+    assert_eq!(roundtrip_stdout("let x = 6 / 2\n"), "Ok(3)");
+    assert_eq!(roundtrip_stdout("let x = 6 / 0\n"), "Err(DivideByZero)");
+    assert_eq!(
+        roundtrip_stdout("let x = -9223372036854775808 / -1\n"),
+        "Err(Overflow)"
+    );
+}
+
+#[test]
 fn emit_rust_emits_diverror_prelude_for_explicit_result_without_division() {
     let out = emit_module(
         "import std.error_primitives { DivError, Result }\n\
@@ -269,7 +279,7 @@ let x: Int = 42",
 #[test]
 fn emit_rust_omits_div_prelude_for_user_diverror_signature_without_division() {
     let out = emit_module(
-        "type DivError = Bad | Worse\n\
+        "type DivError = DivideByZero | Overflow\n\
 fn passthrough(x: DivError) -> DivError = x\n",
     );
     assert!(
