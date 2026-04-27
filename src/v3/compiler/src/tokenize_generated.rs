@@ -145,6 +145,36 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             continue;
         }
 
+        if byte_matches(byte, ScannerCharClass::IdentContinue) {
+            let mut end = pos;
+            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::IdentContinue) {
+                end += 1;
+            }
+            let text = &source[start..end];
+            let kind = match text {
+                "data" => TokenKind::KwData,
+                "else" => TokenKind::KwElse,
+                "false" => TokenKind::KwFalse,
+                "fn" => TokenKind::KwFn,
+                "if" => TokenKind::KwIf,
+                "import" => TokenKind::KwImport,
+                "let" => TokenKind::KwLet,
+                "match" => TokenKind::KwMatch,
+                "module" => TokenKind::KwModule,
+                "then" => TokenKind::KwThen,
+                "true" => TokenKind::KwTrue,
+                "type" => TokenKind::KwType,
+                "where" => TokenKind::KwWhere,
+                _ => TokenKind::Ident(text.to_string()),
+            };
+            tokens.push(Token {
+                kind,
+                span: SourceSpan::new(file, start as u32, end as u32),
+            });
+            pos = end;
+            continue;
+        }
+
         // Line comment prefix from `tokenize.dag` (`line_comment_prefix`).
         if bytes.len() >= pos + LINE_COMMENT_PREFIX.len()
             && bytes[pos..pos + LINE_COMMENT_PREFIX.len()].eq(LINE_COMMENT_PREFIX)
