@@ -90,7 +90,9 @@ type GoFloatCarrier
   = GoFloat32BitsCarrier
   | GoFloat64BitsCarrier
 
-
+// Tranche-1 predeclared integer rows use GoTwoComplementWrap only (Go built-in
+// arithmetic). GoSaturating / GoTrap are reserved for non-tranche-1 refinements
+// (e.g. conversion paths, alternate lowering) — not used in this authority slice.
 type GoIntegerOverflow
   = GoTwoComplementWrap
   | GoSaturating
