@@ -221,6 +221,49 @@ pub(crate) fn port_uses_substrate_result_or_div_error(dag: &Dag, port: PortId) -
     decl_uses_substrate_result_or_div_error(dag, ty.declaration, &mut HashSet::new())
 }
 
+fn decl_uses_substrate_div_error(
+    dag: &Dag,
+    declaration: DeclarationId,
+    visited: &mut HashSet<DeclarationId>,
+) -> bool {
+    if !visited.insert(declaration) {
+        return false;
+    }
+    let decl = dag.declaration(declaration);
+    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
+        return true;
+    }
+    match &decl.connective {
+        TypeConnective::Instantiation { arguments, .. } => arguments
+            .iter()
+            .any(|arg| decl_uses_substrate_div_error(dag, arg.value, visited)),
+        TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => children
+            .iter()
+            .any(|field| decl_uses_substrate_div_error(dag, field.ty, visited)),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            decl_uses_substrate_div_error(dag, *next, visited)
+        }
+        TypeConnective::Cardinality(payload) => {
+            decl_uses_substrate_div_error(dag, payload.element(), visited)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            inputs
+                .iter()
+                .any(|input| decl_uses_substrate_div_error(dag, *input, visited))
+                || decl_uses_substrate_div_error(dag, *output, visited)
+        }
+        _ => false,
+    }
+}
+
+fn port_uses_substrate_div_error(dag: &Dag, port: PortId) -> bool {
+    let Some(ty) = dag.port(port).value_type() else {
+        return false;
+    };
+    decl_uses_substrate_div_error(dag, ty.declaration, &mut HashSet::new())
+}
+
 pub(crate) fn dag_needs_div_error_prelude(
     dag: &Dag,
     top_level_binds: &[&BindNode],
@@ -229,10 +272,10 @@ pub(crate) fn dag_needs_div_error_prelude(
     dag_uses_arithmetic_div(dag, top_level_binds, function_decls)
         || top_level_binds
             .iter()
-            .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
+            .any(|bind| port_uses_substrate_div_error(dag, bind.value))
         || function_decls
             .iter()
-            .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
+            .any(|decl| decl_uses_substrate_div_error(dag, decl.id, &mut HashSet::new()))
 }
 
 fn substrate_result_variant_payload_is_value_of(
@@ -1321,6 +1364,8 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         sections.push("import \"fmt\"".to_string());
     }
     let needs_int_div_prelude = dag_needs_div_error_prelude(dag, &top_level_binds, &function_decls);
+    let needs_result_prelude = needs_int_div_prelude
+        || dag_needs_go_result_prelude(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(type_decls.iter(), function_decls.iter(), "v3intdiv"),
@@ -1329,15 +1374,20 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
             "Go checked-division prelude would collide with user-defined `{name}`"
         )));
     }
-    if needs_int_div_prelude {
+    if needs_result_prelude {
         // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
-        // minimal v3 hooks so `v3intdiv` and `v3Result[T, E]` compile.
+        // minimal v3 hooks so `v3Result[T, E]` compiles.
         //
         // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
         // (and friends) emit through the same type-decl path as user code — i.e. std is no
         // longer source-filtered for these carriers.
         sections.push(
-            "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\ntype v3Result[T any, E any] interface{ isV3Result() }\ntype v3Ok[T any, E any] struct{ Value T }\ntype v3Err[T any, E any] struct{ Value E }\nfunc (v3Ok[T, E]) isV3Result() {}\nfunc (v3Err[T, E]) isV3Result() {}\n\nfunc v3intdiv(l, r int64) v3Result[int64, DivError] {\n  if r == 0 { return v3Err[int64, DivError]{Value: DivideByZero} }\n  if l == -9223372036854775808 && r == -1 { return v3Err[int64, DivError]{Value: Overflow} }\n  q := l / r; return v3Ok[int64, DivError]{Value: q} }\n".to_string(),
+            "type v3Result[T any, E any] interface{ isV3Result() }\ntype v3Ok[T any, E any] struct{ Value T }\ntype v3Err[T any, E any] struct{ Value E }\nfunc (v3Ok[T, E]) isV3Result() {}\nfunc (v3Err[T, E]) isV3Result() {}\n".to_string(),
+        );
+    }
+    if needs_int_div_prelude {
+        sections.push(
+            "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) v3Result[int64, DivError] {\n  if r == 0 { return v3Err[int64, DivError]{Value: DivideByZero} }\n  if l == -9223372036854775808 && r == -1 { return v3Err[int64, DivError]{Value: Overflow} }\n  q := l / r; return v3Ok[int64, DivError]{Value: q} }\n".to_string(),
         );
     }
 

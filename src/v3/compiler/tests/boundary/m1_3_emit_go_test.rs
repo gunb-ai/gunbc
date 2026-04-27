@@ -404,6 +404,27 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
 }
 
 #[test]
+fn emit_go_emits_result_carrier_for_non_diverror_result_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { Result }\n\
+fn passthrough(x: Result<Int, String>) -> Result<Int, String> = x\n",
+        "go_explicit_result_string_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        out.contains("type v3Result[T any, E any] interface"),
+        "explicit Result<Int, String> usage needs the generic Go Result carrier; got: {out}"
+    );
+    assert!(
+        !out.contains("type DivError int"),
+        "non-DivError Result usage should not emit the integer division error prelude; got: {out}"
+    );
+}
+
+#[test]
 fn emit_go_checked_division_roundtrips_ok_and_errors_when_go_is_available() {
     let Some(ok) = go_stdout("let x = 6 / 2\n") else {
         return;
