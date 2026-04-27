@@ -63,6 +63,8 @@ mod lane2_stage_2e_parallelism_test;
 mod lane3_stage_3b_db1_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
+#[path = "integration/loop_construction_closure_test.rs"]
+mod loop_construction_closure_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
 #[path = "boundary/m1_3_emit_go_test.rs"]
@@ -87,8 +89,6 @@ mod m1_5_verification_test;
 mod m1_fn_external_body_reconciliation_test;
 #[path = "integration/m1_lens_structural_resolution_test.rs"]
 mod m1_lens_structural_resolution_test;
-#[path = "integration/loop_construction_closure_test.rs"]
-mod loop_construction_closure_test;
 #[path = "integration/m1_substrate_test.rs"]
 mod m1_substrate_test;
 #[path = "boundary/m2_emit_multi_field_struct_variant_test.rs"]
