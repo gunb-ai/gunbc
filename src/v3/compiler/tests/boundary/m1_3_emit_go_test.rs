@@ -414,11 +414,20 @@ fn emit_go_checked_division_roundtrips_ok_and_errors_when_go_is_available() {
         return;
     };
     assert_eq!(divide_by_zero, "{0}");
+}
 
-    let Some(overflow) = go_stdout("let x = -9223372036854775808 / -1\n") else {
-        return;
-    };
-    assert_eq!(overflow, "{1}");
+#[test]
+fn emit_go_checked_division_prelude_maps_overflow() {
+    let dag = compile_to_dag("let x = 6 / 2\n", "go_div_overflow_prelude.v3").expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert_eq!(
+        out.matches("return v3Err[int64, DivError]{Value: Overflow}")
+            .count(),
+        1,
+        "Go checked-division prelude must map min-int / -1 to Overflow; got: {out}"
+    );
 }
 
 #[test]
