@@ -3091,9 +3091,9 @@ fn walk_to_conj_decl_with_subst(
     match walk_to_conj_decl_with_subst_or_opacity(dag, start, subst, false) {
         ConjWalkResult::Conj(id) => Some(id),
         ConjWalkResult::NoConj => None,
-        ConjWalkResult::NominalOpaque(_) => unreachable!(
-            "opacity check is disabled for ordinary Conj walks"
-        ),
+        ConjWalkResult::NominalOpaque(_) => {
+            unreachable!("opacity check is disabled for ordinary Conj walks")
+        }
     }
 }
 
