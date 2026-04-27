@@ -3249,42 +3249,45 @@ mod execute_command_timebound_tests {
     fn unshare_path_actually_engages_user_runs_as_pid_1_in_new_namespace() {
         use super::evaluate_execute_command_host_outcome;
         use super::ExecuteCommandHostOutcome;
-        // Skip when we cannot even spawn unshare(1) (restricted CI hosts).
-        if std::process::Command::new("unshare")
-            .arg("--version")
+        // Probe: can THIS host create a user+PID namespace via the same `unshare` flags
+        // we use? If not (restricted runner / sandbox), the runner is *expected* to fall
+        // back to direct and the user sh will not be PID 1. Skip the assertion in that
+        // case — the test only asserts engagement when the host actually permits it.
+        let probe = std::process::Command::new("unshare")
+            .args([
+                "-c",
+                "-f",
+                "-p",
+                "--",
+                "sh",
+                "-c",
+                "[ \"$$\" = \"1\" ]",
+            ])
+            .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| !s.success())
-            .unwrap_or(true)
-        {
-            eprintln!("skip: unshare(1) not runnable on this host");
+            .status();
+        let probe_ok = matches!(probe, Ok(s) if s.success());
+        if !probe_ok {
+            eprintln!("skip: unshare(1) -c -f -p PID-namespace not permitted on this host");
             return;
         }
-        // If the namespace setup is permitted on this host, $$ must be 1 inside the
-        // unshare wrapper. If we silently fell back to direct, sh would have a normal PID
-        // and exit 1.
+        // Probe succeeded → unshare PID-namespace works on this host. Our runner MUST
+        // engage it, so the inner sh sees $$ == 1 and exits 0. A silent bypass (e.g. a
+        // misplaced FD_CLOEXEC closing the sentinel pipe before the bootstrap runs) would
+        // route us through the direct fallback, sh would have a normal PID, exit 1, and
+        // we'd see `Mismatch { expected: 0, actual: 1 }` here.
         let r = evaluate_execute_command_host_outcome(
             "sh",
             &[String::from("-c"), String::from("[ \"$$\" = \"1\" ]")],
             0,
             Duration::from_secs(5),
         );
-        match r {
-            ExecuteCommandHostOutcome::Matched => {
-                // PID-namespace engaged and the inner sh saw $$ == 1.
-            }
-            ExecuteCommandHostOutcome::SetupFailed { .. }
-            | ExecuteCommandHostOutcome::SpawnFailed { .. } => {
-                // Restricted CI: namespace setup or unshare spawn was blocked. Acceptable —
-                // this test only asserts that *when* the unshare path is available we
-                // actually engage it, not direct-fallback silently.
-                eprintln!("skip: unshare path unavailable on this host: {r:?}");
-            }
-            other => panic!(
-                "unshare path appears silently bypassed: expected Matched (PID 1 in new ns) or SetupFailed/SpawnFailed, got {other:?}"
-            ),
-        }
+        assert_eq!(
+            r,
+            ExecuteCommandHostOutcome::Matched,
+            "unshare path appears silently bypassed (probe says unshare PID-namespace IS permitted on this host); expected Matched ($$ == 1 inside ns), got {r:?}"
+        );
     }
 
     /// Linux receipt: a `command` containing `/` (absolute path) reaches `execvp` with the
