@@ -11133,6 +11133,7 @@ pub fn emit_operation_method(
             service_item,
             op_node.clone(),
             &env.source_indices.clone(),
+            shared_types.clone(),
         );
         let mock_props = Rc::new({
             let mut __result = Vec::new();
