@@ -75,6 +75,13 @@ fn rustc_deps_dir() -> PathBuf {
     }
 }
 
+/// Resolves `lib{crate}-*.rlib` in the deps directory for the running executable.
+///
+/// Picks the file with the newest `modified()` time; on equal mtimes, uses
+/// [`Path`] order so the choice is deterministic (avoids flake from `read_dir`
+/// order). **Assumes** a single Cargo build is writing this `target` tree —
+/// concurrent `cargo` invocations racing the same `deps/` dir are unsupported
+/// and may select the wrong artifact.
 fn find_current_rlib(crate_name: &str) -> PathBuf {
     let prefix = format!("lib{crate_name}-");
     let deps = rustc_deps_dir();
@@ -90,12 +97,15 @@ fn find_current_rlib(crate_name: &str) -> PathBuf {
             }
         })
         .collect();
-    matches.sort_by_key(|path| {
-        std::fs::metadata(path)
-            .and_then(|meta| meta.modified())
-            .ok()
+    fn mtime(path: &Path) -> Option<std::time::SystemTime> {
+        std::fs::metadata(path).and_then(|m| m.modified()).ok()
+    }
+    matches.sort_by(|a, b| {
+        mtime(a)
+            .cmp(&mtime(b))
+            .then_with(|| a.as_os_str().cmp(b.as_os_str()))
     });
-    matches.into_iter().last().unwrap_or_else(|| {
+    matches.pop().unwrap_or_else(|| {
         panic!(
             "no `{prefix}*.rlib` in {} (build `v3-compiler` for this target first)",
             deps.display()
