@@ -2,14 +2,9 @@
 //!
 //! Scanner controls and tokenizer-local punctuation come from the lowered
 //! tokenizer Dag, while token types are imported from `src/v3/std/tokenize.dag`.
-//! Dedicated keywords and shared operators are derived from the shared syntax
-//! authority text at `dsl/extdeps/languages/dag/syntax.dag`. The shared file's
-//! `dag_keyword_set` / `dag_operators` data bodies still lower as `Unparsed`,
-//! so this driver reads those two sections directly from source text rather
-//! than inventing duplicate authored rows in `tokenize.dag`.
-//! Named dissolution trigger: once those two shared syntax bodies lower as
-//! `ValueBody::Structural`, this raw-source scaffold must be deleted and the
-//! derivation must read the lowered Dag directly.
+//! Dedicated keywords are derived from the lowered shared syntax authority at
+//! `dsl/extdeps/languages/dag/syntax.dag`. Shared operators still use the
+//! bounded raw-source bridge until `dag_operators` lowers structurally.
 
 use std::collections::BTreeSet;
 use std::io::Write;
@@ -51,8 +46,9 @@ fn main() {
     let source = std::fs::read_to_string(&dag_path).expect("read tokenize.dag");
     let dag = compile_authority_dag(&source, TOKENIZE_AUTHORITY_FILE);
     let shared_syntax_source = read_shared_syntax_source(&manifest_dir);
-    assert_shared_syntax_raw_source_scaffold_still_required(&shared_syntax_source);
-    let shared_syntax = SharedSyntaxAuthority::parse(&shared_syntax_source);
+    let shared_syntax_dag = compile_shared_syntax_dag(&shared_syntax_source);
+    let shared_syntax =
+        SharedSyntaxAuthority::from_authority(&shared_syntax_dag, &shared_syntax_source);
     let rust = generate(&dag, &shared_syntax);
     let combined = format!("{HEADER}{rust}");
 
@@ -105,6 +101,14 @@ fn read_shared_syntax_source(manifest_dir: &std::path::Path) -> String {
             syntax_path.display()
         )
     })
+}
+
+fn compile_shared_syntax_dag(source: &str) -> Dag {
+    match compile_to_dag(&source, SHARED_SYNTAX_FILE) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => dag,
+        Err(other) => panic!("compile {SHARED_SYNTAX_FILE}: {other:?}"),
+    }
 }
 
 fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
@@ -258,27 +262,6 @@ fn collect_ascii_scan_order(dag: &Dag) -> Vec<String> {
     }
 
     out
-}
-
-fn assert_shared_syntax_raw_source_scaffold_still_required(shared_syntax_source: &str) {
-    let lowered = match compile_to_dag(shared_syntax_source, SHARED_SYNTAX_FILE) {
-        Ok(dag) => dag,
-        Err(CompileError::Semantic(dag)) => dag,
-        Err(other) => panic!("compile {SHARED_SYNTAX_FILE}: {other:?}"),
-    };
-
-    for name in ["dag_keyword_set", "dag_operators"] {
-        let decl = lowered
-            .declaration_by_name(name)
-            .unwrap_or_else(|| panic!("missing `{name}` in `{SHARED_SYNTAX_FILE}`"));
-        if !matches!(decl.value_body, Some(ValueBody::Unparsed(_))) {
-            panic!(
-                "`{SHARED_SYNTAX_FILE}` data `{name}` no longer lowers as `ValueBody::Unparsed`; \
-                 SG-1a raw-source scaffold must dissolve now. Delete the text extractor in \
-                 `regen_tokenize` and derive from the lowered Dag directly."
-            );
-        }
-    }
 }
 
 fn string_data_named(dag: &Dag, expected_name: &str) -> String {
@@ -549,10 +532,10 @@ fn keyword_spelling_for_token_kind(kind: &str) -> String {
         .to_ascii_lowercase()
 }
 
-// SG-1a scaffold boundary: shared syntax still lowers through raw-source reads,
+// SG-1a operator bridge: shared operators still lower through raw-source reads,
 // so every `dag_operators` symbol must be classified explicitly here as either
 // tokenizer punctuation or parser-only debt. Unknown symbols panic so upstream
-// authority edits cannot silently disappear through the bridge.
+// authority edits cannot silently disappear.
 enum SharedOperatorTokenizerBoundary {
     Tokenized { kind: &'static str },
     ParserOnlyDebt { reason: &'static str },
@@ -596,20 +579,31 @@ struct SharedSyntaxAuthority {
 }
 
 impl SharedSyntaxAuthority {
-    fn parse(source: &str) -> Self {
+    fn from_authority(dag: &Dag, source: &str) -> Self {
+        let keywords = match data_body_named(dag, "dag_keyword_set") {
+            ValueBody::Map(entries) => entries.iter().map(|(key, _)| key.clone()).collect(),
+            other => panic!("dag_keyword_set: expected ValueBody::Map, got {other:?}"),
+        };
+        let operators = parse_named_string_fields(
+            extract_balanced_section(source, "data dag_operators", '[', ']'),
+            "symbol",
+        );
         Self {
-            keywords: parse_map_string_keys(extract_balanced_section(
-                source,
-                "data dag_keyword_set",
-                '{',
-                '}',
-            )),
-            operators: parse_named_string_fields(
-                extract_balanced_section(source, "data dag_operators", '[', ']'),
-                "symbol",
-            ),
+            keywords,
+            operators,
         }
     }
+}
+
+fn data_body_named<'a>(dag: &'a Dag, expected_name: &str) -> &'a ValueBody {
+    let decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some(expected_name))
+        .unwrap_or_else(|| panic!("missing `{expected_name}` data in `{SHARED_SYNTAX_FILE}`"));
+    decl.value_body
+        .as_ref()
+        .unwrap_or_else(|| panic!("`{expected_name}` has no lowered value body"))
 }
 
 fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close: char) -> &'a str {
@@ -638,10 +632,6 @@ fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close
     );
 }
 
-fn parse_map_string_keys(section: &str) -> Vec<String> {
-    parse_all_string_literals(section)
-}
-
 fn parse_named_string_fields(section: &str, field_name: &str) -> Vec<String> {
     let needle = format!("{field_name}:");
     let mut out = Vec::new();
@@ -654,17 +644,6 @@ fn parse_named_string_fields(section: &str, field_name: &str) -> Vec<String> {
         let (value, consumed) = parse_string_literal(&after_field[quote_idx..]);
         out.push(value);
         rest = &after_field[quote_idx + consumed..];
-    }
-    out
-}
-
-fn parse_all_string_literals(section: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut rest = section;
-    while let Some(idx) = rest.find('"') {
-        let (value, consumed) = parse_string_literal(&rest[idx..]);
-        out.push(value);
-        rest = &rest[idx + consumed..];
     }
     out
 }
