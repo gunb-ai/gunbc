@@ -84,6 +84,56 @@ pub fn infer(dag: &mut Dag) {
                                 changed = true;
                                 continue;
                             }
+                            // `lower` can pre-seed a `let`/binding value port to a narrow
+                            // integer annotation before `decide(Behavior::Value)` proposes the
+                            // default `Int` shape for the literal. Without this guard the main
+                            // loop would spuriously `TypeMismatch` (annotated `UInt8` vs default
+                            // `Int`); we reconcile here so in-range literals keep the
+                            // annotation and out-of-range literals get `MagnitudeOutOfRange`.
+                            if let (Some(literal), Some(default_int)) =
+                                (literal_int_at(dag, port), dag.int_shape())
+                            {
+                                if type_shapes_equivalent(dag, &ty, &default_int) {
+                                    match int_literal_fits_expected_type(
+                                        dag,
+                                        literal,
+                                        existing.declaration,
+                                    ) {
+                                        Ok(Some(true)) => {
+                                            continue;
+                                        }
+                                        Ok(Some(false)) => {
+                                            if let IntegerRangeLookup::Found(range) =
+                                                integer_range_for_decl(dag, existing.declaration)
+                                            {
+                                                dag.mark_unresolved(
+                                                    port,
+                                                    magnitude_out_of_range(
+                                                        literal,
+                                                        existing,
+                                                        range,
+                                                        node_span_for_port(dag, port)
+                                                            .unwrap_or_else(synthetic_span),
+                                                    ),
+                                                );
+                                                changed = true;
+                                                continue;
+                                            }
+                                        }
+                                        Ok(None) => {}
+                                        Err(diag) => {
+                                            if !matches!(
+                                                dag.port(port).state(),
+                                                PortState::Unresolved
+                                            ) {
+                                                dag.mark_unresolved(port, diag);
+                                                changed = true;
+                                            }
+                                            continue;
+                                        }
+                                    }
+                                }
+                            }
                             let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                             let fixes = witness_correction_for_decl(
                                 dag,

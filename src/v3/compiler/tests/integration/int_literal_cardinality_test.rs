@@ -63,6 +63,23 @@ fn unconstrained_int_literal_still_defaults_to_int64() {
     );
 }
 
+/// Regression: lowering pre-seeds the value port to a narrow int annotation, while
+/// `decide(Behavior::Value)` still stamps the default `Int` shape. Inference must
+/// reconcile (in-range) or `MagnitudeOutOfRange` (OOB) — not a `TypeMismatch`.
+#[test]
+fn let_annotated_uint8_in_range_literal_narrows_against_preseed() {
+    let dag = compile_to_dag("let x: UInt8 = 5", "let_u8_in_range.v3")
+        .expect("in-range annotated u8 `let` must not spuriously report Int vs narrow mismatch");
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+}
+
+#[test]
+fn data_annotated_uint8_in_range_literal_narrows_against_preseed() {
+    let dag = compile_to_dag("data d: UInt8 = 5", "data_u8_in_range.v3")
+        .expect("in-range annotated u8 `data` must not spuriously report Int vs narrow mismatch");
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+}
+
 #[test]
 fn uint64_upper_half_literals_are_tracked_carrier_limitation() {
     let err = compile_to_dag(
