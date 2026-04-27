@@ -134,11 +134,11 @@ fn callable_signature_effect(d: Dag, id: DeclarationId) -> StructuralEffectShape
     None => UnknownEffect { reason: "callable declaration missing from substrate" }
     Some(decl) =>
       match decl.connective {
-        Arrow { inputs: inputs, output: output, body: body } =>
-          if output_in_inputs(inputs, output) then
+        Arrow(a) =>
+          if output_in_inputs(a.inputs, a.output) then
             WriteShaped
           else
-            match body {
+            match a.body {
               ExternalRealization(_) => ReadShaped
               UserDefined(_) => ReadShaped
               NoBody => UnknownEffect { reason: "callable has no body and no external realization" }
@@ -215,32 +215,32 @@ fn compute_coverage_gaps_from_facts(d: Dag, facts: List<EffectFact>) -> List<Cov
     match behavior {
       Transform(t) =>
         match transform_effect(d, t) {
-          UnknownEffect { reason: reason } =>
-            cons({ node: t.id, reason: reason }, acc)
+          UnknownEffect(u) =>
+            cons({ node: t.id, reason: u.reason }, acc)
           NoEffect => acc
           ReadShaped => acc
           WriteShaped => acc
         }
       Branch(br) =>
         match branch_effect(facts, br.paths) {
-          UnknownEffect { reason: reason } =>
-            cons({ node: br.id, reason: reason }, acc)
+          UnknownEffect(u) =>
+            cons({ node: br.id, reason: u.reason }, acc)
           NoEffect => acc
           ReadShaped => acc
           WriteShaped => acc
         }
       Loop(l) =>
         match loop_effect(d, facts, l.body) {
-          UnknownEffect { reason: reason } =>
-            cons({ node: l.id, reason: reason }, acc)
+          UnknownEffect(u) =>
+            cons({ node: l.id, reason: u.reason }, acc)
           NoEffect => acc
           ReadShaped => acc
           WriteShaped => acc
         }
       Bind(bind) =>
         match effect_at(facts, bind.result_port) {
-          UnknownEffect { reason: reason } =>
-            cons({ node: bind.id, reason: reason }, acc)
+          UnknownEffect(u) =>
+            cons({ node: bind.id, reason: u.reason }, acc)
           NoEffect => acc
           ReadShaped => acc
           WriteShaped => acc
