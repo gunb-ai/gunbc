@@ -3390,15 +3390,7 @@ mod execute_command_timebound_tests {
         use super::evaluate_execute_command_host_outcome;
         use super::ExecuteCommandHostOutcome;
         let probe = std::process::Command::new("unshare")
-            .args([
-                "-c",
-                "-f",
-                "-p",
-                "--",
-                "sh",
-                "-c",
-                "[ \"$$\" = \"1\" ]",
-            ])
+            .args(["-c", "-f", "-p", "--", "sh", "-c", "[ \"$$\" = \"1\" ]"])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
