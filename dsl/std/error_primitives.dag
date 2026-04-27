@@ -5,10 +5,14 @@
 
 module std.error_primitives
 
-// Algebraic Result sum for fallible std operations (e.g. `OrderedRing.div` totality).
+// 🟡 STRUCTURAL-CARRIER: algebraic Result sum for fallible std operations
+// (e.g. `OrderedRing.div` totality). It is substrate-owned until target
+// realizations can consume this declaration directly instead of filtering it
+// from emitted std surfaces and reintroducing per-target carriers.
 type Result<ok, err> = Ok { value: ok } | Err { value: err }
 
-// Signed integer division (`Int / Int`): two structurally distinct failure modes
-// (C-8): zero divisor vs MIN / -1 signed overflow. Used as `Result<T, DivError>`
-// error half on `OrderedRing.div`.
+// 🟡 STRUCTURAL-CARRIER: signed integer division (`Int / Int`) failure modes
+// (C-8): zero divisor vs MIN / -1 signed overflow. The target preludes mirror
+// this declaration until `std.error_primitives` is emitted through the normal
+// filtered-type path.
 type DivError = DivideByZero | Overflow
