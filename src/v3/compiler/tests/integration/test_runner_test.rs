@@ -368,13 +368,21 @@ data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
     let ClaimResult::Fail(msg) = result else {
         panic!("expected Fail, got {result:?}");
     };
+    // After the typed-outcome refactor (PR #1049 / Worker 4), the only
+    // production-emittable phrasings for missing-binary on this seam are:
+    //   * `SpawnFailed { wrapper: None }`         → "ExecuteCommand spawn error: ..."
+    //   * `SpawnFailed { wrapper: Some(_) }`      → "wrapper failed to spawn"
+    //   * `SpawnFailed` from bootstrap-probe miss → "not executable"
+    //   * `SetupFailed { NamespaceSetupAndDirectSpawnFailed }`
+    //                                             → "namespace setup failed"
+    //   * `Mismatch`                              → "exit code mismatch"
+    // The old "failed to start" / "post-start fallback" phrasings from the deleted
+    // empty-stderr-relaunch + NonzeroHostConfirm paths are gone.
     assert!(
         msg.contains("spawn error")
             || msg.contains("exit code mismatch")
             || msg.contains("not executable")
             || msg.contains("namespace setup failed")
-            || (msg.contains("unshare(1)") && msg.contains("failed to start"))
-            || (msg.contains("unshare(1)") && msg.contains("post-start fallback"))
             || (msg.contains("unshare(1)") && msg.contains("wrapper failed to spawn")),
         "expected missing-binary or unshare triage; got: {msg}"
     );
