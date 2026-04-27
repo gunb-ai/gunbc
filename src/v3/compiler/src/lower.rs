@@ -28,8 +28,9 @@ use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
     Declaration, DeclarationId, Field, IntraClusterCall, LiteralBits, LoopBound, LoopNode,
-    MemberDescent, NodeId, NonEmptyList, NonSingletonList, Path, PayloadBinding, PhantomParameter,
-    PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path, PayloadBinding,
+    PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -1953,10 +1954,11 @@ fn lower_item(
         SurfaceItem::TypeAlias {
             name,
             type_params,
+            nominal_opaque,
             target,
             ..
         } => {
-            lower_type_alias(dag, symbols, name, type_params, target);
+            lower_type_alias(dag, symbols, name, type_params, *nominal_opaque, target);
             scope
         }
     }
@@ -2236,12 +2238,18 @@ fn lower_type_alias(
     symbols: &HashMap<String, DeclarationId>,
     name: &str,
     _type_params: &[String],
+    nominal_opaque: bool,
     target: &SurfaceType,
 ) {
     let decl_id = symbols[name];
     let local = local_scope_from_parent(dag, decl_id);
     let connective = type_to_connective(target, symbols, &local, dag);
     dag.declaration_mut(decl_id).connective = connective;
+    if nominal_opaque {
+        dag.declaration_mut(decl_id).nominal_opacity = Some(NominalOpacity {
+            permitted_accessors: Vec::new(),
+        });
+    }
 }
 
 /// Lower a `SurfaceType` to a fresh DeclarationId. Used for field types,
@@ -7306,6 +7314,7 @@ mod tests {
             items: vec![SurfaceItem::TypeAlias {
                 name: "Dimension".to_string(),
                 type_params: vec!["Unit".to_string(), "Carrier".to_string()],
+                nominal_opaque: false,
                 target: surface_named_type("Carrier"),
                 refinement: None,
                 span: SourceSpan::new(file, 0, 1),
