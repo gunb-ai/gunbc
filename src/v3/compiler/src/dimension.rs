@@ -74,8 +74,6 @@ pub fn behavior_spine_in_node_order(d: &Dag) -> &[Behavior] {
 /// the `produced_by` target of its own result port).
 fn workflow_reachable_behavior_ids(d: &Dag, workflow_root: NodeId) -> HashSet<NodeId> {
     let mut visited_nodes = HashSet::new();
-    visited_nodes.insert(workflow_root);
-
     let mut visited_ports: HashSet<PortId> = HashSet::new();
     let mut frontier: Vec<PortId> = Vec::new();
 
@@ -92,6 +90,13 @@ fn workflow_reachable_behavior_ids(d: &Dag, workflow_root: NodeId) -> HashSet<No
         expand_behavior_backward(d, producer, &mut frontier, &mut visited_nodes);
     }
 
+    // Always include the workflow root itself for dimension witnesses (e.g. a
+    // `Bind` is never the `produced_by` of its own `value` port). Do **not**
+    // seed `workflow_root` into `visited_nodes` before the walk: when the root
+    // is a `Transform`, its result port's producer is that same node — an early
+    // insert would make `expand_behavior_backward` return without enqueueing the
+    // transform's inputs, shrinking the slice to `{root}` only.
+    visited_nodes.insert(workflow_root);
     visited_nodes
 }
 
@@ -263,6 +268,33 @@ mod fail_closed_tests {
                 .iter()
                 .all(|w| !matches!(w, Witness::Inhabits(SymbolicCost::UnknownCost { .. }))),
             "dimension witnesses must not fabricate UnknownCost carriers"
+        );
+    }
+
+    #[test]
+    fn transform_workflow_root_still_backward_reaches_operand_ports() {
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("transform_root_reach_test", 0, 0);
+        let lhs = dag.push_value(LiteralBits::Int(1), span.clone());
+        let rhs = dag.push_value(LiteralBits::Int(2), span.clone());
+        let add_out = dag.push_transform(
+            TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+            vec![lhs, rhs],
+            span,
+        );
+        let transform_root = dag
+            .port(add_out)
+            .produced_by
+            .expect("transform output port wired to its node");
+
+        let report = analyze_symbolic_cost_dimension(&dag, transform_root);
+        let DimensionReport::DimensionOk { witnesses, .. } = report else {
+            panic!("expected DimensionOk for well-wired Int add, got {report:?}");
+        };
+        assert!(
+            witnesses.len() >= 3,
+            "expected transform + two literal witnesses, got {}",
+            witnesses.len()
         );
     }
 }
