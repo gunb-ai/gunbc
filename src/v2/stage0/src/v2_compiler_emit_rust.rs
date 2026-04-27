@@ -284,6 +284,34 @@ pub fn resolve_wire_serde_tag(
     }
 }
 
+pub fn resolve_wire_serde_tag_for_coproduct(
+    wire_contract_item: Option<Rc<Node>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match wire_contract_item {
+        None => rust_serde_tag_attr(),
+        Some(wc) => {
+            if is_data_def_item(&wc) {
+                match wc.body.clone() {
+                    None => rust_serde_tag_attr(),
+                    Some(init) => match init.inferred.clone() {
+                        None => rust_serde_tag_attr(),
+                        Some(inf) => match (*inf.clone()).clone() {
+                            InferredNode::Resolved { node, .. } => {
+                                resolve_wire_serde_tag(node.clone(), &source_indices)
+                            }
+                            InferredNode::CompilerError { .. } => rust_serde_tag_attr(),
+                            InferredNode::TypeVariable { .. } => rust_serde_tag_attr(),
+                        },
+                    },
+                }
+            } else {
+                resolve_wire_serde_tag(wc.clone(), &source_indices)
+            }
+        }
+    }
+}
+
 pub fn rust_serde_rename_template_text() -> String {
     match serialization_for_target(RenderTarget::Rust)
         .rename_attribute_template
@@ -1904,10 +1932,10 @@ pub fn emit_type_def_from_connective(
             )
         } else {
             {
-                let serde_enum_tag = match wire_contract_item {
-                    Some(wc) => resolve_wire_serde_tag(wc.clone(), &env.source_indices.clone()),
-                    None => rust_serde_tag_attr(),
-                };
+                let serde_enum_tag = resolve_wire_serde_tag_for_coproduct(
+                    wire_contract_item,
+                    env.source_indices.clone(),
+                );
                 emit_enum_from_children(
                     &item_text,
                     &type_params,
