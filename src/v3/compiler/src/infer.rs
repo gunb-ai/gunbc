@@ -4477,11 +4477,11 @@ fn substitute_receiver(
     }
 }
 
-fn declaration_by_name_in_file(
-    dag: &Dag,
+fn declaration_by_name_in_file<'a>(
+    dag: &'a Dag,
     file: &str,
     name: &str,
-) -> Option<&Declaration> {
+) -> Option<&'a Declaration> {
     dag.declarations()
         .iter()
         .find(|decl| decl.name.as_deref() == Some(name) && decl.span.file == file)

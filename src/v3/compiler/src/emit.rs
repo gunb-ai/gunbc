@@ -139,16 +139,17 @@ fn substrate_result_variant_payload_is_value_of(
 }
 
 pub(crate) fn dag_uses_arithmetic_div(dag: &Dag) -> bool {
-    dag.nodes().iter().any(|behavior| {
-        matches!(
-            behavior,
-            Behavior::Transform(TransformNode {
-                target:
-                    TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
-                ..
-            })
-        )
-    })
+    dag.nodes()
+        .iter()
+        .any(|behavior| {
+            matches!(
+                behavior,
+                Behavior::Transform(TransformNode {
+                    target: TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                    ..
+                })
+            )
+        })
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
