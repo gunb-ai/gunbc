@@ -231,11 +231,13 @@ fn serialize_dag_embeds_valid_python_emit_participation_literals() {
 
 Run on a checkout of `main` (or this branch) with Rust installed:
 
+For `v3-compiler`, only **`tests/integration.rs`** and **`tests/determinism_test.rs`** at the package root become `--test integration` and `--test determinism_test`. The **`tests/boundary/`** directory is taxonomy only: those suites are **`mod`uled into** `tests/integration.rs` (see `#[path = "boundary/m1_4_emit_python_test.rs"] mod m1_4_emit_python_test`), so there is **no** `--test boundary` binary.
+
 ```bash
 cargo test -p v3-compiler --test integration int_literal_cardinality_test
 cargo test -p v3-compiler --test integration thesis_validation_test::t1_4_type_mismatch_produces_a_typemismatch_diagnostic
 cargo test -p v3-compiler --test integration substrate_declares_expected_reflection_surface
-cargo test -p v3-compiler --test boundary m1_4_emit_python_test::serialize_dag_embeds_valid_python_emit_participation_literals
+cargo test -p v3-compiler --test integration m1_4_emit_python_test::serialize_dag_embeds_valid_python_emit_participation_literals
 ```
 
 Broader confidence:
