@@ -25,7 +25,7 @@ src/v3/std/algebra.dag	39	291807	4d45a732a553142a
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	0d38639c1f631609
 src/v3/std/computation_model.dag	12	17291	30cd3a0f7cc08eae
-src/v3/std/diagnostics.dag	6	7583	976d338d4e08b1a3
+src/v3/std/diagnostics.dag	6	7982	6dc35615cc265b02
 src/v3/std/dimensions.dag	21	36211	8632c598dcf35274
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	32	62082	79a40df329c1a24b
