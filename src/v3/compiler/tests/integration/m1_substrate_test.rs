@@ -485,6 +485,9 @@ data test_local_item: LocalMeta = { target_name: \"Int\", cost: 1 }
         v3_compiler::dag::ValueBody::List(_) => {
             panic!("expected Structural value_body, got List — record-shape expected")
         }
+        v3_compiler::dag::ValueBody::Map(_) => {
+            panic!("expected Structural value_body, got Map — record-shape expected")
+        }
     };
     // Fields are emitted in the type's declared order. PR-B
     // unwind: each field value is a `FieldValue::Literal` (since
@@ -673,6 +676,9 @@ fn m1_3_prb_rust_dag_bootstrap_loads_structurally() {
         v3_compiler::dag::ValueBody::List(_) => {
             panic!("rust_int_add's value_body must be Structural, not List")
         }
+        v3_compiler::dag::ValueBody::Map(_) => {
+            panic!("rust_int_add's value_body must be Structural, not Map")
+        }
     };
     // Fields appear in OperatorRealization's declared order:
     // language, target, op, carrier, cost.
@@ -857,6 +863,10 @@ fn m17_r9_data_item_has_unparsed_value_body_scaffold() {
         Some(v3_compiler::dag::ValueBody::List(_)) => panic!(
             "`{{ 42 }}` has leading `{{` and so must take the brace-skip path, \
              not the list-expression path; landed as List unexpectedly"
+        ),
+        Some(v3_compiler::dag::ValueBody::Map(_)) => panic!(
+            "`{{ 42 }}` has leading `{{` and so must take the brace-skip path, \
+             not the map-expression path; landed as Map unexpectedly"
         ),
         None => panic!(
             "data item must have value_body = Some(Unparsed), got None — \

@@ -306,6 +306,9 @@ fn render_value_body(value_body: &ValueBody) -> String {
             let rendered: Vec<String> = values.iter().map(render_field_value).collect();
             format!("ValueBody::List({})", render_vec(&rendered))
         }
+        ValueBody::Map(entries) => {
+            format!("ValueBody::Map({})", render_named_field_values(entries))
+        }
     }
 }
 
@@ -329,6 +332,9 @@ fn render_field_value(value: &FieldValue) -> String {
         FieldValue::List(values) => {
             let rendered: Vec<String> = values.iter().map(render_field_value).collect();
             format!("FieldValue::List({})", render_vec(&rendered))
+        }
+        FieldValue::Map(entries) => {
+            format!("FieldValue::Map({})", render_named_field_values(entries))
         }
         FieldValue::Variant {
             constructor,
