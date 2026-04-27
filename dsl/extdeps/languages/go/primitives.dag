@@ -145,9 +145,11 @@ type GoPrimitive
   | GoFloatPrimitive {
       target_name: String
       // Width is single-sourced on `algebra` (`GoApproximateField32Algebra` ↔
-      // float32, `GoApproximateField64Algebra` ↔ float64). Bit carriers
-      // (`GoFloat32BitsCarrier` / `GoFloat64BitsCarrier`) are implied — a second
-      // field would admit mismatched pairs (INVARIANTS / illegal states).
+      // float32, `GoApproximateField64Algebra` ↔ float64). No separate float
+      // bits-carrier tags live in this module (grep would not find them); a
+      // second parallel field would only re-open algebra/carrier cross-wire
+      // states (INVARIANTS / illegal states). When T-Ground-Engine consumes
+      // this file, map each algebra tag to the appropriate std/bit witness.
       algebra: GoFloatAlgebra
     }
   | GoComplexPrimitive {
@@ -246,7 +248,9 @@ data go_uint64_integer_range: GoIntegerRangeFact = {
 // must keep algebra, carrier, range_min_inclusive, range_max_inclusive lockstep
 // with the matching `go_*_integer_range` row above (byte→uint8, rune→int32).
 // Cheap future insurance: an extdeps loader or unit test that pairs rows by
-// target_name and asserts equality on those four fields.
+// target_name and asserts equality on those four fields — ideally as soon as
+// `go_spec_predeclared_primitives` is structurally walkable (R2 aggregate lane),
+// before additional targets copy this two-shape pattern and drift risk scales.
 
 
 // Predeclared fixed-width numerics + aliases + floats + complex + bool + string
