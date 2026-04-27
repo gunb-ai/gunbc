@@ -325,7 +325,9 @@ fn int_literal_range_routing_matches_std_type_witness() {
     let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list") else {
         panic!("expected list");
     };
-    let rust_primitive = dag.declaration_by_name("RustPrimitive").expect("RustPrimitive");
+    let rust_primitive = dag
+        .declaration_by_name("RustPrimitive")
+        .expect("RustPrimitive");
     let TypeConnective::Disj { variants } = &rust_primitive.connective else {
         panic!("RustPrimitive sum");
     };
@@ -346,16 +348,10 @@ fn int_literal_range_routing_matches_std_type_witness() {
         if *constructor != integer_primitive_ctor {
             continue;
         }
-        let FieldValue::Variant {
-            constructor: a, ..
-        } = &payload[1]
-        else {
+        let FieldValue::Variant { constructor: a, .. } = &payload[1] else {
             continue;
         };
-        let FieldValue::Variant {
-            constructor: c, ..
-        } = &payload[2]
-        else {
+        let FieldValue::Variant { constructor: c, .. } = &payload[2] else {
             continue;
         };
         if (*a, *c) == std_witness {

@@ -1351,9 +1351,8 @@ pub fn integer_literal_routing_witness(
     dag: &Dag,
     declaration: dag::DeclarationId,
 ) -> Option<(dag::DeclarationId, dag::DeclarationId)> {
-    int_literal_ranges::integer_routing_witness_for_decl(dag, declaration).map(|w| {
-        (w.algebra_variant_ty, w.carrier_variant_ty)
-    })
+    int_literal_ranges::integer_routing_witness_for_decl(dag, declaration)
+        .map(|w| (w.algebra_variant_ty, w.carrier_variant_ty))
 }
 
 /// Lower `src/v3/std/parse_surface.dag` for codegen (`regen_parse`, SG-2 staging tests).
