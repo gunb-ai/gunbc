@@ -613,29 +613,43 @@ fn shell_dash_c_may_start_background_after_eliding_artifacts(
 /// `sh -c` `&` heuristic only.
 ///
 /// **Setup detection — bootstrap sentinel pipe (P2(c) realization, T-PB-B Worker 4).**
-/// The bootstrap `sh` writes one byte (`s`) to fd 3 as soon as it begins executing; then
-/// probes that the user `command` is executable using the **same lookup rule that `execvp(3)`
-/// uses**:
+/// The bootstrap `sh` emits up to three bytes on fd 3, classifying the run structurally with
+/// no string authority:
 ///
-///   * `command` containing `/` (absolute or relative path) → `[ -x "$0" ]` direct file test.
-///     `execvp` does **not** consult `PATH` for these and exec's the literal path; `command -v`
-///     of a path string would conflate sh's resolution with the kernel's.
-///   * `command` with no `/` (bare name) → `command -v -- "$0"` for `PATH` lookup, matching
-///     `execvp`'s `PATH` search.
+///   1. `s` — sh started executing.
+///   2. Probe: matches `execvp(3)` lookup rules to keep parity with
+///      `std::process::Command`:
+///        * `command` containing `/` → `[ -x "$0" ]` (direct file test; `execvp` does not
+///          consult `PATH` for paths, and `command -v` of a path string can be sh-relative).
+///        * bare name → `command -v -- "$0"` (`PATH` search, matching `execvp`).
+///      Probe fail → exit 126 immediately. Sentinel = `s`.
+///   3. `e` — probe passed; sh is committed to `exec(2)`.
+///   4. EXIT trap installed: `printf f >&3` if sh ever exits *after* this point. fd 3 has
+///      `FD_CLOEXEC` set in `pre_exec`, so a successful `exec` atomically closes it (no
+///      leak to the user process and no `f` write); a failed `exec` leaves fd 3 open in sh,
+///      sh exits, trap fires, `f` is written.
+///   5. `exec "$0" "$@"`.
 ///
-/// If the probe fails, sh exits 126 without writing the second byte. If it passes, sh writes
-/// a second byte (`e`) and `exec(2)`s the user command. After wait, the parent reads up to
-/// 2 bytes from the ready pipe:
+/// After wait, parent reads up to [`UNSHARE_READY_PIPE_MAX`] bytes:
 ///
-///   * 0 bytes  → util-linux exited before sh ran → namespace setup failed.
-///   * `"s"`    → sh ran but the user command was not executable.
-///   * `"se"`   → sh exec'd the user command; observed exit is the logical exit.
+///   * `b""`     → util-linux exited before sh ran → `NamespaceSetupFailed`.
+///   * `b"s"`    → sh ran, probe rejected → `LogicalCommandNotExecutable`.
+///   * `b"se"`   → sh exec'd the user command (kernel closed fd 3 atomically) → exit is
+///                 logical → `LogicalCommandExeced`.
+///   * `b"sef"`  → sh's `exec` returned (TOCTOU x-bit removal, `ENOEXEC`, `ETXTBSY`, etc.)
+///                 → exec failed post-probe → `LogicalExecFailed`. **Closes the P2(c) gap
+///                 manager raised on draft review:** post-`exec` failure can no longer be
+///                 mistaken for a logical exit (a claim expecting 126 cannot Match an
+///                 unexec'd command).
+///   * anything else → fail-closed to `NamespaceSetupFailed`.
 ///
-/// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`, so there is
-/// no shared diagnostic channel between bootstrap and parent — only the typed sentinel pipe.
-/// **No implicit re-execution** (P2(d)): on namespace setup failure the runner falls back to
-/// a direct `Child` once — that is the *first* logical run, not a recovery re-exec of an
-/// already-run logical command.
+/// **No setup-string authority** (P2(a)/(b)/(e)): wrapper stderr is `/dev/null`. The only
+/// structural channel between bootstrap and parent is the typed sentinel pipe; classification
+/// is by exact-byte match (no substring scan).
+/// **No implicit re-execution** (P2(d)): on `NamespaceSetupFailed` the runner falls back to a
+/// direct `Child` once — that is the *first* logical run, not a recovery re-exec of an
+/// already-run logical command. `LogicalCommandNotExecutable` and `LogicalExecFailed` both
+/// surface as `SpawnFailed` without any second logical run.
 #[cfg(target_os = "linux")]
 const UNSHARE_LOGICAL_BOOTSTRAP_SH: &str = "\
 printf s >&3 2>/dev/null; \
@@ -644,7 +658,7 @@ case \"$0\" in \
   *) command -v -- \"$0\" >/dev/null 2>&1 || exit 126;; \
 esac; \
 printf e >&3 2>/dev/null; \
-exec 3>&-; \
+trap 'printf f >&3 2>/dev/null' EXIT; \
 exec 2>/dev/null; \
 exec \"$0\" \"$@\"";
 
@@ -754,6 +768,14 @@ fn build_execute_command_unshare(
                 if libc::dup2(write_fd, 3) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
+                // Re-arm FD_CLOEXEC on fd 3: the bootstrap sh writes to fd 3 (printf), but
+                // when sh's final `exec "$0" "$@"` succeeds, the kernel closes fd 3
+                // atomically — preventing leak to the user process AND making "no further
+                // bytes after `e`" a structural proof that `exec` succeeded. If `exec` fails,
+                // sh resumes with fd 3 still open and the EXIT trap writes the `f` sentinel.
+                if libc::fcntl(3, libc::F_SETFD, libc::FD_CLOEXEC) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
                 Ok(())
             });
         }
@@ -765,22 +787,28 @@ fn build_execute_command_unshare(
 #[cfg(target_os = "linux")]
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum UnshareBootstrapStage {
-    /// 0 sentinel bytes — sh never ran; util-linux failed before fork/exec into sh.
+    /// `b""` — sh never ran; util-linux failed before fork/exec into sh.
     NamespaceSetupFailed,
-    /// 1 sentinel byte (`s`) — sh ran but `command -v` of the logical command failed.
+    /// `b"s"` — sh ran, executable probe rejected the logical command.
     LogicalCommandNotExecutable,
-    /// 2 sentinel bytes (`se`) — sh exec'd the logical command; observed exit is its exit.
+    /// `b"se"` — sh exec'd the logical command; observed exit is its exit.
     LogicalCommandExeced,
+    /// `b"sef"` — sh's `exec` returned (TOCTOU, `ENOEXEC`, `ETXTBSY`, etc.); the EXIT trap
+    /// fired and emitted `f` while fd 3 was still open. The observed exit is sh's, not the
+    /// logical command's — must NOT be classified as a logical exit (P2(c)).
+    LogicalExecFailed,
 }
 
 #[cfg(target_os = "linux")]
 fn unshare_bootstrap_stage_from_sentinel(sentinel: &[u8]) -> UnshareBootstrapStage {
+    // Exact-byte match — no substring scan. Anything outside the documented protocol is
+    // fail-closed to setup-failed so we fall back to direct rather than trust an ambiguous
+    // wrapper exit (defensive against fd-3 leak in the unlikely event FD_CLOEXEC didn't take).
     match sentinel {
         b"" => UnshareBootstrapStage::NamespaceSetupFailed,
         b"s" => UnshareBootstrapStage::LogicalCommandNotExecutable,
-        bs if bs.starts_with(b"se") => UnshareBootstrapStage::LogicalCommandExeced,
-        // Unexpected pattern — fail-closed to setup-failed so we fall back to direct rather
-        // than trust an ambiguous wrapper exit.
+        b"se" => UnshareBootstrapStage::LogicalCommandExeced,
+        b"sef" => UnshareBootstrapStage::LogicalExecFailed,
         _ => UnshareBootstrapStage::NamespaceSetupFailed,
     }
 }
@@ -1127,6 +1155,18 @@ fn run_linux_unshare_then_direct(
                 wrapper: None,
                 direct: format!(
                     "logical command `{command}` not executable (no such file or not in PATH)"
+                ),
+            }
+        }
+        UnshareBootstrapStage::LogicalExecFailed => {
+            // Probe passed but `exec(2)` returned a failure (TOCTOU, ENOEXEC, ETXTBSY, ...).
+            // The bootstrap's exit code is sh's, NOT the logical command's — surface as
+            // `SpawnFailed` so a claim expecting (e.g.) 126 cannot Match an unexec'd binary
+            // (P2(c) regression manager flagged on draft review).
+            ExecuteCommandHostOutcome::SpawnFailed {
+                wrapper: None,
+                direct: format!(
+                    "logical command `{command}` failed to exec after executable probe passed (TOCTOU/ENOEXEC/ETXTBSY)"
                 ),
             }
         }
@@ -3214,6 +3254,46 @@ mod execute_command_timebound_tests {
         );
     }
 
+    /// Manager-requested regression (T-PB-B Worker 4 draft review): an existing-but-not-
+    /// executable file with `expect_exit_code = 126` must NOT `Match`, even though the sh
+    /// fall-back exit for an unrunnable command is naturally 126. The path probe
+    /// `[ -x "$0" ]` rejects pre-`exec`, sentinel `s`, classified `LogicalCommandNotExecutable`
+    /// → `SpawnFailed`. Closes the P2(c) collapse where a non-executable path could have been
+    /// classified as a logical exit.
+    #[test]
+    #[cfg(target_os = "linux")]
+    fn unshare_existing_non_executable_file_with_expect_126_does_not_match() {
+        use super::evaluate_execute_command_host_outcome;
+        use super::ExecuteCommandHostOutcome;
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = std::env::temp_dir().join(format!(
+            "gunbc_pb_runtime_nonexec_{}",
+            std::process::id()
+        ));
+        std::fs::write(&tmp, b"#!/bin/sh\nexit 0\n").expect("write temp");
+        let mut perms = std::fs::metadata(&tmp).expect("meta").permissions();
+        perms.set_mode(0o644); // explicitly NO execute bit
+        std::fs::set_permissions(&tmp, perms).expect("chmod 644");
+
+        let path = tmp.to_str().expect("path utf8").to_string();
+        let r =
+            evaluate_execute_command_host_outcome(&path, &[], 126, Duration::from_secs(5));
+        let _ = std::fs::remove_file(&tmp);
+
+        assert!(
+            !matches!(r, ExecuteCommandHostOutcome::Matched),
+            "non-executable file with expect=126 must NOT Match (P2(c)); got {r:?}"
+        );
+        assert!(
+            matches!(
+                r,
+                ExecuteCommandHostOutcome::SpawnFailed { .. }
+                    | ExecuteCommandHostOutcome::SetupFailed { .. }
+            ),
+            "expected SpawnFailed/SetupFailed for non-executable path; got {r:?}"
+        );
+    }
+
     /// Linux receipt: a relative-path `command` containing `/` that does **not** exist must
     /// surface as a non-`Matched` outcome (`SpawnFailed` or `SetupFailed`), never as a stray
     /// `Matched` from `command -v`'s sh-relative resolution. Distinguishes path-mode probe
@@ -3406,15 +3486,35 @@ mod unshare_bootstrap_sentinel_tests {
     }
 
     #[test]
+    fn sef_means_logical_exec_failed_post_probe() {
+        // `sef` = sh started, probe passed, exec returned (failure), EXIT trap fired. Must
+        // surface as a typed exec-failed outcome, NOT as a logical exit — closes the P2(c)
+        // regression manager flagged on draft review.
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"sef"),
+            UnshareBootstrapStage::LogicalExecFailed
+        );
+    }
+
+    #[test]
     fn unexpected_pattern_fails_closed_to_setup_failed() {
         // Anything not matching the documented protocol must fall back to direct, not be
-        // claimed as evidence of a logical exec.
+        // claimed as evidence of a logical exec. (Exact-byte classification: no prefix scan,
+        // so a leaked fd-3 byte appended after `se` is rejected, not silently absorbed.)
         assert_eq!(
             unshare_bootstrap_stage_from_sentinel(b"x"),
             UnshareBootstrapStage::NamespaceSetupFailed
         );
         assert_eq!(
             unshare_bootstrap_stage_from_sentinel(b"es"),
+            UnshareBootstrapStage::NamespaceSetupFailed
+        );
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"sex"),
+            UnshareBootstrapStage::NamespaceSetupFailed
+        );
+        assert_eq!(
+            unshare_bootstrap_stage_from_sentinel(b"sefx"),
             UnshareBootstrapStage::NamespaceSetupFailed
         );
     }
