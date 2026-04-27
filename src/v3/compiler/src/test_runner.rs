@@ -799,10 +799,20 @@ fn build_execute_command_unshare(
                 // bypassed via direct fallback (codex review on PR #1049, commit e072dce4).
                 //
                 // The trade-off is that fd 3 inherits to the user process on a successful
-                // logical `exec`. The user does not advertise fd 3, and our exact-byte
-                // sentinel classifier fail-closes any unexpected pattern (e.g. `b"sex"`)
-                // back to `NamespaceSetupFailed`, so a stray write by the user surfaces as
-                // a fall-back to direct rather than a wrong logical classification.
+                // logical `exec`. The classifier handles this in two layers:
+                //   - Patterns that did NOT reach `e` (`b""`, `b"s"`, anything not starting
+                //     with `b"s"` reaching `e`) fail-closed to `NamespaceSetupFailed`. Direct
+                //     fallback in those cases is the *first* logical run, not a second.
+                //   - Patterns starting with `b"se"` (incl. stray writes like `b"sex"`,
+                //     `b"sefx"`) classify as `LogicalCommandExeced` because the bootstrap
+                //     committed to `exec` before writing `e`; the user command DID run, so
+                //     the wrapper's exit is the logical exit. **Must NOT trigger fallback** —
+                //     that would be implicit re-execution (P2(d) regression bec8bda closed
+                //     after codex sha 7297b04a).
+                // The remaining `b"sef"`-spoof discriminator gap (a logical child writing
+                // exactly `f` and being misclassified as `LogicalExecFailed`) requires
+                // atomic `FD_CLOEXEC` on fd 3 between probe and `execvp` — impossible in
+                // pure POSIX sh, addressed via the helper-binary substrate at #1063 / #856.
                 if libc::dup2(write_fd, 3) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
