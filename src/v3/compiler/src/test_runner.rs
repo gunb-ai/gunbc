@@ -725,7 +725,15 @@ impl UnshareReadyPipe {
     /// those guarantee EOF on the read end. Calling this *before* the child is reaped while
     /// the child still holds an open fd 3 (e.g. pre-`exec` sh, or post-failed-`exec` sh
     /// after the EXIT trap fires) would deadlock if the child has not yet exited.
-    fn read_sentinel(&self) -> Vec<u8> {
+    ///
+    /// **Typed errors (api-review openai-pro/gpt-5-5-pro sha 9fea084e).** A real `read(2)`
+    /// failure is surfaced as `Err(io::Error)` rather than collapsed into a short sentinel:
+    /// the caller routes that to a typed `WaitFailed::Io` outcome, NOT a fall-back to
+    /// direct, because after the unshare child has been reaped we cannot rule out that the
+    /// logical command already ran — running it again via direct fallback would be implicit
+    /// re-execution. `EINTR` is retried in-loop because the read is idempotent on a
+    /// closed-write-end pipe. `n == 0` is a clean EOF.
+    fn read_sentinel(&self) -> std::io::Result<Vec<u8>> {
         let mut buf = [0u8; UNSHARE_READY_PIPE_MAX];
         let mut total = 0usize;
         while total < buf.len() {
@@ -740,9 +748,19 @@ impl UnshareReadyPipe {
                 total += n as usize;
                 continue;
             }
-            break;
+            if n == 0 {
+                // Clean EOF — all writers closed.
+                break;
+            }
+            // n < 0: real read error.
+            let err = std::io::Error::last_os_error();
+            if err.kind() == std::io::ErrorKind::Interrupted {
+                // EINTR — retry. Idempotent on a closed-write-end pipe.
+                continue;
+            }
+            return Err(err);
         }
-        buf[..total].to_vec()
+        Ok(buf[..total].to_vec())
     }
 }
 
@@ -1200,7 +1218,20 @@ fn run_linux_unshare_then_direct(
         }
     };
 
-    match unshare_bootstrap_stage_from_sentinel(&ready.read_sentinel()) {
+    let sentinel = match ready.read_sentinel() {
+        Ok(bytes) => bytes,
+        Err(io_err) => {
+            // Sentinel read failed (real error, not EINTR — that's retried in-loop). After
+            // the unshare child has been reaped we cannot rule out that the logical command
+            // already ran. Surfacing as a typed wait-failure (NOT a `NamespaceSetupFailed` →
+            // direct fallback) avoids implicit re-execution. (api-review openai-pro/
+            // gpt-5-5-pro sha 9fea084e.)
+            return ExecuteCommandHostOutcome::WaitFailed(WaitFail::Io(format!(
+                "ready-pipe read: {io_err}"
+            )));
+        }
+    };
+    match unshare_bootstrap_stage_from_sentinel(&sentinel) {
         UnshareBootstrapStage::LogicalCommandExeced => {
             classify_logical_exit(status, expect_exit_code)
         }
@@ -3332,6 +3363,66 @@ mod execute_command_timebound_tests {
             r,
             ExecuteCommandHostOutcome::Matched,
             "unshare path appears silently bypassed (probe says unshare PID-namespace IS permitted on this host); expected Matched ($$ == 1 inside ns), got {r:?}"
+        );
+    }
+
+    /// **P2(c) sef-spoof receipt — STOP-condition documentation, NOT yet enforceable.**
+    /// (api-review openai-pro/gpt-5-5-pro sha 9fea084e.)
+    ///
+    /// A logical command that successfully `exec`s and writes exactly `f` to the inherited
+    /// fd 3 currently produces sentinel `b"sef"`, which the classifier maps to
+    /// `LogicalExecFailed` → `SpawnFailed` — misclassified as wrapper exec failure, even
+    /// though the user command actually ran with exit 0. This is the documented STOP-
+    /// condition gap escalated to #856 / wired in #1063: closing it requires atomic
+    /// `FD_CLOEXEC` on fd 3 between probe and `execvp(2)`, impossible in pure POSIX sh.
+    ///
+    /// This test is `#[ignore]`d at HEAD because the assertion (Matched + exit 0) WILL FAIL
+    /// today. Once #1063's helper binary is wired into `build_execute_command_unshare`, the
+    /// kernel will atomically close fd 3 on successful `execvp`, the user's `printf` will
+    /// receive `EBADF`, the parent's sentinel will read exactly `b"se"`, and this test
+    /// flips green. Removing the `#[ignore]` is the load-bearing receipt that the
+    /// helper-binary acceptance criterion ("sef-spoof structurally unreachable", per
+    /// issuecomment-4331097029) is met — not just "helper binary exists."
+    #[test]
+    #[cfg(target_os = "linux")]
+    #[ignore = "sef-spoof gap; flips to green when #1063 helper binary is wired in (issue #856)"]
+    fn unshare_logical_command_writing_f_to_fd3_is_not_misclassified_after_helper_lands() {
+        use super::evaluate_execute_command_host_outcome;
+        use super::ExecuteCommandHostOutcome;
+        let probe = std::process::Command::new("unshare")
+            .args([
+                "-c",
+                "-f",
+                "-p",
+                "--",
+                "sh",
+                "-c",
+                "[ \"$$\" = \"1\" ]",
+            ])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+        if !matches!(probe, Ok(s) if s.success()) {
+            return;
+        }
+        let r = evaluate_execute_command_host_outcome(
+            "sh",
+            &[
+                String::from("-c"),
+                String::from("printf f >&3 2>/dev/null; exit 0"),
+            ],
+            0,
+            Duration::from_secs(5),
+        );
+        // Post-helper-binary expectation: fd 3 is closed atomically by execvp; sh's
+        // `printf f >&3` gets EBADF; sentinel = b"se"; outcome is Matched.
+        // Pre-helper-binary (current HEAD): sentinel = b"sef"; outcome is SpawnFailed —
+        // this test is #[ignore]d until that flip happens.
+        assert_eq!(
+            r,
+            ExecuteCommandHostOutcome::Matched,
+            "post-#1063: logical-child write of `f` to fd 3 must NOT misclassify as exec failure; got {r:?}"
         );
     }
 
