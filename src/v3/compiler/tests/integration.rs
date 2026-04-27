@@ -121,6 +121,8 @@ mod pipe_desugar;
 mod r1c_d_pb_census_gates_test;
 #[path = "integration/r1c_e_emit_gates_dag_test.rs"]
 mod r1c_e_emit_gates_dag_test;
+#[path = "integration/r1c_e_emit_gates_omni_dag_test.rs"]
+mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
 #[path = "integration/sg0_census_test.rs"]
