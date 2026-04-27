@@ -431,6 +431,8 @@ pub fn ground(t: DagType) -> Result<&'static RustPrimitive, GroundingError> {
 mod tests {
     use super::*;
 
+    use std::collections::BTreeMap;
+
     /// Stratum A.1 — Int (= Int64) routes to "i64" per the
     /// rust_type_checkpoints entry { dag_name: "Int", target_type: "i64" }.
     #[test]
@@ -638,6 +640,66 @@ mod tests {
             .collect()
     }
 
+    /// Inner slice of the `go_spec_predeclared_primitives` data list (between `[` and the matching
+    /// closing `]`), for text-level drift checks without involving the v3 parser.
+    fn go_spec_predeclared_list_inner(source: &str) -> &str {
+        const HEAD: &str = "data go_spec_predeclared_primitives: List<GoPrimitive> = [";
+        let start = source
+            .find(HEAD)
+            .unwrap_or_else(|| panic!("missing {HEAD}"));
+        let rest = &source[start + HEAD.len()..];
+        let mut depth: i32 = 1;
+        for (j, c) in rest.char_indices() {
+            match c {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return &rest[..j];
+                    }
+                }
+                _ => {}
+            }
+        }
+        panic!("unterminated go_spec_predeclared_primitives list");
+    }
+
+    /// Each `needle` (e.g. `GoIntegerPrimitive {`) — variant constructor through its closing `}`.
+    fn go_list_variant_blocks<'a>(list_inner: &'a str, needle: &str) -> Vec<&'a str> {
+        let mut at = 0;
+        let mut out = Vec::new();
+        while let Some(rel) = list_inner[at..].find(needle) {
+            let start = at + rel;
+            let open = start
+                + list_inner[start..]
+                    .find('{')
+                    .expect("open brace in variant");
+            let mut d = 0i32;
+            let mut end: Option<usize> = None;
+            for (k, c) in list_inner[open..].char_indices() {
+                match c {
+                    '{' => d += 1,
+                    '}' => {
+                        d -= 1;
+                        if d == 0 {
+                            end = Some(open + k + 1);
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let end = end.unwrap_or_else(|| {
+                panic!(
+                    "unterminated `{{` block for needle {needle:?} starting at byte {start} in go list slice"
+                )
+            });
+            out.push(&list_inner[start..end]);
+            at = end;
+        }
+        out
+    }
+
     /// Drift pin for the temporary three-way range bridge. Until R2 makes
     /// `rust_pilot_primitives` structurally walkable and this mirror is
     /// deleted, the generated/walkable `IntegerRangeFact` rows and the
@@ -670,6 +732,76 @@ mod tests {
             facts, mirrored,
             "IntegerRangeFact rows in primitives.dag must match the grounding pilot mirror"
         );
+    }
+
+    /// `GoIntegerRangeFact` data rows duplicate range fields on `GoIntegerPrimitive` / alias rows in
+    /// `go_spec_predeclared_primitives` (spec-predeclared slice only; `struct{}` / Unit lives in
+    /// `go_dag_unit_target_primitive`) until the ValueBody sub-lane makes the list structurally
+    /// walkable — keep them self-consistent.
+    #[test]
+    fn go_integer_range_facts_match_predeclared_list() {
+        let source = include_str!("../../../../dsl/extdeps/languages/go/primitives.dag");
+        let fact_vec: Vec<RangeFact<'_>> = source
+            .split("data ")
+            .filter(|b| b.contains(": GoIntegerRangeFact = {"))
+            .map(|block| RangeFact {
+                target_name: quoted_field(block, "target_name"),
+                algebra: bare_field(block, "algebra"),
+                carrier: bare_field(block, "carrier"),
+                min: quoted_field(block, "range_min_inclusive"),
+                max: quoted_field(block, "range_max_inclusive"),
+            })
+            .collect();
+        assert_eq!(
+            fact_vec.len(),
+            8,
+            "expected 8 width-known GoIntegerRangeFact rows"
+        );
+        let facts: BTreeMap<&str, &RangeFact<'_>> =
+            fact_vec.iter().map(|f| (f.target_name, f)).collect();
+        assert_eq!(
+            facts.len(),
+            8,
+            "GoIntegerRangeFact target_name keys must be unique"
+        );
+
+        let list = go_spec_predeclared_list_inner(source);
+        let prims = go_list_variant_blocks(list, "GoIntegerPrimitive {");
+        assert_eq!(prims.len(), 8);
+        for block in &prims {
+            let name = quoted_field(block, "target_name");
+            let exp = facts
+                .get(name)
+                .unwrap_or_else(|| panic!("GoIntegerRangeFact row missing for `{name}`"));
+            assert_eq!(bare_field(block, "algebra"), exp.algebra, "{name} algebra");
+            assert_eq!(bare_field(block, "carrier"), exp.carrier, "{name} carrier");
+            assert_eq!(
+                quoted_field(block, "range_min_inclusive"),
+                exp.min,
+                "{name} min"
+            );
+            assert_eq!(
+                quoted_field(block, "range_max_inclusive"),
+                exp.max,
+                "{name} max"
+            );
+        }
+        let aliases = go_list_variant_blocks(list, "GoIntegerAliasPrimitive {");
+        assert_eq!(aliases.len(), 2, "expected byte and rune alias rows");
+        for block in &aliases {
+            let canon = quoted_field(block, "canon_name");
+            let exp = facts
+                .get(canon)
+                .unwrap_or_else(|| panic!("GoIntegerRangeFact row for canon `{canon}` (alias)"));
+            assert_eq!(
+                bare_field(block, "algebra"),
+                exp.algebra,
+                "alias vs {canon}"
+            );
+            assert_eq!(bare_field(block, "carrier"), exp.carrier);
+            assert_eq!(quoted_field(block, "range_min_inclusive"), exp.min);
+            assert_eq!(quoted_field(block, "range_max_inclusive"), exp.max);
+        }
     }
 
     /// Fail-closed shape — a routing key with no declared inhabitant

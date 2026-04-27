@@ -11,7 +11,7 @@ dsl/std/types.dag	108	208752	1be49a78ce3e3ddd
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	2364c4858f6b9e3d
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
-src/v3/compiler/regen.dag	11	30786	49f47c59c626d776
+src/v3/compiler/regen.dag	12	34377	2ea9e99e1b34fd0b
 src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
 src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20

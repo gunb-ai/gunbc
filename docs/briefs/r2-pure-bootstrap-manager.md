@@ -24,7 +24,7 @@
 | Tier 3 mirror dissolutions: induction | M | AUTHORED in [`r2-pb-tier3-mirror-dissolution-workers.md`](r2-pb-tier3-mirror-dissolution-workers.md) | `RecursionShape`, `InductiveField`, `SubValueRelation` Rust mirror at `dag.rs:916-980` dissolves with same substrate dependency. |
 | Tier 3 mirror dissolutions: effect-carrier | S | AUTHORED in [`r2-pb-tier3-mirror-dissolution-workers.md`](r2-pb-tier3-mirror-dissolution-workers.md) | `src/v3/compiler/src/dag/effects.rs` (216 LOC) + `compose_operation_effects` in `workflow_idempotency.rs` (105 LOC). Mechanical PB dissolution once self-hosting reaches it. Tier 3 #12 from #810. |
 | `kernel_algebra_profile` mirror dissolution | M | GATED (waiting on Substrate Manager `ValueBody::Map` carrier; future T-Substrate sub-lane) | Map-shaped (not list/sum); requires `ValueBody::Map` substrate work. Substrate Manager future sub-lane. |
-| Tier 2 `patch_lower_helpers_*` retirement | S | NOT YET AUTHORED (queued for PB-Tier1 priority hint per #810 §5) | If survives R1, PB Manager retires `patch_lower_helpers_generated_type_alias_refinement` once generated `lower_helpers` can emit refinement field natively. |
+| Tier 2 `patch_lower_helpers_*` retirement | S | CLOSED by PR #1014 | `patch_lower_helpers_generated_type_alias_refinement`, the lower-helpers `regen_lens` patch path, and the SG-6 special case were retired once generated `lower_helpers` emitted the `refinement` field natively. |
 | Post-R1 emergent dissolutions | varies | NOT YET MATERIALIZED | Catch-all for new PB work that surfaces post-R1 (new mirror dissolutions discovered during R2; new Rust scaffolds inadvertently introduced and needing dissolution). |
 
 ## Cross-program dependencies
@@ -62,7 +62,9 @@ Authored:
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously per "Pre-spawn vs post-spawn authority" subsection above:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map`)
-- Tier 2 `patch_lower_helpers_*` retirement worker brief (if survives R1)
+
+Closed:
+- Tier 2 `patch_lower_helpers_*` retirement (PR #1014)
 
 ## Working state (fill on spawn)
 

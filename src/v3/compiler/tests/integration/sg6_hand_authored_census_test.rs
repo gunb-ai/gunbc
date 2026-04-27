@@ -156,6 +156,19 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // the tokenizer share. Either path retires `regen_tokenize.rs` and
     // shrinks the parallel shim set.
     let expected: BTreeSet<String> = [
+        // R1C-E (T-Emit `.dag` `TestClaim` wrappers): irreducible host-shim
+        // for the `ExecuteCommand` logical child that the `.dag` claim
+        // invokes. Calls into `v3_compiler::r1c_e_gates::check_*` (single
+        // source of truth) and exits 0/1 — the bounded host-spawn boundary
+        // PR #792 / `TestPredicate::ExecuteCommand` is built around. Cannot
+        // be expressed via the `regen.dag` registry shape (the registry's
+        // job is `Dag → emitted file`; this bin's job is `process exit
+        // code` for a `.dag` predicate). Dissolution trigger: when R1
+        // closes and the `.dag` runner can express in-process compilation
+        // checks without a host child, the wrappers + bin retire together
+        // (R1 Closure dispatch on issue #973). Documented in ROADMAP T-Emit
+        // / R1C-E lane row.
+        "r1c_e_emit_gates.rs",
         "regen_bootstrap.rs",
         "regen_lens.rs",
         "regen_parse.rs",
@@ -180,10 +193,11 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     assert_eq!(
         actual, expected,
         "SG-6 hand-authored bin census changed. The census is \
-         `regen_lens` (reads `src/v3/compiler/regen.dag`), `regen_parse` \
-         (reads `src/v3/std/parse_surface.dag` for Surface carriers), `regen_tokenize` \
-         (reads `src/v3/compiler/tokenize.dag`), `regen_v3`, and \
-         `self_host_fixed_point`. Adding a new bin re-introduces a \
+         `r1c_e_emit_gates` (R1C-E T-Emit `.dag` wrapper logical child; \
+         issue #973), `regen_lens` (reads `src/v3/compiler/regen.dag`), \
+         `regen_parse` (reads `src/v3/std/parse_surface.dag` for Surface \
+         carriers), `regen_tokenize` (reads `src/v3/compiler/tokenize.dag`), \
+         `regen_v3`, and `self_host_fixed_point`. Adding a new bin re-introduces a \
          per-lens (or per-target) Rust driver — the SG-6 lane requires that \
          new regen / harness targets be added via a `.dag` registry instead. \
          Both `src/bin/<name>.rs` (flat-file bins; basename reported) and \
@@ -324,6 +338,11 @@ fn sg6_regen_dag_registry_triples_are_pinned() {
             "cost_symbolic",
             "src/v3/lenses/cost.dag",
             "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
+        ),
+        (
+            "effect_enumeration",
+            "src/v3/lenses/effect_enumeration.dag",
+            "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
         ),
         (
             "infer_helpers",
