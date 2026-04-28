@@ -62,12 +62,36 @@ RETRACTION_PATTERNS=(
 )
 
 violations=0
+missing_docs=()
 
+# Fail-closed precheck: every configured release doc must exist. A
+# missing doc means the consumer's declared authority surface has
+# silently shrunk — exactly the failure mode the guardrail is supposed
+# to prevent. If a release doc is genuinely retired, remove it from
+# RELEASE_DOCS above with the same review attention as adding one.
 for doc in "${RELEASE_DOCS[@]}"; do
   if [ ! -f "$doc" ]; then
-    continue
+    missing_docs+=("$doc")
   fi
+done
 
+if [ "${#missing_docs[@]}" -gt 0 ]; then
+  echo "Release-doc authority check FAILED: ${#missing_docs[@]} configured release-control doc(s) missing."
+  echo ""
+  for doc in "${missing_docs[@]}"; do
+    echo "  MISSING: $doc"
+  done
+  echo ""
+  echo "Each missing doc was declared in RELEASE_DOCS in this script. The"
+  echo "consumer fails closed because silently skipping a missing doc would"
+  echo "let release-control authority shrink without review. Either:"
+  echo "  - the doc was renamed → update RELEASE_DOCS to the new path"
+  echo "  - the doc was retired → remove it from RELEASE_DOCS with"
+  echo "    the same attention as adding a new release-control authority"
+  exit 1
+fi
+
+for doc in "${RELEASE_DOCS[@]}"; do
   for forbidden in "${FORBIDDEN_STRINGS[@]}"; do
     # Find all lines containing the forbidden string.
     while IFS= read -r match; do

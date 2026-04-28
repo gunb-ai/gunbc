@@ -87,6 +87,44 @@ test_negative_t_verification_l4l7() {
     "T-Verification-L4L7 verifies the no-engine claim via runtime evaluation."
 }
 
+# Fail-closed-on-missing-doc: if a configured release doc is missing,
+# the consumer must fail with a diagnostic naming it. Silently skipping
+# would let release-control authority shrink without review.
+test_missing_doc_fails_closed() {
+  # Set up a fixture where r2-structure.md exists but r3-structure.md is
+  # deleted (simulating a rename or accidental deletion).
+  cat > "$TMPDIR/docs/r2-structure.md" <<'EOF'
+# R2 Structure (test fixture — clean; no forbidden strings)
+EOF
+  rm -f "$TMPDIR/docs/r3-structure.md"
+  # Keep thesis-mapping.md and r2-structure.md present so the only
+  # missing doc is r3-structure.md.
+  cat > "$TMPDIR/docs/thesis/r2-r3-thesis-mapping.md" <<'EOF'
+# Thesis Mapping (test fixture — clean; no forbidden strings)
+EOF
+  cd "$TMPDIR"
+  output=$(bash "$TEST_CONSUMER" 2>&1)
+  exit_code=$?
+  cd "$ROOT"
+
+  # Restore r3-structure.md for subsequent tests.
+  echo "" > "$TMPDIR/docs/r3-structure.md"
+
+  if [ "$exit_code" -eq 0 ]; then
+    echo "FAIL [missing-doc]: consumer passed with r3-structure.md missing"
+    echo "  Expected: consumer should fail-closed and name the missing doc"
+    return 1
+  fi
+  if ! echo "$output" | grep -q "MISSING: docs/r3-structure.md"; then
+    echo "FAIL [missing-doc]: consumer failed but didn't name the missing doc"
+    echo "  Expected output to contain: 'MISSING: docs/r3-structure.md'"
+    echo "  Actual output:"
+    echo "$output" | sed 's/^/    /'
+    return 1
+  fi
+  return 0
+}
+
 # Positive case: forbidden strings in retraction context should pass.
 test_positive() {
   cat > "$TMPDIR/docs/r2-structure.md" <<'EOF'
@@ -135,6 +173,13 @@ for test_fn in \
     failures=$((failures + 1))
   fi
 done
+
+echo "Test (missing-doc): consumer must fail-closed when a configured doc is missing..."
+if test_missing_doc_fails_closed; then
+  echo "  PASS"
+else
+  failures=$((failures + 1))
+fi
 
 echo "Test (positive): retraction-context forbidden strings should pass consumer..."
 if test_positive; then
