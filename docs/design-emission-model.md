@@ -61,7 +61,7 @@ The honest answer is: `u32` *uniquely* inhabits `Semiring` at exactly that refin
 **What the substrate must declare** for this to be a structural fold:
 - Each target primitive declares its `Semiring` inhabitance with a *cardinality bound* attached (`u32` inhabits `Semiring<Word32>` at bound `0..2^32`; not just "inhabits Semiring")
 - The fold matches program refinement against target refinement *within the same algebra*
-- "Minimum" is determined by *bound subsumption* (`u32`'s bound exactly equals program bound; `u64`'s bound strictly contains program bound; `u32` is "smaller" by a structural ordering on bounds)
+- The fold uses **exact-bound match**: `u32`'s bound exactly equals the program's `(0..2^32)` refinement; `u64`'s bound `(0..2^64)` is a *different bound* (different inhabitance), not a "wider valid" candidate. No subsumption used for emission.
 
 **What the substrate cannot do today.** ROADMAP names DB-11 (refinement-carrying qualifiers on primitives) + cardinality-substrate (container cardinality bounds) as substrate prerequisites for `T-Ground-Rust`. That's exactly this: the substrate doesn't yet carry refinement-attached algebra inhabitance.
 
@@ -344,7 +344,7 @@ fold_dag_int_unrefined_fails_closed: TestClaim {
 
 ### Example 2 — `Int(0..2^32)` → Rust `u32` (refinement-driven)
 
-**Demonstrates:** refinement composition with algebra inhabitance (Modeling problem 1); minimum bound matching is structural via subsumption, not engine policy.
+**Demonstrates:** refinement composition with algebra inhabitance (Modeling problem 1); **exact-bound matching** is the structural emission predicate (corrected 2026-04-28 per gpt-5-5-pro Pattern B finding — subsumption + minimum-selection was contradicting Modeling problem 4's "ordering is diagnostic-only" framing).
 
 **Substrate facts (must be declared):**
 ```
@@ -354,8 +354,9 @@ inhabits UInt32  : Semiring  bound = (0..2^32)
 inhabits UInt64  : Semiring  bound = (0..2^64)
 inhabits UInt128 : Semiring  bound = (0..2^128)
 
-// Declared structural ordering on Semiring bounds: bound subsumption
-// (a is "smaller than or equal to" b iff a's range is contained in b's)
+// Note: per Modeling problem 4 corrected, structural ordering on bounds is
+// DIAGNOSTIC-ONLY (used for enumerating alternatives in error messages); the
+// fold uses exact-bound match for emission, not subsumption + minimum-pick.
 ```
 
 **Program input:**
@@ -528,15 +529,10 @@ data huge: Int(0..2^65) = 36893488147419103232
 **Fold steps:**
 1. Read program intent: algebra = `OrderedRing`; refinement = `(0..2^65)`
 2. Walk substrate inhabitants: { Int8, Int16, Int32, Int64, Int128 }
-3. Apply refinement filter: program bound `(0..2^65)` must be ⊆ candidate bound
-   - Int8 through Int64: NO — program bound exceeds (Int64 caps at 2^63)
-   - Int128: YES — strict subset
-4. Result: 1 candidate (Int128)
-5. Result: unique answer = `Int128`
+3. Apply **exact-bound match** (per Modeling problem 4 corrected): no candidate has bound exactly `(0..2^65)`. Int128 has bound `(-2^127..2^127)` — different bound, different inhabitance.
+4. Result: zero candidates → fail-closed (no candidate exactly matches the declared refinement)
 
-**Wait** — actually this case succeeds with `Int128`. Let me restate to demonstrate fail-closed-on-no-inhabitant:
-
-**Restated program input (genuinely exceeds all candidates):**
+**Restated program input (genuinely exceeds all candidates' bound widths):**
 ```
 data astronomical: Int(0..2^200) = 1
 ```
@@ -555,7 +551,7 @@ EmissionDiagnostic::NoInhabitant {
   resolution_hints: [
     "Rust's largest signed integer is i128 (range -2^127..2^127); Int(0..2^200) cannot ground to a Rust primitive",
     "consider arbitrary-precision integer carrier (post-R3 substrate work)",
-    "narrow the bound: Int(0..2^127) grounds to Int128"
+    "narrow to a candidate bound: Int(-2^127..2^127) grounds to Int128 (exact match required, not subsumption)"
   ]
 }
 ```
@@ -639,7 +635,7 @@ fold_dag_list_int_refined_top_level_to_rust_box_slice_u32: TestClaim {
 inhabits int : OrderedRing  bound = unbounded
 ```
 
-(Note: Python has no integer family with bound differences. Every refinement-bounded `.dag` Int grounds to Python `int` — Python's arbitrary-precision int *strictly subsumes* every bound. This is structurally complete; not a "canonical choice." The substrate just declares one inhabitant and bound subsumption matches.)
+(Note: Python has no integer family with bound differences — `int` is arbitrary-precision and is the **unique inhabitant** of `OrderedRing` for the Python target. Per the no-engine + exact-match discipline, the fold matches single inhabitants by **uniqueness of candidate** (algebra inhabits → unique target), not by bound subsumption. Python's spec doesn't have a bound parameter on `int`, so the bound axis isn't used; the algebra-uniqueness axis suffices. This is structurally complete; not a "canonical choice" engine pick.)
 
 **Go spec:**
 ```
@@ -664,7 +660,7 @@ data x: Int(-2^31..2^31) = 0
 **Fold runs three times (one per target), with the same algorithm:**
 
 - **Rust:** match candidates, refinement filter → only `Int32` exact-matches. Emit `0i32`.
-- **Python:** match candidates, refinement filter → `int` matches by subsumption (program bound ⊆ unbounded). Emit `0`.
+- **Python:** Python `int` is the unique inhabitant of `OrderedRing` (no bound parameter on the candidate); algebra-uniqueness match. Emit `0`.
 - **Go:** match candidates, refinement filter → only `int32` exact-matches. Emit `int32(0)`.
 
 **Test claim shape:**
@@ -681,7 +677,7 @@ fold_dag_int_refined_cross_target_consistent: TestClaim {
 }
 ```
 
-**Why this works without canonical-choice:** the program is *fully refined* — it declares its bound. Each language spec independently models its inhabitance with bound parameters. Bound subsumption matches the candidate; no policy. The cross-target meta-spec only enforces that all targets *can* match (have an inhabitant covering the program's bound); it doesn't pick which one — that falls out of structure.
+**Why this works without canonical-choice:** the program is *fully refined* — it declares its bound. Each language spec independently models its inhabitance with bound parameters (Rust, Go) or without (Python — single arbitrary-precision int). The fold uses **exact-bound match** when bound parameters exist; **algebra-uniqueness** when they don't. The cross-target meta-spec only enforces that all targets have *some* matching inhabitant for the program's algebra+refinement combination; it doesn't pick which one — that falls out of structure (exact-match for parameterized targets, uniqueness for parameter-free targets).
 
 **Compare to under-refined Example 1:** that program (`data x: Int`) failed-closed on Rust because the bound was unspecified and Int8/Int64/Int128 are meaningfully different. On Python, the same under-refined program would *succeed* — Python has only one inhabitant, so under-refinement doesn't produce ambiguity. Cross-target consistency means the same program either grounds on all targets or fails-closed where it can't; it doesn't silently produce different semantics.
 

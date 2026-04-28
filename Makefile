@@ -66,6 +66,14 @@ verify: lint-upsert
 release-doc-authority-check:
 	@bash scripts/check-release-doc-authority.sh
 
+# Self-test for the release-doc authority consumer. Verifies the consumer
+# (a) flags live forbidden strings and (b) accepts retraction-context
+# forbidden strings. Per gpt-5-5-pro meta-review on PR #1078: without
+# this, future RETRACTION_PATTERNS broadening could silently neuter the
+# consumer.
+release-doc-authority-test:
+	@bash scripts/test-check-release-doc-authority.sh
+
 # Ensure generated artifacts are up to date
 verify-fix: lint-upsert
 	@RUSTFLAGS="-D warnings" cargo run -p gunbc-codegen --bin gunbc-bootstrap
