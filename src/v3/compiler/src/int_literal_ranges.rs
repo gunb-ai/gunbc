@@ -475,7 +475,8 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
         } = &payload[1]
         else {
             dag.attach_diagnostic(malformed_integer_range_fact(
-                "rust_pilot_primitives IntegerPrimitive `algebra` must be a variant value".to_string(),
+                "rust_pilot_primitives IntegerPrimitive `algebra` must be a variant value"
+                    .to_string(),
                 default_span.clone(),
             ));
             continue;
@@ -494,7 +495,8 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
         } = &payload[2]
         else {
             dag.attach_diagnostic(malformed_integer_range_fact(
-                "rust_pilot_primitives IntegerPrimitive `carrier` must be a variant value".to_string(),
+                "rust_pilot_primitives IntegerPrimitive `carrier` must be a variant value"
+                    .to_string(),
                 default_span.clone(),
             ));
             continue;
@@ -530,7 +532,8 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
 
         if !matches!(payload[5], FieldValue::Literal(LiteralBits::Bool(_))) {
             dag.attach_diagnostic(malformed_integer_range_fact(
-                "rust_pilot_primitives IntegerPrimitive `is_copy` must be a bool literal".to_string(),
+                "rust_pilot_primitives IntegerPrimitive `is_copy` must be a bool literal"
+                    .to_string(),
                 default_span.clone(),
             ));
             continue;
@@ -538,7 +541,8 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
 
         if !matches!(&payload[6], FieldValue::Variant { .. }) {
             dag.attach_diagnostic(malformed_integer_range_fact(
-                "rust_pilot_primitives IntegerPrimitive `overflow` must be a variant value".to_string(),
+                "rust_pilot_primitives IntegerPrimitive `overflow` must be a variant value"
+                    .to_string(),
                 default_span.clone(),
             ));
             continue;

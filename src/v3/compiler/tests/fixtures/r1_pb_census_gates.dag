@@ -1,0 +1,157 @@
+// std.r1_pb_census_gates - R1C-D `.dag` TestClaim fixtures for the six
+// PB census gates (T-PB-A ×4 + T-PB-B ×2). The Rust ratchets in
+// `src/v3/compiler/tests/integration/sg0_census_test.rs` remain the
+// drift-detection authority on the underlying lists; this file wires the
+// release-gate `.dag` layer that R1 close evaluates, per the strict
+// reading of `THESIS.md §"Tests are structural data"`.
+//
+// Predicate shapes consumed here (`CensusBoundCheck`, `CensusSubsetCount`,
+// `FixedPointConverges`, `RatchetZero`, `GeneratedFromDag`) live at
+// `src/v3/std/verification.dag`. Runner dispatch lives at
+// `src/v3/compiler/src/test_runner.rs::run_claim` (the
+// `eval_*_shape` family).
+//
+// **Today's evaluation state** (R1C-D acceptance: gate evaluates `Pass`
+// or `Fail` against the live census, never `NotYetImplemented`):
+//
+//   D.1 / D.6 — `CensusBoundCheck` against `EXPECTED_HAND_AUTHORED_*`
+//               at `bound = 0` is RED until cascade-promotion 0-floor
+//               (`docs/design-pure-bootstrap-zero.md`, LIVE 2026-04-25)
+//               retires the residual lists. Pacing owned by Pure
+//               Bootstrap to Zero program; surfaced cross-manager.
+//   D.2 — `CensusSubsetCount` lens-producer subset over the non-test
+//         census; same dissolution-pacing dependency as D.1.
+//   D.3 — `FixedPointConverges` runs DB-8 twice and compares snapshots.
+//   D.4 — `RatchetZero` checks the consolidation ratchet count.
+//   D.5 — `GeneratedFromDag` checks that the test census is empty
+//         (same dissolution gating as D.6) AND that the listed paths
+//         all live in the SG-0 generated-file manifest.
+//
+// Lives under `src/v3/compiler/tests/fixtures/` so it is **not**
+// auto-staged into `Dag::new()` bootstrap (`src/v3/std/*.dag` is the
+// build-script-enumerated tree). The runner test in
+// `tests/integration/r1c_d_pb_census_gates_test.rs` lowers this file
+// via `compile_to_dag` exactly like the sibling R1 gate fixtures.
+
+module std.r1_pb_census_gates
+
+import std.verification {
+  CensusBoundCheck,
+  CensusSubsetCount,
+  FixedPointConverges,
+  GeneratedFromDag,
+  RatchetZero,
+  TestClaim,
+  TestSuite,
+  compiler_std_positive_set_ratchet,
+  expected_hand_authored_non_test,
+  expected_hand_authored_test,
+  lens_producer_files_subset_predicate
+}
+
+// Census-authority handle. The Rust runner's `resolve_census_authority_ref`
+// only requires a `DeclarationRef` edge (it does not pin a name or type);
+// the marker exists so fixtures point at a typed identity that names the
+// underlying authority (`src/v3/compiler/tests/integration/sg0_census_test.rs`)
+// rather than smuggling the path through fixture text.
+type Sg0CensusAuthority {}
+
+data sg0_census_test_authority: Sg0CensusAuthority = {}
+
+// Stub source string repeated inline on each `TestClaim` below. The PB
+// census `eval_*_shape` family does not consume `claim.source` —
+// evaluation reads live census state via `sg0_census_list_*` helpers in
+// `test_runner.rs`. The string is repeated rather than referenced through
+// a shared `data` because `TestClaimValue::from_declaration` reads `source`
+// as a `FieldValue::Literal(String)`; a `Reference(_)` edge falls back to
+// the declaration name and breaks the structural `name` contract used by
+// the runner test's claim-order assertion.
+data pb_hand_rust_at_shim_floor_gate: TestClaim = {
+  name: "pb_hand_rust_at_shim_floor",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_pb_hand_rust_at_shim_floor.v3",
+  predicate: CensusBoundCheck {
+    authority: sg0_census_test_authority,
+    list_constant: expected_hand_authored_non_test,
+    bound: 0
+  },
+  requires: []
+}
+
+data lens_producer_files_remaining_gate: TestClaim = {
+  name: "lens_producer_files_remaining",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_lens_producer_files_remaining.v3",
+  predicate: CensusSubsetCount {
+    authority: sg0_census_test_authority,
+    list_constant: expected_hand_authored_non_test,
+    subset_predicate: lens_producer_files_subset_predicate
+  },
+  requires: []
+}
+
+data pb_self_compile_fixed_point_gate: TestClaim = {
+  name: "pb_self_compile_fixed_point",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_pb_self_compile_fixed_point.v3",
+  predicate: FixedPointConverges {
+    compile_target: "default_fixed_point_source",
+    expected: "pipeline_stage_snapshots"
+  },
+  requires: []
+}
+
+data pb_compiler_std_ratchet_zero_gate: TestClaim = {
+  name: "pb_compiler_std_ratchet_zero",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_pb_compiler_std_ratchet_zero.v3",
+  predicate: RatchetZero {
+    authority: sg0_census_test_authority,
+    ratchet_kind: compiler_std_positive_set_ratchet
+  },
+  requires: []
+}
+
+// `generated_paths` enumerates a representative subset of the SG-0
+// generated-file manifest (`src/v3/compiler/src/lib.rs::generated_files`,
+// emitted by `build.rs::REGEN_OUTPUTS`). The runner validates each entry
+// is in `GENERATED_FILES`; the gate's load-bearing check is that the
+// `EXPECTED_HAND_AUTHORED_TEST` census is empty.
+data pb_test_file_generated_from_dag_gate: TestClaim = {
+  name: "pb_test_file_generated_from_dag",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_pb_test_file_generated_from_dag.v3",
+  predicate: GeneratedFromDag {
+    authority: sg0_census_test_authority,
+    generated_paths: [
+      "src/v3/compiler/src/parse_generated.rs",
+      "src/v3/compiler/src/tokenize_generated.rs",
+      "src/v3/compiler/src/types_generated.rs"
+    ]
+  },
+  requires: []
+}
+
+data pb_rust_tests_outside_residual_zero_gate: TestClaim = {
+  name: "pb_rust_tests_outside_residual_zero",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_pb_rust_tests_outside_residual_zero.v3",
+  predicate: CensusBoundCheck {
+    authority: sg0_census_test_authority,
+    list_constant: expected_hand_authored_test,
+    bound: 0
+  },
+  requires: []
+}
+
+data r1_pb_census_gates_suite: TestSuite = {
+  name: "r1_pb_census_gates_suite",
+  claims: [
+    pb_hand_rust_at_shim_floor_gate,
+    lens_producer_files_remaining_gate,
+    pb_self_compile_fixed_point_gate,
+    pb_compiler_std_ratchet_zero_gate,
+    pb_test_file_generated_from_dag_gate,
+    pb_rust_tests_outside_residual_zero_gate
+  ]
+}

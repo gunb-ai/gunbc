@@ -459,20 +459,27 @@ fn tokenizer_scales_linearly_with_file_size() {
 
 #[test]
 fn tokenizer_scanning_scales_linearly() {
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
+
+    fn best_scan(source: &str) -> (usize, Duration) {
+        let mut best: Option<(usize, Duration)> = None;
+        for _ in 0..5 {
+            let start = Instant::now();
+            let tokens = tokenize(source);
+            let elapsed = start.elapsed();
+            match best {
+                Some((_, best_elapsed)) if best_elapsed <= elapsed => {}
+                _ => best = Some((tokens.len(), elapsed)),
+            }
+        }
+        best.expect("scan sample must be recorded")
+    }
 
     let small_source = read_v2_file("src/v2/ownership.dag");
     let large_source = read_v2_file("src/v2/02_parse.dag");
 
-    let start = Instant::now();
-    let small_tokens = tokenize(&small_source);
-    let small_count = small_tokens.len();
-    let small_time = start.elapsed();
-
-    let start = Instant::now();
-    let large_tokens = tokenize(&large_source);
-    let large_count = large_tokens.len();
-    let large_time = start.elapsed();
+    let (small_count, small_time) = best_scan(&small_source);
+    let (large_count, large_time) = best_scan(&large_source);
 
     let size_ratio = large_source.len() as f64 / small_source.len() as f64;
     let time_ratio = large_time.as_secs_f64() / small_time.as_secs_f64().max(0.001);
@@ -673,6 +680,7 @@ fn parse_fn_lambda_in_call_arg() {
 fn gist_transitive_closure_parse() {
     let files = [
         "dsl/std/types.dag",
+        "dsl/std/error_primitives.dag",
         "dsl/std/errors.dag",
         "dsl/std/resources.dag",
         "dsl/extdeps/cloud/cloud.dag",

@@ -5,7 +5,7 @@
 ## Read first
 
 - **[`docs/briefs/r1-closure-manager.md`](r1-closure-manager.md)** — manager scope; R1C-A → R1C-D dependency edge.
-- **[`docs/briefs/r1c-a-t-testgen-schema-extensions-worker.md`](r1c-a-t-testgen-schema-extensions-worker.md)** — sibling brief; Sub-deliverable B authors the predicate shapes this brief consumes. **R1C-D cannot dispatch until R1C-A's Sub-deliverable B PR lands.**
+- **[`docs/briefs/r1c-a-t-testgen-schema-extensions-worker.md`](r1c-a-t-testgen-schema-extensions-worker.md)** — sibling brief; Sub-deliverable B authors the predicate shapes this brief consumes. **R1C-A Sub-deliverable B is landed on main (PR #939).** Dispatch is worker-availability gated, not schema-blocked.
 - **[`docs/briefs/r2-manager-brief-authority-matrix.md`](r2-manager-brief-authority-matrix.md)** — local review checklist (status consistency + pre-author verification invariants apply).
 - **[`docs/escalation-paths.md`](../escalation-paths.md)** — escalation discipline.
 - **[`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md)** — LIVE 2026-04-25; 0-floor target authority for the cascade-promoted gate semantics.

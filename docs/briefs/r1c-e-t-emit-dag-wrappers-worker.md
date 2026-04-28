@@ -37,12 +37,14 @@ Bundle if all three are `ExecuteCommand`-shape; split if any needs schema work.
 
 ## Acceptance
 
-- [ ] `emit_rust_fixtures_rustc_green` `.dag` TestClaim authored + runner dispatch + gate evaluates `Pass` (rustc accepts all emitted fixtures).
-- [ ] `emit_generic_bounds_survive` `.dag` TestClaim authored + gate evaluates `Pass`.
-- [ ] `emit_omni_demo_fixtures_green` `.dag` TestClaim authored + gate evaluates `Pass` (all targets accept emitted output).
-- [ ] `cargo test --workspace --exclude v2-compiler-tests` clean.
-- [ ] DB-8 fixed-point converges bit-identically.
-- [ ] R1 Closure Manager lane status table updated to "R1C-E: 3/3 gates green."
+**Landed on main:** PR **#978** (`emit_generic_bounds_survive`); PR **#1051** (`emit_rust_fixtures_rustc_green` + `emit_omni_demo_fixtures_green`).
+
+- [x] `emit_rust_fixtures_rustc_green` `.dag` TestClaim authored + runner dispatch + gate evaluates `Pass` (rustc accepts all emitted fixtures).
+- [x] `emit_generic_bounds_survive` `.dag` TestClaim authored + gate evaluates `Pass`.
+- [x] `emit_omni_demo_fixtures_green` `.dag` TestClaim authored + gate evaluates `Pass` (all targets accept emitted output).
+- [x] `cargo test --workspace --exclude v2-compiler-tests` clean.
+- [x] DB-8 fixed-point converges bit-identically.
+- [x] R1 Closure Manager lane status table updated to "R1C-E: 3/3 gates green."
 
 ## STOP-AND-ESCALATE
 

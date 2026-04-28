@@ -242,10 +242,9 @@ pub struct NominalOpacity {
 /// variants at M1(3) PR-B-unwind:
 ///
 /// - **`Unparsed(SourceSpan)`** — the parser could not lower the
-///   body (it isn't a record literal shape the M1(3) parser
-///   recognizes). The body's source span is preserved so M2+
-///   parser extensions (list literals, nested records, variant
-///   constructors) can reach in later. User-range declarations
+///   body to a supported top-level value shape. The body's source
+///   span is preserved so sibling parser/substrate extensions (map
+///   literals and any remaining opaque forms) can reach in later. User-range declarations
 ///   carrying `Unparsed` are rejected by
 ///   `reject_user_unparsed_scaffolds`; bootstrap-range declarations
 ///   tolerate it so std/*.dag files whose data bodies still use
@@ -266,9 +265,10 @@ pub struct NominalOpacity {
 /// extensions close class-5 gap #3); `Structural` is the
 /// structurally-grounded form. When the M2+ parser catches up to
 /// nested records / list literals / map literals, those non-record
-/// shapes currently landing in `Unparsed` move to `Structural`
-/// (probably via an extended `FieldValue` payload — see below),
-/// and `Unparsed` is removed via a reverse substrate-extension PR.
+/// shapes currently landing in `Unparsed` move to structural variants
+/// (`ValueBody::List` and `ValueBody::Map` now cover top-level list
+/// and string-keyed map bodies), and `Unparsed` is removed via a
+/// reverse substrate-extension PR.
 ///
 /// 4-pattern check on `Structural`:
 /// - Pattern 1 (fact placement): fails. The inline `(label,
@@ -281,17 +281,17 @@ pub struct NominalOpacity {
 ///   scaffolded), not two points in a single algebra.
 /// - Pattern 4 (dimensional): fails. No shared coordinate space.
 ///
-/// Verdict: `Structural` is terminal-at-current-scope, with the
-/// `FieldValue` enum carrying the literal-vs-reference distinction
-/// internally. Future extensions (port-carried values, nested
-/// records) grow `FieldValue`, not `ValueBody`. Bounded by the
-/// Scaffold Boundaries invariant in `INVARIANTS.md`.
+/// Verdict: `Structural` is terminal-at-current-scope for top-level
+/// record bodies, with the `FieldValue` enum carrying nested structural
+/// distinctions internally. Top-level list/map bodies use dedicated
+/// variants below because they are not records and must not be encoded
+/// as anonymous fields. Bounded by the Scaffold Boundaries invariant in
+/// `INVARIANTS.md`.
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
-    /// lowered to a value sub-DAG. Map-shaped bodies still await the
-    /// sibling `kernel_algebra_profile` substrate lane; records and
-    /// lists lower structurally.
+    /// lowered to a value sub-DAG. Records, lists, and string-keyed
+    /// maps lower structurally.
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
     /// checked against the declared type. Each field holds a
@@ -307,11 +307,10 @@ pub enum ValueBody {
     ///   allowing `ValueBody::Scalar(FieldValue::Record(..))` would
     ///   make illegal/overlapping states representable (two distinct
     ///   encodings of the same top-level record body). Rejected.
-    /// - `FieldValue::Reference`, `List`, `Variant` as top-level
-    ///   data bodies are out of scope for DB-10's acceptance
-    ///   (scalar + structural record only). When those shapes
-    ///   become parseable at the top level, grow `ValueBody` with
-    ///   a new variant — do not widen `Scalar` to swallow them.
+    /// - `FieldValue::Reference` and `Variant` as top-level data
+    ///   bodies are out of scope for DB-10's acceptance. Top-level
+    ///   lists use `ValueBody::List` above; do not widen `Scalar`
+    ///   to swallow non-scalar shapes.
     ///
     /// DB-10 (Lane 3 Stage 3a.2) — `compiler.dag` needs compile-time
     /// scalar constants; previously the parser rejected non-
@@ -336,6 +335,25 @@ pub enum ValueBody {
     /// deliberately reuse `FieldValue`, matching nested structural list
     /// values and preserving sum-constructor identity for list-of-sum data.
     List(Vec<FieldValue>),
+    /// Top-level structural string-keyed map value:
+    /// `data table: Map<String, T> = { "k": v }`.
+    ///
+    /// 4-pattern check for `Map`:
+    /// - Pattern 1 (fact placement): fails. The key/value table is the
+    ///   data declaration's value fact, not a type-edge or meta-tag fact.
+    /// - Pattern 2 (variant-is-data): fails. `Vec<(String, FieldValue)>`
+    ///   carries keyed entries, distinct from ordered lists, records,
+    ///   scalar bits, and source spans.
+    /// - Pattern 3 (algebraic form): fails. Map bodies are not points in
+    ///   the same algebra as records/scalars/lists; they carry string-keyed
+    ///   lookup facts needed by map-shaped bootstrap data.
+    /// - Pattern 4 (dimensional): fails. No shared coordinate space with
+    ///   record labels or ordered list positions.
+    ///
+    /// Verdict: terminal at the current top-level data-body layer. Values
+    /// deliberately reuse `FieldValue`, matching nested structural map
+    /// values. Non-string-key maps are a separate future carrier.
+    Map(Vec<(String, FieldValue)>),
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -365,9 +383,9 @@ pub enum ValueBody {
 ///   downstream readers (the realization index, the cost lens, etc).
 /// - Pattern 2 (variant-is-data): fails. `Literal(LiteralBits)`,
 ///   `Reference(DeclarationId)`, `Record(Vec<...>)`,
-///   `List(Vec<...>)`, and `Variant { .. }` inhabit different
+///   `List(Vec<...>)`, `Map(Vec<...>)`, and `Variant { .. }` inhabit different
 ///   structural spaces.
-/// - Pattern 3 (algebraic form): fails. The five variants are not
+/// - Pattern 3 (algebraic form): fails. The six variants are not
 ///   points in one algebra; they are the minimal carrier set needed
 ///   for nested structural data bodies.
 /// - Pattern 4 (dimensional): fails.
@@ -393,6 +411,9 @@ pub enum FieldValue {
     /// Structural list value. Used by staged spec files whose
     /// structural data bodies contain list-valued fields.
     List(Vec<FieldValue>),
+    /// Structural string-keyed map value. Used by staged spec files whose
+    /// structural data bodies contain `Map<String, _>` fields.
+    Map(Vec<(String, FieldValue)>),
     /// Structural sum constructor with positional payload fields.
     /// The exact variant child declaration is preserved explicitly
     /// so downstream consumers can recover variant identity without
@@ -462,9 +483,40 @@ pub enum TypeConnective {
     },
 }
 
+/// Maximum alias / resolution hops when peeling before cardinality idempotence.
+const CARDINALITY_IDEMPOTENCE_PEEL_DEPTH: usize = 64;
+
+/// Peel `ResolvedBy*` atoms and zero-argument `Instantiation` aliases (surface
+/// `type Alias = Target` lowering) to the denoted declaration. Stops at the
+/// first non-transparent connective or at [`CARDINALITY_IDEMPOTENCE_PEEL_DEPTH`].
+fn peel_alias_for_cardinality_idempotence(
+    dag: &Dag,
+    current: DeclarationId,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= CARDINALITY_IDEMPOTENCE_PEEL_DEPTH {
+        return current;
+    }
+    match &dag.declaration(current).connective {
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            peel_alias_for_cardinality_idempotence(dag, *next, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if arguments.is_empty() => {
+            peel_alias_for_cardinality_idempotence(dag, *template, depth + 1)
+        }
+        _ => current,
+    }
+}
+
 /// `AtMostOne ∧ AtMostOne` idempotence: nested optional uses the inner declaration.
 ///
-/// Single rule authority for T-ImpossibleBugs nested-optional flatten.
+/// Single rule authority for T-ImpossibleBugs nested-optional flatten. Applies
+/// after peeling zero-arg instantiation / resolved-atom indirection so
+/// `type Opt = Int?; type Alias = Opt; … Alias?` collapses like `Opt?`.
 pub(crate) fn cardinality_idempotent_target(
     dag: &Dag,
     element: DeclarationId,
@@ -473,8 +525,9 @@ pub(crate) fn cardinality_idempotent_target(
     if bound != CardinalityBound::AtMostOne {
         return None;
     }
-    match &dag.declaration(element).connective {
-        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(element),
+    let subject = peel_alias_for_cardinality_idempotence(dag, element, 0);
+    match &dag.declaration(subject).connective {
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(subject),
         _ => None,
     }
 }
@@ -2263,7 +2316,6 @@ pub struct Dag {
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
-    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
@@ -2275,7 +2327,6 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
 // sole writer and the PB-1 equivalence tests ratchet generated == runtime.
 static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
-    dag.mark_bootstrap_secret_nominal_opacity();
     dag.populate_primitive_cache();
     dag
 });
@@ -2283,7 +2334,6 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
-    dag.mark_bootstrap_secret_nominal_opacity();
     assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
@@ -2323,21 +2373,6 @@ impl Dag {
 
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
-    }
-
-    fn mark_bootstrap_secret_nominal_opacity(&mut self) {
-        // Bridge until source-level nominal_opacity marking is lowered and
-        // regen_bootstrap carries std Secret through the generated fixtures.
-        // Delete this name-keyed stamp when Secret<T> graduation owns that
-        // fact in .dag authority.
-        let secret = self
-            .declarations
-            .iter()
-            .position(|decl| decl.name.as_deref() == Some("Secret"))
-            .expect("bootstrap fixture must contain std Secret for nominal-opacity seeding");
-        self.declarations[secret].nominal_opacity = Some(NominalOpacity {
-            permitted_accessors: Vec::new(),
-        });
     }
 
     /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
@@ -2965,8 +3000,9 @@ impl Dag {
     /// **Path 2 satisfaction.** The returned declaration's `value_body`
     /// is `ValueBody::List(_)`, so both the sum type shape and the
     /// 10-element pilot enumeration are structurally walkable. Map-shaped
-    /// bootstrap data remains future debt for the map-shaped T-Substrate
-    /// sibling lane; today it still lowers to `ValueBody::Unparsed`.
+    /// bootstrap data such as `kernel_algebra_profile` now lowers through
+    /// `ValueBody::Map`; the remaining debt is retiring Rust mirrors that
+    /// still read those maps through hand-authored accessors.
     ///
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on
@@ -3694,7 +3730,7 @@ mod tests {
 
         assert!(
             secret.nominal_opacity.is_some(),
-            "Secret must retain its bootstrap nominal-opacity stamp until std owns the fact"
+            "Secret must carry nominal opacity from std source authority"
         );
     }
 
@@ -3777,6 +3813,99 @@ mod tests {
             )),
             "expected duplicate TargetCleanEmissionBinding diagnostic, got {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn cardinality_idempotent_target_peels_empty_instantiation_alias() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let opt_decl = dag.alloc_cardinality_decl(
+            int_decl,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_alias_peel_test", 0, 0),
+        );
+        let alias_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alias_decl,
+            name: Some("Alias".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: opt_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_alias_peel_test", 0, 0),
+        });
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, alias_decl, CardinalityBound::AtMostOne),
+            Some(opt_decl),
+            "Alias = Opt (Instantiation with empty args) should peel to Opt before idempotence"
+        );
+    }
+
+    #[test]
+    fn cardinality_idempotent_target_peels_chained_instantiation_aliases() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let int_opt_decl = dag.alloc_cardinality_decl(
+            int_decl,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        );
+        // type Alias = Int?   →  empty-arg alias to the `Int?` declaration
+        let alias_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: alias_decl,
+            name: Some("Alias".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: int_opt_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        });
+        // type Wrap = Alias  →  second empty-arg alias
+        let wrap_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: wrap_decl,
+            name: Some("Wrap".to_string()),
+            connective: TypeConnective::Instantiation {
+                template: alias_decl,
+                arguments: Vec::new(),
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_chain_peel_test", 0, 0),
+        });
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, wrap_decl, CardinalityBound::AtMostOne),
+            Some(int_opt_decl),
+            "Wrap = Alias; Alias = Int? should peel through both Instantiations to the \
+             canonical `Int?` decl (recursive alias chain, not one step)"
         );
     }
 }

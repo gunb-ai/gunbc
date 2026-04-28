@@ -368,11 +368,23 @@ data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
     let ClaimResult::Fail(msg) = result else {
         panic!("expected Fail, got {result:?}");
     };
+    // After the typed-outcome refactor + helper-binary wiring (PR #1049 / Worker 4),
+    // the only production-emittable phrasings for missing-binary on this seam are:
+    //   * `SpawnFailed { wrapper: None }`         → "ExecuteCommand spawn error: ..."
+    //   * `SpawnFailed { wrapper: Some(_) }`      → "wrapper failed to spawn"
+    //   * `SpawnFailed` from helper-probe miss    → "not executable"
+    //   * `SetupFailed { NamespaceSetupAndDirectSpawnFailed }`
+    //                                             → "namespace setup failed"
+    //   * `SetupFailed { HelperBinaryMissing }`
+    //                                             → "helper not found"
+    //   * `Mismatch`                              → "exit code mismatch"
     assert!(
         msg.contains("spawn error")
             || msg.contains("exit code mismatch")
-            || (msg.contains("unshare(1)") && msg.contains("failed to start"))
-            || (msg.contains("unshare(1)") && msg.contains("post-start fallback")),
+            || msg.contains("not executable")
+            || msg.contains("namespace setup failed")
+            || msg.contains("helper not found")
+            || (msg.contains("unshare(1)") && msg.contains("wrapper failed to spawn")),
         "expected missing-binary or unshare triage; got: {msg}"
     );
 }
@@ -495,7 +507,7 @@ data fixed_point_claim: TestClaim = {
   name: "pb_self_compile_fixed_point",
   source: "let x: Int = 1",
   file_name: "pb_self_compile_fixed_point.v3",
-  predicate: FixedPointConverges("src/v3/compiler/pipeline.dag", "bootstrap_generated.rs"),
+  predicate: FixedPointConverges("default_fixed_point_source", "pipeline_stage_snapshots"),
   requires: []
 }
 
@@ -533,11 +545,39 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 5);
-    assert!(
-        results
+    let result_for = |claim_name: &str| {
+        &results
             .iter()
-            .all(|result| matches!(&result.result, ClaimResult::NotYetImplemented(_))),
-        "expected every PB census predicate shape to reach its explicit dispatch arm, got {results:?}"
+            .find(|result| result.claim_name == claim_name)
+            .unwrap_or_else(|| panic!("missing claim result for `{claim_name}`"))
+            .result
+    };
+    let assert_fail_contains = |claim_name: &str, expected: &str| {
+        assert!(
+            matches!(result_for(claim_name), ClaimResult::Fail(reason) if reason.contains(expected)),
+            "expected `{claim_name}` to fail with `{expected}`, got {:?}",
+            result_for(claim_name)
+        );
+    };
+    assert_fail_contains(
+        "pb_hand_rust_at_shim_floor",
+        "expected_hand_authored_non_test",
+    );
+    assert_fail_contains(
+        "lens_producer_files_remaining",
+        "lens-producer subset observed",
+    );
+    assert_eq!(
+        result_for("pb_self_compile_fixed_point"),
+        &ClaimResult::Pass
+    );
+    assert_fail_contains(
+        "pb_compiler_std_ratchet_zero",
+        "compiler_std_positive_set_ratchet",
+    );
+    assert_fail_contains(
+        "pb_test_file_generated_from_dag",
+        "not in the generated-file authority",
     );
 }
 

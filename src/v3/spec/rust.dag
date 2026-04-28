@@ -50,7 +50,10 @@ module v3.spec.rust
 
 import v3.spec.v3_l1 { Bind, Branch, Main }
 import v3.std.computation_model { TargetExecutionModel, OwnershipBased, LexicalScoping }
-import v3.std.computation_model { SourceFiltering, ExecutionModelRequirement }
+import v3.std.computation_model {
+  ShapeATargetSourceFiltering, ExecutionModelRequirement,
+  internal_source_filtering
+}
 import v3.std.emit_model {
   TypeRealization, FieldBinding, FieldAccess,
   OperatorRealization, BehaviorRealization, CallableRealization,
@@ -92,14 +95,9 @@ data rust_execution_model: TargetExecutionModel = {
   scope: LexicalScoping
 }
 
-data rust_source_filtering: SourceFiltering = {
-  excluded_prefixes: [
-    "dsl/std/",
-    "dsl/extdeps/",
-    "src/v3/std/",
-    "src/v3/spec/",
-    "src/v3/compiler/",
-  ]
+data rust_source_filtering: ShapeATargetSourceFiltering = {
+  internal: internal_source_filtering
+  additional_excluded_prefixes: ["src/v3/compiler/"]
 }
 
 data rust_execution_requirement: ExecutionModelRequirement = OwnershipBased
@@ -855,7 +853,7 @@ data rust_int_div: OperatorRealization = {
   language: rust_language
   target: Int
   op: OrderedRing.div
-  carrier: "({lhs} / {rhs})"
+  carrier: "(__v3_int_div({lhs}, {rhs}))"
   cost: 1
 }
 
@@ -1090,6 +1088,17 @@ data rust_list_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: List
   carrier: "Vec<{element}>"
+  cost: 1
+}
+
+// `type Result<ok, err> = Ok { value: ok } | Err { value: err }` in
+// `dsl/std/error_primitives.dag` is a type-checking authority; Rust materializes
+// it as the standard `::core::result::Result<…>` (see
+// `emit_rust_with_mode` which skips generic `Result` in type_defs).
+data rust_result_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: Result
+  carrier: "::core::result::Result<{key}, {value}>"
   cost: 1
 }
 

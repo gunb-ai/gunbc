@@ -620,11 +620,26 @@ impl<'a> Parser<'a> {
                     type_kw.span,
                     Some(inhabits),
                     Some(inhabits_clause_span),
+                    false,
+                    None,
+                )
+            }
+            TokenKind::Ident(ref s) if s == "nominal_opaque" => {
+                self.bump();
+                let eq = self.expect_kind(TokenKind::Eq)?;
+                self.parse_type_rhs_after_eq(
+                    name,
+                    type_params,
+                    type_kw.span,
+                    None,
+                    None,
+                    true,
+                    Some(eq.span.clone()),
                 )
             }
             TokenKind::Eq => {
                 self.bump();
-                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, None, None)
+                self.parse_type_rhs_after_eq(name, type_params, type_kw.span, None, None, false, None)
             }
             _ => Ok(SurfaceItem::TypeAtom {
                 name,
@@ -690,6 +705,7 @@ impl<'a> Parser<'a> {
     ///
     /// Optional alias-RHS `where` (DB-11): `where <expr> [, <expr>]*` parses
     /// to `SurfaceExpr` (comma-separated parts fold as left-associated `&&`).
+    #[allow(clippy::too_many_arguments)]
     fn parse_type_rhs_after_eq(
         &mut self,
         name: String,
@@ -697,6 +713,8 @@ impl<'a> Parser<'a> {
         type_kw_span: SourceSpan,
         inhabits: Option<SurfaceType>,
         inhabits_clause_span: Option<SourceSpan>,
+        nominal_opaque: bool,
+        nominal_opaque_clause_span: Option<SourceSpan>,
     ) -> Result<SurfaceItem, Diagnostic> {
         if !self.rhs_is_sum() {
             if inhabits.is_some() {
@@ -719,9 +737,21 @@ impl<'a> Parser<'a> {
             return Ok(SurfaceItem::TypeAlias {
                 name,
                 type_params,
+                nominal_opaque,
                 target,
                 refinement,
                 span: SourceSpan::new(self.file, type_kw_span.byte_start, end),
+            });
+        }
+        if nominal_opaque {
+            return Err(Diagnostic::ParseError {
+                message: String::from(
+                    "`nominal_opaque` is only supported when the type RHS is an alias",
+                ),
+                span: nominal_opaque_clause_span
+                    .clone()
+                    .unwrap_or_else(|| type_kw_span.clone()),
+                fixes: Vec::new(),
             });
         }
 

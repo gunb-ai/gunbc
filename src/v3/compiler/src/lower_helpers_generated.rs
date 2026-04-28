@@ -121,6 +121,7 @@ pub fn item_span(p0: &parse_surface::SurfaceItem) -> SourceSpan {
         SurfaceItem::TypeAlias {
             name: __i_name,
             type_params: __i_type_params,
+            nominal_opaque: __i_nominal_opaque,
             target: __i_target,
             refinement: __i_refinement,
             span: __i_span,

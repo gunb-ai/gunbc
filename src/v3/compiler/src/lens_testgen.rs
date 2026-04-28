@@ -75,6 +75,18 @@ impl<'a> GeneratedClaim<'a> {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
+            FieldValue::Map(entries) => format!(
+                "{{ {} }}",
+                entries
+                    .iter()
+                    .map(|(key, value)| format!(
+                        "{}: {}",
+                        quote_string(key),
+                        self.render_field_value(value)
+                    ))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
             FieldValue::Variant {
                 constructor,
                 payload,

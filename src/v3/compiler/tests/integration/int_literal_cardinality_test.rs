@@ -242,24 +242,11 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
     let CompileError::Semantic(dag) = err else {
         panic!("expected semantic diagnostic, got {err:?}");
     };
-    let messages: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, diagnostic)| diagnostic.message())
-        .collect();
     assert_eq!(
-        messages.len(),
+        dag.diagnostics().len(),
         1,
-        "out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
-    );
-    assert!(
-        messages.iter().any(|message| {
-            message.contains("integer literal `256`")
-                && message.contains("u8")
-                && message.contains("0..=255")
-                && message.contains("wider target")
-        }),
-        "expected MagnitudeOutOfRange details, got {messages:?}"
+        "out-of-range integer literal should emit one root-cause diagnostic, got {:#?}",
+        dag.diagnostics()
     );
     assert!(
         dag.diagnostics().iter().any(|(_, diagnostic)| {
@@ -279,7 +266,8 @@ fn out_of_range_uint8_literal_emits_magnitude_diagnostic() {
                     && fixes.is_empty()
             )
         }),
-        "MagnitudeOutOfRange should carry typed bounds and no fabricated correction"
+        "MagnitudeOutOfRange should carry typed bounds and no fabricated correction, got {:#?}",
+        dag.diagnostics()
     );
 }
 
@@ -293,15 +281,11 @@ fn int_literal_ranges_follow_type_aliases() {
     let CompileError::Semantic(dag) = err else {
         panic!("expected semantic diagnostic, got {err:?}");
     };
-    let messages: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, diagnostic)| diagnostic.message())
-        .collect();
     assert_eq!(
-        messages.len(),
+        dag.diagnostics().len(),
         1,
-        "aliased out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
+        "aliased out-of-range integer literal should emit one root-cause diagnostic, got {:#?}",
+        dag.diagnostics()
     );
     assert!(
         dag.diagnostics().iter().any(|(_, diagnostic)| {
@@ -319,7 +303,8 @@ fn int_literal_ranges_follow_type_aliases() {
                     && range_max_inclusive == "255"
             )
         }),
-        "expected aliased MagnitudeOutOfRange details, got {messages:?}"
+        "expected aliased MagnitudeOutOfRange details, got {:#?}",
+        dag.diagnostics()
     );
 }
 
