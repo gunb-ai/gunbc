@@ -24,14 +24,16 @@ Lens<C> = {
   name:     String                          // dimension identifier (populates DimensionReport.dimension_name)
   read:     (Dag, Behavior) → Witness<C>    // per-Behavior cost basis; Dag for substrate-fact lookup; typed failure channel
   unit:     C                               // identity element of C's monoid
-  compose:  (C, C) → C                      // sequential composition (Bind)
-  parallel: (C, C) → C                      // parallel composition (Branch)
-  iterate:  (C, Bound) → C                  // bounded iteration (Loop)
+  compose:  (C, C) → C                      // sequential composition (BindNode); both arms run
+  branch:   (C, C) → C                      // exclusive choice (BranchNode); only one arm runs — cost composition is max/join over arms, NOT work-additive
+  iterate:  (C, Bound) → C                  // bounded iteration (LoopNode)
   validate: (Dag, C) → OptionalDiagnostic   // aggregate side-condition; Dag for workflow/sink lookup; aggregate location via Diagnostic.span
 }
 ```
 
 `Dag` and `Behavior` are the existing substrate types from `src/v3/std/substrate.dag` (no new substrate type introduced). `read`'s `(Dag, Behavior)` signature matches the existing `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` at `dimensions.dag:74` verbatim — no hidden global lookup authority for substrate facts; the `Dag` parameter carries the lookup context explicitly.
+
+**Why three composition operations and not four** (per codex BLOCKING finding on `71db19db`): v3 has three composition primitives among the 5 L1 behaviors — `BindNode` (sequential), `BranchNode` (exclusive choice), `LoopNode` (bounded iteration). There is no `ParallelNode`. Auto-parallelism per THESIS §"Free consequences" is **emergent** from dependency-graph analysis on `BindNode` sequences (independent binds run in parallel; data-dependent binds are serialized), not a declared substrate primitive. The lens framework declares operations over the actual L1 behaviors, so `branch` (exclusive choice — `max/join`) appears, not a phantom `parallel` (which would mis-encode L1 semantics under P2/P6). Lens authors who want a parallelism cost facet declare it as a *derived* property of `compose` over independent sub-DAGs, or as a separate lens instance — not via a new substrate field.
 
 **Why `read` returns `Witness<C>` and not `C`** (per codex BLOCKING finding on `4057b8f5`): a `(Dag, Behavior) → C` signature has no typed failure channel — a missing per-Behavior substrate fact (e.g., a primitive without a declared cost) would have to either fabricate a default `C` (violates fail-closed) or panic (violates fail-closed). `Witness<C>` from `src/v3/std/dimensions.dag:35-37` is the existing typed channel:
 
@@ -98,7 +100,7 @@ Per Director response on #1078, the following are LOCKED for the framework spec:
 
 ## Three worked instances
 
-Each instance demonstrates a different monoid shape and validates the framework's range. All three share the same fold machinery; they differ only in (read, unit, compose, parallel, iterate, validate).
+Each instance demonstrates a different monoid shape and validates the framework's range. All three share the same fold machinery; they differ only in (read, unit, compose, branch, iterate, validate).
 
 ### Instance 1 — Complexity (additive numeric monoid)
 
@@ -108,7 +110,7 @@ Establishes the basic framework shape.
 ```
 type SymbolicCost = CostExpr {
   work:              SymbolicExpr   // total work (sum of operations)
-  span:              SymbolicExpr   // critical-path length (max of parallel arms)
+  span:              SymbolicExpr   // critical-path length (max across exclusive Branch arms; max-then-add across Bind sequence)
   asymptotic_class:  BigOClass      // O(1), O(log n), O(n), O(n log n), O(n^2), ...
 }
 ```
@@ -121,14 +123,14 @@ type SymbolicCost = CostExpr {
 | `read(dag, behavior)` | Reads operation's declared cost from `dsl/std/algebra.dag` (looked up via `dag` context for the given `behavior`) and wraps as `Inhabits(...)` (e.g., `OrderedRing.add` → `Inhabits(CostExpr(1, 1, O(1)))`); returns `Violates { reason: "no declared cost for <op>", at: behavior }` if the substrate has no fact for that operation |
 | `unit` | `CostExpr(work=0, span=0, asymptotic_class=O(1))` |
 | `compose` (Bind) | `CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))` |
-| `parallel` (Branch) | `CostExpr(work=a.work + b.work, span=max(a.span, b.span), class=max(a.class, b.class))` |
+| `branch` (BranchNode) | `CostExpr(work=max(a.work, b.work), span=max(a.span, b.span), class=max(a.class, b.class))` — exclusive choice = worst case across arms (only one arm runs at runtime; the lens conservatively reports the worst); NOT work-additive |
 | `iterate` (Loop) | `CostExpr(work=body.work × bound, span=body.span × bound, class=multiply_class(body.class, bound))` |
 | `validate(dag, c)` | Always `NoDiagnostic` — complexity has no side-condition; `dag` is unused; final result is `DimensionOk` if all reads `Inhabits` |
 
 **Worked program:**
 ```
 data x = compute_pair(in)             // bind: O(n)
-data y = parallel { sort(x), aggregate(x) }   // branch: max
+data y = branch { case_a: sort(x), case_b: aggregate(x) }   // exclusive choice; only one arm runs
 data z = compute_summary(y, in)        // bind: O(1)
 ```
 
@@ -136,8 +138,8 @@ data z = compute_summary(y, in)        // bind: O(1)
 1. `read(compute_pair)` → `Inhabits(CostExpr(n, n, O(n)))`
 2. `read(sort)` → `Inhabits(CostExpr(n log n, log n, O(n log n)))`
 3. `read(aggregate)` → `Inhabits(CostExpr(n, n, O(n)))`
-4. `parallel(sort, aggregate)` → `CostExpr(n log n + n, max(log n, n), O(n log n))` (compose pulls inhabited values; same for steps 5/7)
-5. `compose(compute_pair, parallel(...))` → `CostExpr(n + (n log n + n), n + max(log n, n), O(n log n))`
+4. `branch(sort, aggregate)` → `CostExpr(work=max(n log n, n)=n log n, span=max(log n, n)=n, class=max(O(n log n), O(n))=O(n log n))` — exclusive choice takes worst case across arms (compose pulls inhabited values; same for steps 5/7)
+5. `compose(compute_pair, branch(...))` → `CostExpr(work=n + n log n, span=n + n, class=O(n log n))` — sequential composition adds work and adds span
 6. `read(compute_summary)` → `Inhabits(CostExpr(1, 1, O(1)))`
 7. `compose(...)` → final = `CostExpr(O(n log n) work, O(n) span, O(n log n) class)`
 
@@ -163,7 +165,7 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 | `read(dag, behavior)` | Reads operation's declared capability requirement set (looked up via `dag` for the given `behavior`) wrapped as `Inhabits(...)` (e.g., `read[TenantA].orders` → `Inhabits({Read(TenantA)})`); returns `Violates { reason: "no declared capability requirement for <op>", at: behavior }` if the substrate has no fact for that operation |
 | `unit` | `{}` (empty capability set) |
 | `compose` (Bind) | Set union — sequential composition accumulates capabilities |
-| `parallel` (Branch) | Set union — parallel branches require all capabilities of any arm |
+| `branch` (BranchNode) | Set union — exclusive choice; only one arm runs but compile-time analysis doesn't know which, so defensive accumulation: program must be granted capabilities for any arm it might take |
 | `iterate` (Loop) | Set union of body × any-iter (bound doesn't matter for capability set; all iterations together) |
 | `validate(dag, set)` | Reads `workflow.cap_grant` from `dag` (the `@cap_grant(...)` declaration on the workflow root). If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root span — read from dag>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and grant data come from `dag`, not hidden context) |
 
@@ -205,7 +207,7 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 | `read(dag, behavior)` | Reads operation's data label (looked up via `dag` for the given `behavior`) wrapped as `Inhabits(...)` (e.g., `read[TopSecret].records` → `Inhabits(TopSecret)`); returns `Violates { reason: "no declared security label for <op>", at: behavior }` if the substrate has no fact for that operation |
 | `unit` | `Public` (lattice bottom) |
 | `compose` (Bind) | Lattice join (`max`) — sequential composition takes the highest label |
-| `parallel` (Branch) | Lattice join (`max`) — parallel branches yield the highest label |
+| `branch` (BranchNode) | Lattice join (`max`) — exclusive choice; defensive worst-case label across arms (only one arm runs but compile-time analysis must allow for either) |
 | `iterate` (Loop) | Lattice join (`max`) of body × any-iter (label doesn't change with bound) |
 | `validate(dag, label)` | Reads sink declaration + clearance (`@sink_clearance(...)`) from `dag`. If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration span — read from dag>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and clearance data come from `dag`, not hidden context) |
 
@@ -248,7 +250,7 @@ The R2-T-Substrate-Lens-Primitive lane delivers `Lens<C>` and migrates the exist
 | Existing lens | Current state | Migration target | Sizing |
 |---|---|---|---|
 | `src/v3/lenses/cost.dag` | PROXY — has `combine_iterate` / `combine_max` / `combine_sequential` / `combine_dominant` parametrized only on `SymbolicCost` | `Lens<SymbolicCost>` instance — generic-ize the existing combinators | ~1-2 days (mostly generalization of existing patterns) |
-| `src/v3/lenses/complexity.dag` | PROXY — single integer depth per port | `Lens<Depth>` instance with `Depth = Int` and `compose = max`, `parallel = max + 1` | ~1 day |
+| `src/v3/lenses/complexity.dag` | PROXY — single integer depth per port | `Lens<Depth>` instance with `Depth = Int`, `compose = max + 1` (sequential adds depth), `branch = max` (exclusive choice takes deeper arm) | ~1 day |
 | `src/v3/lenses/idempotency.dag` | STUB — Rust oracle | `Lens<IdempotencyVerdict>` instance with `IdempotencyVerdict = IsIdempotent | IsBreaking(Reason)` and `compose = first-breaker-wins` | ~1-2 days |
 | `src/v3/lenses/parallelism.dag` | STUB — fail-closed placeholder | `Lens<ParallelismVerdict>` instance — substrate-completion work | ~2-3 days |
 
@@ -271,7 +273,7 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 - **Pass criterion:** each fold trace matches expected output. Failure = monoid or side-condition spec is wrong.
 
 **D2. Existing PROXY lenses fit `Lens<C>` shape (paper exercise).**
-- For each of the 4 existing lenses, write the instance declaration (`read`, `unit`, `compose`, `parallel`, `iterate`, `validate`) using only existing combinators where possible.
+- For each of the 4 existing lenses, write the instance declaration (`read`, `unit`, `compose`, `branch`, `iterate`, `validate`) using only existing combinators where possible.
 - **Pass criterion:** every existing combinator (`combine_max`, `combine_sequential`, etc.) maps to a Lens<C> field with no machinery left over. Failure = the existing patterns aren't actually monoidal, or the framework needs additional fields.
 
 **D3. L6 (structural-form coverage) collapses to `Lens<EmissionPathPresent>`.**
@@ -309,7 +311,7 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 These run during substrate-worker dispatch, before declaring the lane closed. Each is a TestClaim-shaped acceptance.
 
 **I1. `dsl/std/lens.dag` declares `Lens<C>` and type-checks against existing substrate.**
-- Lens<C> declaration includes the 7 fields (`name`, `read`, `unit`, `compose`, `parallel`, `iterate`, `validate`).
+- Lens<C> declaration includes the 7 fields (`name`, `read`, `unit`, `compose`, `branch`, `iterate`, `validate`).
 - `read: (Dag, Behavior) → Witness<C>` (typed per-Behavior failure channel; matches `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` at `dimensions.dag:74` verbatim).
 - `validate: (Dag, C) → OptionalDiagnostic` (aggregate-level failure channel; `Dag` for workflow/sink declaration lookup; `OptionalDiagnostic` from `dimensions.dag:41-43`; location info via `Diagnostic.span: SourceSpan`, not per-Behavior).
 - All `read` and `validate` lookups go through the explicit `Dag` parameter — no hidden global lookup authority.
