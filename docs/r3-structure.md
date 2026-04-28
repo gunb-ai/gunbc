@@ -147,9 +147,14 @@ R3 commits to closing the consequence layer of the thesis. The following are *no
 | **TypeScript / Swift / HDL Shape A targets** | Same shape as Shape B saturation: the structural claim is `O(1)` per target; R2 ships Rust + Python + Go which proves the claim. Additional Shape A targets are adoption-driven, not thesis-required | Post-R3 ecosystem buildout |
 | **Tier 1 type-refinement features beyond R2 modeling** | If new modeling capabilities surface (e.g., refined-type narrowing beyond `Secret<T>` and `Dimension<Carrier>`), they're additions to the substrate, not thesis-required | Post-R3 modeling work |
 
-## Design challenges — DECISIONS LOCKED 2026-04-28 per Director review
+## Design challenges — direction ratified 2026-04-28; specific decisions split between DECIDED and SCHEDULED
 
-Director review of #1078 (2026-04-28T01:32:45Z) ratified the recommendations below as locked decisions. Before-dispatch design work is now scoped as **explicit milestone PRs** rather than comment-thread resolution (see §"Pre-R2-Evaluator design lock cadence" below). The text below preserves each design challenge with its locked decision; the cadence section names the PR sequence.
+Director review of #1078 (2026-04-28T01:32:45Z) ratified the recommendations below. **Two distinct release states** apply across the 8 challenges (per gpt-5-5-pro meta-review feedback at 03:02Z that "DECISIONS LOCKED" was conflating ratified-direction with specific-decision):
+
+- **DECIDED** = specific design decision is final; no further PR needed for the design itself (only implementation): challenges #4 (SG-0 = 0 + ≤1 trampoline), #5 (L4-L7 split + L6 reclassified to R2), #6 (OpenAPI + Markdown drift-lock; SQL DDL alternative), #7 (perf measurable or post-R3), #8 (mechanical replication; post-R3 generalize-providers trigger)
+- **DIRECTION RATIFIED, SPECIFIC DECISION SCHEDULED** = direction is locked but specific design lands in a named follow-up PR before R2-Evaluator dispatch: challenges #1 (Evaluator runtime-value model — PR-B), #2 (reflection completeness spec — PR-C), #3 (cross-target equivalence semantics — PR-D)
+
+Before-dispatch design work is scoped as **explicit milestone PRs** rather than comment-thread resolution (see §"Pre-R2-Evaluator design lock cadence" below). The text below preserves each design challenge with its state and the cadence PR (if any) that closes it.
 
 ### 1. Evaluator runtime-value representation (R2-Evaluator scope, but R3 consumers depend on the choice)
 

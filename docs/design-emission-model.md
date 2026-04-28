@@ -39,7 +39,7 @@ Program declares intent          Substrate declares facts
                    Fail-closed diagnostic
 ```
 
-- **Program intent** = `.dag` algebra inhabitance + refinement bounds + (optional) explicit type annotations
+- **Program intent** = `.dag` algebra inhabitance + refinement bounds + program-derived structural facts (lifetime, escape, ownership inferred from binding scopes and use sites — see Modeling problem 3 corrected). **Not annotations.** Annotations were retracted as parallel authority.
 - **Substrate facts** = target language specs (per `dsl/extdeps/languages/*/`); each candidate target's structural properties (ownership, lifetime, growability, encoding-invariant, etc. — declared as algebra refinements per Modeling problem 2); declared structural ordering for diagnostic enumeration
 - **Structural fold** = mechanical implementation. Reads program intent, walks substrate facts, produces a result. No selection logic; no tie-breaking policy; no "minimum-satisfier" heuristic that lives in the fold itself.
 - **Result** = unique target primitive (when fold structurally determines) or typed `EmissionDiagnostic` carrier naming what would resolve the under-determinism (when fold cannot)
@@ -228,7 +228,7 @@ The lane was sized as "M (~1-2 weeks first-cut)" per [`docs/thesis/target-ground
 |---|---|---|
 | 1. Refinement composition | T-Ground-Rust XL (extends substrate per-target) + T-Substrate cardinality-substrate prereq (already in R2) | Folds into existing |
 | 2. Structural axes (replaces "canonical choice" framing) | T-Ground-Rust + T-Ground-Python + T-Ground-Go (each declares the structural axes — ownership/growability/encoding/etc. — that distinguish its primitive families) | Folds into existing |
-| 3. User annotation as program substrate | **NEW LANE** — substrate work for program-side `@target` annotations | M |
+| 3. ~~User annotation as program substrate~~ → **Structural derivation of program intent** (no annotations) | **NEW LANE** — `T-Ground-Lifetime-Analyzer`: derives ownership / lifetime / growability from program structure (bindings, signatures, escape) | M |
 | 4. Declared structural ordering | T-Substrate (declared ordering on cardinality bounds; declared enumeration order on alternates) | Folds into existing |
 | 5. Fail-closed diagnostic surface | **NEW LANE** — `EmissionDiagnostic` carrier substrate | S |
 | 6. Language spec as substrate | **NEW LANE** — `LanguageSpec` schema authoring + per-target population | M (was hidden as part of "T-Ground-Engine") |
