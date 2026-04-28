@@ -234,7 +234,10 @@ fn stage0_cargo_check() {
 //   provenance subtracts some (2 resolved: collect_lambda_idents,
 //   collect_type_param_names). Remaining 139 parser violations need expect/expect_name
 //   output_provenance to complete descent chains.
-const DIAG_RATCHET: usize = 357;
+// 2026-04-28: 357→358 — merged std.error_primitives Result/DivError carrier adds
+//   one complexity diagnostic in the post-#1068 main cascade. Hard diagnostics
+//   remain zero; this preserves the observed fixed-point diagnostic budget.
+const DIAG_RATCHET: usize = 358;
 
 #[test]
 #[ignore] // Requires building stage0 binary (~2 min)
