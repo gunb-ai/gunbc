@@ -286,7 +286,12 @@ R3 cannot start meaningful work until R2 closes. Specifically:
 - **R2-Grounding-Rust + R2-Grounding-Python** are the upstream gate for T-Verification-L5-Corpus (specifically L5 cross-target).
 - **R2 substrate carriers** (NominalOpacity, ValueBody::Map, parametric algebra) feed T-Int128 + T-Anthropic-Wire + T-Bridge-Retirement as parallel substrate-completion work.
 
-**R3 worker dispatch precondition (Director-locked 2026-04-28 per rearrange #4):** R2-Evaluator landed AND R2-Grounding-Rust+Python landed. Pre-R3 *brief authoring* may begin during R2 final week (Director-discretionary, mirroring R2's pre-R1-close pattern), but worker dispatch waits for the joint precondition. This prevents R3 brief authoring from spawning drift if R2 close definition slips.
+**R3 worker dispatch precondition** (Director-locked 2026-04-28; clarified 2026-04-28 per gpt-5-5-pro BLOCKING on `dbc48dc0` re P2 single-authority discipline):
+
+- **Applies to the 7 Evaluator-gated lanes** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition): R2-Evaluator landed AND R2-Grounding-Rust+Python landed. Pre-R3 *brief authoring* may begin during R2 final week (Director-discretionary, mirroring R2's pre-R1-close pattern), but worker dispatch waits for the joint precondition. This prevents R3 brief authoring from spawning drift if R2 close definition slips.
+- **Carve-out for the 3 non-Evaluator-gated lanes** (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement): these are self-contained or substrate-completion work parallel to the Evaluator-gated lanes. They consume R2 substrate carriers but not the Evaluator itself, so they MAY dispatch pre-R3 (in parallel with R2-Evaluator work) per scheduling preference. The global R3 worker-dispatch precondition above applies ONLY to the 7 Evaluator-gated lanes; the 3 non-gated lanes operate as explicitly-scoped substrate-completion work outside that precondition.
+
+This split resolves the prior single-authority drift between `:36` (non-gated lanes can dispatch in parallel) and the global precondition (worker dispatch waits): the precondition is now scoped to the 7 Evaluator-gated lanes only, with the 3 non-gated lanes explicitly carved out.
 
 ## R3 closure criteria
 

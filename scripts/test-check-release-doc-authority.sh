@@ -41,8 +41,14 @@ test_negative_single() {
   local forbidden="$1"
   local content="$2"
 
+  # Fixture heading deliberately omits $forbidden (per gpt-5-5-pro
+  # review on dbc48dc0): if the heading carried the forbidden string,
+  # a future bad RETRACTION_PATTERNS broadening could exempt the body
+  # line while the heading still triggers the consumer — making the
+  # negative test pass without proving the body content is caught.
+  # Keep the heading generic; assert the body line is the violation.
   cat > "$TMPDIR/docs/r2-structure.md" <<EOF
-# R2 Structure (test fixture — live forbidden string: $forbidden)
+# R2 Structure (negative-test fixture)
 
 $content
 EOF
