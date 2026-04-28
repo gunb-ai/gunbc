@@ -632,7 +632,7 @@ fold_dag_string_function_param_transient_to_rust_strslice: TestClaim {
 
 **Why this works without annotations:** the fold derives ownership from the program's own structural facts (lifetime of bindings, function-body use patterns, escape analysis). Rust's borrow checker does this work in reverse (validating user's annotations); gunbc's fold does it forward (deriving the right Rust target from program structure). **The program already declares its intent through use; annotations would be parallel authority.**
 
-**Open call:** how rich does the lifetime/escape analyzer need to be in R2? Recommendation: cover (a) top-level data bindings (Example 3), (b) function parameters with transient use (this Example), (c) function return values (must be Owned). Defer (d) closures, (e) async lifetimes, (f) Pin/self-referential to post-R3 if needed. **Director sign-off on R2 scope.**
+**Lifetime/escape analyzer scope** (Director-locked 2026-04-28; see §"Open design calls surfaced by the examples" item 2 for the canonical record): R2 covers (a) top-level data bindings (Example 3), (b) function parameters with transient use (this Example), (c) function return values (must be Owned). **(d) closures, (e) async lifetimes, (f) Pin/self-referential land in R3** — folded into `T-LensProducer-Retirement` (the lifetime analyzer is structurally what replaces `lens_apply.rs`'s reflection work). Per codex BLOCKING on `b2107ab0`: this callout previously said "defer to post-R3 if needed" which contradicted the locked R3 decision — single-authority resolved by aligning the callout with the locked decision and pointing at the canonical record.
 
 ---
 
