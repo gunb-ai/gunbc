@@ -136,9 +136,14 @@ T-Tier3-Diss  T-LensProducer  T-V-L4-L7-Direct  T-FixedPoint  T-Omni-Shape-B  (T
                        T-Bridge-Retirement ◄── (parallel substrate-completion;
                                               partial side-effect from
                                               T-LensProducer-Retirement)
+                       T-CostLens-Composition ◄── (Evaluator-gated; also
+                                                  gated on R2-T-Substrate
+                                                  per-operation algebra cost
+                                                  + R2-T-Ground-LanguageSpec
+                                                  per-primitive realization cost)
 ```
 
-**Parallel-capable work at steady state:** 6+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement). Verification has its own internal critical path: `T-V-L4-L7-Direct → T-V-L5-Corpus` (because Corpus's L5 cross-target work consumes Direct's L4 corpus).
+**Parallel-capable work at steady state:** 7+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement). Verification has its own internal critical path: `T-V-L4-L7-Direct → T-V-L5-Corpus` (because Corpus's L5 cross-target work consumes Direct's L4 corpus).
 
 ## Compromises being made
 
@@ -276,7 +281,7 @@ Workers cannot dispatch on under-specified scope, especially on multi-week T-Ver
 
 R3 cannot start meaningful work until R2 closes. Specifically:
 
-- **R2-Evaluator** is the upstream gate for **7 of 10 R3 lanes** (T-Tier3, T-LensProducer, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B). Without it, R3 dispatchers spin.
+- **R2-Evaluator** is the upstream gate for **7 of 10 R3 lanes** (T-Tier3, T-LensProducer, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition). Without it, R3 dispatchers spin.
 - **R2-Grounding-Rust + R2-Grounding-Python** are the upstream gate for T-Verification-L5-Corpus (specifically L5 cross-target).
 - **R2 substrate carriers** (NominalOpacity, ValueBody::Map, parametric algebra) feed T-Int128 + T-Anthropic-Wire + T-Bridge-Retirement as parallel substrate-completion work.
 
