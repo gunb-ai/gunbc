@@ -147,7 +147,7 @@ for a principal engineer to verify in one evening.
 
 | Item | Impl | Gate (`.dag` TestClaim) | Owner |
 |---|---|---|---|
-| `repeat_string` | [x] (brief: `p0-render-repeat-string.md`) | [ ] `p0_repeat_string_correct` `[Day 1]` | R1C-B |
+| `repeat_string` | [x] (brief: `p0-render-repeat-string.md`) | [ ] `p0_repeat_string_correct` `[Day 1]` (structural); interim `p0_repeat_string_v2_oracle_rust_bridge` in `r1_gates` | R1C-B |
 | `REST_OPS` drift | [x] (brief: `p0-rest-ops-drift.md`) | [ ] `p0_rest_ops_aligned` `[ext]` | R1C-B |
 | `no_profile_sentinel` | [x] (brief: `p0-bug-no-profile-sentinel.md`) | [ ] `p0_no_fabrication_sentinel` `[ext]` | R1C-B |
 

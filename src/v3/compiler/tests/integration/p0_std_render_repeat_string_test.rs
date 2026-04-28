@@ -79,10 +79,11 @@ fn pads_then_text_like_indent() -> String {
     }
 }
 
-/// R1C-B / T-P0 — `p0_repeat_string_correct` must pass through the v3 `TestRunner` on the same
-/// oracle string asserted above for `repeat_string(s: "x", n: 3)` (ROADMAP T-P0 Day-1 gate).
+/// R1C-B — interim `p0_repeat_string_v2_oracle_rust_bridge` suite: v3 `TestRunner` + the same v2
+/// oracle string for `repeat_string(s: "x", n: 3)` (`dsl/std/render.dag`). Not the structural
+/// ROADMAP `p0_repeat_string_correct` receipt; see `r1_gates.template.dag` dissolution comment.
 #[test]
-fn p0_repeat_string_correct_gate_matches_v2_render_oracle() {
+fn p0_repeat_string_v2_oracle_rust_bridge_gate_matches_v2_render_oracle() {
     let root = repo_root();
     assert!(
         root.join("dsl/std/render.dag").is_file(),
@@ -122,12 +123,12 @@ fn repeat_string_returns_n_copies() -> String { repeat_string(s: "x", n: 3) }
         ),
         Err(e) => panic!("r1_gates.dag: {e:?}"),
     };
-    let results = TestRunner::new(&dag).run_suite("p0_repeat_string_correct_gate");
+    let results = TestRunner::new(&dag).run_suite("p0_repeat_string_v2_oracle_rust_bridge_gate");
     assert_eq!(results.len(), 1, "{results:?}");
     assert_eq!(
         results[0].result,
         ClaimResult::Pass,
-        "expected Pass on p0_repeat_string_correct, got {:?}",
+        "expected Pass on p0_repeat_string_v2_oracle_rust_bridge, got {:?}",
         results[0]
     );
 }
