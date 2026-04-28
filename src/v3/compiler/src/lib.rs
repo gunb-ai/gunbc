@@ -40,8 +40,6 @@ mod int_literal_ranges;
 pub mod lens_apply;
 pub mod lens_testgen;
 
-<<<<<<< HEAD
-=======
 /// Effect-enumeration lens. Authority lives in
 /// `src/v3/lenses/effect_enumeration.dag`; the Rust projection is
 /// auto-emitted into `src/v3/compiler/src/lens_effect_enumeration_generated.rs`
@@ -70,7 +68,6 @@ pub mod lens_effect_enumeration {
     };
 }
 
->>>>>>> origin/main
 /// Unused-parameters lens. Authority lives in `src/v3/lenses/unused_parameters.dag`;
 /// the Rust projection is emitted into `lens_unused_parameters_generated.rs` and
 /// wrapped here inline (same host pattern as `lens_cost` / `lens_provenance`).
