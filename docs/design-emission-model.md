@@ -406,12 +406,15 @@ data name: String = "Alice"
 **Fold steps:**
 1. Read program intent: algebra = `FreeMonoid<Char>` (`.dag` `String` is UTF-8 sequence of chars); refinement = none
 2. **Lifetime/escape analysis:** `name` is a top-level data binding. It has no source it could borrow from (it's constructed from a literal); it lives for the program's duration. Structural intent: `ownership = Owned`, `lifetime = self`
-3. **Growability analysis:** `name` is bound to a literal once; nothing in the program graph mutates or grows it. Without growability evidence, default refinement is the *minimal* growability needed. But `growable = no` (BoxedStr) is *strictly more constrained* than `growable = yes` (RustString) — the latter subsumes the former. **Question for the substrate:** which is "minimally complete"?
-4. Walk substrate inhabitants of `FreeMonoid<Char>` matching `ownership = Owned`, `lifetime = self`: { RustString (growable=yes), BoxedStr (growable=no) }
-5. **Apply structural ordering on growability:** `growable = no` is structurally smaller (fewer capabilities required). The program doesn't *require* growability; `BoxedStr` is the minimally-complete answer.
-6. Result: unique answer = `BoxedStr` → emit `Box<str>` ?
+3. **Growability analysis (structural derivation from program use):** scan all use sites of `name` in the program. Are there any mutation/growth calls (`.push`, `.append`, etc.)? Assuming the program is fully shown (no growth calls): structurally `growable = no`. **This is structural derivation from program facts, not ordering-as-emission policy** — the fold reads the program's actual use sites; absence of growth-mutating calls is a structural fact, not a default-canonical engine pick.
+4. Walk substrate inhabitants matching `ownership = Owned`, `lifetime = self`, `growable = no`: { BoxedStr } (RustString has `growable = yes` — different inhabitance with different structural axis; not a candidate when the program structurally has `growable = no`)
+5. Result: unique answer = `BoxedStr` → emit `Box<str>`
 
-**Wait — this surfaces a real design call.** Is `Box<str>` really the right answer for `data name: String = "Alice"`?
+**Note on growability derivation (corrected 2026-04-28 per gpt-5-5-pro Pattern B finding):** the prior framing said "apply structural ordering on growability — `growable = no` is structurally smaller." That contradicted Modeling problem 4 corrected (ordering is diagnostic-only). The correction: growability is structurally derived from program use, not selected by ordering. RustString and BoxedStr are *different inhabitances* on the growability axis, just like UInt32 and UInt64 are different inhabitances on the bound axis. A program with no growth calls structurally has `growable = no`; the fold matches BoxedStr exactly.
+
+**Open caveat:** if the program uses `name` but the fold cannot determine from program structure whether growth is required (e.g., complex closure / dynamic dispatch / something the lifetime analyzer can't see through), the fold fails-closed with `EmissionDiagnostic::UnderRefined { axis: "growability" }` and a resolution hint. The discipline is the same as the lifetime axis: derive structurally where possible; fail-closed where not. **No ordering used for emission.**
+
+**Surfaces a real design call.** Is `Box<str>` really the right answer for `data name: String = "Alice"`?
 
 Two readings of "minimally complete":
 - **Strict:** the smallest target type that satisfies *exactly* what the program declares. Program declares no growth → emit non-growable. Result: `Box<str>`.
@@ -576,7 +579,7 @@ data nums: List<Int(0..2^32)> = [1, 2, 3]
 1. **Outer fold (List):**
    - Read program intent: algebra = `Container<T>` where T = `Int(0..2^32)`; refinement = none on the container itself
    - Lifetime/escape analysis: top-level data binding → `ownership = Owned`, `lifetime = self`
-   - Growability analysis: bound to literal once, no growth in program → minimally complete is `growable = no`
+   - Growability analysis (structural derivation from program use): scan all use sites of `nums`; no `.push` / mutation calls in the program → structurally `growable = no` (program-derived structural fact, not ordering-as-emission policy per Modeling problem 4 corrected)
    - Walk substrate inhabitants matching: { BoxOfT (ownership = Owned, growable = no, lifetime = self) }
    - Outer-level result: `BoxOfT<T>`
 2. **Recursive fold on T (= `Int(0..2^32)`):**
