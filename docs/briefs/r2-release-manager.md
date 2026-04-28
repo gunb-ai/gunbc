@@ -15,7 +15,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 | Deliverable | Source | Status (at brief authoring) |
 |---|---|---|
-| §6a per-method-metadata follow-through (Goal 5) | `docs/design-substrate-carrier-port-program.md §6a` (decision locked at `:171`; live receipt at `:173`; dissolution trigger at `:175`) | DECISION LOCKED — Option 3 unified `MethodContract` carrier; live receipt landed (`src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports via `method_contract_cost_shape` minimal demo consumer). Remaining R2 work: bulk migration of `cost.dag` / `complexity.dag` to live call-site lookup + dissolution-trigger tracking (`size_effect` / `cost_shape` / `callback_element_position` field-by-field retirement). |
+| §6a per-method-metadata follow-through (Goal 5) | `docs/design-substrate-carrier-port-program.md §6a` (decision locked at `:171`; live receipt at `:173`; dissolution trigger at `:175`) | DECISION LOCKED — Option 3 unified `MethodContract` carrier; live receipt landed (`src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports via `method_contract_cost_shape` minimal demo consumer). **Adjacent landing:** T-Cost-Dimension fail-closed symbolic-cost analysis (#1003) — DominateScanAcc conjunctive accumulator + dimension-evidence fail-closed semantics. Remaining R2 work: bulk migration of `cost.dag` / `complexity.dag` to live call-site lookup + dissolution-trigger tracking (`size_effect` / `cost_shape` / `callback_element_position` field-by-field retirement). |
 | R2 closure demo coordination (Goal 6) | `docs/r2-structure.md` Goal 6 + structural-acceptance-per-lane-close discipline | LIVE on spawn (no separate brief; demo IS the structural acceptance gate per Director directive) |
 | B-wave Tier 0 through-merge | #810 §5 dispatch ordering | IN FLIGHT (B1 #820, B2 #817, B3 #821 — implementation iteration) |
 | B-wave Tier 2 brief authoring | #810 §5 (B5 Loop construction-closure audit; B6 file-preference rank checklist; B7 priority hint to Pure Bootstrap Manager) | **AUTHORED** — `r2-release-b5-*.md`, `r2-release-b6-*.md`, `r2-release-b7-*.md` (PM portion per inbox #828). B6 resolution: extend `declaration_name_preference_rank` / `collect_symbols` convergence checklist (`std.computation` / `std.induction` / `std.termination`). |
@@ -121,13 +121,21 @@ Pending — post-spawn manager-authored autonomously:
 
 ## Working state (fill on spawn)
 
-Spawn refresh, 2026-04-28 (post-#1078):
+Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 
 - 7-manager structure live (count rose from 6 to 7 with Evaluator added).
 - Closure ledger spans all 6 other managers (Substrate / Modeling / Grounding / Impossible-Bugs / PB / Evaluator) + sub-gate progress for T-LensProducer-Retirement (3 internal sub-gates per Director directive).
 - Initial thesis-claim coverage mapping landed via #1078; refresh authority lives here.
 - v2 guardrail follow-up named as next narrow PR (release-state.yaml + projection-checker).
 - Structural-acceptance-per-lane-close discipline locked: Release coordinates visibility, doesn't author gates.
+
+**Significant pre-spawn landings to track in initial closure-ledger snapshot:**
+- **T-ImpossibleBugs:** all 3 main implementations landed (#890 + #962 follow-ups; #969 Int/Int totalization; #971 unenumerated effects lens landing).
+- **T-Substrate:** ValueBody::Map (#1017 + #1068 tightening); NominalOpacity fail-closed enforcement (#937); B4.8 Phase-2 site dissolution (#1069); B4.2 first-consumer wiring landed.
+- **T-Ground (per-target work pre-cadence):** Rust IntegerRangeFact mirror dissolved (#1005); Python primitives.dag (#1080); Go primitives tranche 1 + additional (`ac765ce10` + #1046).
+- **T-PB-Runtime foundation:** ExecuteCommand typed-outcome hardening (#1049); T-PB-B boundary coverage (#1082).
+- **Adjacent:** T-Cost-Dimension fail-closed analysis (#1003); SourceFiltering canonical authority (#1004); tokenizer charclass scanner-order retype (`242c65d07`).
+- **B-wave Tier 0 status:** B1 #820, B2 #817, B3 #821 still in flight per #810 §5; verify post-spawn whether implementation iteration completed during #1078 review window.
 
 ## Cross-refs
 

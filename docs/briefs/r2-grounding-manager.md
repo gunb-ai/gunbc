@@ -58,10 +58,10 @@ The 8-question design dialogue resolved into a cadence whose merge gates worker 
 | Lane | Size | Status (at brief authoring) | Description |
 |---|---|---|---|
 | T-Ground-Pilot | S | DONE (PR #765 merged 2026-04-25) | Toy inhabitance-search engine; routing-stability tests |
-| T-Ground-Rust | XL | NOT YET AUTHORED — Director scope refinement pending; **gated on PR-F merge** | Rust primitive declarations end-to-end; consumes Q1 BoundDeclaration + Q2 Rust axes |
-| T-Ground-Python | L | NOT YET AUTHORED — fill queue; **gated on PR-G merge** | Python primitive declarations |
-| T-Ground-Go | L | NOT YET AUTHORED — fill queue; **gated on PR-H merge** | Go primitive declarations |
-| **T-Ground-Coercion-Fold** *(NEW; replaces engine framing)* | S | NOT YET AUTHORED — **gated on PR-F merge + Substrate ValueBody-list/sum** | Refinement composition as structural fold over substrate facts; absorbs PR #989 mirror-consistency probe footprint |
+| T-Ground-Rust | XL | **PARTIALLY LANDED** — IntegerRangeFact mirror dissolved via #1005 (single-authority `rust_pilot_primitives` + IntegerAlgebra/TargetCarrier identity witnesses + fail-closed bootstrap validation); remainder gated on PR-F | Rust primitive declarations end-to-end; consumes Q1 BoundDeclaration + Q2 Rust axes |
+| T-Ground-Python | L | **PARTIALLY LANDED** — `dsl/extdeps/languages/python/primitives.dag` landed via #1080 (lively-wolf-462); remainder fill queue / gated on PR-G | Python primitive declarations |
+| T-Ground-Go | L | **PARTIALLY LANDED** — `go/primitives.dag` spec tranche 1 landed (`ac765ce10`); additional Go primitives via #1046 (bright-otter-594); remainder fill queue / gated on PR-H | Go primitive declarations |
+| **T-Ground-Coercion-Fold** *(NEW; replaces engine framing)* | S | **PRE-CASCADE FOOTPRINT LANDED** via PR #989 + commit `c0cc8b260` (Phase 2 pilot-list enumeration slice 1; mirror-consistency probe). Per `design-emission-model.md` §"Affected lanes" option (c): hold further engine-framed slices + queue cleanup wave once LanguageSpec lands. Future slices gated on PR-F + Substrate ValueBody-list/sum | Refinement composition as structural fold over substrate facts |
 | **T-Ground-LanguageSpec** *(NEW)* | M | NOT YET AUTHORED — **gated on PR-I merge** | Structured language-spec substrate; absorbs Reflective Pattern E retirement; per-primitive `RealizationCost` |
 | **T-Ground-Lifetime-Analyzer** *(NEW; no annotations)* | M | NOT YET AUTHORED | Structural ownership/lifetime derivation from program use |
 | **T-Ground-Diagnostic** *(NEW)* | S | NOT YET AUTHORED | Declared structural ordering for diagnostic enumeration |
@@ -151,10 +151,11 @@ Pending — post-spawn manager-authored autonomously:
 
 ## Working state (fill on spawn)
 
-Spawn refresh, 2026-04-28 (post-#1078 engine-reframe cascade):
+Spawn refresh, 2026-04-28 (post-#1078 engine-reframe cascade + status-refresh against landed PRs):
 
 - 11-lane structure replaces the prior 7-lane Pilot/Rust/Engine/Tests/Dissolve framing.
 - 5 new substrate-completion lanes added (Coercion-Fold S + LanguageSpec M + Lifetime-Analyzer M + Diagnostic S + CrossTarget-Meta S).
+- **Per-target work has begun pre-cadence:** Rust IntegerRangeFact mirror dissolved (#1005); Python primitives.dag landed (#1080); Go primitives spec tranche 1 + additional Go primitives landed (`ac765ce10` + #1046). Manager-spawn task: align this work with Q1 BoundDeclaration + Q2 axes once PR-F/G/H land; may require small refactors to the already-landed primitive declarations.
 - PR #989 (slice 1 of Phase 2) merged on main pre-cascade — cleanup wave queued; hold further engine-framed slices.
 - Cadence PR-F through PR-J gate worker dispatch on dependent lanes; PR-PreF (Substrate-owned) gates Q1-consuming lanes.
 - The "Annotation" lane was retracted in favor of structural derivation per Modeling problem 3 corrected; Lifetime-Analyzer replaces it.

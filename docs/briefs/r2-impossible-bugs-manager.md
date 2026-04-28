@@ -17,9 +17,9 @@ R2's Goal 4 — **Remaining R2+ impossible-bug classes**. Three classes currentl
 
 | Class | Design authority + implementation worker (post PR #836 merge) | Implementation status | Substrate gating |
 |---|---|---|---|
-| Nested-optional flatten | Design: `t-impossiblebugs-nested-optional-flatten-design.md` (PR #798) — closed in scope; Implementation: [`r2-impossible-bugs-nested-optional-flatten-worker.md`](r2-impossible-bugs-nested-optional-flatten-worker.md) (PR #836 — landed) | IMPLEMENTATION WORKER LANDED — dispatchable Day-1 post-spawn | UNGATED per design doc audit (substrate-constructor invariant; cardinality bridge already past per Director reframe) |
-| Unhandled diagnostic paths | Design: `t-impossiblebugs-unhandled-diagnostic-paths-design.md` (PR #801) — closed in scope, §4 Director-actionable recommends totality-by-omission; Implementation: [`r2-impossible-bugs-unhandled-diagnostic-paths-worker.md`](r2-impossible-bugs-unhandled-diagnostic-paths-worker.md) (PR #836 — landed) | IMPLEMENTATION WORKER LANDED — dispatchable Day-1 post-spawn (per-class; `Int / Int` first slice) | UNGATED per design doc §4 (totality-by-omission via algebra retype, not predicate-entailment substrate); siblings (indexing, quotient, remainder) queue separately |
-| Unenumerated effects | Design: `t-impossiblebugs-unenumerated-effects-design.md` (PR #808) — **canonical authority**, closed-system effects model + 5-behavior fold; Implementation: [`r2-impossible-bugs-unenumerated-effects-worker.md`](r2-impossible-bugs-unenumerated-effects-worker.md) (PR #836 — landed) | IMPLEMENTATION WORKER LANDED — dispatchable Day-1 post-spawn (closed-system per design doc §Q1-Q3 + §Q6) | UNGATED — closed-system structural derivation does not require new substrate; prior worker briefs (`t-impossiblebugs-unenumerated-effects-worker.md` + `-parser-worker.md`) SUPERSEDED 2026-04-25 |
+| Nested-optional flatten | Design: `t-impossiblebugs-nested-optional-flatten-design.md` (PR #798) — closed in scope; Worker brief: [`r2-impossible-bugs-nested-optional-flatten-worker.md`](r2-impossible-bugs-nested-optional-flatten-worker.md) (PR #836) | **IMPLEMENTATION LANDED via #890** (substrate-constructor invariant: `cardinality_idempotent_target`, `Dag::alloc_cardinality_decl`, TypeConnective-level enforcement). **Follow-ups landed via #962** (alias peel, resolve_decl idempotence, int literals). Class-close manager work: verify structural test coverage + audit residual integration paths. | UNGATED |
+| Unhandled diagnostic paths | Design: `t-impossiblebugs-unhandled-diagnostic-paths-design.md` (PR #801) — closed in scope, §4 Director-actionable recommends totality-by-omission; Worker brief: [`r2-impossible-bugs-unhandled-diagnostic-paths-worker.md`](r2-impossible-bugs-unhandled-diagnostic-paths-worker.md) (PR #836) | **`Int / Int` FIRST SLICE LANDED via #969** (totalized via `Result<Int, DivError>` + `std.error_primitives` algebraic carrier + target prelude support; subsumes prior PR #931). Manager work: dispatch siblings (indexing / quotient / remainder) per design doc §4 — each queues separately as totality-by-omission slices. | UNGATED per design doc §4 (totality-by-omission via algebra retype, not predicate-entailment substrate) |
+| Unenumerated effects | Design: `t-impossiblebugs-unenumerated-effects-design.md` (PR #808) — **canonical authority**, closed-system effects model + 5-behavior fold; Worker brief: [`r2-impossible-bugs-unenumerated-effects-worker.md`](r2-impossible-bugs-unenumerated-effects-worker.md) (PR #836) | **IMPLEMENTATION LANDED via #971** (closed-system structural derivation; lens landing; audit verdict path (ii) — retire `OperationEffect` as parallel representation per design doc Q5.5 / worker req 2). Class-close manager work: verify lens-landing acceptance + drive parallel-representation retirement of `OperationEffect`. | UNGATED — closed-system structural derivation does not require new substrate; prior worker briefs SUPERSEDED 2026-04-25 |
 
 Each class becomes an impossible-bug-by-construction at R2 close — not a runtime check, but a structural fact carried by the substrate that the lens / type checker reads.
 
@@ -102,17 +102,18 @@ Each class closes under a structural acceptance gate authored as a `.dag` `TestC
 - `docs/briefs/t-impossiblebugs-unenumerated-effects-worker.md` (SUPERSEDED 2026-04-25 by design doc PR #808; further dissolved by `r2-impossible-bugs-unenumerated-effects-worker.md` now landing as the implementation authority).
 - `docs/briefs/t-impossiblebugs-unenumerated-effects-parser-worker.md` (SUPERSEDED 2026-04-25 by design doc; closed-system framing dissolves the proposed parser surface).
 
-**Pending — Manager dispatches the 3 implementation workers landed via PR #836:**
-- Dispatch nested-optional-flatten implementation worker (ungated; dispatchable Day-1 post-spawn).
-- Dispatch unhandled-diagnostic-paths implementation worker (ungated; per-class — `Int / Int` first slice).
-- Dispatch unenumerated-effects implementation worker (ungated; closed-system per design doc).
+**Pending — Manager dispatches residuals (3 main implementations already landed via #890/#969/#971; manager drives class-close completion):**
+- Nested-optional-flatten: residuals after #890 + #962 (verify structural test coverage; audit integration paths; close class).
+- Unhandled-diagnostic-paths: dispatch indexing / quotient / remainder slices (per-class totality-by-omission, modeled on the #969 `Int/Int` first slice).
+- Unenumerated-effects: drive `OperationEffect` parallel-representation retirement per #971's path (ii) verdict.
 - PR #805 Fn→Arrow refactor stays dispatchable as independent vestigial-syntax cleanup (not a thesis-claim closure dependency).
 
 ## Working state (fill on spawn)
 
-Spawn refresh, 2026-04-28 (post-#1078):
+Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 
-- Class status table unchanged in scope; 3 implementation workers landed via PR #836.
+- **All 3 main implementations landed pre-spawn:** nested-optional flatten (#890 + #962 follow-ups); `Int / Int` totality-by-omission first slice (#969 — subsumes prior #931); unenumerated effects (#971 — closed-system structural derivation; lens landing).
+- Manager day-1 work is **class-close completion** (residual coverage + integration audit + parallel-representation retirement) plus **dispatching siblings** of the unhandled-diagnostic-paths totalization pattern (indexing / quotient / remainder).
 - Manager archives at R2 close; no R3 continuation work.
 - Post-R2 emergent classes route to Substrate Manager continuation per closed-system principle.
 

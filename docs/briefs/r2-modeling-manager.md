@@ -16,10 +16,10 @@ R2's Goal 2 — **Modeling-faithfulness dissolution**. Three Tier-1 type-refinem
 
 | Item | Consumer of | Status (at brief authoring) |
 |---|---|---|
-| Surface int-literal magnitude at concept layer | T-Substrate cardinality subset (consuming PR-PreF Interval<D>) | AUTHORED — gated on producer readiness / scoped to range-facts consumer work |
-| `Secret<T>` nominal-opaque graduation | T-Substrate nominal-opaque subset | AUTHORED — gated on producer readiness |
-| `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement | T-Substrate parametric-algebra subset | AUTHORED — dispatchable immediately; producer audit closed substrate-side |
-| Tokenizer charclass phase-2 | T-Substrate ValueBody-list/sum subset | AUTHORED — gated on producer readiness; reclassified R1→R2 per Surface Manager handoff 2026-04-24 |
+| Surface int-literal magnitude at concept layer | T-Substrate cardinality subset (consuming PR-PreF Interval<D>) | AUTHORED — gated on producer readiness / scoped to range-facts consumer work. **Adjacent landing:** T-Cost-Dimension fail-closed symbolic-cost analysis (#1003) — DominateScanAcc conjunctive accumulator; relevant precedent for fail-closed semantics in this consumer. |
+| `Secret<T>` nominal-opaque graduation | T-Substrate nominal-opaque subset | AUTHORED — gated on producer readiness. **Producer side advanced:** NominalOpacity carrier landed via #900; **fail-closed field-projection enforcement landed via #937** (NominalOpacityViolation diagnostic + production enforcement before field descent). Day-1 consumer migration: `dsl/std/types.dag` retire bare `Secret = String`; land `where only … may construct` semantics; integration test for unauthorized construction without bootstrap stamp. |
+| `Dimension<Carrier>` typed value wrapper with phantom-parameter unit-mismatch enforcement | T-Substrate parametric-algebra subset | AUTHORED — dispatchable immediately; producer audit closed substrate-side. |
+| Tokenizer charclass phase-2 | T-Substrate ValueBody-list/sum subset | AUTHORED — gated on producer readiness. **In flight:** scanner-order retype landed pre-cascade (commit `242c65d07` — `feat(v3): retype tokenizer charclass scanner order`). Reclassified R1→R2 per Surface Manager handoff 2026-04-24. |
 
 ## Pre-dispatch design lock cadence (consumed; per #1078 lock)
 
@@ -52,6 +52,7 @@ For each item:
 **Adjacent territory:**
 - Tokenizer charclass phase-2 historically R1 T-Sub work; reclassified to R2 per Surface Manager handoff 2026-04-24. R1 retains the charclass phase-1 close; R2 Modeling Manager owns phase-2 (the substrate-capability-gated portion).
 - **§6a per-method-metadata bulk migration** (R2 Release Manager-owned, but consumes `MethodContract` substrate at method-call sites in `cost.dag`/`complexity.dag`). Modeling Manager doesn't author this; tracked here only as adjacent.
+- **SourceFiltering canonical authority** (#1004 sleek-wren-716) — cross-target drift class closed via independent per-target `excluded_prefixes`. Adjacent to Modeling Manager scope; not owned here, but relevant precedent for cross-target uniformity work.
 
 ## Locked design decisions consumed (per #1078 8-question dialogue)
 
@@ -106,11 +107,14 @@ Pending: none at manager-brief authoring time. Worker briefs may need refresh po
 
 ## Working state (fill on spawn)
 
-Spawn refresh, 2026-04-28 (post-#1078):
+Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 
 - Item status table unchanged in scope; int-lit item now consumes PR-PreF Interval<D> via Q1 lock cascade.
+- **Secret<T> producer side substantially advanced:** NominalOpacity carrier (#900) + fail-closed field-projection enforcement (#937) both landed. Day-1 consumer migration is dispatchable.
+- **Tokenizer charclass phase-2 in flight:** scanner-order retype (`242c65d07`) landed pre-cascade.
+- **Adjacent precedents landed:** SourceFiltering canonical authority (#1004); T-Cost-Dimension fail-closed analysis (#1003).
 - Dimensions remains dispatchable immediately (phantom_params already in substrate).
-- Other 3 items continue to gate on Substrate Manager carrier-readiness signals.
+- Other items continue to gate on Substrate Manager carrier-readiness signals where carriers haven't fully landed.
 
 ## Cross-refs
 
