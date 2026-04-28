@@ -875,13 +875,26 @@ fn build_execute_command_unshare(
                 if libc::setpgid(0, 0) != 0 {
                     return Err(std::io::Error::last_os_error());
                 }
-                // Move the ready-pipe write end to fd 3 WITHOUT FD_CLOEXEC. dup2 clears
-                // CLOEXEC on the target, which is what we want here: fd 3 must survive the
-                // parent's `exec("unshare")` and unshare's own `exec(helper)`. The helper
-                // binary itself sets FD_CLOEXEC on fd 3 immediately before its final
-                // `execvp` of the user command — that's the structural close that prevents
-                // the user from inheriting a writable sentinel fd (P2(c) closure, #1063).
+                // Move the ready-pipe write end to fd 3 WITHOUT FD_CLOEXEC. fd 3 must
+                // survive the parent's `exec("unshare")` and unshare's own `exec(helper)`;
+                // the helper binary itself sets FD_CLOEXEC on fd 3 immediately before its
+                // final `execvp` of the user command — that's the structural close that
+                // prevents the user from inheriting a writable sentinel fd (P2(c) closure,
+                // #1063).
+                //
+                // dup2(src, dst) clears CLOEXEC on dst *only when src != dst*. POSIX
+                // specifies that `dup2(fildes, fildes)` is a no-op (returns fildes2
+                // unchanged) — so if a low-fd allocation in the child has already placed
+                // our write_fd AT fd 3, dup2 leaves fd 3 with whatever flags it had,
+                // including the O_CLOEXEC we set on `pipe2(O_CLOEXEC)`. The kernel would
+                // then close fd 3 atomically on `exec("unshare")` and the helper would
+                // never see the sentinel — silently bypassing the helper path. Explicitly
+                // clear FD_CLOEXEC after dup2 to defend against that case.
+                // (api-review codex sha c535f4c BLOCKING.)
                 if libc::dup2(write_fd, 3) < 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::fcntl(3, libc::F_SETFD, 0) < 0 {
                     return Err(std::io::Error::last_os_error());
                 }
                 Ok(())
