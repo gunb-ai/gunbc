@@ -741,7 +741,9 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   // Wire contract: find the module's wire_contract data item (if any)
   // and pass it to each item for per-enum resolution. No collapse to string.
   let wire_contract_by_name = typed_module.items
-    |> filter(i => authored_name(env: scope.type_env, node: i) == "wire_contract" || i.name == "wire_contract")
+    |> filter(i =>
+         authored_name(env: scope.type_env, node: i) == "wire_contract"
+         || i.name == "wire_contract")
     |> first
   // If `wire_contract` is not discoverable by name (e.g. lost `ident_span`), recover only when
   // there is exactly one `data …: VariantEncoding = <record literal>` candidate (P2/P3).
@@ -1128,7 +1130,10 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
     emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else {
     // Resolve serde tag per-enum from the module's wire contract data item
-    let serde_enum_tag = resolve_wire_serde_tag_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices)
+    let serde_enum_tag = match wire_contract_item {
+      Some { value: _ } => resolve_wire_serde_tag_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices)
+      None => rust_serde_tag_attr()
+    }
     emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_enum_tag: serde_enum_tag)
   }
 }
