@@ -1,0 +1,295 @@
+# R3 Structure — Thesis Closure / Consequence Cycle
+
+**Status:** `PROPOSAL` — pending R2 promotion + cascade alignment with [`docs/r2-structure.md`](r2-structure.md) Evaluator extension.
+
+**Authority:** single-source while open. Amendments before promotion land in this doc. After promotion, amendments follow the same discipline as R1's `## Release R1 Program` section (director-authored PRs with manager acknowledgement).
+
+**Supersedes:** [`docs/r2-structure.md`](r2-structure.md) §"Program count" framing of R3 as *escape hatch only*. R3 is now a structured **Thesis Closure** program — the consequence cycle running every thesis claim that becomes mechanical after R2 lands the Evaluator + complete Grounding.
+
+## Frame
+
+R2 closes the **capacity layer** of the thesis: substrate carriers, the Evaluator runtime, full target Grounding for Rust + Python + Go, and 6 enumerable impossible-bug classes structurally caught.
+
+R3 closes the **consequence layer**: every thesis claim that *falls out* once the capacity layer exists. Tier 3 mirror dissolution, lens-producer retirement, L4-L7 verification harness, self-hosting facet 2 fixed-point, Tier 2 Int128/Word128 substrate, omni-emission Shape B demos, and Anthropic typed wire.
+
+The split between R2 and R3 is structural, not arbitrary:
+- **R2 = enabling work** (substrate + runtime + grounding) — design questions, novel substrate, multi-month critical paths under solo-dev sizing
+- **R3 = mechanical consequences** (mirror dissolution, harness construction, scaffolding deletion) — work that becomes obvious once the Evaluator exists
+
+The R2 vs R3 boundary is therefore: **does this work need new substrate / new runtime / new design, or does it follow mechanically from substrate + runtime that R2 already lands?**
+
+## Summary
+
+R3 has six lanes, each closing a specific thesis claim or claim-cluster:
+
+1. **T-Tier3-Dissolution** — retire the four hand-Rust mirrors of `.dag` types (termination, computation, induction, effect-carrier) by consuming the Evaluator
+2. **T-LensProducer-Retirement** — retire `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` (the program-sized hand-Rust files) via PB-Runtime interpreter-as-data + PB-1 generated bin-shim emit pattern
+3. **T-Verification-L4L7** — build the L4-L7 verification harness (emit/eval match, cross-target consistency, structural-form coverage, algebraic-law witnesses)
+4. **T-FixedPoint** — self-hosting facet 2: compile `compiler.dag` → bit-identical Rust output
+5. **T-Int128** — Tier 2 Int128/Word128 substrate (the int-lit closure half deferred from R2)
+6. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos (YAML, Terraform, K8s, or SPICE) exercising the "one workflow → full-stack artifacts" thesis claim
+7. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization)
+
+All seven lanes share one upstream dependency: **R2-Evaluator must close.** Once it does, R3 lanes are largely parallel-dispatchable; some have additional intra-R3 sequencing.
+
+## Acceptance — `.dag` gates
+
+Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as deliverables of the lane-brief drafting step (lane owners author them as `.dag` after dispatch).
+
+- **T-Tier3-Dissolution.**
+  - `tier3_termination_mirror_dissolved` — `dsl/std/termination.dag` is the only authority; `src/v3/compiler/src/dag.rs` carries no parallel mirror of `DescentEvidence` lattice operations
+  - `tier3_computation_mirror_dissolved` — same shape for `std.computation` (`ShrinkFactor`, `IterationPrimitive`, `kernel_algebra_profile`)
+  - `tier3_induction_mirror_dissolved` — same shape for `std.induction` (`SubValueRelation`, E-P evidence)
+  - `tier3_effect_carrier_mirror_dissolved` — `workflow_idempotency.rs` retired; crate API consumes emitted/evaluated `std.effects` as sole authority
+- **T-LensProducer-Retirement.**
+  - `lens_apply_dot_rs_retired` — `src/v3/compiler/src/lens_apply.rs` deleted; lens application routes through PB-Runtime interpreter-as-data
+  - `lens_testgen_dot_rs_retired` — `src/v3/compiler/src/lens_testgen.rs` deleted
+  - `regen_lens_dot_rs_retired` — `src/v3/compiler/src/regen_lens.rs` deleted
+  - `sg0_non_test_zero` — SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` count reaches 0 per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)
+- **T-Verification-L4L7.**
+  - `l4_emit_eval_match` — for every `.dag` program in the certification corpus, emitted target output equals `.dag` evaluation output (algebraic equality, not byte-equal)
+  - `l5_cross_target_consistency` — for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus
+  - `l6_structural_form_coverage` — every Tier-1 structural form (each of the 6 type connectives × each of the 5 behaviors × every cardinality variant) emits to every Shape A target
+  - `l7_algebraic_laws_witnessed` — every algebra declared in `dsl/std/algebra.dag` has a runtime-constructed witness for each of its laws (associativity, commutativity, identity, distributivity as applicable) — `AlgebraicLaw` TestPredicate evaluates via Evaluator-constructed witnesses, not host-mediated harness
+- **T-FixedPoint.**
+  - `pb_self_compile_fixed_point` (R1 gate; closes here under stronger interpretation) — v3 binary compiles `compiler.dag` and produces bit-identical stage0 Rust + bit-identical emitted artifacts. Predicate is the same R1 predicate; R3 closes it under fixed-point semantics rather than the looser "compiler can compile itself" reading
+- **T-Int128.**
+  - `tier2_int128_overflow_proven` — the runtime-safety claim for integer overflow extends from i64-bounded (R2 close) to Int128/Word128 substrate; no `IntLit` magnitude exceeds carrier without compile-time rejection
+  - `int_lit_full_int128_word128_consumer` — int-literal magnitude consumer covers the full range, not just i64-bounded
+- **T-Omni-Shape-B.**
+  - `omni_yaml_emission_demo` — one workflow `.dag` declaration emits to a runnable Kubernetes/Terraform/YAML config + a runnable backend service
+  - `omni_documentation_emission_demo` — same workflow `.dag` emits to a documentation artifact (Markdown / OpenAPI spec) that drift-locks against the implementation
+  - Counts as 2 Shape B targets per THESIS §"Omni-emission" `O(1)` per Shape B target claim
+- **T-Anthropic-Wire.**
+  - `anthropic_wire_typed_serde_alignment` — Anthropic provider request/response types are typed end-to-end (mirrors the OpenAI alignment landed in R2)
+  - `anthropic_unit_enum_role_serialization_correct` — role enum serializes to wire-required strings without bridging
+
+## Lane structure
+
+| Lane | Size | Manager | Covers | R2-close dependency |
+|---|---|---|---|---|
+| **T-Tier3-Dissolution** | M | **Tier 3 Manager** (or PB Manager continuing post-R2) | Four hand-Rust mirrors of `.dag` types retired; SG-0 reduction | R2-Evaluator (executes std bodies); ValueBody::Map (already landed in R2 carriers) |
+| **T-LensProducer-Retirement** | XL | **PB Manager (post-R2 continuation)** | Three program-sized hand-Rust files retired via PB-Runtime + PB-1 patterns | R2-Evaluator (interpreter-as-data); PB-1 generated bin-shim pattern (which itself depends on Evaluator) |
+| **T-Verification-L4L7** | L | **Verification Manager** (new) | L4 emit/eval match harness + L5 cross-target equivalence + L6 form coverage + L7 algebraic-law witness construction | R2-Evaluator (witness construction); R2-Grounding-Rust + R2-Grounding-Python (cross-target harness needs all 3 grounded targets) |
+| **T-FixedPoint** | M | **PB Manager** | `compiler.dag` compiles to bit-identical stage0 Rust + bit-identical emitted artifacts; R1's `pb_self_compile_fixed_point` gate closes under stronger interpretation | R2-Evaluator (executes compiler.dag); SG-0 zero from T-LensProducer-Retirement |
+| **T-Int128** | M-L | **Substrate Manager (post-R2 continuation)** | Int128/Word128 substrate; int-literal full magnitude consumer | None (parallel to T-Tier3 + T-LensProducer; just substrate work) |
+| **T-Omni-Shape-B** | L | **Demo Manager** (or R3 Release Manager) | At least 2 Shape B omni-emission demos exercising the full-stack thesis claim | R2-Evaluator (Shape B emitters are `.dag` programs walking typed values via fold/match — needs runtime to demonstrate properly) |
+| **T-Anthropic-Wire** | M | **Substrate Manager (post-R2 continuation)** | Anthropic provider request/response typed end-to-end | None (parallel; held in R2 pending OpenAI stabilize) |
+
+Critical path: **T-Verification-L4L7** is the longest because L4-L7 each require harness construction. Other lanes parallel-dispatch after R2-Evaluator closes.
+
+## Manager structure
+
+R3 inherits R2's manager structure with three modifications:
+
+1. **R2 managers continue post-R2-close** rather than dissolving. Substrate Manager continues with T-Int128 + T-Anthropic-Wire; PB Manager continues with T-LensProducer-Retirement + T-FixedPoint + T-Tier3-Dissolution; Modeling/Impossible-Bugs Managers archive at R2 close.
+2. **Verification Manager (new)** — owns T-Verification-L4L7. Why a new manager: L4-L7 is a cluster of 4 distinct thesis claims with shared infrastructure (the certification corpus + harness), and shouldn't fold into Substrate (different concern) or PB (different concern).
+3. **R3 Release Manager (new, may be R2 Release Manager continuation)** — owns T-Omni-Shape-B, R3 closure ledger, R3 demo coordination. Goal-6-equivalent for R3.
+
+Director's role unchanged: cross-program conflict resolution + scope-change escalation + weekly health check.
+
+## Dependency DAG
+
+```
+                                  R2 close
+                                     │
+                                     ▼
+                              R2-Evaluator landed
+                                     │
+       ┌─────────────────┬──────────┼──────────────┬─────────────────┐
+       │                 │          │              │                 │
+       ▼                 ▼          ▼              ▼                 ▼
+T-Tier3-Dissolution  T-LensProducer  T-Verification-L4L7  T-Omni-Shape-B  T-Int128
+   (mirrors)          (3 files)        (harness)         (Shape B demos)   (substrate)
+                                          ▲
+                                          │
+                              (also gated on R2-Grounding-Rust
+                               + R2-Grounding-Python landed)
+
+                       T-FixedPoint  ◄── (gated on T-LensProducer-Retirement
+                                         + R2-Evaluator)
+
+                       T-Anthropic-Wire ◄── (parallel; gated on R2 OpenAI
+                                            wire stabilization)
+```
+
+**Parallel-capable work at steady state:** 5+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement). T-Verification-L4L7 has its own internal critical path (L4 harness → L5 cross-target → L6 coverage → L7 witnesses).
+
+## Compromises being made
+
+R3 commits to closing the consequence layer of the thesis. The following are *not* in R3 scope:
+
+| Excluded | Why | Where it lives instead |
+|---|---|---|
+| **Practical pressure-test of thesis on real programs** | Per [`docs/r2-structure.md`](r2-structure.md), the user's `../ctrl/` modeling work is the empirical pressure-test for whether the structural thesis holds on real programs. R3 is structural close; pressure-test is post-R3 external | Post-R3 stream (per existing r2-structure.md decision) |
+| **Adoption tooling, ecosystem, community** | Not a thesis claim; downstream of structural close | Post-R3 external |
+| **v2 retirement** | Per r2-structure.md, v2 retirement is post-R2 operational cleanup, not on the release ledger | Post-R3 operational cleanup |
+| **All Shape B targets** (full coverage) | THESIS §"Omni-emission" claims `O(1)` per Shape B *target class* — claim is structural, not "all targets ever conceived." R3 ships ≥2 demos to operationalize the claim; saturation is post-R3 work driven by adoption needs | Post-R3 ecosystem buildout |
+| **TypeScript / Swift / HDL Shape A targets** | Same shape as Shape B saturation: the structural claim is `O(1)` per target; R2 ships Rust + Python + Go which proves the claim. Additional Shape A targets are adoption-driven, not thesis-required | Post-R3 ecosystem buildout |
+| **Tier 1 type-refinement features beyond R2 modeling** | If new modeling capabilities surface (e.g., refined-type narrowing beyond `Secret<T>` and `Dimension<Carrier>`), they're additions to the substrate, not thesis-required | Post-R3 modeling work |
+
+## Design challenges to resolve up-front
+
+These are decisions that should be made *before* R3 dispatch starts so workers don't spin on under-specified scope. They map to the load-bearing technical questions in R3 lanes.
+
+### 1. Evaluator runtime-value representation (R2-Evaluator scope, but R3 consumers depend on the choice)
+
+**Question:** What's the typed runtime value model for executing `.dag` bodies?
+
+**Sub-questions:**
+- Closed-over environments: lexical or dynamic? `Loop` and `Bind` create binding scopes — does the evaluator carry environments explicitly or implicitly?
+- Eager or lazy? `Loop` is bounded forward execution per P4; lazy seems compatible. Performance implications for L5 cross-target equivalence harness?
+- Memoization: per-call or global? Affects how complex programs scale during L4-L7 verification
+- Witness construction surface: are witnesses first-class runtime values, or constructed by a separate proof-mode evaluation pass?
+
+**Recommendation:** resolve as part of R2-Evaluator design pass; R3 consumes the outcome. R3 lanes (especially T-Verification-L4L7) cannot start without this.
+
+### 2. Lens reflection completeness scope
+
+**Question:** What's "complete reflection" for `reflect_program_dag_nodes_in_file`?
+
+Today it's shallow/lossy (per Reflective Pattern B): doesn't reflect full behavior bodies, branch arms, loop bounds, or witness structure. R3-T-LensProducer-Retirement requires complete reflection — *but* "complete" needs definition.
+
+**Sub-questions:**
+- Does complete reflection mean "every Node is reflected as a structural value"? Or "every Node is reflected via its substrate-declared accessor"?
+- Loop iteration counts: structural facts or runtime facts?
+- Branch arm coverage: every arm's body reflected, or only the executed arm?
+
+**Recommendation:** name a "reflection completeness spec" doc as a R2-Evaluator dependency. R3-T-LensProducer-Retirement consumes that spec.
+
+### 3. Cross-target equivalence harness — what does "equivalent" mean?
+
+**Question:** For L5 (`l5_cross_target_consistency`), how are emitted Rust/Python/Go programs compared?
+
+**Sub-questions:**
+- Byte-equal stdout? Algebraic-equal output values? Behavioral-equal under a chosen oracle?
+- Float comparison: bit-equal or epsilon-equal? (relevant for any numeric program)
+- Side-effects: how are effects normalized for comparison? Does the harness execute in isolated namespaces?
+- Test corpus: who curates? How does it grow?
+
+**Recommendation:** decide on **algebraic equivalence over a curated corpus** (not byte-equal across all programs). The L5 claim is that *semantics is invariant across targets* — that's algebraic, not lexical. Author the L5 spec doc as a T-Verification-L4L7 prerequisite.
+
+### 4. SG-0 zero requirement for fixed-point
+
+**Question:** Does T-FixedPoint require SG-0 = 0 (full lens-producer retirement complete) before fixed-point semantics close, or only "non-test = 0"?
+
+Per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md), the 0-floor target is total. But fixed-point compilation is a property of `compiler.dag` → bit-identical Rust output. There's a dependency tree:
+
+```
+T-LensProducer-Retirement (XL) → SG-0 non-test = 0 → T-FixedPoint (M)
+                              ↓
+                              also needed: PB-1 generated bin-shim pattern
+```
+
+**Sub-questions:**
+- Does T-FixedPoint require *every* hand-Rust file retired, or just the lens-producer subset?
+- Does the bin-shim pattern itself need to be expressible in `.dag`, or is the trampoline allowed to be hand-Rust under "first-time bootstrap" §`First-time bootstrap` resolution choice?
+
+**Recommendation:** T-FixedPoint closes under "SG-0 non-test = 0 + ≤1 first-time-bootstrap trampoline allowed per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) §`First-time bootstrap`." The trampoline is *outside* `src/v3/`; the in-tree floor stays 0.
+
+### 5. T-Verification-L4L7 sequencing
+
+**Question:** Are L4-L7 sequential or parallel?
+
+L4 (emit/eval match) and L7 (algebraic-law witnesses) share the Evaluator; L5 (cross-target) needs all three Shape A targets grounded; L6 (form coverage) is a corpus-construction problem.
+
+**Recommendation:** L4 + L7 in parallel as soon as Evaluator + R2 close (witnesses construct via Evaluator; emit/eval match needs Evaluator). L5 after R2-Grounding-Rust + R2-Grounding-Python land. L6 after the corpus exists (needs L4 first to define what gets emitted).
+
+### 6. Shape B target choice
+
+**Question:** Which 2 Shape B targets does R3 demo?
+
+**Candidates:** YAML/K8s, Terraform HCL, OpenAPI spec, JSON Schema, SPICE netlist, SQL DDL, Markdown documentation.
+
+**Recommendation:** prioritize by **thesis demonstration value**:
+1. **OpenAPI + SQL DDL** (or equivalent backend pair) — exercises "one workflow → full-stack" claim cleanly because both layers derive from the same workflow `.dag`
+2. **Markdown documentation** — exercises drift-lock claim ("documentation can't drift from implementation")
+
+Defer SPICE / HDL / niche targets to post-R3 ecosystem work.
+
+### 7. Tier 3 mirror dissolution mechanics
+
+**Question:** When a hand-Rust mirror is retired, what's the dissolution receipt?
+
+The four mirrors (termination, computation, induction, effect-carrier) currently mirror `.dag` declarations. Once the Evaluator can execute `.dag` bodies, the mirrors can be deleted. But:
+
+**Sub-questions:**
+- Is consumer migration mechanical (just `use std::termination::merge_evidence` instead of the Rust mirror) or does it require API redesign?
+- Performance implications: does running `.dag` bodies via Evaluator have measurable overhead vs. compiled-Rust mirrors? What's the acceptable threshold?
+
+**Recommendation:** for R3, accept mirror retirement *with* potential performance regression up to a defined threshold (e.g., 2x slower in the affected paths). Performance optimization of evaluated paths is post-R3 work; structural close is the R3 deliverable.
+
+### 8. R3 Anthropic vs R2 OpenAI
+
+**Question:** How does the R3 Anthropic typed-wire lane reuse the R2 OpenAI work?
+
+R2 #1028 lands OpenAI typed wire (held until stabilizes per current Substrate Manager direction). R3-T-Anthropic-Wire is parallel work for the Anthropic provider.
+
+**Recommendation:** R3-T-Anthropic-Wire mechanically replicates the R2 OpenAI pattern. If the OpenAI pattern wasn't generalized (i.e., each provider has its own typed-wire lane), this is a **post-R3 dissolution opportunity** — generalize the pattern across providers. For R3, ship Anthropic in parallel with the OpenAI shape.
+
+## Dependency on R2
+
+R3 cannot start meaningful work until R2 closes. Specifically:
+
+- **R2-Evaluator** is the upstream gate for **5 of 7 R3 lanes** (T-Tier3, T-LensProducer, T-Verification, T-FixedPoint, T-Omni-Shape-B). Without it, R3 dispatchers spin.
+- **R2-Grounding (full)** is the upstream gate for T-Verification-L4L7 (specifically L5 cross-target).
+- **R2 substrate carriers** (NominalOpacity, ValueBody::Map, parametric algebra) feed T-Int128 and T-Anthropic-Wire as parallel substrate work.
+
+R3 spin-up therefore aligns with R2-close, not earlier. **Pre-R3 brief authoring may begin during R2 final week** (Director-discretionary, mirroring R2's pre-R1-close pattern), but worker dispatch waits for R2-Evaluator landing.
+
+## R3 closure criteria
+
+**All R3 gates green per `### Acceptance — .dag gates` section above.** R3 closes when each lane's TestClaim evaluates true at release.
+
+**ROADMAP authority single source.** Once R3 promotes to ROADMAP as `## Release R3 Program`, gate semantics are owned there. r3-structure.md is the pre-promotion authority; ROADMAP is post-promotion authority.
+
+## Decisions locked
+
+- **R3 is the consequence cycle, not escape-hatch.** Supersedes the "escape hatch only" framing in [`docs/r2-structure.md`](r2-structure.md) §"Program count." Justification: thesis-claim mapping (Open call 1, now closed via [`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md)) shows ~7 Tier-1/Tier-2/Tier-3 thesis claims become mechanical post-R2-Evaluator. Treating those as escape-hatch obscures the structural opportunity to close them as one cycle.
+- **Evaluator is in R2, not R3.** The Evaluator is the *capacity* that R3 consumes. Putting Evaluator in R3 inverts the dependency and produces an R3 with no clean spin-up condition.
+- **Manager continuation across R2-R3.** Substrate Manager and PB Manager continue across R2-close into R3 because their post-R2 work (Tier 3 dissolution, lens-producer retirement, fixed-point, Int128, Anthropic) is structurally homed in their existing programs. No clean-break manager dissolution at R2 close.
+- **L4-L7 verification is its own program lane.** Folding L4-L7 into PB or Substrate would obscure the claim cluster. Verification Manager owns it as a dedicated standing manager.
+- **Omni-emission Shape B demos count as 2 targets, not full saturation.** THESIS claim is `O(1)` per Shape B class; demonstrating ≥2 operationalizes the structural claim. Saturation is post-R3 ecosystem work.
+- **Practical thesis pressure-test stays post-R3** per existing [`docs/r2-structure.md`](r2-structure.md) decision. R3 closes the structural thesis; `ctrl/` modeling validates whether it holds in practice.
+
+## Open calls
+
+### 1. Pre-promotion design-question resolution
+
+The 8 design challenges in §"Design challenges to resolve up-front" should be resolved before R3 dispatch begins. Each is currently a `RECOMMENDATION` in this doc; promotion converts each to a `DECISION` with explicit Director sign-off.
+
+**Required before promotion:** Director-authored reply on each design challenge — accept the recommendation, propose alternative, or surface a sub-question that needs more design work.
+
+**Timeline:** lands as part of the R2-close → R3-promotion transition. Not a separate program.
+
+**Ownership:** Director authors as a sibling PR or as inline updates to this doc.
+
+### 2. Tier 3 dissolution receipt format
+
+When a Tier 3 mirror is retired, what's the receipt format? Today's expected pattern is:
+- PR deletes the hand-Rust file
+- PR adds consumer migration to the `.dag` authority
+- PR body cites the `tier3_*_mirror_dissolved` gate
+- SG-0 census shrinks correspondingly
+
+**Sub-question:** does the test that verifies dissolution live in `.dag` (TestClaim evaluating the structural fact) or in Rust (regression test)? Given the 0-floor target, it must be `.dag`. What's the predicate name and shape?
+
+**Recommendation:** `tier3_mirror_dissolved` predicate with parameters `{ mirror_name: String, std_authority: DeclarationRef, consumer_count_before: Int, consumer_count_after: Int }`. Each instantiation tests one mirror retirement.
+
+**Ownership:** Tier 3 Manager / PB Manager (post-R2 continuation) on first retirement.
+
+### 3. R3 demo discipline
+
+R2 demo discipline is "simple 'look, it runs' artifact per lane closure." R3 inherits but with additional requirement: **at least one R3 demo must exercise the omni-emission full-stack claim end-to-end** (from one workflow `.dag` to a runnable Shape A backend + Shape B configuration + Shape B documentation). This is the load-bearing R3 demonstration.
+
+**Recommendation:** R3 Release Manager (or Demo Manager) coordinates with T-Omni-Shape-B to land a single fixture exercising this. Not a separate lane; a deliverable inside T-Omni-Shape-B.
+
+## Cross-refs
+
+- Parent (release sequencing): [`docs/r2-structure.md`](r2-structure.md) — R2 program structure
+- Thesis-claim mapping: [`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md) — per-claim disposition table closing Open call 1 from r2-structure.md
+- Self-hosting target: [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) (LIVE; 0-floor authority)
+- Thesis claims: [`THESIS.md`](../THESIS.md) §"Thesis claims — complete list"; §"Self-hosting — three facets"; §"Enumerable impossible-bug classes"; §"Tests are structural data"
+- Verification claims: [`docs/thesis/two-groundings-static-validation-vs-efficient-realization.md`](thesis/two-groundings-static-validation-vs-efficient-realization.md); [`docs/thesis/target-grounding-proposal.md`](thesis/target-grounding-proposal.md)
+- Lens capability register: [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) — current lens shipped status
+- INVARIANTS: [`INVARIANTS.md`](../INVARIANTS.md) §P5 "Progress Is Dissolution" — dissolution discipline applies to all R3 lanes

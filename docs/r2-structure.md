@@ -2,26 +2,32 @@
 
 **Status:** `PROPOSAL` — pending user sign-off + R1 closure + promotion to `ROADMAP.md` as `## Release R2 Program` section.
 
+**🔄 AMENDED 2026-04-28** — R2 expanded to include **Evaluator (Goal 7)** + full Grounding (Rust XL + Python L beyond original Pilot+Go scope). R3 reframed from *escape-hatch only* to a **structured Thesis Closure / Consequence Cycle** program — see [`docs/r3-structure.md`](r3-structure.md). Justification: at gunbc multi-agent dispatch velocity, the Evaluator + Rust + Python lanes are ~2-4 weeks of additional R2 work (vs. months at solo-dev sizing), and folding them into R2 gives a single shippable artifact with the *capacity layer* of the thesis fully landed. R3 then runs the *consequence layer* (Tier 3 dissolution, lens-producer retirement, L4-L7 verification, fixed-point, Int128, Shape B demos) as mechanical follow-through.
+
 **Authority:** single-source while open. Amendments before promotion land in this doc. After promotion, amendments follow the same discipline as R1's `## Release R1 Program` section (director-authored PRs with manager acknowledgement).
 
 **Scope naming note:** `docs/db-history/db-18.md` uses "R2 carrier" as internal DB-stage nomenclature that predates release-level R# naming. Our release-level R2 (this doc) is unrelated to DB-18's stage label; no collision of meaning, just of string.
 
 ## Summary
 
-R2 is the **close-everything** release — where "everything" means *every remaining Tier-1 thesis claim that R1's gate set does not already own*. R1 closes under all-R1-gates-green (see R1 closure criteria below), and that closure carries lens purity, self-hosting shim-floor close, E-family carrier closure, and tests-as-data closure out of R2's scope entirely. R2 is what's left: **Grounding Completeness** (the single co-anchor thesis claim), joined by modeling-faithfulness dissolution, scoped substrate prereqs for that, remaining R2+ impossible-bug classes, and §6a per-method-metadata **follow-through** (the carrier **pick** is **closed** at HEAD — Option 3 `MethodContract` per `docs/design-substrate-carrier-port-program.md` §6a; bulk lens migration remains).
+R2 is the **capacity-layer close** — where "capacity" means *the substrate, runtime, and grounding that everything else falls out of*. R1 closes under all-R1-gates-green (see R1 closure criteria below), and that closure carries lens purity, self-hosting shim-floor close, E-family carrier closure, and tests-as-data closure out of R2's scope entirely. R2 is what's left of the capacity layer: **Grounding Completeness** (Tier 1 thesis claim — Rust + Python + Go target primitives structurally modeled), **Evaluator** (the runtime that executes `.dag` bodies and unblocks the consequence layer in R3), modeling-faithfulness dissolution, scoped substrate prereqs, remaining R2+ impossible-bug classes, and §6a per-method-metadata follow-through.
+
+R3 ([`docs/r3-structure.md`](r3-structure.md)) is the **consequence layer** — every thesis claim that becomes mechanical once R2 lands: Tier 3 mirror dissolution, lens-producer retirement, L4-L7 verification harness, self-hosting facet 2 fixed-point, Tier 2 Int128, Shape B omni-emission demos, Anthropic typed wire. The R2/R3 split is structural: **R2 lands what requires new substrate / runtime / design; R3 runs what falls out mechanically.**
 
 Two framing decisions drive scope + coordination:
 
 1. **Anti-deferral principle.** If dissolution direction is clear and named, deferral is problem-finding, not problem-solving. R2 absorbs what has named dissolution directions, regardless of current execution velocity. (Velocity is a trailing observation; it can accelerate or slow between waves. The principle is what's load-bearing.)
 2. **Light-touch throughput-oriented coordination.** Manager count = concurrent critical paths, not total scope.
 
-## Program count — 2 active releases total
+## Program count — 3 active releases (R1 closing, R2 + R3 sequenced)
 
 - **R1** closing.
-- **R2** = close-everything.
-- **R3** reserved as *escape hatch only*, for items that genuinely cannot close in R2 despite honest effort. Invocation should be rare and itself signal a problem worth examining — if dissolution is surfacing faster than closure, that's a leading indicator to address, not a scope-inflation signal.
+- **R2** = **capacity-layer close** (substrate + Evaluator + Grounding + modeling + impossible-bug classes + framework).
+- **R3** = **consequence-layer close** — Thesis Closure / Consequence Cycle per [`docs/r3-structure.md`](r3-structure.md). Runs Tier 3 mirror dissolution, lens-producer retirement, L4-L7 verification harness, self-hosting facet 2 fixed-point, Tier 2 Int128/Word128 substrate, Shape B omni-emission demos, Anthropic typed wire. Sequenced after R2; pre-R3 brief authoring during R2 final week mirroring R2's pre-R1-close pattern.
 
-Post-R2 is external work (adoption, documentation, community, ecosystem modeling) — not on the thesis-claim release ledger. The first named post-R2 stream is modeling what currently lives in `../ctrl/` (user-flagged 2026-04-24) as a practical pressure-test for whether the structural thesis R2 closes actually holds when applied to real-program shapes. That pressure-test is not itself a thesis claim; it's a validation exercise against one.
+**🔄 SUPERSEDES** the prior framing of R3 as *"reserved as escape hatch only"*. Justification: thesis-claim mapping ([`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md), closing Open call 1 below) shows ~7 Tier-1/Tier-2/Tier-3 thesis claims become mechanical post-R2-Evaluator. Treating those as escape-hatch obscures the structural opportunity to close them as one cycle. R3 as a structured program is therefore named, scoped, and dispatchable — not an escape hatch.
+
+Post-R3 is external work (adoption, documentation, community, ecosystem modeling) — not on the thesis-claim release ledger. The first named post-R3 stream is modeling what currently lives in `../ctrl/` (user-flagged 2026-04-24) as a practical pressure-test for whether the structural thesis R2+R3 closes actually holds when applied to real-program shapes. That pressure-test is not itself a thesis claim; it's a validation exercise against one.
 
 ## Goals
 
@@ -57,6 +63,8 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
 5. **§6a per-method-metadata** — **Design call closed** for R2 program purposes per [`docs/design-substrate-carrier-port-program.md` §6a](design-substrate-carrier-port-program.md): **Option 3, unified `MethodContract` carrier**, with dissolution trigger and live receipt recorded there. Options (0)–(3) remain in §6a for audit context only. **Receipt:** `src/v3/std/algebra.dag` declares `MethodContract`; `src/v3/lenses/cost.dag` imports it and defines `method_contract_cost_shape` as the minimal demo consumer (matches §6a **Live receipt** at design-doc HEAD). **R2 remainder** is **follow-through** only — bulk migration of `cost.dag` / `complexity.dag` to live call-site `MethodContract` lookup plus dissolution-trigger tracking — owned by R2 Release Manager per [`docs/briefs/r2-release-6a-follow-through-worker.md`](briefs/r2-release-6a-follow-through-worker.md), not a second open **pick**. If work blurs into parametric-algebra / substrate producer vs consumer-migration reframes, coordinate with Substrate Manager (see GitHub #856). The **pick** itself is not substrate-capability work; §6a explicitly rejects Option 1 for this lane.
 
 6. **R2 closure demo** — simple "it runs" artifact per lane close. **R2 Release Manager-coordinated** (was Director-coordinated under prior 1-manager structure; reassigned under 2026-04-26 rework — single authority per `feedback_node_not_god_struct`). Not a lane — see Demo discipline below.
+
+7. **Evaluator (added 2026-04-28 amendment)** — the runtime that executes `.dag` function bodies, applies lenses structurally, and constructs witnesses. Capacity-layer cornerstone: unblocks 5 of 7 R3 lanes (Tier 3 dissolution, lens-producer retirement, L4-L7 verification harness, fixed-point, Shape B demos). Not a thesis claim by itself; it's the *capacity* that makes those thesis claims mechanically reachable. **Standing as Goal 7 because it's the largest single piece of new substrate work in R2** and warrants its own manager + lane structure. Substrate Manager input required on which carriers the Evaluator needs (closed-over environments, witness construction, lazy/eager strategy) — see Open call 3 below for design challenges to resolve up-front.
 
 ## Manager structure
 
@@ -145,6 +153,20 @@ Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goa
   - **R2 closure ledger:** tracks lane-close green status; surfaces unblocked work to idle workers; coordinates v2-retirement post-R2.
 - **Authority:** authors briefs for owned deliverables autonomously; dispatches workers; coordinates demo cadence with all other managers.
 
+### 7. Evaluator Manager (added 2026-04-28 amendment)
+
+Owns **T-Evaluator** lane (Goal 7 — the runtime that unblocks the R3 consequence layer).
+
+- **Items:**
+  - **Runtime value model** — typed runtime values for the 6 type connectives (Atom / Conj / Disj / Arrow / Cardinality / Instantiation) + 5 L1 behaviors (Value / Transform / Branch / Loop / Bind). Closed-over environments + binding scopes for `Loop` / `Bind`. Lazy/eager strategy decision (see Open call 3).
+  - **Body evaluator** — execute `.dag` function bodies structurally. Bounded forward execution per P4. Termination by descent evidence (already in substrate per `dsl/std/termination.dag`).
+  - **Lens application** — extend `reflect_program_dag_nodes_in_file` from "shallow/lossy" to complete reflection. Lens application = fold over reflected program DAG.
+  - **Witness construction** — runtime materialization of proof artifacts (Witness::Inhabits / Witness::Violates per `src/v3/std/dimensions.dag`); algebraic-law witnesses (associativity, commutativity, identity).
+  - **Cross-target equivalence harness primitives** — for L5 verification in R3 (algebraic equivalence over a curated corpus, not byte-equal).
+- **Cross-program producer:** Evaluator produces the runtime consumed by the R3 consequence-cycle lanes. **R3 cannot meaningfully start dispatch until Evaluator lands.**
+- **Cross-program consumer:** waits on Substrate Manager for any additional carriers needed by runtime values (e.g., closed-over environment representation) — design pass at lane spin-up identifies the dependency.
+- **Authority:** authors all T-Evaluator sub-briefs autonomously; dispatches workers; signals Evaluator-readiness to Director (which gates R3 spin-up); escalates blockers and scope changes to Director.
+
 ### Director (cross-program coordinator)
 
 - **Cross-program conflict resolution.** When Substrate Manager's carrier shape conflicts with Modeling Manager's consumer needs (or any analogous cross-program collision), Director arbitrates.
@@ -163,6 +185,7 @@ Owns release coordination + the smallest cross-cutting deliverables (Goal 5, Goa
 | T-ImpossibleBugs | S | **Impossible-Bugs Manager** | nested-optional flatten / unhandled-diagnostic-paths / unenumerated-effects (Goal 4). Substrate-gap discoveries escalate to Substrate Manager. |
 | T-PB | M | **Pure Bootstrap Manager** | **Post-R1 PB program work** that survives R1 close per ROADMAP gate authority. Covers Tier 2 `patch_lower_helpers_*` retirement (if it survives R1) + termination/computation/induction/effect-carrier mirror dissolutions (Tier 3 #10 + #12 from #810; `ValueBody::Map` substrate-gated for `kernel_algebra_profile`) + post-R1 emergent dissolutions. **Does NOT duplicate R1 T-PB-A / T-PB-B census-reduction work** — that's R1 lane work per ROADMAP single authority on gate semantics. |
 | T-Release | M | **R2 Release Manager** | §6a follow-through after closed pick (Goal 5) + R2 demo coordination (Goal 6) + B-wave Tier 0/2 dispatch (B1/B2/B3 through-merge, B5/B6/B7 authoring) + #810 discipline framework enforcement (velocity tripwire reporting) + thesis-claim coverage mapping (Open call 1) + R2 closure ledger + v2 retirement coordination. |
+| **T-Evaluator** | **XL** | **Evaluator Manager** (added 2026-04-28) | Runtime value model + body evaluator + lens application + witness construction + cross-target equivalence harness primitives (Goal 7). **Largest single new program in R2; gates R3 spin-up.** Co-XL with T-Substrate. |
 
 **Goal 6 (R2 closure demo) is not a lane.** It is a cross-lane closure discipline (see "Demo discipline" below): each lane's closure PR ships its own simple "it runs" artifact; **R2 Release Manager coordinates surfacing** (single authority per the 2026-04-26 rework). No separate T-Demo lane owner, no separate demo-authoring critical path.
 
@@ -229,15 +252,31 @@ R2 Release Manager (T-Release):
         B-wave Tier 0 through-merge     (B1/B2/B3 implementation iteration)
         B-wave Tier 2 brief authoring   (B5 Loop construction-closure audit; B6 checklist fix; B7 priority hint)
         Discipline-framework enforcement (velocity tripwire reporting per cadence)
-        Thesis-claim coverage mapping   (Open call 1; on R1 close → R2 promotion)
+        Thesis-claim coverage mapping   (Open call 1; closed via thesis/r2-r3-thesis-mapping.md)
         R2 demo coordination            (Goal 6; surface artifacts at each lane close)
-        v2-retirement coordination      (post-R2; tracked but not gated)
+        v2-retirement coordination      (post-R3; tracked but not gated)
+
+Evaluator Manager (T-Evaluator) — added 2026-04-28:
+    Sub-lanes (sequential; design pass first, then implementation):
+        Runtime value model design  → consumed by all later sub-lanes
+        Body evaluator              ← runtime value model
+        Lens application            ← runtime value model (extends reflect_program_dag_nodes_in_file)
+        Witness construction        ← runtime value model
+        Cross-target equivalence harness primitives ← body evaluator + lens application
+
+    Cross-program producer:
+        Evaluator readiness         → unblocks R3 (5 of 7 R3 lanes gated on Evaluator)
+    Cross-program consumer:
+        Additional substrate carriers (if needed for runtime values)
+                                    ← Substrate Manager (design pass identifies dependency)
 
 Director (cross-program coordinator):
     Conflict resolution + scope-change escalation only — no brief authoring.
+    R3 spin-up gate: Evaluator-readiness signal from Evaluator Manager triggers
+    R3 brief-authoring window per docs/r3-structure.md transition mechanics.
 ```
 
-**Parallel-capable work at steady state:** Grounding (1 critical-path slot + 2 fill) + Substrate (4 T-Substrate sub-lanes + 4 Phase 1 B4 carriers; up to 8 parallel) + Modeling (4 items, each pair-blocked on Substrate readiness) + ImpossibleBugs (3 independent classes) + PB (parallel per file/test) + Release (cross-cutting, 5+ parallel cross-cutting items). **Aspirational dispatch ceiling: ~20+ concurrent worker slots across 6 programs** (capacity, not committed throughput — actual concurrency depends on idle-worker availability and cross-program unblock timing), vs. ~9–13 under the prior 1-manager structure where Director was the brief-authoring bottleneck.
+**Parallel-capable work at steady state:** Grounding (1 critical-path slot + 2 fill) + Substrate (4 T-Substrate sub-lanes + 4 Phase 1 B4 carriers; up to 8 parallel) + Modeling (4 items, each pair-blocked on Substrate readiness) + ImpossibleBugs (3 independent classes) + PB (parallel per file/test) + Release (cross-cutting, 5+ parallel cross-cutting items) + **Evaluator (sequential design pass → 4 parallel implementation sub-lanes after design lands)**. **Aspirational dispatch ceiling: ~25+ concurrent worker slots across 7 programs** (capacity, not committed throughput — actual concurrency depends on idle-worker availability and cross-program unblock timing), vs. ~9–13 under the prior 1-manager structure where Director was the brief-authoring bottleneck.
 
 ## R1 closure criteria
 
@@ -284,25 +323,51 @@ Purpose: proof-of-work visibility at director cadence. Without it, program slips
 - **`sub_charclass_in_std_unicode` phase-2 reclassified R1 → R2** (2026-04-24, ROADMAP amendment paired with this revision). Surface Manager handoff (sub-child `quiet-gull-882` triage) confirmed the remaining work is Class 5 Gap 3 substrate-capability scope, not T-Sub-only surface fix; reclassifying lets R1 close on T-Sub Day-1 + DB-11 without waiting on substrate-capability work. Phase-2 lands in R2 as a 4th T-Substrate scoped sub-lane (consumer: tokenizer). Reclassification scope is bounded — full Class 5 Gap 3 substrate-capability close remains outside R2 unless additional R2 items demand it; only the tokenizer-charclass-unblock subset is R2-committed.
 - **Post-R2 stance = STRONG.** R2 is thesis close. Post-R2 work is external (adoption, documentation, community, ecosystem buildout). R3 is reserved as escape hatch only, not as a structural release program. User-locked 2026-04-24 after pressure-test framing: *"real programs are probably required to confirm the thesis is real, but we can keep R2 theoretical to stay fair — future work would pressure test the claims."* The R2 doc's "close-everything" claim is thus scoped to the **structural thesis** (what the compiler proves by construction); practical validation via modeling real programs (e.g., the user's `../ctrl/` follow-up) is a separate post-R2 stream that *tests whether the thesis holds in practice*, without itself being a thesis claim.
 - **Pre-R1-close R2 manager spawn allowed for 5 of 6 managers** (locked 2026-04-26 per user direction). Per-manager R1-gating audit found only Pure Bootstrap is definitionally R1-close-gated (scope = "what survives R1 close"); the other 5 (Grounding, Substrate, Modeling, Impossible-Bugs, Release) have no technical R1 dependency and may spawn pre-R1-close. R2 Substrate spawn actively *unblocks* R1 closure (ValueBody-list/sum is prereq for R1C-A Sub-deliverable A). This is the targeted exception to step 4's "spawn at R1 close" framing in Transition mechanics; refined inline at step 4. ROADMAP `## Release R2 Program` promotion (step 5) still gates on R1 close — pre-R1-close R2 manager activity operates under this doc's PROPOSAL authority, not under ROADMAP authority.
+- **Evaluator (Goal 7) added to R2 (locked 2026-04-28 per user direction).** The runtime that executes `.dag` bodies, applies lenses, and constructs witnesses lands in R2 as the *capacity layer*. Justification: at gunbc multi-agent dispatch velocity, Evaluator is sized at ~2-3 weeks (vs. 2-4 months at solo-dev sizing). Folding it into R2 (rather than a separate post-R2 program) means R2 ships a complete capacity layer + R3 runs every consequence claim mechanically. The split is structural: R2 = enabling work that requires new design / substrate / runtime; R3 = mechanical follow-through that becomes obvious once R2 lands.
+- **R3 reframed from escape-hatch to structured Thesis Closure / Consequence Cycle program (locked 2026-04-28 per user direction).** Supersedes the prior "R3 reserved as escape hatch only" decision. Per [`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md), ~7 thesis claims become mechanical post-R2-Evaluator (Tier 3 mirror dissolution × 4, lens-producer retirement, L4-L7 verification, fixed-point, Tier 2 Int128, Shape B demos × 2+, Anthropic typed wire). Treating those as an escape-hatch obscured the structural opportunity. R3 is now named, scoped, and dispatchable per [`docs/r3-structure.md`](r3-structure.md).
+- **Open call 1 (thesis-claim coverage mapping) closed via [`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md)** (2026-04-28). Per-claim disposition table covers every Tier-1 / Tier-2 / Tier-3 thesis claim with R1 / R2 / R3 / post-R3-external assignment + evidence pointer + status. Compromises (deferrals from R2 to R3 or post-R3) are documented inline. Design challenges to resolve before R3 dispatch are enumerated in [`docs/r3-structure.md`](r3-structure.md) §"Design challenges to resolve up-front."
 
 ## Open calls
 
-### 1. Pre-promotion thesis-claim coverage mapping (gate before ROADMAP promotion)
+### 1. ~~Pre-promotion thesis-claim coverage mapping (gate before ROADMAP promotion)~~ — **CLOSED 2026-04-28**
 
-Surfaced by codex API review on `6fdd8341`: the "close-everything/post-R2-external-only" framing requires an explicit mapping from THESIS tiers to concrete R1/R2/post-R2 disposition, so no thesis claim is implicitly-positioned. Otherwise "close-everything" is an assertion without audit.
+> **🔄 CLOSED** via [`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md). Per-claim disposition table covers every Tier-1 / Tier-2 / Tier-3 thesis claim with R1 / R2 / R3 / post-R3-external assignment + evidence pointer + status. Compromises (deferrals) documented inline. The doc closes this Open call and remains the live thesis-claim coverage authority for ongoing R2/R3 amendments.
 
-THESIS authority (`THESIS.md:155-182`) lists:
-- **Tier 1 — Structural correctness** (type mismatches, CX termination, coercion = emission, ownership no-alias, **Grounding completeness**).
-- **Tier 2 — Runtime safety** (division-by-zero, integer overflow, out-of-bounds, force-unwrap, partial functions — proven safe or made total).
-- **Tier 3 — Verification from structure** (L4 emitted ≡ .dag, L5 cross-target parity, L6 structural-form coverage, L7 algebraic laws).
+~~Surfaced by codex API review on `6fdd8341`: the "close-everything/post-R2-external-only" framing requires an explicit mapping from THESIS tiers to concrete R1/R2/post-R2 disposition, so no thesis claim is implicitly-positioned. Otherwise "close-everything" is an assertion without audit.~~
 
-**Required before promotion:** a table mapping every Tier-1 / Tier-2 / Tier-3 claim to its R1-closed / R2-gated / post-R2-external disposition, with any gaps (claim named in THESIS but not mapped) flagged as pre-promotion blockers. Non-blocking for this PR; blocking for ROADMAP promotion.
+~~THESIS authority (`THESIS.md:155-182`) lists:~~
+- ~~**Tier 1 — Structural correctness** (type mismatches, CX termination, coercion = emission, ownership no-alias, **Grounding completeness**).~~
+- ~~**Tier 2 — Runtime safety** (division-by-zero, integer overflow, out-of-bounds, force-unwrap, partial functions — proven safe or made total).~~
+- ~~**Tier 3 — Verification from structure** (L4 emitted ≡ .dag, L5 cross-target parity, L6 structural-form coverage, L7 algebraic laws).~~
 
-**Audit format:** table with columns `Tier | Claim | Disposition (R1 / R2 / post-R2-external) | Gate or lane name | Evidence (PR# or gate name) | Status`. Gaps are rows with disposition column empty or claim not in THESIS list.
+~~**Required before promotion:** a table mapping every Tier-1 / Tier-2 / Tier-3 claim to its R1-closed / R2-gated / post-R2-external disposition, with any gaps (claim named in THESIS but not mapped) flagged as pre-promotion blockers. Non-blocking for this PR; blocking for ROADMAP promotion.~~
 
-**Ownership:** Director authors as a sibling PR. PM reviews for completeness against `THESIS.md §"Thesis claims — complete list"`.
+~~**Audit format:** table with columns `Tier | Claim | Disposition (R1 / R2 / post-R2-external) | Gate or lane name | Evidence (PR# or gate name) | Status`. Gaps are rows with disposition column empty or claim not in THESIS list.~~
 
-**Timeline:** lands as part of the R1 closure → R2 promotion transition (step 4 in Transition mechanics above). Not a separate program.
+~~**Ownership:** Director authors as a sibling PR. PM reviews for completeness against `THESIS.md §"Thesis claims — complete list"`.~~
+
+~~**Timeline:** lands as part of the R1 closure → R2 promotion transition (step 4 in Transition mechanics above). Not a separate program.~~
+
+### 3. Pre-dispatch Evaluator design questions (2026-04-28 amendment)
+
+Surfaced by 2026-04-28 R2 amendment folding Evaluator into R2 scope. The Evaluator is the largest single new lane; design questions affect downstream R3 consumers and should resolve before worker dispatch.
+
+**Required before R2-Evaluator dispatch:** Director-authored decisions (or accept-as-recommended) on each of the 8 design challenges enumerated in [`docs/r3-structure.md`](r3-structure.md) §"Design challenges to resolve up-front". Specifically:
+
+1. **Evaluator runtime-value representation** — closed-over environments, lazy/eager strategy, memoization, witness construction surface
+2. **Lens reflection completeness scope** — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`?
+3. **Cross-target equivalence semantics** — algebraic-equal vs byte-equal vs behavioral-equal under oracle?
+4. **SG-0 zero requirement for fixed-point** — full hand-Rust retirement before fixed-point closes, or non-test subset only?
+5. **T-Verification-L4L7 sequencing** — L4-L7 parallel or sequential within R3?
+6. **Shape B target choice** — which 2 Shape B targets does R3 demo?
+7. **Tier 3 mirror dissolution mechanics** — performance threshold for accepting evaluated paths over compiled-Rust mirrors?
+8. **R3 Anthropic vs R2 OpenAI** — generalize provider pattern in R3, or replicate?
+
+**Required:** Director reply on each (accept recommendation, propose alternative, or surface sub-question). Non-blocking for this PR; blocking for R2-Evaluator and R3 dispatch.
+
+**Ownership:** Director authors as inline updates to [`docs/r3-structure.md`](r3-structure.md) §"Design challenges to resolve up-front" or as a sibling PR.
+
+**Timeline:** R2-Evaluator design questions resolve before R2-Evaluator worker dispatch begins. R3-specific design questions (Shape B choice, L4-L7 sequencing, etc.) may resolve during R2's final week / R3 brief-authoring window.
 
 ### 2. ~~Pre-promotion `≤5 irreducible-shim` gate-name review~~ — **RETRACTED (2026-04-25 cascade promotion)**
 
