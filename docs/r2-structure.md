@@ -428,16 +428,18 @@ Every release-control fact lives in exactly one place with exactly one state. St
 
 **Receipt:** PR #1078's review history (9 events, 83 minutes, 5 codex passes catching the same shape in different clothing) is the empirical case study. Each round caught one stale string while another sibling table preserved a different one. Without this rule, the next release-doc PR will repeat the loop.
 
-**Doc consistency check** (small consumer; see `scripts/check-release-doc-authority.sh`):
+**Doc consistency check** (small consumer at `scripts/check-release-doc-authority.sh`; wired to `make verify` via the `release-doc-authority-check` target):
 
 ```bash
 # Forbidden-string consumer — fails if any stale concept name appears in
 # live (non-retraction-context) sections of release-control docs.
-# Lives at scripts/check-release-doc-authority.sh; runs in CI on changed
-# release-control docs.
+# Lives at scripts/check-release-doc-authority.sh.
+# Wired into Makefile: `make verify` runs it as part of the standard
+# verification suite (alongside bootstrap-check + testgen-check).
+# Direct invocation: `make release-doc-authority-check`.
 ```
 
-The script consumes a forbidden-string list (T-Ground-Engine outside retraction; T-Ground-Annotation outside retraction; "canonical choice" as live carrier; @target annotation outside retraction; "DECISIONS LOCKED" applied to DIRECTION-RATIFIED-SCHEDULED items, etc.) and reports violations. It's a small, mechanical consumer — not a full state-machine validator — but it catches the recurring pattern from the #1078 review loop with one bash invocation.
+The script consumes a forbidden-string list (T-Ground-Engine outside retraction; T-Ground-Annotation outside retraction; "canonical choice" as live carrier; @target annotation outside retraction; "DECISIONS LOCKED" applied to DIRECTION-RATIFIED-SCHEDULED items, etc.) and reports violations. It's a small, mechanical consumer — not a full state-machine validator — but it catches the recurring pattern from the #1078 review loop with one bash invocation. **Enforcement path:** Makefile `verify` target, which CI invokes; failures surface as build errors not as advisory warnings.
 
 ### 2. ~~Pre-promotion `≤5 irreducible-shim` gate-name review~~ — **RETRACTED (2026-04-25 cascade promotion)**
 

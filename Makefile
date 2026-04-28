@@ -56,6 +56,15 @@ bootstrap-check: lint-upsert
 verify: lint-upsert
 	@$(MAKE) bootstrap-check
 	@$(MAKE) testgen-check
+	@$(MAKE) release-doc-authority-check
+
+# Release-doc authority consumer — fails if forbidden stale concept names
+# appear in live (non-retraction) sections of release-control docs.
+# Authority: docs/r2-structure.md §"Release-doc authority discipline"
+# (Open call 4). Added 2026-04-28 per gpt-5-5-pro PR #1078 BLOCKING that
+# the consumer was declared but had no enforcement path.
+release-doc-authority-check:
+	@bash scripts/check-release-doc-authority.sh
 
 # Ensure generated artifacts are up to date
 verify-fix: lint-upsert
