@@ -752,7 +752,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let wire_contract_item = typed_module.items
     |> filter(i =>
       item_binding_is_named(env: scope.type_env, node: i, name: "wire_contract")
-      && match map_get(registry, "wire_contract") {
+      && match map_get(scope.item_registry, "wire_contract") {
         Some { value: info } => info.kind == DataItem
         None => false
       })
