@@ -27,10 +27,10 @@ use std::collections::{HashMap, HashSet};
 use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
-    Declaration, DeclarationId, Field, IntraClusterCall, LiteralBits, LoopBound, LoopNode,
-    MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path, PayloadBinding,
-    PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
-    ValueNode,
+    Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
+    LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
+    PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -942,7 +942,7 @@ fn value_body_contains_undischarged_scalar_literal(
         }
         crate::dag::ValueBody::Map(entries) => {
             map_value_type(dag, expected_type).is_some_and(|value_type| {
-                entries.iter().any(|(_, value)| {
+                entries.entries().iter().any(|(_, value)| {
                     field_value_contains_undischarged_scalar_literal(dag, value_type, value)
                 })
             })
@@ -992,7 +992,7 @@ fn field_value_contains_undischarged_scalar_literal(
         }
         crate::dag::FieldValue::Map(entries) => {
             map_value_type(dag, expected_type).is_some_and(|value_type| {
-                entries.iter().any(|(_, value)| {
+                entries.entries().iter().any(|(_, value)| {
                     field_value_contains_undischarged_scalar_literal(dag, value_type, value)
                 })
             })
@@ -2865,7 +2865,7 @@ fn lower_string_map_entries(
     value_type: DeclarationId,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
-) -> Option<Vec<(String, crate::dag::FieldValue)>> {
+) -> Option<FieldMap> {
     let mut seen = HashSet::new();
     let mut lowered = Vec::with_capacity(entries.len());
     for entry in entries {
@@ -2894,7 +2894,23 @@ fn lower_string_map_entries(
             )?,
         ));
     }
-    Some(lowered)
+    match FieldMap::from_entries(lowered) {
+        Ok(map) => Some(map),
+        Err(duplicate) => {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` map body repeats key `{}`",
+                        duplicate.key
+                    ),
+                    span: SourceSpan::new("<lower-field-map-invariant>", 0, 0),
+                    fixes: Vec::new(),
+                },
+            );
+            None
+        }
+    }
 }
 
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`

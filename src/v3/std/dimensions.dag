@@ -43,12 +43,22 @@ type OptionalDiagnostic
   | SomeDiagnostic { value: Diagnostic }
 
 // 🟢 TERMINAL. Aggregate result from `analyze` (DB-3 §Dimension evaluation).
-type DimensionReport<Carrier> {
-  dimension_name: String
-  composed: Carrier
-  violations: List<Diagnostic>
-  witnesses: List<Witness<Carrier>>
-}
+//
+// Pass/fail partition: a successful proof carries `composed`; a failed
+// proof carries `violations` and never fabricates a carrier — there is
+// no valid `composed` when any witness `Violates` or composition at
+// the workflow root cannot be resolved (R2 fail-closed).
+type DimensionReport<Carrier>
+  = DimensionOk {
+      dimension_name: String
+      composed: Carrier
+      witnesses: List<Witness<Carrier>>
+    }
+  | DimensionFail {
+      dimension_name: String
+      violations: List<Diagnostic>
+      witnesses: List<Witness<Carrier>>
+    }
 
 // 🟢 TERMINAL at the dimension-surface scope. The five fields are
 // the irreducible contract a compile-time property has to publish:
