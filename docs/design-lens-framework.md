@@ -342,12 +342,20 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 
 **I8. Read-channel fail-closed TestClaim** (added per codex BLOCKING finding on `4057b8f5`).
 - Construct a program that uses an operation for which the substrate has no declared cost/capability/label fact (whichever instance is being tested).
-- Run the lens fold; expect `DimensionFail` with `violations` containing a `Diagnostic` whose kind names the missing fact and whose `at` field identifies the offending node/behavior.
+- Run the lens fold; expect `DimensionFail` with `violations` containing a `Diagnostic` whose kind names the missing fact. The Witness's `at: Behavior` carries per-node location for read-channel failures.
 - TestClaims:
   - `lens_complexity_missing_cost_fail_closed`: fold on a program with an op lacking declared cost → `DimensionFail`
   - `lens_tenant_flow_missing_cap_fail_closed`: fold on a program with an op lacking declared capability requirement → `DimensionFail`
   - `lens_ifc_missing_label_fail_closed`: fold on a program with an op lacking declared security label → `DimensionFail`
 - **Pass criterion:** every instance's `read` returns `Witness<C>`; missing facts produce typed diagnostics; no fabricated `C` ever reaches `compose`.
+
+**I9. Aggregate-validate fail-closed TestClaim** (added per codex BLOCKING finding on `c9898163`).
+- Construct programs that pass `read` (all per-node facts present) but fail aggregate validation (tenant grant missing a capability; sink clearance below computed label).
+- Run the lens fold; expect `DimensionFail` with `violations` containing a `Diagnostic` whose `span: SourceSpan` points at the workflow root or sink declaration (aggregate-level location), not at any per-node `Behavior`.
+- TestClaims:
+  - `lens_tenant_flow_aggregate_validate_fail_closed`: validate detects missing capability; diagnostic span at workflow root
+  - `lens_ifc_aggregate_validate_fail_closed`: validate detects clearance violation; diagnostic span at sink declaration
+- **Pass criterion:** `validate: C → OptionalDiagnostic` returns `SomeDiagnostic { value: Diagnostic }` on failure; the fold lifts that into `DimensionFail.violations`; no `at: Behavior` is fabricated for aggregate-level failures.
 
 ### Migration-phase self-checks
 
