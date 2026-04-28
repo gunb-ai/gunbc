@@ -32,15 +32,9 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-<<<<<<< HEAD
-    ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective,
-=======
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId,
     Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
     TemplateArgument, TransformNode, TransformTarget, TypeConnective,
->>>>>>> origin/main
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -1269,12 +1263,9 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
-<<<<<<< HEAD
-=======
                                 // Default literal shape is `Int`; align the argument port with
                                 // the callee's narrow range-backed type (same as `let` / `data`
                                 // pre-seed + `Decision::Set` reunion for annotated literals).
->>>>>>> origin/main
                                 return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}

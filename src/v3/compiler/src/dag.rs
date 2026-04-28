@@ -290,14 +290,8 @@ pub struct NominalOpacity {
 #[derive(Debug, Clone)]
 pub enum ValueBody {
     /// The body exists in source at the given span but is not yet
-<<<<<<< HEAD
-    /// lowered to a value sub-DAG. Map-shaped bodies still await the
-    /// sibling `kernel_algebra_profile` substrate lane; records and
-    /// lists lower structurally.
-=======
     /// lowered to a value sub-DAG. Records, lists, and string-keyed
     /// maps lower structurally.
->>>>>>> origin/main
     Unparsed(SourceSpan),
     /// The body parsed as a record literal and was inhabitance-
     /// checked against the declared type. Each field holds a
@@ -341,8 +335,6 @@ pub enum ValueBody {
     /// deliberately reuse `FieldValue`, matching nested structural list
     /// values and preserving sum-constructor identity for list-of-sum data.
     List(Vec<FieldValue>),
-<<<<<<< HEAD
-=======
     /// Top-level structural string-keyed map value:
     /// `data table: Map<String, T> = { "k": v }`.
     ///
@@ -398,7 +390,6 @@ impl FieldMap {
     pub fn into_entries(self) -> Vec<(String, FieldValue)> {
         self.entries
     }
->>>>>>> origin/main
 }
 
 /// Per-field value payload inside a `ValueBody::Structural`.
@@ -3064,14 +3055,9 @@ impl Dag {
     /// **Path 2 satisfaction.** The returned declaration's `value_body`
     /// is `ValueBody::List(_)`, so both the sum type shape and the
     /// 10-element pilot enumeration are structurally walkable. Map-shaped
-<<<<<<< HEAD
-    /// bootstrap data remains future debt for the map-shaped T-Substrate
-    /// sibling lane; today it still lowers to `ValueBody::Unparsed`.
-=======
     /// bootstrap data such as `kernel_algebra_profile` now lowers through
     /// `ValueBody::Map`; the remaining debt is retiring Rust mirrors that
     /// still read those maps through hand-authored accessors.
->>>>>>> origin/main
     ///
     /// Returns `None` only when bootstrap failed to load
     /// `rust/primitives.dag`, in which case a diagnostic is already on

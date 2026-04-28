@@ -5,11 +5,7 @@ use std::process::{Command, Stdio};
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
-<<<<<<< HEAD
-    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldValue, IntraClusterCall,
-=======
     ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue, IntraClusterCall,
->>>>>>> origin/main
     LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NominalOpacity,
     NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter, PortId,
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
@@ -310,15 +306,12 @@ fn render_value_body(value_body: &ValueBody) -> String {
             let rendered: Vec<String> = values.iter().map(render_field_value).collect();
             format!("ValueBody::List({})", render_vec(&rendered))
         }
-<<<<<<< HEAD
-=======
         ValueBody::Map(entries) => {
             format!(
                 "ValueBody::Map({})",
                 render_field_map("ValueBody::Map", entries)
             )
         }
->>>>>>> origin/main
     }
 }
 
