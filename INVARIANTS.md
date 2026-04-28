@@ -102,7 +102,7 @@ If a parent concept exists, the new fact attaches via inhabitance (algebra-inhab
 
 > *"If proposing `Foo = A | B | C`, ask: are these alternatives (one-at-a-time) or coordinates (all-at-once)?"*
 
-If any single inhabitant carries values for ALL variants simultaneously, the variants are coordinates of a record (`{ a: A, b: B, c: C }`), not a sum type. Sum types compress what should be coordinates and pay the cost downstream. Per [`memory: feedback_coproduct_dissolution`](docs/thesis/structural-decompression.md): dissolve into coordinates; the closed system guarantees the dissolution terminates. Worked examples:
+If any single inhabitant carries values for ALL variants simultaneously, the variants are coordinates of a record (`{ a: A, b: B, c: C }`), not a sum type. Sum types compress what should be coordinates and pay the cost downstream. Per [`docs/thesis/structural-decompression.md`](docs/thesis/structural-decompression.md): dissolve into coordinates; the closed system guarantees the dissolution terminates. Worked examples:
 - "Cost = Time | Space | Energy" is wrong shape — every cost has time AND space AND (potentially) energy components. Dissolve to `{ time, space, energy }` (record).
 - "BoundDeclaration = ExactBound | AnyBound | PlatformDependent" — these ARE alternatives (a bound is one kind, not all kinds). Sum type is correct here.
 - "Resource = CPU | Memory | Disk" — coordinates if a single allocation has all three; sum type if any one allocation is exactly one kind. Apply the test.
@@ -114,7 +114,7 @@ The "stop at user-input boundary" rule: dissolve coproducts that compress struct
 > *"If introducing a leaf type (Time, Bits, Joules, Meters), ask: is this a fundamental primitive or a lens-extensible label?"*
 
 Fundamental primitives (physics, computation, mathematics) declare as substrate primitives sibling to existing primitives — not lens-extensible coproducts. **Lens-extensible** (NOT "user-extensible" — the compiler IS a user of its own system; the lens framework is uniform whether authored by compiler team or user) vocabulary belongs in lens-framework instances or domain dimensions where the lens-framework's structural inhabitance lets any author add new variants the same way. Worked examples:
-- `Bits`, `CPUCycles`, `Joules` declare as substrate primitive types (sibling to `Meters`, `Seconds`, `Kilograms` in `dimensions.dag:93-99` — SI base units). Not `Resource = ... | LensExtensible<Name>`.
+- `Bits`, `CPUCycles`, `Joules` declare as substrate primitive types (sibling to `Meters`, `Seconds`, `Kilograms` in `src/v3/std/dimensions.dag:93-99` — SI base units). Not `Resource = ... | LensExtensible<Name>`.
 - A `Lens<TenantFlow>` instance declares `CapSet` and `Capability` as lens-extensible domain types — those ARE lens-extensible regardless of who authored the lens (compiler team CapabilityViolation kind variants extend the same way as a user-authored lens). Per `feedback_groundedness_gates_lenses`: language vocabulary is primitives + namespacing; the lens framework's inhabitance is the namespacing.
 - `BoundDeclaration` variants (`StaticBound`, `PlatformDependent`) are substrate-declared because they're computational primitives (every target's bound has one of these shapes); not lens-extensible.
 
