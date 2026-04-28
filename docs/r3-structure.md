@@ -286,15 +286,9 @@ R3 cannot start meaningful work until R2 closes. Specifically:
 
 ## Open calls
 
-### 1. Pre-promotion design-question resolution
+### 1. ~~Pre-promotion design-question resolution~~ — **CLOSED 2026-04-28 per Director review of #1078**
 
-The 8 design challenges in §"Design challenges to resolve up-front" should be resolved before R3 dispatch begins. Each is currently a `RECOMMENDATION` in this doc; promotion converts each to a `DECISION` with explicit Director sign-off.
-
-**Required before promotion:** Director-authored reply on each design challenge — accept the recommendation, propose alternative, or surface a sub-question that needs more design work.
-
-**Timeline:** lands as part of the R2-close → R3-promotion transition. Not a separate program.
-
-**Ownership:** Director authors as a sibling PR or as inline updates to this doc.
+> **🔄 CLOSED.** The 8 design challenges in §"Design challenges — DECISIONS LOCKED 2026-04-28 per Director review" were ratified as locked decisions in the Director review of #1078 (2026-04-28T01:32:45Z). Each is now a DECISION, not a RECOMMENDATION. The dispatch cadence is named in §"Pre-R2-Evaluator design lock cadence" (PR-A through PR-E). This open call is closed; the relocated authority is the locked-decisions section + cadence section above. New design questions surfaced after this date are tracked separately (e.g., the 4 open calls in §"Open design calls surfaced by the examples" of [`docs/design-emission-model.md`](design-emission-model.md)).
 
 ### 2. Tier 3 dissolution receipt format
 
