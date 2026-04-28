@@ -1121,16 +1121,19 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Recommendation:** **(a)** — cardinality is the connectives axis. Reason: in v3 substrate, cardinality is a property of the type connective (List has unbounded cardinality; Conj has fixed cardinality = number of fields; Atom is singleton). Treating cardinality as a separate axis would double-count. The L6 fold becomes `connectives × behaviors × targets` = 6 × 5 × 3 = 90 cells. Manageable.
 
+**Reinforced by Q1 consolidation (Director-locked 2026-04-28):** with `Interval<D>` declared as the shared parent for bound concepts (per Q1 DECISION above), cardinality lands on the connective via `Interval<Cardinal>` instances — `List<T>` carries `Interval<Cardinal>::Unbounded`, `Atom` carries `Interval<Cardinal>::ExactInterval { lo: 1, hi: 1 }`, etc. The L6 cardinality axis collapses into the connective axis by construction. PR-J (Q5 cadence) becomes likely no-op.
+
 ### Pre-dispatch design-PR cadence (per Director directive 2026-04-28)
 
-The cadence below names the focused design PRs that lock per-target modeling before dispatch. Each is bounded (1-2 days), has a TestClaim acceptance gate, and lands BEFORE the corresponding T-Ground / T-Verification dispatch. Modeled on the PR-A through PR-E cadence that locked R2-Evaluator design.
+The cadence below names the focused design PRs that lock per-target modeling before dispatch. Each is bounded (1-2 days, except PR-PreF at 2-3 days), has a TestClaim acceptance gate, and lands BEFORE the corresponding T-Ground / T-Verification dispatch. Modeled on the PR-A through PR-E cadence that locked R2-Evaluator design.
 
 | PR | Locks | Before dispatch of | TestClaim gate |
 |---|---|---|---|
-| **PR-F** | BoundDeclaration substrate (Q1) + Rust structural axes (Q2 partial) | T-Ground-Coercion-Fold + T-Ground-Rust | All Q1 + Q2-Rust TestClaims pass |
+| **PR-PreF** | `Interval<D>` substrate consolidation (shared parent for CardinalityBound / SizeBound / LoopBound::Cardinality; sets up Q1 instance) | All subsequent cadence PRs | `Interval<D>` substrate-form ratchet green; existing CardinalityBound + SizeBound + LoopBound consumers compile unchanged via additive retrofit |
+| **PR-F** | `BoundDeclaration = Interval<Int>` (Q1 instance, consumes PR-PreF parent) + Rust structural axes (Q2 partial) | T-Ground-Coercion-Fold + T-Ground-Rust | All Q1 + Q2-Rust TestClaims pass |
 | **PR-G** | Python structural axes (Q2 partial) | T-Ground-Python | Q2-Python TestClaims pass |
 | **PR-H** | Go structural axes (Q2 partial) | T-Ground-Go | Q2-Go TestClaims pass |
 | **PR-I** | Per-primitive realization cost field shape (Q3) + L4 corpus authoring spec (Q4) | T-Ground-LanguageSpec + T-Verification-L4-L7-Direct | Q3 + Q4 TestClaims pass |
-| **PR-J** | L6 cardinality enumeration (Q5) — only if recommendation (a) is rejected; (a) collapses the axis | T-Ground-CrossTarget-Meta | Q5 TestClaims pass (only if (b)/(c)/(d) chosen) |
+| **PR-J** | L6 cardinality enumeration (Q5) — likely no-op given PR-PreF consolidation reinforces recommendation (a) | T-Ground-CrossTarget-Meta | Q5 TestClaims pass (only if (a) rejected, which is unlikely after PR-PreF) |
 
 **Director's role:** sign off on Q1-Q5 alternatives + recommendations above, OR override with different choice. Each cadence PR consumes the locked decisions; without sign-off, dispatch waits.

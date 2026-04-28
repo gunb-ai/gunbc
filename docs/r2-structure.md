@@ -392,11 +392,12 @@ Three additional items the Director review identified as R2-expansion (not R3):
 
 | PR | Locks | Before dispatch of |
 |---|---|---|
-| **PR-F** | Q1 (BoundDeclaration) + Q2 Rust axes | T-Ground-Coercion-Fold + T-Ground-Rust |
+| **PR-PreF** *(prepended 2026-04-28 per Director directive)* | `Interval<D>` substrate consolidation — shared parent for CardinalityBound / SizeBound / LoopBound::Cardinality (additive retrofit; LoopBound::Descent and CostBound stay distinct). Sets up Q1's `BoundDeclaration = Interval<Int>` instance to consume a clean parent rather than introduce a fifth distinct bound type | All subsequent cadence PRs |
+| **PR-F** | Q1 (BoundDeclaration = Interval<Int>; consumes PR-PreF parent) + Q2 Rust axes | T-Ground-Coercion-Fold + T-Ground-Rust |
 | **PR-G** | Q2 Python axes | T-Ground-Python |
 | **PR-H** | Q2 Go axes | T-Ground-Go |
 | **PR-I** | Q3 (per-primitive realization cost) + Q4 (L4 corpus shape) | T-Ground-LanguageSpec + T-Verification-L4-L7-Direct |
-| **PR-J** | Q5 (L6 cardinality enumeration — only if recommendation rejected) | T-Ground-CrossTarget-Meta |
+| **PR-J** | Q5 (L6 cardinality enumeration — likely no-op given PR-PreF consolidation reinforces recommendation a) | T-Ground-CrossTarget-Meta |
 | **PR-K** | Q6 + Q7 + Q8 (lens framework spec) | T-Substrate-Lens-Primitive |
 
 **Ownership:** Director authors decisions inline in `design-emission-model.md` and `design-lens-framework.md` design-questions sections, OR as separate PRs PR-F through PR-K. Worker dispatch on the corresponding lane waits until the relevant cadence PR(s) merge.
