@@ -105,7 +105,7 @@ Per Director response on #1078, the following are LOCKED for the framework spec:
 
 ## Three worked instances
 
-Each instance demonstrates a different monoid shape and validates the framework's range. All three share the same fold machinery; they differ only in (read, unit, compose, branch, iterate, validate).
+Each instance demonstrates a different monoid shape and validates the framework's range. All three share the same fold machinery; they differ only in (`read`, `sequential` (the Monoid<C> witness), `branch`, `iterate`, `validate`). Worked traces below colloquially say "compose" when describing the monoid op; the substrate field is `sequential: Monoid<C>` and `compose` is `sequential.op`, `unit` is `sequential.identity`.
 
 ### Instance 1 — Complexity (additive numeric monoid)
 
@@ -302,7 +302,7 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 - **Pass criterion:** each fold trace matches expected output. Failure = monoid or side-condition spec is wrong.
 
 **D2. Existing PROXY lenses fit `Lens<C>` shape (paper exercise).**
-- For each of the 4 existing lenses, write the instance declaration (`read`, `unit`, `compose`, `branch`, `iterate`, `validate`) using only existing combinators where possible.
+- For each of the 4 existing lenses, write the instance declaration (`name`, `read`, `sequential: Monoid<C>` — projects to `sequential.op` for sequential composition + `sequential.identity` for unit, `branch`, `iterate`, `validate`) using only existing combinators where possible.
 - **Pass criterion:** every existing combinator (`combine_max`, `combine_sequential`, etc.) maps to a Lens<C> field with no machinery left over. Failure = the existing patterns aren't actually monoidal, or the framework needs additional fields.
 
 **D3. L6 (structural-form coverage) collapses to `Lens<EmissionPathPresent>`.**
@@ -340,7 +340,7 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 These run during substrate-worker dispatch, before declaring the lane closed. Each is a TestClaim-shaped acceptance.
 
 **I1. `dsl/std/lens.dag` declares `Lens<C>` and type-checks against existing substrate.**
-- Lens<C> declaration includes the 7 fields (`name`, `read`, `unit`, `compose`, `branch`, `iterate`, `validate`).
+- Lens<C> declaration includes the 6 fields (`name`, `read`, `sequential: Monoid<C>`, `branch`, `iterate`, `validate`). `sequential` carries the monoid witness via structural inhabitance; `unit` and `compose` project from `sequential.identity` and `sequential.op` rather than appearing as separate Lens fields (per Director synthesis 2026-04-28: parallel `compose + unit` fields would duplicate `Monoid<C>` and reintroduce the AnalysisDimension drift).
 - `read: (Dag, Behavior) → Witness<C>` (typed per-Behavior failure channel; matches `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` at `dimensions.dag:74` verbatim).
 - `validate: (Dag, C) → OptionalDiagnostic` (aggregate-level failure channel; `Dag` for workflow/sink declaration lookup; `OptionalDiagnostic` from `dimensions.dag:41-43`; location info via `Diagnostic.span: SourceSpan`, not per-Behavior).
 - All `read` and `validate` lookups go through the explicit `Dag` parameter — no hidden global lookup authority.
