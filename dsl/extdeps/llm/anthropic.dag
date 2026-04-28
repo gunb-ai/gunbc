@@ -8,7 +8,7 @@
 //
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
+import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract }
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { VariantEncoding }
@@ -106,9 +106,39 @@ type AnthropicChatMessage
   = UserMessage { content: List<AnthropicUserContentBlock> }
   | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
-// Outputs still JSON-path-project; same downstream closure as OpenAI slice.
+// Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
+// Tool-use / image assistant rows remain outside this carrier.
+type AnthropicMessages200TextBlock {
+  type: String
+  text: String
+}
+
+type AnthropicMessages200Usage {
+  input_tokens: Int
+  output_tokens: Int
+}
+
+type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseTurn | Refusal
+
+// Message object envelope for POST /v1/messages 200 responses per Anthropic docs
+// (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
+// `model`, `stop_reason`, optional `stop_sequence`, `usage`. `AnthropicMessages200TextBlock`
+// remains the narrow text slice inside `content[]`; thinking, tool_use, images,
+// server tools, citations, and `usage` cache-token breakdowns stay gap-carried on
+// `structural_coverage_gap_anthropic_messages_outputs`.
+type AnthropicMessages200Body {
+  id: String
+  type: String
+  role: String
+  content: List<AnthropicMessages200TextBlock>
+  model: String
+  stop_reason: AnthropicStopReason
+  stop_sequence: String?
+  usage: AnthropicMessages200Usage
+}
+
 data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
-  "closure:rest_typed_response_body|llm.Anthropic.Messages|residue:output_fields_use_json_path_projection"
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|missing:container|AnthropicMessages200TextBlock|missing:thinking|missing:tool_use|missing:redacted_thinking|missing:web_search|missing:server_tool_use|missing:citations|AnthropicMessages200Usage|missing:cache_creation_input_tokens|missing:cache_read_input_tokens|missing:service_tier"
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
@@ -153,7 +183,7 @@ service llm.Anthropic {
     output {
       content: String from "content/0/text"
       model: String from "model"
-      stop_reason: StopReason from "stop_reason"
+      stop_reason: AnthropicStopReason from "stop_reason"
       input_tokens: Int from "usage/input_tokens"
       output_tokens: Int from "usage/output_tokens"
     }
@@ -164,7 +194,7 @@ service llm.Anthropic {
       headers: { "anthropic-version": current_api_version.version }
     }
     response {
-      200 => Json
+      200 => AnthropicMessages200Body
       400 => AnthropicErrorShape
       401 => AnthropicErrorShape
       403 => AnthropicErrorShape
