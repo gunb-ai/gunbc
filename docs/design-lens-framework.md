@@ -517,6 +517,8 @@ Director's framing refinements:
 
 **Recommendation:** **(a)** — conjunctive. Cross-product validate = `validate_C(dag, c) ∧ validate_D(dag, d)` where NoDiagnostic acts as logical TRUE. Result is `DimensionFail` if either is `SomeDiagnostic`; `DimensionOk` if both are `NoDiagnostic`. This is the standard product-monoid semantic and preserves cross-product symmetry. Implements via straightforward fold-time conjunction.
 
+**DECISION (Director-locked 2026-04-28 via dialogue): (a).** No substrate change. Cross-product validate runs both validates; accumulates via Q7's fold (`SomeDiagnostic.value` lifts into `DimensionFail.violations: List<Diagnostic>`). Conjunctive logic falls out of the existing arity-over-error-space encoding — empty list = pass; non-empty = fail. NoDiagnostic-only lenses (complexity) compose freely with validate-having lenses (IFC); cross-product preserves both contributions.
+
 ### Pre-dispatch design-PR cadence (lens framework)
 
 | PR | Locks | Before dispatch of | TestClaim gate |
