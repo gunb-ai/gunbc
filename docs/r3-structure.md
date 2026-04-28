@@ -62,6 +62,7 @@ Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as delive
 - **T-Omni-Shape-B.**
   - `omni_yaml_emission_demo` — one workflow `.dag` declaration emits to a runnable Kubernetes/Terraform/YAML config + a runnable backend service
   - `omni_documentation_emission_demo` — same workflow `.dag` emits to a documentation artifact (Markdown / OpenAPI spec) that drift-locks against the implementation
+  - `omni_layers_share_one_node_tree` — **structural coherence gate** per THESIS:213: for each demo workflow, every emitted layer (Shape A backend + Shape B configuration + Shape B documentation) derives from the same `compile_to_dag` result. Structurally checkable at compile time: per-workflow count of `compile_to_dag` invocations = 1; all emitters consume the same `Dag` value via the typed substrate query surface. **This is the structural acceptance predicate for "coherence between layers is structural, not checked"** — the property holds by construction (same Node tree); the gate verifies the demos satisfy that construction. Distinct from L4/L5 which are runtime equivalence checks
   - Counts as 2 Shape B targets per THESIS §"Omni-emission" `O(1)` per Shape B target claim
 - **T-Anthropic-Wire.**
   - `anthropic_wire_typed_serde_alignment` — Anthropic provider request/response types are typed end-to-end (mirrors the OpenAI alignment landed in R2)
