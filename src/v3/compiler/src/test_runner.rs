@@ -759,28 +759,60 @@ impl Drop for UnshareReadyPipe {
 #[cfg(target_os = "linux")]
 const GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV: &str = "GUNBC_EXECUTE_COMMAND_BOOTSTRAP";
 
+/// True iff `path` is a regular file with at least one execute bit set. We don't trust
+/// `Path::exists()` alone for the helper because a directory or non-executable file would
+/// pass that check, then `unshare(1)` would fail to `exec` the bad path, the helper would
+/// never write its sentinel, the parent would classify the empty result as
+/// `NamespaceSetupFailed`, and the direct fallback would run the logical command — silently
+/// converting a setup-failure into a possible `Matched` logical exit, violating P2(c).
+/// (api-review codex/codex-default sha 143b7da5, BLOCKING.)
+#[cfg(target_os = "linux")]
+fn is_regular_executable_file(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let Ok(meta) = std::fs::metadata(path) else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+    // Any of owner/group/other execute bits set is sufficient — execvp only needs *some*
+    // exec capability for the calling user, but verifying that precisely requires uid/gid
+    // checks that don't add safety here (kernel will EACCES at exec time, which produces a
+    // typed `LogicalExecFailed` outcome — not a setup-failure-fallback-to-direct path).
+    (meta.permissions().mode() & 0o111) != 0
+}
+
 /// Locates the `gunbc_execute_command_bootstrap` helper binary at runtime. The cargo
 /// workspace layout puts it at `target/<profile>/gunbc_execute_command_bootstrap`. Tests
 /// run from `target/<profile>/deps/v3_compiler-<hash>` (one level deeper) so we walk up
 /// once. An env override (`GUNBC_EXECUTE_COMMAND_BOOTSTRAP`) takes precedence for cases
 /// where the helper is installed elsewhere.
 ///
-/// Returns `Err(message)` if the helper cannot be located — the caller surfaces this as a
-/// typed `SetupFailed` so a misconfigured deployment cannot silently degrade to a
-/// spoofable bootstrap path.
+/// **Validates that candidates are regular executable files**, not just present paths
+/// (P2(c) hardening — see [`is_regular_executable_file`]).
+///
+/// Returns `Err(message)` if the helper cannot be located or fails validation — the caller
+/// surfaces this as a typed `SetupFailed` so a misconfigured deployment cannot silently
+/// degrade to a spoofable bootstrap path.
 #[cfg(target_os = "linux")]
 fn locate_unshare_bootstrap_helper() -> Result<std::path::PathBuf, String> {
     use std::path::PathBuf;
     if let Ok(p) = std::env::var(GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV) {
         if !p.is_empty() {
             let path = PathBuf::from(p);
-            if path.exists() {
-                return Ok(path);
+            if !path.exists() {
+                return Err(format!(
+                    "{GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV} points to nonexistent path: {}",
+                    path.display()
+                ));
             }
-            return Err(format!(
-                "{GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV} points to nonexistent path: {}",
-                path.display()
-            ));
+            if !is_regular_executable_file(&path) {
+                return Err(format!(
+                    "{GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV} points to a path that is not a regular executable file: {}",
+                    path.display()
+                ));
+            }
+            return Ok(path);
         }
     }
     let exe = std::env::current_exe().map_err(|e| format!("current_exe() failed: {e}"))?;
@@ -789,13 +821,13 @@ fn locate_unshare_bootstrap_helper() -> Result<std::path::PathBuf, String> {
         .ok_or_else(|| "current_exe has no parent dir".to_string())?;
     // target/<profile>/gunbc_execute_command_bootstrap (binary running directly).
     let candidate = dir.join("gunbc_execute_command_bootstrap");
-    if candidate.exists() {
+    if is_regular_executable_file(&candidate) {
         return Ok(candidate);
     }
     // target/<profile>/deps/<bin>-<hash> → walk up one to target/<profile>/.
     if let Some(parent) = dir.parent() {
         let candidate = parent.join("gunbc_execute_command_bootstrap");
-        if candidate.exists() {
+        if is_regular_executable_file(&candidate) {
             return Ok(candidate);
         }
     }
