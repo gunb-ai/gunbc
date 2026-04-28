@@ -960,9 +960,8 @@ mod tests {
 
     #[test]
     fn all_enumerated_pilot_rows_match_mirror_authority_ordering() {
-        validate_all_rust_pilot_rows_match_mirror().expect(
-            "all lowered list rows match RUST_PILOT_PRIMITIVES (10-row pilot ordering)",
-        );
+        validate_all_rust_pilot_rows_match_mirror()
+            .expect("all lowered list rows match RUST_PILOT_PRIMITIVES (10-row pilot ordering)");
     }
 
     #[test]
