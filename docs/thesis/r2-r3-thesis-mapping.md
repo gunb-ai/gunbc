@@ -193,7 +193,8 @@ Compromises being made by the R2 + R3 split:
 | Item | Why |
 |---|---|
 | Free consequences (auto-parallelism, auto-memoization, cross-language optimization) | These *fall out* from Tier 1 + Tier 2 closure; R3 L4-L7 harness exercises whether they actually do, but they're not separately deliverable |
-| Concept unifications (coercion = emission, etc.) | Verified by R3 harness; no dedicated lane because they're consequences of substrate + Evaluator + grounding closing together |
+
+**Note on concept unifications:** every concept unification listed in THESIS §"Concept unifications" *does* now have a dedicated lane — see the §"Disposition table — Concept unifications" above. ("Coercion cost = complexity" → T-CostLens-Composition; "Coercion = emission" → T-Ground-Dissolve + T-Verification-L4-L7-Direct; "Target language spec = transport spec = interpreter runtime" → T-Verification-L5-Corpus; "Idempotency + cancellation + redundancy = algebraic simplification" → T-ImpossibleBugs Class 3.) The prior "no dedicated lane" framing for concept unifications was retracted 2026-04-28 per codex BLOCKING finding on `c98981634`: it split the release-control fact, since the disposition table assigned dedicated lanes while this summary said "no dedicated lane". Single-authority resolved by deleting the row — the disposition table is the single source.
 
 ## Net read
 
