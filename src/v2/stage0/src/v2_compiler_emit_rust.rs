@@ -1230,16 +1230,11 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item = typed_module
-            .items
-            .clone()
-            .iter()
-            .cloned()
-            .find(|i| {
-                (authored_name(scope.type_env.clone(), i.clone()).as_str()
-                    == "wire_contract".to_string().as_str())
-                    || (i.name.clone().as_str() == "wire_contract".to_string().as_str())
-            });
+        let wire_contract_item = typed_module.items.clone().iter().cloned().find(|i| {
+            (authored_name(scope.type_env.clone(), i.clone()).as_str()
+                == "wire_contract".to_string().as_str())
+                || (i.name.clone().as_str() == "wire_contract".to_string().as_str())
+        });
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
