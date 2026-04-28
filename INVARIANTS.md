@@ -83,6 +83,45 @@ A design claim asserts "this needs no new substrate element — it composes from
 
 **Receipt:** A design once claimed multi-target lowering composed from existing Arrow + Body primitives. On implementation it turned out `Arrow.body` didn't carry target-binding information. Fix: explicit substrate extension for external realization on `Arrow.body`; every future design commitment names its substrate target.
 
+### Procedure: substrate-fact introduction (decision procedure for new modeling)
+
+**When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.
+
+This procedure operationalizes P1 — workers stuck on "should I add a new type / variant / field?" can self-serve by walking these three checks in order.
+
+**Step 1: DAG-ancestor check** — search for the shared underlying modeling.
+
+> *"Before declaring a new substrate type, ask: what's the shared underlying concept? Does an ancestor type exist in the substrate already?"*
+
+If a parent concept exists, the new fact attaches via inhabitance (algebra-inhabitance, parametric instance, structural sub-type), NOT as a sibling type. Sibling types proliferate without grounding; inhabitance preserves the DAG. Worked examples:
+- `BoundDeclaration` is not a sibling of `CardinalityBound` / `SizeBound` / `LoopBound` — those all share the parent `Interval<D>`. The dissolution: declare `Interval<D>` as the parent; existing types retrofit as instances.
+- `Cost<Unit>` is not a sibling of `Duration<Seconds>` / `Money<USD>` — they all share the parent `Dimension<Unit, Carrier>` (one substrate type, multiple `Unit` instantiations).
+- `Lens<C>.sequential` is not a parallel `compose + unit` field pair — both project from `Monoid<C>`, the structurally-correct parent.
+
+**Step 2: Coproduct-vs-coordinate check** — distinguish alternatives from coordinates.
+
+> *"If proposing `Foo = A | B | C`, ask: are these alternatives (one-at-a-time) or coordinates (all-at-once)?"*
+
+If any single inhabitant carries values for ALL variants simultaneously, the variants are coordinates of a record (`{ a: A, b: B, c: C }`), not a sum type. Sum types compress what should be coordinates and pay the cost downstream. Per [`memory: feedback_coproduct_dissolution`](docs/thesis/structural-decompression.md): dissolve into coordinates; the closed system guarantees the dissolution terminates. Worked examples:
+- "Cost = Time | Space | Energy" is wrong shape — every cost has time AND space AND (potentially) energy components. Dissolve to `{ time, space, energy }` (record).
+- "BoundDeclaration = ExactBound | AnyBound | PlatformDependent" — these ARE alternatives (a bound is one kind, not all kinds). Sum type is correct here.
+- "Resource = CPU | Memory | Disk" — coordinates if a single allocation has all three; sum type if any one allocation is exactly one kind. Apply the test.
+
+The "stop at user-input boundary" rule: dissolve coproducts that compress structural facts; preserve coproducts where the USER genuinely picks among alternatives (e.g., an enum the user types in source).
+
+**Step 3: Primitive-vs-extension check** — classify substrate-declared vs user-extensible.
+
+> *"If introducing a leaf type (Time, Bits, Joules, Meters), ask: is this a fundamental primitive or a user-defined label?"*
+
+Fundamental primitives (physics, computation, mathematics) declare as substrate primitives sibling to existing primitives — not user-extensible coproducts. User-extensible vocabulary belongs in lens-framework instances or domain dimensions where users genuinely own the taxonomy. Worked examples:
+- `Bits`, `CPUCycles`, `Joules` declare as substrate primitive types (sibling to `Meters`, `Seconds`, `Kilograms` in `dimensions.dag:93-99` — SI base units). Not `Resource = ... | UserDefined<Name>`.
+- A user-authored `Lens<TenantFlow>` declares `CapSet` and `Capability` as user-domain types — those ARE user-extensible. Per the lens framework, users own that taxonomy.
+- `BoundDeclaration` variants (`StaticBound`, `PlatformDependent`) are substrate-declared because they're computational primitives (every target's bound has one of these shapes); they're not user-extensible labels.
+
+**Escalation rule:** if all three checks pass and you still don't see how to declare the fact, escalate. But running the checks self-serves the most common case where the worker had structural information already and just needed prompting.
+
+**Worked-example tracking:** every time a major design decision applies this procedure, the design doc cites which steps were run and what they revealed. Examples in `docs/design-emission-model.md` Q1, Q2, Q3 (lock paragraphs include the DAG-ancestor + coproduct + primitive checks); `docs/design-lens-framework.md` Lens<C> primitive section (sequential: Monoid<C> structural inhabitance per Step 1).
+
 ### Related rules (home-of-record here)
 
 - **Modeling Faithfulness Invariant** — canonical statement
@@ -90,6 +129,7 @@ A design claim asserts "this needs no new substrate element — it composes from
 - **Design Commitments Must Name The Substrate Target** — unnamed substrate = ungrounded claim
 - **Heuristics Indicate Lost Structure** — heuristic output traces to a dropped upstream fact, not to a declared source
 - **Documentation Describes Live State** — aspirational docs describe a reality the codebase doesn't embody
+- **Substrate-Fact Introduction Procedure** (above) — operational decision procedure for adding new substrate types/variants/fields
 
 ---
 
