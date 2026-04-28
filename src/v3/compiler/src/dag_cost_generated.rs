@@ -188,6 +188,24 @@ fn drop_dominated_in_sum(terms: Vec<SymbolicCost>) -> Vec<SymbolicCost> {
     keep
 }
 
+/// Structural mirror of composite `dominates` in `v3.std.algebra` (`.dag`:
+/// `nsl_to_list` + `fold` / `dominate_scan_init` / `fold_or_dominate_scan`; there is
+/// no separate `any_dominates` in the `.dag` surface). The Rust helper is the same
+/// semantics as an explicit NSL walk over `first` / `second` / `rest`, not a second
+/// authority. `ProductCost` / `SumCost` dominate `b` iff any NSL child dominates `b`.
+fn any_dominates(terms: &BoxedSymbolicCostList, b: &SymbolicCost) -> bool {
+    if dominates(terms.first.as_ref(), b) {
+        return true;
+    }
+    if dominates(terms.second.as_ref(), b) {
+        return true;
+    }
+    terms
+        .rest
+        .iter()
+        .any(|child| dominates(child.as_ref(), b))
+}
+
 pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
     match a {
         SymbolicCost::UnknownCost { .. } => true,
@@ -216,7 +234,7 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
             _ => false,
         },
         SymbolicCost::ProductCost { _0: terms } | SymbolicCost::SumCost { _0: terms } => {
-            terms.iter().any(|child| dominates(child.as_ref(), b))
+            any_dominates(terms, b)
         }
     }
 }

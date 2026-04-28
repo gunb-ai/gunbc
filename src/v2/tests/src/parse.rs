@@ -682,6 +682,7 @@ fn parse_fn_lambda_in_call_arg() {
 fn gist_transitive_closure_parse() {
     let files = [
         "dsl/std/types.dag",
+        "dsl/std/error_primitives.dag",
         "dsl/std/errors.dag",
         "dsl/std/resources.dag",
         "dsl/extdeps/cloud/cloud.dag",

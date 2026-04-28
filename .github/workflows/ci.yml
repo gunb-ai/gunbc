@@ -81,7 +81,6 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/stage0/src/**') }}
           restore-keys: |
             cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
@@ -130,6 +129,17 @@ jobs:
           restore-keys: |
             cargo-v3-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-v3-${{ runner.os }}-
+
+      # **PB-Runtime helper-binary prereq (PR #1049 / #1063 / #856).** The Linux
+      # `ExecuteCommand` host path invokes `gunbc_execute_command_bootstrap` as the
+      # `unshare(1)` target — it sets `FD_CLOEXEC` on fd 3 immediately before `execvp(3)`,
+      # closing the sentinel channel atomically on successful exec (the structural P2(c)
+      # guarantee). `cargo test -p v3-compiler` does not pull this bin-only crate into its
+      # build graph (bin-only crates can't be `[dependencies]` on stable), so we build it
+      # explicitly here. `test_runner.rs::locate_unshare_bootstrap_helper` walks from
+      # `current_exe()` to find the resulting `target/debug/gunbc_execute_command_bootstrap`.
+      - name: Build ExecuteCommand unshare helper
+        run: cargo build -p execute-command-bootstrap
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
