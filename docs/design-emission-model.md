@@ -574,7 +574,7 @@ fold_dag_string_top_level_data_to_rust_boxed_str: TestClaim {
 }
 ```
 
-**Open call surfaced by this example:** strict vs pragmatic minimally-complete. **Recommendation:** strict. The thesis discipline is "program structure determines emission" — pragmatic adds engine policy ("guess intended use"). If users need ergonomic defaults, they should be substrate-declared via refinement defaults, not engine guesses. **Director sign-off needed.**
+**DECISION (locked 2026-04-28 per user direction): strict.** The thesis discipline is "program structure determines emission" — pragmatic adds engine policy ("guess intended use"). If users need ergonomic defaults, they should be substrate-declared via refinement defaults, not engine guesses. So `data name: String = "Alice"` emits `Box<str>` if no use site requires growth.
 
 ---
 
@@ -864,8 +864,8 @@ When the 8 examples above pass as `.dag` `TestClaim` declarations:
 
 The reframe from "canonical choice + annotations" to "structural modeling + program-derived intent" surfaces real design calls that need Director sign-off before R2-Evaluator dispatch:
 
-1. **Strict vs pragmatic minimally-complete** (Example 3): does `data name: String = "Alice"` emit `Box<str>` (strict — what the program declares) or `String` (pragmatic — what the program might want later)? **Recommendation: strict.** Pragmatic adds engine policy disguised as ergonomics.
-2. **Lifetime/escape analyzer scope in R2** (Example 4): cover (a) top-level data bindings, (b) function parameters with transient use, (c) function return values; defer (d) closures, (e) async, (f) self-referential to post-R3 if needed. **Recommendation: a/b/c in R2; d/e/f deferred unless a Goal-1 demo requires.**
+1. **Strict vs pragmatic minimally-complete** (Example 3): does `data name: String = "Alice"` emit `Box<str>` (strict — what the program declares) or `String` (pragmatic — what the program might want later)? **DECISION (locked 2026-04-28 per user direction): strict.** Pragmatic adds engine policy disguised as ergonomics. If users need ergonomic defaults, they declare them via substrate-level refinement defaults, not engine guesses.
+2. **Lifetime/escape analyzer scope** (Example 4): R2 covers (a) top-level data bindings, (b) function parameters with transient use, (c) function return values. **DECISION (locked 2026-04-28 per user direction): d/e/f LAND IN R3** — closures (d), async lifetimes (e), self-referential / Pin (f) are R3 work, not deferred to post-R3. Lane home: **R3-T-Lifetime-Analyzer-Advanced** (or fold into existing T-LensProducer-Retirement scope; Director-discretionary). The R3 verification surface (`T-Verification-L4-L7-Direct`) needs the analyzer for non-trivial programs; deferring to post-R3 would constrain R3's runnable corpus.
 3. **Apparent multi-inhabitance audit** (general): for every case that looked like "multiple inhabitants needing canonical," re-audit per Modeling problem 2 corrected: is the difference cosmetic (collapse) or meaningful (model the structural axis)? **Recommendation: enumerate the cases as part of T-Ground-LanguageSpec lane scope; each case is a sub-task that either retracts a candidate or extends substrate refinement.**
 4. **Required structural axes for Rust target** (general): the String family example surfaced (ownership, growability, encoding, lifetime). The integer family used (bound, signedness via algebra). What other axes does Rust need? Float family (precision, NaN-handling), reference family (mutability, lifetime, raw vs reference). **Recommendation: T-Ground-Rust XL lane scope explicitly enumerates the structural axes needed per Rust primitive family before substrate-population begins.**
 
@@ -915,7 +915,26 @@ If §1 lands, the following docs need amendment:
 
 ### 3. Post-R3 dogfooding decision
 
-Modeling problem 9 (first-class language-spec emission) is post-R3. Whether it ships as part of ecosystem buildout or as an explicit later release is open.
+Modeling problem 9 (first-class language-spec emission) is **post-R3** (locked 2026-04-28; Director may revisit). Whether it ships as part of ecosystem buildout or as an explicit later release is open. Probably ecosystem buildout — it's a dogfooding capability that doesn't gate any thesis claim.
+
+### 4. Lens-as-parametric-monoid framework — separate authority
+
+The cost-lens-over-emission framing in Modeling problem 8 generalizes structurally: any lens that folds over the compositional DAG via a (cost-basis, monoid, side-condition) tuple. Per Director response on #1078, this is a **separate design authority** — `docs/design-lens-framework.md` (PROPOSAL → LIVE post-merge of #1078, Director-authored).
+
+**Substrate sequencing locked 2026-04-28:**
+- **R2-T-Substrate-Lens-Primitive** (small substrate addition; ~1.5-2 weeks at gunbc velocity) declares `Lens<C>` parametric type + generic fold + cost-basis discipline. **Lands in R2** to avoid dual-representation risk per user direction "anything pushed out compounds exponentially."
+- **R3 lanes consume `Lens<C>`**: T-CostLens-Composition (cost basis = SymbolicCost), T-Verification-L4-L7-Direct (cost basis = emit/eval-match witness; algebraic-law witness), T-Bridge-Retirement (where applicable). Each is an instance, not a separate framework.
+- **L6 collapses with the lens framework** per Director's insight: structural-form-coverage IS `Lens<EmissionPathPresent>` over substrate × language-specs. R2-T-Ground-CrossTarget-Meta scope reduces correspondingly.
+
+**Director's locked design decisions** (per response on #1078, recorded here for `design-lens-framework.md` authoring):
+1. **Pure monoidal**, not stateful. Memory-peak (anamorphism + state) is a separate framework.
+2. **Result type:** `DimensionReport<C> = Satisfied { composed: C, witnesses: List<Witness<C>> } | Violated { diagnostics: List<EmissionDiagnostic> }`. Reuses `dimensions.dag` + `EmissionDiagnostic`. No silent fabrication.
+3. **Higher-order shapes:** function-valued cost basis derived from signature. Meta-lens (lens-on-lens) deferred post-R3.
+4. **Cross-domain composition:** explicit declaration only. `Lens<C> × Lens<D> = Lens<(C, D)>` with product monoid; side-conditions compose conjunctively. User-declared, not auto-derived.
+5. **User-authored lens substrate:** T-LensAPI rescope to lens-as-monoid in same wave as `Lens<C>` lands. User-lens surface inherits structurally.
+6. **Three worked instances sufficient for generality validation:** complexity (additive numeric monoid), tenant-flow (set union + categorical authorization), IFC (lattice join + downgrade rejection). Stretch goals (memory-peak, energy, latency) are post-R3 instances.
+
+**The doc `docs/design-lens-framework.md`** (Director-authored post-#1078-merge) is the spec for the R2-T-Substrate-Lens-Primitive substrate work and the contract R3 lens instances consume.
 
 **Ownership:** post-R3, not pre-promotion.
 

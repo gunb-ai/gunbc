@@ -88,14 +88,14 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
 |---|---|---|---|---|
 | **T-Tier3-Dissolution** | M | **Tier 3 Manager** (or PB Manager continuing post-R2) | Four hand-Rust mirrors of `.dag` types retired; SG-0 reduction | R2-Evaluator (executes std bodies); ValueBody::Map (already landed in R2 carriers) |
 | **T-LensProducer-Retirement** | XL | **PB Manager (post-R2 continuation)** | Three program-sized hand-Rust files retired via PB-Runtime + PB-1 patterns | R2-Evaluator (interpreter-as-data); PB-1 generated bin-shim pattern (which itself depends on Evaluator) |
-| **T-Verification-L4-L7-Direct** | M | **Verification Manager** (new) | L4 emit/eval match harness + L7 algebraic-law witness construction. Evaluator-direct; can start as soon as R2-Evaluator + R2 close | R2-Evaluator (witness construction) |
+| **T-Verification-L4-L7-Direct** | M | **Verification Manager** (new) | L4 emit/eval match harness + L7 algebraic-law witness construction. Evaluator-direct; can start as soon as R2-Evaluator + R2 close. **Consumes `Lens<C>` from R2-T-Substrate-Lens-Primitive** (L4 + L7 are instances of the lens framework — different cost basis per claim) | R2-Evaluator (witness construction) + **R2-T-Substrate-Lens-Primitive** |
 | **T-Verification-L5-Corpus** | M | **Verification Manager** | L5 cross-target equivalence only. Corpus-driven; needs (a) all 3 Shape A targets grounded, (b) L4 corpus from T-Verification-L4-L7-Direct existing first. (L6 form coverage moved to R2-T-Ground-CrossTarget-Meta as a structural cross-product fold; see §"Acceptance" note.) | R2-Grounding-Rust + R2-Grounding-Python + T-Verification-L4-L7-Direct |
 | **T-FixedPoint** | M | **PB Manager** | `compiler.dag` compiles to bit-identical stage0 Rust + bit-identical emitted artifacts; R1's `pb_self_compile_fixed_point` gate closes under stronger interpretation | R2-Evaluator (executes compiler.dag); SG-0 zero from T-LensProducer-Retirement |
 | **T-Int128** | M-L | **Substrate Manager (post-R2 continuation)** | Int128/Word128 substrate; int-literal full magnitude consumer | None (parallel to T-Tier3 + T-LensProducer; just substrate work) |
 | **T-Omni-Shape-B** | L | **Demo Manager** (or R3 Release Manager) | At least 2 Shape B omni-emission demos exercising the full-stack thesis claim | R2-Evaluator (Shape B emitters are `.dag` programs walking typed values via fold/match — needs runtime to demonstrate properly) |
 | **T-Anthropic-Wire** | M | **Substrate Manager (post-R2 continuation)** | Anthropic provider request/response typed end-to-end | None (parallel; held in R2 pending OpenAI stabilize) |
 | **T-Bridge-Retirement** | M | **Verification Manager** (or T-LensProducer-Retirement umbrella) | Unified ledger of 5 named identity bridges retired (SourceSpan.file, mark_bootstrap_secret_nominal_opacity, canonical lens-name dispatch, include_str! side channels, patch_lower_helpers_* residual). Per Reflective Pattern B (2026-04-25) — without unified lane, retirements scatter across PB / Substrate / Verification with no central ledger | R2 substrate carriers (typed identity surfaces); some bridges retire as side-effect of T-LensProducer-Retirement |
-| **T-CostLens-Composition** | M | **Verification Manager** (or new Cost Manager) | Cost lens composes `.dag` algebra-level cost + target-primitive realization cost via the language spec; structural fold, not engine policy. Verifies "coercion cost = complexity" holds by construction. No "coercion cost" dimension. Per Modeling problem 8 in [`docs/design-emission-model.md`](design-emission-model.md). | R2-Evaluator (witness construction for cost claims) + R2-T-Substrate (per-operation cost on every algebra) + R2-T-Ground-LanguageSpec (per-primitive realization-cost declarations) |
+| **T-CostLens-Composition** | M | **Verification Manager** (or new Cost Manager) | Cost lens composes `.dag` algebra-level cost + target-primitive realization cost via the language spec; structural fold, not engine policy. **Instance of `Lens<C>`** (from R2-T-Substrate-Lens-Primitive) with `C = SymbolicCost`. Verifies "coercion cost = complexity" holds by construction. No "coercion cost" dimension. Per Modeling problem 8 in [`docs/design-emission-model.md`](design-emission-model.md). | R2-Evaluator (witness construction for cost claims) + **R2-T-Substrate-Lens-Primitive (the `Lens<C>` shape)** + R2-T-Substrate (per-operation cost on every algebra) + R2-T-Ground-LanguageSpec (per-primitive realization-cost declarations) |
 
 Critical path: **T-Verification-L4-L7-Direct → T-Verification-L5-Corpus** is the longest because Direct's corpus seeds Corpus's coverage suite. Other lanes parallel-dispatch after R2-Evaluator closes.
 
@@ -322,11 +322,18 @@ When a Tier 3 mirror is retired, what's the receipt format? Today's expected pat
 
 **Ownership:** Tier 3 Manager / PB Manager (post-R2 continuation) on first retirement.
 
-### 3. R3 demo discipline
+### 3. R3 demo discipline + omni-emission TDD (locked 2026-04-28 per user direction)
 
-R2 demo discipline is "simple 'look, it runs' artifact per lane closure." R3 inherits but with additional requirement: **at least one R3 demo must exercise the omni-emission full-stack claim end-to-end** (from one workflow `.dag` to a runnable Shape A backend + Shape B configuration + Shape B documentation). This is the load-bearing R3 demonstration.
+R2 demo discipline is "simple 'look, it runs' artifact per lane closure." R3 inherits but with additional requirement: **at least one R3 demo must exercise the omni-emission full-stack claim end-to-end** (from one workflow `.dag` to a runnable Shape A backend + Shape B API spec + Shape B documentation, per the OpenAPI + Markdown drift-lock). This is the load-bearing R3 demonstration.
 
-**Recommendation:** R3 Release Manager (or Demo Manager) coordinates with T-Omni-Shape-B to land a single fixture exercising this. Not a separate lane; a deliverable inside T-Omni-Shape-B.
+**DECISION (locked 2026-04-28 per user direction):** **TDD for omni-emission** — author the test cases up-front during R3 design (before T-Omni-Shape-B implementation begins). Tests for cases-we-think-of-during-design rather than tests-after-the-fact. Concrete TDD targets to author up-front:
+- **Same-Node-tree derivation test**: per-workflow count of `compile_to_dag` invocations = 1; all emitters consume the same `Dag` value (the `omni_layers_share_one_node_tree` structural acceptance gate per §"Acceptance" above)
+- **Drift-lock test**: documentation artifact cannot describe behavior the implementation doesn't have (verifiable structurally — every claim in the Markdown traces to a `.dag` declaration)
+- **Cross-target consistency test**: backend (Shape A) + API spec (Shape B) + documentation (Shape B) all agree on the workflow's request/response shapes (verifiable via algebraic equivalence on the Dag value all three derive from)
+- **Ownership-derivation test** (per Modeling problem 3 corrected): for every program-side `String` value, ownership is derivable structurally from program use sites; no annotations required
+- **Refinement-bound exact-match test**: every `Int(...)` declaration emits to a target primitive whose bound exactly matches; otherwise fail-closed with EmissionDiagnostic
+
+**Owner:** R3 Release Manager (or Demo Manager) coordinates with T-Omni-Shape-B to land the fixtures. **Not a separate lane**; a deliverable inside T-Omni-Shape-B. **TDD discipline applies broadly** to R3 design-time test authoring (per user direction "TDD here for cases we think of during design") — applicable to T-Verification-L4-L7-Direct corpus + T-Bridge-Retirement gates + T-CostLens-Composition gates.
 
 ## Cross-refs
 
