@@ -40,7 +40,7 @@ Program declares intent          Substrate declares facts
 ```
 
 - **Program intent** = `.dag` algebra inhabitance + refinement bounds + (optional) explicit type annotations
-- **Substrate facts** = target language specs (per `dsl/extdeps/languages/*/`), declared canonical choices, declared structural ordering
+- **Substrate facts** = target language specs (per `dsl/extdeps/languages/*/`); each candidate target's structural properties (ownership, lifetime, growability, encoding-invariant, etc. — declared as algebra refinements per Modeling problem 2); declared structural ordering for diagnostic enumeration
 - **Structural fold** = mechanical implementation. Reads program intent, walks substrate facts, produces a result. No selection logic; no tie-breaking policy; no "minimum-satisfier" heuristic that lives in the fold itself.
 - **Result** = unique target primitive (when fold structurally determines) or typed `EmissionDiagnostic` carrier naming what would resolve the under-determinism (when fold cannot)
 
@@ -276,9 +276,9 @@ These four together are the structural test of the no-engine discipline.
 
 These are concrete walkthroughs of the structural fold for representative cases. Each example includes the substrate facts it depends on, the program input, the fold steps, and the expected output (target code OR `EmissionDiagnostic`). **These serve as test cases** — the structure is intentionally reproducible: each example can be lifted into a `.dag` `TestClaim` once the substrate lanes (T-Ground-LanguageSpec + T-Ground-Annotation + T-Ground-Diagnostic + T-Ground-CrossTarget-Meta) land.
 
-### Example 1 — `Int` → Rust `i64` (canonical, no refinement)
+### Example 1 — `Int` (no refinement) → fail-closed `EmissionDiagnostic::UnderRefined`
 
-**The simplest case.** Demonstrates: canonical-choice declaration; mechanical fold without selection logic.
+**Demonstrates:** the honest answer for an under-specified program. **There is no canonical Int → i64 default**; the program hasn't said which integer width it needs, and Int8/Int16/Int32/Int64/Int128 are *meaningfully different* (different bounds, different memory). Defaulting to Int64 would be engine choice — which the thesis rules out.
 
 **Substrate facts (must be declared):**
 ```
@@ -288,9 +288,9 @@ inhabits Int16  : OrderedRing  bound = (-2^15..2^15)
 inhabits Int32  : OrderedRing  bound = (-2^31..2^31)
 inhabits Int64  : OrderedRing  bound = (-2^63..2^63)
 inhabits Int128 : OrderedRing  bound = (-2^127..2^127)
-
-canonical OrderedRing without refinement = Int64   // declared substrate fact
 ```
+
+(Note: no `canonical` fact. Per Modeling problem 2 corrected, "canonical declaration" was the wrong framing — the bound differences ARE meaningful, so they belong as refinements, not as candidates needing canonical disambiguation.)
 
 **Program input:**
 ```
@@ -300,21 +300,34 @@ data x: Int = 0
 **Fold steps:**
 1. Read program intent: algebra = `OrderedRing`; refinement = none (`Int` without bounds)
 2. Walk substrate inhabitants of `OrderedRing`: { Int8, Int16, Int32, Int64, Int128 }
-3. Apply refinement filter: refinement = none → all 5 candidates valid
-4. Apply canonical-choice fact: `canonical OrderedRing without refinement = Int64`
-5. Result: unique answer = `Int64`
+3. Apply refinement filter: refinement = none → 5 candidates remain (all are *strictly wider* than zero candidates; no candidate is uniquely matched)
+4. The candidates have different bounds. The program hasn't declared which bound it needs. **The program is structurally under-specified.**
+5. Result: fail-closed → `EmissionDiagnostic::UnderRefined`
 
-**Expected output:** emit `0i64` (Rust target).
+**Expected output:**
+```
+EmissionDiagnostic::UnderRefined {
+  program_intent: AlgebraInhabitance(OrderedRing, refinement: None),
+  candidates: [Int8, Int16, Int32, Int64, Int128],
+  resolution_hints: [
+    "add a refinement bound: `Int(min..max)` will narrow the search",
+    "for typical 64-bit integer use: `Int(-2^63..2^63)` grounds to Int64",
+    "for 32-bit: `Int(-2^31..2^31)` grounds to Int32"
+  ]
+}
+```
 
 **Test claim shape:**
 ```
-fold_dag_int_to_rust_i64_canonical: TestClaim {
+fold_dag_int_unrefined_fails_closed: TestClaim {
   setup: standard_rust_language_spec()
   source: "data x: Int = 0"
-  expected_emission: "0i64"
-  expected_diagnostic: None
+  expected_emission: None
+  expected_diagnostic: matches(EmissionDiagnostic::UnderRefined { candidates: [_; 5], .. })
 }
 ```
+
+**Why this is the right answer:** `Int8` is not a cosmetic variant of `Int64`; the bound is structurally meaningful. A program that wrote `Int` and got `i64` by engine policy would have its semantic intent silently chosen by the compiler. The thesis-honest answer is: tell the user the program is under-specified; show what they could write to be specific.
 
 ---
 
@@ -367,17 +380,19 @@ fold_dag_int_refined_to_rust_u32: TestClaim {
 
 ---
 
-### Example 3 — `String` → Rust `String` (canonical, multiple inhabitants)
+### Example 3 — `String` (top-level data binding) → Rust `String` (ownership derived from program structure)
 
-**Demonstrates:** Modeling problem 2 (canonical choice when multiple inhabitants exist); same algebra, same refinement, but multiple structurally-valid candidates.
+**Demonstrates:** Modeling problem 2 (structural distinctions, not canonical choice) + Modeling problem 3 (lifetime/ownership derived from program structure, no annotations). The `.dag` `String` and Rust `String`/`Box<str>`/`&str`/`Cow<str>` are *meaningfully different* on (ownership, growability, encoding, lifetime). Modeling those differences as substrate facts + deriving program intent from program structure yields a unique answer.
 
 **Substrate facts (must be declared):**
 ```
-inhabits String  : FreeMonoid<Char>  ownership = Owned
-inhabits StrSlice: FreeMonoid<Char>  ownership = Borrowed   // Rust &str
-inhabits CowStr  : FreeMonoid<Char>  ownership = LazyClone  // Rust Cow<str>
-
-canonical FreeMonoid<Char> without ownership annotation = String   // owned default
+// String family — meaningfully different on multiple axes
+inhabits RustString : FreeMonoid<Char>  ownership = Owned        growable = yes  encoding = UTF-8  lifetime = self
+inhabits BoxedStr   : FreeMonoid<Char>  ownership = Owned        growable = no   encoding = UTF-8  lifetime = self
+inhabits VecOfBytes : FreeMonoid<Byte>  ownership = Owned        growable = yes  encoding = raw    lifetime = self
+inhabits BoxedBytes : FreeMonoid<Byte>  ownership = Owned        growable = no   encoding = raw    lifetime = self
+inhabits StrSlice   : FreeMonoid<Char>  ownership = Borrowed     growable = n/a  encoding = UTF-8  lifetime = source
+inhabits CowOfStr   : FreeMonoid<Char>  ownership = Conditional  growable = n/a  encoding = UTF-8  lifetime = conditional
 ```
 
 **Program input:**
@@ -386,58 +401,88 @@ data name: String = "Alice"
 ```
 
 **Fold steps:**
-1. Read program intent: algebra = `FreeMonoid<Char>`; refinement = none
-2. Walk substrate inhabitants of `FreeMonoid<Char>`: { String, StrSlice, CowStr }
-3. Apply refinement filter: no refinement → all 3 candidates valid
-4. Apply canonical-choice fact: `canonical FreeMonoid<Char> without ownership annotation = String`
-5. Result: unique answer = `String`
+1. Read program intent: algebra = `FreeMonoid<Char>` (`.dag` `String` is UTF-8 sequence of chars); refinement = none
+2. **Lifetime/escape analysis:** `name` is a top-level data binding. It has no source it could borrow from (it's constructed from a literal); it lives for the program's duration. Structural intent: `ownership = Owned`, `lifetime = self`
+3. **Growability analysis:** `name` is bound to a literal once; nothing in the program graph mutates or grows it. Without growability evidence, default refinement is the *minimal* growability needed. But `growable = no` (BoxedStr) is *strictly more constrained* than `growable = yes` (RustString) — the latter subsumes the former. **Question for the substrate:** which is "minimally complete"?
+4. Walk substrate inhabitants of `FreeMonoid<Char>` matching `ownership = Owned`, `lifetime = self`: { RustString (growable=yes), BoxedStr (growable=no) }
+5. **Apply structural ordering on growability:** `growable = no` is structurally smaller (fewer capabilities required). The program doesn't *require* growability; `BoxedStr` is the minimally-complete answer.
+6. Result: unique answer = `BoxedStr` → emit `Box<str>` ?
 
-**Expected output:** emit `String::from("Alice")` (or equivalent).
+**Wait — this surfaces a real design call.** Is `Box<str>` really the right answer for `data name: String = "Alice"`?
+
+Two readings of "minimally complete":
+- **Strict:** the smallest target type that satisfies *exactly* what the program declares. Program declares no growth → emit non-growable. Result: `Box<str>`.
+- **Pragmatic:** the smallest target type that satisfies *what the program declares* + *common future use cases that don't require additional substrate*. Result: `String` (allows growth without re-deriving).
+
+The thesis answer is **strict**. Pragmatic is engine policy ("guess what the user might want later"). If the program doesn't need growth, emit `Box<str>`. If the user wants growth, they declare it: `data name: String + Growable = "Alice"` (or whatever the substrate refinement looks like).
+
+**Expected output (strict reading):** `Box<str>` (a `Box::from("Alice")` or equivalent). If `Box<str>` is unfamiliar in the audience, the diagnostic explains why: "your declaration doesn't request growth; `Box<str>` is the minimal Owned UTF-8 sequence."
 
 **Test claim shape:**
 ```
-fold_dag_string_to_rust_owned_canonical: TestClaim {
-  setup: standard_rust_language_spec()
+fold_dag_string_top_level_data_to_rust_boxed_str: TestClaim {
+  setup: standard_rust_language_spec_with_string_family()
   source: "data name: String = \"Alice\""
-  expected_emission_contains: "String"
-  expected_emission_does_not_contain: ["&str", "Cow"]
+  expected_emission_contains: "Box<str>"
   expected_diagnostic: None
 }
 ```
+
+**Open call surfaced by this example:** strict vs pragmatic minimally-complete. **Recommendation:** strict. The thesis discipline is "program structure determines emission" — pragmatic adds engine policy ("guess intended use"). If users need ergonomic defaults, they should be substrate-declared via refinement defaults, not engine guesses. **Director sign-off needed.**
 
 ---
 
-### Example 4 — `String` → Rust `&str` (annotation-driven)
+### Example 4 — `String` (passed transiently to function) → Rust `&str` (ownership derived from program structure)
 
-**Demonstrates:** Modeling problem 3 (user annotation as program-side substrate); annotation overrides canonical without engine state.
+**Demonstrates:** the same value-shape program-structure-derived intent → different Rust target depending on lifetime/escape pattern. **No annotations.**
 
-**Substrate facts:** same as Example 3.
+**Substrate facts:** as Example 3.
 
 **Program input:**
 ```
-data name: String @target(rust) annotate name: Borrowed = "Alice"
+data name: String = "Alice"
+fn greet(n: String) -> Unit { ... }
+greet(name)
 ```
 
-**Fold steps:**
-1. Read program intent: algebra = `FreeMonoid<Char>`; refinement = none; **annotation = Borrowed (target = rust)**
-2. Walk substrate inhabitants of `FreeMonoid<Char>`: { String, StrSlice, CowStr }
-3. Apply refinement filter: no refinement → all 3 candidates valid
-4. Apply annotation as filter: `ownership == Borrowed` → only `StrSlice` matches
-5. Result: unique answer = `StrSlice`
+**Fold steps for `n` parameter inside `greet`:**
+1. Read program intent: algebra = `FreeMonoid<Char>`; refinement = none
+2. **Lifetime/escape analysis:** `n` is a function parameter. Does `greet` store `n` past its call? Two cases:
+   - **Case A:** `greet`'s body uses `n` only transiently (passed to other functions, used in expressions, not stored in any binding outliving the call). Structural intent for `n`: `ownership = Borrowed`, `lifetime = caller`
+   - **Case B:** `greet`'s body stores `n` in a binding with `'static` or escapes it via return. Structural intent for `n`: `ownership = Owned`
+3. (Suppose Case A applies based on `greet`'s body structure.)
+4. Walk substrate inhabitants matching `ownership = Borrowed`, `lifetime = caller`: { StrSlice }
+5. Result: unique answer = `StrSlice` → emit `n: &str` in `greet`'s signature
 
-**Expected output:** emit `&str` (with appropriate lifetime construction).
+**For the call-site `greet(name)`:**
+1. `name`'s lifetime extends through the `greet(name)` call. It's bound to a `&` borrow for the duration.
+2. Emit: `greet(&name)` (with `name` itself emitted per Example 3)
+
+**Expected output:**
+```rust
+let name: Box<str> = Box::from("Alice");  // per Example 3
+greet(&name);                              // borrow for the call
+fn greet(n: &str) { ... }                  // signature derived from Case A
+```
 
 **Test claim shape:**
 ```
-fold_dag_string_borrowed_annotation_to_rust_strslice: TestClaim {
-  setup: standard_rust_language_spec()
-  source: "data name: String @target(rust) annotate name: Borrowed = \"Alice\""
-  expected_emission_contains: "&str"
+fold_dag_string_function_param_transient_to_rust_strslice: TestClaim {
+  setup: standard_rust_language_spec_with_string_family()
+  source: """
+    data name: String = "Alice"
+    fn greet(n: String) -> Unit { /* transient use */ }
+    greet(name)
+  """
+  expected_signature_emission_contains: "n: &str"
+  expected_call_site_emission_contains: "greet(&name)"
   expected_diagnostic: None
 }
 ```
 
-**Note:** the annotation is *program-side substrate*, not engine state. The fold reads it the same way it reads any other declared fact. If the annotation were inconsistent with the program type (e.g., annotating a non-string field as `Borrowed`), the fold would fail-closed at validation time, not at emission.
+**Why this works without annotations:** the fold derives ownership from the program's own structural facts (lifetime of bindings, function-body use patterns, escape analysis). Rust's borrow checker does this work in reverse (validating user's annotations); gunbc's fold does it forward (deriving the right Rust target from program structure). **The program already declares its intent through use; annotations would be parallel authority.**
+
+**Open call:** how rich does the lifetime/escape analyzer need to be in R2? Recommendation: cover (a) top-level data bindings (Example 3), (b) function parameters with transient use (this Example), (c) function return values (must be Owned). Defer (d) closures, (e) async lifetimes, (f) Pin/self-referential to post-R3 if needed. **Director sign-off on R2 scope.**
 
 ---
 
@@ -552,102 +597,118 @@ fold_dag_int_exceeds_target_fails_closed: TestClaim {
 
 ---
 
-### Example 7 — `List<Int>` → Rust `Vec<i64>` (compound, recursive fold)
+### Example 7 — `List<Int(0..2^32)>` (top-level data binding) → Rust `Box<[u32]>` (compound, recursive fold, all structurally complete)
 
-**Demonstrates:** how the fold composes through container types; each level reads its own substrate facts.
+**Demonstrates:** how the fold composes through container types when each level is structurally complete; what "minimally complete" means recursively.
 
 **Substrate facts (must be declared):**
 ```
-inhabits Vec<T>      : Container<T>  ownership = Owned
-inhabits Slice<T,N>  : Container<T>  ownership = Borrowed       // Rust &[T]
-inhabits Box<[T]>    : Container<T>  ownership = OwnedFixed
+// Container family — meaningfully different on (ownership, growability, lifetime)
+inhabits Vec<T>      : Container<T>  ownership = Owned     growable = yes  lifetime = self
+inhabits BoxOfT      : Container<T>  ownership = Owned     growable = no   lifetime = self
+inhabits SliceOfT    : Container<T>  ownership = Borrowed  growable = n/a  lifetime = source
 
-canonical Container<T> without ownership annotation = Vec<T>
-
-// Plus Int → Int64 canonical from Example 1
+// Plus Rust integer family from Example 2 (UInt32 inhabits Semiring at bound 0..2^32)
 ```
 
 **Program input:**
 ```
-data nums: List<Int> = [1, 2, 3]
+data nums: List<Int(0..2^32)> = [1, 2, 3]
 ```
 
 **Fold steps:**
-1. Read program intent: algebra = `Container<T>` where T = Int; refinement = none
-2. Walk substrate inhabitants of `Container<T>`: { Vec, Slice, Box[T] }
-3. Apply refinement filter: no refinement → all valid
-4. Apply canonical-choice: `canonical Container<T> without ownership annotation = Vec<T>`
-5. Recursive fold on T (= Int): produces Int64 per Example 1
-6. Result: `Vec<Int64>`
+1. **Outer fold (List):**
+   - Read program intent: algebra = `Container<T>` where T = `Int(0..2^32)`; refinement = none on the container itself
+   - Lifetime/escape analysis: top-level data binding → `ownership = Owned`, `lifetime = self`
+   - Growability analysis: bound to literal once, no growth in program → minimally complete is `growable = no`
+   - Walk substrate inhabitants matching: { BoxOfT (ownership = Owned, growable = no, lifetime = self) }
+   - Outer-level result: `BoxOfT<T>`
+2. **Recursive fold on T (= `Int(0..2^32)`):**
+   - Per Example 2: refinement-driven match → `UInt32`
+3. **Compose:** `BoxOfT<UInt32>` → emit `Box<[u32]>`
 
-**Expected output:** emit `vec![1i64, 2i64, 3i64]` (or equivalent `Vec<i64>` literal).
+**Expected output:**
+```rust
+let nums: Box<[u32]> = Box::from([1u32, 2u32, 3u32]);
+```
 
 **Test claim shape:**
 ```
-fold_dag_list_int_to_rust_vec_i64: TestClaim {
-  setup: standard_rust_language_spec()
-  source: "data nums: List<Int> = [1, 2, 3]"
-  expected_emission_contains: ["Vec<i64>", "vec!"]
+fold_dag_list_int_refined_top_level_to_rust_box_slice_u32: TestClaim {
+  setup: standard_rust_language_spec_with_container_family()
+  source: "data nums: List<Int(0..2^32)> = [1, 2, 3]"
+  expected_emission_contains: ["Box<[u32]>"]
   expected_diagnostic: None
 }
 ```
 
-**Note:** the recursive structure makes the fold a fold (in the algebraic sense). Each level reads facts, returns a result, composes with the parent level's result. No engine state crosses levels.
+**Note 1:** the recursive fold composes both levels structurally. Each level reads its own facts, returns its result; outer composes. No engine state crosses levels.
+
+**Note 2:** `Vec<u32>` would be a *valid but not minimally complete* answer. The program doesn't request growth; `Box<[u32]>` is structurally smaller (no growth machinery). Per Example 3's open call (strict vs pragmatic), strict reading produces `Box<[u32]>`. If the program later needs growth, it declares it: `List<Int(0..2^32)> + Growable`.
+
+**Note 3:** if the program uses `nums` in a way that *requires* growth (e.g., `nums.push(4)` is a substrate operation that requires `growable = yes`), the lifetime/escape analyzer surfaces the required refinement upward, and the fold matches `Vec<u32>` instead. The required refinement is itself a structural fact derived from program use.
 
 ---
 
-### Example 8 — Cross-target consistency: `Int` → Rust `i64` AND Python `int` AND Go `int64`
+### Example 8 — Cross-target consistency: `Int(-2^31..2^31)` → Rust `i32` AND Python `int` AND Go `int32`
 
-**Demonstrates:** Modeling problem 7 (cross-target uniformity meta-spec); same `.dag` algebra reaches three target-language vocabularies via three independent language specs.
+**Demonstrates:** Modeling problem 7 (cross-target uniformity); same `.dag` algebra+refinement reaches three target-language vocabularies via three independent language specs. Note: the program is *fully refined* (specific bound), so each target deterministically grounds. No canonical needed.
 
 **Substrate facts:**
 
-**Rust spec** (as Example 1).
+**Rust spec** (signed integer family as Example 2; Int32 inhabits OrderedRing at `(-2^31..2^31)`).
 
 **Python spec:**
 ```
-inhabits int : OrderedRing  bound = unbounded   // Python ints are arbitrary precision
-canonical OrderedRing without refinement = int
+// Python ints are arbitrary precision — there's exactly one inhabitant
+inhabits int : OrderedRing  bound = unbounded
 ```
+
+(Note: Python has no integer family with bound differences. Every refinement-bounded `.dag` Int grounds to Python `int` — Python's arbitrary-precision int *strictly subsumes* every bound. This is structurally complete; not a "canonical choice." The substrate just declares one inhabitant and bound subsumption matches.)
 
 **Go spec:**
 ```
-inhabits int    : OrderedRing  bound = (-2^31..2^31) on 32-bit / (-2^63..2^63) on 64-bit  // architecture-dependent
 inhabits int8   : OrderedRing  bound = (-2^7..2^7)
 inhabits int16  : OrderedRing  bound = (-2^15..2^15)
 inhabits int32  : OrderedRing  bound = (-2^31..2^31)
 inhabits int64  : OrderedRing  bound = (-2^63..2^63)
 
-canonical OrderedRing without refinement = int64   // explicit-width default
+// Note: Go also has architecture-dependent `int` — but architecture-dependent is
+// itself a structural fact (refinement = platform-dependent). It's not "canonical";
+// it's a *different algebra inhabitance* with refinement = platform. Defer use of
+// `int` until lifetime/platform analysis can structurally derive its applicability.
 ```
 
-**Cross-target meta-spec:** `OrderedRing` without refinement is portability-required (every Shape A target must declare a canonical for it).
+**Cross-target portability meta-spec:** every Shape A target must declare at least one inhabitant of `OrderedRing` covering the bound `(-2^31..2^31)` (the most common 32-bit signed range). Verified at substrate-load time.
 
 **Program input:**
 ```
-data x: Int = 0
+data x: Int(-2^31..2^31) = 0
 ```
 
-**Fold runs three times (one per target):**
-- Rust: `0i64`
-- Python: `0`
-- Go: `int64(0)` or `var x int64 = 0`
+**Fold runs three times (one per target), with the same algorithm:**
+
+- **Rust:** match candidates, refinement filter → only `Int32` exact-matches. Emit `0i32`.
+- **Python:** match candidates, refinement filter → `int` matches by subsumption (program bound ⊆ unbounded). Emit `0`.
+- **Go:** match candidates, refinement filter → only `int32` exact-matches. Emit `int32(0)`.
 
 **Test claim shape:**
 ```
-fold_dag_int_cross_target_consistent: TestClaim {
-  setup: standard_rust_python_go_language_specs()
-  source: "data x: Int = 0"
+fold_dag_int_refined_cross_target_consistent: TestClaim {
+  setup: rust_python_go_language_specs_with_portability_meta()
+  source: "data x: Int(-2^31..2^31) = 0"
   expected_emissions: {
-    rust:   contains("i64"),
+    rust:   contains("i32"),
     python: contains("int"),
-    go:     contains("int64")
+    go:     contains("int32")
   }
   expected_diagnostic: None
 }
 ```
 
-**Note:** the *cross-target meta-spec* is what verifies all three targets have a canonical declared. Without it, Python could omit a canonical (since its `int` is already arbitrary-precision and trivially canonical), and a future target spec could similarly omit, breaking portability silently. The meta-spec is the structural guarantee, not engine policy.
+**Why this works without canonical-choice:** the program is *fully refined* — it declares its bound. Each language spec independently models its inhabitance with bound parameters. Bound subsumption matches the candidate; no policy. The cross-target meta-spec only enforces that all targets *can* match (have an inhabitant covering the program's bound); it doesn't pick which one — that falls out of structure.
+
+**Compare to under-refined Example 1:** that program (`data x: Int`) failed-closed on Rust because the bound was unspecified and Int8/Int64/Int128 are meaningfully different. On Python, the same under-refined program would *succeed* — Python has only one inhabitant, so under-refinement doesn't produce ambiguity. Cross-target consistency means the same program either grounds on all targets or fails-closed where it can't; it doesn't silently produce different semantics.
 
 ---
 
@@ -655,15 +716,27 @@ fold_dag_int_cross_target_consistent: TestClaim {
 
 When the 8 examples above pass as `.dag` `TestClaim` declarations:
 
-1. **No engine** — the fold is mechanical at every step. Each step reads a declared substrate fact (inhabits / canonical / annotation / structural ordering) and applies it; nothing is decided by policy.
-2. **Refinement composes** (Examples 2, 6) — bounds participate in the fold structurally via subsumption ordering.
-3. **Canonical choice is declared, not chosen** (Examples 1, 3, 7) — the substrate says which inhabitance is canonical; the fold reads it.
-4. **User annotation is program substrate, not engine state** (Example 4) — annotations live in the program, the fold reads them, no special path.
-5. **Fail-closed has typed diagnostics with resolution hints** (Examples 5, 6) — when the fold can't determine, `EmissionDiagnostic` names what would resolve.
-6. **Compound types compose recursively** (Example 7) — the fold is structural at every nesting level.
-7. **Cross-target works because each language spec is independent + the meta-spec enforces portability** (Example 8) — three folds, three results, no shared engine.
+1. **No engine** — the fold is mechanical at every step. Each step reads a declared substrate fact (inhabits / refinement / structural property / lifetime analysis result) and applies it; nothing is decided by policy.
+2. **Under-refinement fails closed, not silently picked** (Examples 1, 5, 6) — when the program hasn't declared enough structural facts to uniquely determine the target, the diagnostic surfaces what's missing. There is no "canonical default" engine fallback.
+3. **Refinement composes structurally** (Examples 2, 6) — bounds participate in the fold via subsumption ordering. "Minimum-satisfier" is a structural property, not an engine choice.
+4. **Apparent multi-inhabitance dissolves through structural modeling** (Examples 3, 4, 7) — what looked like "multiple inhabitants needing canonical choice" was actually meaningful structural differences (ownership, growability, lifetime, encoding). Modeling those differences as substrate facts + deriving program intent from program structure yields a unique answer per use site.
+5. **Program intent is derived from program structure, not annotations** (Examples 3, 4, 7) — lifetime/escape/use analysis reads the program graph and produces the structural facts the fold composes against. No annotation surface.
+6. **Fail-closed has typed diagnostics with resolution hints** (Examples 1, 5, 6) — when the fold can't determine, `EmissionDiagnostic` names what would resolve (refinement to add, substrate fact to declare, or genuine "no candidate covers this case").
+7. **Compound types compose recursively at every level** (Example 7) — outer level + inner level each apply structural fold; both levels independently fail-closed if either is under-refined.
+8. **Cross-target works because each language spec is independent + portability meta-spec enforces "can match"** (Example 8) — three folds run independently, three results emerge from declared facts. A program that fully-refines on its own structure grounds on all targets that have an inhabitant; one that under-refines fails-closed where targets can't disambiguate.
 
-These are the *structural test of "no separate coercion engine"*. If any example required engine policy to produce its expected output, the no-engine claim would be falsified. Each example is reproducible against the substrate facts named in its setup.
+**These are the structural test of "no separate coercion engine"** per THESIS:171. If any example required engine policy to produce its expected output, the no-engine claim would be falsified. Each example is reproducible against the substrate facts named in its setup.
+
+### Open design calls surfaced by the examples
+
+The reframe from "canonical choice + annotations" to "structural modeling + program-derived intent" surfaces real design calls that need Director sign-off before R2-Evaluator dispatch:
+
+1. **Strict vs pragmatic minimally-complete** (Example 3): does `data name: String = "Alice"` emit `Box<str>` (strict — what the program declares) or `String` (pragmatic — what the program might want later)? **Recommendation: strict.** Pragmatic adds engine policy disguised as ergonomics.
+2. **Lifetime/escape analyzer scope in R2** (Example 4): cover (a) top-level data bindings, (b) function parameters with transient use, (c) function return values; defer (d) closures, (e) async, (f) self-referential to post-R3 if needed. **Recommendation: a/b/c in R2; d/e/f deferred unless a Goal-1 demo requires.**
+3. **Apparent multi-inhabitance audit** (general): for every case that looked like "multiple inhabitants needing canonical," re-audit per Modeling problem 2 corrected: is the difference cosmetic (collapse) or meaningful (model the structural axis)? **Recommendation: enumerate the cases as part of T-Ground-LanguageSpec lane scope; each case is a sub-task that either retracts a candidate or extends substrate refinement.**
+4. **Required structural axes for Rust target** (general): the String family example surfaced (ownership, growability, encoding, lifetime). The integer family used (bound, signedness via algebra). What other axes does Rust need? Float family (precision, NaN-handling), reference family (mutability, lifetime, raw vs reference). **Recommendation: T-Ground-Rust XL lane scope explicitly enumerates the structural axes needed per Rust primitive family before substrate-population begins.**
+
+These are the design questions the engine framing was hiding. Surfacing them as open calls means R2-Evaluator dispatch waits on real design work, not on engine implementation.
 
 ## Affected lanes (post-merge realignment)
 
