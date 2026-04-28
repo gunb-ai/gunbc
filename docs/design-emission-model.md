@@ -964,3 +964,152 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 - R2/R3 planning: [`docs/r2-structure.md`](r2-structure.md), [`docs/r3-structure.md`](r3-structure.md), [`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md)
 - Substrate dependencies named: DB-11 (refinement-carrying qualifiers), cardinality-substrate; DB-18 (parametric algebra attachment); E-9 (external realization on `Arrow.body`)
 - INVARIANTS: [`INVARIANTS.md`](../INVARIANTS.md) §P3 Fail-Closed; §P2 Boundary Discipline; §P1 Modeling Faithfulness
+
+---
+
+## Design questions to surface and lock before dispatch
+
+**Status:** SURFACED 2026-04-28 per Director directive — "surface all design questions up front; modeling per-language is incredibly hard; ensure verification (testing) discussion + discussion up front; otherwise leaving complex modeling problems open-ended will fail (per `feedback_holistic_over_patches.md`, `project_ownership_holistic.md` — alias/clone class)."
+
+**Why this section exists:** the no-engine reframe surfaced design questions the engine framing was hiding. Each question below is one where a worker hitting it mid-dispatch could escalate into design rework. The surfacing names the question explicitly, enumerates the alternatives, lists cascade implications, and proposes a TestClaim shape regardless of which alternative is chosen — so verification discipline locks the answer once the Director picks an alternative.
+
+**Scope:** these are the modeling-hard questions for **T-Ground-* substrate dispatch** (per-target grounding). The lens-framework spec questions are surfaced separately in [`docs/design-lens-framework.md`](design-lens-framework.md) §"Design questions to lock before substrate dispatch."
+
+### Q1 — `BoundDeclaration` substrate type
+
+**Status:** REFERENCED in Examples 1 and 8 as a sum type `ExactBound { range } | AnyBound | PlatformDependentBound`; NOT yet declared in `dsl/std/`.
+
+**Question:** what file declares `BoundDeclaration`, what's its precise shape, and what's the parse syntax for `Int(any)` and `Int(platform)` programs?
+
+**Alternatives:**
+- (a) Declare `BoundDeclaration` as a new top-level type in `dsl/std/inhabitance.dag` (new file). Parse syntax: `Int(any)` → `BoundDeclaration::AnyBound`; `Int(platform)` → `BoundDeclaration::PlatformDependentBound`; `Int(0..2^32)` → `BoundDeclaration::ExactBound { range: NumericRange { lo: 0, hi: 2^32 } }`.
+- (b) Declare in existing `dsl/std/algebra.dag` alongside `OrderedRing` / `Semiring` etc. (no new file).
+- (c) Decompose: `ExactBound` becomes part of refinement substrate; `AnyBound` is a flag on the inhabitance fact; `PlatformDependentBound` is a separate `PlatformDependentInhabitance` carrier. (Not a sum type — multiple substrate facts.)
+
+**Cascade implications:**
+- Parser changes needed for `Int(any)` / `Int(platform)` syntax in all three alternatives. Lane: T-Ground-Coercion-Fold needs the parse + AST shape.
+- `NumericRange` may itself need substrate (lo/hi pair with cardinality). May overlap with existing cardinality-substrate (DB-11).
+- Each target's inhabitance fact needs a `bound: BoundDeclaration` field (Rust int32, Python int, Go int32 all carry it). T-Ground-LanguageSpec consumer.
+
+**TestClaim shape (regardless of alternative):**
+- `bound_declaration_carries_three_variants_structurally` (counts variants if (a)/(b); checks decomposition if (c))
+- `exact_bound_matches_program_range_exactly` (Example 8 Rust int32 case)
+- `any_bound_matches_explicit_program_bound` (Example 8 Python int case)
+- `any_bound_does_not_match_under_refined_program` (Example 1 cross-target consistency case — `Int` with no bound fails on all targets)
+- `platform_dependent_bound_matches_only_explicit_platform_decl` (usize / Go `int` case)
+
+**Recommendation:** **(a)** — new file `dsl/std/inhabitance.dag`. Reasoning: BoundDeclaration is one of several inhabitance-fact carriers (ExactBound, AnyBound, PlatformDependentBound, future `BorrowedBound`, etc.); collecting them in one substrate file matches the modeling discipline. Parser change is bounded (one new postfix `(any)` / `(platform)` keyword). Keeps `algebra.dag` focused on algebraic structures.
+
+### Q2 — Required structural axes per Rust primitive family (and per target)
+
+**Status:** STRING family enumerated in Example 3 (ownership / growability / encoding / lifetime); INTEGER family used in Examples 1/2/8 (bound / signedness via algebra). Other Rust families not enumerated. Python and Go axes not enumerated at all.
+
+**Question:** before T-Ground-Rust / T-Ground-Python / T-Ground-Go can populate substrate, what's the EXHAUSTIVE list of structural axes per primitive family per target?
+
+**Alternatives:**
+- (a) Enumerate all axes for all 5 primitive families × 3 targets in this PR before dispatch. Estimated: 30+ axes across 15 cells. Substantial scope.
+- (b) Lock the SHAPE (per-family axis declaration discipline) here; cadence PR-F (Rust axes), PR-G (Python axes), PR-H (Go axes) before respective T-Ground-Rust / Python / Go dispatch.
+- (c) Lock only the families surfaced by worked examples (Integer + String for Rust; same for Python and Go). Other families (Float, Reference, Composite) discovered during dispatch and modeled inline. RISK: this is the alias/clone shape — open-ended modeling.
+
+**Cascade implications:**
+- Each axis is a substrate field that must declare a TYPE (e.g., `mutability: Mutability` where `Mutability = Mutable | Immutable`).
+- Axis enumeration affects T-Ground-LanguageSpec scope (each language spec must declare each axis per primitive).
+- L6 cross-product fold (R2-T-Ground-CrossTarget-Meta) iterates over `(connectives × behaviors × cardinality_variants × axis_combinations) × targets` — axis count is multiplicative.
+- Per-language differences (Rust has `Pin` + lifetime; Python has refcounting; Go has GC + interface dispatch) — what axes are PER-LANGUAGE vs SHARED-CROSS-LANGUAGE?
+
+**TestClaim shape:**
+- Per axis: `<target>_<family>_<axis>_carries_structurally` (e.g., `rust_string_ownership_carries_structurally`)
+- Per inhabitance: `<target>_<primitive>_inhabits_<algebra>_at_<axis_combination>` (e.g., `rust_box_str_inhabits_freemonoid_char_at_owned_nongrowable_self`)
+- Cross-target: `axis_<X>_consistent_across_targets` where applicable (e.g., `bound_consistent_across_rust_python_go`)
+
+**Recommendation:** **(b)** — lock per-family axis discipline here; cadence PR-F (Rust axes), PR-G (Python axes), PR-H (Go axes). Each is a focused 1-2 day design PR with TestClaim acceptance gate. Reason: enumerating in this PR makes #1078 enormous; deferring entirely is the alias/clone risk. Cadenced sub-PRs with TestClaim gates is the structural discipline.
+
+**What "lock the shape" means here, concretely:**
+1. Each axis is declared as a *substrate sum type* in `dsl/std/inhabitance.dag` (or per-target file like `dsl/std/rust.dag`). Format: `type Mutability = Mutable | Immutable`.
+2. Each per-target inhabitance fact includes a struct of axis values: `inhabits BoxStr : FreeMonoid<Char> { ownership = Owned, growability = NotGrowable, lifetime = SelfContained }`.
+3. The fold reads inhabitance facts via `Dag::declarations()` and matches on axis values (no inferred axes; if an axis isn't declared, fail-closed).
+
+### Q3 — Per-primitive realization cost field shape on language specs
+
+**Status:** REFERENCED in Modeling problem 8 and `T-CostLens-Composition` lane scope as "per-primitive realization cost via the language spec." NOT yet specified.
+
+**Question:** what's the substrate shape for declaring per-primitive realization cost on a language spec?
+
+**Alternatives:**
+- (a) `cost: CostExpr` field on each inhabitance fact. (Reuses `CostExpr` — assumed to be defined in `dsl/std/cost.dag` or similar.)
+- (b) Separate `realization_cost` declaration: `data rust_int32_add_cost: CostExpr = CostExpr(work=1, span=1, class=O(1))`. Loose-coupled to the inhabitance fact.
+- (c) Cost is per-OPERATION on each inhabitance, not per-primitive: `inhabits Int32 : OrderedRing { cost_of_add = CostExpr(...), cost_of_mul = CostExpr(...) }`. Fine-grained per algebra operation.
+
+**Cascade implications:**
+- The lens-framework instance for `Lens<SymbolicCost>` reads this field via `read(dag, behavior)`. Lane: R2-T-Substrate-Lens-Primitive consumer of substrate; R3-T-CostLens-Composition consumer of the realization-cost facts.
+- `CostExpr` itself: does it already exist in substrate? Or does it need to be declared here? (Currently `cost.dag` is a PROXY per `design-emission-model.md:310`.)
+- Cost asymmetry: an operation's cost may differ between targets (e.g., Rust `BigInt.add` is O(digits) vs Python `int.add` is O(digits) but with different constants). How is the SHARED algebraic cost (target-agnostic) distinguished from the REALIZATION cost (target-specific)?
+
+**TestClaim shape:**
+- `realization_cost_field_carries_costexpr_per_inhabitance`
+- `cost_lens_reads_realization_via_dag_explicitly` (no hidden lookup)
+- `target_specific_cost_differs_across_targets_for_same_algebra_op` (e.g., Rust `BigInt.add` cost ≠ Python `int.add` cost)
+
+**Recommendation:** **(c)** — per-operation cost on each inhabitance, fine-grained. Reason: matches the algebra-inhabitance discipline (each algebra has known operations; each inhabitance declares the operation's realization cost on that target). Loose coupling (b) creates parallel-representation debt (cost lives in two places: inhabitance + cost declaration). Per-primitive (a) doesn't disambiguate which operation's cost is meant.
+
+### Q4 — L4 emit/eval match acceptance corpus
+
+**Status:** L5 corpus type DECIDED ("algebraic equivalence over curated corpus"). L4 corpus content NOT enumerated.
+
+**Question:** what programs go in the L4 emit/eval-match certification corpus?
+
+**Alternatives:**
+- (a) Curated representative programs across all combinations of (substrate connective × behavior × cardinality × target). Comprehensive but large.
+- (b) Hand-curated minimal set covering "interesting" cases (recursion, branch, loop bound, composite types). Smaller; depends on author judgment.
+- (c) Generated cross-product corpus: every `(connective × behavior × cardinality)` combination × every Shape A target. Mechanical; could be large but bounded.
+- (d) User-program corpus: when L4 is being authored, sweep `dsl/std/` and `src/v3/std/` for actual `.dag` programs and use those. Drives self-hosting verification.
+
+**Cascade implications:**
+- Corpus authoring is its own work. Lane: T-Verification-L4-L7-Direct (R3); needs Evaluator (R2) for runtime equivalence checks.
+- Cross-target consistency: L5 needs the L4 corpus first (per r3-structure.md). L4 corpus shape affects L5's coverage.
+- Acceptance: how do we know the corpus is "complete enough"? Is L6 (structural form coverage at R2) the completeness check? L6 verifies emission paths exist; L4 verifies emit/eval match.
+
+**TestClaim shape:**
+- `l4_corpus_covers_every_substrate_connective` (completeness — at least one program per connective)
+- `l4_corpus_covers_every_l1_behavior` (completeness — at least one program per behavior)
+- `l4_emit_eval_match_holds_per_corpus_program_per_target` (the actual L4 claim)
+
+**Recommendation:** **(c) + (d) hybrid** — generated cross-product corpus for completeness coverage + user-program corpus (`dsl/std/` + `src/v3/std/` + `dsl/examples/`) for self-hosting/realism coverage. Reason: (c) gives completeness guarantee per L6's structural-form coverage; (d) drives self-hosting verification (compiler is written in `.dag`; the compiler IS the corpus for itself). (a) and (b) have judgment gaps. Cadence PR-I (L4 corpus authoring spec) before T-Verification-L4-L7-Direct dispatch.
+
+### Q5 — L6 cross-product fold cardinality variant enumeration
+
+**Status:** L6 reclassified to R2-T-Ground-CrossTarget-Meta as a structural cross-product fold. Cross-product is `(6 connectives × 5 behaviors × cardinality variants) × Shape A targets`. "Cardinality variants" NOT enumerated.
+
+**Question:** what cardinality variants does L6 enumerate over?
+
+**Alternatives:**
+- (a) `{ Singleton, Atomic, ListOf<T>, ConjOf<T,U,...>, DisjOf<T,U,...>, ArrowOf<T,U> }` — 6 variants matching the 6 connectives. (Then connectives × cardinality is redundant — they're the same axis.)
+- (b) `{ Bounded(N), Unbounded, Empty }` — 3 variants describing collection cardinality (independent of element type).
+- (c) `{ Required, Optional, ZeroOrMore, OneOrMore }` — 4 variants describing field/parameter cardinality.
+- (d) Decomposed: cardinality is multiple axes — `presence: Required | Optional`, `multiplicity: One | Many`, `bounded: Bounded(N) | Unbounded`. (Parametric.)
+
+**Cascade implications:**
+- Each cardinality variant must have an emission path declaration per target (the L6 acceptance gate).
+- If (a): the axis collapses with connectives — L6 is just `connectives × behaviors × targets` (no separate axis).
+- If (b)/(c)/(d): the axis multiplies the substrate cross-product. Affects per-target axis enumeration (Q2).
+
+**TestClaim shape:**
+- `l6_cardinality_axis_carries_structurally`
+- `l6_emission_path_declared_per_(connective_behavior_cardinality)_per_target`
+- `l6_cross_product_complete_no_missing_emission_paths`
+
+**Recommendation:** **(a)** — cardinality is the connectives axis. Reason: in v3 substrate, cardinality is a property of the type connective (List has unbounded cardinality; Conj has fixed cardinality = number of fields; Atom is singleton). Treating cardinality as a separate axis would double-count. The L6 fold becomes `connectives × behaviors × targets` = 6 × 5 × 3 = 90 cells. Manageable.
+
+### Pre-dispatch design-PR cadence (per Director directive 2026-04-28)
+
+The cadence below names the focused design PRs that lock per-target modeling before dispatch. Each is bounded (1-2 days), has a TestClaim acceptance gate, and lands BEFORE the corresponding T-Ground / T-Verification dispatch. Modeled on the PR-A through PR-E cadence that locked R2-Evaluator design.
+
+| PR | Locks | Before dispatch of | TestClaim gate |
+|---|---|---|---|
+| **PR-F** | BoundDeclaration substrate (Q1) + Rust structural axes (Q2 partial) | T-Ground-Coercion-Fold + T-Ground-Rust | All Q1 + Q2-Rust TestClaims pass |
+| **PR-G** | Python structural axes (Q2 partial) | T-Ground-Python | Q2-Python TestClaims pass |
+| **PR-H** | Go structural axes (Q2 partial) | T-Ground-Go | Q2-Go TestClaims pass |
+| **PR-I** | Per-primitive realization cost field shape (Q3) + L4 corpus authoring spec (Q4) | T-Ground-LanguageSpec + T-Verification-L4-L7-Direct | Q3 + Q4 TestClaims pass |
+| **PR-J** | L6 cardinality enumeration (Q5) — only if recommendation (a) is rejected; (a) collapses the axis | T-Ground-CrossTarget-Meta | Q5 TestClaims pass (only if (b)/(c)/(d) chosen) |
+
+**Director's role:** sign off on Q1-Q5 alternatives + recommendations above, OR override with different choice. Each cadence PR consumes the locked decisions; without sign-off, dispatch waits.
