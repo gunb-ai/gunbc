@@ -118,13 +118,8 @@ EOF
   return 1
 }
 
-# ---------------------------------------------------------------
-# Run both tests
-# ---------------------------------------------------------------
-
 failures=0
 
-# Per-string negative tests (6)
 for test_fn in \
   test_negative_t_ground_engine \
   test_negative_t_ground_annotation \
@@ -141,7 +136,6 @@ for test_fn in \
   fi
 done
 
-# Positive test (1) — retraction-context strings should pass
 echo "Test (positive): retraction-context forbidden strings should pass consumer..."
 if test_positive; then
   echo "  PASS"

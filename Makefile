@@ -60,17 +60,13 @@ verify: lint-upsert
 
 # Release-doc authority consumer — fails if forbidden stale concept names
 # appear in live (non-retraction) sections of release-control docs.
-# Authority: docs/r2-structure.md §"Release-doc authority discipline"
-# (Open call 4). Added 2026-04-28 per gpt-5-5-pro PR #1078 BLOCKING that
-# the consumer was declared but had no enforcement path.
+# Authority: docs/r2-structure.md §"Release-doc authority discipline".
 release-doc-authority-check:
 	@bash scripts/check-release-doc-authority.sh
 
-# Self-test for the release-doc authority consumer. Verifies the consumer
-# (a) flags live forbidden strings and (b) accepts retraction-context
-# forbidden strings. Per gpt-5-5-pro meta-review on PR #1078: without
-# this, future RETRACTION_PATTERNS broadening could silently neuter the
-# consumer.
+# Self-test for the release-doc authority consumer. Without this, future
+# RETRACTION_PATTERNS broadening could silently neuter the consumer
+# (broaden patterns until everything passes).
 release-doc-authority-test:
 	@bash scripts/test-check-release-doc-authority.sh
 

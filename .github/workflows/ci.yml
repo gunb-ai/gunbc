@@ -67,17 +67,12 @@ jobs:
 
       - name: Release-doc authority check (P2 single-authority discipline)
         # Forbidden-string consumer for release-control docs. Authority:
-        # docs/r2-structure.md §"Release-doc authority discipline" (Open
-        # call 4). Added 2026-04-28 per gpt-5-5-pro PR #1078 BLOCKING that
-        # the consumer was declared but had no enforcement path.
+        # docs/r2-structure.md §"Release-doc authority discipline".
         run: bash scripts/check-release-doc-authority.sh
 
       - name: Release-doc authority self-test (consumer not ceremonial)
-        # Verifies the consumer (a) flags live forbidden strings and
-        # (b) accepts retraction-context forbidden strings. Per
-        # gpt-5-5-pro meta-review on PR #1078: prevents future
-        # RETRACTION_PATTERNS broadening from silently neutering the
-        # consumer.
+        # Prevents future RETRACTION_PATTERNS broadening from silently
+        # neutering the consumer.
         run: bash scripts/test-check-release-doc-authority.sh
 
       - name: Setup Rust
