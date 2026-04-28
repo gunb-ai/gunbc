@@ -101,7 +101,7 @@ pub use crate::v2_std_core::{
     generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
     import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
     is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
-    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
+    intern_find, let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
     make_span, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
     module_items, param_node_default_value, param_node_name_at, param_node_type_expr,
     record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,

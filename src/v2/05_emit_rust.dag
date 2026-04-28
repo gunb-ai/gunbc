@@ -58,6 +58,7 @@ import v2.std.core {
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
   make_span, with_required_cardinality,
+  intern_find,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
   is_rest_transport, is_shell_transport, is_file_transport
