@@ -50,77 +50,28 @@ FORBIDDEN_STRINGS=(
 # forbidden string also matches one of these patterns, it's allowed
 # (the doc is explaining the supersession, not declaring live framing).
 RETRACTION_PATTERNS=(
-  "supersede"
-  "[Ss]upersedes"
+  # NARROW set per claude-opus-4-7 review feedback (2026-04-28):
+  # broad patterns neuter the check. Retraction context must be
+  # explicit markers — strikethrough, SUPERSEDED/RETRACTED/CLOSED with
+  # 🔄 marker, or "the retracted X" phrasing. Lines mentioning a
+  # forbidden string without one of these markers MUST get an explicit
+  # marker added or be rewritten.
+  "~~"                            # strikethrough markdown
+  "🔄"                            # supersession/retraction/closure emoji
   "SUPERSEDED"
-  "retract"
-  "[Rr]etracted"
+  "[Ss]upersedes"
   "RETRACTED"
-  "retraction"
-  "[Rr]eplaces"
-  "[Rr]eplace.*with"
-  "rename of"
-  "rename"
-  "→"          # transformation arrow
-  "5 lanes"    # transformation count
-  "5 substrate-completion lanes"
-  "five lanes"
-  "the prior"
-  "framing was hiding"
-  "was hiding"
-  "was hidden"
-  "framing was the wrong"
+  "[Rr]etracted"
+  "CLOSED 2026"                   # explicit "CLOSED <date>" marker (Open call closures)
+  "[Rr]eplaces the retracted"
+  "the retracted"                 # "the retracted T-Ground-X lane"
+  "supersession"
+  "supersedes the prior"
   "framing was retracted"
-  "engine framing"  # describing the retracted framing, not declaring it
-  "no separate.*engine"  # explicitly negating
-  "No engine"
-  "Engine reframe"
-  "engine-reframe"
-  "engine-shaped"
-  "engine policy"  # describing the anti-pattern
-  "the Engine framing"
-  "no canonical"
-  "canonical-choice"
-  "fabrication"
-  "anti-pattern"
-  "~~"  # strikethrough markers
-  "framing"  # generic reference to a framing, usually descriptive
-  "row.*replace\|replace.*row"
-  "substrate-completion lane"
-  # Patterns specific to the additional forbidden strings
-  "ratified-direction"
-  "conflating"
-  "cannot be used"  # discipline-rule context
-  "discipline rule"
-  "anti-pattern"
-  "engine machinery"  # describing what was retracted
-  "annotation surface"  # describing what was retracted
-  "annotation substrate"  # describing what was retracted
-  "annotation syntax"  # describing what was retracted
-  "annotation as parallel authority"
-  "Annotations would"
-  "Annotations were"
-  "no annotation"
-  "No annotations"
-  "no longer used"
-  "DIRECTION-RATIFIED"  # the corrected state name
-  "DECIDED"  # the corrected state name
-  "SCHEDULED"  # the corrected state name
-  "consumer"  # references to this script itself
-  "reframe"
-  "the recurring pattern"
-  "describing the recurring"
-  "review loop"
-  "PAUSE_AND_REGROUP"
-  # Common retrospective / negation patterns
-  "[Ii]nstead of"  # "X instead of Y" — Y is retracted
-  "not a"  # "this is not a canonical choice"
-  "what looked like"  # retrospective re-framing
-  "selection logic"  # describes engine anti-pattern
-  "engine that holds"  # describes engine anti-pattern
-  "fact \(the"  # "is a fact (the canonical choice fact, ...)" anti-pattern descriptions
-  "ratified the recommendations"  # historical context within CLOSED block
-  "design challenges in §"  # cross-references to retitled sections
+  # Explicit author marker for legitimate retrospective prose that
+  # discusses retracted concepts inline. Use this sparingly — it's
+  # the author opting out of the narrow check. Form: [retraction-context]
+  "\[retraction-context\]"
 )
 
 violations=0

@@ -398,7 +398,8 @@ Three additional items the Director review identified as R2-expansion (not R3):
 
 ### 4. Release-doc authority discipline (added 2026-04-28 per gpt-5-5-pro meta-review)
 
-The PR #1078 review loop surfaced a recurring pattern across 9 review events / 83 minutes / 5 codex passes / 1 cursor / 2 claude / 1 openai-pro: reviewers kept finding the same P2 single-authority shape in new clothing (lane count drift, Evaluator gating count drift, T-Ground-Engine surviving the no-engine reframe, T-Ground-Annotation surviving the no-annotation reframe, "DECISIONS LOCKED" coexisting with "RECOMMENDATION", Shape B target locks not propagating to gates, escape-hatch language adjacent to structured-program language). gpt-5-5-pro meta-reviewer at 2026-04-28T03:02:37Z verdict: PAUSE_AND_REGROUP — promote the pattern into a guardrail before iterating further.
+<!-- [retraction-context] retrospective discussion of superseded framings; not live release-control authority -->
+The PR #1078 review loop surfaced a recurring pattern across 9 review events / 83 minutes / 5 codex passes / 1 cursor / 2 claude / 1 openai-pro: reviewers kept finding the same P2 single-authority shape in new clothing (lane count drift, Evaluator gating count drift, T-Ground-Engine surviving the no-engine reframe, T-Ground-Annotation surviving the no-annotation reframe, "DECISIONS LOCKED" coexisting with "RECOMMENDATION", Shape B target locks not propagating to gates, escape-hatch language adjacent to structured-program language). [retraction-context] gpt-5-5-pro meta-reviewer at 2026-04-28T03:02:37Z verdict: PAUSE_AND_REGROUP — promote the pattern into a guardrail before iterating further.
 
 **Release-doc authority discipline (specialization of P2 Boundary Discipline at the release-control surface):**
 
@@ -422,7 +423,7 @@ Every release-control fact lives in exactly one place with exactly one state. St
 2. **Single state.** A fact may not simultaneously hold two states (e.g., `DECIDED` and `OPEN`). When superseding, the prior framing is strikethrough'd inline with a `🔄 SUPERSEDED <date>` marker pointing at the successor.
 3. **Cascade discipline.** When a fact changes state, the change is propagated to every document that *projects* it in the same PR. Specifically the engine/annotation/lane-count/target-pair changes that recurred in the #1078 review loop must cascade across r2-structure.md, r3-structure.md, design-emission-model.md, thesis/r2-r3-thesis-mapping.md, and ROADMAP.md before merge.
 4. **Forbidden-string consumer.** A doc-consistency consumer (script or CI gate) checks for forbidden stale lane/concept names appearing outside retraction-context markers. See §"Doc consistency check" below for the live consumer.
-5. **State name correctness.** "DECISIONS LOCKED" cannot be used for items where the substantive decision is "scheduled in a follow-up PR." Such items are `DIRECTION-RATIFIED, SPECIFIC-DECISION-SCHEDULED`.
+5. **State name correctness.** "DECISIONS LOCKED" cannot be used for items where the substantive decision is "scheduled in a follow-up PR." Such items are `DIRECTION-RATIFIED, SPECIFIC-DECISION-SCHEDULED`. [retraction-context: this rule references the retracted state name to define why it's retracted]
 
 **Why this is a P2 specialization, not a separate principle.** P2 says every fact lives in exactly one authoritative place. The release-control surface adds: each fact also has exactly one state, and the state transitions are auditable. Both are single-authority discipline; the addition is the state-machine vocabulary at the release surface.
 
@@ -442,7 +443,7 @@ Every release-control fact lives in exactly one place with exactly one state. St
 #     and direct target `make release-doc-authority-check`
 ```
 
-The script consumes a forbidden-string list (T-Ground-Engine outside retraction; T-Ground-Annotation outside retraction; "canonical choice" as live carrier; @target annotation outside retraction; "DECISIONS LOCKED" applied to DIRECTION-RATIFIED-SCHEDULED items, etc.) and reports violations. It's a small, mechanical consumer — not a full state-machine validator — but it catches the recurring pattern from the #1078 review loop with one bash invocation. **Enforcement path:** the CI workflow at `.github/workflows/ci.yml` invokes `bash scripts/check-release-doc-authority.sh` as a named step (alongside the existing fabrication-sentinel ratchet); failures surface as build errors, not advisory warnings. Local dev: `make verify` (or `make release-doc-authority-check` for the standalone check).
+The script consumes a forbidden-string list (T-Ground-Engine outside retraction; T-Ground-Annotation outside retraction; "canonical choice" as live carrier; @target annotation outside retraction; "DECISIONS LOCKED" applied to DIRECTION-RATIFIED-SCHEDULED items, etc.) [retraction-context: documenting the consumer's input list] and reports violations. It's a small, mechanical consumer — not a full state-machine validator — but it catches the recurring pattern from the #1078 review loop with one bash invocation. **Enforcement path:** the CI workflow at `.github/workflows/ci.yml` invokes `bash scripts/check-release-doc-authority.sh` as a named step (alongside the existing fabrication-sentinel ratchet); failures surface as build errors, not advisory warnings. Local dev: `make verify` (or `make release-doc-authority-check` for the standalone check).
 
 ### 2. ~~Pre-promotion `≤5 irreducible-shim` gate-name review~~ — **RETRACTED (2026-04-25 cascade promotion)**
 
