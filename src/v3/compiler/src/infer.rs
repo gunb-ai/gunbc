@@ -3470,29 +3470,7 @@ pub(crate) fn concretize_decl_with_subst(
             {
                 return existing;
             }
-<<<<<<< HEAD
-            let id = dag.alloc_declaration_id();
-            dag.push_declaration(Declaration {
-                id,
-                name: None,
-                connective: TypeConnective::Cardinality {
-                    element: specialized_element,
-                    bound,
-                },
-                type_params: Vec::new(),
-                phantom_params: Vec::new(),
-                meta_tag: None,
-                specialization_parent: None,
-                inhabits: None,
-                value_body: None,
-                refinement: None,
-                nominal_opacity: None,
-                span: decl.span,
-            });
-            id
-=======
             dag.alloc_cardinality_decl(specialized_element, bound, decl.span.clone())
->>>>>>> origin/main
         }
         _ => current,
     }
@@ -5457,21 +5435,6 @@ mod bool_logical_operator_arrow_tests {
 
     #[test]
     fn bootstrapped_secret_is_marked_nominal_opaque() {
-<<<<<<< HEAD
-        let dag = Dag::new();
-        let secret = dag
-            .declaration_by_name("Secret")
-            .expect("bootstrap Secret declaration");
-        assert!(
-            secret.nominal_opacity.is_some(),
-            "Secret must consume the nominal-opacity carrier before Modeling dispatch"
-        );
-    }
-
-    #[test]
-    fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
-=======
->>>>>>> origin/main
         let dag = Dag::new();
         let secret = dag
             .declaration_by_name("Secret")
