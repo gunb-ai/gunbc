@@ -3,11 +3,13 @@
 //! **Phase 1** walks the loaded `Declaration` graph for `RustPrimitive`
 //! type structure (sum partition, field shapes, nested tag enums).
 //!
-//! **Phase 2 (sharpened-(b), enumeration slice)** walks
+//! **Phase 2 (sharpened-(b), enumeration)** walks
 //! `rust_pilot_primitives.value_body` as [`ValueBody::List`] and checks that
-//! the first pilot row matches the authority ordering in
-//! `dsl/extdeps/languages/rust/primitives.dag` (asserted here via the pilot
-//! crate's `RUST_PILOT_PRIMITIVES` mirror until mirror retirement completes).
+//! every pilot row matches the authority ordering in
+//! `dsl/extdeps/languages/rust/primitives.dag` (asserted via the pilot crate's
+//! `RUST_PILOT_PRIMITIVES` mirror until mirror retirement completes). Slice 1
+//! validated row 0; subsequent slices extend to full-list length + parity for
+//! rows `1..`.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -164,11 +166,79 @@ pub fn validate_mirror_consistency() -> StructureResult<()> {
         });
     }
     validate_pilot_values_with_shape(&shape)?;
-    validate_first_rust_pilot_row_matches_mirror()
+    validate_all_rust_pilot_rows_match_mirror()
 }
 
-/// Phase 2: the first lowered `rust_pilot_primitives` list element must match
-/// `RUST_PILOT_PRIMITIVES[0]` (authority ordering in `primitives.dag`).
+/// Phase 2: every lowered `rust_pilot_primitives` list element must match the
+/// corresponding `RUST_PILOT_PRIMITIVES` row (authority ordering in
+/// `primitives.dag`).
+pub fn validate_all_rust_pilot_rows_match_mirror() -> StructureResult<()> {
+    let dag = Dag::new();
+    let pilot_list = dag
+        .rust_pilot_primitives()
+        .ok_or_else(|| StructureMismatch {
+            location: "Dag::rust_pilot_primitives".to_string(),
+            expected: "loaded rust_pilot_primitives declaration".to_string(),
+            actual: "missing".to_string(),
+        })?;
+    validate_all_rust_pilot_rows_match_mirror_in_dag(&dag, pilot_list)
+}
+
+fn validate_all_rust_pilot_rows_match_mirror_in_dag(
+    dag: &Dag,
+    pilot_list: &Declaration,
+) -> StructureResult<()> {
+    let rust_primitive_id = rust_primitive_element_id(pilot_list)?;
+    let rust_primitive = dag.declaration(rust_primitive_id);
+    let disj_variants = expect_disj_variants(
+        rust_primitive,
+        "RustPrimitive",
+        &["IntegerPrimitive", "NonIntegerPrimitive"],
+    )?;
+
+    let body = pilot_list
+        .value_body
+        .as_ref()
+        .ok_or_else(|| StructureMismatch {
+            location: "rust_pilot_primitives.value_body".to_string(),
+            expected: "data body present".to_string(),
+            actual: "None".to_string(),
+        })?;
+    let ValueBody::List(elements) = body else {
+        return Err(StructureMismatch {
+            location: "rust_pilot_primitives.value_body".to_string(),
+            expected: "ValueBody::List".to_string(),
+            actual: value_body_kind(body),
+        });
+    };
+
+    let mirror_len = RUST_PILOT_PRIMITIVES.len();
+    if elements.len() != mirror_len {
+        return Err(StructureMismatch {
+            location: "rust_pilot_primitives.value_body".to_string(),
+            expected: format!("exactly {mirror_len} pilot rows"),
+            actual: format!("{} rows", elements.len()),
+        });
+    }
+
+    for (idx, (element, mirror_row)) in elements
+        .iter()
+        .zip(RUST_PILOT_PRIMITIVES.iter())
+        .enumerate()
+    {
+        validate_enumerated_rust_pilot_row_matches_mirror(
+            dag,
+            &disj_variants,
+            idx,
+            element,
+            mirror_row,
+        )?;
+    }
+    Ok(())
+}
+
+/// Phase 2 (slice 1): the first lowered list row only — retained for targeted
+/// tests and incremental enumeration slices.
 pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
     let dag = Dag::new();
     let pilot_list = dag
@@ -207,19 +277,6 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
         expected: "non-empty pilot list".to_string(),
         actual: "empty list".to_string(),
     })?;
-    let FieldValue::Variant {
-        constructor,
-        payload,
-    } = first
-    else {
-        return Err(StructureMismatch {
-            location: "rust_pilot_primitives[0]".to_string(),
-            expected: "FieldValue::Variant".to_string(),
-            actual: field_value_kind(first),
-        });
-    };
-
-    let variant_label = rust_primitive_variant_label(&disj_variants, *constructor)?;
     let mirror0 = RUST_PILOT_PRIMITIVES
         .first()
         .ok_or_else(|| StructureMismatch {
@@ -227,28 +284,51 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
             expected: "non-empty mirror slice".to_string(),
             actual: "empty".to_string(),
         })?;
+    validate_enumerated_rust_pilot_row_matches_mirror(dag, &disj_variants, 0, first, mirror0)
+}
 
+fn validate_enumerated_rust_pilot_row_matches_mirror(
+    dag: &Dag,
+    disj_variants: &[Field],
+    row_index: usize,
+    element: &FieldValue,
+    mirror_row: &PilotRustPrimitive,
+) -> StructureResult<()> {
+    let ctx = format!("rust_pilot_primitives[{row_index}]");
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = element
+    else {
+        return Err(StructureMismatch {
+            location: ctx.clone(),
+            expected: "FieldValue::Variant".to_string(),
+            actual: field_value_kind(element),
+        });
+    };
+
+    let variant_label = rust_primitive_variant_label(disj_variants, *constructor)?;
     let label = variant_label.as_str();
-    match mirror0 {
+    match mirror_row {
         PilotRustPrimitive::IntegerPrimitive { .. } => {
             if label != "IntegerPrimitive" {
                 return Err(StructureMismatch {
-                    location: "rust_pilot_primitives[0]".to_string(),
-                    expected: "IntegerPrimitive (first authority row)".to_string(),
+                    location: ctx,
+                    expected: "IntegerPrimitive (authority ordering)".to_string(),
                     actual: label.to_string(),
                 });
             }
-            assert_integer_primitive_payload_matches(&dag, payload, mirror0)
+            assert_integer_primitive_payload_matches(dag, payload, mirror_row)
         }
         PilotRustPrimitive::NonIntegerPrimitive { .. } => {
             if label != "NonIntegerPrimitive" {
                 return Err(StructureMismatch {
-                    location: "rust_pilot_primitives[0]".to_string(),
-                    expected: "NonIntegerPrimitive (first authority row)".to_string(),
+                    location: ctx,
+                    expected: "NonIntegerPrimitive (authority ordering)".to_string(),
                     actual: label.to_string(),
                 });
             }
-            assert_non_integer_primitive_payload_matches(&dag, payload, mirror0)
+            assert_non_integer_primitive_payload_matches(dag, payload, mirror_row)
         }
     }
 }
@@ -876,6 +956,13 @@ mod tests {
     fn first_enumerated_pilot_row_matches_mirror_i8() {
         validate_first_rust_pilot_row_matches_mirror()
             .expect("first lowered list row matches RUST_PILOT_PRIMITIVES[0] (i8)");
+    }
+
+    #[test]
+    fn all_enumerated_pilot_rows_match_mirror_authority_ordering() {
+        validate_all_rust_pilot_rows_match_mirror().expect(
+            "all lowered list rows match RUST_PILOT_PRIMITIVES (10-row pilot ordering)",
+        );
     }
 
     #[test]
