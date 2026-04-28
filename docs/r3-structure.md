@@ -10,7 +10,7 @@
 
 R2 closes the **capacity layer** of the thesis: substrate carriers, the Evaluator runtime, full target Grounding for Rust + Python + Go, and 6 enumerable impossible-bug classes structurally caught.
 
-R3 closes the **consequence layer**: every thesis claim that *falls out* once the capacity layer exists. Tier 3 mirror dissolution, lens-producer retirement, L4-L7 verification harness, self-hosting facet 2 fixed-point, Tier 2 Int128/Word128 substrate, omni-emission Shape B demos, and Anthropic typed wire.
+R3 closes the **consequence layer**: every thesis claim that *falls out* once the capacity layer exists. Tier 3 mirror dissolution, lens-producer retirement, R3 verification harness for {L4, L5, L7} (L6 reclassified to R2-T-Ground-CrossTarget-Meta as a structural cross-product fold), self-hosting facet 2 fixed-point, Tier 2 Int128/Word128 substrate, omni-emission Shape B demos, and Anthropic typed wire.
 
 The split between R2 and R3 is structural, not arbitrary:
 - **R2 = enabling work** (substrate + runtime + grounding) — design questions, novel substrate, multi-month critical paths under solo-dev sizing
@@ -98,7 +98,7 @@ Critical path: **T-Verification-L4-L7-Direct → T-Verification-L5-Corpus** is t
 R3 inherits R2's manager structure with three modifications:
 
 1. **R2 managers continue post-R2-close** rather than dissolving. Substrate Manager continues with T-Int128 + T-Anthropic-Wire; PB Manager continues with T-LensProducer-Retirement + T-FixedPoint + T-Tier3-Dissolution; Modeling/Impossible-Bugs Managers archive at R2 close.
-2. **Verification Manager (new)** — owns T-Verification-L4L7. Why a new manager: L4-L7 is a cluster of 4 distinct thesis claims with shared infrastructure (the certification corpus + harness), and shouldn't fold into Substrate (different concern) or PB (different concern).
+2. **Verification Manager (new)** — owns T-Verification-L4-L7-Direct + T-Verification-L5-Corpus, covering the **R3 verification surface {L4, L5, L7}** = three distinct runtime-verification thesis claims with shared infrastructure (the certification corpus + harness). Why a new manager: this cluster shouldn't fold into Substrate (different concern) or PB (different concern). **L6 is NOT in Verification Manager's scope** — it was reclassified out of R3 as a structural cross-product fold and lives in R2-T-Ground-CrossTarget-Meta (Substrate Manager's program); see §"Acceptance" callout above.
 3. **R3 Release Manager (new, may be R2 Release Manager continuation)** — owns T-Omni-Shape-B, R3 closure ledger, R3 demo coordination. Goal-6-equivalent for R3.
 
 Director's role unchanged: cross-program conflict resolution + scope-change escalation + weekly health check.
