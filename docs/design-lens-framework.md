@@ -21,27 +21,31 @@ This is the structural primitive that THESIS implies but doesn't make explicit:
 
 ```
 Lens<C> = {
-  name:     String                  // dimension identifier (populates DimensionReport.dimension_name)
-  read:     Node → Witness<C>       // per-node cost basis (typed failure channel for missing per-node facts)
-  unit:     C                       // identity element of C's monoid
-  compose:  (C, C) → C              // sequential composition (Bind)
-  parallel: (C, C) → C              // parallel composition (Branch)
-  iterate:  (C, Bound) → C          // bounded iteration (Loop)
-  validate: C → OptionalDiagnostic  // aggregate side-condition (optional; aggregate-level location via Diagnostic.span)
+  name:     String                          // dimension identifier (populates DimensionReport.dimension_name)
+  read:     (Dag, Behavior) → Witness<C>    // per-Behavior cost basis; Dag for substrate-fact lookup; typed failure channel
+  unit:     C                               // identity element of C's monoid
+  compose:  (C, C) → C                      // sequential composition (Bind)
+  parallel: (C, C) → C                      // parallel composition (Branch)
+  iterate:  (C, Bound) → C                  // bounded iteration (Loop)
+  validate: (Dag, C) → OptionalDiagnostic   // aggregate side-condition; Dag for workflow/sink lookup; aggregate location via Diagnostic.span
 }
 ```
 
-**Why `read` returns `Witness<C>` and not `C`** (per codex BLOCKING finding on `4057b8f5`): a `Node → C` signature has no typed failure channel — a missing per-node substrate fact (e.g., a primitive without a declared cost) would have to either fabricate a default `C` (violates fail-closed) or panic (violates fail-closed). `Witness<C>` from `src/v3/std/dimensions.dag:35-37` is the existing typed channel:
+`Dag` and `Behavior` are the existing substrate types from `src/v3/std/substrate.dag` (no new substrate type introduced). `read`'s `(Dag, Behavior)` signature matches the existing `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` at `dimensions.dag:74` verbatim — no hidden global lookup authority for substrate facts; the `Dag` parameter carries the lookup context explicitly.
+
+**Why `read` returns `Witness<C>` and not `C`** (per codex BLOCKING finding on `4057b8f5`): a `(Dag, Behavior) → C` signature has no typed failure channel — a missing per-Behavior substrate fact (e.g., a primitive without a declared cost) would have to either fabricate a default `C` (violates fail-closed) or panic (violates fail-closed). `Witness<C>` from `src/v3/std/dimensions.dag:35-37` is the existing typed channel:
 
 ```
 type Witness<Carrier>
   = Inhabits(Carrier)                                   // fact present; carries the read value
-  | Violates { reason: String, at: Behavior }           // fact missing; structured failure with per-NODE Behavior
+  | Violates { reason: String, at: Behavior }           // fact missing; structured failure with per-Behavior reference
 ```
 
-The fold accumulates `Witness<C>` outputs from `read`. Any `Violates` becomes a `Diagnostic` in the final `DimensionFail.violations` — no fabricated carrier ever reaches `compose`. This matches the existing `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` pattern at `dimensions.dag:74`.
+The fold accumulates `Witness<C>` outputs from `read`. Any `Violates` becomes a `Diagnostic` in the final `DimensionFail.violations` — no fabricated carrier ever reaches `compose`.
 
-**Why `validate` returns `OptionalDiagnostic` and not `Witness<C>`** (per codex BLOCKING finding on `c9898163`): `Witness<C>.Violates { reason, at: Behavior }` carries a per-NODE Behavior reference — appropriate for `read`'s per-node lookups, but **wrong for aggregate validation**. By the time `validate` runs, the fold has composed many nodes' Witnesses into a single aggregate `C`; there is no single Behavior to put in `at`. Reusing `Witness<C>` here would force fabricating `at: Behavior` (parallel-representation debt + fail-closed violation) or losing location info entirely. The right shape is `OptionalDiagnostic` from `src/v3/std/dimensions.dag:41-43`:
+**Why `validate` takes `(Dag, C)` and returns `OptionalDiagnostic`** (per codex BLOCKING findings on `c9898163` + `5d318eca1`): aggregate validation needs (1) the aggregate `C` (post-compose) and (2) workflow/sink declarations from the program structure. The `Dag` parameter is exactly that program-structure context — workflow capability grants, sink clearance declarations, and other side-condition facts are all `.dag` declarations the validator looks up structurally. Without `Dag`, validate would need hidden context or fabricated locations.
+
+`Witness<C>.Violates { reason, at: Behavior }` carries a per-Behavior reference — appropriate for `read`'s per-Behavior lookups, but **wrong for aggregate validation**. By the time `validate` runs, the fold has composed many Behaviors' Witnesses into a single aggregate `C`; there is no single Behavior to put in `at`. Reusing `Witness<C>` here would force fabricating `at: Behavior` (parallel-representation debt + fail-closed violation) or losing location info entirely. The right shape is `OptionalDiagnostic` from `src/v3/std/dimensions.dag:41-43`:
 
 ```
 type OptionalDiagnostic
@@ -114,12 +118,12 @@ type SymbolicCost = CostExpr {
 | Field | Definition |
 |---|---|
 | `name` | `"complexity"` |
-| `read(node)` | Reads operation's declared cost from `dsl/std/algebra.dag` and wraps as `Inhabits(...)` (e.g., `OrderedRing.add` → `Inhabits(CostExpr(1, 1, O(1)))`); `Violates { reason: "no declared cost for <op>", at: <node.behavior> }` if the substrate has no fact for that operation |
+| `read(dag, behavior)` | Reads operation's declared cost from `dsl/std/algebra.dag` (looked up via `dag` context for the given `behavior`) and wraps as `Inhabits(...)` (e.g., `OrderedRing.add` → `Inhabits(CostExpr(1, 1, O(1)))`); returns `Violates { reason: "no declared cost for <op>", at: behavior }` if the substrate has no fact for that operation |
 | `unit` | `CostExpr(work=0, span=0, asymptotic_class=O(1))` |
 | `compose` (Bind) | `CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))` |
 | `parallel` (Branch) | `CostExpr(work=a.work + b.work, span=max(a.span, b.span), class=max(a.class, b.class))` |
 | `iterate` (Loop) | `CostExpr(work=body.work × bound, span=body.span × bound, class=multiply_class(body.class, bound))` |
-| `validate(c)` | Always `NoDiagnostic` — complexity has no side-condition; final result is `DimensionOk` if all reads `Inhabits` |
+| `validate(dag, c)` | Always `NoDiagnostic` — complexity has no side-condition; `dag` is unused; final result is `DimensionOk` if all reads `Inhabits` |
 
 **Worked program:**
 ```
@@ -156,12 +160,12 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 | Field | Definition |
 |---|---|
 | `name` | `"tenant-flow"` |
-| `read(node)` | Reads operation's declared capability requirement set wrapped as `Inhabits(...)` (e.g., `read[TenantA].orders` → `Inhabits({Read(TenantA)})`); `Violates { reason: "no declared capability requirement for <op>", at: <node.behavior> }` if the substrate has no fact for that operation |
+| `read(dag, behavior)` | Reads operation's declared capability requirement set (looked up via `dag` for the given `behavior`) wrapped as `Inhabits(...)` (e.g., `read[TenantA].orders` → `Inhabits({Read(TenantA)})`); returns `Violates { reason: "no declared capability requirement for <op>", at: behavior }` if the substrate has no fact for that operation |
 | `unit` | `{}` (empty capability set) |
 | `compose` (Bind) | Set union — sequential composition accumulates capabilities |
 | `parallel` (Branch) | Set union — parallel branches require all capabilities of any arm |
 | `iterate` (Loop) | Set union of body × any-iter (bound doesn't matter for capability set; all iterations together) |
-| `validate(set)` | If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root span>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` points at the workflow declaration, not a per-node Behavior — aggregate-level location) |
+| `validate(dag, set)` | Reads `workflow.cap_grant` from `dag` (the `@cap_grant(...)` declaration on the workflow root). If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root span — read from dag>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and grant data come from `dag`, not hidden context) |
 
 **Worked program:**
 ```
@@ -198,12 +202,12 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 | Field | Definition |
 |---|---|
 | `name` | `"ifc"` |
-| `read(node)` | Reads operation's data label wrapped as `Inhabits(...)` (e.g., `read[TopSecret].records` → `Inhabits(TopSecret)`); `Violates { reason: "no declared security label for <op>", at: <node.behavior> }` if the substrate has no fact for that operation |
+| `read(dag, behavior)` | Reads operation's data label (looked up via `dag` for the given `behavior`) wrapped as `Inhabits(...)` (e.g., `read[TopSecret].records` → `Inhabits(TopSecret)`); returns `Violates { reason: "no declared security label for <op>", at: behavior }` if the substrate has no fact for that operation |
 | `unit` | `Public` (lattice bottom) |
 | `compose` (Bind) | Lattice join (`max`) — sequential composition takes the highest label |
 | `parallel` (Branch) | Lattice join (`max`) — parallel branches yield the highest label |
 | `iterate` (Loop) | Lattice join (`max`) of body × any-iter (label doesn't change with bound) |
-| `validate(label)` | If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration span>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` points at the sink declaration, not a per-node Behavior — aggregate-level location) |
+| `validate(dag, label)` | Reads sink declaration + clearance (`@sink_clearance(...)`) from `dag`. If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration span — read from dag>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and clearance data come from `dag`, not hidden context) |
 
 **Worked program:**
 ```
@@ -272,7 +276,7 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 
 **D3. L6 (structural-form coverage) collapses to `Lens<EmissionPathPresent>`.**
 - Write L6 as a `Lens<EmissionPathPresent>` instance:
-  - `read(node)` reads the emission-path declaration for (substrate form × Shape A target) pair
+  - `read(dag, behavior)` reads the emission-path declaration for (substrate form × Shape A target) pair from `dag`
   - `unit` = `present` (vacuous true)
   - `compose` = AND (all forms must be present)
   - `validate` = reject if any (form, target) lacks an emission path declaration
@@ -306,10 +310,11 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 
 **I1. `dsl/std/lens.dag` declares `Lens<C>` and type-checks against existing substrate.**
 - Lens<C> declaration includes the 7 fields (`name`, `read`, `unit`, `compose`, `parallel`, `iterate`, `validate`).
-- `read: Node → Witness<C>` (typed per-NODE failure channel; reuses `Witness<Carrier>` from `src/v3/std/dimensions.dag:35-37`).
-- `validate: C → OptionalDiagnostic` (aggregate-level failure channel; reuses `OptionalDiagnostic` from `src/v3/std/dimensions.dag:41-43`; location info via `Diagnostic.span: SourceSpan`, not per-node `Behavior`).
-- Type-checks against existing `BoundedLattice<T>`, `DimensionReport<Carrier>`, `Witness<Carrier>`, and `OptionalDiagnostic` patterns.
-- **Pass criterion:** substrate parses; structural-form ratchet remains green; no fabricated-carrier path in `read` (per-NODE) and no fabricated-`Behavior` path in `validate` (aggregate) — both codex BLOCKINGs.
+- `read: (Dag, Behavior) → Witness<C>` (typed per-Behavior failure channel; matches `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` at `dimensions.dag:74` verbatim).
+- `validate: (Dag, C) → OptionalDiagnostic` (aggregate-level failure channel; `Dag` for workflow/sink declaration lookup; `OptionalDiagnostic` from `dimensions.dag:41-43`; location info via `Diagnostic.span: SourceSpan`, not per-Behavior).
+- All `read` and `validate` lookups go through the explicit `Dag` parameter — no hidden global lookup authority.
+- Type-checks against existing `BoundedLattice<T>`, `DimensionReport<Carrier>`, `Witness<Carrier>`, `OptionalDiagnostic`, `Dag`, and `Behavior` patterns from `src/v3/std/`.
+- **Pass criterion:** substrate parses; structural-form ratchet remains green; no fabricated-carrier path in `read`; no fabricated-`Behavior` path in `validate`; no hidden global lookups (every substrate fact accessed through `Dag` parameter).
 
 **I2. Generic fold machinery `fold_lens<C>` is small.**
 - Implementation in `src/v3/std/lens.dag` (or equivalent) is ≤ 200 lines.
