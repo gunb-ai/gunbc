@@ -1000,6 +1000,27 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Recommendation:** **(a)** — new file `dsl/std/inhabitance.dag`. Reasoning: BoundDeclaration is one of several inhabitance-fact carriers (ExactBound, AnyBound, PlatformDependentBound, future `BorrowedBound`, etc.); collecting them in one substrate file matches the modeling discipline. Parser change is bounded (one new postfix `(any)` / `(platform)` keyword). Keeps `algebra.dag` focused on algebraic structures.
 
+**DECISION (Director-locked 2026-04-28 via dialogue):** Q1 resolves through **structural consolidation** rather than (a)/(b)/(c) directly. The shared underlying modeling for `CardinalityBound`, `SizeBound`, and `BoundDeclaration` is **interval over a totally ordered set** — a parametric `Interval<D>` substrate concept. The decision:
+
+- **Declare `Interval<D>` as the shared parent** in substrate. Variants carry `(lo, upper)` interval shape with `Unbounded` for the no-upper case. `D` is the ordered domain (Cardinal, Int, Ordinal).
+- **`BoundDeclaration = Interval<Int>`** with explicit `lo` (since `i32` starts at `-2^31`, not 0). This is Q1's substrate answer.
+- **`CardinalityBound` and `SizeBound` retrofit** as `Interval<Cardinal>` instances (additive — existing accessor patterns continue to work via aliases).
+- **`LoopBound::Cardinality` retrofit** as `Interval<Ordinal>`-like. **`LoopBound::Descent` stays distinct** (termination witness — well-founded recursion, not an interval).
+- **`CostBound` stays distinct** (asymptotic equivalence class — different math; not an interval).
+
+**Why consolidation:** the `feedback_epistemic_stacking` modeling discipline says every concept attaches to an ontological DAG. Adding `BoundDeclaration` as a fifth bound type without recognizing the shared parent would be parallel-representation debt (per `feedback_parallel_representation_debt`). Director directive 2026-04-28: "each of these are probably distinct - but also probably share some underlying (modeling)" — the shared modeling is `Interval<D>`.
+
+**Sequencing:** the consolidation is **prepended** as `PR-PreF` (a new pre-cadence design PR before PR-F) so the substrate landing for `BoundDeclaration` consumes a clean `Interval<D>` parent rather than introducing a fifth distinct bound type.
+
+**PR-PreF scope** (sized 2-3 days at gunbc velocity):
+- Declare `type Interval<D>` parametric in `src/v3/std/substrate.dag` (siblings to `CardinalityBound` and `LoopBound`)
+- Retrofit `CardinalityBound`, `SizeBound` as `Interval<Cardinal>` instances (additive — existing variant accessors stay working via aliases like `AtMostOne ≡ ExactInterval { lo: 0, hi: 1 }`)
+- Retrofit `LoopBound::Cardinality` similarly; `LoopBound::Descent` stays
+- `CostBound` not touched
+- Acceptance: existing CardinalityBound + SizeBound + LoopBound consumers compile unchanged; `Interval<D>` substrate-form ratchet green; structural-form census stays at zero
+
+**Cascade benefit on Q5:** with `Interval<D>` as shared parent, Q5 recommendation (a) "cardinality is connectives axis" is reinforced — `List<T>` carries `Interval<Cardinal>::Unbounded`; `Atom` carries `Interval<Cardinal>::ExactInterval { lo: 1, hi: 1 }`. The L6 cross-product fold becomes `connectives × behaviors × targets` (90 cells) without a separate cardinality-variant axis.
+
 ### Q2 — Required structural axes per Rust primitive family (and per target)
 
 **Status:** STRING family enumerated in Example 3 (ownership / growability / encoding / lifetime); INTEGER family used in Examples 1/2/8 (bound / signedness via algebra). Other Rust families not enumerated. Python and Go axes not enumerated at all.
