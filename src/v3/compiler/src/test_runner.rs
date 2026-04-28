@@ -1519,6 +1519,7 @@ impl<'a> TestRunner<'a> {
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
+                        "R3DeferredClaim" => self.eval_r3_deferred_claim_shape(claim, &payload),
                         "MockBackedInvariant" => {
                             if !claim.requires.is_empty() {
                                 if let Err(reason) = self.validate_resource_requirements(claim) {
@@ -2476,6 +2477,32 @@ impl<'a> TestRunner<'a> {
                 "GeneratedFromDag observed {test_count} hand-authored test file(s) outside generated paths"
             ))
         }
+    }
+
+    fn eval_r3_deferred_claim_shape(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [deferred_gate, r3_lane, authority_doc] = payload else {
+            return ClaimResult::Fail(format!(
+                "R3DeferredClaim payload should be exactly three DeclarationRef fields \
+                 (deferred_gate, r3_lane, authority_doc); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+
+        for (field_label, value) in [
+            ("deferred_gate", deferred_gate),
+            ("r3_lane", r3_lane),
+            ("authority_doc", authority_doc),
+        ] {
+            if let Err(reason) = self.resolve_declaration_ref_id(value, field_label) {
+                return ClaimResult::Fail(format!("R3DeferredClaim: {reason}"));
+            }
+        }
+
+        ClaimResult::Pass
     }
 
     fn resolve_census_authority_ref(

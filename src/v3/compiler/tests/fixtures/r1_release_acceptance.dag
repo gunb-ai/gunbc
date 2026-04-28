@@ -1,0 +1,117 @@
+// std.r1_release_acceptance - R1 release-acceptance fixture.
+//
+// Director disposition for R1C-D closes R1 with two strict PB gates green
+// (`pb_self_compile_fixed_point`, `pb_compiler_std_ratchet_zero`) and four
+// PB census gates structurally deferred to R3 authority. The deferral claims
+// use `R3DeferredClaim` only because the Director explicitly approved this
+// release-acceptance fixture shape; do not copy it into arbitrary suites.
+
+module std.r1_release_acceptance
+
+import std.verification {
+  FixedPointConverges,
+  R3DeferredClaim,
+  RatchetZero,
+  TestClaim,
+  TestSuite,
+  compiler_std_positive_set_ratchet
+}
+
+type Sg0CensusAuthority {}
+data sg0_census_test_authority: Sg0CensusAuthority = {}
+
+type R1GateMarker {}
+data pb_hand_rust_at_shim_floor_gate_marker: R1GateMarker = {}
+data lens_producer_files_remaining_gate_marker: R1GateMarker = {}
+data pb_test_file_generated_from_dag_gate_marker: R1GateMarker = {}
+data pb_rust_tests_outside_residual_zero_gate_marker: R1GateMarker = {}
+
+type R3LaneMarker {}
+data r3_t_lens_producer_retirement: R3LaneMarker = {}
+data r3_t_pb_b_bulk_migration: R3LaneMarker = {}
+
+type ReleaseAuthorityDoc {}
+data r3_structure_authority: ReleaseAuthorityDoc = {}
+data pure_bootstrap_zero_authority: ReleaseAuthorityDoc = {}
+
+data pb_hand_rust_at_shim_floor_deferred: TestClaim = {
+  name: "pb_hand_rust_at_shim_floor",
+  source: "// R1 release acceptance deferral marker; no program evaluation.\nlet _: Int = 0\n",
+  file_name: "r1_release_pb_hand_rust_at_shim_floor.v3",
+  predicate: R3DeferredClaim {
+    deferred_gate: pb_hand_rust_at_shim_floor_gate_marker,
+    r3_lane: r3_t_lens_producer_retirement,
+    authority_doc: r3_structure_authority
+  },
+  requires: []
+}
+
+data lens_producer_files_remaining_deferred: TestClaim = {
+  name: "lens_producer_files_remaining",
+  source: "// R1 release acceptance deferral marker; no program evaluation.\nlet _: Int = 0\n",
+  file_name: "r1_release_lens_producer_files_remaining.v3",
+  predicate: R3DeferredClaim {
+    deferred_gate: lens_producer_files_remaining_gate_marker,
+    r3_lane: r3_t_lens_producer_retirement,
+    authority_doc: r3_structure_authority
+  },
+  requires: []
+}
+
+data pb_self_compile_fixed_point_strict: TestClaim = {
+  name: "pb_self_compile_fixed_point",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_release_pb_self_compile_fixed_point.v3",
+  predicate: FixedPointConverges {
+    compile_target: "default_fixed_point_source",
+    expected: "pipeline_stage_snapshots"
+  },
+  requires: []
+}
+
+data pb_compiler_std_ratchet_zero_strict: TestClaim = {
+  name: "pb_compiler_std_ratchet_zero",
+  source: "// PB census predicates read external census state, not this source.\nlet _: Int = 0\n",
+  file_name: "r1_release_pb_compiler_std_ratchet_zero.v3",
+  predicate: RatchetZero {
+    authority: sg0_census_test_authority,
+    ratchet_kind: compiler_std_positive_set_ratchet
+  },
+  requires: []
+}
+
+data pb_test_file_generated_from_dag_deferred: TestClaim = {
+  name: "pb_test_file_generated_from_dag",
+  source: "// R1 release acceptance deferral marker; no program evaluation.\nlet _: Int = 0\n",
+  file_name: "r1_release_pb_test_file_generated_from_dag.v3",
+  predicate: R3DeferredClaim {
+    deferred_gate: pb_test_file_generated_from_dag_gate_marker,
+    r3_lane: r3_t_pb_b_bulk_migration,
+    authority_doc: pure_bootstrap_zero_authority
+  },
+  requires: []
+}
+
+data pb_rust_tests_outside_residual_zero_deferred: TestClaim = {
+  name: "pb_rust_tests_outside_residual_zero",
+  source: "// R1 release acceptance deferral marker; no program evaluation.\nlet _: Int = 0\n",
+  file_name: "r1_release_pb_rust_tests_outside_residual_zero.v3",
+  predicate: R3DeferredClaim {
+    deferred_gate: pb_rust_tests_outside_residual_zero_gate_marker,
+    r3_lane: r3_t_pb_b_bulk_migration,
+    authority_doc: pure_bootstrap_zero_authority
+  },
+  requires: []
+}
+
+data r1_release_acceptance_suite: TestSuite = {
+  name: "r1_release_acceptance_suite",
+  claims: [
+    pb_hand_rust_at_shim_floor_deferred,
+    lens_producer_files_remaining_deferred,
+    pb_self_compile_fixed_point_strict,
+    pb_compiler_std_ratchet_zero_strict,
+    pb_test_file_generated_from_dag_deferred,
+    pb_rust_tests_outside_residual_zero_deferred
+  ]
+}

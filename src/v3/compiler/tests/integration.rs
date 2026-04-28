@@ -119,6 +119,8 @@ mod pb1_bootstrap_full_snapshot_test;
 mod pipe_desugar;
 #[path = "integration/r1c_d_pb_census_gates_test.rs"]
 mod r1c_d_pb_census_gates_test;
+#[path = "integration/r1_release_acceptance_test.rs"]
+mod r1_release_acceptance_test;
 #[path = "integration/r1c_e_emit_gates_dag_test.rs"]
 mod r1c_e_emit_gates_dag_test;
 #[path = "integration/r1c_e_emit_gates_omni_dag_test.rs"]

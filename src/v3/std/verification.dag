@@ -215,6 +215,17 @@ type TestPredicate
       authority: DeclarationRef
       generated_paths: List<Path>
     }
+  // R1 release-acceptance concession marker. Use only in release-acceptance
+  // fixtures with explicit Director sign-off; this is not a generic escape
+  // hatch for arbitrary `TestSuite`s. The runner validates the three
+  // `DeclarationRef` edges resolve and treats the well-formed deferral as a
+  // structural acceptance fact. R3-specific today; if this pattern generalizes
+  // to later release cycles, rename toward `ReleaseDeferredClaim`.
+  | R3DeferredClaim {
+      deferred_gate: DeclarationRef
+      r3_lane: DeclarationRef
+      authority_doc: DeclarationRef
+    }
 
 // Structural runner input role for predicates whose input is the compiled
 // `TestClaim.source` program.

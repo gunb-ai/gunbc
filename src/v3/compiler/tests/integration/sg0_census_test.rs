@@ -287,6 +287,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // shim until R1 close dissolves the wrappers (D.5 / cascade-promotion
     // 0-floor work in the Pure Bootstrap to Zero program).
     "src/v3/compiler/tests/integration/r1c_d_pb_census_gates_test.rs",
+    // R1 release acceptance fixture: strict PB gates 3/4 plus Director-approved
+    // R3 deferral markers for the four concession-encoded gates.
+    // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
+    // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
+    "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): integration-test driver
     // that splices `env!("CARGO_BIN_EXE_r1c_e_emit_gates")` into the
     // `tests/dag/r1c_e_emit_gates.template.dag` source and runs the suite
