@@ -29,6 +29,13 @@ RELEASE_DOCS=(
 # Forbidden lane/concept names — each entry is a literal string the
 # project has retracted as live framing. Add an entry when a name is
 # retracted; remove it only if the underlying concept becomes live again.
+#
+# Match semantics: literal (grep -F), NOT regex. Don't add regex
+# metacharacters expecting them to be honored — they'll match literally.
+# (RETRACTION_PATTERNS below uses grep -qiE for regex semantics; the
+# asymmetry is intentional — forbidden strings are exact lane/concept
+# names, retraction patterns are markers that may need character-class
+# flexibility like [Rr]etracted.)
 FORBIDDEN_STRINGS=(
   "T-Ground-Engine"
   "T-Ground-Annotation"
