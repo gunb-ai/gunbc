@@ -79,8 +79,25 @@ Lane status table refreshes here as work lands.
 | --- | --- | --- |
 | R1C-A | Sub-deliverables A/B/C — list `data` bodies, PB census predicates (#939), `testgen_mock_backed_integration_safe` (`r1_mock_backed_invariant_gate.dag`) | **Closed on main** — see Owned deliverables row |
 | R1C-C | `sub_type_alias_where_lowers` (`DeclarationHasRefinement("PositiveInt")` on the DB-11 witness; `sub_type_alias_where_lowers_gate` in `r1_gates.template.dag` + `test_runner_runs_sub_type_alias_where_lowers_gate`) | **Closed — PR #879 merged** (`adda0eac`; all CI green before squash merge) |
+| R1C-D | 6 PB census gates (`pb_hand_rust_at_shim_floor`, `lens_producer_files_remaining`, `pb_self_compile_fixed_point`, `pb_compiler_std_ratchet_zero`, `pb_test_file_generated_from_dag`, `pb_rust_tests_outside_residual_zero`) wired in `tests/fixtures/r1_pb_census_gates.dag`; `r1c_d_pb_census_gates_suite_evaluates_through_runner` proves no `NotYetImplemented` and structural `Pass`/`Fail` against the live SG-0 census | **Authored — PR #1050 merged** (`5f405cc8e`); 6/6 fixtures authored, runner-evaluating against current census; **1/6 green** at landing (D.3 `pb_self_compile_fixed_point` PASS; D.1/D.2/D.4/D.5/D.6 RED — see "Cross-manager: RED gate surfacing" below) |
 | R1C-E | `emit_rust_fixtures_rustc_green` · `emit_generic_bounds_survive` · `emit_omni_demo_fixtures_green` (`.dag` / `r1c_e_emit_gates` SoT; omni suite `#[ignore]` integration) | **Closed on main — 3/3** — PR **#978** + **#1051** (see Owned deliverables row) |
 | R1C-F | `demo_user_authored_lens_rejects_violating_program` | **Closed — PR #880** (see Owned deliverables row) |
+
+### Cross-manager: RED gate surfacing → Pure Bootstrap to Zero
+
+R1C-D wires the six PB census gates as `.dag` `TestClaim`s; **gate-close pacing** (RED → green) is owned by the Pure Bootstrap to Zero program (`docs/design-pure-bootstrap-zero.md`, LIVE 2026-04-25). The R1 Closure Manager surface tracks **which gates remain RED and what dissolution work each is waiting on**, so the PB Manager (post-R1 spawn) can dispatch against a concrete queue rather than re-deriving it.
+
+| Gate | Observed (HEAD `5f405cc8e`) | Bound | Blocking dissolution work |
+| --- | --- | --- | --- |
+| `pb_hand_rust_at_shim_floor` | 38 hand-Rust non-test files | 0 | Cascade-promotion 0-floor on `EXPECTED_HAND_AUTHORED_NON_TEST` (`sg0_census_test.rs`); retire residual hand-Rust files via PB program. |
+| `lens_producer_files_remaining` | 3 lens-producer files in non-test census | 0 | Subset of the above — retire the lens-producer hand-Rust files specifically; same PB cascade-promotion track. |
+| `pb_compiler_std_ratchet_zero` | 3 compiler-local types outside positive-def set | 0 | Compiler-std consolidation ratchet drive-down (PB program); add the 3 residual types to the positive-def set or dissolve them. |
+| `pb_test_file_generated_from_dag` | 67 hand-authored test files outside generated paths | 0 | T-TestGen 0-floor: generate the residual hand-authored Rust tests from `.dag` `TestClaim` fixtures. |
+| `pb_rust_tests_outside_residual_zero` | 67 hand-authored test files | 0 | Cascade-promotion 0-floor on `EXPECTED_HAND_AUTHORED_TEST`; retires alongside `pb_test_file_generated_from_dag`. |
+
+**Routing rule:** when the PB Manager spawns post-R1, this subsection is the hand-off — each row is a dissolution-work-pending entry. RED gates do not block R1 close per `feedback_foundation_over_speed` *if* the Director arbitrates concession (per the R1C-D STOP-AND-ESCALATE clause); otherwise R1 close waits on PB pacing. Refresh observed counts when any of the underlying lists shrink.
+
+`pb_self_compile_fixed_point` (D.3) is **green** at landing and is not on this queue.
 
 ## Cross-refs
 
