@@ -20,17 +20,19 @@ The R2 vs R3 boundary is therefore: **does this work need new substrate / new ru
 
 ## Summary
 
-R3 has six lanes, each closing a specific thesis claim or claim-cluster:
+R3 has nine lanes (revised 2026-04-28 per Director review of #1078), each closing a specific thesis claim or claim-cluster:
 
 1. **T-Tier3-Dissolution** — retire the four hand-Rust mirrors of `.dag` types (termination, computation, induction, effect-carrier) by consuming the Evaluator
 2. **T-LensProducer-Retirement** — retire `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` (the program-sized hand-Rust files) via PB-Runtime interpreter-as-data + PB-1 generated bin-shim emit pattern
-3. **T-Verification-L4L7** — build the L4-L7 verification harness (emit/eval match, cross-target consistency, structural-form coverage, algebraic-law witnesses). **Also serves as the structural test of the no-engine discipline** per [`docs/design-emission-model.md`](design-emission-model.md): L4 fails if the fold fabricates target choices `.dag` doesn't evaluate to; L5 fails if engine policy resolves inconsistently across targets; L6 fails if fail-closed gaps are silently engine-resolved; L7 fails if algebra inhabitance is engine-asserted vs structurally declared
-4. **T-FixedPoint** — self-hosting facet 2: compile `compiler.dag` → bit-identical Rust output
-5. **T-Int128** — Tier 2 Int128/Word128 substrate (the int-lit closure half deferred from R2)
-6. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos (YAML, Terraform, K8s, or SPICE) exercising the "one workflow → full-stack artifacts" thesis claim
-7. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization)
+3. **T-Verification-L4-L7-Direct** — Evaluator-direct verification harness: L4 emit/eval match + L7 algebraic-law witnesses. Can start as soon as Evaluator + R2 close. **Also serves as the structural test of the no-engine discipline** per [`docs/design-emission-model.md`](design-emission-model.md): L4 fails if the fold fabricates target choices `.dag` doesn't evaluate to; L7 fails if algebra inhabitance is engine-asserted vs structurally declared
+4. **T-Verification-L5-L6-Corpus** — corpus-driven verification: L5 cross-target consistency + L6 structural-form coverage. Depends on (a) all 3 Shape A targets grounded and (b) L4 corpus existing first. **Also tests no-engine discipline**: L5 fails if engine policy resolves inconsistently across targets; L6 fails if fail-closed gaps are silently engine-resolved
+5. **T-FixedPoint** — self-hosting facet 2: compile `compiler.dag` → bit-identical Rust output
+6. **T-Int128** — Tier 2 Int128/Word128 substrate (the int-lit closure half deferred from R2)
+7. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos (YAML, Terraform, K8s, or SPICE) exercising the "one workflow → full-stack artifacts" thesis claim
+8. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization)
+9. **T-Bridge-Retirement** — unified ledger of named identity bridges retired (`SourceSpan.file` participation checks, `mark_bootstrap_secret_nominal_opacity()`, canonical lens-name dispatch, `include_str!` side channels, exact-string patching residual). Surfaced by Reflective Pattern B (2026-04-25 analysis); without a unified lane these get scattered across PB / Substrate / Verification work without a unified retirement ledger
 
-**5 of 7 R3 lanes are gated on R2-Evaluator closing** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4L7, T-FixedPoint, T-Omni-Shape-B). The other 2 (T-Int128, T-Anthropic-Wire) are self-contained substrate work parallel to the Evaluator-gated lanes — they consume R2 substrate carriers but not the Evaluator itself, so they can dispatch in parallel with R2-Evaluator work or wait until R2-close per scheduling preference. Per-lane R2-close dependency is named in the §"Lane structure" table below; §"Dependency on R2" elaborates.
+**6 of 9 R3 lanes are gated on R2-Evaluator closing** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-L6-Corpus, T-FixedPoint, T-Omni-Shape-B). The other 3 (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement) are self-contained or substrate-completion work parallel to the Evaluator-gated lanes — they consume R2 substrate carriers but not the Evaluator itself, so they can dispatch in parallel with R2-Evaluator work or wait until R2-close per scheduling preference. Per-lane R2-close dependency is named in the §"Lane structure" table below; §"Dependency on R2" elaborates.
 
 ## Acceptance — `.dag` gates
 
@@ -46,11 +48,12 @@ Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as delive
   - `lens_testgen_dot_rs_retired` — `src/v3/compiler/src/lens_testgen.rs` deleted
   - `regen_lens_dot_rs_retired` — `src/v3/compiler/src/regen_lens.rs` deleted
   - `sg0_non_test_zero` — SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` count reaches 0 per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)
-- **T-Verification-L4L7.**
+- **T-Verification-L4-L7-Direct** (Evaluator-direct).
   - `l4_emit_eval_match` — for every `.dag` program in the certification corpus, emitted target output equals `.dag` evaluation output (algebraic equality, not byte-equal)
+  - `l7_algebraic_laws_witnessed` — every algebra declared in `dsl/std/algebra.dag` has a runtime-constructed witness for each of its laws (associativity, commutativity, identity, distributivity as applicable) — `AlgebraicLaw` TestPredicate evaluates via Evaluator-constructed witnesses, not host-mediated harness
+- **T-Verification-L5-L6-Corpus** (corpus-driven; depends on Direct landing first).
   - `l5_cross_target_consistency` — for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus
   - `l6_structural_form_coverage` — every Tier-1 structural form (each of the 6 type connectives × each of the 5 behaviors × every cardinality variant) emits to every Shape A target
-  - `l7_algebraic_laws_witnessed` — every algebra declared in `dsl/std/algebra.dag` has a runtime-constructed witness for each of its laws (associativity, commutativity, identity, distributivity as applicable) — `AlgebraicLaw` TestPredicate evaluates via Evaluator-constructed witnesses, not host-mediated harness
 - **T-FixedPoint.**
   - `pb_self_compile_fixed_point` (R1 gate; closes here under stronger interpretation) — v3 binary compiles `compiler.dag` and produces bit-identical stage0 Rust + bit-identical emitted artifacts. Predicate is the same R1 predicate; R3 closes it under fixed-point semantics rather than the looser "compiler can compile itself" reading
 - **T-Int128.**
@@ -63,6 +66,13 @@ Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as delive
 - **T-Anthropic-Wire.**
   - `anthropic_wire_typed_serde_alignment` — Anthropic provider request/response types are typed end-to-end (mirrors the OpenAI alignment landed in R2)
   - `anthropic_unit_enum_role_serialization_correct` — role enum serializes to wire-required strings without bridging
+- **T-Bridge-Retirement.**
+  - `bridge_source_span_file_participation_retired` — no production code path consults `SourceSpan.file` for participation/inclusion logic; participation is structural per declared facts
+  - `bridge_mark_bootstrap_secret_nominal_opacity_retired` — name-keyed bootstrap bridge from #937 deleted; nominal-opacity authority lives in source-level declaration (PR A landed in R2)
+  - `bridge_canonical_lens_name_dispatch_retired` — lens dispatch routes via `DeclarationRef`/typed identity, not canonical name strings
+  - `bridge_include_str_side_channels_retired` — no `include_str!` macro reads source-substrate identity; substrate query surface used instead
+  - `bridge_exact_string_patching_residual_retired` — `patch_lower_helpers_*` and similar exact-string patching scaffolds reach 0 residual (some retired in R2 #1014)
+  - `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining
 
 ## Lane structure
 
@@ -70,13 +80,15 @@ Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as delive
 |---|---|---|---|---|
 | **T-Tier3-Dissolution** | M | **Tier 3 Manager** (or PB Manager continuing post-R2) | Four hand-Rust mirrors of `.dag` types retired; SG-0 reduction | R2-Evaluator (executes std bodies); ValueBody::Map (already landed in R2 carriers) |
 | **T-LensProducer-Retirement** | XL | **PB Manager (post-R2 continuation)** | Three program-sized hand-Rust files retired via PB-Runtime + PB-1 patterns | R2-Evaluator (interpreter-as-data); PB-1 generated bin-shim pattern (which itself depends on Evaluator) |
-| **T-Verification-L4L7** | L | **Verification Manager** (new) | L4 emit/eval match harness + L5 cross-target equivalence + L6 form coverage + L7 algebraic-law witness construction | R2-Evaluator (witness construction); R2-Grounding-Rust + R2-Grounding-Python (cross-target harness needs all 3 grounded targets) |
+| **T-Verification-L4-L7-Direct** | M | **Verification Manager** (new) | L4 emit/eval match harness + L7 algebraic-law witness construction. Evaluator-direct; can start as soon as R2-Evaluator + R2 close | R2-Evaluator (witness construction) |
+| **T-Verification-L5-L6-Corpus** | M | **Verification Manager** | L5 cross-target equivalence + L6 form coverage. Corpus-driven; needs (a) all 3 Shape A targets grounded, (b) L4 corpus from T-Verification-L4-L7-Direct existing first | R2-Grounding-Rust + R2-Grounding-Python + T-Verification-L4-L7-Direct |
 | **T-FixedPoint** | M | **PB Manager** | `compiler.dag` compiles to bit-identical stage0 Rust + bit-identical emitted artifacts; R1's `pb_self_compile_fixed_point` gate closes under stronger interpretation | R2-Evaluator (executes compiler.dag); SG-0 zero from T-LensProducer-Retirement |
 | **T-Int128** | M-L | **Substrate Manager (post-R2 continuation)** | Int128/Word128 substrate; int-literal full magnitude consumer | None (parallel to T-Tier3 + T-LensProducer; just substrate work) |
 | **T-Omni-Shape-B** | L | **Demo Manager** (or R3 Release Manager) | At least 2 Shape B omni-emission demos exercising the full-stack thesis claim | R2-Evaluator (Shape B emitters are `.dag` programs walking typed values via fold/match — needs runtime to demonstrate properly) |
 | **T-Anthropic-Wire** | M | **Substrate Manager (post-R2 continuation)** | Anthropic provider request/response typed end-to-end | None (parallel; held in R2 pending OpenAI stabilize) |
+| **T-Bridge-Retirement** | M | **Verification Manager** (or T-LensProducer-Retirement umbrella) | Unified ledger of 5 named identity bridges retired (SourceSpan.file, mark_bootstrap_secret_nominal_opacity, canonical lens-name dispatch, include_str! side channels, patch_lower_helpers_* residual). Per Reflective Pattern B (2026-04-25) — without unified lane, retirements scatter across PB / Substrate / Verification with no central ledger | R2 substrate carriers (typed identity surfaces); some bridges retire as side-effect of T-LensProducer-Retirement |
 
-Critical path: **T-Verification-L4L7** is the longest because L4-L7 each require harness construction. Other lanes parallel-dispatch after R2-Evaluator closes.
+Critical path: **T-Verification-L4-L7-Direct → T-Verification-L5-L6-Corpus** is the longest because Direct's corpus seeds Corpus's coverage suite. Other lanes parallel-dispatch after R2-Evaluator closes.
 
 ## Manager structure
 
@@ -96,24 +108,28 @@ Director's role unchanged: cross-program conflict resolution + scope-change esca
                                      ▼
                               R2-Evaluator landed
                                      │
-       ┌─────────────────┬──────────┼──────────────┬─────────────────┐
-       │                 │          │              │                 │
-       ▼                 ▼          ▼              ▼                 ▼
-T-Tier3-Dissolution  T-LensProducer  T-Verification-L4L7  T-Omni-Shape-B  T-Int128
-   (mirrors)          (3 files)        (harness)         (Shape B demos)   (substrate)
-                                          ▲
-                                          │
-                              (also gated on R2-Grounding-Rust
-                               + R2-Grounding-Python landed)
-
-                       T-FixedPoint  ◄── (gated on T-LensProducer-Retirement
-                                         + R2-Evaluator)
+       ┌────────────┬────────────┬───┴────┬────────────┬────────────┐
+       │            │            │        │            │            │
+       ▼            ▼            ▼        ▼            ▼            ▼
+T-Tier3-Diss  T-LensProducer  T-V-L4-L7-Direct  T-FixedPoint  T-Omni-Shape-B  (T-Int128)
+  (mirrors)   (3 files)        (L4+L7)           (gated on        (Shape B)    (parallel
+                                                  T-LP-Retire)                  substrate)
+                                  │
+                                  ▼
+                         T-V-L5-L6-Corpus (L5+L6)
+                                  ▲
+                                  │
+                  (also gated on R2-Grounding-Rust
+                   + R2-Grounding-Python landed)
 
                        T-Anthropic-Wire ◄── (parallel; gated on R2 OpenAI
                                             wire stabilization)
+                       T-Bridge-Retirement ◄── (parallel substrate-completion;
+                                              partial side-effect from
+                                              T-LensProducer-Retirement)
 ```
 
-**Parallel-capable work at steady state:** 5+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement). T-Verification-L4L7 has its own internal critical path (L4 harness → L5 cross-target → L6 coverage → L7 witnesses).
+**Parallel-capable work at steady state:** 6+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement). Verification has its own internal critical path: `T-V-L4-L7-Direct → T-V-L5-L6-Corpus` (because Corpus's L5 cross-target work consumes Direct's L4 corpus).
 
 ## Compromises being made
 
@@ -128,9 +144,9 @@ R3 commits to closing the consequence layer of the thesis. The following are *no
 | **TypeScript / Swift / HDL Shape A targets** | Same shape as Shape B saturation: the structural claim is `O(1)` per target; R2 ships Rust + Python + Go which proves the claim. Additional Shape A targets are adoption-driven, not thesis-required | Post-R3 ecosystem buildout |
 | **Tier 1 type-refinement features beyond R2 modeling** | If new modeling capabilities surface (e.g., refined-type narrowing beyond `Secret<T>` and `Dimension<Carrier>`), they're additions to the substrate, not thesis-required | Post-R3 modeling work |
 
-## Design challenges to resolve up-front
+## Design challenges — DECISIONS LOCKED 2026-04-28 per Director review
 
-These are decisions that should be made *before* R3 dispatch starts so workers don't spin on under-specified scope. They map to the load-bearing technical questions in R3 lanes.
+Director review of #1078 (2026-04-28T01:32:45Z) ratified the recommendations below as locked decisions. Before-dispatch design work is now scoped as **explicit milestone PRs** rather than comment-thread resolution (see §"Pre-R2-Evaluator design lock cadence" below). The text below preserves each design challenge with its locked decision; the cadence section names the PR sequence.
 
 ### 1. Evaluator runtime-value representation (R2-Evaluator scope, but R3 consumers depend on the choice)
 
@@ -142,7 +158,7 @@ These are decisions that should be made *before* R3 dispatch starts so workers d
 - Memoization: per-call or global? Affects how complex programs scale during L4-L7 verification
 - Witness construction surface: are witnesses first-class runtime values, or constructed by a separate proof-mode evaluation pass?
 
-**Recommendation:** resolve as part of R2-Evaluator design pass; R3 consumes the outcome. R3 lanes (especially T-Verification-L4L7) cannot start without this.
+**DECISION (Director-locked 2026-04-28):** Locked as Evaluator-Manager dispatch precondition; resolved via separate design PR (PR-B in cadence below). R3 consumes the outcome. R3 lanes (especially T-Verification-L4-L7-Direct) cannot start without this.
 
 ### 2. Lens reflection completeness scope
 
@@ -155,7 +171,7 @@ Today it's shallow/lossy (per Reflective Pattern B): doesn't reflect full behavi
 - Loop iteration counts: structural facts or runtime facts?
 - Branch arm coverage: every arm's body reflected, or only the executed arm?
 
-**Recommendation:** name a "reflection completeness spec" doc as a R2-Evaluator dependency. R3-T-LensProducer-Retirement consumes that spec.
+**DECISION (Director-locked 2026-04-28):** Reflection completeness spec is a T-LensProducer-Retirement prerequisite. Authored as PR-C in cadence below. R3-T-LensProducer-Retirement consumes that spec.
 
 ### 3. Cross-target equivalence harness — what does "equivalent" mean?
 
@@ -167,7 +183,7 @@ Today it's shallow/lossy (per Reflective Pattern B): doesn't reflect full behavi
 - Side-effects: how are effects normalized for comparison? Does the harness execute in isolated namespaces?
 - Test corpus: who curates? How does it grow?
 
-**Recommendation:** decide on **algebraic equivalence over a curated corpus** (not byte-equal across all programs). The L5 claim is that *semantics is invariant across targets* — that's algebraic, not lexical. Author the L5 spec doc as a T-Verification-L4L7 prerequisite.
+**DECISION (Director-locked 2026-04-28):** Algebraic equivalence over a curated corpus (not byte-equal across all programs). The L5 claim is that *semantics is invariant across targets* — that's algebraic, not lexical. L5 spec doc is PR-D in cadence below; gates T-Verification-L5-L6-Corpus.
 
 ### 4. SG-0 zero requirement for fixed-point
 
