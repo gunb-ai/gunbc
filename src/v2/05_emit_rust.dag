@@ -844,9 +844,10 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]))
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Map<String, Bool>, svc_module_map: Map<String, String>, data_items: Map<String, List<Node>>) -> TextFile {
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Map<String, Bool>, svc_module_map: Map<String, String>, data_items: Map<String, Node>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
+  let scoped_data_items = build_scoped_data_item_index(typed_module: typed_module, data_items: data_items)
   let prelude = emit_prelude()
   // Collect locally-defined type names so imports can skip them.
   let local_type_names = typed_module.items
@@ -894,7 +895,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       })
     |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items))
+    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items))
     |> join(separator: "\n\n")
   let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   // Avoid collision with the CLI entry point (src/main.rs)
