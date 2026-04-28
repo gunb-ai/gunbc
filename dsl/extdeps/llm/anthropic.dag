@@ -118,15 +118,26 @@ type AnthropicMessages200Usage {
   output_tokens: Int
 }
 
+// Message object envelope for POST /v1/messages 200 responses per Anthropic docs
+// (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
+// `model`, `stop_reason`, optional `stop_sequence`, `usage`. `AnthropicMessages200TextBlock`
+// remains the narrow text slice inside `content[]`; thinking, tool_use, images,
+// server tools, citations, and `usage` cache-token breakdowns stay gap-carried on
+// `structural_coverage_gap_anthropic_messages_outputs`.
 type AnthropicMessages200Body {
+  id: String
+  type: String
+  role: String
   content: List<AnthropicMessages200TextBlock>
   model: String
   stop_reason: StopReason
+  stop_sequence: String?
   usage: AnthropicMessages200Usage
 }
 
-// Receipt cleared for Messages: 200 body is `AnthropicMessages200Body` (typed serde).
-data structural_coverage_gap_anthropic_messages_outputs: List<String> = []
+data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|missing:container|AnthropicMessages200TextBlock|missing:thinking|missing:tool_use|missing:redacted_thinking|missing:web_search|missing:server_tool_use|missing:citations|AnthropicMessages200Usage|missing:cache_creation_input_tokens|missing:cache_read_input_tokens|missing:service_tier"
+]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
 // keyed by `type` (https://docs.anthropic.com/en/api/messages). `type` is not
