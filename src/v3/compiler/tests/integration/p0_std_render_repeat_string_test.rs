@@ -79,38 +79,13 @@ fn pads_then_text_like_indent() -> String {
     }
 }
 
-/// R1C-B — interim `p0_repeat_string_v2_oracle_rust_bridge` suite: v3 `TestRunner` + the same v2
-/// oracle string for `repeat_string(s: "x", n: 3)` (`dsl/std/render.dag`). Not the structural
-/// ROADMAP `p0_repeat_string_correct` receipt; see `r1_gates.template.dag` dissolution comment.
+/// R1C-B — interim `p0_repeat_string_v2_oracle_rust_bridge` suite through the v3 `TestRunner`.
+/// The v2 oracle for `repeat_string(s: "x", n: 3)` → `"xxx"` lives in
+/// `std_render_repeat_string_and_indent_text_match_interpreter` (same module — avoids duplicating
+/// a cold `compile_to_resolved` path under the CI 2s per-test ratchet). This test only pins the
+/// `.dag` gate + `OutputEquals` dispatch against `r1_gates.dag`.
 #[test]
 fn p0_repeat_string_v2_oracle_rust_bridge_gate_matches_v2_render_oracle() {
-    let root = repo_root();
-    assert!(
-        root.join("dsl/std/render.dag").is_file(),
-        "expected dsl/std/render.dag at {}",
-        root.display()
-    );
-
-    let src = r#"module test.repeat_string_regression
-import std.render { repeat_string }
-fn repeat_string_returns_n_copies() -> String { repeat_string(s: "x", n: 3) }
-"#;
-    let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph after successful resolve");
-    match v2_interpreter::run(
-        graph,
-        resolved.source_indices.clone(),
-        "repeat_string_returns_n_copies",
-    ) {
-        Ok(Value::Str(s)) => assert_eq!(s, "xxx"),
-        other => panic!("expected Str(\"xxx\"), got {other:?}"),
-    }
-
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate_path = manifest_dir.join("tests/fixtures/r1_gates.dag");
     let gate_source = std::fs::read_to_string(&gate_path)
