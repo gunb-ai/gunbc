@@ -36,21 +36,34 @@ A lens is a *generic algebra* over the 5 L1 behaviors. The compiler provides:
 fold_lens<C>: Lens<C> → Dag → DimensionReport<C>
 ```
 
-where `DimensionReport<C>` (already declared in `src/v3/std/dimensions.dag`) is:
+where `DimensionReport<Carrier>` is the **existing** carrier already declared at `src/v3/std/dimensions.dag:51-61`. Verbatim from that file:
 
 ```
-DimensionReport<C> = Satisfied { composed: C, witnesses: List<Witness<C>> }
-                   | Violated  { diagnostics: List<EmissionDiagnostic> }
+type DimensionReport<Carrier>
+  = DimensionOk {
+      dimension_name: String
+      composed: Carrier
+      witnesses: List<Witness<Carrier>>
+    }
+  | DimensionFail {
+      dimension_name: String
+      violations: List<Diagnostic>
+      witnesses: List<Witness<Carrier>>
+    }
 ```
 
-No silent fabrication; typed diagnostics on side-condition failure.
+The lens framework **reuses this carrier verbatim** — no parallel `LensReport` shape, no rename of variants, no rename of the `violations` field. Lens authors get the same fail-closed partition (`DimensionOk` carries `composed`; `DimensionFail` carries `violations: List<Diagnostic>` and never fabricates a carrier). `Witness<Carrier>` is also reused from `dimensions.dag:35-37` (`Inhabits(Carrier) | Violates { reason, at }`).
+
+**Carrier reconciliation note (2026-04-28 per codex BLOCKING finding on `4057b8f5`):** an earlier draft of this doc projected a desired `Satisfied { composed, witnesses } | Violated { diagnostics: List<EmissionDiagnostic> }` shape that did not match what's actually declared in `dimensions.dag`. That was parallel-representation debt — the lens framework would either need a separate type (rejected, parallel-representation) or `dimensions.dag` would need a rename cascade (out of scope for the lens primitive lane). **Resolution:** the framework consumes the existing `DimensionReport<Carrier>` as-is. If lens-specific failure data (e.g., richer than `Diagnostic`) is ever needed, that's a follow-up modeling question for `dimensions.dag` itself, not a lens-framework concern.
+
+No silent fabrication; typed diagnostics on side-condition failure (via `Diagnostic` variants on `DimensionFail.violations`).
 
 ## Director-locked design decisions (2026-04-28)
 
 Per Director response on #1078, the following are LOCKED for the framework spec:
 
 1. **Pure monoidal**, not stateful. Memory-peak (anamorphism + state-passing) is a *separate* framework — don't conflate. Stateful folds get their own primitive when needed (post-R3).
-2. **Result type:** `DimensionReport<C> = Satisfied { composed, witnesses } | Violated { diagnostics }`. Reuses the existing dimensions.dag carrier + EmissionDiagnostic. No silent fabrication.
+2. **Result type:** the existing `DimensionReport<Carrier> = DimensionOk { dimension_name, composed, witnesses } | DimensionFail { dimension_name, violations: List<Diagnostic>, witnesses }` from `src/v3/std/dimensions.dag` is reused verbatim — no parallel `LensReport` type, no variant rename. Lens-framework spec consumes the existing carrier as authoritative. Failure carries `violations: List<Diagnostic>` (not a separate `EmissionDiagnostic` type). No silent fabrication.
 3. **Higher-order shapes:** function-valued cost basis derived from signature. **Meta-lens (lens-on-lens) deferred post-R3** — solves a problem we don't have at structural close.
 4. **Cross-domain composition:** explicit declaration only. `Lens<C> × Lens<D> = Lens<(C, D)>` with product monoid; side-conditions compose conjunctively. **User-declared, not auto-derived.**
 5. **User-authored lens substrate:** T-LensAPI rescope to lens-as-monoid in same wave as `Lens<C>` lands. User-lens surface inherits structurally — same primitive for built-in and user-authored.
