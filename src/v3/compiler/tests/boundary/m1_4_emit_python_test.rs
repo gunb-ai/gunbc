@@ -102,7 +102,8 @@ fn emit_python_int_operators_use_correct_expression_templates() {
         "mul carrier must emit `*`; got:\n{out}"
     );
 
-    let src = "fn f(a: Int, b: Int) -> Int = a / b\n";
+    let src = "import std.error_primitives { DivError, Result }\n\
+fn f(a: Int, b: Int) -> Result<Int, DivError> = a / b\n";
     let out = emit_python_module_from_source(src, "int_div_py.v3");
     assert!(
         out.contains("__v3_idiv("),
@@ -151,6 +152,131 @@ fn double(x: Int) -> Int = x + x
     assert_eq!(
         shared_module, wrapper_module,
         "emit_python_module wrapper drifted from emit::emit_module"
+    );
+}
+
+#[test]
+fn emit_python_fails_closed_on_div_prelude_diverror_collision() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+let x = 6 / 2",
+        "python_diverror_collision.v3",
+    )
+    .expect("compiles");
+    let err =
+        emit_python_text(&dag).expect_err("Python emit must reject DivError prelude collision");
+    assert!(
+        matches!(err, v3_compiler::emit::EmitPythonError::Unsupported(ref message)
+            if message.contains("DivError")),
+        "expected explicit DivError collision error, got {err:?}"
+    );
+}
+
+#[test]
+fn emit_python_emits_diverror_prelude_for_explicit_result_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { DivError, Result }\n\
+fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
+        "python_explicit_result_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_python_module(&dag).expect("emits python module");
+    assert!(
+        out.contains("class DivError(enum.IntEnum):"),
+        "explicit Result<Int, DivError> usage needs DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
+fn emit_python_emits_diverror_prelude_for_result_field_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { DivError, Result }\n\
+type Holder { value: Result<Int, DivError> }\n",
+        "python_result_field_diverror_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_python_module(&dag).expect("emits python module");
+    assert!(
+        out.contains("class DivError(enum.IntEnum):"),
+        "type fields using Result<Int, DivError> need DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
+fn emit_python_checked_division_roundtrips_ok_and_errors() {
+    assert_eq!(
+        python_stdout("let x = 6 / 2\n", "python_div_ok.v3"),
+        "('Ok', 3)"
+    );
+    assert_eq!(
+        python_stdout("let x = 6 / 0\n", "python_div_zero.v3"),
+        "('Err', <DivError.DivideByZero: 0>)"
+    );
+}
+
+#[test]
+fn emit_python_checked_division_prelude_maps_overflow() {
+    let out = emit_python_text(
+        &compile_to_dag("let x = 6 / 2\n", "python_div_overflow_prelude.v3").expect("compiles"),
+    )
+    .expect("emits python");
+    assert_eq!(
+        out.matches("return ('Err', DivError.Overflow)").count(),
+        1,
+        "Python checked-division prelude must map min-int / -1 to Overflow; got: {out}"
+    );
+}
+
+#[test]
+fn emit_python_omits_div_prelude_for_user_diverror_signature_without_division() {
+    let dag = compile_to_dag(
+        "type DivError = DivideByZero | Overflow\n\
+fn passthrough(x: DivError) -> DivError = x\n",
+        "python_user_diverror_signature_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_python_module(&dag).expect("emits python module");
+    assert!(
+        !out.contains("def __v3_idiv"),
+        "user DivError signatures should not trigger integer division prelude; got: {out}"
+    );
+    assert!(
+        out.matches("class DivError:").count() == 1,
+        "user DivError should emit once without colliding with a std prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_python_fails_closed_on_div_prelude_helper_collision() {
+    let dag = compile_to_dag(
+        "fn __v3_idiv(a: Int, b: Int) -> Int = a + b\n\
+let x = 6 / 2",
+        "python_div_helper_collision.v3",
+    )
+    .expect("compiles");
+    let err =
+        emit_python_text(&dag).expect_err("Python emit must reject division helper collision");
+    assert!(
+        matches!(err, v3_compiler::emit::EmitPythonError::Unsupported(ref message)
+            if message.contains("__v3_idiv")),
+        "expected explicit __v3_idiv collision error, got {err:?}"
+    );
+}
+
+#[test]
+fn emit_python_fails_closed_on_div_prelude_top_level_bind_collision() {
+    let dag = compile_to_dag(
+        "let __v3_idiv = 0\n\
+let x = 6 / 2",
+        "python_div_helper_bind_collision.v3",
+    )
+    .expect("compiles");
+    let err =
+        emit_python_text(&dag).expect_err("Python emit must reject division helper bind collision");
+    assert!(
+        matches!(err, v3_compiler::emit::EmitPythonError::Unsupported(ref message)
+            if message.contains("__v3_idiv")),
+        "expected explicit __v3_idiv bind collision error, got {err:?}"
     );
 }
 
