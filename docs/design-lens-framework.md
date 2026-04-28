@@ -362,7 +362,7 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 - TestClaims:
   - `lens_tenant_flow_aggregate_validate_fail_closed`: validate detects missing capability; diagnostic span at workflow root
   - `lens_ifc_aggregate_validate_fail_closed`: validate detects clearance violation; diagnostic span at sink declaration
-- **Pass criterion:** `validate: C → OptionalDiagnostic` returns `SomeDiagnostic { value: Diagnostic }` on failure; the fold lifts that into `DimensionFail.violations`; no `at: Behavior` is fabricated for aggregate-level failures.
+- **Pass criterion:** `validate: (Dag, C) → OptionalDiagnostic` returns `SomeDiagnostic { value: Diagnostic }` on failure; the fold lifts that into `DimensionFail.violations`; no `at: Behavior` is fabricated for aggregate-level failures; workflow/sink declarations and span values are read from the explicit `Dag` parameter, not from hidden context.
 
 ### Migration-phase self-checks
 

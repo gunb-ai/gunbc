@@ -87,6 +87,39 @@ test_negative_t_verification_l4l7() {
     "T-Verification-L4L7 verifies the no-engine claim via runtime evaluation."
 }
 
+# Foot-gun pin: per gpt-5-5-pro review on 41ec5a87, the v1 RETRACTION_PATTERNS
+# include "[Rr]etracted" / "the retracted" as case-insensitive substring
+# matches. This means a line where a forbidden string is LIVE but an UNRELATED
+# clause on the same line mentions "retracted" is currently exempted from
+# the check. v2 guardrail requirement #3 (r2-structure.md) tightens this to
+# explicit-marker-only detection; until then this test pins the known
+# behavior so a future tightening surfaces in CI rather than silently.
+#
+# This test asserts the consumer CURRENTLY PASSES on a foot-gun fixture
+# (live forbidden string + unrelated retraction prose). When v2 narrows
+# the patterns, this assertion will flip and remind the implementer to
+# update the test.
+test_foot_gun_currently_allowed() {
+  cat > "$TMPDIR/docs/r2-structure.md" <<'EOF'
+# R2 Structure (foot-gun fixture per gpt-5-5-pro review)
+
+T-Ground-Engine is a live lane in this fixture; an unrelated prior plan was retracted last quarter.
+EOF
+  cd "$TMPDIR"
+  if bash "$TEST_CONSUMER" >/dev/null 2>&1; then
+    cd "$ROOT"
+    return 0
+  fi
+  cd "$ROOT"
+  echo "FOOT-GUN PINNED FLIPPED [foot-gun]: consumer now rejects the v1 foot-gun fixture"
+  echo "  This means v2 explicit-marker-only retraction detection has landed (or"
+  echo "  patterns have otherwise been narrowed). Update this test:"
+  echo "  - rename to test_negative_foot_gun_now_caught"
+  echo "  - flip the assertion to expect the consumer to FAIL"
+  echo "  - the v2 guardrail follow-up named in r2-structure.md is closing"
+  return 1
+}
+
 # Fail-closed-on-missing-doc: if a configured release doc is missing,
 # the consumer must fail with a diagnostic naming it. Silently skipping
 # would let release-control authority shrink without review.
@@ -182,6 +215,13 @@ for test_fn in \
     failures=$((failures + 1))
   fi
 done
+
+echo "Test (foot-gun): live forbidden string + unrelated retraction prose currently allowed (v1 foot-gun pinned)..."
+if test_foot_gun_currently_allowed; then
+  echo "  PASS (foot-gun still in effect; v2 guardrail follow-up still pending)"
+else
+  failures=$((failures + 1))
+fi
 
 echo "Test (missing-doc): consumer must fail-closed when a configured doc is missing..."
 if test_missing_doc_fails_closed; then
