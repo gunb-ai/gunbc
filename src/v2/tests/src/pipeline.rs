@@ -5546,6 +5546,69 @@ service test.Api {
     );
 }
 
+// RE-1j: typed `response { 200 => Wire }` deserializes with serde then projects fields.
+#[test]
+fn rest_typed_response_200_body_avoids_json_pointer() {
+    let source = r#"module re1j
+
+type WireBody {
+  wire_value: String from "wireValue"
+  items: List<WireItem>
+  kind: String from "type"
+}
+
+type WireItem {
+  value: Int
+}
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation Get {
+    output {
+      a: String from "wireValue"
+      b: Int from "items/0/value"
+      kind: String from "type"
+    }
+    transport rest { method: GET, path: "/x" }
+    response {
+      200 => WireBody
+      404 => String
+    }
+    mock_response {
+      200 => { wireValue: "ok", items: [{ value: 3 }], type: "demo" } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1j.rs");
+    assert!(
+        content.contains("let __rest_wire:") && content.contains("= response.json().await?"),
+        "RE-1j: expected typed 200-body deserialize into __rest_wire, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).wire_value"),
+        "RE-1j: expected from_key-aware struct projection for path wireValue, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).items")
+            && content.contains(".get(0)")
+            && content.contains(".value"),
+        "RE-1j: expected list-index projection for path items/0/value, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).kind"),
+        "RE-1j: expected from_key-aware projection for path type, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer("),
+        "RE-1j: typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
 #[test]
 fn func_with_service_calls_classified_effectful() {
     let source = r#"module re2_test
