@@ -41,6 +41,9 @@ RELEASE_DOCS=(
 FORBIDDEN_STRINGS=(
   "T-Ground-Engine"
   "T-Ground-Annotation"
+  "canonical choice"
+  "@target"
+  "DECISIONS LOCKED"
 )
 
 # Lines that count as "retraction context" — if a line containing a
@@ -84,6 +87,31 @@ RETRACTION_PATTERNS=(
   "framing"  # generic reference to a framing, usually descriptive
   "row.*replace\|replace.*row"
   "substrate-completion lane"
+  # Patterns specific to the additional forbidden strings
+  "ratified-direction"
+  "conflating"
+  "cannot be used"  # discipline-rule context
+  "discipline rule"
+  "anti-pattern"
+  "engine machinery"  # describing what was retracted
+  "annotation surface"  # describing what was retracted
+  "annotation substrate"  # describing what was retracted
+  "annotation syntax"  # describing what was retracted
+  "annotation as parallel authority"
+  "Annotations would"
+  "Annotations were"
+  "no annotation"
+  "No annotations"
+  "no longer used"
+  "DIRECTION-RATIFIED"  # the corrected state name
+  "DECIDED"  # the corrected state name
+  "SCHEDULED"  # the corrected state name
+  "consumer"  # references to this script itself
+  "reframe"
+  "the recurring pattern"
+  "describing the recurring"
+  "review loop"
+  "PAUSE_AND_REGROUP"
 )
 
 violations=0
