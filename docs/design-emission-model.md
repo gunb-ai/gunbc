@@ -955,7 +955,7 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Substrate sequencing locked 2026-04-28:**
 - **R2-T-Substrate-Lens-Primitive** (small substrate addition; ~1.5-2 weeks at gunbc velocity) declares `Lens<C>` parametric type + generic fold + cost-basis discipline. **Lands in R2** to avoid dual-representation risk per user direction "anything pushed out compounds exponentially."
-- **R3 lanes consume `Lens<C>`**: T-CostLens-Composition (cost basis = SymbolicCost), T-Verification-L4-L7-Direct (cost basis = emit/eval-match witness; algebraic-law witness), T-Bridge-Retirement (where applicable). Each is an instance, not a separate framework.
+- **R3 lanes consume `Lens<C>` differently** (per codex BLOCKING `f5f63c7d9`): **T-CostLens-Composition** is a `Lens<SymbolicCost>` instance — structural fold over substrate facts. **T-Verification-L4-L7-Direct** is NOT a `Lens<C>` instance — it's a *runtime equivalence check* that compares emit-target output vs .dag eval result; the lens framework's `read: (Dag, Behavior) → Witness<C>` cannot read emitted target artifacts. T-Verification-L4-L7-Direct *consumes* `Lens<C>` instances as inputs (e.g., `Lens<SymbolicCost>` for cost-related claims, `Lens<EmissionPathPresent>` for structural pre-checks) but the lane itself is corpus-driven runtime, not structural fold. T-Bridge-Retirement (where applicable) similarly.
 - **L6 collapses with the lens framework** per Director's insight: structural-form-coverage IS `Lens<EmissionPathPresent>` over substrate × language-specs. R2-T-Ground-CrossTarget-Meta scope reduces correspondingly. **Coordination flag (per R2 Grounding Manager review 2026-04-28):** to avoid authoring L6 twice, R2-T-Ground-CrossTarget-Meta and R2-T-Substrate-Lens-Primitive should land in coordinated sequence — Lens-Primitive lands first; CrossTarget-Meta consumes `Lens<EmissionPathPresent>` rather than authoring a parallel cross-product fold. If Lens-Primitive lands first, CrossTarget-Meta's scope is `Lens<EmissionPathPresent>` instance authoring + per-target spec authoring, not generic fold infrastructure.
 
 **Director's locked design decisions** (per response on #1078, recorded here for `design-lens-framework.md` authoring):
@@ -1075,10 +1075,10 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 | Property | By construction or by test? | Where it lives |
 |---|---|---|
-| **Faithful** | By construction (structural fold) + per-inhabitance non-violation gate (target-language-spec validation per axis) | Lens<FaithfulnessVerdict> + per-target test harness (emit a stub program; verify it compiles through the target's actual compiler) + spec-audit reviewer trail |
-| **Correct** | By test | L4 emit/eval match (existing) — wraps as `Lens<CorrectnessVerdict>` |
-| **Minimal** | By test | Lens<MinimalityVerdict> — checks emission has no unused machinery, no oversized type (e.g., `Vec<u8>` when `[u8; N]` would do). Compares against alternative emissions |
-| **Performant** | By test (with per-target performance model) | Lens<PerformanceVerdict> — per-target pathological-pattern check (e.g., `String::new()` for a static literal) |
+| **Faithful** | By construction (structural fold) + per-inhabitance non-violation gate (target-language-spec validation per axis) | `Lens<FaithfulnessVerdict>` (structural lens; reads substrate facts) + per-target test harness (emit a stub program; verify it compiles through the target's actual compiler) + spec-audit reviewer trail |
+| **Correct** | By runtime test (NOT a structural lens) | L4 emit/eval match (existing) — *runtime equivalence check* comparing emit-target output vs .dag eval result. **Not a `Lens<C>` instance** (per codex BLOCKING `f5f63c7d9`): `Lens.read` cannot read emitted target artifacts. Lives in T-Verification-L4-L7-Direct as corpus-driven runtime harness. |
+| **Minimal** | By comparison (could be structural or runtime) | If "minimality" is structurally definable (e.g., emission size = sum of substrate-declared sizes), `Lens<MinimalityVerdict>` works. If minimality requires comparing against alternative emissions (run alt-emit; compare), it's runtime — lives in T-Verification harness alongside L4. The structural version is preferred when expressible. |
+| **Performant** | Structural (reads substrate cost facts) | `Lens<PerformanceVerdict>` — reads per-target `RealizationCost` from substrate (per Q3 `(c3) RealizationCost { storage, access }` shape); checks for pathological patterns (e.g., O(n²) cost where O(n) is available). Structural lens; no runtime needed. |
 
 This is exactly what the lens framework is for — each property is a `Lens<Verdict>` instance composable into one verification harness.
 
