@@ -60,7 +60,13 @@ Before worker dispatch begins on the implementation sub-lanes above, **5 design 
 
 Plus **LanguageSpec parallel** (R2-T-Ground-LanguageSpec sub-lane) — Grounding Manager authors the LanguageSpec schema in parallel; Evaluator Manager consumes it for cross-target equivalence work. Independent of PR-A through PR-E.
 
-**Timing:** Evaluator design lock cadence dispatches **post-#1078-merge** (now). R1 close coordination handled by R1 Closure Manager (PR #1065); per Director directive R1 ASAP, design work shouldn't block on R1 closure mechanics. Specific R1-handover items coordinated via cross-manager queue (see Cross-program dependencies below).
+**Timing — option (c) hybrid (Director-locked 2026-04-28 via dialogue):**
+
+- **PR-A through PR-D** = design-only (no worker dispatch). **Dispatch immediately post-#1078-merge** — these don't conflict with R1 closure work because no workers are running on them yet. Director writes design docs; the structural-discipline handshake lives where workers dispatch, not here.
+- **PR-E (Final integration + worker dispatch brief)** = the load-bearing handshake. **Wait on R1-Closure-Manager-signals-R1-close** before authoring + dispatching. R1 closure window is small (fixture authoring only — single `r1_release_acceptance.dag` + R1C-B's 3 fixtures); the wait is days, not weeks.
+- **Worker dispatch on implementation sub-lanes** = blocks on PR-E + R1 close signal jointly.
+
+Rationale: artificially delaying PR-A through PR-D wouldn't preserve any real handshake invariant — those are design docs. The structural discipline (R1→R2 transition mechanics, manager spawn ordering, dispatch-discipline) fires at worker-dispatch time, which is exactly where PR-E + the joint wait gates it.
 
 ## Cross-program dependencies
 
@@ -86,8 +92,14 @@ Full disposition table: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`doc
 
 ## Pre-spawn vs post-spawn authority
 
-- **Pre-spawn (this brief authored post-#1078-merge by PM/Director):** brief authoring + PR-A through PR-E design-lock cadence sequence locked. Manager spawns once a design-lock PR is dispatchable.
+- **Pre-spawn (this brief authored post-#1078-merge by PM/Director):** brief authoring + PR-A through PR-E design-lock cadence sequence locked. Manager spawns once a design-lock PR is dispatchable. PR-A/B/C/D dispatch immediately (design-only, no workers); PR-E + worker dispatch wait on R1 close signal per option (c) hybrid above.
 - **Post-spawn (Evaluator Manager active):** Manager owns all worker-brief authoring autonomously per "Autonomous dispatch authority" below. Director's role narrows to cross-program conflict resolution + scope-change escalation.
+
+**R1 test-infrastructure precedent** (per Director coordination 2026-04-28; acknowledged in PR-E worker-dispatch brief — NOT substrate input): R1 closure produced reusable test-infrastructure patterns that PR-E should reference where applicable for R2-Evaluator's own structural-acceptance fixtures:
+- **TestPredicate variants from R1C-D** (`CensusBoundCheck` / `CensusSubsetCount` / `RatchetZero` / `GeneratedFromDag` / `FixedPointConverges`) — reusable test-predicate pattern; relevant for Evaluator's `.dag` TestClaim acceptance gates (Acceptance section above).
+- **Concession-encoding pattern from `r1_release_acceptance.dag`** (in flight via still-seal-529) — structural-fact-cites-lane-authority shape. Reusable for R2 lane-close fixtures with similar evaluator-ready-vs-substrate-pending disposition.
+
+**Explicitly NOT from R1** (Director-confirmed 2026-04-28): reflection completeness lives in PR-C (Evaluator's design lock); witness construction is R2-Substrate authority (`Witness<C>` + `DimensionReport` already exist in `src/v3/std/dimensions.dag`); Evaluator constructs witnesses by evaluating `.dag` bodies through the lens framework. R1 doesn't produce substrate facts R2-Evaluator consumes directly.
 
 ## Autonomous dispatch authority
 
