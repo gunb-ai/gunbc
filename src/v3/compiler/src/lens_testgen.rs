@@ -78,6 +78,7 @@ impl<'a> GeneratedClaim<'a> {
             FieldValue::Map(entries) => format!(
                 "{{ {} }}",
                 entries
+                    .entries()
                     .iter()
                     .map(|(key, value)| format!(
                         "{}: {}",
