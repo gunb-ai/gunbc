@@ -731,10 +731,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     |> first
   let wire_contract_item = match wire_contract_by_name {
     Some { value: v } => Some { value: v }
-    None =>
-      typed_module.items
-        |> filter(i => is_data_def_item(item: i) && match i.body { Some { value: _ } => true, None => false })
-        |> first
+    None => None
   }
   let items_str = typed_module.items
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))

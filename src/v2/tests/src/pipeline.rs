@@ -6100,7 +6100,7 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
         break;
     }
     assert!(
-        attrs_above.iter().any(|a| *a == serde_snake),
+        attrs_above.contains(&serde_snake),
         "expected {serde_snake} immediately above {enum_decl}; attrs (bottom-up): {:?}\ntail prelude:\n{}",
         attrs_above,
         &prelude[prelude.len().saturating_sub(1200)..]
