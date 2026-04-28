@@ -1080,7 +1080,7 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 | **Minimal** | By comparison (could be structural or runtime) | If "minimality" is structurally definable (e.g., emission size = sum of substrate-declared sizes), `Lens<MinimalityVerdict>` works. If minimality requires comparing against alternative emissions (run alt-emit; compare), it's runtime — lives in T-Verification harness alongside L4. The structural version is preferred when expressible. |
 | **Performant** | Structural (reads substrate cost facts) | `Lens<PerformanceVerdict>` — reads per-target `RealizationCost` from substrate (per Q3 `(c3) RealizationCost { storage, access }` shape); checks for pathological patterns (e.g., O(n²) cost where O(n) is available). Structural lens; no runtime needed. |
 
-This is exactly what the lens framework is for — each property is a `Lens<Verdict>` instance composable into one verification harness.
+**Distinction (per codex BLOCKING `f5f63c7d9`):** structural-fold properties (Faithful, Performant, structural-Minimal) are `Lens<C>` instances reading substrate facts. Runtime-equivalence properties (Correct = L4 emit/eval match; runtime-Minimal if not expressible structurally) live in T-Verification-L4-L7-Direct as corpus-driven harness — NOT lens instances. The lens framework is for *structural folds over .dag*; it doesn't generalize to "compare emit-target output vs eval result" because `Lens.read: (Dag, Behavior) → Witness<C>` only reads substrate, not emitted artifacts.
 
 **Cadence consequence:** PR-F is bounded to "axes the worked examples surface for Rust" — not "everything Rust offers." PR-G/H similarly. Each PR adds its target's axes per worked-examples-driven priority.
 
