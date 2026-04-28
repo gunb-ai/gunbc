@@ -4254,7 +4254,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let op_inferred = resolved_type(n: op_node)
   let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -4272,7 +4272,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
 // If mock data is available, use it. Otherwise, emit compile_error!().
 // For conjunctive output types (tuples), extract fields by name/from_key
 // from the mock JSON — matching the real path's extraction pattern.
-fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Map<String, Bool>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
@@ -4287,35 +4287,57 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
         // Single-field conjunctions (return type = field type) use from_value.
         let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
         if is_multi_field_conj {
-          // Output is a conjunction (record → tuple). Extract fields from
-          // mock JSON using from_key paths (or field names as fallback),
-          // then construct the tuple. This mirrors emit_from_key_extraction.
           let children = inferred.children
-          let extract_lines = children |> map(ch =>
-            let ch_name = authored_name_at(source_indices: source_indices, node: ch)
-            let field_name = emit_ident(name: ch_name, target: Rust)
-            let from_path = match child_from_key(ch: ch, source_indices: source_indices) {
-              Some { value: p } => p
-              None => ch_name
+          let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
+          if has_response_200_property(op_node: op_node, source_indices: source_indices) && match wire_opt {
+            None => true
+            Some { value: _ } => false
+          } {
+            concat(log_line, "\ncompile_error!(\"REST response_200 (dry-run): declared HTTP 200 body type is present but could not be resolved; illegal state\");\n")
+          } else {
+            let use_typed_wire = match wire_opt {
+              Some { value: tn } => !is_json_wire_declaration_type(t: tn, source_indices: source_indices)
+              None => false
             }
-            let raw = match ch.inferred {
-              Some { value: Resolved { node: tn } } =>
-                emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
-              _ =>
-                concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
+            let prelude = match wire_opt {
+              Some { value: tn } =>
+                if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
+                  concat("let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
+                } else {
+                  let wire_ty = match tn.inferred {
+                    Some { value: Resolved { node: rt } } => rt
+                    _ => tn
+                  }
+                  concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices), " = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
+                }
+              None => concat("let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
             }
-            // Optional fields: wrap extracted value in Some()
-            match ch.return_cardinality {
-              CardOptional => "{raw}\nlet {field_name} = Some({field_name});"
-              _ => raw
-            }
-          )
-          let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
-          let result_body = concat("(", field_names |> join(separator: ", "), ")")
-          concat(log_line, "\n",
-            "let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
-            extract_lines |> join(separator: "\n"),
-            "\nOk(", result_body, ")")
+            let extract_lines = children |> map(ch =>
+              let ch_name = authored_name_at(source_indices: source_indices, node: ch)
+              let field_name = emit_ident(name: ch_name, target: Rust)
+              let from_path = match child_from_key(ch: ch, source_indices: source_indices) {
+                Some { value: p } => p
+                None => ch_name
+              }
+              let raw = match ch.inferred {
+                Some { value: Resolved { node: tn } } =>
+                  if use_typed_wire {
+                    emit_typed_wire_field_assign(field_name: field_name, from_path: from_path)
+                  } else {
+                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+                  }
+                _ =>
+                  concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
+              }
+              match ch.return_cardinality {
+                CardOptional => concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
+                _ => raw
+              }
+            )
+            let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
+            let result_body = concat("(", field_names |> join(separator: ", "), ")")
+            concat(log_line, "\n", prelude, extract_lines |> join(separator: "\n"), "\nOk(", result_body, ")")
+          }
         } else {
           concat(log_line, "\n",
             "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",

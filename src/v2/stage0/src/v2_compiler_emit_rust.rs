@@ -11154,6 +11154,9 @@ pub fn emit_operation_method(
             &mock_props,
             registry.clone(),
             &env.source_indices.clone(),
+            op_node.clone(),
+            env,
+            shared_types.clone(),
         );
         let body = v2_rt::concat(
             v2_rt::concat(
@@ -11230,65 +11233,158 @@ pub fn emit_dry_run_branch_from_props(
     op_name: &String,
     inferred: &Rc<Node>,
     mock_props: &Rc<Vec<Rc<Node>>>,
-    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    _registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    op_node: Rc<Node>,
+    env: &Rc<TypeEnv>,
+    shared_types: Rc<HashMap<String, bool>>,
 ) -> String {
-    {
-        let log_line = v2_rt::concat(
-            v2_rt::concat("eprintln!(\"[dry-run] ".to_string(), op_name.clone()),
-            "\");".to_string(),
+    let log_line = v2_rt::concat(
+        v2_rt::concat("eprintln!(\"[dry-run] ".to_string(), op_name.clone()),
+        "\");".to_string(),
+    );
+    if mock_props.is_empty() {
+        return v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(
+                    log_line,
+                    "\ncompile_error!(\"no mock data available for dry-run operation: "
+                        .to_string(),
+                ),
+                op_name.clone(),
+            ),
+            "\")".to_string(),
         );
-        if ((mock_props.clone().len() as i64) > 0) {
-            {
-                let first_mock = mock_props.clone().first().cloned();
-                match first_mock {
-    Some(mp) => {
-                    let mock_json = emit_data_value_json(&field_init_node_value(&mp), source_indices.clone());
-let is_multi_field_conj = ((inferred.connective.clone() == Connective::Conj) && ((inferred.children.clone().len() as i64) > 1));
-if is_multi_field_conj {
-                        {
-                            let children = inferred.children.clone();
-let extract_lines = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push({
-                                let ch_name = authored_name_at(source_indices.clone(), &ch);
-let field_name = emit_ident(ch_name.clone(), RenderTarget::Rust);
-let from_path = match child_from_key(ch.clone(), source_indices.clone()) {
-    Some(p) => p.clone(),
-    None => ch_name.clone(),
-};
-let raw = match ch.inferred.clone().as_deref().cloned() {
-    Some(InferredNode::Resolved { node: tn, .. }) => emit_json_value_extract(field_name.clone(), &from_path, authored_name_at(source_indices.clone(), &tn)),
-    _ => v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("let ".to_string(), field_name.clone()), " = compile_error!(\"unresolved type for mock field: ".to_string()), ch_name.clone()), "\");".to_string()),
-};
-match ch.return_cardinality.clone() {
-    Cardinality::CardOptional => format!("{}\nlet {} = Some({});", raw.clone(), field_name.clone(), field_name.clone()),
-    _ => raw.clone(),
-}
-}); } __result });
-let field_names = Rc::new({ let mut __result = Vec::new(); for ch in children.clone().iter().cloned() { __result.push(emit_ident(authored_name_at(source_indices.clone(), &ch), RenderTarget::Rust)); } __result });
-let result_body = v2_rt::concat(v2_rt::concat("(".to_string(), field_names.join(&", ".to_string())), ")".to_string());
-v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(log_line, "\n".to_string()), "let json_body: serde_json::Value = serde_json::from_str(r#\"".to_string()), mock_json), "\"#)?;\n".to_string()), extract_lines.join(&"\n".to_string())), "\nOk(".to_string()), result_body), ")".to_string())
-}
-                    } else {
-                        v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(log_line, "\n".to_string()), "let mock_value: serde_json::Value = serde_json::from_str(r#\"".to_string()), mock_json), "\"#)?;\n".to_string()), "Ok(serde_json::from_value(mock_value)?)".to_string())
-                    }
-},
-    None => v2_rt::concat(log_line, "\ncompile_error!(\"mock property list was non-empty but first() returned None\")".to_string()),
-}
-            }
-        } else {
+    }
+    let Some(mp) = mock_props.first().cloned() else {
+        return v2_rt::concat(
+            log_line,
+            "\ncompile_error!(\"mock property list was non-empty but first() returned None\")"
+                .to_string(),
+        );
+    };
+    let mock_json = emit_data_value_json(&field_init_node_value(&mp), source_indices.clone());
+    let is_multi_field_conj =
+        inferred.connective == Connective::Conj && (inferred.children.len() as i64) > 1;
+    if !is_multi_field_conj {
+        return v2_rt::concat(
             v2_rt::concat(
                 v2_rt::concat(
                     v2_rt::concat(
-                        log_line,
-                        "\ncompile_error!(\"no mock data available for dry-run operation: "
-                            .to_string(),
+                        v2_rt::concat(log_line, "\n".to_string()),
+                        "let mock_value: serde_json::Value = serde_json::from_str(r#\"".to_string(),
                     ),
-                    op_name.clone(),
+                    mock_json,
                 ),
-                "\")".to_string(),
-            )
-        }
+                "\"#)?;\n".to_string(),
+            ),
+            "Ok(serde_json::from_value(mock_value)?)".to_string(),
+        );
     }
+    let children = inferred.children.clone();
+    let wire_opt =
+        operation_response_200_resolved_type(op_node.clone(), source_indices.clone(), env);
+    if has_response_200_property(op_node.clone(), source_indices.clone()) && wire_opt.is_none() {
+        return v2_rt::concat(
+            log_line,
+            "\ncompile_error!(\"REST response_200 (dry-run): declared HTTP 200 body type is present but could not be resolved; illegal state\");\n"
+                .to_string(),
+        );
+    }
+    let use_typed_wire = match wire_opt.clone() {
+        Some(tn) => !is_json_wire_declaration_type(tn, source_indices.clone()),
+        None => false,
+    };
+    let prelude = if use_typed_wire {
+        let tn = wire_opt
+            .as_ref()
+            .expect("use_typed_wire implies response_200 resolved type")
+            .clone();
+        let wire_ty = match tn.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => rt,
+            _ => tn.clone(),
+        };
+        let rust_ty = render_rust_type(wire_ty, shared_types.clone(), source_indices.clone());
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat("let __rest_wire: ".to_string(), rust_ty),
+                " = serde_json::from_str(r#\"".to_string(),
+            ),
+            v2_rt::concat(mock_json.clone(), "\"#)?;\n".to_string()),
+        )
+    } else {
+        v2_rt::concat(
+            v2_rt::concat(
+                "let json_body: serde_json::Value = serde_json::from_str(r#\"".to_string(),
+                mock_json,
+            ),
+            "\"#)?;\n".to_string(),
+        )
+    };
+    let extract_parts: Vec<String> = children
+        .iter()
+        .cloned()
+        .map(|ch| {
+            let ch_name = authored_name_at(source_indices.clone(), &ch);
+            let field_name = emit_ident(ch_name.clone(), RenderTarget::Rust);
+            let from_path = match child_from_key(ch.clone(), source_indices.clone()) {
+                Some(p) => p.clone(),
+                None => ch_name.clone(),
+            };
+            let raw = match ch.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: tn, .. }) => {
+                    if use_typed_wire {
+                        emit_typed_wire_field_extract(
+                            field_name.clone(),
+                            &from_path,
+                            authored_name_at(source_indices.clone(), &tn),
+                        )
+                    } else {
+                        emit_json_value_extract(
+                            field_name.clone(),
+                            &from_path,
+                            authored_name_at(source_indices.clone(), &tn),
+                        )
+                    }
+                }
+                _ => v2_rt::concat(
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            v2_rt::concat("let ".to_string(), field_name.clone()),
+                            " = compile_error!(\"unresolved type for mock field: ".to_string(),
+                        ),
+                        ch_name.clone(),
+                    ),
+                    "\");".to_string(),
+                ),
+            };
+            match ch.return_cardinality.clone() {
+                Cardinality::CardOptional => {
+                    format!("{}\nlet {} = Some({});", raw, field_name, field_name)
+                }
+                _ => raw,
+            }
+        })
+        .collect();
+    let field_names: Vec<String> = children
+        .iter()
+        .cloned()
+        .map(|ch| emit_ident(authored_name_at(source_indices.clone(), &ch), RenderTarget::Rust))
+        .collect();
+    let result_body = v2_rt::concat(
+        v2_rt::concat("(".to_string(), field_names.join(&", ".to_string())),
+        ")".to_string(),
+    );
+    v2_rt::concat(
+        v2_rt::concat(
+            v2_rt::concat(
+                v2_rt::concat(v2_rt::concat(log_line, "\n".to_string()), prelude),
+                extract_parts.join(&"\n".to_string()),
+            ),
+            "\nOk(".to_string(),
+        ),
+        v2_rt::concat(result_body, ")".to_string()),
+    )
 }
 
 pub fn emit_transport_call(
