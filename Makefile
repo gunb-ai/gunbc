@@ -10,7 +10,7 @@
 
 .DEFAULT_GOAL := help
 
-.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry ci
+.PHONY: help preflight-fix ensure-codegen build-release-bins lint-upsert codegen build clean testgen testgen-check bootstrap-check verify verify-fix fmt-fix lint-fix test-all test test-xs test-s test-m test-l test-xl test-small test-medium test-large test-extra-large test-integration test-external check clippy fmt fmt-check test-fix check-fix clippy-fix bootstrap bootstrap-dry build-all build-all-dry design design-dry gist gist-dry gist-diff gist-diff-dry gist-recent gist-recent-dry infra infra-dry readme readme-dry workflow workflow-dry ci release-doc-authority-check release-doc-authority-test
 
 # Preflight: auto-fix rustc warnings before running generators
 preflight-fix:
@@ -56,6 +56,19 @@ bootstrap-check: lint-upsert
 verify: lint-upsert
 	@$(MAKE) bootstrap-check
 	@$(MAKE) testgen-check
+	@$(MAKE) release-doc-authority-check
+
+# Release-doc authority consumer — fails if forbidden stale concept names
+# appear in live (non-retraction) sections of release-control docs.
+# Authority: docs/r2-structure.md §"Release-doc authority discipline".
+release-doc-authority-check:
+	@bash scripts/check-release-doc-authority.sh
+
+# Self-test for the release-doc authority consumer. Without this, future
+# RETRACTION_PATTERNS broadening could silently neuter the consumer
+# (broaden patterns until everything passes).
+release-doc-authority-test:
+	@bash scripts/test-check-release-doc-authority.sh
 
 # Ensure generated artifacts are up to date
 verify-fix: lint-upsert
