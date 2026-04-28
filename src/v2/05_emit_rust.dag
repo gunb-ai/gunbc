@@ -4325,9 +4325,9 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
-  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices)
+  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -4345,7 +4345,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
 // If mock data is available, use it. Otherwise, emit compile_error!().
 // For conjunctive output types (tuples), extract fields by name/from_key
 // from the mock JSON — matching the real path's extraction pattern.
-fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Map<String, Bool>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
@@ -4360,35 +4360,60 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
         // Single-field conjunctions (return type = field type) use from_value.
         let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
         if is_multi_field_conj {
-          // Output is a conjunction (record → tuple). Extract fields from
-          // mock JSON using from_key paths (or field names as fallback),
-          // then construct the tuple. This mirrors emit_from_key_extraction.
           let children = inferred.children
-          let extract_lines = children |> map(ch =>
-            let ch_name = authored_name_at(source_indices: source_indices, node: ch)
-            let field_name = emit_ident(name: ch_name, target: Rust)
-            let from_path = match child_from_key(ch: ch, source_indices: source_indices) {
-              Some { value: p } => p
-              None => ch_name
+          let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
+          if has_response_200_property(op_node: op_node, source_indices: source_indices) && match wire_opt {
+            None => true
+            Some { value: _ } => false
+          } {
+            concat(log_line, "\ncompile_error!(\"REST response_200 (dry-run): declared HTTP 200 body type is present but could not be resolved; illegal state\");\n")
+          } else {
+            let use_typed_wire = match wire_opt {
+              Some { value: tn } => !is_json_wire_declaration_type(t: tn, source_indices: source_indices)
+              None => false
             }
-            let raw = match ch.inferred {
-              Some { value: Resolved { node: tn } } =>
-                emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
-              _ =>
-                concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
+            let prelude = match wire_opt {
+              Some { value: tn } =>
+                if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
+                  concat("let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
+                } else {
+                  let wire_ty = match tn.inferred {
+                    Some { value: Resolved { node: rt } } => rt
+                    _ => tn
+                  }
+                  concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices), " = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
+                }
+              None => concat("let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
             }
-            // Optional fields: wrap extracted value in Some()
-            match ch.return_cardinality {
-              CardOptional => "{raw}\nlet {field_name} = Some({field_name});"
-              _ => raw
-            }
-          )
-          let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
-          let result_body = concat("(", field_names |> join(separator: ", "), ")")
-          concat(log_line, "\n",
-            "let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
-            extract_lines |> join(separator: "\n"),
-            "\nOk(", result_body, ")")
+            let extract_lines = children |> map(ch =>
+              let ch_name = authored_name_at(source_indices: source_indices, node: ch)
+              let field_name = emit_ident(name: ch_name, target: Rust)
+              let from_path = match child_from_key(ch: ch, source_indices: source_indices) {
+                Some { value: p } => p
+                None => ch_name
+              }
+              let raw = match ch.inferred {
+                Some { value: Resolved { node: tn } } =>
+                  if use_typed_wire {
+                    match wire_opt {
+                      Some { value: wire_node } => emit_typed_wire_field_assign(field_name: field_name, from_path: from_path, wire_node: wire_node, source_indices: source_indices)
+                      None => concat("let ", field_name, " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n")
+                    }
+                  } else {
+                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+                  }
+                _ =>
+                  concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
+              }
+              match ch.return_cardinality {
+                CardOptional => concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
+                _ => raw
+              }
+            )
+            let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
+            let result_body = concat("(", field_names |> join(separator: ", "), ")")
+            concat(log_line, "\n", prelude, extract_lines |> join(separator: "\n"), "\nOk(", result_body, ")")
+          }
         } else {
           concat(log_line, "\n",
             "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
@@ -4402,14 +4427,14 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
   }
 }
 
-fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices) }
+fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
+  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
   else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
   else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
   else { emit_local_call(op_name: op_name) }
 }
 
-fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let client_init = "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_indices: source_indices)
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
@@ -4424,7 +4449,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   )
   let send_line = "let response = request.send().await?;"
   // RE-1e: Response code mapping
-  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices)
+  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env)
   let all_lines = concat([client_init, url_line, auth_line],
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
@@ -4645,6 +4670,110 @@ fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>)
   is_conj && from_key_count > 0
 }
 
+fn has_response_200_property(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  op_node.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200")
+}
+
+// Returns none when the property is absent or when it is present but the body type
+// cannot be resolved. Emitters must combine with has_response_200_property for fail-closed behavior.
+fn operation_response_200_resolved_type(op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node? {
+  match op_node.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200") |> first {
+    Some { value: p } => {
+      let v = field_init_node_value(n: p)
+      match v.inferred {
+        Some { value: Resolved { node: tn } } => Some { value: tn }
+        _ => {
+          let type_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: v))
+          if type_name == "" { none } else { lookup_type_by_name(env: env, name: type_name) }
+        }
+      }
+    }
+    None => none
+  }
+}
+
+fn is_json_wire_declaration_type(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let n = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: t))
+  if n == "Json" { true }
+  else {
+    let parts = n |> split(delimiter: ".")
+    match parts |> last {
+      Some { value: last } => last == "Json"
+      None => false
+    }
+  }
+}
+
+fn path_segment_is_list_index(seg: String) -> Bool {
+  if string_length(s: seg) == 0 { false }
+  else { seg |> chars |> all(c => c >= 48 && c <= 57) }
+}
+
+type WirePathProjection {
+  expr: String
+  node: Node?
+  ok: Bool
+}
+
+fn wire_child_for_segment(wire_node: Node, seg: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  let normed = normalize_access_type_node(n: wire_node)
+  match normed.children |> filter(ch =>
+    let authored = authored_name_at(source_indices: source_indices, node: ch)
+    let wire_key = match child_from_key(ch: ch, source_indices: source_indices) {
+      Some { value: k } => k
+      None => authored
+    }
+    wire_key == seg
+  ) |> first {
+    Some { value: ch } => Some { value: ch }
+    None => none
+  }
+}
+
+fn advance_wire_path_projection(state: WirePathProjection, seg: String, full_path: String, source_indices: Map<String, NewlineIndex>) -> WirePathProjection {
+  if !state.ok { state }
+  else if path_segment_is_list_index(seg: seg) {
+    let next_node = match state.node {
+      Some { value: n } => Some { value: for_each_element_type_node(n: n, source_indices: source_indices) }
+      None => none
+    }
+    WirePathProjection {
+      expr: concat("(", state.expr, ").get(", seg, ").ok_or_else(|| format!(\"REST path missing index ", seg, " at ", full_path, "\"))?")
+      node: next_node
+      ok: true
+    }
+  } else {
+    match state.node {
+      Some { value: n } =>
+        match wire_child_for_segment(wire_node: n, seg: seg, source_indices: source_indices) {
+          Some { value: ch } => WirePathProjection {
+            expr: concat("(", state.expr, ").", emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
+            node: Some { value: resolved_type(n: ch) }
+            ok: true
+          }
+          None => WirePathProjection { expr: state.expr, node: none, ok: false }
+        }
+      None => WirePathProjection { expr: state.expr, node: none, ok: false }
+    }
+  }
+}
+
+fn emit_wire_struct_path_chain(base: String, wire_node: Node, from_path: String, source_indices: Map<String, NewlineIndex>) -> WirePathProjection {
+  let segs = from_path |> split(delimiter: "/") |> filter(s => s != "")
+  segs |> fold(init: WirePathProjection { expr: base, node: Some { value: wire_node }, ok: true }, f: (acc, seg) =>
+    advance_wire_path_projection(state: acc, seg: seg, full_path: from_path, source_indices: source_indices)
+  )
+}
+
+fn emit_typed_wire_field_assign(field_name: String, from_path: String, wire_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let projection = emit_wire_struct_path_chain(base: "__rest_wire", wire_node: wire_node, from_path: from_path, source_indices: source_indices)
+  if projection.ok {
+    concat("let ", field_name, " = ", projection.expr, ".clone();\n")
+  } else {
+    concat("let ", field_name, " = compile_error!(\"REST typed response path could not be resolved against declared 200 body: ", from_path, "\");\n")
+  }
+}
+
 // RFC 6901 JSON Pointer escaping: ~ becomes ~0, / becomes ~1
 fn escape_json_pointer_segment(seg: String) -> String {
   seg |> replace("~", "~0") |> replace("/", "~1")
@@ -4674,10 +4803,35 @@ fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: S
 }
 
 // RE-1i: Emit JSON pointer extraction for all output fields.
-// Deserializes to serde_json::Value, extracts each field by path, returns tuple.
-fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+// When `response { 200 => NonJsonType }` is declared, deserializes the 200 body to
+// that type and projects fields via Rust field chains (same slash paths as `from`).
+fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let rt = resolved_type(n: op_node)
   let children = rt.children
+  let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
+  if has_response_200_property(op_node: op_node, source_indices: source_indices) && match wire_opt {
+    None => true
+    Some { value: _ } => false
+  } {
+    "compile_error!(\"REST response_200: declared HTTP 200 body type is present but could not be resolved (empty name, missing TypeEnv binding, or inference gap); illegal state\");\n"
+  } else {
+  let use_typed_wire = match wire_opt {
+    Some { value: tn } => !is_json_wire_declaration_type(t: tn, source_indices: source_indices)
+    None => false
+  }
+  let prelude = match wire_opt {
+    Some { value: tn } =>
+      if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
+        "let json_body: serde_json::Value = response.json().await?;\n"
+      } else {
+        let wire_ty = match tn.inferred {
+          Some { value: Resolved { node: rt } } => rt
+          _ => tn
+        }
+        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices), " = response.json().await?;\n")
+      }
+    None => "let json_body: serde_json::Value = response.json().await?;\n"
+  }
   let extract_lines = children |> map(ch =>
     let ch_name = authored_name_at(source_indices: source_indices, node: ch)
     let field_name = emit_ident(name: ch_name, target: Rust)
@@ -4687,7 +4841,14 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
     }
     match ch.inferred {
       Some { value: Resolved { node: tn } } =>
-        emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+        if use_typed_wire {
+          match wire_opt {
+            Some { value: wire_node } => emit_typed_wire_field_assign(field_name: field_name, from_path: from_path, wire_node: wire_node, source_indices: source_indices)
+            None => concat("let ", field_name, " = compile_error!(\"REST typed response: response_200 wire type missing despite typed projection; illegal state\");\n")
+          }
+        } else {
+          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+        }
       _ =>
         concat("let ", field_name, " = compile_error!(\"unresolved type for output field: ", ch_name, "\");")
     }
@@ -4698,10 +4859,8 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
   } else {
     concat("(", field_names |> join(separator: ", "), ")")
   }
-  concat(
-    "let json_body: serde_json::Value = response.json().await?;\n",
-    extract_lines |> join(separator: "\n"),
-    "\nOk(", tuple_body, ")")
+  concat(prelude, extract_lines |> join(separator: "\n"), "\nOk(", tuple_body, ")")
+  }
 }
 
 // Emit response body for operations without `from` key annotations.
@@ -4719,17 +4878,17 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
   }
 }
 
-fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
   if response_props |> count == 0 {
     if use_from_key {
-      emit_from_key_extraction(op_node: op_node, source_indices: source_indices)
+      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
     } else {
       emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
     }
   } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices))
+    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -4739,7 +4898,7 @@ fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: M
   }
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let name = field_init_node_name_at(n: prop, source_indices: source_indices)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   // RFC 9110: 2xx = success, everything else = error
@@ -4754,7 +4913,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: N
     else { code_str }
   if is_success {
     if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices), " },")
+      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env), " },")
     } else {
       concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
     }
