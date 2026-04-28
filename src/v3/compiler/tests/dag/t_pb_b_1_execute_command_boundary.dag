@@ -30,6 +30,14 @@ data claim_shell_exit_ok: TestClaim = {
   requires: []
 }
 
+data claim_shell_exit_nonzero_matches: TestClaim = {
+  name: "ExecuteCommand sh -c exit 7 (typed nonzero match)",
+  source: "let marker: Int = 1",
+  file_name: "t_pb_b_1_execute_cmd_marker.v3",
+  predicate: ExecuteCommand("sh", ["-c", "exit 7"], 7),
+  requires: []
+}
+
 data claim_echo_hi: TestClaim = {
   name: "ExecuteCommand echo hi (non-tautological argv)",
   source: "let marker: Int = 1",
@@ -40,5 +48,10 @@ data claim_echo_hi: TestClaim = {
 
 data suite_execute_command_boundary: TestSuite = {
   name: "t-pb-b-1/execute_command/boundary",
-  claims: [claim_tautology_true, claim_shell_exit_ok, claim_echo_hi]
+  claims: [
+    claim_tautology_true,
+    claim_shell_exit_ok,
+    claim_shell_exit_nonzero_matches,
+    claim_echo_hi
+  ]
 }
