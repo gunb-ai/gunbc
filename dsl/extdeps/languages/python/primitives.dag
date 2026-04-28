@@ -188,19 +188,20 @@ type PythonUnitSpecCarrierTag
 // concrete-width integer routing should consult target-specific lanes
 // (Rust / Go `*_integer_range` rows) rather than synthesizing a width here.
 //
-// Practice 4 (docs/modeling-discipline.md): **🟢 GREEN (terminal coproduct).**
-// Ledger — all four arms are spec-realized and consumed; each has a
-// matching row in `python_spec_predeclared_primitives` /
-// `python_dag_unit_target_primitive`:
+// Practice 4 (docs/modeling-discipline.md): **🟡 YELLOW (scheduled
+// scaffold).** All four arms are spec-realized and consumed today (each
+// has a matching row in `python_spec_predeclared_primitives` /
+// `python_dag_unit_target_primitive`):
 //   - `PythonIntegerPrimitive` ↔ row `int` (spec §"Numeric Types" — int).
 //   - `PythonBooleanPrimitive` ↔ row `bool` (spec §"Boolean Type — bool").
 //   - `PythonStringPrimitive`  ↔ row `str`  (spec §"Text Sequence — str").
 //   - `PythonUnitPrimitive`    ↔ row `None` (spec §"The Null Object — None").
-// No reserved scaffold arm needed (already ≥2 arms by construction).
-// Dissolution trigger for the partition itself: when DB-11 / cardinality
+// The partition itself is YELLOW (not GREEN) because its end-state is
+// dissolution, not steady-state coexistence: when DB-11 / cardinality
 // substrate lets algebra+carrier be referenced as data, all four variants
 // collapse into a single record-shaped row with refinement-typed fields,
 // and `PythonPrimitive` retires alongside the per-variant witness tags.
+// Dissolution trigger: DB-11 / cardinality substrate (named).
 // =========================================================================
 
 type PythonPrimitive
