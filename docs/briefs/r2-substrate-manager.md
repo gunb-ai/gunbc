@@ -87,17 +87,18 @@ Dispatch sequence: **PR-PreF lands first** (foundational substrate; everything e
 
 | Sub-lane | Size | Current status | Carrier shape |
 |---|---|---|---|
-| T-Substrate cardinality-for-int-lit | M | BRIEF LANDED (`t-substrate-cardinality-int-lit-worker.md`, PR #806 merged 2026-04-25); duplicate R2 routing doc closed as redundant. **Now consumes PR-PreF Interval<D>** when it lands. | range facts + reconciliation narrowing; Int128/Word128 carrier deferred to sibling sub-lane |
-| T-Substrate nominal-opaque-for-Secret | M | BRIEF AUTHORED (`r2-substrate-nominal-opaque-for-secret-subset.md`; PR #836 merged 2026-04-26) | nominal-type construction/access restriction |
-| T-Substrate parametric-algebra-for-Dimensions | M | CLOSED BY AUDIT (`r2-substrate-parametric-algebra-for-dimensions-subset.md`; PR #836 merged 2026-04-26); substrate already exists, consumer dispatchable. | existing `Declaration.phantom_params` + `phantom_unit_mismatch` carrier |
-| T-Substrate ValueBody-list/sum + std.unicode | L | BRIEF LANDED (`t-substrate-valuebody-list-worker.md`, PR #790 merged 2026-04-25) | top-level list/sum literal lowering + bootstrap/load-set |
+| T-Substrate cardinality-for-int-lit | M | BRIEF LANDED (`t-substrate-cardinality-int-lit-worker.md`, PR #806 merged 2026-04-25). **Now consumes PR-PreF Interval<D>** when it lands. | range facts + reconciliation narrowing; Int128/Word128 carrier deferred to sibling sub-lane |
+| T-Substrate nominal-opaque-for-Secret | M | BRIEF AUTHORED (PR #836); **fail-closed field-projection enforcement LANDED via #937** (NominalOpacityViolation diagnostic + production enforcement before nominal-opaque field descent; complements #900 carrier-only staging). Secret<T> consumer migration still pending per `r2-modeling-secret-graduation-worker.md`. | nominal-type construction/access restriction |
+| T-Substrate parametric-algebra-for-Dimensions | M | CLOSED BY AUDIT (PR #836); substrate already exists, consumer dispatchable. **T-Cost-Dimension fail-closed symbolic-cost analysis LANDED via #1003** (DominateScanAcc conjunctive accumulator; relevant to Dimensions consumer modeling). | existing `Declaration.phantom_params` + `phantom_unit_mismatch` carrier |
+| T-Substrate ValueBody-list/sum + std.unicode | L | BRIEF LANDED (PR #790 merged 2026-04-25) | top-level list/sum literal lowering + bootstrap/load-set |
+| **T-Substrate ValueBody-Map** *(NEW; R2 unblocker)* | M | **SUBSTRATE LANDED via #1017** (string-keyed `ValueBody::Map` + nested `FieldValue::Map` carriers; structural lowering of `Map<String, _>` literals). **Tightening landed via #1068** (`FieldMap` newtype with private storage + duplicate-key validation at construction). Consumer plumbing (read-path/API + arrow-body evaluation) pending — unblocks PB Manager `kernel_algebra_profile` mirror dissolution. | top-level map literal substrate |
 | **T-Substrate-Lens-Primitive** *(NEW 2026-04-28)* | M | NOT YET AUTHORED — gated on PR-K lock (Q6+Q7+Q8) | `Lens<C>` 6-field record in `src/v3/std/dimensions.dag` (sibling to existing `AnalysisDimension<Carrier>` + `Dimension<Unit, Carrier>`); Witness<C>+OptionalDiagnostic+DimensionReport<C> already in substrate |
 | **PR-PreF Interval<D> consolidation** *(NEW 2026-04-28)* | S | NOT YET AUTHORED — Director-authored or Substrate-Manager-authored | shared parent type for CardinalityBound / SizeBound / LoopBound::Cardinality |
 | B4.1 DeclarationRef consumer migration | M | LANDED (PR #826 merged 2026-04-26) | existing carrier consumer migration |
-| B4.2 fold-shape carrier | S | BRIEF AUTHORED (`b4-2-structural-fold-shape-carrier-worker.md`; PR #836 merged 2026-04-26) | structural fold-eligibility query/carrier decision |
+| B4.2 fold-shape carrier | S | BRIEF AUTHORED (PR #836); **first-consumer wiring LANDED** (`feat(v3): add B4.2 structural fold eligibility`) | structural fold-eligibility query/carrier decision |
 | B4.3 emit-helper carrier | S | LANDED (PR #824 merged 2026-04-26) | typed role marker on Bind/Branch nodes |
 | B4.4 extdeps-fixture-set carrier | S | LANDED (PR #825 merged 2026-04-26) | typed extdeps-bootstrap-set declaration |
-| B4.5–B4.12 Phase 2 site dissolutions | S each | QUEUE AUTHORED (`b4-phase-2-site-dissolution-queue.md`); implementation briefs dispatch as Phase 1 carriers land. | mechanical consumer migration per site |
+| B4.5–B4.12 Phase 2 site dissolutions | S each | QUEUE AUTHORED (`b4-phase-2-site-dissolution-queue.md`); **B4.8 LANDED via #1069** (emit-helper file-marker bind selection in roundtrip fixture; first Phase-2 site dissolved); B4.5/B4.6/B4.7/B4.9–B4.12 still queued as Phase 1 carriers land. | mechanical consumer migration per site |
 | **R3 continuation: T-CostLens-Composition** *(NEW 2026-04-28; R3 lane)* | M | NOT YET AUTHORED — gated on T-Substrate-Lens-Primitive landing + R2 close | structural Lens<RealizationCost> instance; Monoid<SymbolicCost> + JoinSemilattice + BoundedLattice<BigOClass> witnesses |
 
 ## Cross-program dependencies
@@ -185,14 +186,15 @@ Pending — post-spawn manager-authored autonomously:
 
 ## Working state (fill on spawn)
 
-Spawn refresh, 2026-04-28 (post-#1078):
+Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 
-- T-Substrate prereqs (R2): cardinality-for-int-lit producer landed (#806); nominal-opaque producer brief exists; parametric-algebra producer closed by audit because `phantom_params` already exists; ValueBody-list/sum landed (#790).
-- T-Substrate-Lens-Primitive: NEW lane added 2026-04-28; gated on PR-K cadence lock (Q6+Q7+Q8 design questions resolved into substrate spec).
-- PR-PreF Interval<D>: NEW prepended cadence; foundational substrate consolidation; gates everything else.
-- B4 Phase 1: B4.1, B4.3, B4.4 landed; B4.2 brief exists and remains the immediate unlanded Phase 1 implementation lane.
-- B4 Phase 2: queue exists; dispatch follows Phase 1 carrier disposition.
-- R3 continuation T-CostLens-Composition: deferred to R3 spin-up; gated on Lens<C> primitive landing.
+- **T-Substrate prereqs (R2):** cardinality-for-int-lit producer landed (#806); nominal-opaque substrate landed (#900) + fail-closed field-projection enforcement landed (#937); parametric-algebra closed by audit; ValueBody-list/sum landed (#790); **ValueBody::Map carrier landed (#1017) + tightened (#1068)** — kernel_algebra_profile no longer a "future sub-lane" at substrate level, only consumer plumbing remains.
+- **T-Substrate-Lens-Primitive:** NEW lane added 2026-04-28; gated on PR-K cadence lock.
+- **PR-PreF Interval<D>:** NEW prepended cadence; foundational substrate consolidation; gates everything else.
+- **B4 Phase 1:** B4.1 (#826), B4.3 (#824), B4.4 (#825) landed; B4.2 first-consumer wiring landed.
+- **B4 Phase 2:** B4.8 LANDED via #1069 (first Phase-2 dissolution); B4.5/B4.6/B4.7/B4.9–B4.12 still queued.
+- **R3 continuation T-CostLens-Composition:** deferred to R3 spin-up; gated on Lens<C> primitive landing.
+- **Adjacent landings:** T-Cost-Dimension fail-closed symbolic-cost analysis (#1003) — relevant precedent for Dimensions consumer fail-closed semantics.
 
 ## Cross-refs
 
