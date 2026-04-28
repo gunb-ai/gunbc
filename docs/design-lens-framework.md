@@ -21,7 +21,8 @@ This is the structural primitive that THESIS implies but doesn't make explicit:
 
 ```
 Lens<C> = {
-  read:     Node → C            // per-node cost basis (read from substrate facts)
+  name:     String              // dimension identifier (populates DimensionReport.dimension_name)
+  read:     Node → Witness<C>   // per-node cost basis (read from substrate facts; typed failure channel)
   unit:     C                   // identity element of C's monoid
   compose:  (C, C) → C          // sequential composition (Bind)
   parallel: (C, C) → C          // parallel composition (Branch)
@@ -29,6 +30,16 @@ Lens<C> = {
   validate: C → Witness<C>      // side-condition (optional; for fail-closed lenses)
 }
 ```
+
+**Why `read` returns `Witness<C>` and not `C`** (per codex BLOCKING finding on `4057b8f5`): a `Node → C` signature has no typed failure channel — a missing per-node substrate fact (e.g., a primitive without a declared cost) would have to either fabricate a default `C` (violates fail-closed) or panic (violates fail-closed). `Witness<C>` from `src/v3/std/dimensions.dag:35-37` is the existing typed channel:
+
+```
+type Witness<Carrier>
+  = Inhabits(Carrier)              // fact present; carries the read value
+  | Violates { reason: String, at: Behavior }   // fact missing; structured failure
+```
+
+The fold accumulates `Witness<C>` outputs from `read`. Any `Violates` becomes a `Diagnostic` in the final `DimensionFail.violations` — no fabricated carrier ever reaches `compose`. This matches the existing `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` pattern at `dimensions.dag:74`.
 
 A lens is a *generic algebra* over the 5 L1 behaviors. The compiler provides:
 
@@ -90,12 +101,13 @@ type SymbolicCost = CostExpr {
 
 | Field | Definition |
 |---|---|
-| `read(node)` | Reads operation's declared cost from `dsl/std/algebra.dag` (e.g., `OrderedRing.add` → CostExpr(1, 1, O(1))) |
+| `name` | `"complexity"` |
+| `read(node)` | Reads operation's declared cost from `dsl/std/algebra.dag` and wraps as `Inhabits(...)` (e.g., `OrderedRing.add` → `Inhabits(CostExpr(1, 1, O(1)))`); `Violates { reason: "no declared cost for <op>", at: <node.behavior> }` if the substrate has no fact for that operation |
 | `unit` | `CostExpr(work=0, span=0, asymptotic_class=O(1))` |
 | `compose` (Bind) | `CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))` |
 | `parallel` (Branch) | `CostExpr(work=a.work + b.work, span=max(a.span, b.span), class=max(a.class, b.class))` |
 | `iterate` (Loop) | `CostExpr(work=body.work × bound, span=body.span × bound, class=multiply_class(body.class, bound))` |
-| `validate` | None (complexity has no side-condition; always `DimensionOk`) |
+| `validate` | None (complexity has no side-condition; always `DimensionOk` if all reads `Inhabits`) |
 
 **Worked program:**
 ```
@@ -104,13 +116,13 @@ data y = parallel { sort(x), aggregate(x) }   // branch: max
 data z = compute_summary(y, in)        // bind: O(1)
 ```
 
-**Fold trace:**
-1. `read(compute_pair)` → `CostExpr(n, n, O(n))`
-2. `read(sort)` → `CostExpr(n log n, log n, O(n log n))`
-3. `read(aggregate)` → `CostExpr(n, n, O(n))`
-4. `parallel(sort, aggregate)` → `CostExpr(n log n + n, max(log n, n), O(n log n))`
+**Fold trace** (every `read` returns `Witness<CostExpr>`; the fold unwraps `Inhabits(c)` and accumulates witnesses; any `Violates` would short-circuit to `DimensionFail`):
+1. `read(compute_pair)` → `Inhabits(CostExpr(n, n, O(n)))`
+2. `read(sort)` → `Inhabits(CostExpr(n log n, log n, O(n log n)))`
+3. `read(aggregate)` → `Inhabits(CostExpr(n, n, O(n)))`
+4. `parallel(sort, aggregate)` → `CostExpr(n log n + n, max(log n, n), O(n log n))` (compose pulls inhabited values; same for steps 5/7)
 5. `compose(compute_pair, parallel(...))` → `CostExpr(n + (n log n + n), n + max(log n, n), O(n log n))`
-6. `read(compute_summary)` → `CostExpr(1, 1, O(1))`
+6. `read(compute_summary)` → `Inhabits(CostExpr(1, 1, O(1)))`
 7. `compose(...)` → final = `CostExpr(O(n log n) work, O(n) span, O(n log n) class)`
 
 **Result:** `DimensionOk { dimension_name: "complexity", composed: CostExpr(work=O(n log n), span=O(n), class=O(n log n)), witnesses: [...per-step...] }`
@@ -131,7 +143,8 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 
 | Field | Definition |
 |---|---|
-| `read(node)` | Reads operation's declared capability requirement set (e.g., `read[TenantA].orders` → `{Read(TenantA)}`) |
+| `name` | `"tenant-flow"` |
+| `read(node)` | Reads operation's declared capability requirement set wrapped as `Inhabits(...)` (e.g., `read[TenantA].orders` → `Inhabits({Read(TenantA)})`); `Violates { reason: "no declared capability requirement for <op>", at: <node.behavior> }` if the substrate has no fact for that operation |
 | `unit` | `{}` (empty capability set) |
 | `compose` (Bind) | Set union — sequential composition accumulates capabilities |
 | `parallel` (Branch) | Set union — parallel branches require all capabilities of any arm |
@@ -146,10 +159,10 @@ data report = aggregate(orders)         // CapSet: {} (pure)
 data summary = write[TenantB].report    // CapSet: {Write(TenantB)}
 ```
 
-**Fold trace:**
-1. `read(read[TenantA].orders)` → `{Read(TenantA)}`
-2. `read(aggregate)` → `{}`
-3. `read(write[TenantB].report)` → `{Write(TenantB)}`
+**Fold trace** (every `read` returns `Witness<CapSet>`; the fold unwraps `Inhabits(c)` to feed compose; any `Violates` would short-circuit to `DimensionFail`):
+1. `read(read[TenantA].orders)` → `Inhabits({Read(TenantA)})`
+2. `read(aggregate)` → `Inhabits({})`
+3. `read(write[TenantB].report)` → `Inhabits({Write(TenantB)})`
 4. `compose(...)` → `{Read(TenantA), Write(TenantB)}`
 5. `validate({Read(TenantA), Write(TenantB)})` against grant `{Read(TenantA), Write(TenantA)}`:
    - Missing: `{Write(TenantB)}` — **NOT GRANTED**
@@ -172,7 +185,8 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 
 | Field | Definition |
 |---|---|
-| `read(node)` | Reads operation's data label (e.g., `read[TopSecret].records` → `TopSecret`) |
+| `name` | `"ifc"` |
+| `read(node)` | Reads operation's data label wrapped as `Inhabits(...)` (e.g., `read[TopSecret].records` → `Inhabits(TopSecret)`); `Violates { reason: "no declared security label for <op>", at: <node.behavior> }` if the substrate has no fact for that operation |
 | `unit` | `Public` (lattice bottom) |
 | `compose` (Bind) | Lattice join (`max`) — sequential composition takes the highest label |
 | `parallel` (Branch) | Lattice join (`max`) — parallel branches yield the highest label |
@@ -187,11 +201,11 @@ data report = aggregate(secret_data)             // label: TopSecret (join with 
 data output = write[Sink].report                 // label: TopSecret (sink expects Confidential)
 ```
 
-**Fold trace:**
-1. `read(read[TopSecret].records)` → `TopSecret`
-2. `read(aggregate)` → `Public` (unit)
+**Fold trace** (every `read` returns `Witness<SecurityLabel>`; the fold unwraps `Inhabits(c)` to feed compose; any `Violates` would short-circuit to `DimensionFail`):
+1. `read(read[TopSecret].records)` → `Inhabits(TopSecret)`
+2. `read(aggregate)` → `Inhabits(Public)` (unit; pure operation has no data label of its own)
 3. `compose(TopSecret, Public)` → `TopSecret` (lattice join = max)
-4. `read(write[Sink].report)` → `Public` (the sink itself doesn't carry data; its label is the clearance constraint)
+4. `read(write[Sink].report)` → `Inhabits(Public)` (the sink itself doesn't carry data; its label is the clearance constraint, applied via `validate`)
 5. `compose(TopSecret, Public)` → `TopSecret`
 6. `validate(TopSecret)` against sink clearance `Confidential`:
    - `TopSecret ⊐ Confidential` → downgrade required, NOT granted
@@ -259,9 +273,11 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 - **Pass criterion:** the composed lens correctly identifies a program that satisfies complexity but violates IFC (or vice versa). Failure = product monoid spec is wrong.
 
 **D5. DimensionReport<C> covers all failure modes.**
-- Enumerate failure modes across the 3 instances (complexity has none; tenant has CapabilityViolation; IFC has IFCDowngradeViolation).
-- Verify each maps to a `Diagnostic` value with an appropriate `CompilerDiagnosticKind` variant (lens instances may extend `CompilerDiagnosticKind` with their own kinds, e.g., `CapabilityViolation`, `IFCDowngradeViolation`).
-- **Pass criterion:** no failure mode requires fabricating a result; all surface as typed diagnostics. Failure = the result type needs additional variants.
+- Enumerate failure modes across the 3 instances:
+  - **Read-channel failures** (every instance): substrate has no fact for a node — `read` returns `Violates { reason, at }`; fold short-circuits to `DimensionFail` with that violation surfaced as a `Diagnostic` (kind = `MissingSubstrateFact` or per-instance variant)
+  - **Validate-channel failures** (per instance): complexity has none; tenant has `CapabilityViolation`; IFC has `IFCDowngradeViolation`
+- Verify each maps to a `Diagnostic` value with an appropriate `CompilerDiagnosticKind` variant (lens instances may extend `CompilerDiagnosticKind` with their own kinds).
+- **Pass criterion:** no failure mode requires fabricating a result; all surface as typed diagnostics — including the read-channel failure mode (per codex BLOCKING finding on `4057b8f5`: `read` must return `Witness<C>`, not `C`, so missing substrate facts cannot fabricate a `C` before validation).
 
 **D6. Director's 6 locked decisions hold under examples.**
 - Decision 1 (pure monoidal): verify none of the 3 examples requires state-passing. If memory-peak is needed, name it as separate framework.
@@ -277,9 +293,10 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 These run during substrate-worker dispatch, before declaring the lane closed. Each is a TestClaim-shaped acceptance.
 
 **I1. `dsl/std/lens.dag` declares `Lens<C>` and type-checks against existing substrate.**
-- Lens<C> declaration includes the 6 fields (read, unit, compose, parallel, iterate, validate).
-- Type-checks against existing `BoundedLattice<T>` and `DimensionReport<Carrier>` patterns.
-- **Pass criterion:** substrate parses; structural-form ratchet remains green.
+- Lens<C> declaration includes the 7 fields (`name`, `read`, `unit`, `compose`, `parallel`, `iterate`, `validate`).
+- `read: Node → Witness<C>` (typed failure channel; reuses `Witness<Carrier>` from `src/v3/std/dimensions.dag:35-37`).
+- Type-checks against existing `BoundedLattice<T>`, `DimensionReport<Carrier>`, and `Witness<Carrier>` patterns.
+- **Pass criterion:** substrate parses; structural-form ratchet remains green; no fabricated-carrier path exists in `read` (codex BLOCKING discipline).
 
 **I2. Generic fold machinery `fold_lens<C>` is small.**
 - Implementation in `src/v3/std/lens.dag` (or equivalent) is ≤ 200 lines.
@@ -309,6 +326,15 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 - A user (test author) declares a custom `Lens<MyCostBasis>` with their own monoid; runs the fold; gets a result.
 - TestClaim `user_authored_lens_via_framework`: confirms the user-lens surface uses the same machinery as built-ins.
 - **Pass criterion:** no special path for user lenses vs built-ins.
+
+**I8. Read-channel fail-closed TestClaim** (added per codex BLOCKING finding on `4057b8f5`).
+- Construct a program that uses an operation for which the substrate has no declared cost/capability/label fact (whichever instance is being tested).
+- Run the lens fold; expect `DimensionFail` with `violations` containing a `Diagnostic` whose kind names the missing fact and whose `at` field identifies the offending node/behavior.
+- TestClaims:
+  - `lens_complexity_missing_cost_fail_closed`: fold on a program with an op lacking declared cost → `DimensionFail`
+  - `lens_tenant_flow_missing_cap_fail_closed`: fold on a program with an op lacking declared capability requirement → `DimensionFail`
+  - `lens_ifc_missing_label_fail_closed`: fold on a program with an op lacking declared security label → `DimensionFail`
+- **Pass criterion:** every instance's `read` returns `Witness<C>`; missing facts produce typed diagnostics; no fabricated `C` ever reaches `compose`.
 
 ### Migration-phase self-checks
 
