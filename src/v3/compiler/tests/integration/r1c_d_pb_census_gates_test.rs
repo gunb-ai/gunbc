@@ -94,3 +94,18 @@ fn r1c_d_pb_census_gates_suite_evaluates_through_runner() {
         }
     }
 }
+
+#[test]
+#[ignore]
+fn r1c_d_dump_status() {
+    let dag = compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH).unwrap();
+    let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
+    for r in &results {
+        let s = match &r.result {
+            ClaimResult::Pass => "PASS".to_string(),
+            ClaimResult::Fail(f) => format!("FAIL: {f:?}"),
+            other => format!("OTHER: {other:?}"),
+        };
+        eprintln!("{}: {}", r.claim_name, s);
+    }
+}
