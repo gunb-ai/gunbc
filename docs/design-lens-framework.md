@@ -26,7 +26,7 @@ Lens<C> = {
   unit:     C                               // identity element of C's monoid
   compose:  (C, C) → C                      // sequential composition (BindNode); both arms run
   branch:   (C, C) → C                      // exclusive choice (BranchNode); only one arm runs — cost composition is max/join over arms, NOT work-additive
-  iterate:  (C, Bound) → C                  // bounded iteration (LoopNode)
+  iterate:  (C, LoopBound) → C              // bounded iteration (LoopNode); LoopBound from src/v3/std/substrate.dag:316
   validate: (Dag, C) → OptionalDiagnostic   // aggregate side-condition; Dag for workflow/sink lookup; aggregate location via Diagnostic.span
 }
 ```
@@ -124,7 +124,7 @@ type SymbolicCost = CostExpr {
 | `unit` | `CostExpr(work=0, span=0, asymptotic_class=O(1))` |
 | `compose` (Bind) | `CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))` |
 | `branch` (BranchNode) | `CostExpr(work=max(a.work, b.work), span=max(a.span, b.span), class=max(a.class, b.class))` — exclusive choice = worst case across arms (only one arm runs at runtime; the lens conservatively reports the worst); NOT work-additive |
-| `iterate` (Loop) | `CostExpr(work=body.work × bound, span=body.span × bound, class=multiply_class(body.class, bound))` |
+| `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | `CostExpr(work=body.work × loop_bound, span=body.span × loop_bound, class=multiply_class(body.class, loop_bound))` |
 | `validate(dag, c)` | Always `NoDiagnostic` — complexity has no side-condition; `dag` is unused; final result is `DimensionOk` if all reads `Inhabits` |
 
 **Worked program:**
@@ -166,7 +166,7 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 | `unit` | `{}` (empty capability set) |
 | `compose` (Bind) | Set union — sequential composition accumulates capabilities |
 | `branch` (BranchNode) | Set union — exclusive choice; only one arm runs but compile-time analysis doesn't know which, so defensive accumulation: program must be granted capabilities for any arm it might take |
-| `iterate` (Loop) | Set union of body × any-iter (bound doesn't matter for capability set; all iterations together) |
+| `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | Body's CapSet (the loop bound doesn't matter for capability set — every iteration requires the same caps as the body) |
 | `validate(dag, set)` | Reads `workflow.cap_grant` from `dag` (the `@cap_grant(...)` declaration on the workflow root). If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root span — read from dag>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and grant data come from `dag`, not hidden context) |
 
 **Worked program:**
@@ -208,7 +208,7 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 | `unit` | `Public` (lattice bottom) |
 | `compose` (Bind) | Lattice join (`max`) — sequential composition takes the highest label |
 | `branch` (BranchNode) | Lattice join (`max`) — exclusive choice; defensive worst-case label across arms (only one arm runs but compile-time analysis must allow for either) |
-| `iterate` (Loop) | Lattice join (`max`) of body × any-iter (label doesn't change with bound) |
+| `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | Body's label (the loop bound doesn't matter for IFC labels — every iteration produces data with the same label as the body) |
 | `validate(dag, label)` | Reads sink declaration + clearance (`@sink_clearance(...)`) from `dag`. If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration span — read from dag>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and clearance data come from `dag`, not hidden context) |
 
 **Worked program:**
@@ -315,7 +315,7 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 - `read: (Dag, Behavior) → Witness<C>` (typed per-Behavior failure channel; matches `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` at `dimensions.dag:74` verbatim).
 - `validate: (Dag, C) → OptionalDiagnostic` (aggregate-level failure channel; `Dag` for workflow/sink declaration lookup; `OptionalDiagnostic` from `dimensions.dag:41-43`; location info via `Diagnostic.span: SourceSpan`, not per-Behavior).
 - All `read` and `validate` lookups go through the explicit `Dag` parameter — no hidden global lookup authority.
-- Type-checks against existing `BoundedLattice<T>`, `DimensionReport<Carrier>`, `Witness<Carrier>`, `OptionalDiagnostic`, `Dag`, and `Behavior` patterns from `src/v3/std/`.
+- Type-checks against existing `BoundedLattice<T>`, `DimensionReport<Carrier>`, `Witness<Carrier>`, `OptionalDiagnostic`, `Dag`, `Behavior`, and `LoopBound` types from `src/v3/std/`.
 - **Pass criterion:** substrate parses; structural-form ratchet remains green; no fabricated-carrier path in `read`; no fabricated-`Behavior` path in `validate`; no hidden global lookups (every substrate fact accessed through `Dag` parameter).
 
 **I2. Generic fold machinery `fold_lens<C>` is small.**
