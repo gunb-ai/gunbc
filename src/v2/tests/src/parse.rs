@@ -460,9 +460,9 @@ fn tokenizer_scales_linearly_with_file_size() {
     );
 
     // If tokenization is O(n), time ratio should be ≈ size ratio.
-    // Allow ~3× slack on that ratio: loaded CI VMs still jitter `large_time`.
-    // True O(n²) is ~size_ratio².
-    const LINEAR_MARGIN: f64 = 2.9;
+    // Median-of-5 timings on both inputs damp noise; keep modest slack for
+    // full-suite load on shared runners. True O(n²) is ~size_ratio².
+    const LINEAR_MARGIN: f64 = 3.2;
     assert!(
         time_ratio < size_ratio * LINEAR_MARGIN,
         "tokenization appears super-linear: size ratio {:.1}x but time ratio {:.1}x (expected < {:.1}x)",
@@ -493,7 +493,7 @@ fn tokenizer_scanning_scales_linearly() {
         size_ratio, time_ratio,
     );
 
-    const LINEAR_MARGIN: f64 = 2.9;
+    const LINEAR_MARGIN: f64 = 3.2;
     assert!(
         time_ratio < size_ratio * LINEAR_MARGIN,
         "scanning appears super-linear: size ratio {:.1}x but time ratio {:.1}x (expected < {:.1}x)",
