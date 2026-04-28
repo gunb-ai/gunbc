@@ -74,7 +74,9 @@ data sub_type_alias_where_lowers_gate: TestSuite = {
 // **Dissolution:** delete this claim + suite when `p0_repeat_string_correct` is authored as a
 // structural `.dag` gate that evaluates modeled repeat_string behavior (or an equivalent v3
 // witness) per ROADMAP T-P0 strict reading. Until then, `p0_std_render_repeat_string_test` + this
-// suite couple the literal witness to the v2 interpreter oracle.
+// suite couple the literal witness to the v2 interpreter oracle (`p0_std_render_repeat_string_test`
+// `std_render_repeat_string_and_indent_text_match_interpreter`; this module avoids duplicating that
+// cold path in the bridge runner test under CI per-test timing budgets).
 data p0_repeat_string_v2_oracle_rust_bridge: TestClaim = {
   name: "p0_repeat_string_v2_oracle_rust_bridge",
   source: "data repeat_string_returns_n_copies: String = \"xxx\"\n",
