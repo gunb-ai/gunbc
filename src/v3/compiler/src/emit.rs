@@ -131,6 +131,7 @@ pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
 pub(crate) fn div_prelude_reserved_name_collision<'a>(
     type_decls: impl IntoIterator<Item = &'a &'a Declaration>,
     function_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+    top_level_binds: impl IntoIterator<Item = &'a &'a BindNode>,
     helper_name: &'static str,
 ) -> Option<&'static str> {
     if type_decls
@@ -142,6 +143,14 @@ pub(crate) fn div_prelude_reserved_name_collision<'a>(
     function_decls
         .into_iter()
         .any(|decl| decl.name.as_deref() == Some(helper_name))
+        .then_some(helper_name)
+        .or_else(|| {
+            top_level_binds
+                .into_iter()
+                .any(|bind| bind.name == helper_name)
+                .then_some(helper_name)
+        })
+}
         .then_some(helper_name)
 }
 
@@ -1368,7 +1377,12 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         || dag_needs_go_result_prelude(dag, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
-        div_prelude_reserved_name_collision(type_decls.iter(), function_decls.iter(), "v3intdiv"),
+        div_prelude_reserved_name_collision(
+            type_decls.iter(),
+            function_decls.iter(),
+            top_level_binds.iter(),
+            "v3intdiv",
+        ),
     ) {
         return Err(EmitError::UnsupportedBehavior(format!(
             "Go checked-division prelude would collide with user-defined `{name}`"

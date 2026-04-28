@@ -2760,6 +2760,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         div_prelude_reserved_name_collision(
             type_decls.iter(),
             function_decls.iter(),
+            top_level_binds.iter(),
             "__v3_int_div",
         ),
     ) {
