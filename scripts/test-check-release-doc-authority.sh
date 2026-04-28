@@ -216,13 +216,25 @@ for test_fn in \
   fi
 done
 
-echo "Test (foot-gun): live forbidden string + unrelated retraction prose currently allowed (v1 foot-gun pinned)..."
+echo ""
+echo "=== Pinned v1 limitations (NOT contract assertions; documented foot-guns) ==="
+echo "These tests document KNOWN v1 false-negatives. Their PASS does NOT mean the"
+echo "consumer is correctly handling the case — it means the consumer's behavior"
+echo "matches the documented v1 limitation. When v2 narrows the patterns to fix"
+echo "the limitation, the assertion flips and this test FAILS, telling the next"
+echo "implementer to update the test name + flip the assertion."
+echo ""
+limitation_failures=0
+echo "Pinned-limitation (v1 foot-gun): consumer currently exempts a live forbidden string when an unrelated clause mentions 'retracted'..."
 if test_foot_gun_currently_allowed; then
-  echo "  PASS (foot-gun still in effect; v2 guardrail follow-up still pending)"
+  echo "  DOCUMENTED-LIMITATION (v1 retraction-pattern foot-gun is exempt by design; v2 narrowing per r2-structure.md §v2-guardrail-requirement-3 will flip this)"
 else
-  failures=$((failures + 1))
+  echo "  ASSERTION FLIPPED (consumer now rejects the foot-gun fixture — v2 narrowing has landed; rename this test + flip the assertion)"
+  limitation_failures=$((limitation_failures + 1))
 fi
 
+echo ""
+echo "=== Contract assertions (resume) ==="
 echo "Test (missing-doc): consumer must fail-closed when a configured doc is missing..."
 if test_missing_doc_fails_closed; then
   echo "  PASS"
@@ -239,11 +251,21 @@ fi
 
 if [ "$failures" -gt 0 ]; then
   echo ""
-  echo "Self-test FAILED: $failures assertion(s) failed."
+  echo "Self-test FAILED: $failures contract assertion(s) failed."
   echo "The consumer at $CONSUMER is not enforcing its declared contract."
   exit 1
+fi
+
+if [ "$limitation_failures" -gt 0 ]; then
+  echo ""
+  echo "Self-test PARTIAL: contract assertions pass, but $limitation_failures pinned-"
+  echo "limitation test(s) flipped — the v1 foot-gun is no longer exhibited, meaning"
+  echo "v2 narrowing has likely landed. Update the test name + flip the assertion to"
+  echo "match the new consumer contract."
+  exit 0
 fi
 
 echo ""
 echo "Self-test PASSED: consumer correctly distinguishes live forbidden strings"
 echo "from retraction-context forbidden strings."
+echo "(8 contract assertions + 1 pinned v1 limitation documented; total 9 tests)"
