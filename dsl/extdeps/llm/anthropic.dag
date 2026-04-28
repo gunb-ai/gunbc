@@ -8,7 +8,7 @@
 //
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
+import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract }
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { VariantEncoding }
@@ -118,6 +118,8 @@ type AnthropicMessages200Usage {
   output_tokens: Int
 }
 
+type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseTurn | Refusal
+
 // Message object envelope for POST /v1/messages 200 responses per Anthropic docs
 // (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
 // `model`, `stop_reason`, optional `stop_sequence`, `usage`. `AnthropicMessages200TextBlock`
@@ -130,7 +132,7 @@ type AnthropicMessages200Body {
   role: String
   content: List<AnthropicMessages200TextBlock>
   model: String
-  stop_reason: StopReason
+  stop_reason: AnthropicStopReason
   stop_sequence: String?
   usage: AnthropicMessages200Usage
 }
@@ -181,7 +183,7 @@ service llm.Anthropic {
     output {
       content: String from "content/0/text"
       model: String from "model"
-      stop_reason: StopReason from "stop_reason"
+      stop_reason: AnthropicStopReason from "stop_reason"
       input_tokens: Int from "usage/input_tokens"
       output_tokens: Int from "usage/output_tokens"
     }

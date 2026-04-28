@@ -5552,8 +5552,13 @@ fn rest_typed_response_200_body_avoids_json_pointer() {
     let source = r#"module re1j
 
 type WireBody {
-  a: String
-  b: Int
+  wire_value: String from "wireValue"
+  items: List<WireItem>
+  kind: String from "type"
+}
+
+type WireItem {
+  value: Int
 }
 
 service test.Api {
@@ -5562,8 +5567,9 @@ service test.Api {
   }
   operation Get {
     output {
-      a: String from "a"
-      b: Int from "b"
+      a: String from "wireValue"
+      b: Int from "items/0/value"
+      kind: String from "type"
     }
     transport rest { method: GET, path: "/x" }
     response {
@@ -5571,7 +5577,7 @@ service test.Api {
       404 => String
     }
     mock_response {
-      200 => { a: "ok", b: 3 } "ok"
+      200 => { wireValue: "ok", items: [{ value: 3 }], type: "demo" } "ok"
     }
   }
 }
@@ -5584,8 +5590,18 @@ service test.Api {
         "RE-1j: expected typed 200-body deserialize into __rest_wire, got:\n{content}"
     );
     assert!(
-        content.contains("( __rest_wire ).a") || content.contains("(__rest_wire).a"),
-        "RE-1j: expected struct field projection for path a, got:\n{content}"
+        content.contains("(__rest_wire).wire_value"),
+        "RE-1j: expected from_key-aware struct projection for path wireValue, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).items")
+            && content.contains(".get(0)")
+            && content.contains(".value"),
+        "RE-1j: expected list-index projection for path items/0/value, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).kind"),
+        "RE-1j: expected from_key-aware projection for path type, got:\n{content}"
     );
     assert!(
         !content.contains("json_body.pointer("),

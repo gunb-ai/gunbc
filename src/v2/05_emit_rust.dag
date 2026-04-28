@@ -4322,7 +4322,10 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
               let raw = match ch.inferred {
                 Some { value: Resolved { node: tn } } =>
                   if use_typed_wire {
-                    emit_typed_wire_field_assign(field_name: field_name, from_path: from_path)
+                    match wire_opt {
+                      Some { value: wire_node } => emit_typed_wire_field_assign(field_name: field_name, from_path: from_path, wire_node: wire_node, source_indices: source_indices)
+                      None => concat("let ", field_name, " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n")
+                    }
                   } else {
                     emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
                   }
@@ -4633,20 +4636,69 @@ fn path_segment_is_list_index(seg: String) -> Bool {
   else { seg |> chars |> all(c => c >= 48 && c <= 57) }
 }
 
-fn emit_wire_struct_path_chain(base: String, from_path: String) -> String {
-  let segs = from_path |> split(delimiter: "/") |> filter(s => s != "")
-  segs |> fold(init: base, f: (acc, seg) =>
-    if path_segment_is_list_index(seg: seg) {
-      concat("(", acc, ").get(", seg, ").ok_or_else(|| format!(\"REST path missing index ", seg, " at ", from_path, "\"))?")
-    } else {
-      concat("(", acc, ").", seg)
+type WirePathProjection {
+  expr: String
+  node: Node?
+  ok: Bool
+}
+
+fn wire_child_for_segment(wire_node: Node, seg: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  let normed = normalize_access_type_node(n: wire_node)
+  match normed.children |> filter(ch =>
+    let authored = authored_name_at(source_indices: source_indices, node: ch)
+    let wire_key = match child_from_key(ch: ch, source_indices: source_indices) {
+      Some { value: k } => k
+      None => authored
     }
+    wire_key == seg
+  ) |> first {
+    Some { value: ch } => Some { value: ch }
+    None => none
+  }
+}
+
+fn advance_wire_path_projection(state: WirePathProjection, seg: String, full_path: String, source_indices: Map<String, NewlineIndex>) -> WirePathProjection {
+  if !state.ok { state }
+  else if path_segment_is_list_index(seg: seg) {
+    let next_node = match state.node {
+      Some { value: n } => Some { value: for_each_element_type_node(n: n, source_indices: source_indices) }
+      None => none
+    }
+    WirePathProjection {
+      expr: concat("(", state.expr, ").get(", seg, ").ok_or_else(|| format!(\"REST path missing index ", seg, " at ", full_path, "\"))?")
+      node: next_node
+      ok: true
+    }
+  } else {
+    match state.node {
+      Some { value: n } =>
+        match wire_child_for_segment(wire_node: n, seg: seg, source_indices: source_indices) {
+          Some { value: ch } => WirePathProjection {
+            expr: concat("(", state.expr, ").", emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
+            node: Some { value: resolved_type(n: ch) }
+            ok: true
+          }
+          None => WirePathProjection { expr: state.expr, node: none, ok: false }
+        }
+      None => WirePathProjection { expr: state.expr, node: none, ok: false }
+    }
+  }
+}
+
+fn emit_wire_struct_path_chain(base: String, wire_node: Node, from_path: String, source_indices: Map<String, NewlineIndex>) -> WirePathProjection {
+  let segs = from_path |> split(delimiter: "/") |> filter(s => s != "")
+  segs |> fold(init: WirePathProjection { expr: base, node: Some { value: wire_node }, ok: true }, f: (acc, seg) =>
+    advance_wire_path_projection(state: acc, seg: seg, full_path: from_path, source_indices: source_indices)
   )
 }
 
-fn emit_typed_wire_field_assign(field_name: String, from_path: String) -> String {
-  let chain = emit_wire_struct_path_chain(base: "__rest_wire", from_path: from_path)
-  concat("let ", field_name, " = ", chain, ".clone();\n")
+fn emit_typed_wire_field_assign(field_name: String, from_path: String, wire_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let projection = emit_wire_struct_path_chain(base: "__rest_wire", wire_node: wire_node, from_path: from_path, source_indices: source_indices)
+  if projection.ok {
+    concat("let ", field_name, " = ", projection.expr, ".clone();\n")
+  } else {
+    concat("let ", field_name, " = compile_error!(\"REST typed response path could not be resolved against declared 200 body: ", from_path, "\");\n")
+  }
 }
 
 // RFC 6901 JSON Pointer escaping: ~ becomes ~0, / becomes ~1
@@ -4717,7 +4769,10 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
     match ch.inferred {
       Some { value: Resolved { node: tn } } =>
         if use_typed_wire {
-          emit_typed_wire_field_assign(field_name: field_name, from_path: from_path)
+          match wire_opt {
+            Some { value: wire_node } => emit_typed_wire_field_assign(field_name: field_name, from_path: from_path, wire_node: wire_node, source_indices: source_indices)
+            None => concat("let ", field_name, " = compile_error!(\"REST typed response: response_200 wire type missing despite typed projection; illegal state\");\n")
+          }
         } else {
           emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
         }
