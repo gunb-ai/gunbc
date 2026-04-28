@@ -24,7 +24,7 @@ R3 has six lanes, each closing a specific thesis claim or claim-cluster:
 
 1. **T-Tier3-Dissolution** — retire the four hand-Rust mirrors of `.dag` types (termination, computation, induction, effect-carrier) by consuming the Evaluator
 2. **T-LensProducer-Retirement** — retire `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` (the program-sized hand-Rust files) via PB-Runtime interpreter-as-data + PB-1 generated bin-shim emit pattern
-3. **T-Verification-L4L7** — build the L4-L7 verification harness (emit/eval match, cross-target consistency, structural-form coverage, algebraic-law witnesses)
+3. **T-Verification-L4L7** — build the L4-L7 verification harness (emit/eval match, cross-target consistency, structural-form coverage, algebraic-law witnesses). **Also serves as the structural test of the no-engine discipline** per [`docs/design-emission-model.md`](design-emission-model.md): L4 fails if the fold fabricates target choices `.dag` doesn't evaluate to; L5 fails if engine policy resolves inconsistently across targets; L6 fails if fail-closed gaps are silently engine-resolved; L7 fails if algebra inhabitance is engine-asserted vs structurally declared
 4. **T-FixedPoint** — self-hosting facet 2: compile `compiler.dag` → bit-identical Rust output
 5. **T-Int128** — Tier 2 Int128/Word128 substrate (the int-lit closure half deferred from R2)
 6. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos (YAML, Terraform, K8s, or SPICE) exercising the "one workflow → full-stack artifacts" thesis claim
