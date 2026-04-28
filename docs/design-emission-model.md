@@ -337,7 +337,7 @@ Per the dispositions above, the unification "coercion cost = complexity" needs:
 
 This makes the cost lens free for coercion by *substrate construction* — exactly what the user direction said it should be.
 
-**Open call (added 2026-04-28):** Director sign-off on whether this lane lands as part of R3 or as a post-R3 cycle. Recommendation: **R3** — it's a small mechanical lane once R2 substrate facts are declared; deferring to post-R3 risks "coercion cost = complexity" remaining asserted-not-structural, which would falsify the thesis claim by construction.
+**DECISION (locked 2026-04-28 per user direction):** **R3.** T-CostLens-Composition lands in R3 (lane 10 of 10 in the updated `docs/r3-structure.md`). Deferring would leave "coercion cost = complexity" asserted-not-structural, falsifying the thesis claim by construction.
 
 ### Modeling problem 9 — first-class language-spec emission (dogfooding)
 

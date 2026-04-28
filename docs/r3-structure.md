@@ -20,7 +20,7 @@ The R2 vs R3 boundary is therefore: **does this work need new substrate / new ru
 
 ## Summary
 
-R3 has nine lanes (revised 2026-04-28 per Director review of #1078), each closing a specific thesis claim or claim-cluster:
+R3 has ten lanes (revised 2026-04-28 per Director review of #1078; T-CostLens-Composition added 2026-04-28 per user direction folding cost-lens-over-emission into R3), each closing a specific thesis claim or claim-cluster:
 
 1. **T-Tier3-Dissolution** — retire the four hand-Rust mirrors of `.dag` types (termination, computation, induction, effect-carrier) by consuming the Evaluator
 2. **T-LensProducer-Retirement** — retire `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` (the program-sized hand-Rust files) via PB-Runtime interpreter-as-data + PB-1 generated bin-shim emit pattern
@@ -31,8 +31,9 @@ R3 has nine lanes (revised 2026-04-28 per Director review of #1078), each closin
 7. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos exercising the "one workflow → full-stack artifacts" thesis claim. **Director-locked 2026-04-28**: primary pair = OpenAPI spec + Markdown drift-lock; SQL DDL is the alternative if OpenAPI runs into design surface issues. Other candidates (YAML/K8s, Terraform, SPICE, etc.) are post-R3 ecosystem work, not R3 demos
 8. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization)
 9. **T-Bridge-Retirement** — unified ledger of named identity bridges retired (`SourceSpan.file` participation checks, `mark_bootstrap_secret_nominal_opacity()`, canonical lens-name dispatch, `include_str!` side channels, exact-string patching residual). Surfaced by Reflective Pattern B (2026-04-25 analysis); without a unified lane these get scattered across PB / Substrate / Verification work without a unified retirement ledger
+10. **T-CostLens-Composition** — cost lens reads (1) `.dag` algebra-level cost + (2) target-primitive realization cost via the language spec; composes structurally; verifies the THESIS unification "**coercion cost = complexity**" holds **by construction** (not just by reviewer convention). **No "coercion cost" dimension** — falls out of the existing complexity lens reading substrate facts. Per Modeling problem 8 in [`docs/design-emission-model.md`](design-emission-model.md). Director-locked 2026-04-28 to land in R3 (deferring would leave the thesis unification asserted-not-structural)
 
-**6 of 9 R3 lanes are gated on R2-Evaluator closing** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B). The other 3 (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement) are self-contained or substrate-completion work parallel to the Evaluator-gated lanes — they consume R2 substrate carriers but not the Evaluator itself, so they can dispatch in parallel with R2-Evaluator work or wait until R2-close per scheduling preference. Per-lane R2-close dependency is named in the §"Lane structure" table below; §"Dependency on R2" elaborates.
+**7 of 10 R3 lanes are gated on R2-Evaluator closing** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition). The other 3 (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement) are self-contained or substrate-completion work parallel to the Evaluator-gated lanes — they consume R2 substrate carriers but not the Evaluator itself, so they can dispatch in parallel with R2-Evaluator work or wait until R2-close per scheduling preference. Per-lane R2-close dependency is named in the §"Lane structure" table below; §"Dependency on R2" elaborates.
 
 ## Acceptance — `.dag` gates
 
@@ -69,6 +70,10 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
 - **T-Anthropic-Wire.**
   - `anthropic_wire_typed_serde_alignment` — Anthropic provider request/response types are typed end-to-end (mirrors the OpenAI alignment landed in R2)
   - `anthropic_unit_enum_role_serialization_correct` — role enum serializes to wire-required strings without bridging
+- **T-CostLens-Composition.**
+  - `cost_lens_reads_target_realization` — for every emitted target program, the cost lens reads (a) the program's `.dag` algebra-level cost and (b) the target language spec's per-primitive realization cost; composition is structural fold, not engine policy
+  - `coercion_cost_equals_complexity_by_construction` — for the certification corpus, applying the cost lens to a program's *emitted* target produces the same total cost as decomposing it into algebra-level cost + per-primitive realization cost. Verifies the THESIS unification "coercion cost = complexity" holds structurally
+  - `no_coercion_cost_dimension` — there is no separate "coercion cost" dimension or carrier in the substrate; cost queries route through the existing complexity lens
 - **T-Bridge-Retirement.**
   - `bridge_source_span_file_participation_retired` — no production code path consults `SourceSpan.file` for participation/inclusion logic; participation is structural per declared facts
   - `bridge_mark_bootstrap_secret_nominal_opacity_retired` — name-keyed bootstrap bridge from #937 deleted; nominal-opacity authority lives in source-level declaration (PR A landed in R2)
@@ -90,6 +95,7 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
 | **T-Omni-Shape-B** | L | **Demo Manager** (or R3 Release Manager) | At least 2 Shape B omni-emission demos exercising the full-stack thesis claim | R2-Evaluator (Shape B emitters are `.dag` programs walking typed values via fold/match — needs runtime to demonstrate properly) |
 | **T-Anthropic-Wire** | M | **Substrate Manager (post-R2 continuation)** | Anthropic provider request/response typed end-to-end | None (parallel; held in R2 pending OpenAI stabilize) |
 | **T-Bridge-Retirement** | M | **Verification Manager** (or T-LensProducer-Retirement umbrella) | Unified ledger of 5 named identity bridges retired (SourceSpan.file, mark_bootstrap_secret_nominal_opacity, canonical lens-name dispatch, include_str! side channels, patch_lower_helpers_* residual). Per Reflective Pattern B (2026-04-25) — without unified lane, retirements scatter across PB / Substrate / Verification with no central ledger | R2 substrate carriers (typed identity surfaces); some bridges retire as side-effect of T-LensProducer-Retirement |
+| **T-CostLens-Composition** | M | **Verification Manager** (or new Cost Manager) | Cost lens composes `.dag` algebra-level cost + target-primitive realization cost via the language spec; structural fold, not engine policy. Verifies "coercion cost = complexity" holds by construction. No "coercion cost" dimension. Per Modeling problem 8 in [`docs/design-emission-model.md`](design-emission-model.md). | R2-Evaluator (witness construction for cost claims) + R2-T-Substrate (per-operation cost on every algebra) + R2-T-Ground-LanguageSpec (per-primitive realization-cost declarations) |
 
 Critical path: **T-Verification-L4-L7-Direct → T-Verification-L5-Corpus** is the longest because Direct's corpus seeds Corpus's coverage suite. Other lanes parallel-dispatch after R2-Evaluator closes.
 
@@ -270,7 +276,7 @@ Workers cannot dispatch on under-specified scope, especially on multi-week T-Ver
 
 R3 cannot start meaningful work until R2 closes. Specifically:
 
-- **R2-Evaluator** is the upstream gate for **6 of 9 R3 lanes** (T-Tier3, T-LensProducer, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B). Without it, R3 dispatchers spin.
+- **R2-Evaluator** is the upstream gate for **7 of 10 R3 lanes** (T-Tier3, T-LensProducer, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B). Without it, R3 dispatchers spin.
 - **R2-Grounding-Rust + R2-Grounding-Python** are the upstream gate for T-Verification-L5-Corpus (specifically L5 cross-target).
 - **R2 substrate carriers** (NominalOpacity, ValueBody::Map, parametric algebra) feed T-Int128 + T-Anthropic-Wire + T-Bridge-Retirement as parallel substrate-completion work.
 

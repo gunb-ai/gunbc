@@ -66,7 +66,7 @@ Under that discipline, R2's goals are the Tier-1 thesis claims that are *not* ga
 
 6. **R2 closure demo** — simple "it runs" artifact per lane close. **R2 Release Manager-coordinated** (was Director-coordinated under prior 1-manager structure; reassigned under 2026-04-26 rework — single authority per `feedback_node_not_god_struct`). Not a lane — see Demo discipline below.
 
-7. **Evaluator (added 2026-04-28 amendment)** — the runtime that executes `.dag` function bodies, applies lenses structurally, and constructs witnesses. Capacity-layer cornerstone: unblocks 6 of 9 R3 lanes (Tier 3 dissolution, lens-producer retirement, L4-L7 verification harness, fixed-point, Shape B demos). Not a thesis claim by itself; it's the *capacity* that makes those thesis claims mechanically reachable. **Standing as Goal 7 because it's the largest single piece of new substrate work in R2** and warrants its own manager + lane structure. Substrate Manager input required on which carriers the Evaluator needs (closed-over environments, witness construction, lazy/eager strategy) — see Open call 3 below for design challenges to resolve up-front.
+7. **Evaluator (added 2026-04-28 amendment)** — the runtime that executes `.dag` function bodies, applies lenses structurally, and constructs witnesses. Capacity-layer cornerstone: unblocks 7 of 10 R3 lanes (Tier 3 dissolution, lens-producer retirement, L4-L7 verification harness, fixed-point, Shape B demos). Not a thesis claim by itself; it's the *capacity* that makes those thesis claims mechanically reachable. **Standing as Goal 7 because it's the largest single piece of new substrate work in R2** and warrants its own manager + lane structure. Substrate Manager input required on which carriers the Evaluator needs (closed-over environments, witness construction, lazy/eager strategy) — see Open call 3 below for design challenges to resolve up-front.
 
 ## Manager structure
 
@@ -267,7 +267,7 @@ Evaluator Manager (T-Evaluator) — added 2026-04-28:
         Cross-target equivalence harness primitives ← body evaluator + lens application
 
     Cross-program producer:
-        Evaluator readiness         → unblocks R3 (6 of 9 R3 lanes gated on Evaluator)
+        Evaluator readiness         → unblocks R3 (7 of 10 R3 lanes gated on Evaluator)
     Cross-program consumer:
         Additional substrate carriers (if needed for runtime values)
                                     ← Substrate Manager (design pass identifies dependency)
