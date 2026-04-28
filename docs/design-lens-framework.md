@@ -446,10 +446,10 @@ The questions below are pre-dispatch decisions for the lens framework. Each name
 - (c): introduces parallel-representation between read-channel and validate-channel failure carriers. The current design has `read: Witness<C>` and `validate: OptionalDiagnostic` — already two channels. Adding a third type for structural validate failures is more parallel rep.
 - (d): keeps Witness<C> simple; pushes structural failure data into Diagnostic.kind (which is `CompilerDiagnosticKind` sum type — already extends per-instance per `feedback_state_space_vs_behavioral_invariants`).
 
-**TestClaim shape:**
-- `witness_for_tenant_flow_carries_missing_capabilities_structurally` (verifies set-difference is recoverable from witness)
-- `witness_for_ifc_carries_label_comparison_structurally` (verifies lattice-comparison is recoverable from witness)
-- `no_string_parsing_in_witness_consumers` (anti-bridge — no consumer reads `reason: String` programmatically)
+**TestClaim shape** (renamed 2026-04-28 per gpt-5-5-pro BLOCKING re P2 single-authority — TestClaim names must reflect the locked decision that rich structural payloads live in `Diagnostic.kind`, NOT in `Witness<C>`):
+- `diagnostic_kind_for_tenant_flow_carries_missing_capabilities_structurally` (verifies set-difference is recoverable from `Diagnostic.kind = CapabilityViolation { required, granted, missing }`, not from `Witness.reason: String`)
+- `diagnostic_kind_for_ifc_carries_label_comparison_structurally` (verifies lattice-comparison is recoverable from `Diagnostic.kind = IFCDowngradeViolation { computed, sink_clearance, downgrade_required }`, not from `Witness.reason: String`)
+- `no_string_parsing_in_witness_consumers` (anti-bridge — no consumer reads `Witness.reason: String` programmatically; structural payloads live exclusively in `Diagnostic.kind` extensions per the locked decision below)
 
 **Recommendation:** **(d)** — `Witness<C>` stays as-is for per-Behavior read-channel failures (string reason is fine for human-readable per-node error messages); structural validate-channel failures encode into `Diagnostic.kind` sum-type variants. Lens instances that need rich structural failure data (tenant-flow, IFC) extend `CompilerDiagnosticKind` with their own variants (e.g., `CapabilityViolation { required, granted, missing }`, `IFCDowngradeViolation { computed, sink_clearance }`). This matches how the worked instances already encode validate failures (per the §"Three worked instances" section above). Witness<C> doesn't need extension.
 

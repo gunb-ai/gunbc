@@ -968,7 +968,7 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **The doc [`docs/design-lens-framework.md`](design-lens-framework.md)** (PROPOSAL skeleton authored 2026-04-28; Director extends post-#1078-merge for full spec) is the separate authority for the lens framework — three worked instances (complexity / tenant-flow / IFC), Director's 6 locked design decisions, migration plan for the 4 existing PROXY/STUB lenses, and the up-front validation checklist (design-phase + implementation-phase + migration-phase self-checks). This is the contract R2-T-Substrate-Lens-Primitive substrate work delivers and R3 lens instances consume.
 
-**Ownership:** post-R3, not pre-promotion.
+**Ownership and timeline** (Director-locked 2026-04-28; clarified 2026-04-28 per gpt-5-5-pro BLOCKING re P2 single-authority): the substrate primitive (`Lens<C>` + generic fold + cost-basis discipline) **lands in R2** as `R2-T-Substrate-Lens-Primitive` per the substrate sequencing above (sized ~1.5-2 weeks at gunbc velocity). The framework's design-doc full spec is **Director-authored post-#1078-merge** (PROPOSAL skeleton already in `docs/design-lens-framework.md`; full spec extension is the Director's next authoring deliverable, not a worker task). **Stretch instances** (memory-peak lens, energy lens, latency lens) are **post-R3** — they're additional lens-framework instances beyond the 3 worked examples (complexity / tenant-flow / IFC) needed for R2's "3 instances sufficient for generality validation" gate; they don't gate R2 substrate primitive landing. No ambiguity: substrate primitive R2; design-doc full spec Director-authored post-#1078; stretch instances post-R3.
 
 ## Cross-refs
 
