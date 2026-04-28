@@ -382,7 +382,28 @@ Three additional items the Director review identified as R2-expansion (not R3):
 >
 > The original anchor reference (§"Design challenges to resolve up-front") no longer exists; the section was retitled to reflect the locked-decisions state.
 
-### 4. Pre-T-Ground / pre-T-Substrate-Lens-Primitive design questions — **OPEN; surfaced 2026-04-28 per Director directive**
+### 4. Pre-T-Ground / pre-T-Substrate-Lens-Primitive design questions — **LOCKED 2026-04-28 (all 8 questions resolved via Director dialogue)**
+
+**Status update 2026-04-28 (dialogue completed):** all 8 surfaced design questions resolved via Director dialogue. Per-question status:
+
+| Q | Topic | Decision |
+|---|---|---|
+| Q1 | `BoundDeclaration` substrate type | `Interval<D>` shared parent (substrate consolidation prepended as PR-PreF); `BoundDeclaration = StaticBound(Interval<Int>) \| PlatformDependent`; asymmetric match rule (target's Unbounded universal-accepts) |
+| Q2 | Per-target structural axes (Rust/Python/Go × primitive families) | (b3') Emission-biased non-violating minimal target modeling; `ReferenceModel<T>` shared parent; four-property verification framework (Faithful/Correct/Minimal/Performant) with Faithful + Performant as Lens<C> instances; Correct = L4 runtime check |
+| Q3 | Per-primitive realization cost field shape | (c5) `RealizationCost` as record of `Cost<Unit>` coordinates; `Cost<Unit> = Dimension<Unit, SymbolicExpr>`; `Bits` and `CPUCycles` as substrate-declared primitives sibling to SI base units; sparse fail-closed access map |
+| Q4 | L4 emit/eval-match acceptance corpus | (c)+(d) hybrid — generated cross-product + user-program corpus; universal four-property gate (Faithful + Correct + Minimal + Performant) per Q2 cascade; per-target compiler harness for non-violation gate |
+| Q5 | L6 cardinality variant enumeration | (a) — cardinality is the connectives axis; collapses by construction with Q1's `Interval<Cardinal>` instances on each connective; PR-J = no-op |
+| Q6 | `Witness<C>` generality for non-trivial monoids | (c)/(d) hybrid — Witness<C> stays as-is; rich structural validation failures encode into `Diagnostic.kind` extensions via lens-framework's structural inhabitance (uniform whether compiler-authored or user lens — compiler IS a user of its own system per `feedback_groundedness_gates_lenses`); arity-over-error-space pattern recognized observationally, no consolidation |
+| Q7 | Error-recovery: report-all vs short-circuit | (d) — per-call validate yields one `OptionalDiagnostic`; fold accumulates `SomeDiagnostic.value` into `DimensionFail.violations: List<Diagnostic>`; no spec change. Arity-over-error-space makes report-all fall out by construction |
+| Q8 | Cross-product validate with mixed presence | (a) — conjunctive; cross-product validate = `validate_C ∧ validate_D` with NoDiagnostic = TRUE; falls out of Q7's fold accumulation; no substrate change |
+
+**Authority docs** for the dialogue (DECISION-locked paragraphs):
+- Q1–Q5 (T-Ground / cross-target modeling): [`docs/design-emission-model.md`](design-emission-model.md) §"Design questions to surface and lock before dispatch"
+- Q6–Q8 (lens-framework spec semantics): [`docs/design-lens-framework.md`](design-lens-framework.md) §"Design questions to lock before substrate dispatch"
+
+**Meta-deliverable:** the modeling pattern that surfaced across Q1/Q2/Q3 (find shared parent → distinguish coproducts from coordinates → classify primitive vs lens-extensible) was promoted to [`INVARIANTS.md`](../INVARIANTS.md) §P1 as the "Substrate-fact introduction procedure" — a 3-step decision procedure workers can self-serve when introducing new substrate facts.
+
+**Cadence PRs are ready to dispatch sequentially after #1078 merges.** Director signoff on this doc + the design docs is the green light.
 
 **Surfaced:** the no-engine emission reframe + lens-framework introduction surfaced 8 modeling-hard design questions that need lock before per-target / per-lens dispatch. Director directive 2026-04-28: *"surface all design questions up front; modeling will be incredibly hard to get right per language; ensure verification (testing) discussion + discussion up front; otherwise leaving complex modeling problems open-ended will fail (per `feedback_holistic_over_patches.md`, `project_ownership_holistic.md` — alias/clone class)."*
 
