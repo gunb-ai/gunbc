@@ -268,6 +268,22 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
 }
 
 #[test]
+fn emit_rust_emits_diverror_prelude_for_result_field_without_division() {
+    let out = emit_module(
+        "import std.error_primitives { DivError, Result }\n\
+type Holder { value: Result<Int, DivError> }\n",
+    );
+    assert!(
+        out.contains("pub enum DivError"),
+        "type fields using Result<Int, DivError> need DivError prelude even without `/`; got: {out}"
+    );
+    assert!(
+        out.contains("pub value: ::core::result::Result<i64, DivError>"),
+        "type field should render through the Result carrier; got: {out}"
+    );
+}
+
+#[test]
 fn emit_rust_omits_div_prelude_without_division() {
     let out = emit(
         "type DivError = Bad | Worse\n\

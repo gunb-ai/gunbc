@@ -196,10 +196,14 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
 
 fn dag_needs_go_result_prelude(
     dag: &Dag,
+    type_decls: &[&Declaration],
     top_level_binds: &[&BindNode],
     function_decls: &[&Declaration],
 ) -> bool {
-    top_level_binds
+    type_decls
+        .iter()
+        .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
+        || top_level_binds
         .iter()
         .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
         || function_decls
@@ -273,10 +277,14 @@ fn port_uses_substrate_div_error(dag: &Dag, port: PortId) -> bool {
 
 pub(crate) fn dag_needs_div_error_prelude(
     dag: &Dag,
+    type_decls: &[&Declaration],
     top_level_binds: &[&BindNode],
     function_decls: &[&Declaration],
 ) -> bool {
     dag_uses_arithmetic_div(dag, top_level_binds, function_decls)
+        || type_decls
+            .iter()
+            .any(|decl| decl_uses_substrate_div_error(dag, decl.id, &mut HashSet::new()))
         || top_level_binds
             .iter()
             .any(|bind| port_uses_substrate_div_error(dag, bind.value))
@@ -1370,9 +1378,10 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
     }
-    let needs_int_div_prelude = dag_needs_div_error_prelude(dag, &top_level_binds, &function_decls);
+    let needs_int_div_prelude =
+        dag_needs_div_error_prelude(dag, &type_decls, &top_level_binds, &function_decls);
     let needs_result_prelude = needs_int_div_prelude
-        || dag_needs_go_result_prelude(dag, &top_level_binds, &function_decls);
+        || dag_needs_go_result_prelude(dag, &type_decls, &top_level_binds, &function_decls);
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(

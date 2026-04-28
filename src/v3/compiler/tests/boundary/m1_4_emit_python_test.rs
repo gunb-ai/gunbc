@@ -188,6 +188,21 @@ fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
 }
 
 #[test]
+fn emit_python_emits_diverror_prelude_for_result_field_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { DivError, Result }\n\
+type Holder { value: Result<Int, DivError> }\n",
+        "python_result_field_diverror_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_python_module(&dag).expect("emits python module");
+    assert!(
+        out.contains("class DivError(enum.IntEnum):"),
+        "type fields using Result<Int, DivError> need DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
 fn emit_python_checked_division_roundtrips_ok_and_errors() {
     assert_eq!(
         python_stdout("let x = 6 / 2\n", "python_div_ok.v3"),

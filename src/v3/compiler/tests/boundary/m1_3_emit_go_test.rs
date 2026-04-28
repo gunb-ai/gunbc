@@ -425,6 +425,48 @@ fn passthrough(x: Result<Int, String>) -> Result<Int, String> = x\n",
 }
 
 #[test]
+fn emit_go_emits_result_carrier_for_result_field_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { Result }\n\
+type Holder { value: Result<Int, String> }\n",
+        "go_result_field_string_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        out.contains("type v3Result[T any, E any] interface"),
+        "type fields using Result<Int, String> need the generic Go Result carrier; got: {out}"
+    );
+    assert!(
+        !out.contains("type DivError int"),
+        "non-DivError Result fields should not emit the integer division error prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_go_emits_diverror_prelude_for_result_field_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { DivError, Result }\n\
+type Holder { value: Result<Int, DivError> }\n",
+        "go_result_field_diverror_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        out.contains("type v3Result[T any, E any] interface"),
+        "type fields using Result<Int, DivError> need the generic Go Result carrier; got: {out}"
+    );
+    assert!(
+        out.contains("type DivError int"),
+        "type fields using Result<Int, DivError> need DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
 fn emit_go_checked_division_roundtrips_ok_and_errors_when_go_is_available() {
     let Some(ok) = go_stdout("let x = 6 / 2\n") else {
         return;
