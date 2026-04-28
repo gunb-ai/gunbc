@@ -58,7 +58,6 @@ import v2.std.core {
   index_base, index_expr, slice_base, slice_start, slice_end, cast_target, cast_expr, return_value,
   binop_left, binop_right,
   make_span, with_required_cardinality,
-  intern_find,
   Connective, Conj, Disj, NoConnective,
   Cardinality, Required, CardOptional,
   is_rest_transport, is_shell_transport, is_file_transport
@@ -82,7 +81,7 @@ import v2.compiler.compiler_tests_rust { compiler_tests_source }
 import v2.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint }
 
 import std.types { is_container_type }
-import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type, lookup_type_by_name }
+import v2.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name }
 import v2.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -263,11 +262,8 @@ fn resolve_wire_serde_tag(wire_item: Node, source_indices: Map<String, NewlineIn
   }
 }
 
-fn module_binding_named(env: TypeEnv, name: String) -> Node? {
-  match intern_find(table: env.intern_table, s: name) {
-    Some { value: ident } => lookup_type(env: env, ident: ident)
-    None => none
-  }
+fn item_binding_is_named(env: TypeEnv, node: Node, name: String) -> Bool {
+  authored_name(env: env, node: node) == name || node.name == name
 }
 
 // `wire_contract_item` from emit_module_full is the `data wire_contract = …` node.
@@ -748,10 +744,19 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   // Wire contract: find the module's wire_contract data item (if any)
   // and pass it to each item for per-enum resolution. No collapse to string.
-  // P2/P3: only a declaration identified as `wire_contract` may authorize module coproduct serde.
-  // No raw-name or structural/order fallback: lookup goes through the interned binding
-  // identity because resolved module item nodes can lose source spans.
-  let wire_contract_item = module_binding_named(env: scope.type_env, name: "wire_contract")
+  // P2/P3: only the module-local data declaration identified as `wire_contract`
+  // may authorize module coproduct serde. No structural/order fallback: resolved
+  // item nodes can lose source spans, so the secondary check uses Node.name as
+  // the remaining binding carrier and still requires the item registry to say
+  // this binding is DataItem.
+  let wire_contract_item = typed_module.items
+    |> filter(i =>
+      item_binding_is_named(env: scope.type_env, node: i, name: "wire_contract")
+      && match map_get(registry, "wire_contract") {
+        Some { value: info } => info.kind == DataItem
+        None => false
+      })
+    |> first
   let items_str = typed_module.items
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))
     |> join(separator: "\n\n")
