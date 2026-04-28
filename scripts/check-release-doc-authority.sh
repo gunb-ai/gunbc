@@ -36,6 +36,14 @@ RELEASE_DOCS=(
 # asymmetry is intentional — forbidden strings are exact lane/concept
 # names, retraction patterns are markers that may need character-class
 # flexibility like [Rr]etracted.)
+#
+# Scope: this list applies only to RELEASE_DOCS above. Design docs
+# (e.g., docs/design-emission-model.md, docs/design-lens-framework.md)
+# are explanatory authorities and intentionally out of scope, per the
+# RELEASE_DOCS scope comment. A retracted name appearing in a design
+# doc's narrative does not violate this consumer; if release-control
+# authority migrates into a design doc, add the design doc to
+# RELEASE_DOCS at the same time.
 FORBIDDEN_STRINGS=(
   "T-Ground-Engine"
   "T-Ground-Annotation"
