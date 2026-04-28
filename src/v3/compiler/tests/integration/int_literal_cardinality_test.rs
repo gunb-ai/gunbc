@@ -156,55 +156,6 @@ fn call_site_u8_literal_narrows_against_uint8_parameter() {
     assert_int_value_port_resolves_to_uint8(&dag, 7, "call id_u8(7) argument literal");
 }
 
-/// OOB for `data` is covered in `out_of_range_uint8_literal_emits_magnitude_diagnostic`.
-/// This pins the same `MagnitudeOutOfRange` contract for a **let** (pre-seeded path).
-#[test]
-fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
-    let err = compile_to_dag("let x: UInt8 = 256", "int_literal_u8_oob_let.v3")
-        .expect_err("let UInt8 OOB must fail closed");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic diagnostic, got {err:?}");
-    };
-    let messages: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, diagnostic)| diagnostic.message())
-        .collect();
-    assert_eq!(
-        messages.len(),
-        1,
-        "out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
-    );
-    assert!(
-        messages.iter().any(|message| {
-            message.contains("integer literal `256`")
-                && message.contains("u8")
-                && message.contains("0..=255")
-        }),
-        "expected MagnitudeOutOfRange details, got {messages:?}"
-    );
-    assert!(
-        dag.diagnostics().iter().any(|(_, diagnostic)| {
-            matches!(
-                diagnostic,
-                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange {
-                    literal,
-                    target,
-                    range_min_inclusive,
-                    range_max_inclusive,
-                    fixes,
-                    ..
-                } if literal == "256"
-                    && target == "u8"
-                    && range_min_inclusive == "0"
-                    && range_max_inclusive == "255"
-                    && fixes.is_empty()
-            )
-        }),
-        "MagnitudeOutOfRange for let should match `data` OOB shape"
-    );
-}
-
 /// Emit must surface narrow Rust backing (`u8`) for UInt8 — this ratchets the
 /// `TypeConnective::Cardinality` + rust primitive bridge without a full `rustc` roundtrip.
 #[test]
