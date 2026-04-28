@@ -305,13 +305,12 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 - For each of the 4 existing lenses, write the instance declaration (`name`, `read`, `sequential: Monoid<C>` — projects to `sequential.op` for sequential composition + `sequential.identity` for unit, `branch`, `iterate`, `validate`) using only existing combinators where possible.
 - **Pass criterion:** every existing combinator (`combine_max`, `combine_sequential`, etc.) maps to a Lens<C> field with no machinery left over. Failure = the existing patterns aren't actually monoidal, or the framework needs additional fields.
 
-**D3. L6 (structural-form coverage) collapses to `Lens<EmissionPathPresent>`.**
-- Write L6 as a `Lens<EmissionPathPresent>` instance:
-  - `read(dag, behavior)` reads the emission-path declaration for (substrate form × Shape A target) pair from `dag`
-  - `unit` = `present` (vacuous true)
-  - `compose` = AND (all forms must be present)
-  - `validate` = reject if any (form, target) lacks an emission path declaration
-- **Pass criterion:** L6's spec from r3-structure.md acceptance gates is satisfied by this instance. Failure = L6 isn't actually a structural fold (Codex Pattern B finding was wrong).
+**D3. L6 (structural-form coverage) is NOT a `Lens<C>` instance** (corrected per codex BLOCKING 2026-04-28T21:26).
+
+- L6's fold ranges over `(substrate-form × Shape-A-target)` pairs, not per-Behavior. `Lens<C>.read: (Dag, Behavior) → Witness<C>` reads per-Behavior substrate facts; the input space doesn't match L6's per-(form × target) input space.
+- L6 is a substrate-load-time completeness check (separate primitive) that walks every (connective × behavior × target) cell and verifies an emission-path declaration exists.
+- L6 emits `Diagnostic` (kind = `MissingEmissionPath`) on each gap; substrate-load fails closed.
+- **Pass criterion:** L6 lives as its own primitive in R2-T-Ground-CrossTarget-Meta scope. The lens framework does NOT cover L6; the framework covers per-Behavior structural folds only.
 
 **D4. Cross-domain composition works for the 3 instances.**
 - Hypothetical: a program has both complexity claims AND IFC claims.
@@ -367,9 +366,9 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 - TestClaim `lens_product_complexity_x_ifc_correct`: program that satisfies complexity but violates IFC, composed via `Lens<C> × Lens<D>`, returns `DimensionFail` with the IFC `Diagnostic` in `violations`.
 - **Pass criterion:** product fold + conjunctive side-condition behaves correctly.
 
-**I6. L6 reframe: structural-form-coverage as `Lens<EmissionPathPresent>` passes.**
-- TestClaim `l6_via_lens_framework_passes`: L6's structural cross-product fold expressed as Lens<EmissionPathPresent> instance produces the same answer as a hand-coded fold.
-- **Pass criterion:** L6 acceptance gate `l6_structural_form_coverage` passes via the framework.
+**I6. L6 lives as its own substrate-load-time completeness check** (corrected per codex BLOCKING 2026-04-28T21:26 — L6 is NOT a Lens<C> instance because Lens<C>.read input space is per-Behavior; L6's input space is per-(form × target)).
+- TestClaim `l6_completeness_check_walks_all_cells`: substrate-load-time completeness check walks every (connective × behavior × target) cell and verifies an emission-path declaration exists; emits typed Diagnostic on gaps.
+- **Pass criterion:** L6 acceptance gate `l6_structural_form_coverage` passes via the cross-product completeness check primitive in R2-T-Ground-CrossTarget-Meta scope. NOT via the lens framework.
 
 **I7. User-authored lens TestClaim.**
 - A user (test author) declares a custom `Lens<MyCostBasis>` with their own monoid; runs the fold; gets a result.
