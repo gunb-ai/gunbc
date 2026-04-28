@@ -509,9 +509,48 @@ fold_dag_string_function_param_transient_to_rust_strslice: TestClaim {
 
 ---
 
-### Example 5 — duplicate of Example 1; consolidated
+### Example 5 — `Int(0..2^32)` for an under-modeled algebra (signedness ambiguity)
 
-> **Consolidated 2026-04-28:** this example previously demonstrated "no canonical declared" using a substrate variant intentionally missing a canonical fact. Per Modeling problem 2 corrected, "canonical declaration" was the wrong framing — the bound differences ARE meaningful and belong as refinements, not as candidates needing canonical disambiguation. Example 1 already demonstrates the correct fail-closed-on-under-refined case (`UnderRefined` diagnostic carrier). This example is retained as a placeholder slot to preserve example numbering through the doc; the test-case shape has migrated to Example 1.
+**Demonstrates:** fail-closed when program intent under-determines the algebra (not just the refinement). Different from Example 1's under-refined-bound case.
+
+**Substrate facts:** as Example 2.
+
+**Program input:**
+```
+data x: Int = 0
+```
+
+without algebra annotation (in a hypothetical substrate where `Int` is a type-alias spanning both `OrderedRing` and `Semiring`):
+
+**Fold steps:**
+1. Read program intent: type `Int` resolves to algebra = ?; the program hasn't structurally determined whether negative values are part of the value space
+2. Walk inhabitants: { OrderedRing inhabitants × Semiring inhabitants } — different algebras
+3. The fold cannot determine which algebra the program intends
+4. Result: fail-closed → `EmissionDiagnostic::UnderRefined { axis: "algebra" }`
+
+**Expected output:**
+```
+EmissionDiagnostic::UnderRefined {
+  program_intent: AlgebraInhabitance(algebra: ambiguous, refinement: (0..2^32)),
+  unspecified_axis: "algebra (signedness)",
+  resolution_hints: [
+    "use Word32 or UInt32 to declare unsigned (Semiring) intent",
+    "use Int32 to declare signed (OrderedRing) intent",
+  ]
+}
+```
+
+**Test claim shape:**
+```
+fold_dag_int_ambiguous_algebra_fails_closed: TestClaim {
+  setup: rust_language_spec_with_int_alias_spanning_both_algebras()
+  source: "data x: Int = 0"
+  expected_emission: None
+  expected_diagnostic: matches(EmissionDiagnostic::UnderRefined { unspecified_axis: "algebra", .. })
+}
+```
+
+This is a different fail-closed shape from Example 1 (under-specified bound) and Example 6 (no inhabitant). Example 1 is "algebra known, bound missing"; this is "algebra ambiguous"; Example 6 is "bound known, no candidate covers it." All three are typed `EmissionDiagnostic` variants.
 
 ---
 
