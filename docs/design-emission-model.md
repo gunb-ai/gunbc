@@ -134,7 +134,7 @@ These are **structural facts derivable from program use** — lifetime, escape, 
 
 **Why this is more thesis-faithful than annotations:** the program already declares what it does (bindings + uses + signatures). Asking the user to *also* annotate is duplicate authority — the use pattern is itself the declaration of intent. Annotations would force the user to keep the use and the annotation in sync, with no way to dissolve drift.
 
-**Open question:** does this analyzer live in the Evaluator program (post-R3), or is it a substrate-completion lane in R2 alongside LanguageSpec? **Recommendation:** R2 lane. The fold needs lifetime analysis to determine target type for any program with non-trivial scoping. Defer is dishonest — the canonical examples (String/&str/Cow) require it from day one. Lane name suggestion: **T-Ground-Lifetime-Analyzer**.
+**Open question:** does this analyzer live in the Evaluator program (post-R3), or is it a substrate-completion lane in R2 alongside LanguageSpec? **Recommendation:** R2 lane. The fold needs lifetime analysis to determine target type for any program with non-trivial scoping. Defer is dishonest — the worked examples (String/&str/Cow) require it from day one. Lane name suggestion: **T-Ground-Lifetime-Analyzer**.
 
 ### Modeling problem 4 — declared structural ordering ("which is smaller")
 

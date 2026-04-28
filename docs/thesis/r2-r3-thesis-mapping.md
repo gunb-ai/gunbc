@@ -64,7 +64,7 @@ Per THESIS §"Tier 3 — Verification from structure":
 |---|---|---|---|---|
 | **L4: emitted code matches .dag evaluation** | R3 | T-Verification-L4L7 / `l4_emit_eval_match` | r3-structure.md §T-Verification-L4L7 | ⏳ R3 dispatch (gated on R2-Evaluator) |
 | **L5: same .dag → same behavior in Rust/Python/Go** | R3 | T-Verification-L4L7 / `l5_cross_target_consistency` | r3-structure.md §T-Verification-L4L7 | ⏳ R3 dispatch (gated on R2-Evaluator + R2-Grounding-Rust + R2-Grounding-Python) |
-| **L6: every structural form compiles to every target** | R3 | T-Verification-L4L7 / `l6_structural_form_coverage` | r3-structure.md §T-Verification-L4L7 | ⏳ R3 dispatch |
+| **L6: every structural form compiles to every target** | R2 (structural fold, not runtime) | T-Ground-CrossTarget-Meta / `l6_structural_form_coverage` (cross-product fold over substrate × language-specs; compile-time checkable, no corpus or runtime) | Reclassified 2026-04-28 per Codex Pattern B finding: classifying L6 as corpus-driven verification let runtime authority gate a structurally-checkable property — same anti-pattern as the omni-coherence finding. The fold walks `(6 type connectives × 5 behaviors × cardinality variants) × Shape A targets` and verifies each pair has an emission path declared. Lane home: R2-T-Ground-CrossTarget-Meta (structural acceptance gate, not runtime check) | ⏳ R2 (structural acceptance gate) |
 | **L7: operations obey declared algebraic laws** | R3 | T-Verification-L4L7 / `l7_algebraic_laws_witnessed` | r3-structure.md §T-Verification-L4L7 (witness construction via R2-Evaluator) | ⏳ R3 dispatch |
 
 **Tier 3 gaps from THESIS:** none identified — all four levels mapped to R3.
