@@ -797,11 +797,23 @@ fold_dag_list_int_refined_top_level_to_rust_box_slice_u32: TestClaim {
 
 **Python spec:**
 ```
-// Python ints are arbitrary precision — there's exactly one inhabitant
-inhabits int : OrderedRing  bound = unbounded
+// Python ints are arbitrary precision — declared structurally as AnyBound,
+// not as "no bound parameter" (which would be a missing structural fact).
+inhabits int : OrderedRing  bound = AnyBound
 ```
 
-(Note: Python has no integer family with bound differences — `int` is arbitrary-precision and is the **unique inhabitant** of `OrderedRing` for the Python target. Per the no-engine + exact-match discipline, the fold matches single inhabitants by **uniqueness of candidate** (algebra inhabits → unique target), not by bound subsumption. Python's spec doesn't have a bound parameter on `int`, so the bound axis isn't used; the algebra-uniqueness axis suffices. This is structurally complete; not a "canonical choice" engine pick.)
+The fold uses a **single structural predicate** for bound matching across all targets — match-by-`BoundDeclaration`, where `BoundDeclaration` is a sum type at the substrate level:
+
+```
+type BoundDeclaration
+  = ExactBound { range: NumericRange }       // Rust int32, Go int32 — matches if range exactly equals program's range
+  | AnyBound                                 // Python int (arbitrary precision) — matches programs that declare ANY explicit bound
+  | PlatformDependentBound                   // Rust usize, Go int — matches only programs that declare Int(platform)
+```
+
+(Per codex BLOCKING finding on `c98981634`: the prior "algebra-uniqueness when no bound parameter exists" framing was a target-specific *second* emission predicate, contradicting the exact-bound single-authority rule. The corrected predicate is uniform — every target's inhabitance declares its `BoundDeclaration` structurally, and the fold matches structurally on the sum's variants. `AnyBound` matches an explicit program bound *as a declared property of the inhabitance*, not as subsumption-as-policy.)
+
+**Important:** `AnyBound` does NOT match an *under-refined* program (one that declares no bound at all, like `data x: Int`). The program must declare its bound explicitly — even if that bound is "any" (`data x: Int(any)`). Implicit-bound programs fail-closed uniformly across all targets, matching cross-target consistency: a program that doesn't declare its structural intent is incomplete, regardless of which target the fold runs on.
 
 **Go spec:**
 ```
@@ -816,18 +828,18 @@ inhabits int64  : OrderedRing  bound = (-2^63..2^63)
 // `int` until lifetime/platform analysis can structurally derive its applicability.
 ```
 
-**Cross-target portability meta-spec:** every Shape A target must declare at least one inhabitant of `OrderedRing` covering the bound `(-2^31..2^31)` (the most common 32-bit signed range). Verified at substrate-load time.
+**Cross-target portability meta-spec:** every Shape A target must declare at least one inhabitant of `OrderedRing` whose `BoundDeclaration` *structurally matches* the program's bound `(-2^31..2^31)` — i.e., either an `ExactBound` with that range, or an `AnyBound` declaration. Verified at substrate-load time using the same single match predicate the fold uses (no separate "covering" relation).
 
 **Program input:**
 ```
 data x: Int(-2^31..2^31) = 0
 ```
 
-**Fold runs three times (one per target), with the same algorithm:**
+**Fold runs three times (one per target), with the **same algorithm** — one structural match on `BoundDeclaration`:**
 
-- **Rust:** match candidates, refinement filter → only `Int32` exact-matches. Emit `0i32`.
-- **Python:** Python `int` is the unique inhabitant of `OrderedRing` (no bound parameter on the candidate); algebra-uniqueness match. Emit `0`.
-- **Go:** match candidates, refinement filter → only `int32` exact-matches. Emit `int32(0)`.
+- **Rust:** candidates filtered by `BoundDeclaration` match against program's `ExactProgramBound{(-2^31..2^31)}`. `Int32`'s `ExactBound{(-2^31..2^31)}` matches; `Int8/16/64/128` are `ExactBound` at different ranges (no match); `usize` is `PlatformDependentBound` (no match). Emit `0i32`.
+- **Python:** candidates filtered by the same predicate. Python `int`'s `AnyBound` matches an explicit program bound; that's the structural predicate, not algebra-uniqueness fallback. Emit `0`.
+- **Go:** candidates filtered by the same predicate. `int32`'s `ExactBound{(-2^31..2^31)}` matches; `int8/16/64` are `ExactBound` at different ranges (no match); `int` is `PlatformDependentBound` (no match). Emit `int32(0)`.
 
 **Test claim shape:**
 ```
@@ -843,9 +855,9 @@ fold_dag_int_refined_cross_target_consistent: TestClaim {
 }
 ```
 
-**Why this works without canonical-choice:** the program is *fully refined* — it declares its bound. Each language spec independently models its inhabitance with bound parameters (Rust, Go) or without (Python — single arbitrary-precision int). The fold uses **exact-bound match** when bound parameters exist; **algebra-uniqueness** when they don't. The cross-target meta-spec only enforces that all targets have *some* matching inhabitant for the program's algebra+refinement combination; it doesn't pick which one — that falls out of structure (exact-match for parameterized targets, uniqueness for parameter-free targets).
+**Why this works without canonical-choice:** the program is *fully refined* — it declares its bound. Each target's inhabitance declares its `BoundDeclaration` structurally (ExactBound for Rust int32 / Go int32, AnyBound for Python int, PlatformDependentBound for usize / Go int). The fold uses a **single structural predicate**: match on `BoundDeclaration`. No "exact-bound when parameterized, algebra-uniqueness when not" dual-predicate fallback (per codex BLOCKING on `c98981634`). The cross-target meta-spec uses the same single predicate at substrate-load time to verify each target has at least one structurally-matching inhabitant.
 
-**Compare to under-refined Example 1:** that program (`data x: Int`) failed-closed on Rust because the bound was unspecified and Int8/Int64/Int128 are meaningfully different. On Python, the same under-refined program would *succeed* — Python has only one inhabitant, so under-refinement doesn't produce ambiguity. Cross-target consistency means the same program either grounds on all targets or fails-closed where it can't; it doesn't silently produce different semantics.
+**Compare to under-refined Example 1:** that program (`data x: Int` — no bound declared at all) fails-closed *uniformly across all targets*. On Rust, no `BoundDeclaration` matches an unspecified-bound program (every Rust int's ExactBound demands an explicit program range). On Python, the same: `AnyBound` matches *explicit* program bounds (including `Int(any)`), not the absence of a bound declaration. On Go, same as Rust. Cross-target consistency holds: the same program either grounds on all targets (when fully refined, like Example 8's `Int(-2^31..2^31)`) or fails-closed on all (when under-refined, like Example 1's `Int`). To express "any bound is fine" for Python int, the program writes `data x: Int(any)` — explicit declaration replaces implicit defaults, matching the no-engine discipline.
 
 ---
 
