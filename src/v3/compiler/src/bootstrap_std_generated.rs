@@ -1392,57 +1392,60 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(358)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
-                    (
-                        "Int".to_string(),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(327),
-                            payload: vec![],
-                        },
-                    ),
-                    (
-                        "Float".to_string(),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(328),
-                            payload: vec![],
-                        },
-                    ),
-                    (
-                        "Bool".to_string(),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(329),
-                            payload: vec![],
-                        },
-                    ),
-                    (
-                        "String".to_string(),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(331),
-                            payload: vec![],
-                        },
-                    ),
-                    (
-                        "List".to_string(),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(332),
-                            payload: vec![],
-                        },
-                    ),
-                    (
-                        "Set".to_string(),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(330),
-                            payload: vec![],
-                        },
-                    ),
-                    (
-                        "Map".to_string(),
-                        FieldValue::Variant {
-                            constructor: DeclarationId(333),
-                            payload: vec![],
-                        },
-                    ),
-                ])),
+                value_body: Some(ValueBody::Map(
+                    FieldMap::from_entries(vec![
+                        (
+                            "Int".to_string(),
+                            FieldValue::Variant {
+                                constructor: DeclarationId(327),
+                                payload: vec![],
+                            },
+                        ),
+                        (
+                            "Float".to_string(),
+                            FieldValue::Variant {
+                                constructor: DeclarationId(328),
+                                payload: vec![],
+                            },
+                        ),
+                        (
+                            "Bool".to_string(),
+                            FieldValue::Variant {
+                                constructor: DeclarationId(329),
+                                payload: vec![],
+                            },
+                        ),
+                        (
+                            "String".to_string(),
+                            FieldValue::Variant {
+                                constructor: DeclarationId(331),
+                                payload: vec![],
+                            },
+                        ),
+                        (
+                            "List".to_string(),
+                            FieldValue::Variant {
+                                constructor: DeclarationId(332),
+                                payload: vec![],
+                            },
+                        ),
+                        (
+                            "Set".to_string(),
+                            FieldValue::Variant {
+                                constructor: DeclarationId(330),
+                                payload: vec![],
+                            },
+                        ),
+                        (
+                            "Map".to_string(),
+                            FieldValue::Variant {
+                                constructor: DeclarationId(333),
+                                payload: vec![],
+                            },
+                        ),
+                    ])
+                    .expect("ValueBody::Map"),
+                )),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/algebra.dag", 18384, 18694),
@@ -1881,40 +1884,43 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(472)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
-                    (
-                        "String".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                    (
-                        "Int".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                    (
-                        "Bool".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                    (
-                        "Float".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                    (
-                        "Secret".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                    (
-                        "Json".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                    (
-                        "Unit".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                    (
-                        "Bytes".to_string(),
-                        FieldValue::Literal(LiteralBits::Bool(true)),
-                    ),
-                ])),
+                value_body: Some(ValueBody::Map(
+                    FieldMap::from_entries(vec![
+                        (
+                            "String".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                        (
+                            "Int".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                        (
+                            "Bool".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                        (
+                            "Float".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                        (
+                            "Secret".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                        (
+                            "Json".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                        (
+                            "Unit".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                        (
+                            "Bytes".to_string(),
+                            FieldValue::Literal(LiteralBits::Bool(true)),
+                        ),
+                    ])
+                    .expect("ValueBody::Map"),
+                )),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 3041, 3206),
@@ -1958,11 +1964,14 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(473)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
-                    ("List".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
-                    ("Set".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
-                    ("Map".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
-                ])),
+                value_body: Some(ValueBody::Map(
+                    FieldMap::from_entries(vec![
+                        ("List".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                        ("Set".to_string(), FieldValue::Literal(LiteralBits::Int(1))),
+                        ("Map".to_string(), FieldValue::Literal(LiteralBits::Int(2))),
+                    ])
+                    .expect("ValueBody::Map"),
+                )),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 3506, 3587),
@@ -2060,10 +2069,13 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(474)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![(
-                    "List".to_string(),
-                    FieldValue::Literal(LiteralBits::Bool(true)),
-                )])),
+                value_body: Some(ValueBody::Map(
+                    FieldMap::from_entries(vec![(
+                        "List".to_string(),
+                        FieldValue::Literal(LiteralBits::Bool(true)),
+                    )])
+                    .expect("ValueBody::Map"),
+                )),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 4706, 4778),
@@ -2107,56 +2119,59 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 meta_tag: Some(DeclarationId(475)),
                 specialization_parent: None,
                 inhabits: None,
-                value_body: Some(ValueBody::Map(vec![
-                    (
-                        "List".to_string(),
-                        FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
-                    ),
-                    (
-                        "list".to_string(),
-                        FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
-                    ),
-                    (
-                        "Set".to_string(),
-                        FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
-                    ),
-                    (
-                        "set".to_string(),
-                        FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
-                    ),
-                    (
-                        "Map".to_string(),
-                        FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
-                    ),
-                    (
-                        "map".to_string(),
-                        FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
-                    ),
-                    (
-                        "FreeMonoid".to_string(),
-                        FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
-                    ),
-                    (
-                        "free_monoid".to_string(),
-                        FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
-                    ),
-                    (
-                        "BooleanAlgebra".to_string(),
-                        FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
-                    ),
-                    (
-                        "boolean_algebra".to_string(),
-                        FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
-                    ),
-                    (
-                        "PartialFunction".to_string(),
-                        FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
-                    ),
-                    (
-                        "partial_function".to_string(),
-                        FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
-                    ),
-                ])),
+                value_body: Some(ValueBody::Map(
+                    FieldMap::from_entries(vec![
+                        (
+                            "List".to_string(),
+                            FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
+                        ),
+                        (
+                            "list".to_string(),
+                            FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
+                        ),
+                        (
+                            "Set".to_string(),
+                            FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
+                        ),
+                        (
+                            "set".to_string(),
+                            FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
+                        ),
+                        (
+                            "Map".to_string(),
+                            FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
+                        ),
+                        (
+                            "map".to_string(),
+                            FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
+                        ),
+                        (
+                            "FreeMonoid".to_string(),
+                            FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
+                        ),
+                        (
+                            "free_monoid".to_string(),
+                            FieldValue::Literal(LiteralBits::String("FreeMonoid".to_string())),
+                        ),
+                        (
+                            "BooleanAlgebra".to_string(),
+                            FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
+                        ),
+                        (
+                            "boolean_algebra".to_string(),
+                            FieldValue::Literal(LiteralBits::String("BooleanAlgebra".to_string())),
+                        ),
+                        (
+                            "PartialFunction".to_string(),
+                            FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
+                        ),
+                        (
+                            "partial_function".to_string(),
+                            FieldValue::Literal(LiteralBits::String("PartialFunction".to_string())),
+                        ),
+                    ])
+                    .expect("ValueBody::Map"),
+                )),
                 refinement: None,
                 nominal_opacity: None,
                 span: SourceSpan::new("dsl/std/types.dag", 5684, 6123),
