@@ -243,6 +243,8 @@ R2 #1028 lands OpenAI typed wire (held until stabilizes per current Substrate Ma
 
 **DECISION (Director-locked 2026-04-28):** Mechanical replication of the R2 OpenAI pattern; named post-R3 *generalize-across-providers* dissolution opportunity. R3 ships Anthropic typed wire in parallel with the OpenAI shape; post-R3 work generalizes the pattern as a single provider-typing program if multiple providers warrant.
 
+**Dissolution trigger (added 2026-04-28 per gpt-5-5-pro #1078 review):** when both R2 OpenAI typed wire (#1028) and R3 T-Anthropic-Wire have landed and stabilized, the next provider integration (or a 6-month elapsed-time check, whichever comes first) triggers the dissolution decision: **either** (a) extract the shared provider schema as a single `ProviderTypedWire<P>` substrate carrier with per-provider parameter rows in `dsl/extdeps/providers/*/`, **or** (b) add a ROADMAP row naming why provider-specific schemas remain structurally terminal (e.g., wire-format divergence beyond what a parameterized carrier can express). Without this checkable trigger, the post-R3 "dissolution opportunity" becomes a bridge that normalizes parallel authority — exactly the P5 anti-pattern.
+
 ## Pre-R2-Evaluator design lock cadence (added 2026-04-28 per Director rearrange #2)
 
 The 8 design challenges above are not resolvable via comment-thread back-and-forth — that's ~1-2 weeks of substantive design work even at gunbc velocity. Director rearrange #2 pinned the resolution to explicit milestone PRs:
