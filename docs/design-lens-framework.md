@@ -453,6 +453,16 @@ The questions below are pre-dispatch decisions for the lens framework. Each name
 
 **Recommendation:** **(d)** — `Witness<C>` stays as-is for per-Behavior read-channel failures (string reason is fine for human-readable per-node error messages); structural validate-channel failures encode into `Diagnostic.kind` sum-type variants. Lens instances that need rich structural failure data (tenant-flow, IFC) extend `CompilerDiagnosticKind` with their own variants (e.g., `CapabilityViolation { required, granted, missing }`, `IFCDowngradeViolation { computed, sink_clearance }`). This matches how the worked instances already encode validate failures (per the §"Three worked instances" section above). Witness<C> doesn't need extension.
 
+**DECISION (Director-locked 2026-04-28 via dialogue): (c)/(d) hybrid — Witness<C> stays as-is; rich structural validation failures encode into `Diagnostic.kind` extensions via the lens-framework's structural inhabitance (uniform whether authored by compiler team or user lens — the compiler IS a user of its own system per `feedback_groundedness_gates_lenses`).**
+
+Director's framing refinements:
+
+1. **User/system distinction is artificial.** The compiler uses lenses to enforce violations the same way user-authored lenses do. CapabilityViolation as a `CompilerDiagnosticKind` variant is uniform whether the lens that emits it is `dsl/std/lenses/cost.dag` (compiler-authored) or `user/myproject/lenses/tenant.dag` (user-authored). The kind extension surface is the *same* mechanism for both. INVARIANTS.md P1 procedure Step 3 reflects this — "lens-extensible" replaces the "user-extensible" framing.
+
+2. **`Witness<C>` is one encoding of a deeper pattern (arity over an error space).** Pass = empty error list (zero arity); Fail = non-empty error list. Other valid encodings exist (`List<Error>` with empty = pass; `Maybe<Error>`; `(Result, List<Error>)`). The substrate's existing carriers (Witness<C>, DimensionReport<C>, OptionalDiagnostic) are domain-specific instances of this pattern. **No consolidation at this level** — the carriers work; recognizing the deeper pattern is observational, not actionable. Future authors of new decision/result carriers should follow the same shape (two disjoint variants, one for success-with-data, one for failure-with-context) but no substrate-level abstract `Either<A, B>` is needed.
+
+**Substrate change required: NONE.** Witness<C> stays at `dimensions.dag:35-37`. CompilerDiagnosticKind extensions per lens instance happen during PR-K's Lens<C> spec authoring + during T-Substrate-Lens-Primitive dispatch. Compiler-authored and user-authored lens kinds extend the same surface uniformly.
+
 ### Q7 — Error-recovery semantics for partial validate failure
 
 **Status:** REFERENCED in §"Open design questions" item 2. "Director's 'no silent fabrication' rule says report all" — but the spec doesn't actually state report-all semantics.

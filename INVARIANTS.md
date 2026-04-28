@@ -109,14 +109,14 @@ If any single inhabitant carries values for ALL variants simultaneously, the var
 
 The "stop at user-input boundary" rule: dissolve coproducts that compress structural facts; preserve coproducts where the USER genuinely picks among alternatives (e.g., an enum the user types in source).
 
-**Step 3: Primitive-vs-extension check** — classify substrate-declared vs user-extensible.
+**Step 3: Primitive-vs-lens-extensible check** — classify substrate-declared vs lens-extensible.
 
-> *"If introducing a leaf type (Time, Bits, Joules, Meters), ask: is this a fundamental primitive or a user-defined label?"*
+> *"If introducing a leaf type (Time, Bits, Joules, Meters), ask: is this a fundamental primitive or a lens-extensible label?"*
 
-Fundamental primitives (physics, computation, mathematics) declare as substrate primitives sibling to existing primitives — not user-extensible coproducts. User-extensible vocabulary belongs in lens-framework instances or domain dimensions where users genuinely own the taxonomy. Worked examples:
-- `Bits`, `CPUCycles`, `Joules` declare as substrate primitive types (sibling to `Meters`, `Seconds`, `Kilograms` in `dimensions.dag:93-99` — SI base units). Not `Resource = ... | UserDefined<Name>`.
-- A user-authored `Lens<TenantFlow>` declares `CapSet` and `Capability` as user-domain types — those ARE user-extensible. Per the lens framework, users own that taxonomy.
-- `BoundDeclaration` variants (`StaticBound`, `PlatformDependent`) are substrate-declared because they're computational primitives (every target's bound has one of these shapes); they're not user-extensible labels.
+Fundamental primitives (physics, computation, mathematics) declare as substrate primitives sibling to existing primitives — not lens-extensible coproducts. **Lens-extensible** (NOT "user-extensible" — the compiler IS a user of its own system; the lens framework is uniform whether authored by compiler team or user) vocabulary belongs in lens-framework instances or domain dimensions where the lens-framework's structural inhabitance lets any author add new variants the same way. Worked examples:
+- `Bits`, `CPUCycles`, `Joules` declare as substrate primitive types (sibling to `Meters`, `Seconds`, `Kilograms` in `dimensions.dag:93-99` — SI base units). Not `Resource = ... | LensExtensible<Name>`.
+- A `Lens<TenantFlow>` instance declares `CapSet` and `Capability` as lens-extensible domain types — those ARE lens-extensible regardless of who authored the lens (compiler team CapabilityViolation kind variants extend the same way as a user-authored lens). Per `feedback_groundedness_gates_lenses`: language vocabulary is primitives + namespacing; the lens framework's inhabitance is the namespacing.
+- `BoundDeclaration` variants (`StaticBound`, `PlatformDependent`) are substrate-declared because they're computational primitives (every target's bound has one of these shapes); not lens-extensible.
 
 **Escalation rule:** if all three checks pass and you still don't see how to declare the fact, escalate. But running the checks self-serves the most common case where the worker had structural information already and just needed prompting.
 
