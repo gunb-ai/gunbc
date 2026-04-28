@@ -666,6 +666,7 @@ dependencies = [
 name = "v2-compiler-tests"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "serde_json",
  "v2-compiler",
 ]
