@@ -1512,8 +1512,6 @@ impl<'a> TestRunner<'a> {
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
-<<<<<<< HEAD
-=======
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
                         "CensusSubsetCount" => self.eval_census_subset_count_shape(claim, &payload),
                         "FixedPointConverges" => {
@@ -1521,7 +1519,6 @@ impl<'a> TestRunner<'a> {
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
->>>>>>> origin/main
                         "MockBackedInvariant" => {
                             if !claim.requires.is_empty() {
                                 if let Err(reason) = self.validate_resource_requirements(claim) {
@@ -2775,13 +2772,9 @@ impl TestClaimValue {
 fn structural_fields(decl: &Declaration) -> Option<&[(String, FieldValue)]> {
     match decl.value_body.as_ref()? {
         ValueBody::Structural { fields } => Some(fields),
-<<<<<<< HEAD
-        ValueBody::Unparsed(_) | ValueBody::Scalar(_) | ValueBody::List(_) => None,
-=======
         ValueBody::Unparsed(_) | ValueBody::Scalar(_) | ValueBody::List(_) | ValueBody::Map(_) => {
             None
         }
->>>>>>> origin/main
     }
 }
 
@@ -2924,10 +2917,7 @@ fn render_value_body(dag: &Dag, value: &ValueBody) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-<<<<<<< HEAD
-=======
         ValueBody::Map(entries) => render_map(dag, entries.entries()),
->>>>>>> origin/main
         ValueBody::Unparsed(span) => format!("<unparsed:{}:{}>", span.file, span.byte_start),
     }
 }

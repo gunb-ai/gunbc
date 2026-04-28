@@ -2827,8 +2827,6 @@ fn lower_list_to_structural(
     Some(crate::dag::ValueBody::List(lowered))
 }
 
-<<<<<<< HEAD
-=======
 fn lower_map_to_structural(
     name: &str,
     expr: &SurfaceExpr,
@@ -2915,7 +2913,6 @@ fn lower_string_map_entries(
     }
 }
 
->>>>>>> origin/main
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
 /// edges until it reaches a declaration whose connective is
 /// `Conj`. Returns the `DeclarationId` of that Conj declaration — or
@@ -5355,10 +5352,7 @@ fn resolve_data_path(
             resolve_structural_field_path(dag, fields, segments, span)
         }
         crate::dag::ValueBody::List(_) => None,
-<<<<<<< HEAD
-=======
         crate::dag::ValueBody::Map(_) => None,
->>>>>>> origin/main
     }
 }
 
@@ -7299,10 +7293,7 @@ mod tests {
             items: vec![SurfaceItem::TypeAlias {
                 name: "Dimension".to_string(),
                 type_params: vec!["Unit".to_string(), "Carrier".to_string()],
-<<<<<<< HEAD
-=======
                 nominal_opaque: false,
->>>>>>> origin/main
                 target: surface_named_type("Carrier"),
                 refinement: None,
                 span: SourceSpan::new(file, 0, 1),
