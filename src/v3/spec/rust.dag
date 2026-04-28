@@ -853,7 +853,7 @@ data rust_int_div: OperatorRealization = {
   language: rust_language
   target: Int
   op: OrderedRing.div
-  carrier: "({lhs} / {rhs})"
+  carrier: "(__v3_int_div({lhs}, {rhs}))"
   cost: 1
 }
 
@@ -1088,6 +1088,17 @@ data rust_list_instantiation: TypeInstantiationRealization = {
   language: rust_language
   target: List
   carrier: "Vec<{element}>"
+  cost: 1
+}
+
+// `type Result<ok, err> = Ok { value: ok } | Err { value: err }` in
+// `dsl/std/error_primitives.dag` is a type-checking authority; Rust materializes
+// it as the standard `::core::result::Result<…>` (see
+// `emit_rust_with_mode` which skips generic `Result` in type_defs).
+data rust_result_instantiation: TypeInstantiationRealization = {
+  language: rust_language
+  target: Result
+  carrier: "::core::result::Result<{key}, {value}>"
   cost: 1
 }
 
