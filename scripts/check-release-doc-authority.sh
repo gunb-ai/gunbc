@@ -5,11 +5,20 @@
 # Authority: docs/r2-structure.md §"Release-doc authority discipline"
 # (Open call 4, added 2026-04-28 per gpt-5-5-pro meta-review of PR #1078).
 #
-# Why: PR #1078 review loop (9 events, 83 minutes, 5 codex passes)
-# kept catching the same P2 single-authority shape in new clothing —
-# stale lane names persisting in sibling tables after the live framing
-# was retracted. This script is the mechanical consumer that turns
-# manual grep-as-a-service into a CI-checkable invariant.
+# Why: PR #1078 review loop (22+ events, ~3h 05m, 9 codex passes,
+# 5 claude, 6 openai-pro incl. 3 meta-reviews, 2 cursor as of
+# 2026-04-28T04:47Z) kept catching the same P2 single-authority
+# shape in new clothing — stale lane names persisting in sibling
+# tables after the live framing was retracted. This script is the
+# v1 mechanical consumer that turns manual grep-as-a-service into
+# a CI-checkable invariant for FORBIDDEN STRINGS.
+#
+# It does NOT catch structured-state drift (lane counts, dependency
+# graphs, thesis-claim dispositions). The 04:47 meta-review identified
+# that gap when T-CostLens-Composition was added and again failed to
+# cascade through dependency/thesis-mapping projections. v2 guardrail
+# (structured release-state authority + mechanical projection-check)
+# is named follow-up debt.
 #
 # Usage:
 #   scripts/check-release-doc-authority.sh
