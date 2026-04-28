@@ -67,43 +67,74 @@ The honest answer is: `u32` *uniquely* inhabits `Semiring` at exactly that refin
 
 **The work.** Extending the substrate so each declared inhabitance carries its refinement bound. This is real modeling work. It's NOT "the engine handles refinement"; it's "the substrate declares refinement-bounded inhabitance."
 
-### Modeling problem 2 — canonical choice when multiple inhabitants exist at the same refinement
+### Modeling problem 2 — surfacing structural differences instead of canonical choice
 
-**Question:** when the substrate genuinely declares multiple primitives that inhabit the same algebra at the same refinement, how is the canonical choice declared?
+**Question:** when the substrate appears to declare multiple primitives that inhabit the same algebra at the same refinement, what's *actually* different between them — and is that difference cosmetic or meaningful?
 
-**Worked example.** Rust offers `String` (owned, heap-allocated, mutable), `&str` (borrowed, immutable), `Cow<str>` (lazy clone-on-write). All inhabit `FreeMonoid<Char>` for `.dag` `String`. All are valid emissions of `.dag` `String`. None is structurally "smaller" — they have different ownership semantics, not different sizes.
+**The honest framing (corrected 2026-04-28 per user direction):** "multiple inhabitants at the same algebra+refinement" is itself a smell. Either the candidates are *structurally equivalent* (cosmetic — same thing under different names) and they collapse into one, or they're *meaningfully different* (different semantic invariants — ownership, lifetime, mutability, encoding) and the difference belongs in the substrate as additional structural facts. There is no third category requiring "canonical choice" engine machinery.
 
-**Three resolution options:**
+**Worked example.** Rust offers `String`, `Box<str>`, `Vec<u8>`, `Box<[u8]>`, `&str`, `Cow<str>`. Are these cosmetic variants of `FreeMonoid<Char>` or meaningfully different?
 
-**(a) Substrate declares canonical.** A fact in `dsl/extdeps/languages/rust/types.dag` declares `String` as canonical for `FreeMonoid<Char>` when no further refinement is given. User overrides via explicit annotation. The fold reads the canonical-fact; no engine policy.
+| Candidate | Owned? | Growable? | UTF-8 invariant? | Lifetime |
+|---|---|---|---|---|
+| `String` | yes | yes | yes | self-contained |
+| `Box<str>` | yes | no | yes | self-contained |
+| `Vec<u8>` | yes | yes | no | self-contained |
+| `Box<[u8]>` | yes | no | no | self-contained |
+| `&str` | no | n/a | yes | borrowed |
+| `Cow<str>` | conditional | conditional | yes | conditional |
 
-**(b) Program-side annotation is required.** `.dag` programs that emit to Rust must annotate `String`-shaped values with `: Owned` / `: Borrowed` / `: CowLazy` (or similar substrate-declared refinement). No annotation = fail-closed. No canonical at the language level; user authority via the program.
+These are **meaningfully different** on four structural dimensions: ownership, growability, encoding-invariant, lifetime. Modeling these dimensions as substrate refinements (or as additional algebras) means each combination of program structural intent maps to a unique target. **No canonical needed** — the candidates aren't tied; they inhabit *different* algebra+refinement combinations.
 
-**(c) Hybrid.** Substrate declares a canonical *plus* the substrate exposes the option set via a typed query so users can see what they can override to. Fold reads canonical when no annotation; reads annotation when present.
+**The work.** Surface every meaningful difference between apparent multi-inhabitants as a structural fact:
+- Add ownership as a refinement on `FreeMonoid<Char>` (or a separate algebra `OwnedFreeMonoid<Char>` vs `BorrowedFreeMonoid<Char>`)
+- Add growability as a refinement (or as the distinction `FreeMonoid` (growable) vs `Sequence<N>` (fixed-size))
+- Add encoding-invariant as a refinement (`FreeMonoid<Char>` UTF-8 vs `FreeMonoid<Byte>` raw)
+- Lifetime is a structural property derivable from program use (see Modeling problem 3 below)
 
-**Open call:** which option? **Recommendation: (a) + diagnostic surface naming the override options.** Canonical gives ergonomic defaults; diagnostic surface gives discoverability. (b) is honest but punishes ergonomics for cases where the canonical is obviously right (e.g., `.dag` `String` → Rust `String`).
+After modeling, **the choice falls out**: each combination of (owned, growable, encoded) yields a unique target. The "canonical choice" framing was hiding the fact that we hadn't done this modeling work.
 
-**The work.** Extending the substrate so each language spec declares (i) which inhabitance is canonical when refinement is silent, (ii) which inhabitances are valid alternates that user annotation can select. This is substrate completion, not engine work.
+**The principle.** When the substrate looks like it has "multiple inhabitants at same algebra+refinement," ask:
+- Is the difference cosmetic? → candidates collapse; substrate has duplicate authority to remove
+- Is the difference meaningful? → the meaningful axis belongs in the substrate as a fact; once added, candidates are uniquely distinguished
 
-### Modeling problem 3 — user annotation as program-side substrate
+This is more thesis-faithful than canonical-choice declaration, because it forces honest modeling of what "the same algebra at the same refinement" actually means. **No engine; no canonical-choice metadata; just structural completeness.**
 
-**Question:** when a user writes a target-specific annotation (e.g., `: Vec<T>` instead of letting the fold pick from `Vec<T>` / `[T; N]` / `Box<[T]>`), where does that annotation live structurally?
+### Modeling problem 3 — structural derivation of program intent (no annotations)
 
-**The naive answer is wrong.** It would be tempting to say "the annotation lives at the program-target boundary as an emission-time hint." That's an engine-shaped answer — it implies emission has its own state. The correct answer is: annotations live as **typed program-side substrate facts** that compose with the program's structural facts the same way any other declaration does.
+**Question:** when a `.dag` program declares a value, where does the structural intent (ownership, lifetime, growability, encoding) come from?
 
-**Worked example.** A program declares:
+**Retracted 2026-04-28 per user direction:** the prior framing of this problem proposed `@target(rust) annotate` syntax to let users declare ownership/etc. **No annotations.** Annotations would be a parallel-authority shape — even if structurally well-formed, they introduce a vocabulary outside the program's own structural facts. The thesis position is sharper: **the program's structural intent is derivable from the program itself.**
+
+**Worked example.** Consider a `.dag` value of type `String`:
+
 ```
-data items: List<Int> = [1, 2, 3]
-@target(rust) annotate items: Vec<Int64>
+data name: String = "Alice"
+fn greet(n: String) -> String { ... }
+data result: String = greet(name)
 ```
 
-The `@target` annotation is a substrate-level declaration that *associates* the program-side identity `items` with a Rust-target-specific realization. The fold reads program-side annotations the same way it reads target-side language specs: as declared facts.
+What ownership does each `String` need at the Rust target?
+
+- `name`'s lifetime must outlive its uses; if it's used after the binding scope ends, it must be **owned**
+- `n`'s lifetime is bounded by the function call; if `greet` doesn't store `n`, `n` can be **borrowed** (`&str`)
+- `greet`'s return value must be self-contained (Rust functions can't return references to local data without lifetime annotations); it's **owned**
+- `result` receives an owned value; storing it in a binding makes it **owned**
+
+These are **structural facts derivable from program use** — lifetime, escape, storage. Rust's borrow checker derives them at compile time; gunbc's fold can do the same as part of inhabitance search.
 
 **What the substrate must declare:**
-- Schema for target-specific annotations on program-side declarations
-- Composition rule: program annotation + language spec → unique realization (when both consistent) or fail-closed (when inconsistent — e.g., user annotates `Vec<i64>` but program type is `String`)
+- Each candidate target type's structural properties (ownership, lifetime, growability, encoding) — modeled per Modeling problem 2 as algebra refinements
+- A *structural lifetime/escape analyzer* that reads the program's bindings, function signatures, and use sites, and concludes the required ownership for each value
+- The fold composes: program intent (derived structurally) + target candidate properties (declared structurally) → unique inhabitant
 
-**The work.** Designing the program-side annotation substrate. This is genuinely thesis-faithful: emission still reads facts; user authority enters via program-substrate facts; no engine.
+**The work.** Two pieces:
+1. **Structural property model on target types** (covered in Modeling problem 2)
+2. **Lifetime/escape analyzer** that derives program intent without annotations. This is essentially Rust's borrow checker run forwards: instead of "is this borrow valid?", ask "what ownership does this value need given how the program uses it?" The answer is structural, falls out of program graph + binding scopes + function signatures.
+
+**Why this is more thesis-faithful than annotations:** the program already declares what it does (bindings + uses + signatures). Asking the user to *also* annotate is duplicate authority — the use pattern is itself the declaration of intent. Annotations would force the user to keep the use and the annotation in sync, with no way to dissolve drift.
+
+**Open question:** does this analyzer live in the Evaluator program (post-R3), or is it a substrate-completion lane in R2 alongside LanguageSpec? **Recommendation:** R2 lane. The fold needs lifetime analysis to determine target type for any program with non-trivial scoping. Defer is dishonest — the canonical examples (String/&str/Cow) require it from day one. Lane name suggestion: **T-Ground-Lifetime-Analyzer**.
 
 ### Modeling problem 4 — declared structural ordering ("which is smaller")
 
