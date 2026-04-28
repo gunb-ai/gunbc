@@ -52,21 +52,10 @@
 //
 // **CharClass — tokenizer half (bounded interim, not full lane closure).**
 // `std.unicode` declares `CharClass` + `char_in_class` (canonical `.dag`
-<<<<<<< HEAD
-// authority). The ROADMAP lane also names `syntax.dag` retagging and
-// structural class rows in *this* file — those are **not** claimed here:
-// `dsl/std/syntax.dag` / `dag_keyword_set` / `OperatorSpec.symbol` are unchanged
-// in this tranche. Once this compiler authority authors scanner rows such as
-// `data ascii_scan_order: List<CharClass> = [...]`, `regen_tokenize` can consume
-// them structurally instead of routing through `tokenize_char_class.rs`, the
-// current handwritten Rust mirror of the `.dag` ASCII predicates (ratcheted by
-// unit tests in `tokenize_char_class.rs`).
-=======
 // authority). `ascii_scan_order` makes tokenizer scanner precedence a
 // structural `List<CharClass>` consumed directly by `regen_tokenize`; ASCII
 // predicate bodies remain a bounded generator bridge until `char_in_class`
 // semantics are structurally consumed.
->>>>>>> origin/main
 //
 // **Framing.** Phase 1 was a consumption gap: the character-level modeling was
 // already present, but tokenize.dag and syntax.dag encoded the same activity
