@@ -34,7 +34,9 @@ Per THESIS §"Tier 1 — Structural correctness (impossible to write the bug)":
 | **Grounding completeness — Go target primitives structurally modeled** | R2 | T-Ground-Go L | PR #910 (primitives.dag tranche 1) | ✅ landed in R2 |
 | **Grounding completeness — algebra-homomorphism search (not name-keyed lookup)** | R2 | T-Ground-Engine M + T-Ground-Dissolve S | #989 + Track-13 dissolution PR | 🟡 Engine in PR; Dissolve pending |
 | **Sealed-accessor patterns at type level (Secret<T>)** | R2 | T-Modeling Secret<T> + T-Substrate NominalOpacity | #900 carrier ✓; #937 walker ✓; PR A in flight (Copernicus); PR B pending | 🟡 in flight |
-| **User-defined dimensions (Dimension<Carrier>)** | R2 | T-Modeling Dimensions + T-Substrate parametric algebra | PR #886 phantom wrapper ✓ | ✅ landed in R2 |
+| **`Dimension<Carrier>` proof-dimension framework (one-parameter; behavioral analysis carrier)** | R2 | T-Modeling Dimensions | PR #886 — landed `Dimension<Carrier>` per `src/v3/std/dimensions.dag:61` (`name` / `witness_of` / `compose` / `identity` / `break_diagnostic`) | ✅ landed in R2 |
+| **Phantom-parameter typed value wrappers (`Duration<Unit>`, `Money<Currency>`)** | post-R3 modeling | not yet a named lane | ROADMAP `:450` — "The live tree does not yet support this shape." Not the same as `Dimension<Carrier>`; requires substrate for typed value wrappers with phantom parameters propagating through arithmetic + algebra inhabitance for those wrappers (abelian group with compare, no multiplication). Adjacent to DB-18 user-defined parametric algebra attachment | ⏳ post-R3 (no lane) |
+| **User-authored lenses validate programs (THESIS §"User-defined dimensions")** | R1 + R3 verification | T-LensAPI (R1) + T-Verification-L4L7 (R3 verifies the claim end-to-end) | T-LensAPI lane R1 — `user_authored_lens_compiles` Day-1 gate; `lens_composition_associative` ext gate via `AlgebraicLaw` | 🟡 R1 closure for compile-side; R3 for runtime-validation receipt |
 | **Fabrication path closures (B-series)** | R2 | T-Substrate B-wave Tier 0 | PR #817 (B2 Arrow re-derive→fail-closed); PR #820 (B1 Go UnknownVariant); PR #821 (B3 fold template-formal) | ✅ landed in R2 |
 
 **Tier 1 gaps from THESIS:** none identified — every Tier-1 sub-claim mapped.
@@ -85,7 +87,7 @@ Per THESIS §"Epistemic stacking (load-bearing for codegen — must not be dropp
 | Claim | Disposition | Lane / gate | Evidence | Status |
 |---|---|---|---|---|
 | **Every concept is a node in an ontological DAG rooted at minimal primitives** | R1 + R2 | T-Substrate (primitive substrate) + INVARIANTS P1 enforcement | `dsl/std/algebra.dag` is authority; live | ✅ live (continuous discipline) |
-| **Concrete types attach by inhabitance** | R2 | T-Substrate parametric algebra + T-Modeling Dimensions | PR #886 + parametric algebra (R2 carriers) | ✅ landed in R2 |
+| **Concrete types attach by inhabitance (algebra-inhabitance carrier shape)** | R2 | T-Substrate parametric algebra + T-Modeling `Dimension<Carrier>` proof-dimension framework | PR #886 (proof-dimension framework) + parametric algebra (R2 carriers) — substrate shape that *enables* algebra-inhabitance declarations; the live tree does not yet have a phantom-parameter typed-value-wrapper consumer per ROADMAP `:450` | 🟡 carrier-shape landed in R2; phantom-parameter consumer is post-R3 modeling work |
 | **Operations fall out from algebra inhabitance** | R3 | T-Verification-L4L7 (L7 algebraic laws witnessed via Evaluator) | r3-structure.md | ⏳ R3 |
 | **Math primitives and domain primitives share one substrate** | R2 | T-Substrate + T-Modeling | NominalOpacity + Dimension<Carrier> on same substrate | ✅ landed in R2 |
 
@@ -184,6 +186,7 @@ Compromises being made by the R2 + R3 split:
 | Shape A target saturation (TypeScript / Swift / HDL) | THESIS claim is `O(1)` per target — Rust + Python + Go proves the structural claim; saturation is adoption-driven |
 | Shape B target saturation (full Terraform / SPICE / SQL DDL coverage) | Same as Shape A: ≥2 demos operationalize the structural claim; saturation is ecosystem buildout |
 | Tier 1 type-refinement features beyond R2 modeling | If new modeling capabilities surface, they're substrate additions, not thesis-required |
+| Phantom-parameter typed value wrappers (`Duration<Unit>`, `Money<Currency>`) | Per ROADMAP `:450`: the live tree does not yet support this shape. `Dimension<Carrier>` (PR #886) is a **one-parameter proof-dimension framework**, not a phantom-parameter value type. Dissolution requires substrate support for typed value wrappers with phantom parameters propagating through arithmetic + algebra inhabitance (abelian group with compare). Adjacent to DB-18 but a distinct modeling capability. Owner: unassigned; M scope when prioritized |
 
 ### Indirect / implicit claims (no dedicated lane)
 

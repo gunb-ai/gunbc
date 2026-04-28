@@ -30,7 +30,7 @@ R3 has six lanes, each closing a specific thesis claim or claim-cluster:
 6. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos (YAML, Terraform, K8s, or SPICE) exercising the "one workflow → full-stack artifacts" thesis claim
 7. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization)
 
-All seven lanes share one upstream dependency: **R2-Evaluator must close.** Once it does, R3 lanes are largely parallel-dispatchable; some have additional intra-R3 sequencing.
+**5 of 7 R3 lanes are gated on R2-Evaluator closing** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4L7, T-FixedPoint, T-Omni-Shape-B). The other 2 (T-Int128, T-Anthropic-Wire) are self-contained substrate work parallel to the Evaluator-gated lanes — they consume R2 substrate carriers but not the Evaluator itself, so they can dispatch in parallel with R2-Evaluator work or wait until R2-close per scheduling preference. Per-lane R2-close dependency is named in the §"Lane structure" table below; §"Dependency on R2" elaborates.
 
 ## Acceptance — `.dag` gates
 
