@@ -323,7 +323,7 @@ Purpose: proof-of-work visibility at director cadence. Without it, program slips
 - **R2 includes substrate prereqs explicitly** per user's (i)-over-(ii) preference (honest scope over tight scope), with **scoped acceptance criteria** per Director refinement (each sub-lane closes on unblock of its paired Goal 2 item; full substrate-capability lanes are not R2-committed).
 - **Anti-deferral principle is the frame, not velocity numbers.** Per Director observation: 16-hour R1 execution was a peak-day sample, not a baseline. The principle "if dissolution direction is clear and named, deferral is problem-finding not problem-solving" is what survives cadence shifts.
 - **`sub_charclass_in_std_unicode` phase-2 reclassified R1 → R2** (2026-04-24, ROADMAP amendment paired with this revision). Surface Manager handoff (sub-child `quiet-gull-882` triage) confirmed the remaining work is Class 5 Gap 3 substrate-capability scope, not T-Sub-only surface fix; reclassifying lets R1 close on T-Sub Day-1 + DB-11 without waiting on substrate-capability work. Phase-2 lands in R2 as a 4th T-Substrate scoped sub-lane (consumer: tokenizer). Reclassification scope is bounded — full Class 5 Gap 3 substrate-capability close remains outside R2 unless additional R2 items demand it; only the tokenizer-charclass-unblock subset is R2-committed.
-- **Post-R2 stance = STRONG.** R2 is thesis close. Post-R2 work is external (adoption, documentation, community, ecosystem buildout). R3 is reserved as escape hatch only, not as a structural release program. User-locked 2026-04-24 after pressure-test framing: *"real programs are probably required to confirm the thesis is real, but we can keep R2 theoretical to stay fair — future work would pressure test the claims."* The R2 doc's "close-everything" claim is thus scoped to the **structural thesis** (what the compiler proves by construction); practical validation via modeling real programs (e.g., the user's `../ctrl/` follow-up) is a separate post-R2 stream that *tests whether the thesis holds in practice*, without itself being a thesis claim.
+- ~~**Post-R2 stance = STRONG.** R2 is thesis close. Post-R2 work is external (adoption, documentation, community, ecosystem buildout). R3 is reserved as escape hatch only, not as a structural release program. User-locked 2026-04-24 after pressure-test framing: *"real programs are probably required to confirm the thesis is real, but we can keep R2 theoretical to stay fair — future work would pressure test the claims."* The R2 doc's "close-everything" claim is thus scoped to the **structural thesis** (what the compiler proves by construction); practical validation via modeling real programs (e.g., the user's `../ctrl/` follow-up) is a separate post-R2 stream that *tests whether the thesis holds in practice*, without itself being a thesis claim.~~ **🔄 SUPERSEDED 2026-04-28** by the next bullet (R3 reframed from escape-hatch to structured Thesis Closure program). The "post-R2 external-only" framing was retracted in the same direction-change. The "post-R3 external-only" stance is preserved (practical pressure-test on `../ctrl/` programs stays external; not a release-ledger item).
 - **Pre-R1-close R2 manager spawn allowed for 5 of 6 managers** (locked 2026-04-26 per user direction). Per-manager R1-gating audit found only Pure Bootstrap is definitionally R1-close-gated (scope = "what survives R1 close"); the other 5 (Grounding, Substrate, Modeling, Impossible-Bugs, Release) have no technical R1 dependency and may spawn pre-R1-close. R2 Substrate spawn actively *unblocks* R1 closure (ValueBody-list/sum is prereq for R1C-A Sub-deliverable A). This is the targeted exception to step 4's "spawn at R1 close" framing in Transition mechanics; refined inline at step 4. ROADMAP `## Release R2 Program` promotion (step 5) still gates on R1 close — pre-R1-close R2 manager activity operates under this doc's PROPOSAL authority, not under ROADMAP authority.
 - **Evaluator (Goal 7) added to R2 (locked 2026-04-28 per user direction).** The runtime that executes `.dag` bodies, applies lenses, and constructs witnesses lands in R2 as the *capacity layer*. Justification: at gunbc multi-agent dispatch velocity, Evaluator is sized at ~2-3 weeks (vs. 2-4 months at solo-dev sizing). Folding it into R2 (rather than a separate post-R2 program) means R2 ships a complete capacity layer + R3 runs every consequence claim mechanically. The split is structural: R2 = enabling work that requires new design / substrate / runtime; R3 = mechanical follow-through that becomes obvious once R2 lands.
 - **R3 reframed from escape-hatch to structured Thesis Closure / Consequence Cycle program (locked 2026-04-28 per user direction).** Supersedes the prior "R3 reserved as escape hatch only" decision. Per [`docs/thesis/r2-r3-thesis-mapping.md`](thesis/r2-r3-thesis-mapping.md), ~7 thesis claims become mechanical post-R2-Evaluator (Tier 3 mirror dissolution × 4, lens-producer retirement, L4-L7 verification, fixed-point, Tier 2 Int128, Shape B demos × 2+, Anthropic typed wire). Treating those as an escape-hatch obscured the structural opportunity. R3 is now named, scoped, and dispatchable per [`docs/r3-structure.md`](r3-structure.md).
@@ -371,26 +371,30 @@ Three additional items the Director review identified as R2-expansion (not R3):
 
 ~~**Timeline:** lands as part of the R1 closure → R2 promotion transition (step 4 in Transition mechanics above). Not a separate program.~~
 
-### 3. Pre-dispatch Evaluator design questions (2026-04-28 amendment)
+### 3. ~~Pre-dispatch Evaluator design questions~~ — **CLOSED 2026-04-28 per Director review of #1078**
 
-Surfaced by 2026-04-28 R2 amendment folding Evaluator into R2 scope. The Evaluator is the largest single new lane; design questions affect downstream R3 consumers and should resolve before worker dispatch.
+> **🔄 CLOSED.** The 8 design challenges in [`docs/r3-structure.md`](r3-structure.md) §"Design challenges — DECISIONS LOCKED 2026-04-28 per Director review" were ratified as locked decisions in the Director review of #1078 at 2026-04-28T01:32:45Z. Each is now a DECISION, not a RECOMMENDATION; the dispatch cadence (PR-A → PR-B → PR-C → PR-D → PR-E + LanguageSpec parallel) is named in [`docs/r3-structure.md`](r3-structure.md) §"Pre-R2-Evaluator design lock cadence."
+>
+> The original anchor reference (§"Design challenges to resolve up-front") no longer exists; the section was retitled to reflect the locked-decisions state. New design questions surfaced after this date (e.g., from the worked-examples reframe) are tracked in [`docs/design-emission-model.md`](design-emission-model.md) §"Open design calls surfaced by the examples" — those are the live open questions for the substrate-completion lanes.
 
-**Required before R2-Evaluator dispatch:** Director-authored decisions (or accept-as-recommended) on each of the 8 design challenges enumerated in [`docs/r3-structure.md`](r3-structure.md) §"Design challenges to resolve up-front". Specifically:
+~~Surfaced by 2026-04-28 R2 amendment folding Evaluator into R2 scope. The Evaluator is the largest single new lane; design questions affect downstream R3 consumers and should resolve before worker dispatch.~~
 
-1. **Evaluator runtime-value representation** — closed-over environments, lazy/eager strategy, memoization, witness construction surface
-2. **Lens reflection completeness scope** — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`?
-3. **Cross-target equivalence semantics** — algebraic-equal vs byte-equal vs behavioral-equal under oracle?
-4. **SG-0 zero requirement for fixed-point** — full hand-Rust retirement before fixed-point closes, or non-test subset only?
-5. **T-Verification-L4L7 sequencing** — L4-L7 parallel or sequential within R3?
-6. **Shape B target choice** — which 2 Shape B targets does R3 demo?
-7. **Tier 3 mirror dissolution mechanics** — performance threshold for accepting evaluated paths over compiled-Rust mirrors?
-8. **R3 Anthropic vs R2 OpenAI** — generalize provider pattern in R3, or replicate?
+~~**Required before R2-Evaluator dispatch:** Director-authored decisions (or accept-as-recommended) on each of the 8 design challenges enumerated in `docs/r3-structure.md` §"Design challenges to resolve up-front". Specifically:~~
 
-**Required:** Director reply on each (accept recommendation, propose alternative, or surface sub-question). Non-blocking for this PR; blocking for R2-Evaluator and R3 dispatch.
+~~1. **Evaluator runtime-value representation** — closed-over environments, lazy/eager strategy, memoization, witness construction surface~~
+~~2. **Lens reflection completeness scope** — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`?~~
+~~3. **Cross-target equivalence semantics** — algebraic-equal vs byte-equal vs behavioral-equal under oracle?~~
+~~4. **SG-0 zero requirement for fixed-point** — full hand-Rust retirement before fixed-point closes, or non-test subset only?~~
+~~5. **T-Verification-L4L7 sequencing** — L4-L7 parallel or sequential within R3?~~
+~~6. **Shape B target choice** — which 2 Shape B targets does R3 demo?~~
+~~7. **Tier 3 mirror dissolution mechanics** — performance threshold for accepting evaluated paths over compiled-Rust mirrors?~~
+~~8. **R3 Anthropic vs R2 OpenAI** — generalize provider pattern in R3, or replicate?~~
 
-**Ownership:** Director authors as inline updates to [`docs/r3-structure.md`](r3-structure.md) §"Design challenges to resolve up-front" or as a sibling PR.
+~~**Required:** Director reply on each (accept recommendation, propose alternative, or surface sub-question). Non-blocking for this PR; blocking for R2-Evaluator and R3 dispatch.~~
 
-**Timeline:** R2-Evaluator design questions resolve before R2-Evaluator worker dispatch begins. R3-specific design questions (Shape B choice, L4-L7 sequencing, etc.) may resolve during R2's final week / R3 brief-authoring window.
+~~**Ownership:** Director authors as inline updates to `docs/r3-structure.md` §"Design challenges to resolve up-front" or as a sibling PR.~~
+
+~~**Timeline:** R2-Evaluator design questions resolve before R2-Evaluator worker dispatch begins. R3-specific design questions (Shape B choice, L4-L7 sequencing, etc.) may resolve during R2's final week / R3 brief-authoring window.~~
 
 ### 2. ~~Pre-promotion `≤5 irreducible-shim` gate-name review~~ — **RETRACTED (2026-04-25 cascade promotion)**
 
