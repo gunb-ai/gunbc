@@ -112,6 +112,15 @@ RETRACTION_PATTERNS=(
   "describing the recurring"
   "review loop"
   "PAUSE_AND_REGROUP"
+  # Common retrospective / negation patterns
+  "[Ii]nstead of"  # "X instead of Y" — Y is retracted
+  "not a"  # "this is not a canonical choice"
+  "what looked like"  # retrospective re-framing
+  "selection logic"  # describes engine anti-pattern
+  "engine that holds"  # describes engine anti-pattern
+  "fact \(the"  # "is a fact (the canonical choice fact, ...)" anti-pattern descriptions
+  "ratified the recommendations"  # historical context within CLOSED block
+  "design challenges in §"  # cross-references to retitled sections
 )
 
 violations=0
