@@ -944,7 +944,7 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Director's locked design decisions** (per response on #1078, recorded here for `design-lens-framework.md` authoring):
 1. **Pure monoidal**, not stateful. Memory-peak (anamorphism + state) is a separate framework.
-2. **Result type:** `DimensionReport<C> = Satisfied { composed: C, witnesses: List<Witness<C>> } | Violated { diagnostics: List<EmissionDiagnostic> }`. Reuses `dimensions.dag` + `EmissionDiagnostic`. No silent fabrication.
+2. **Result type:** see [`docs/design-lens-framework.md`](design-lens-framework.md) §"Lens<C> primitive" — the framework reuses the existing `DimensionReport<Carrier>` from `src/v3/std/dimensions.dag:51-61` verbatim. Single carrier authority lives in the lens-framework doc; this row no longer restates the shape (per codex BLOCKING on `a9326224`: restating the shape across multiple authority docs created drift opportunities — single-authority discipline applies).
 3. **Higher-order shapes:** function-valued cost basis derived from signature. Meta-lens (lens-on-lens) deferred post-R3.
 4. **Cross-domain composition:** explicit declaration only. `Lens<C> × Lens<D> = Lens<(C, D)>` with product monoid; side-conditions compose conjunctively. User-declared, not auto-derived.
 5. **User-authored lens substrate:** T-LensAPI rescope to lens-as-monoid in same wave as `Lens<C>` lands. User-lens surface inherits structurally.

@@ -103,8 +103,17 @@ EOF
 # Thesis Mapping (test fixture — clean; no forbidden strings)
 EOF
   cd "$TMPDIR"
-  output=$(bash "$TEST_CONSUMER" 2>&1)
-  exit_code=$?
+  # Shield from `set -e`: the consumer is EXPECTED to exit non-zero
+  # here (that's the whole point of this test). Capture both output
+  # and exit code via an `if` form, which puts the command in a
+  # context where errexit is suppressed. Per codex BLOCKING on
+  # `a9326224`: a bare `output=$(...)` in errexit mode would abort
+  # the whole self-test on the expected failure path.
+  if output=$(bash "$TEST_CONSUMER" 2>&1); then
+    exit_code=0
+  else
+    exit_code=$?
+  fi
   cd "$ROOT"
 
   # Restore r3-structure.md for subsequent tests.
