@@ -797,23 +797,25 @@ fold_dag_list_int_refined_top_level_to_rust_box_slice_u32: TestClaim {
 
 **Python spec:**
 ```
-// Python ints are arbitrary precision — declared structurally as AnyBound,
-// not as "no bound parameter" (which would be a missing structural fact).
-inhabits int : OrderedRing  bound = AnyBound
+// Python ints are arbitrary precision — declared structurally as Unbounded
+// (the Interval<Int> Unbounded variant), not as "no bound parameter" (which
+// would be a missing structural fact).
+inhabits int : OrderedRing  bound = StaticBound(Unbounded)
 ```
 
-The fold uses a **single structural predicate** for bound matching across all targets — match-by-`BoundDeclaration`, where `BoundDeclaration` is a sum type at the substrate level:
+The fold uses a **single structural predicate** for bound matching across all targets — match-by-`BoundDeclaration`, where `BoundDeclaration` is a sum type at the substrate level **wrapping `Interval<Int>` for the static case** and adding `PlatformDependent` as a distinct kind (not an interval — it resolves to an interval at target-platform time):
 
 ```
 type BoundDeclaration
-  = ExactBound { range: NumericRange }       // Rust int32, Go int32 — matches if range exactly equals program's range
-  | AnyBound                                 // Python int (arbitrary precision) — matches programs that declare ANY explicit bound
-  | PlatformDependentBound                   // Rust usize, Go int — matches only programs that declare Int(platform)
+  = StaticBound(Interval<Int>)               // Compile-time-known interval; Interval<Int> further has variants ExactInterval { lo, hi } and Unbounded
+  | PlatformDependent                         // Target-platform-determined; not an interval — resolves at target-platform time
 ```
 
-(Per codex BLOCKING finding on `c98981634`: the prior "algebra-uniqueness when no bound parameter exists" framing was a target-specific *second* emission predicate, contradicting the exact-bound single-authority rule. The corrected predicate is uniform — every target's inhabitance declares its `BoundDeclaration` structurally, and the fold matches structurally on the sum's variants. `AnyBound` matches an explicit program bound *as a declared property of the inhabitance*, not as subsumption-as-policy.)
+`Interval<Int>` (per Q1 consolidation) carries the value-domain interval shape — `ExactInterval { lo, hi }` for `i32`/`u32`/`int32`/etc.; `Unbounded` for Python int / arbitrary-precision integers. `PlatformDependent` is a SEPARATE kind because its actual interval depends on which target platform is being emitted to (Rust `usize` is `[0, 2^N)` where N is platform-determined; Go `int` similarly).
 
-**Important:** `AnyBound` does NOT match an *under-refined* program (one that declares no bound at all, like `data x: Int`). The program must declare its bound explicitly — even if that bound is "any" (`data x: Int(any)`). Implicit-bound programs fail-closed uniformly across all targets, matching cross-target consistency: a program that doesn't declare its structural intent is incomplete, regardless of which target the fold runs on.
+(Per codex BLOCKING finding on `c98981634`: the prior "algebra-uniqueness when no bound parameter exists" framing was a target-specific *second* emission predicate. Per codex BLOCKING finding 2026-04-28T17:06: the prior `BoundDeclaration = Interval<Int>` claim split substrate authority because `PlatformDependent` isn't an interval. The corrected predicate is uniform — every target's inhabitance declares its `BoundDeclaration` structurally; the fold's single match predicate handles `StaticBound(...)` via Interval<Int> variant matching and `PlatformDependent` via kind-only matching.)
+
+**Important:** `StaticBound(Unbounded)` does NOT match an *under-refined* program (one that declares no bound at all, like `data x: Int`). The program must declare its bound explicitly — even if that bound is "any" (`data x: Int(any)` parses to `StaticBound(Unbounded)` on the program side). Implicit-bound programs fail-closed uniformly across all targets, matching cross-target consistency: a program that doesn't declare its structural intent is incomplete, regardless of which target the fold runs on.
 
 **Go spec:**
 ```
@@ -828,7 +830,7 @@ inhabits int64  : OrderedRing  bound = (-2^63..2^63)
 // `int` until lifetime/platform analysis can structurally derive its applicability.
 ```
 
-**Cross-target portability meta-spec:** every Shape A target must declare at least one inhabitant of `OrderedRing` whose `BoundDeclaration` *structurally matches* the program's bound `(-2^31..2^31)` — i.e., either an `ExactBound` with that range, or an `AnyBound` declaration. Verified at substrate-load time using the same single match predicate the fold uses (no separate "covering" relation).
+**Cross-target portability meta-spec:** every Shape A target must declare at least one inhabitant of `OrderedRing` whose `BoundDeclaration` *structurally matches* the program's bound `(-2^31..2^31)` — i.e., either a `StaticBound(ExactInterval(lo, hi))` with matching range, or a `StaticBound(Unbounded)`. Verified at substrate-load time using the same single match predicate the fold uses (no separate "covering" relation).
 
 **Program input:**
 ```
@@ -837,9 +839,9 @@ data x: Int(-2^31..2^31) = 0
 
 **Fold runs three times (one per target), with the **same algorithm** — one structural match on `BoundDeclaration`:**
 
-- **Rust:** candidates filtered by `BoundDeclaration` match against program's `ExactProgramBound{(-2^31..2^31)}`. `Int32`'s `ExactBound{(-2^31..2^31)}` matches; `Int8/16/64/128` are `ExactBound` at different ranges (no match); `usize` is `PlatformDependentBound` (no match). Emit `0i32`.
-- **Python:** candidates filtered by the same predicate. Python `int`'s `AnyBound` matches an explicit program bound; that's the structural predicate, not algebra-uniqueness fallback. Emit `0`.
-- **Go:** candidates filtered by the same predicate. `int32`'s `ExactBound{(-2^31..2^31)}` matches; `int8/16/64` are `ExactBound` at different ranges (no match); `int` is `PlatformDependentBound` (no match). Emit `int32(0)`.
+- **Rust:** candidates filtered by `BoundDeclaration` match against program's `StaticBound(ExactInterval(-2^31, 2^31))`. `Int32`'s `StaticBound(ExactInterval(-2^31, 2^31))` matches; `Int8/16/64/128` are `StaticBound(ExactInterval(...))` at different ranges (no match); `usize` is `PlatformDependent` (no match — different kind). Emit `0i32`.
+- **Python:** candidates filtered by the same predicate. Python `int`'s `StaticBound(Unbounded)` matches an explicit program-side `StaticBound(...)` (the Interval<Int> Unbounded variant matches any explicit interval — declared property of the inhabitance, not subsumption fallback). Emit `0`.
+- **Go:** candidates filtered by the same predicate. `int32`'s `StaticBound(ExactInterval(-2^31, 2^31))` matches; `int8/16/64` are `StaticBound(ExactInterval(...))` at different ranges (no match); `int` is `PlatformDependent` (no match — different kind). Emit `int32(0)`.
 
 **Test claim shape:**
 ```
@@ -855,9 +857,9 @@ fold_dag_int_refined_cross_target_consistent: TestClaim {
 }
 ```
 
-**Why this works without canonical-choice:** the program is *fully refined* — it declares its bound. Each target's inhabitance declares its `BoundDeclaration` structurally (ExactBound for Rust int32 / Go int32, AnyBound for Python int, PlatformDependentBound for usize / Go int). The fold uses a **single structural predicate**: match on `BoundDeclaration`. No "exact-bound when parameterized, algebra-uniqueness when not" dual-predicate fallback (per codex BLOCKING on `c98981634`). The cross-target meta-spec uses the same single predicate at substrate-load time to verify each target has at least one structurally-matching inhabitant.
+**Why this works without canonical-choice:** the program is *fully refined* — it declares its bound. Each target's inhabitance declares its `BoundDeclaration` structurally (`StaticBound(ExactInterval(...))` for Rust int32 / Go int32; `StaticBound(Unbounded)` for Python int; `PlatformDependent` for usize / Go int). The fold uses a **single structural predicate**: match on `BoundDeclaration` — `StaticBound(...)` cases match by Interval<Int> variant equality, `PlatformDependent` matches by kind. No "exact-bound when parameterized, algebra-uniqueness when not" dual-predicate fallback (per codex BLOCKING on `c98981634`); no substrate split between Interval-shaped bounds and platform-dependent bounds (per codex BLOCKING 2026-04-28T17:06). The cross-target meta-spec uses the same single predicate at substrate-load time.
 
-**Compare to under-refined Example 1:** that program (`data x: Int` — no bound declared at all) fails-closed *uniformly across all targets*. On Rust, no `BoundDeclaration` matches an unspecified-bound program (every Rust int's ExactBound demands an explicit program range). On Python, the same: `AnyBound` matches *explicit* program bounds (including `Int(any)`), not the absence of a bound declaration. On Go, same as Rust. Cross-target consistency holds: the same program either grounds on all targets (when fully refined, like Example 8's `Int(-2^31..2^31)`) or fails-closed on all (when under-refined, like Example 1's `Int`). To express "any bound is fine" for Python int, the program writes `data x: Int(any)` — explicit declaration replaces implicit defaults, matching the no-engine discipline.
+**Compare to under-refined Example 1:** that program (`data x: Int` — no bound declared at all) fails-closed *uniformly across all targets*. On Rust, no `BoundDeclaration` matches an unspecified-bound program (every Rust int's `StaticBound(ExactInterval(...))` demands an explicit program range). On Python, the same: `StaticBound(Unbounded)` matches *explicit* program bounds (including `StaticBound(Unbounded)` from `Int(any)`), not the absence of a bound declaration. On Go, same as Rust. Cross-target consistency holds: the same program either grounds on all targets (when fully refined, like Example 8's `Int(-2^31..2^31)`) or fails-closed on all (when under-refined, like Example 1's `Int`). To express "any bound is fine" for Python int, the program writes `data x: Int(any)` — explicit declaration replaces implicit defaults, matching the no-engine discipline.
 
 ---
 
@@ -1006,10 +1008,10 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Recommendation:** **(a)** — new file `dsl/std/inhabitance.dag`. Reasoning: BoundDeclaration is one of several inhabitance-fact carriers (ExactBound, AnyBound, PlatformDependentBound, future `BorrowedBound`, etc.); collecting them in one substrate file matches the modeling discipline. Parser change is bounded (one new postfix `(any)` / `(platform)` keyword). Keeps `algebra.dag` focused on algebraic structures.
 
-**DECISION (Director-locked 2026-04-28 via dialogue):** Q1 resolves through **structural consolidation** rather than (a)/(b)/(c) directly. The shared underlying modeling for `CardinalityBound`, `SizeBound`, and `BoundDeclaration` is **interval over a totally ordered set** — a parametric `Interval<D>` substrate concept. The decision:
+**DECISION (Director-locked 2026-04-28 via dialogue; refined 2026-04-28T17:06 per codex BLOCKING):** Q1 resolves through **structural consolidation** rather than (a)/(b)/(c) directly. The shared underlying modeling for `CardinalityBound`, `SizeBound`, and the value-domain part of `BoundDeclaration` is **interval over a totally ordered set** — a parametric `Interval<D>` substrate concept. But `PlatformDependent` is NOT an interval (it resolves to an interval at target-platform time; doesn't fit Interval<D>'s variants). So `BoundDeclaration` is a sum that wraps Interval<Int> for the static case and adds PlatformDependent as a distinct kind. The decision:
 
-- **Declare `Interval<D>` as the shared parent** in substrate. Variants carry `(lo, upper)` interval shape with `Unbounded` for the no-upper case. `D` is the ordered domain (Cardinal, Int, Ordinal).
-- **`BoundDeclaration = Interval<Int>`** with explicit `lo` (since `i32` starts at `-2^31`, not 0). This is Q1's substrate answer.
+- **Declare `Interval<D>` as the shared parent** in substrate. Variants: `ExactInterval { lo: D, hi: D } | Unbounded`. `D` is the ordered domain (Cardinal, Int, Ordinal).
+- **`BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`** — `StaticBound` carries the value-domain interval (with explicit `lo`); `PlatformDependent` is a distinct kind whose interval depends on target platform. The fold's single match predicate dispatches on the outer sum, then matches `Interval<Int>` variants for `StaticBound` cases.
 - **`CardinalityBound` and `SizeBound` retrofit** as `Interval<Cardinal>` instances (additive — existing accessor patterns continue to work via aliases).
 - **`LoopBound::Cardinality` retrofit** as `Interval<Ordinal>`-like. **`LoopBound::Descent` stays distinct** (termination witness — well-founded recursion, not an interval).
 - **`CostBound` stays distinct** (asymptotic equivalence class — different math; not an interval).
@@ -1050,6 +1052,29 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 - Cross-target: `axis_<X>_consistent_across_targets` where applicable (e.g., `bound_consistent_across_rust_python_go`)
 
 **Recommendation:** **(b)** — lock per-family axis discipline here; cadence PR-F (Rust axes), PR-G (Python axes), PR-H (Go axes). Each is a focused 1-2 day design PR with TestClaim acceptance gate. Reason: enumerating in this PR makes #1078 enormous; deferring entirely is the alias/clone risk. Cadenced sub-PRs with TestClaim gates is the structural discipline.
+
+**DECISION (Director-locked 2026-04-28 via dialogue): (b3') — Emission-biased non-violating minimal target modeling.** Refines (b) with three additional constraints:
+
+1. **Goal: faithful target-language modeling.** The end-state is full structural shape — Rust references / lifetimes / pointers / etc. modeled as Rust *actually* defines them. Time-bounded velocity drives the cadence, not a different goal.
+
+2. **Bias: model what emission needs first.** Worked examples in this doc surface axes; new axes added as new `.dag` patterns surface them. Director directive: "we don't need to model 'rust' - we need to model our emission into rust/go/python."
+
+3. **Invariant — non-violating:** what we model must be a CORRECT SUBSET of the target's actual semantics. We can't claim `&T` is mutable. We can't claim Python `int` overflows. The subset is faithful (aligned with target reality), not a custom abstraction. Per-inhabitance modeling validates against the target language's actual specification (per-target-spec audit).
+
+4. **Reference/pointer concepts share a parent** — same DAG-grounding move as Q1's `Interval<D>` and Director synthesis's `Monoid<C>`. Rust `Box<T>`/`&T`/`Rc<T>`, Go `*T`, Python object reference all share underlying modeling. Declare `ReferenceModel<T>` parametric in substrate with axes (`lifetime`, `mutability`, `ownership`, `representation`); each target's pointer/reference inhabitances declare which combination of axes they cover. Same epistemic-stacking discipline applied recursively.
+
+**Verification — four-property framework** (per Director directive: "for any combination of `.dag`, we can demonstrate that its the minimal, performant, correct and faithful representation"):
+
+| Property | By construction or by test? | Where it lives |
+|---|---|---|
+| **Faithful** | By construction (structural fold) + per-inhabitance non-violation gate (target-language-spec validation per axis) | Lens<FaithfulnessVerdict> + per-target test harness (emit a stub program; verify it compiles through the target's actual compiler) + spec-audit reviewer trail |
+| **Correct** | By test | L4 emit/eval match (existing) — wraps as `Lens<CorrectnessVerdict>` |
+| **Minimal** | By test | Lens<MinimalityVerdict> — checks emission has no unused machinery, no oversized type (e.g., `Vec<u8>` when `[u8; N]` would do). Compares against alternative emissions |
+| **Performant** | By test (with per-target performance model) | Lens<PerformanceVerdict> — per-target pathological-pattern check (e.g., `String::new()` for a static literal) |
+
+This is exactly what the lens framework is for — each property is a `Lens<Verdict>` instance composable into one verification harness.
+
+**Cadence consequence:** PR-F is bounded to "axes the worked examples surface for Rust" — not "everything Rust offers." PR-G/H similarly. Each PR adds its target's axes per worked-examples-driven priority.
 
 **What "lock the shape" means here, concretely:**
 1. Each axis is declared as a *substrate sum type* in `dsl/std/inhabitance.dag` (or per-target file like `dsl/std/rust.dag`). Format: `type Mutability = Mutable | Immutable`.
@@ -1102,6 +1127,15 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 - `l4_emit_eval_match_holds_per_corpus_program_per_target` (the actual L4 claim)
 
 **Recommendation:** **(c) + (d) hybrid** — generated cross-product corpus for completeness coverage + user-program corpus (`dsl/std/` + `src/v3/std/` + `dsl/examples/`) for self-hosting/realism coverage. Reason: (c) gives completeness guarantee per L6's structural-form coverage; (d) drives self-hosting verification (compiler is written in `.dag`; the compiler IS the corpus for itself). (a) and (b) have judgment gaps. Cadence PR-I (L4 corpus authoring spec) before T-Verification-L4-L7-Direct dispatch.
+
+**Cascade from Q2 lock — universal four-property claim** (per Director directive "for any combination of `.dag`, we can demonstrate that its the minimal, performant, correct and faithful representation"): the L4 corpus is the verification surface for this UNIVERSAL property over `.dag` programs. The corpus's acceptance gate must demonstrate all four properties hold for every (program × target) pair, not just emit/eval match. Concrete additions to PR-I (L4 corpus authoring spec):
+
+- **Non-violation gate** (Faithful sub-property): every emitted program in the corpus passes through the target's actual compiler/type-checker without errors. Stronger and cheaper than emit/eval match — catches "we modeled `&T` as mutable" violations even without runtime.
+- **Minimality lens applied to corpus output:** for each (program × target), assert the emission has no unused machinery (per `Lens<MinimalityVerdict>`).
+- **Performance lens applied to corpus output:** for each (program × target), assert no per-target pathological pattern (per `Lens<PerformanceVerdict>`).
+- **Cross-target equivalence (L5 tie-in):** L5 corpus is built on top of L4 corpus per existing decision; the four-property gate runs on L4; L5 layers cross-target consistency on top.
+
+PR-I scope grows: from "L4 corpus shape" to "L4 corpus shape + per-target-compiler harness + four-property lens-instance applications." Sizing increases (~3-4 days vs the original 1-2 day estimate) but the verification claim is now demonstrably universal-over-corpus rather than just emit/eval match.
 
 ### Q5 — L6 cross-product fold cardinality variant enumeration
 
