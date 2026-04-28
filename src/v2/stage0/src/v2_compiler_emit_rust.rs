@@ -1233,8 +1233,9 @@ pub fn emit_module_full(
         let wire_contract_by_name = Rc::new({
             let mut __result = Vec::new();
             for i in typed_module.items.clone().iter().cloned() {
-                if (authored_name(scope.type_env.clone(), i.clone()).as_str()
+                if ((authored_name(scope.type_env.clone(), i.clone()).as_str()
                     == "wire_contract".to_string().as_str())
+                    || (i.name.clone().as_str() == "wire_contract".to_string().as_str()))
                 {
                     __result.push(i);
                 }
