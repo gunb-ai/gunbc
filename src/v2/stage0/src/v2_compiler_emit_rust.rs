@@ -306,7 +306,10 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                 if is_data_def_item(&wc) {
                     match wc.body.clone() {
                         None => {
-                            break rust_serde_tag_attr();
+                            break emit_error_expr(
+                                "wire_contract: data item has no initializer body".to_string(),
+                                Rust,
+                            );
                         }
                         Some(init) => match (*init.expr_data.clone()).clone() {
                             ExprData::ExprRecordLit { .. } => {
@@ -314,7 +317,11 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                             }
                             _ => match init.inferred.clone() {
                                 None => {
-                                    break resolve_wire_serde_tag(&init, source_indices);
+                                    break emit_error_expr(
+                                        "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)"
+                                            .to_string(),
+                                        Rust,
+                                    );
                                 }
                                 Some(inf) => match (*inf.clone()).clone() {
                                     InferredNode::Resolved { node, .. } => {
@@ -328,11 +335,21 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                                             break resolve_wire_serde_tag(&node, source_indices);
                                         }
                                     }
-                                    InferredNode::CompilerError { .. } => {
-                                        break resolve_wire_serde_tag(&init, source_indices);
+                                    InferredNode::CompilerError { message, .. } => {
+                                        break emit_error_expr(
+                                            v2_rt::concat(
+                                                "wire_contract: ".to_string(),
+                                                message.clone(),
+                                            ),
+                                            Rust,
+                                        );
                                     }
                                     InferredNode::TypeVariable { .. } => {
-                                        break resolve_wire_serde_tag(&init, source_indices);
+                                        break emit_error_expr(
+                                            "wire_contract: unresolved type variable in wire_contract initializer"
+                                                .to_string(),
+                                            Rust,
+                                        );
                                     }
                                 },
                             },

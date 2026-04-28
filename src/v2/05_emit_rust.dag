@@ -276,14 +276,22 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
     Some { value: wc } =>
       if is_data_def_item(item: wc) {
         match wc.body {
-          None => rust_serde_tag_attr()
+          None =>
+            emit_error_expr(
+              message: "wire_contract: data item has no initializer body",
+              target: Rust
+            )
           Some { value: init } =>
             match init.expr_data {
               ExprRecordLit { parent_enum: _ } =>
                 resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
               _ =>
                 match init.inferred {
-                  None => resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
+                  None =>
+                    emit_error_expr(
+                      message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)",
+                      target: Rust
+                    )
                   Some { value: inf } =>
                     match inf {
                       Resolved { node } =>
@@ -295,10 +303,16 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
                         } else {
                           resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
                         }
-                      CompilerError { message: _, span: _ } =>
-                        resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
+                      CompilerError { message, span: _ } =>
+                        emit_error_expr(
+                          message: concat("wire_contract: ", message),
+                          target: Rust
+                        )
                       TypeVariable { id: _ } =>
-                        resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
+                        emit_error_expr(
+                          message: "wire_contract: unresolved type variable in wire_contract initializer",
+                          target: Rust
+                        )
                     }
                 }
             }
