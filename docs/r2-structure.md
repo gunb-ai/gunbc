@@ -428,18 +428,21 @@ Every release-control fact lives in exactly one place with exactly one state. St
 
 **Receipt:** PR #1078's review history (9 events, 83 minutes, 5 codex passes catching the same shape in different clothing) is the empirical case study. Each round caught one stale string while another sibling table preserved a different one. Without this rule, the next release-doc PR will repeat the loop.
 
-**Doc consistency check** (small consumer at `scripts/check-release-doc-authority.sh`; wired to `make verify` via the `release-doc-authority-check` target):
+**Doc consistency check** (small consumer at `scripts/check-release-doc-authority.sh`; enforced by both CI and Makefile):
 
 ```bash
 # Forbidden-string consumer — fails if any stale concept name appears in
 # live (non-retraction-context) sections of release-control docs.
 # Lives at scripts/check-release-doc-authority.sh.
-# Wired into Makefile: `make verify` runs it as part of the standard
-# verification suite (alongside bootstrap-check + testgen-check).
-# Direct invocation: `make release-doc-authority-check`.
+#
+# Enforcement paths (both wired):
+#   - CI: .github/workflows/ci.yml step "Release-doc authority check
+#     (P2 single-authority discipline)" — runs on every push/PR
+#   - Makefile: `make verify` (alongside bootstrap-check + testgen-check)
+#     and direct target `make release-doc-authority-check`
 ```
 
-The script consumes a forbidden-string list (T-Ground-Engine outside retraction; T-Ground-Annotation outside retraction; "canonical choice" as live carrier; @target annotation outside retraction; "DECISIONS LOCKED" applied to DIRECTION-RATIFIED-SCHEDULED items, etc.) and reports violations. It's a small, mechanical consumer — not a full state-machine validator — but it catches the recurring pattern from the #1078 review loop with one bash invocation. **Enforcement path:** Makefile `verify` target, which CI invokes; failures surface as build errors not as advisory warnings.
+The script consumes a forbidden-string list (T-Ground-Engine outside retraction; T-Ground-Annotation outside retraction; "canonical choice" as live carrier; @target annotation outside retraction; "DECISIONS LOCKED" applied to DIRECTION-RATIFIED-SCHEDULED items, etc.) and reports violations. It's a small, mechanical consumer — not a full state-machine validator — but it catches the recurring pattern from the #1078 review loop with one bash invocation. **Enforcement path:** the CI workflow at `.github/workflows/ci.yml` invokes `bash scripts/check-release-doc-authority.sh` as a named step (alongside the existing fabrication-sentinel ratchet); failures surface as build errors, not advisory warnings. Local dev: `make verify` (or `make release-doc-authority-check` for the standalone check).
 
 ### 2. ~~Pre-promotion `≤5 irreducible-shim` gate-name review~~ — **RETRACTED (2026-04-25 cascade promotion)**
 
