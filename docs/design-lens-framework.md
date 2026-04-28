@@ -21,17 +21,20 @@ This is the structural primitive that THESIS implies but doesn't make explicit:
 
 ```
 Lens<C> = {
-  name:     String                          // dimension identifier (populates DimensionReport.dimension_name)
-  read:     (Dag, Behavior) → Witness<C>    // per-Behavior cost basis; Dag for substrate-fact lookup; typed failure channel
-  unit:     C                               // identity element of C's monoid
-  compose:  (C, C) → C                      // sequential composition (BindNode); both arms run
-  branch:   (C, C) → C                      // exclusive choice (BranchNode); only one arm runs — cost composition is max/join over arms, NOT work-additive
-  iterate:  (C, LoopBound) → C              // bounded iteration (LoopNode); LoopBound from src/v3/std/substrate.dag:316
-  validate: (Dag, C) → OptionalDiagnostic   // aggregate side-condition; Dag for workflow/sink lookup; aggregate location via Diagnostic.span
+  name:            String                          // dimension identifier (populates DimensionReport.dimension_name)
+  read:            (Dag, Behavior) → Witness<C>   // per-Behavior cost basis; Dag for substrate-fact lookup; typed failure channel
+  sequential:      Monoid<C>                       // sequential composition (BindNode); structural inhabitance of Monoid<C> from dsl/std/algebra.dag:110 — projects to op = compose, identity = unit; monoid law (associativity + identity) is structurally enforceable, not just documented
+  branch:          (C, C) → C                      // exclusive choice (BranchNode); only one arm runs — cost composition is max/join over arms; NOT a monoid op (no identity element required since branch always combines two arms)
+  iterate:         (C, LoopBound) → C              // bounded iteration (LoopNode); LoopBound from src/v3/std/substrate.dag:316
+  validate:        (Dag, C) → OptionalDiagnostic   // aggregate side-condition; Dag for workflow/sink lookup; aggregate location via Diagnostic.span
 }
 ```
 
 `Dag` and `Behavior` are the existing substrate types from `src/v3/std/substrate.dag` (no new substrate type introduced). `read`'s `(Dag, Behavior)` signature matches the existing `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` at `dimensions.dag:74` verbatim — no hidden global lookup authority for substrate facts; the `Dag` parameter carries the lookup context explicitly.
+
+**Sequential composition uses `Monoid<C>` structurally** (per Director directive 2026-04-28 + gpt-5-5-pro reflective analysis Finding #4): the prior parallel `compose: (C, C) → C` + `unit: C` field pair was duplicating `Monoid<C>` (`dsl/std/algebra.dag:110-113` — `op + identity`) — same drift shape as `AnalysisDimension<Carrier>` already carries. Replacing parallel fields with a single `sequential: Monoid<C>` field via **structural inhabitance** (per `feedback_epistemic_stacking` — every concept attaches to ontological DAG; same modeling-discipline move as Q1's `Interval<D>` consolidation) means: (i) the monoid law (associativity + identity) is *structurally* enforceable instead of merely documented; (ii) downstream consumers project from the monoid_witness rather than reading two parallel fields; (iii) future algebraic refinements (CommutativeMonoid for unordered sequential composition; Group for invertible composition) attach by extending the parent without changing Lens<C>'s shape.
+
+`branch` is NOT a monoid op — exclusive choice doesn't require an identity element (you always combine two arms; there's no "no-op branch" identity that would project to either arm). It's a standalone binary operation with `max/join` semantics. If a user-authored lens needed branch to have an identity (e.g., empty branch arm = unit), they could declare `branch: Monoid<C>` for their instance — but the framework doesn't require it.
 
 **Substrate naming note:** the analysis-dimension framework is named `AnalysisDimension<Carrier>` in the substrate (`src/v3/std/dimensions.dag:72`). DB-3 design doc ([`docs/design-dimension-abstraction.md`](design-dimension-abstraction.md)) refers to the same concept colloquially as `Dimension<Carrier>`; the substrate disambiguated by prefixing `Analysis-` to avoid collision with `Dimension<Unit, Carrier>` (the typed-value-wrapper for `Duration<Seconds>`-shaped values, `dimensions.dag:89`). When this lens-framework doc cites a substrate type, the substrate name is authoritative; design-doc colloquial names are not.
 
@@ -117,14 +120,40 @@ type SymbolicCost = CostExpr {
 }
 ```
 
+**SymbolicCost algebra witnesses** (per Director directive 2026-04-28 + gpt-5-5-pro reflective analysis Finding #6 — declare the algebra explicitly so consumers can compose generically; `feedback_modeling_philosophy` discipline):
+
+```
+// Sequential composition: SymbolicCost forms a Monoid under work-additive,
+// span-additive, asymptotic-max composition. Identity is the zero-cost cost.
+inhabits SymbolicCost : Monoid<SymbolicCost>
+  op(a, b) = CostExpr(work=a.work + b.work, span=a.span + b.span,
+                       class=max(a.class, b.class))
+  identity = CostExpr(work=0, span=0, class=O(1))
+
+// Branch composition (NOT a monoid op): SymbolicCost forms a JoinSemilattice
+// under work-max, span-max, asymptotic-max — exclusive choice takes worst
+// case across arms. Branch isn't required to have an identity; if a user
+// instance needs one, they can declare BoundedJoinSemilattice (with bottom).
+inhabits SymbolicCost : JoinSemilattice<SymbolicCost>
+  join(a, b) = CostExpr(work=max(a.work, b.work), span=max(a.span, b.span),
+                         class=max(a.class, b.class))
+
+// Asymptotic class lattice: BigOClass is itself a BoundedLattice with
+// O(1) at the bottom and an unbounded top. Used by branch.join above.
+inhabits BigOClass : BoundedLattice<BigOClass>
+  meet = min  identity_meet = O(unbounded)
+  join = max  identity_join = O(1)
+```
+
+The lens framework reads these inhabitance witnesses via `Dag::declarations()` — the `compose` action in the Lens<SymbolicCost> instance below projects from `Monoid<SymbolicCost>.op`, not from a free-standing function.
+
 **Lens<SymbolicCost> declaration:**
 
 | Field | Definition |
 |---|---|
 | `name` | `"complexity"` |
 | `read(dag, behavior)` | Reads operation's declared cost from `dsl/std/algebra.dag` (looked up via `dag` context for the given `behavior`) and wraps as `Inhabits(...)` (e.g., `OrderedRing.add` → `Inhabits(CostExpr(1, 1, O(1)))`); returns `Violates { reason: "no declared cost for <op>", at: behavior }` if the substrate has no fact for that operation |
-| `unit` | `CostExpr(work=0, span=0, asymptotic_class=O(1))` |
-| `compose` (Bind) | `CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))` |
+| `sequential` (Bind; `Monoid<SymbolicCost>`) | `op(a, b) = CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))`; `identity = CostExpr(work=0, span=0, asymptotic_class=O(1))`. Monoid law: associativity holds (work/span/class composition is associative); identity holds (composing with zero-cost is identity). |
 | `branch` (BranchNode) | `CostExpr(work=max(a.work, b.work), span=max(a.span, b.span), class=max(a.class, b.class))` — exclusive choice = worst case across arms (only one arm runs at runtime; the lens conservatively reports the worst); NOT work-additive |
 | `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | `CostExpr(work=body.work × loop_bound, span=body.span × loop_bound, class=multiply_class(body.class, loop_bound))` |
 | `validate(dag, c)` | Always `NoDiagnostic` — complexity has no side-condition; `dag` is unused; final result is `DimensionOk` if all reads `Inhabits` |
@@ -165,8 +194,7 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 |---|---|
 | `name` | `"tenant-flow"` |
 | `read(dag, behavior)` | Reads operation's declared capability requirement set (looked up via `dag` for the given `behavior`) wrapped as `Inhabits(...)` (e.g., `read[TenantA].orders` → `Inhabits({Read(TenantA)})`); returns `Violates { reason: "no declared capability requirement for <op>", at: behavior }` if the substrate has no fact for that operation |
-| `unit` | `{}` (empty capability set) |
-| `compose` (Bind) | Set union — sequential composition accumulates capabilities |
+| `sequential` (Bind; `Monoid<CapSet>`) | `op = set union`; `identity = {}` (empty set). Monoid law: union is associative + commutative (so this is actually `CommutativeMonoid<CapSet>` — Lens<C> only requires monoid; the commutative refinement is available structurally if a consumer needs it). |
 | `branch` (BranchNode) | Set union — exclusive choice; only one arm runs but compile-time analysis doesn't know which, so defensive accumulation: program must be granted capabilities for any arm it might take |
 | `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | Body's CapSet (the loop bound doesn't matter for capability set — every iteration requires the same caps as the body) |
 | `validate(dag, set)` | Reads `workflow.cap_grant` from `dag` (the `@cap_grant(...)` declaration on the workflow root). If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root span — read from dag>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and grant data come from `dag`, not hidden context) |
@@ -207,8 +235,7 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 |---|---|
 | `name` | `"ifc"` |
 | `read(dag, behavior)` | Reads operation's data label (looked up via `dag` for the given `behavior`) wrapped as `Inhabits(...)` (e.g., `read[TopSecret].records` → `Inhabits(TopSecret)`); returns `Violates { reason: "no declared security label for <op>", at: behavior }` if the substrate has no fact for that operation |
-| `unit` | `Public` (lattice bottom) |
-| `compose` (Bind) | Lattice join (`max`) — sequential composition takes the highest label |
+| `sequential` (Bind; `Monoid<SecurityLabel>`) | `op = lattice join (max)`; `identity = Public` (lattice bottom — the BoundedLattice<SecurityLabel> bottom inhabitance). Monoid law: lattice join is associative + commutative + idempotent (this is `BoundedSemilattice` actually — refinement of Monoid via `BoundedLattice<SecurityLabel>` from `dsl/std/algebra.dag:222`). |
 | `branch` (BranchNode) | Lattice join (`max`) — exclusive choice; defensive worst-case label across arms (only one arm runs but compile-time analysis must allow for either) |
 | `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | Body's label (the loop bound doesn't matter for IFC labels — every iteration produces data with the same label as the body) |
 | `validate(dag, label)` | Reads sink declaration + clearance (`@sink_clearance(...)`) from `dag`. If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration span — read from dag>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and clearance data come from `dag`, not hidden context) |
