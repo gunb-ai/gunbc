@@ -249,6 +249,23 @@ let x = 6 / 2",
 }
 
 #[test]
+fn emit_python_fails_closed_on_div_prelude_top_level_bind_collision() {
+    let dag = compile_to_dag(
+        "let __v3_idiv = 0\n\
+let x = 6 / 2",
+        "python_div_helper_bind_collision.v3",
+    )
+    .expect("compiles");
+    let err =
+        emit_python_text(&dag).expect_err("Python emit must reject division helper bind collision");
+    assert!(
+        matches!(err, v3_compiler::emit::EmitPythonError::Unsupported(ref message)
+            if message.contains("__v3_idiv")),
+        "expected explicit __v3_idiv bind collision error, got {err:?}"
+    );
+}
+
+#[test]
 fn emit_python_uses_only_shared_schema_surface() {
     const PYTHON_SPEC: &str = include_str!("../../../spec/python.dag");
     const PYTHON_EMITTER: &str = include_str!("../../src/emit/python_target.rs");

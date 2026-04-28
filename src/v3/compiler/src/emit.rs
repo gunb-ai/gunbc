@@ -151,8 +151,6 @@ pub(crate) fn div_prelude_reserved_name_collision<'a>(
                 .then_some(helper_name)
         })
 }
-        .then_some(helper_name)
-}
 
 pub(crate) fn decl_uses_substrate_result_or_div_error(
     dag: &Dag,

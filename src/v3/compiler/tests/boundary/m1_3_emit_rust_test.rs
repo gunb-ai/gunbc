@@ -331,6 +331,22 @@ let x = 6 / 2",
     );
 }
 
+#[test]
+fn emit_rust_fails_closed_on_div_prelude_top_level_bind_collision() {
+    let dag = compile_to_dag(
+        "let __v3_int_div = 0\n\
+let x = 6 / 2",
+        "rust_div_helper_bind_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_rust(&dag).expect_err("Rust emit must reject division helper bind collision");
+    assert!(
+        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("__v3_int_div")),
+        "expected explicit __v3_int_div bind collision error, got {err:?}"
+    );
+}
+
 /// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function
 /// parameter** position must lower to `impl Fn(A) -> B + Clone`, not
 /// `&impl Fn…` (review #676). Other positions use `std::rc::Rc<dyn Fn…>`;

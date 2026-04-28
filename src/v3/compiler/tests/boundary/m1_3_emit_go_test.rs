@@ -485,3 +485,19 @@ let x = 6 / 2",
         "expected explicit v3intdiv collision error, got {err:?}"
     );
 }
+
+#[test]
+fn emit_go_fails_closed_on_div_prelude_top_level_bind_collision() {
+    let dag = compile_to_dag(
+        "let v3intdiv = 0\n\
+let x = 6 / 2",
+        "go_div_helper_bind_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_go(&dag).expect_err("Go emit must reject division helper bind collision");
+    assert!(
+        matches!(err, v3_compiler::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("v3intdiv")),
+        "expected explicit v3intdiv bind collision error, got {err:?}"
+    );
+}
