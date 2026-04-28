@@ -5,12 +5,14 @@
 //! evaluate through `TestRunner` against the live SG-0 census authority.
 //!
 //! The acceptance shape (per `docs/briefs/r1c-d-t-pb-census-as-dag-worker.md`
-//! §Acceptance) is **not** "every claim Pass" — three of the six gates
-//! (`pb_hand_rust_at_shim_floor`, `pb_test_file_generated_from_dag`,
+//! §Acceptance) is **not** "every claim Pass" — five of the six gates
+//! (`pb_hand_rust_at_shim_floor`, `lens_producer_files_remaining`,
+//! `pb_compiler_std_ratchet_zero`, `pb_test_file_generated_from_dag`,
 //! `pb_rust_tests_outside_residual_zero`) are RED today and stay RED until
-//! cascade-promotion 0-floor work in the Pure Bootstrap to Zero program
-//! retires the residual hand-Rust census lists. The receipt this test
-//! carries is:
+//! cascade-promotion 0-floor + ratchet drive-down work in the Pure
+//! Bootstrap to Zero program retires the underlying residuals. Only
+//! `pb_self_compile_fixed_point` is green at landing. The receipt this
+//! test carries is:
 //!
 //!   1. The fixture compiles cleanly through `compile_to_dag`.
 //!   2. `TestRunner::run_suite` returns six results in declared order.
