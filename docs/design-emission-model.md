@@ -246,7 +246,7 @@ Replace `T-Ground-Engine` with five lanes:
 |---|---|---|
 | **T-Ground-Coercion-Fold** | S | The mechanical structural fold. Reads program intent + substrate facts; returns unique target or `EmissionDiagnostic`. Replaces `T-Ground-Engine` framing |
 | **T-Ground-LanguageSpec** | M | `LanguageSpec` schema authoring + per-target population + dissolve of existing `coercion.dag` table-driven shape via T-Ground-Dissolve |
-| **T-Ground-Annotation** | M | Program-side `@target` annotation substrate; composition rule with language spec |
+| **T-Ground-Lifetime-Analyzer** | M | Structural derivation of program intent (ownership / lifetime / growability / encoding) from program use — bindings, function signatures, escape analysis. Replaces the retracted `T-Ground-Annotation` lane (annotations rejected per Modeling problem 3 corrected — intent must derive structurally from program, not from a parallel annotation substrate) |
 | **T-Ground-Diagnostic** | S | `EmissionDiagnostic` carrier substrate; resolution-hint structure |
 | **T-Ground-CrossTarget-Meta** | S | Cross-target portability requirements meta-spec |
 
@@ -276,7 +276,7 @@ These four together are the structural test of the no-engine discipline.
 
 ## Worked examples
 
-These are concrete walkthroughs of the structural fold for representative cases. Each example includes the substrate facts it depends on, the program input, the fold steps, and the expected output (target code OR `EmissionDiagnostic`). **These serve as test cases** — the structure is intentionally reproducible: each example can be lifted into a `.dag` `TestClaim` once the substrate lanes (T-Ground-LanguageSpec + T-Ground-Annotation + T-Ground-Diagnostic + T-Ground-CrossTarget-Meta) land.
+These are concrete walkthroughs of the structural fold for representative cases. Each example includes the substrate facts it depends on, the program input, the fold steps, and the expected output (target code OR `EmissionDiagnostic`). **These serve as test cases** — the structure is intentionally reproducible: each example can be lifted into a `.dag` `TestClaim` once the substrate lanes (T-Ground-LanguageSpec + T-Ground-Lifetime-Analyzer + T-Ground-Diagnostic + T-Ground-CrossTarget-Meta) land.
 
 ### Example 1 — `Int` (no refinement) → fail-closed `EmissionDiagnostic::UnderRefined`
 
