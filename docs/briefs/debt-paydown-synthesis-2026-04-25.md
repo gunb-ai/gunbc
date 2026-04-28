@@ -117,10 +117,9 @@ coordination needed with R2 Grounding Manager.**
 
 | Scaffold | File:line | Trigger present? | Tracked at |
 |---|---|---|---|
-| `patch_lower_helpers_generated_type_alias_refinement` exact-string rustfmt patching | `lib.rs:1143-1180` | ✅ — "first PB cleanup target once generated `lower_helpers` can emit the refinement field natively" | PR #809 (P5 Progress Is Dissolution); T-PB-A class |
+| `patch_lower_helpers_generated_type_alias_refinement` exact-string rustfmt patching | retired by PR #1014 | ✅ fired — generated `lower_helpers` emits the type-alias `refinement` field natively; helper, `regen_lens` special case, and SG-6 special case deleted | PR #809 (P5 Progress Is Dissolution); closed by PB Tier 2 / B7 |
 
-Trigger present; class belongs to **Zero-Floor Manager (`stern-swift-335`)
-PB-* lane**.
+Trigger fired; this class is closed by **PB Tier 2 / B7** via PR #1014.
 
 ### 1.5 Host-Rust mirrors of std `.dag` carriers (`src/v3/compiler/src/dag.rs`)
 
@@ -297,21 +296,17 @@ dispatch in parallel. Each PR is small.
 
 ### Tier 2 — risk-shaped + R2-coupled (S-scope each, dispatch with R2 lanes)
 
-5. **Loop emission semantic invariant** (PR #809 entry). Currently
-   comment-level; degrades silently if any future PR adds another Loop
-   source. R2 demos depend on Python/Go emission, so this is R2-coupled.
-   **Brief MUST start with a construction-closure audit, NOT with a
-   marker design.** Step 1: enumerate every `Behavior::Loop`
-   construction site in `lower.rs` (and anywhere else); confirm or
-   refute that all paths route through recursive-function lowering.
-   Step 2 (conditional on the audit): if construction-closure holds, the
-   brief becomes "document the closure invariant as a structural
-   integration test; retire the speculative `LoopKind` marker idea" —
-   no new substrate. If it does NOT hold, the marker/test framing
-   applies and the brief turns into a `LoopKind` lowering-marker spec.
-   Both proposed paths in the original PR #809 row are bridges; do not
-   author the marker brief blind. Per `feedback_construction_over_ratchets`,
-   prefer the structural-closure outcome.
+5. **Loop emission semantic invariant** (PR #809 entry). **RESOLVED
+   (2026-04-27, B5 audit):** construction-closure holds — live lowering
+   materializes `Behavior::Loop` at exactly two `lower.rs` call sites
+   (single-fn `LoopBound::Cardinality` + mutual-cluster
+   `LoopBound::Descent`), both under `lower_bodies_phase`; `Dag::push_loop`
+   remains test-only (`dag/builder.rs`); bootstrap snapshots are regen
+   literals from the same pipeline, not a third algorithm. Structural
+   integration gate: `r2_b5_loop_construction_closure_test.rs` (substring
+   ratchet on `lower.rs` + DAG walk for bounds + provenance
+   `Accumulated`). Speculative `LoopKind` marker idea **retired** for
+   this risk item (per `feedback_construction_over_ratchets`).
 6. **`src/v3/std` vs `dsl/std` checklist undercount fix** (PR #809
    entry). **RESOLVED (2026-04-26):** convergence checklist in
    `dag.rs::declaration_name_preference_rank` + `lower.rs::collect_symbols`
@@ -319,8 +314,10 @@ dispatch in parallel. Each PR is small.
    duplicate pairs; ROADMAP exploratory row updated. (Prior line-cite
    `2735-2764` drifted as `main` moved — read the live doc comments.)
 7. **`patch_lower_helpers_generated_type_alias_refinement` retirement**
-   (PR #809 entry). Belongs to Zero-Floor Manager PB-Tier1 work; the
-   "first PB cleanup target" framing is already in the row.
+   (PR #809 entry). **RESOLVED 2026-04-27 by PR #1014:** the helper,
+   lower-helpers `regen_lens` special case, and SG-6 special case were
+   deleted after generated `lower_helpers` emitted the `refinement` field
+   natively. No follow-up PB-Tier1 work remains for this row.
 
 ### Tier 3 — substrate-deep, expensive, blocked on substrate capability (M+ scope)
 
@@ -457,10 +454,9 @@ managers consume the discipline as part of their normal lane intake.
   Grounding lane sequencing stays as planned. **No change requested.**
 - **Zero-Floor Manager (`stern-swift-335`):** §1.4 (`patch_lower_helpers_*`)
   + §1.5 (host-Rust mirrors) + §1.6 (effect-carrier mirror) all dissolve
-  through PB-* lanes. Synthesis recommends Tier 2 item #7
-  (`patch_lower_helpers_*`) be lifted to PB-Tier1-Sweep priority since
-  it is explicitly named "first PB cleanup target." **One priority hint
-  requested.**
+  through PB-* lanes. **2026-04-27 update:** Tier 2 item #7
+  (`patch_lower_helpers_*`) was lifted to PB-Tier1-Sweep priority and
+  closed by PR #1014; remaining PB-* mirror lanes are tracked separately.
 
 ---
 

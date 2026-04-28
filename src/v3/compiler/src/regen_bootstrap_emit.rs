@@ -5,7 +5,11 @@ use std::process::{Command, Stdio};
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
+<<<<<<< HEAD
     ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldValue, IntraClusterCall,
+=======
+    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue, IntraClusterCall,
+>>>>>>> origin/main
     LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NominalOpacity,
     NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter, PortId,
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
@@ -194,10 +198,10 @@ fn render_type_connective(connective: &TypeConnective) -> String {
             render_declaration_id(*output),
             render_arrow_body(body),
         ),
-        TypeConnective::Cardinality { element, bound } => format!(
-            "TypeConnective::Cardinality {{ element: {}, bound: {} }}",
-            render_declaration_id(*element),
-            render_cardinality_bound(bound),
+        TypeConnective::Cardinality(payload) => format!(
+            "TypeConnective::Cardinality(CardinalityPayload::new_unchecked({}, {}))",
+            render_declaration_id(payload.element()),
+            render_cardinality_bound(&payload.bound()),
         ),
         TypeConnective::Instantiation {
             template,
@@ -306,7 +310,23 @@ fn render_value_body(value_body: &ValueBody) -> String {
             let rendered: Vec<String> = values.iter().map(render_field_value).collect();
             format!("ValueBody::List({})", render_vec(&rendered))
         }
+<<<<<<< HEAD
+=======
+        ValueBody::Map(entries) => {
+            format!(
+                "ValueBody::Map({})",
+                render_field_map("ValueBody::Map", entries)
+            )
+        }
+>>>>>>> origin/main
     }
+}
+
+fn render_field_map(context: &str, map: &FieldMap) -> String {
+    format!(
+        "FieldMap::from_entries({}).expect({context:?})",
+        render_named_field_values(map.entries())
+    )
 }
 
 fn render_named_field_values(fields: &[(String, FieldValue)]) -> String {
@@ -329,6 +349,12 @@ fn render_field_value(value: &FieldValue) -> String {
         FieldValue::List(values) => {
             let rendered: Vec<String> = values.iter().map(render_field_value).collect();
             format!("FieldValue::List({})", render_vec(&rendered))
+        }
+        FieldValue::Map(entries) => {
+            format!(
+                "FieldValue::Map({})",
+                render_field_map("FieldValue::Map", entries)
+            )
         }
         FieldValue::Variant {
             constructor,

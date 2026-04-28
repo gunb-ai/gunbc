@@ -50,12 +50,12 @@ impl<T> VariantPayloadBinding<T> {
     }
 }
 
-use self::python_target::EmitPythonError;
+pub use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, CardinalityBound, DeclarationId,
-    Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget,
-    TypeConnective, ValueBody,
+    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
+    Declaration, DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective, ValueBody,
 };
 use crate::infer::strip_refinement_to_base;
 use crate::operators::OperatorKind;
@@ -63,6 +63,8 @@ use crate::variant_payload::{
     variant_payload_shape, VariantPayloadShape, VariantPayloadShapeLookup,
 };
 use crate::Dag;
+
+const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
 
 /// Result port of a finished `behavior` subgraph — shared by Go and Rust emit
 /// paths for [`port_is_consumed_from`] (including `Behavior::Loop` body walks).
@@ -74,6 +76,233 @@ pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
         Behavior::Loop(l) => l.result_port(),
         Behavior::Bind(b) => b.result_port(),
     }
+}
+
+/// `std.error_primitives` declares canonical `Result<ok, err> = Ok { value: ok } | Err { value: err }`.
+/// Emitters lower it to a target-native `Result` / `struct { Ok; Err }` carrier and must
+/// not also emit a second substrate `type Result`.
+///
+/// Suppression keys off the **resolved structural fingerprint** of that declaration
+/// (name + type-parameter identities + `Ok`/`Err` payload wiring), not `span.file`
+/// suffixes — so unrelated modules named `errors.dag` cannot collide, and renaming
+/// the std file alone does not silently retarget suppression.
+///
+/// **Policy:** the fingerprint is **global**, not std-scoped: any other declaration
+/// named `Result` that matches this exact shape is also suppressed (intentional — the
+/// substrate owns one canonical `Result<ok, err>` carrier; a user-defined twin with
+/// the same fingerprint would not emit as a separate `type Result`).
+pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
+    if decl.name.as_deref() != Some("Result") {
+        return false;
+    }
+    let [ok_param, err_param] = match decl.type_params.as_slice() {
+        [a, b] => [*a, *b],
+        _ => return false,
+    };
+    let ok_decl = dag.declaration(ok_param);
+    let err_decl = dag.declaration(err_param);
+    let ok_param_ok = matches!(
+        &ok_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
+    );
+    let err_param_ok = matches!(
+        &err_decl.connective,
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
+    );
+    if !ok_param_ok || !err_param_ok {
+        return false;
+    }
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return false;
+    };
+    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
+        return false;
+    };
+    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
+        return false;
+    };
+    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
+        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
+}
+
+pub(crate) fn div_prelude_reserved_name_collision<'a>(
+    type_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+    function_decls: impl IntoIterator<Item = &'a &'a Declaration>,
+    top_level_binds: impl IntoIterator<Item = &'a &'a BindNode>,
+    helper_name: &'static str,
+) -> Option<&'static str> {
+    if type_decls
+        .into_iter()
+        .any(|decl| decl.name.as_deref() == Some("DivError"))
+    {
+        return Some("DivError");
+    }
+    function_decls
+        .into_iter()
+        .any(|decl| decl.name.as_deref() == Some(helper_name))
+        .then_some(helper_name)
+        .or_else(|| {
+            top_level_binds
+                .into_iter()
+                .any(|bind| bind.name == helper_name)
+                .then_some(helper_name)
+        })
+}
+
+pub(crate) fn decl_uses_substrate_result_or_div_error(
+    dag: &Dag,
+    declaration: DeclarationId,
+    visited: &mut HashSet<DeclarationId>,
+) -> bool {
+    if !visited.insert(declaration) {
+        return false;
+    }
+    let decl = dag.declaration(declaration);
+    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
+        return true;
+    }
+    match &decl.connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            substrate_result_type_decl_suppressed_for_emit(dag, dag.declaration(*template))
+                || arguments
+                    .iter()
+                    .any(|arg| decl_uses_substrate_result_or_div_error(dag, arg.value, visited))
+        }
+        TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => children
+            .iter()
+            .any(|field| decl_uses_substrate_result_or_div_error(dag, field.ty, visited)),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            decl_uses_substrate_result_or_div_error(dag, *next, visited)
+        }
+        TypeConnective::Cardinality(payload) => {
+            decl_uses_substrate_result_or_div_error(dag, payload.element(), visited)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            inputs
+                .iter()
+                .any(|input| decl_uses_substrate_result_or_div_error(dag, *input, visited))
+                || decl_uses_substrate_result_or_div_error(dag, *output, visited)
+        }
+        _ => false,
+    }
+}
+
+fn dag_needs_go_result_prelude(
+    dag: &Dag,
+    type_decls: &[&Declaration],
+    top_level_binds: &[&BindNode],
+    function_decls: &[&Declaration],
+) -> bool {
+    type_decls
+        .iter()
+        .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
+        || top_level_binds
+            .iter()
+            .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
+        || function_decls
+            .iter()
+            .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
+}
+
+pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
+    if decl.span.file != ERROR_PRIMITIVES_AUTHORITY_FILE
+        || decl.name.as_deref() != Some("DivError")
+        || !decl.type_params.is_empty()
+    {
+        return false;
+    }
+    matches!(&decl.connective, TypeConnective::Disj { variants } if {
+        variants.len() == 2
+            && variants.iter().any(|variant| variant.label == "DivideByZero")
+            && variants.iter().any(|variant| variant.label == "Overflow")
+    })
+}
+
+pub(crate) fn port_uses_substrate_result_or_div_error(dag: &Dag, port: PortId) -> bool {
+    let Some(ty) = dag.port(port).value_type() else {
+        return false;
+    };
+    decl_uses_substrate_result_or_div_error(dag, ty.declaration, &mut HashSet::new())
+}
+
+fn decl_uses_substrate_div_error(
+    dag: &Dag,
+    declaration: DeclarationId,
+    visited: &mut HashSet<DeclarationId>,
+) -> bool {
+    if !visited.insert(declaration) {
+        return false;
+    }
+    let decl = dag.declaration(declaration);
+    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
+        return true;
+    }
+    match &decl.connective {
+        TypeConnective::Instantiation { arguments, .. } => arguments
+            .iter()
+            .any(|arg| decl_uses_substrate_div_error(dag, arg.value, visited)),
+        TypeConnective::Conj { children } | TypeConnective::Disj { variants: children } => children
+            .iter()
+            .any(|field| decl_uses_substrate_div_error(dag, field.ty, visited)),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            decl_uses_substrate_div_error(dag, *next, visited)
+        }
+        TypeConnective::Cardinality(payload) => {
+            decl_uses_substrate_div_error(dag, payload.element(), visited)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            inputs
+                .iter()
+                .any(|input| decl_uses_substrate_div_error(dag, *input, visited))
+                || decl_uses_substrate_div_error(dag, *output, visited)
+        }
+        _ => false,
+    }
+}
+
+fn port_uses_substrate_div_error(dag: &Dag, port: PortId) -> bool {
+    let Some(ty) = dag.port(port).value_type() else {
+        return false;
+    };
+    decl_uses_substrate_div_error(dag, ty.declaration, &mut HashSet::new())
+}
+
+pub(crate) fn dag_needs_div_error_prelude(
+    dag: &Dag,
+    type_decls: &[&Declaration],
+    top_level_binds: &[&BindNode],
+    function_decls: &[&Declaration],
+) -> bool {
+    dag_uses_arithmetic_div(dag, top_level_binds, function_decls)
+        || type_decls
+            .iter()
+            .any(|decl| decl_uses_substrate_div_error(dag, decl.id, &mut HashSet::new()))
+        || top_level_binds
+            .iter()
+            .any(|bind| port_uses_substrate_div_error(dag, bind.value))
+        || function_decls
+            .iter()
+            .any(|decl| decl_uses_substrate_div_error(dag, decl.id, &mut HashSet::new()))
+}
+
+fn substrate_result_variant_payload_is_value_of(
+    dag: &Dag,
+    payload_ty: DeclarationId,
+    type_param: DeclarationId,
+) -> bool {
+    let payload = dag.declaration(payload_ty);
+    let TypeConnective::Conj { children } = &payload.connective else {
+        return false;
+    };
+    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
 }
 
 /// Structural port-liveness walk. Returns true if `target` appears as any port
@@ -178,10 +407,9 @@ pub(super) fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<Declaratio
     for _ in 0..32 {
         match &dag.declaration(current).connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality {
-                bound: CardinalityBound::AtMostOne,
-                ..
-            } => return dag.optional_match_disj(current),
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+                return dag.optional_match_disj(current);
+            }
             TypeConnective::Instantiation { template, .. } => current = *template,
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
@@ -442,6 +670,8 @@ struct RealizationIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: GoLanguageSyntax,
     execution_model: TargetExecutionModelBinding,
+    /// Source exclusion policy loaded from
+    /// `data go_source_filtering: ShapeATargetSourceFiltering`.
     source_filtering: SourceFilteringBinding,
     /// The Go clean-emission contract loaded from `data
     /// go_clean_emission: CleanEmissionContract` (E-5 / Lane 1 Stage
@@ -1081,6 +1311,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
+        .filter(|decl| !substrate_result_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -1113,6 +1344,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
         .filter(|bind| bind.params.is_empty())
         .collect();
 
@@ -1145,6 +1377,39 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }];
     if mode == EmitMode::Program {
         sections.push("import \"fmt\"".to_string());
+    }
+    let needs_int_div_prelude =
+        dag_needs_div_error_prelude(dag, &type_decls, &top_level_binds, &function_decls);
+    let needs_result_prelude = needs_int_div_prelude
+        || dag_needs_go_result_prelude(dag, &type_decls, &top_level_binds, &function_decls);
+    if let (true, Some(name)) = (
+        needs_int_div_prelude,
+        div_prelude_reserved_name_collision(
+            type_decls.iter(),
+            function_decls.iter(),
+            top_level_binds.iter(),
+            "v3intdiv",
+        ),
+    ) {
+        return Err(EmitError::UnsupportedBehavior(format!(
+            "Go checked-division prelude would collide with user-defined `{name}`"
+        )));
+    }
+    if needs_result_prelude {
+        // `DivError` / `Result` are under `dsl/std/`, which `go_source_filtering` omits. Emit
+        // minimal v3 hooks so `v3Result[T, E]` compiles.
+        //
+        // Dissolution trigger (M1 scaffold): delete this prelude when `dsl/std/error_primitives`
+        // (and friends) emit through the same type-decl path as user code — i.e. std is no
+        // longer source-filtered for these carriers.
+        sections.push(
+            "type v3Result[T any, E any] interface{ isV3Result() }\ntype v3Ok[T any, E any] struct{ Value T }\ntype v3Err[T any, E any] struct{ Value E }\nfunc (v3Ok[T, E]) isV3Result() {}\nfunc (v3Err[T, E]) isV3Result() {}\n".to_string(),
+        );
+    }
+    if needs_int_div_prelude {
+        sections.push(
+            "type DivError int\nconst (\n  DivideByZero DivError = iota\n  Overflow\n)\n\nfunc v3intdiv(l, r int64) v3Result[int64, DivError] {\n  if r == 0 { return v3Err[int64, DivError]{Value: DivideByZero} }\n  if l == -9223372036854775808 && r == -1 { return v3Err[int64, DivError]{Value: Overflow} }\n  q := l / r; return v3Ok[int64, DivError]{Value: q} }\n".to_string(),
+        );
     }
 
     let rendered_types = type_decls
@@ -1191,6 +1456,63 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     }
 
     Ok(sections.join("\n\n"))
+}
+
+pub(crate) fn dag_uses_arithmetic_div(
+    dag: &Dag,
+    top_level_binds: &[&BindNode],
+    function_decls: &[&Declaration],
+) -> bool {
+    top_level_binds
+        .iter()
+        .any(|bind| port_depends_on_arithmetic_div(dag, bind.value))
+        || function_decls.iter().any(|decl| match &decl.connective {
+            TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(body),
+                ..
+            } => port_depends_on_arithmetic_div(dag, behavior_result_port(dag.node(*body))),
+            _ => false,
+        })
+}
+
+fn port_depends_on_arithmetic_div(dag: &Dag, root: PortId) -> bool {
+    let mut visited = HashSet::new();
+    let mut queue = vec![root];
+    while let Some(port) = queue.pop() {
+        if !visited.insert(port) {
+            continue;
+        }
+        let Some(producer) = dag.port(port).produced_by else {
+            continue;
+        };
+        match dag.node(producer) {
+            Behavior::Value(_) => {}
+            Behavior::Transform(t) => {
+                if matches!(
+                    t.target,
+                    TransformTarget::Operator(OperatorKind::Arithmetic(
+                        crate::operators::ArithmeticOp::Div
+                    ))
+                ) {
+                    return true;
+                }
+                queue.extend(t.inputs.iter().copied());
+            }
+            Behavior::Branch(b) => {
+                queue.push(b.input);
+                queue.extend(b.paths.iter().map(|path| path.output));
+            }
+            Behavior::Loop(l) => {
+                queue.push(l.source);
+                queue.push(l.init);
+                queue.push(behavior_result_port(dag.node(l.body)));
+            }
+            Behavior::Bind(b) => {
+                queue.push(b.value);
+            }
+        }
+    }
+    false
 }
 
 struct Ctx<'a> {
@@ -1369,10 +1691,7 @@ impl<'a> Ctx<'a> {
         let scrutinee_type = primitive_type_id_for_port(self.dag, b.input)?;
         if matches!(
             self.dag.declaration(scrutinee_type).connective,
-            TypeConnective::Cardinality {
-                bound: CardinalityBound::AtMostOne,
-                ..
-            }
+            TypeConnective::Cardinality(ref p) if p.bound() == CardinalityBound::AtMostOne
         ) {
             return self.render_optional_branch(b, locals);
         }
@@ -2115,11 +2434,8 @@ impl<'a> Ctx<'a> {
                     )),
                 }
             }
-            TypeConnective::Cardinality {
-                element,
-                bound: CardinalityBound::AtMostOne,
-            } => {
-                let inner = self.go_type_name_for_decl_at_depth(*element, depth + 1)?;
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+                let inner = self.go_type_name_for_decl_at_depth(p.element(), depth + 1)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.type_applications.optional,
                     &[("element", &inner)],
@@ -2877,41 +3193,102 @@ fn require_scope_model(
     })
 }
 
+/// Reads `excluded_prefixes` from a `data …: SourceFiltering` value body.
+fn parse_source_filtering_excluded_prefixes(
+    dag: &Dag,
+    declaration: DeclarationId,
+) -> Result<Vec<String>, EmitError> {
+    let fields = structural_fields_for_decl(dag, declaration)?;
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "excluded_prefixes")
+        .map(|(_, value)| value)
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "SourceFiltering is missing required `excluded_prefixes` field",
+        })?;
+    let FieldValue::List(entries) = value else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "SourceFiltering.excluded_prefixes must be a list",
+        });
+    };
+    let mut excluded_prefixes = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let FieldValue::Literal(LiteralBits::String(prefix)) = entry else {
+            return Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "SourceFiltering.excluded_prefixes entries must be string literals",
+            });
+        };
+        excluded_prefixes.push(prefix.clone());
+    }
+    Ok(excluded_prefixes)
+}
+
 impl SourceFilteringBinding {
     pub(crate) fn build(dag: &Dag, declaration: DeclarationId) -> Result<Self, EmitError> {
         let fields = structural_fields_for_decl(dag, declaration)?;
-        let value = fields
-            .iter()
-            .find(|(label, _)| label == "excluded_prefixes")
-            .map(|(_, value)| value)
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "SourceFiltering is missing required `excluded_prefixes` field",
-            })?;
-        let FieldValue::List(entries) = value else {
-            return Err(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "SourceFiltering.excluded_prefixes must be a list",
-            });
-        };
-        let mut excluded_prefixes = Vec::with_capacity(entries.len());
-        for entry in entries {
-            let FieldValue::Literal(LiteralBits::String(prefix)) = entry else {
+        if fields.iter().any(|(label, _)| label == "internal") {
+            let internal = require_field_decl_ref(fields, "internal", declaration)?;
+            let mut excluded_prefixes = parse_source_filtering_excluded_prefixes(dag, internal)?;
+            let additional = fields
+                .iter()
+                .find(|(label, _)| label == "additional_excluded_prefixes")
+                .map(|(_, value)| value)
+                .ok_or(EmitError::MalformedTargetSyntax {
+                    declaration,
+                    detail: "ShapeATargetSourceFiltering is missing required `additional_excluded_prefixes` field",
+                })?;
+            let FieldValue::List(extra_entries) = additional else {
                 return Err(EmitError::MalformedTargetSyntax {
                     declaration,
-                    detail: "SourceFiltering.excluded_prefixes entries must be string literals",
+                    detail:
+                        "ShapeATargetSourceFiltering.additional_excluded_prefixes must be a list",
                 });
             };
-            excluded_prefixes.push(prefix.clone());
+            for entry in extra_entries {
+                let FieldValue::Literal(LiteralBits::String(prefix)) = entry else {
+                    return Err(EmitError::MalformedTargetSyntax {
+                        declaration,
+                        detail: "ShapeATargetSourceFiltering.additional_excluded_prefixes entries must be string literals",
+                    });
+                };
+                excluded_prefixes.push(prefix.clone());
+            }
+            return Ok(Self { excluded_prefixes });
         }
+
+        let excluded_prefixes = parse_source_filtering_excluded_prefixes(dag, declaration)?;
         Ok(Self { excluded_prefixes })
     }
 
     pub(crate) fn excludes(&self, file: &str) -> bool {
-        self.excluded_prefixes
-            .iter()
-            .any(|prefix| file.starts_with(prefix))
+        let normalized_file = normalize_source_filter_path(file);
+        self.excluded_prefixes.iter().any(|prefix| {
+            if normalized_file.starts_with(prefix) {
+                return true;
+            }
+            if *prefix == "src/v3/compiler/" {
+                return false;
+            }
+            normalized_file.contains(&format!("/{prefix}"))
+        })
     }
+}
+
+fn normalize_source_filter_path(file: &str) -> String {
+    let mut parts = Vec::new();
+    for part in file.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
+    }
+    parts.join("/")
 }
 
 fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {

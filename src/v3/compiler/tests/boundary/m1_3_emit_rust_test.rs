@@ -18,18 +18,21 @@
 
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit as shared_emit, emit_module as shared_emit_module, EmitTarget};
 use v3_compiler::emit_rust::{emit_rust, emit_rust_module};
+use v3_compiler::r1c_e_gates;
 use v3_compiler::test_runner::TestClaimValue;
 use v3_compiler::types::TypeShape;
 
-use crate::common::determinism_fixtures::PROGRAM_FIXTURES;
-use crate::common::{HarnessLinkMode, RustcHarness};
+use crate::common::determinism_fixtures::{
+    ReflectedExpected, PROGRAM_FIXTURES, REFLECTED_FIXTURES,
+};
+use crate::common::RustcHarness;
 
 static HARNESS: OnceLock<RustcHarness> = OnceLock::new();
 fn harness() -> &'static RustcHarness {
@@ -152,6 +155,7 @@ fn roundtrip_stdout(source: &str) -> String {
         // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
         // CI step's libtest unlock does not leak into child rustc invocations.
         .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
@@ -171,52 +175,9 @@ fn roundtrip_stdout(source: &str) -> String {
     String::from_utf8_lossy(&run.stdout).trim().to_string()
 }
 
-static PROGRAM_HARNESS_BIN: OnceLock<PathBuf> = OnceLock::new();
-
-fn build_program_harness() -> PathBuf {
-    let mut body = String::new();
-    for fixture in PROGRAM_FIXTURES {
-        let emitted = emit(fixture.source);
-        // emit_rust produces `fn main() { ... }`; wrapping in a submodule
-        // would leave the nested main private. Promote to `pub fn main`
-        // so the outer dispatcher can invoke it.
-        let emitted_pub_main = emitted.replace("fn main()", "pub fn main()");
-        body.push_str(&format!(
-            "#[allow(warnings, clippy::all)] pub mod {name} {{ {emitted} }}\n",
-            name = fixture.name,
-            emitted = emitted_pub_main,
-        ));
-    }
-    body.push_str(
-        "fn main() { \
-           let name = std::env::args().nth(1).expect(\"program fixture name\"); \
-           match name.as_str() { \
-        ",
-    );
-    for fixture in PROGRAM_FIXTURES {
-        body.push_str(&format!("\"{0}\" => {0}::main(), ", fixture.name));
-    }
-    body.push_str(
-        "other => panic!(\"unknown program fixture: {other}\"), \
-         } \
-         }\n",
-    );
-
-    // Group 1 emissions are self-contained Rust (no v3_compiler deps),
-    // so the batched harness compiles with plain rustc. If one fixture's
-    // emission fails to compile, rustc surfaces the file + line — the
-    // submodule name narrows attribution.
-    harness().compile(&body, "main_bin", HarnessLinkMode::Standalone)
-}
-
-fn program_harness_bin() -> &'static Path {
-    PROGRAM_HARNESS_BIN
-        .get_or_init(build_program_harness)
-        .as_path()
-}
-
+/// Batched program fixture harness (shared with R1C-E `r1c_e_emit_gates`).
 fn run_program(name: &str) -> String {
-    RustcHarness::run(program_harness_bin(), &[name])
+    r1c_e_gates::run_rust_program_fixture(name)
 }
 
 fn program_expected(name: &str) -> &'static str {
@@ -227,137 +188,15 @@ fn program_expected(name: &str) -> &'static str {
         .expected_stdout
 }
 
-/// Expected output shape for a reflected-module roundtrip fixture.
-enum ReflectedExpected {
-    /// Exact stdout string (trimmed).
-    Exact(&'static str),
-    /// Any positive integer (used for `node_count`, whose exact value is not pinned).
-    PositiveInt,
-}
-
-/// Descriptor for one reflected-module rustc roundtrip fixture. Each
-/// descriptor becomes a submodule in the batched harness; tests
-/// dispatch by `name` at runtime.
-///
-/// Previously each fixture compiled its own rustc binary, paying a
-/// fresh linker + codegen cost per test (~3-5s on CI cold cache).
-/// Batching all fixtures into one compilation amortizes that cost.
-struct ReflectedFixture {
-    name: &'static str,
-    module_source: &'static str,
-    wrapper_body: &'static str,
-    expected_stdout: ReflectedExpected,
-}
-
-const REFLECTED_FIXTURES: &[ReflectedFixture] = &[
-    ReflectedFixture {
-        name: "node_count",
-        module_source: "fn node_count(d: Dag) -> Int = fold(d.nodes, 0, |n, node| n + 1)",
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); node_count(&dag)",
-        expected_stdout: ReflectedExpected::PositiveInt,
-    },
-    ReflectedFixture {
-        name: "bind_count",
-        module_source: "fn bind_count(d: Dag) -> Int = fold(d.nodes, 0, |n, behavior| match behavior { Value(v) => n, Transform(t) => n, Branch(b) => n, Loop(l) => n, Bind(bind) => n + 1 })",
-        // Subtract the bootstrap baseline so the test still pins the
-        // user-program bind count after Lane 2 Stage 2d added
-        // `src/v3/std/algebra.dag` + `dimensions.dag`, whose lowered
-        // bodies contribute their own Bind nodes to `d.nodes`.
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); bind_count(&dag) - bind_count(&baseline)",
-        expected_stdout: ReflectedExpected::Exact("2"),
-    },
-    ReflectedFixture {
-        name: "singleton_span",
-        module_source: "fn singleton_span(bind: BindNode) -> List<SourceSpan> = [bind.span]",
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) => Some(bind.clone()), _ => None }).expect(\"bind\"); singleton_span(&bind).len() as i64",
-        expected_stdout: ReflectedExpected::Exact("1"),
-    },
-    ReflectedFixture {
-        name: "result_port_is_param",
-        module_source: "fn result_port_is_param(bind: BindNode) -> Bool = contains(bind.params, bind.result_port)",
-        // Filter by source file so the bind picked is the user's `id`
-        // — after Lane 2 Stage 2d landed std-module binds with
-        // non-empty params, the raw `params.is_empty()` filter was
-        // no longer specific enough to isolate user code.
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"fn id(x: Int) -> Int = x\", \"runtime_reflection.v3\").expect(\"compiles\"); let bind = dag.nodes().iter().find_map(|node| match node { v3_compiler::dag::Behavior::Bind(bind) if !bind.params.is_empty() && bind.span.file == \"runtime_reflection.v3\" => Some(bind.clone()), _ => None }).expect(\"function bind\"); if result_port_is_param(&bind) { 1 } else { 0 }",
-        expected_stdout: ReflectedExpected::Exact("1"),
-    },
-    ReflectedFixture {
-        name: "bind_names",
-        module_source: "type FoundBind { name: String }\n\
-             fn bind_names(d: Dag) -> List<FoundBind> = \
-               fold(d.nodes, empty(), |acc, behavior| \
-                 match behavior { \
-                   Value(v) => acc, \
-                   Transform(t) => acc, \
-                   Branch(b) => acc, \
-                   Loop(l) => acc, \
-                   Bind(bind) => cons({ name: bind.name }, acc) \
-                 })",
-        // Same bootstrap-baseline subtraction as `bind_count` — the
-        // test pins the two user-program binds (`x`, `y`) even
-        // though `bind_names` also materializes a record per std-
-        // module bind in `d.nodes`.
-        wrapper_body: "let dag = v3_compiler::compile_to_dag(\"let x: Int = 1\\nlet y: Int = x + 2\", \"runtime_reflection.v3\").expect(\"compiles\"); let baseline = v3_compiler::dag::Dag::new(); (bind_names(&dag).len() as i64) - (bind_names(&baseline).len() as i64)",
-        expected_stdout: ReflectedExpected::Exact("2"),
-    },
-];
-
-/// Lazily-initialized path to the batched reflected-module harness.
-/// All five fixtures compile into one binary on first access; each
-/// subsequent `run_reflected(name)` call dispatches via argv.
-static REFLECTED_HARNESS_BIN: OnceLock<PathBuf> = OnceLock::new();
-
-fn build_reflected_harness() -> PathBuf {
-    let mut body = String::new();
-    for fixture in REFLECTED_FIXTURES {
-        let module = emit_module(fixture.module_source);
-        body.push_str(&format!(
-            "#[allow(warnings, clippy::all)] \
-             pub mod {name} {{ \
-               use v3_compiler::dag::*; \
-               use v3_compiler::diagnostics::*; \
-               {module} \
-               pub fn run() -> i64 {{ {wrapper} }} \
-             }}\n",
-            name = fixture.name,
-            module = module,
-            wrapper = fixture.wrapper_body,
-        ));
-    }
-    body.push_str(
-        "fn main() { \
-           let name = std::env::args().nth(1).expect(\"test name arg\"); \
-           let value: i64 = match name.as_str() { \
-        ",
-    );
-    for fixture in REFLECTED_FIXTURES {
-        body.push_str(&format!("\"{0}\" => {0}::run(), ", fixture.name));
-    }
-    body.push_str(
-        "other => panic!(\"unknown reflected harness test: {other}\"), \
-         }; \
-         println!(\"{value}\"); \
-         }\n",
-    );
-
-    harness().compile(&body, "reflected_bin", HarnessLinkMode::WithV3Compiler)
-}
-
-fn reflected_harness_bin() -> &'static Path {
-    REFLECTED_HARNESS_BIN
-        .get_or_init(build_reflected_harness)
-        .as_path()
-}
-
+/// Batched reflected-module fixture harness (shared with R1C-E `r1c_e_emit_gates`).
 fn run_reflected(name: &str) -> String {
-    RustcHarness::run(reflected_harness_bin(), &[name])
+    r1c_e_gates::run_rust_reflected_fixture(name)
 }
 
 fn reflected_expected(name: &str) -> &'static ReflectedExpected {
     &REFLECTED_FIXTURES
         .iter()
-        .find(|f| f.name == name)
+        .find(|f| f.module.name == name)
         .unwrap_or_else(|| panic!("no REFLECTED_FIXTURES entry for {name:?}"))
         .expected_stdout
 }
@@ -370,6 +209,160 @@ fn emit_rust_single_int_binding() {
     assert!(out.contains("println!(\"{}\", x)"), "got: {out}");
 }
 
+#[test]
+fn emit_rust_result_top_level_binding_prints_debug_string() {
+    let out = emit(
+        "import std.error_primitives { DivError, Result }\n\
+let x: Result<Int, DivError> = 6 / 2",
+    );
+    assert!(
+        out.contains("let x: ::core::result::Result<i64, DivError> = (__v3_int_div(6, 2));"),
+        "top-level division should lower to the typed Result carrier; got: {out}"
+    );
+    assert!(
+        out.contains("println!(\"{}\", format!(\"{:?}\", x))"),
+        "top-level Result should be converted to a displayable debug string before printing; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_result_alias_top_level_binding_prints_debug_string() {
+    let out = emit(
+        "import std.error_primitives { DivError, Result }\n\
+type R = Result<Int, DivError>\n\
+let x: R = 6 / 2",
+    );
+    assert!(
+        out.contains("println!(\"{}\", format!(\"{:?}\", x))"),
+        "top-level Result aliases should use the structural Result fact, not rendered type text; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_checked_division_roundtrips_ok_and_errors() {
+    assert_eq!(roundtrip_stdout("let x = 6 / 2\n"), "Ok(3)");
+    assert_eq!(roundtrip_stdout("let x = 6 / 0\n"), "Err(DivideByZero)");
+}
+
+#[test]
+fn emit_rust_checked_division_prelude_maps_overflow() {
+    let out = emit("let x = 6 / 2\n");
+    assert_eq!(
+        out.matches("return ::core::result::Result::Err(DivError::Overflow);")
+            .count(),
+        1,
+        "Rust checked-division prelude must map i64::MIN / -1 to Overflow; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_emits_diverror_prelude_for_explicit_result_without_division() {
+    let out = emit_module(
+        "import std.error_primitives { DivError, Result }\n\
+fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
+    );
+    assert!(
+        out.contains("pub enum DivError"),
+        "explicit Result<Int, DivError> usage needs DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_emits_diverror_prelude_for_result_field_without_division() {
+    let out = emit_module(
+        "import std.error_primitives { DivError, Result }\n\
+type Holder { value: Result<Int, DivError> }\n",
+    );
+    assert!(
+        out.contains("pub enum DivError"),
+        "type fields using Result<Int, DivError> need DivError prelude even without `/`; got: {out}"
+    );
+    assert!(
+        out.contains("pub value: ::core::result::Result<i64, DivError>"),
+        "type field should render through the Result carrier; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_omits_div_prelude_without_division() {
+    let out = emit(
+        "type DivError = Bad | Worse\n\
+let x: Int = 42",
+    );
+    assert!(
+        !out.contains("__v3_int_div"),
+        "division helper should only emit when integer division is used; got: {out}"
+    );
+    assert!(
+        out.matches("pub enum DivError").count() == 1,
+        "user DivError should not collide with an unused division prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_omits_div_prelude_for_user_diverror_signature_without_division() {
+    let out = emit_module(
+        "type DivError = DivideByZero | Overflow\n\
+fn passthrough(x: DivError) -> DivError = x\n",
+    );
+    assert!(
+        !out.contains("__v3_int_div"),
+        "user DivError signatures should not trigger integer division prelude; got: {out}"
+    );
+    assert!(
+        out.matches("pub enum DivError").count() == 1,
+        "user DivError should emit once without colliding with a std prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_rust_fails_closed_on_div_prelude_diverror_collision() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+let x = 6 / 2",
+        "test.v3",
+    )
+    .expect("compiles");
+    let err = emit_rust(&dag).expect_err("Rust emit must reject DivError prelude collision");
+    assert!(
+        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("DivError")),
+        "expected explicit DivError collision error, got {err:?}"
+    );
+}
+
+#[test]
+fn emit_rust_fails_closed_on_div_prelude_helper_collision() {
+    let dag = compile_to_dag(
+        "fn __v3_int_div(a: Int, b: Int) -> Int = a + b\n\
+let x = 6 / 2",
+        "rust_div_helper_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_rust(&dag).expect_err("Rust emit must reject division helper collision");
+    assert!(
+        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("__v3_int_div")),
+        "expected explicit __v3_int_div collision error, got {err:?}"
+    );
+}
+
+#[test]
+fn emit_rust_fails_closed_on_div_prelude_top_level_bind_collision() {
+    let dag = compile_to_dag(
+        "let __v3_int_div = 0\n\
+let x = 6 / 2",
+        "rust_div_helper_bind_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_rust(&dag).expect_err("Rust emit must reject division helper bind collision");
+    assert!(
+        matches!(err, v3_compiler::emit_rust::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("__v3_int_div")),
+        "expected explicit __v3_int_div bind collision error, got {err:?}"
+    );
+}
+
 /// T-Emit / PR #650 receipt: first-class `fn(A) -> B` in **user function
 /// parameter** position must lower to `impl Fn(A) -> B + Clone`, not
 /// `&impl Fn…` (review #676). Other positions use `std::rc::Rc<dyn Fn…>`;
@@ -377,19 +370,13 @@ fn emit_rust_single_int_binding() {
 /// `docs/postmortems/pr-650-emitter-callable-clone-bound.md`.
 #[test]
 fn emit_generic_bounds_survive() {
-    // Body avoids higher-order `f(...)` calls — those are a separate emit
-    // seam; this receipt only pins the **Rust type line** for callable params.
-    let src = "fn twice(f: fn(Int) -> Int) -> Int = 0\n";
-    let out = emit_module(src);
-    let sig = "fn twice(p0: impl Fn(i64) -> i64 + Clone) -> i64";
-    assert!(
-        out.contains(sig),
-        "callable param should carry synthesized + Clone (downstream rustc / stage0 contract); got:\n{out}"
-    );
-    assert!(
-        !out.contains("&impl Fn"),
-        "borrowed callable param type must not be spelled as &impl Fn; got:\n{out}"
-    );
+    // Single source of truth: `r1c_e_gates::check_generic_bounds_survive` is also
+    // the body of the `r1c_e_emit_gates generic-bounds` subcommand invoked by the
+    // matching `.dag` `TestClaim` wrapper (`tests/dag/r1c_e_emit_gates.template.dag`,
+    // R1C-E). Do not duplicate the assertion here.
+    if let Err(detail) = v3_compiler::r1c_e_gates::check_generic_bounds_survive() {
+        panic!("emit_generic_bounds_survive: {detail}");
+    }
 }
 
 /// Codex #676 / INVARIANTS P3: callable param `impl Fn + Clone` does not compose
@@ -1197,39 +1184,7 @@ fn rustc_roundtrip_int_addition_prints_three() {
 #[test]
 #[ignore]
 fn emit_rust_fixtures_rustc_green() {
-    let mut failures: Vec<String> = Vec::new();
-
-    for fixture in PROGRAM_FIXTURES {
-        let stdout = run_program(fixture.name);
-        if stdout != fixture.expected_stdout {
-            failures.push(format!(
-                "program {:?}: expected {:?}, got {stdout:?}",
-                fixture.name, fixture.expected_stdout,
-            ));
-        }
+    if let Err(detail) = r1c_e_gates::check_emit_rust_fixtures_rustc_green() {
+        panic!("emit_rust_fixtures_rustc_green: {detail}");
     }
-
-    for fixture in REFLECTED_FIXTURES {
-        let stdout = run_reflected(fixture.name);
-        let (ok, label) = match &fixture.expected_stdout {
-            ReflectedExpected::Exact(expected) => (stdout == *expected, format!("{expected:?}")),
-            ReflectedExpected::PositiveInt => (
-                stdout.parse::<i64>().is_ok_and(|n| n > 0),
-                "positive integer".to_owned(),
-            ),
-        };
-        if !ok {
-            failures.push(format!(
-                "reflected {:?}: expected {label}, got {stdout:?}",
-                fixture.name,
-            ));
-        }
-    }
-
-    assert!(
-        failures.is_empty(),
-        "emit_rust_fixtures_rustc_green: {} fixture(s) failed:\n{}",
-        failures.len(),
-        failures.join("\n")
-    );
 }

@@ -11,6 +11,7 @@ use v3_compiler::dag::{
     SubValueRelation, TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
+use v3_compiler::CompileError;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
@@ -82,6 +83,20 @@ fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
         TypeConnective::Arrow { body, .. } => body.clone(),
         other => panic!("expected `{name}` to lower to an Arrow, got {other:?}"),
     }
+}
+
+fn semantic_dag_for(source: &str, file: &str) -> Dag {
+    let err = compile_to_dag(source, file).expect_err("source must fail semantically");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic diagnostics, got {err:?}");
+    };
+    dag
+}
+
+fn has_resolve_error(dag: &Dag) -> bool {
+    dag.diagnostics()
+        .iter()
+        .any(|(_, diagnostic)| matches!(diagnostic, Diagnostic::ResolveError { .. }))
 }
 
 #[test]
@@ -984,6 +999,7 @@ fn substrate_coproducts_match_runtime_carriers() {
             (String::from("Reference"), vec![String::from("_0")]),
             (String::from("Record"), vec![String::from("_0")]),
             (String::from("List"), vec![String::from("_0")]),
+            (String::from("Map"), vec![String::from("_0")]),
             (
                 String::from("Variant"),
                 vec![String::from("constructor"), String::from("payload")],
@@ -998,6 +1014,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("ValueBodyStructural"),
                 vec![String::from("fields")]
             ),
+            (String::from("ValueBodyMap"), vec![String::from("_0")]),
         ]
     );
     assert_eq!(
@@ -1348,6 +1365,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                 vec![
                     String::from("name"),
                     String::from("type_params"),
+                    String::from("nominal_opaque"),
                     String::from("target"),
                     String::from("refinement"),
                     String::from("span"),
@@ -1570,6 +1588,59 @@ fn parse_type_inhabits_clause_rejects_non_sum_rhs() {
     }
 }
 
+#[test]
+fn parse_type_nominal_opaque_clause_marks_alias_surface() {
+    let source = "type Token nominal_opaque = String\n";
+    let tokens =
+        tokenize_for_test(source, "nominal_opaque_alias.v3").expect("tokenize nominal_opaque");
+    let parsed =
+        parse_for_test(&tokens, "nominal_opaque_alias.v3").expect("parse nominal_opaque alias");
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
+    assert_eq!(mirrored.items.len(), 1);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeAlias {
+            name,
+            nominal_opaque,
+            target,
+            ..
+        } => {
+            assert_eq!(name, "Token");
+            assert!(*nominal_opaque);
+            assert!(matches!(
+                target,
+                parse_surface::SurfaceType::Named { name, .. } if name == "String"
+            ));
+        }
+        other => panic!("expected TypeAlias with nominal_opaque, got {other:?}"),
+    }
+}
+
+#[test]
+fn parse_type_nominal_opaque_rejects_sum_rhs() {
+    let source = "type Token nominal_opaque = Plain | Redacted\n";
+    let tokens =
+        tokenize_for_test(source, "nominal_opaque_sum_reject.v3").expect("tokenize nominal sum");
+    let err = parse_for_test(&tokens, "nominal_opaque_sum_reject.v3")
+        .expect_err("nominal_opaque sum RHS must be rejected");
+    match err {
+        Diagnostic::ParseError { .. } => {}
+        other => panic!("expected ParseError, got {other:?}"),
+    }
+}
+
+#[test]
+fn lower_type_nominal_opaque_clause_sets_declaration_carrier() {
+    let source = "type NominalOpaqueFixture nominal_opaque = String\n";
+    let dag = compile_to_dag(source, "nominal_opaque_lower.v3").expect("compile nominal_opaque");
+    let token = dag
+        .declaration_by_name("NominalOpaqueFixture")
+        .expect("NominalOpaqueFixture declaration should lower");
+    assert!(
+        token.nominal_opacity.is_some(),
+        "nominal_opaque source marker must lower to Declaration.nominal_opacity"
+    );
+}
+
 /// `inhabits` is not in `dag_keyword_set` (shared syntax): it must tokenize as
 /// an ordinary identifier so it can spell a declared type name — distinct from
 /// the `type <Name> inhabits <Ty> = …` clause introducer.
@@ -1772,12 +1843,21 @@ let note = \"ok\"\n";
 /// declaration parses into `SurfaceItem::Data` whose body is a
 /// `SurfaceExpr::Map` with the asserted entries. Routes through
 /// `parse_data_item` → `looks_like_map_literal` (`{ String :` lookahead)
-/// → `parse_map_literal`. Lowering of `SurfaceExpr::Map` to
-/// `ValueBody::Map` is the substrate sub-lane's deliverable; this test
-/// asserts the parser-output shape only.
+/// → `parse_map_literal`; lowering then carries the entries as
+/// `ValueBody::Map`.
 #[test]
-fn parse_data_item_with_map_body_emits_surface_expr_map() {
+fn map_body_data_item_parses_and_lowers_to_value_body_map() {
     let source = "data kernel_algebra_profile: Map<String, AlgebraProfile> = {\n  \"Int\": OrderedRingProfile,\n  \"Float\": ApproximateFieldProfile,\n  \"Bool\": BooleanAlgebraProfile,\n  \"String\": FreeMonoidScalarProfile,\n  \"List\": FreeMonoidCollectionProfile,\n  \"Set\": BooleanAlgebraCollectionProfile,\n  \"Map\": PartialFunctionProfile\n}\n";
+    let expected: Vec<(&str, &str)> = vec![
+        ("Int", "OrderedRingProfile"),
+        ("Float", "ApproximateFieldProfile"),
+        ("Bool", "BooleanAlgebraProfile"),
+        ("String", "FreeMonoidScalarProfile"),
+        ("List", "FreeMonoidCollectionProfile"),
+        ("Set", "BooleanAlgebraCollectionProfile"),
+        ("Map", "PartialFunctionProfile"),
+    ];
+
     let tokens = tokenize_for_test(source, "map_literal_data.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "map_literal_data.v3").expect("parse map-literal data");
     assert_eq!(parsed.items.len(), 1);
@@ -1788,15 +1868,6 @@ fn parse_data_item_with_map_body_emits_surface_expr_map() {
             ..
         } => {
             assert_eq!(name, "kernel_algebra_profile");
-            let expected: Vec<(&str, &str)> = vec![
-                ("Int", "OrderedRingProfile"),
-                ("Float", "ApproximateFieldProfile"),
-                ("Bool", "BooleanAlgebraProfile"),
-                ("String", "FreeMonoidScalarProfile"),
-                ("List", "FreeMonoidCollectionProfile"),
-                ("Set", "BooleanAlgebraCollectionProfile"),
-                ("Map", "PartialFunctionProfile"),
-            ];
             assert_eq!(entries.len(), expected.len());
             for (entry, (expected_key, expected_value_var)) in entries.iter().zip(expected.iter()) {
                 assert_eq!(&entry.key, expected_key);
@@ -1812,6 +1883,92 @@ fn parse_data_item_with_map_body_emits_surface_expr_map() {
         }
         other => panic!("expected SurfaceItem::Data with SurfaceExpr::Map body, got {other:?}"),
     }
+
+    let dag = compile_to_dag(source, "map_literal_data.v3").expect("lower map-literal data");
+    let algebra_profile = dag
+        .declaration_by_name("AlgebraProfile")
+        .expect("AlgebraProfile exists");
+    let v3_compiler::dag::TypeConnective::Disj { variants } = &algebra_profile.connective else {
+        panic!("expected AlgebraProfile to be a sum type");
+    };
+    let decl = dag
+        .declaration_by_name("kernel_algebra_profile")
+        .expect("kernel_algebra_profile declaration exists");
+    let Some(ValueBody::Map(entries)) = &decl.value_body else {
+        panic!(
+            "expected kernel_algebra_profile to lower to ValueBody::Map, got {:?}",
+            decl.value_body
+        );
+    };
+    assert_eq!(entries.entries().len(), expected.len());
+    for ((key, value), (expected_key, expected_value_name)) in
+        entries.entries().iter().zip(expected.iter())
+    {
+        assert_eq!(key, expected_key);
+        let expected_variant = variants
+            .iter()
+            .find(|variant| variant.label == *expected_value_name)
+            .unwrap_or_else(|| panic!("missing AlgebraProfile variant {expected_value_name}"));
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = value
+        else {
+            panic!("expected map value for {key} to lower as FieldValue::Variant, got {value:?}");
+        };
+        assert_eq!(
+            *constructor, expected_variant.ty,
+            "map value for {key} should reference AlgebraProfile::{expected_value_name}"
+        );
+        assert!(
+            payload.is_empty(),
+            "map value for {key} should use the zero-payload AlgebraProfile::{expected_value_name} constructor"
+        );
+    }
+}
+
+#[test]
+fn map_body_duplicate_keys_fail_closed() {
+    let dag = semantic_dag_for(
+        "data duplicate_keys: Map<String, Bool> = {\n  \"same\": true,\n  \"same\": false\n}\n",
+        "map_duplicate_keys.v3",
+    );
+    let decl = dag
+        .declaration_by_name("duplicate_keys")
+        .expect("duplicate_keys declaration should be allocated before lowering fails");
+
+    assert!(
+        has_resolve_error(&dag),
+        "expected duplicate-key lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Map(_))),
+        "duplicate-key map must not construct ValueBody::Map, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
+fn map_body_on_non_map_type_fails_closed() {
+    let dag = semantic_dag_for(
+        "data not_a_map: Bool = {\n  \"x\": true\n}\n",
+        "map_body_non_map_type.v3",
+    );
+    let decl = dag
+        .declaration_by_name("not_a_map")
+        .expect("not_a_map declaration should be allocated before lowering fails");
+
+    assert!(
+        has_resolve_error(&dag),
+        "expected non-map body lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Map(_))),
+        "non-map type must not construct ValueBody::Map, got {:?}",
+        decl.value_body
+    );
 }
 
 #[test]

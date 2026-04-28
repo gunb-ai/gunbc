@@ -368,11 +368,23 @@ data suite: TestSuite = { name: "execute_command_spawn", claims: [claim] }
     let ClaimResult::Fail(msg) = result else {
         panic!("expected Fail, got {result:?}");
     };
+    // After the typed-outcome refactor + helper-binary wiring (PR #1049 / Worker 4),
+    // the only production-emittable phrasings for missing-binary on this seam are:
+    //   * `SpawnFailed { wrapper: None }`         → "ExecuteCommand spawn error: ..."
+    //   * `SpawnFailed { wrapper: Some(_) }`      → "wrapper failed to spawn"
+    //   * `SpawnFailed` from helper-probe miss    → "not executable"
+    //   * `SetupFailed { NamespaceSetupAndDirectSpawnFailed }`
+    //                                             → "namespace setup failed"
+    //   * `SetupFailed { HelperBinaryMissing }`
+    //                                             → "helper not found"
+    //   * `Mismatch`                              → "exit code mismatch"
     assert!(
         msg.contains("spawn error")
             || msg.contains("exit code mismatch")
-            || (msg.contains("unshare(1)") && msg.contains("failed to start"))
-            || (msg.contains("unshare(1)") && msg.contains("post-start fallback")),
+            || msg.contains("not executable")
+            || msg.contains("namespace setup failed")
+            || msg.contains("helper not found")
+            || (msg.contains("unshare(1)") && msg.contains("wrapper failed to spawn")),
         "expected missing-binary or unshare triage; got: {msg}"
     );
 }
@@ -458,6 +470,115 @@ data suite: TestSuite = {
         ClaimResult::NotYetImplemented(reason)
             if reason.contains("BehavioralObservation")
     ));
+}
+
+#[test]
+fn test_runner_dispatches_pb_census_predicate_shapes() {
+    let source = r#"
+import std.verification {
+  compiler_std_positive_set_ratchet,
+  expected_hand_authored_non_test,
+  lens_producer_files_subset_predicate
+}
+
+data census_authority: Int = 0
+
+data census_bound_claim: TestClaim = {
+  name: "pb_hand_rust_at_shim_floor",
+  source: "let x: Int = 1",
+  file_name: "pb_hand_rust_at_shim_floor.v3",
+  predicate: CensusBoundCheck(census_authority, expected_hand_authored_non_test, 0),
+  requires: []
+}
+
+data census_subset_claim: TestClaim = {
+  name: "lens_producer_files_remaining",
+  source: "let x: Int = 1",
+  file_name: "lens_producer_files_remaining.v3",
+  predicate: CensusSubsetCount {
+    authority: census_authority,
+    list_constant: expected_hand_authored_non_test,
+    subset_predicate: lens_producer_files_subset_predicate
+  },
+  requires: []
+}
+
+data fixed_point_claim: TestClaim = {
+  name: "pb_self_compile_fixed_point",
+  source: "let x: Int = 1",
+  file_name: "pb_self_compile_fixed_point.v3",
+  predicate: FixedPointConverges("default_fixed_point_source", "pipeline_stage_snapshots"),
+  requires: []
+}
+
+data ratchet_zero_claim: TestClaim = {
+  name: "pb_compiler_std_ratchet_zero",
+  source: "let x: Int = 1",
+  file_name: "pb_compiler_std_ratchet_zero.v3",
+  predicate: RatchetZero {
+    authority: census_authority,
+    ratchet_kind: compiler_std_positive_set_ratchet
+  },
+  requires: []
+}
+
+data generated_from_dag_claim: TestClaim = {
+  name: "pb_test_file_generated_from_dag",
+  source: "let x: Int = 1",
+  file_name: "pb_test_file_generated_from_dag.v3",
+  predicate: GeneratedFromDag(census_authority, ["src/v3/compiler/tests/integration.rs"]),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "pb_census_predicate_shapes",
+  claims: [
+    census_bound_claim,
+    census_subset_claim,
+    fixed_point_claim,
+    ratchet_zero_claim,
+    generated_from_dag_claim
+  ]
+}
+"#;
+    let dag = compile_clean(source, "pb_census_predicate_shapes.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 5);
+    let result_for = |claim_name: &str| {
+        &results
+            .iter()
+            .find(|result| result.claim_name == claim_name)
+            .unwrap_or_else(|| panic!("missing claim result for `{claim_name}`"))
+            .result
+    };
+    let assert_fail_contains = |claim_name: &str, expected: &str| {
+        assert!(
+            matches!(result_for(claim_name), ClaimResult::Fail(reason) if reason.contains(expected)),
+            "expected `{claim_name}` to fail with `{expected}`, got {:?}",
+            result_for(claim_name)
+        );
+    };
+    assert_fail_contains(
+        "pb_hand_rust_at_shim_floor",
+        "expected_hand_authored_non_test",
+    );
+    assert_fail_contains(
+        "lens_producer_files_remaining",
+        "lens-producer subset observed",
+    );
+    assert_eq!(
+        result_for("pb_self_compile_fixed_point"),
+        &ClaimResult::Pass
+    );
+    assert_fail_contains(
+        "pb_compiler_std_ratchet_zero",
+        "compiler_std_positive_set_ratchet",
+    );
+    assert_fail_contains(
+        "pb_test_file_generated_from_dag",
+        "not in the generated-file authority",
+    );
 }
 
 #[test]

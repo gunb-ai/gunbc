@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, optional_match_variant_roles, parse_pattern_strategy,
+    algebra_field_for_operator_shared, dag_needs_div_error_prelude,
+    div_prelude_reserved_name_collision, optional_match_variant_roles, parse_pattern_strategy,
     primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
     SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
@@ -145,6 +146,8 @@ struct PythonIndexes {
     patterns: HashMap<DeclarationId, PatternRealizationBinding>,
     syntax: PythonSyntax,
     target: PythonTarget,
+    /// Source exclusion policy loaded from
+    /// `data python_source_filtering: ShapeATargetSourceFiltering`.
     source_filtering: SourceFilteringBinding,
     /// The Python clean-emission contract loaded from `data
     /// python_clean_emission: CleanEmissionContract` (E-5 / Lane 1
@@ -606,6 +609,7 @@ pub(crate) fn emit_python_with_mode(
         .iter()
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
+        .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -638,6 +642,7 @@ pub(crate) fn emit_python_with_mode(
         .nodes()
         .iter()
         .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
         .filter(|bind| bind.params.is_empty())
         .collect();
 
@@ -665,6 +670,7 @@ pub(crate) fn emit_python_with_mode(
     let mut sections = vec![
         "from __future__ import annotations".to_string(),
         "from dataclasses import dataclass".to_string(),
+        "import enum".to_string(),
         "import types".to_string(),
         "import typing".to_string(),
         format!(
@@ -674,15 +680,42 @@ pub(crate) fn emit_python_with_mode(
         "__T = typing.TypeVar(\"__T\")".to_string(),
         "__U = typing.TypeVar(\"__U\")".to_string(),
         "def __v3_fold(items: list[typing.Any], init: typing.Any, fn: typing.Callable[[typing.Any, typing.Any], typing.Any]) -> typing.Any:\n    acc = init\n    for item in items:\n        acc = fn(acc, item)\n    return acc".to_string(),
-        // Python `//` is floor division; `OrderedRing.div` requires truncation toward zero.
-        // `divmod` adjusts the floor quotient by +1 when the remainder is non-zero and
-        // operand signs differ — restoring C-style truncation without floating-point.
-        "def __v3_idiv(a: int, b: int) -> int:\n    q, r = divmod(a, b)\n    return q + (1 if r != 0 and (a < 0) != (b < 0) else 0)".to_string(),
         "def __v3_unreachable(label: str) -> typing.NoReturn:\n    raise ValueError(label)".to_string(),
     ];
 
+    let needs_int_div_prelude =
+        dag_needs_div_error_prelude(dag, &type_decls, &top_level_binds, &function_decls);
+    if let (true, Some(name)) = (
+        needs_int_div_prelude,
+        div_prelude_reserved_name_collision(
+            type_decls.iter(),
+            function_decls.iter(),
+            top_level_binds.iter(),
+            "__v3_idiv",
+        ),
+    ) {
+        return Err(EmitPythonError::Unsupported(format!(
+            "Python checked-division prelude would collide with user-defined `{name}`"
+        )));
+    }
     for decl in type_decls {
         sections.push(ctx.render_type_declaration(decl)?);
+    }
+    if needs_int_div_prelude {
+        // `std.error_primitives` is filtered out of `type_decls`; v3 `DivError` + checked `/` are
+        // prelude-only (names align with `python.dag` / `python_int_div` carrier for `__v3_idiv`).
+        //
+        // Dissolution trigger (M1 scaffold): delete when `dsl/std/error_primitives` emits through
+        // the normal type-decl path (no separate prelude strings).
+        //
+        // M2: gate on emitted `__v3_idiv(...)` (or equivalent) so division-free programs skip
+        // this block.
+        sections.push(
+            "class DivError(enum.IntEnum):\n    DivideByZero = 0\n    Overflow = 1".to_string(),
+        );
+        sections.push(
+            "def __v3_idiv(a: int, b: int) -> typing.Union[typing.Tuple[typing.Literal['Ok'], int], typing.Tuple[typing.Literal['Err'], DivError]]:\n    if b == 0:\n        return ('Err', DivError.DivideByZero)\n    if a == -2 ** 63 and b == -1:\n        return ('Err', DivError.Overflow)\n    q, r = divmod(a, b)\n    w = q + (1 if r != 0 and (a < 0) != (b < 0) else 0)\n    return ('Ok', w)".to_string(),
+        );
     }
     for decl in function_decls {
         sections.push(ctx.render_function_declaration(decl)?);
@@ -1513,11 +1546,10 @@ impl<'a> Ctx<'a> {
                     )),
                 }
             }
-            TypeConnective::Cardinality {
-                element,
-                bound: crate::dag::CardinalityBound::AtMostOne,
-            } => {
-                let inner = self.python_type_name_for_decl_at_depth(*element, depth + 1)?;
+            TypeConnective::Cardinality(p)
+                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+            {
+                let inner = self.python_type_name_for_decl_at_depth(p.element(), depth + 1)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.optional,
                     &[("element", &inner)],

@@ -165,7 +165,7 @@ fn declaration_is_callable_type(dag: &Dag, current: DeclarationId, depth: usize)
         | TypeConnective::Atom(AtomPayload::TypeParam(_))
         | TypeConnective::Conj { .. }
         | TypeConnective::Disj { .. }
-        | TypeConnective::Cardinality { .. } => false,
+        | TypeConnective::Cardinality(_) => false,
     }
 }
 
@@ -384,6 +384,10 @@ pub fn field_value_from_value_body(
             Ok(FieldValue::Record(out))
         }
         ValueBody::List(values) => Ok(FieldValue::List(values.clone())),
+<<<<<<< HEAD
+=======
+        ValueBody::Map(entries) => Ok(FieldValue::Map(entries.clone())),
+>>>>>>> origin/main
         ValueBody::Unparsed(_) => Err(LensApplyError::UnsupportedConstruct(
             "unparsed declaration value body",
         )),

@@ -12,7 +12,8 @@ import std.algebra { BooleanAlgebra, OrderedRing }
 import v3.std.computation_model {
   TargetExecutionModel, MemoryModel,
   GarbageCollected, LexicalScoping,
-  SourceFiltering, ExecutionModelRequirement
+  ShapeATargetSourceFiltering, ExecutionModelRequirement,
+  internal_source_filtering
 }
 import v3.std.emit_model {
   TypeRealization, OperatorRealization, CallableRealization,
@@ -152,13 +153,9 @@ data python_target: TargetExecutionModel = {
   scope: LexicalScoping
 }
 
-data python_source_filtering: SourceFiltering = {
-  excluded_prefixes: [
-    "dsl/std/",
-    "dsl/extdeps/",
-    "src/v3/std/",
-    "src/v3/spec/",
-  ]
+data python_source_filtering: ShapeATargetSourceFiltering = {
+  internal: internal_source_filtering
+  additional_excluded_prefixes: []
 }
 
 data python_execution_requirement: ExecutionModelRequirement = GarbageCollected
@@ -702,6 +699,14 @@ data python_list_instantiation: TypeInstantiationRealization = {
   language: python_language
   target: List
   carrier: "list[{element}]"
+  cost: 1
+}
+
+// v3 `Result<ok, err>` — `python_source_filtering` omits `dsl/std/`; prelude defines `DivError` + `__v3_idiv`.
+data python_result_instantiation: TypeInstantiationRealization = {
+  language: python_language
+  target: Result
+  carrier: "typing.Union[typing.Tuple[typing.Literal['Ok'], {key}], typing.Tuple[typing.Literal['Err'], {value}]]"
   cost: 1
 }
 

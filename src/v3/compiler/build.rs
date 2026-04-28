@@ -295,6 +295,7 @@ fn main() {
     let compiler_dir = manifest_path.clone();
     let extdeps_dir = repo_root.join("dsl").join("extdeps");
     let gunbc_dir = repo_root.join("dsl").join("gunbc");
+    let dsl_std_dir = repo_root.join("dsl").join("std");
 
     // Tell Cargo to re-run the script if any staged std/spec/compiler file
     // changes. Without this, adding a new file wouldn't trigger a
@@ -304,6 +305,7 @@ fn main() {
     println!("cargo:rerun-if-changed={}", compiler_dir.display());
     println!("cargo:rerun-if-changed={}", extdeps_dir.display());
     println!("cargo:rerun-if-changed={}", gunbc_dir.display());
+    println!("cargo:rerun-if-changed={}", dsl_std_dir.display());
 
     // Structural-recursion termination analysis walks a recursing
     // argument back to its declared Disj connective (see
@@ -426,6 +428,7 @@ fn main() {
         "src/v3/compiler/src/infer_helpers_generated.rs",
         "src/v3/compiler/src/lens_cost_generated.rs",
         "src/v3/compiler/src/lens_cost_symbolic_generated.rs",
+        "src/v3/compiler/src/lens_effect_enumeration_generated.rs",
         "src/v3/compiler/src/lens_provenance_generated.rs",
         "src/v3/compiler/src/lens_structural_resolution_generated.rs",
         "src/v3/compiler/src/lens_unused_parameters_generated.rs",

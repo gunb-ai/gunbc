@@ -5546,6 +5546,69 @@ service test.Api {
     );
 }
 
+// RE-1j: typed `response { 200 => Wire }` deserializes with serde then projects fields.
+#[test]
+fn rest_typed_response_200_body_avoids_json_pointer() {
+    let source = r#"module re1j
+
+type WireBody {
+  wire_value: String from "wireValue"
+  items: List<WireItem>
+  kind: String from "type"
+}
+
+type WireItem {
+  value: Int
+}
+
+service test.Api {
+  config {
+    endpoint: "https://api.example.com"
+  }
+  operation Get {
+    output {
+      a: String from "wireValue"
+      b: Int from "items/0/value"
+      kind: String from "type"
+    }
+    transport rest { method: GET, path: "/x" }
+    response {
+      200 => WireBody
+      404 => String
+    }
+    mock_response {
+      200 => { wireValue: "ok", items: [{ value: 3 }], type: "demo" } "ok"
+    }
+  }
+}
+"#;
+    let result = compile_dag_target(source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/re1j.rs");
+    assert!(
+        content.contains("let __rest_wire:") && content.contains("= response.json().await?"),
+        "RE-1j: expected typed 200-body deserialize into __rest_wire, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).wire_value"),
+        "RE-1j: expected from_key-aware struct projection for path wireValue, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).items")
+            && content.contains(".get(0)")
+            && content.contains(".value"),
+        "RE-1j: expected list-index projection for path items/0/value, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).kind"),
+        "RE-1j: expected from_key-aware projection for path type, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer("),
+        "RE-1j: typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
 #[test]
 fn func_with_service_calls_classified_effectful() {
     let source = r#"module re2_test
@@ -6056,6 +6119,142 @@ fn shell_emit_cron_upsert_script() {
         content.contains("crontab"),
         "RE-3d: expected crontab in emitted shell command, got:\n{content}"
     );
+}
+
+// ── RE-4b: OpenAI Chat Completions narrow row — request wire ratchet (#901) ─
+// `wire_contract` is `StringVariant { naming: SnakeCase }` (same wire as
+// `llm_snake_wire_contract` in `extdeps.llm.llm`) so the emitter attaches serde
+// `rename_all = "snake_case"` to role-like coproducts (System→"system", …).
+#[test]
+fn openai_chat_message_role_wire_matches_llm_snake_contract() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    let enum_decl = "pub enum OpenAiChatMessageRole";
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted openai module"));
+    // Other coproducts in this module (e.g. `OpenAiFinishReason`) share the same
+    // `wire_contract` and also carry `#[serde(rename_all = "snake_case")]`. Scanning the
+    // whole prelude with `rfind` would attach the wrong enum; only the attribute block
+    // immediately above `OpenAiChatMessageRole` is authoritative.
+    let prelude = &content[..pos];
+    let serde_snake = "#[serde(rename_all = \"snake_case\")]";
+    let mut attrs_above: Vec<&str> = Vec::new();
+    for line in prelude.lines().rev() {
+        let t = line.trim();
+        if t.is_empty() {
+            if attrs_above.is_empty() {
+                continue;
+            }
+            break;
+        }
+        if t.starts_with("#[") {
+            attrs_above.push(t);
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        break;
+    }
+    assert!(
+        attrs_above.contains(&serde_snake),
+        "expected {serde_snake} immediately above {enum_decl}; attrs (bottom-up): {:?}\ntail prelude:\n{}",
+        attrs_above,
+        &prelude[prelude.len().saturating_sub(1200)..]
+    );
+
+    let open_brace = content[pos..]
+        .find('{')
+        .map(|i| pos + i)
+        .expect("OpenAiChatMessageRole enum opening brace");
+    // Unit enum: no nested `}` inside variants — first `}` after `{` closes the enum.
+    let close_brace = content[open_brace + 1..]
+        .find('}')
+        .map(|i| open_brace + 1 + i)
+        .expect("OpenAiChatMessageRole enum closing brace");
+    let enum_body = &content[open_brace..=close_brace];
+    for needle in ["System,", "Developer,", "User,", "Assistant,"] {
+        assert!(
+            enum_body.contains(needle),
+            "expected variant {needle} in OpenAiChatMessageRole; got:\n{enum_body}"
+        );
+    }
+
+    assert!(
+        content.contains("\"messages\": messages"),
+        "expected ChatCompletion REST body to pass `messages` through serde_json::json!; excerpt missing in emitted module"
+    );
+    assert!(
+        content.contains("/v1/chat/completions"),
+        "expected ChatCompletion path in emitted module"
+    );
+}
+
+// Golden JSON for the narrow `OpenAiChatMessage { role, content }` row under the same
+// serde policy as emitted code (`#[serde(rename_all = "snake_case")]` on the role enum).
+// Guards Chat Completions `messages[].role` strings without provider string branching.
+#[test]
+fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
+    #[derive(Copy, Clone, serde::Serialize)]
+    #[serde(rename_all = "snake_case")]
+    enum OpenAiChatMessageRole {
+        System,
+        Developer,
+        User,
+        Assistant,
+    }
+
+    #[derive(serde::Serialize)]
+    struct OpenAiChatMessage {
+        role: OpenAiChatMessageRole,
+        content: String,
+    }
+
+    let cases: &[(&str, OpenAiChatMessageRole)] = &[
+        ("system", OpenAiChatMessageRole::System),
+        ("developer", OpenAiChatMessageRole::Developer),
+        ("user", OpenAiChatMessageRole::User),
+        ("assistant", OpenAiChatMessageRole::Assistant),
+    ];
+
+    for &(wire_tag, role) in cases {
+        let msg = OpenAiChatMessage {
+            role,
+            content: "x".to_string(),
+        };
+        let v = serde_json::to_value(&msg).expect("serialize OpenAiChatMessage");
+        assert_eq!(
+            v.get("role").and_then(Value::as_str),
+            Some(wire_tag),
+            "messages[].role must match OpenAI Chat Completions wire for {wire_tag:?}"
+        );
+        assert_eq!(
+            v.get("content").and_then(Value::as_str),
+            Some("x"),
+            "content must pass through as JSON string"
+        );
+    }
+
+    let messages: Vec<OpenAiChatMessage> = cases
+        .iter()
+        .map(|&(wire_tag, role)| OpenAiChatMessage {
+            role,
+            content: wire_tag.to_string(),
+        })
+        .collect();
+    let body = serde_json::json!({ "messages": messages });
+    let arr = body["messages"].as_array().expect("messages array");
+    assert_eq!(arr.len(), cases.len());
+    for (i, &(wire_tag, _)) in cases.iter().enumerate() {
+        assert_eq!(arr[i]["role"], wire_tag);
+        assert_eq!(arr[i]["content"], wire_tag);
+    }
 }
 
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────

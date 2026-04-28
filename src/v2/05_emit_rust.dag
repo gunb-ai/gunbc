@@ -231,31 +231,235 @@ fn rust_serde_tag_attr() -> String {
 //   StringVariant { naming: AsAuthored } → "" (serde default: unit variants as strings)
 //   StringVariant { naming: SnakeCase }  → #[serde(rename_all = "snake_case")]
 //   TaggedVariant                        → #[serde(tag = "_variant")] (default)
+//
+// `data wire_contract = StringVariant { … }` stores the record literal on the data item's
+// `body` expression node; field inits live on `children`, not `body.body` — so when
+// `wire_item.body` is absent, fall back to `ExprRecordLit` on `wire_item` itself.
+fn resolve_wire_serde_tag_from_encoding_node(ve: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  if ve.children |> count > 0 {
+    let naming_field = ve.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == "naming") |> first
+    match naming_field {
+      Some { value: nf } =>
+        let nv = field_init_node_value(n: nf)
+        if authored_name_at(source_indices: source_indices, node: nv) == "SnakeCase" { "#[serde(rename_all = \"snake_case\")]" }
+        else { "" }
+      None => ""
+    }
+  } else {
+    rust_serde_tag_attr()
+  }
+}
+
 fn resolve_wire_serde_tag(wire_item: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  // wire_item body is a VariantEncoding value directly (StringVariant or TaggedVariant)
   match wire_item.body {
-    Some { value: ve } =>
-      // StringVariant has children (naming field); TaggedVariant is a unit variant
-      if ve.children |> count > 0 {
-        // StringVariant { naming: ... } — check naming field
-        let naming_field = ve.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == "naming") |> first
-        match naming_field {
-          Some { value: nf } =>
-            let nv = field_init_node_value(n: nf)
-            // SnakeCase has no children (unit variant). Distinguish by checking
-            // if the naming value has a non-empty name that isn't the first variant.
-            // AsAuthored is the first variant of VariantNaming (index 0).
-            // SnakeCase is the second (index 1). Check structural identity.
-            if authored_name_at(source_indices: source_indices, node: nv) == "SnakeCase" { "#[serde(rename_all = \"snake_case\")]" }
-            else { "" }  // AsAuthored: no serde attribute needed
-          None => ""  // StringVariant without naming → AsAuthored default
+    Some { value: ve } => resolve_wire_serde_tag_from_encoding_node(ve: ve, source_indices: source_indices)
+    None =>
+      match wire_item.expr_data {
+        ExprRecordLit { parent_enum: _ } =>
+          resolve_wire_serde_tag_from_encoding_node(ve: wire_item, source_indices: source_indices)
+        _ => rust_serde_tag_attr()
+      }
+  }
+}
+
+fn item_binding_is_named(env: TypeEnv, node: Node, name: String) -> Bool {
+  authored_name(env: env, node: node) == name || node.name == name
+}
+
+// `wire_contract_item` from emit_module_full is the `data wire_contract = …` node.
+// The data item's `body` is the initializer expression; when it aliases an imported
+// `VariantEncoding` constant (e.g. `llm_snake_wire_contract`), follow the authored
+// data binding through the data-item index before consulting inference. Ambiguous
+// data names and alias cycles fail closed instead of falling back to default serde.
+// Typed `data wire_contract: VariantEncoding = StringVariant { … }` bodies keep
+// `ExprRecordLit` while `inferred` may point at the type expression — prefer the literal.
+fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>) -> String {
+  resolve_wire_serde_tag_for_coproduct_seen(
+    wire_contract_item: wire_contract_item,
+    source_indices: source_indices,
+    data_items: data_items,
+    seen_aliases: empty_map(),
+    fuel: 32
+  )
+}
+
+fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>, seen_aliases: Map<String, Bool>, fuel: Int) -> String {
+  if fuel <= 0 {
+    emit_error_expr(
+      message: "wire_contract: VariantEncoding alias chain exceeded recursion limit",
+      target: Rust
+    )
+  } else { match wire_contract_item {
+    None => rust_serde_tag_attr()
+    Some { value: wc } =>
+      if is_data_def_item(item: wc) {
+        match wc.body {
+          None =>
+            emit_error_expr(
+              message: "wire_contract: data item has no initializer body",
+              target: Rust
+            )
+          Some { value: init } =>
+            match init.expr_data {
+              ExprRecordLit { parent_enum: _ } =>
+                resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
+              ExprVar { binding_kind: _ } =>
+                let alias_name = expr_var_name_at(texpr: init, source_indices: source_indices)
+                if map_get(seen_aliases, alias_name) != none {
+                  emit_error_expr(
+                    message: concat("wire_contract: cyclic VariantEncoding alias: ", alias_name),
+                    target: Rust
+                  )
+                } else {
+                  match map_get(data_items, alias_name) {
+                    Some { value: candidates } =>
+                      if candidates |> count == 1 {
+                        match first(candidates) {
+                          Some { value: aliased_data } =>
+                            resolve_wire_serde_tag_for_coproduct_seen(
+                              wire_contract_item: Some { value: aliased_data },
+                              source_indices: source_indices,
+                              data_items: data_items,
+                              seen_aliases: map_insert(seen_aliases, alias_name, true),
+                              fuel: fuel - 1
+                            )
+                          None =>
+                            emit_error_expr(
+                              message: concat("wire_contract: missing VariantEncoding data alias: ", alias_name),
+                              target: Rust
+                            )
+                        }
+                      } else {
+                        emit_error_expr(
+                          message: concat("wire_contract: ambiguous VariantEncoding data alias: ", alias_name),
+                          target: Rust
+                        )
+                      }
+                  None =>
+                    match init.inferred {
+                      None =>
+                        emit_error_expr(
+                          message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)",
+                          target: Rust
+                        )
+                      Some { value: inf } =>
+                        match inf {
+                          Resolved { node } =>
+                            if is_data_def_item(item: node) {
+                              resolve_wire_serde_tag_for_coproduct_seen(
+                                wire_contract_item: Some { value: node },
+                                source_indices: source_indices,
+                                data_items: data_items,
+                                seen_aliases: map_insert(seen_aliases, alias_name, true),
+                                fuel: fuel - 1
+                              )
+                            } else {
+                              resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
+                            }
+                          CompilerError { message, span: _ } =>
+                            emit_error_expr(
+                              message: concat("wire_contract: ", message),
+                              target: Rust
+                            )
+                          TypeVariable { id: _ } =>
+                            emit_error_expr(
+                              message: "wire_contract: unresolved type variable in wire_contract initializer",
+                              target: Rust
+                            )
+                        }
+                    }
+                }
+                }
+              _ =>
+                match init.inferred {
+                  None =>
+                    emit_error_expr(
+                      message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)",
+                      target: Rust
+                    )
+                  Some { value: inf } =>
+                    match inf {
+                      Resolved { node } =>
+                        if is_data_def_item(item: node) {
+                          resolve_wire_serde_tag_for_coproduct_seen(
+                            wire_contract_item: Some { value: node },
+                            source_indices: source_indices,
+                            data_items: data_items,
+                            seen_aliases: seen_aliases,
+                            fuel: fuel - 1
+                          )
+                        } else {
+                          resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
+                        }
+                      CompilerError { message, span: _ } =>
+                        emit_error_expr(
+                          message: concat("wire_contract: ", message),
+                          target: Rust
+                        )
+                      TypeVariable { id: _ } =>
+                        emit_error_expr(
+                          message: "wire_contract: unresolved type variable in wire_contract initializer",
+                          target: Rust
+                        )
+                    }
+                }
+            }
         }
       } else {
-        // TaggedVariant (unit variant, no children) → default tag
-        rust_serde_tag_attr()
+        resolve_wire_serde_tag(wire_item: wc, source_indices: source_indices)
       }
-    None => rust_serde_tag_attr()
+  } }
+}
+
+fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
+  modules |> fold(init: empty_map(), f: (acc, tm) =>
+    let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
+    tm.items
+      |> filter(item => is_data_def_item(item: item))
+      |> fold(init: acc, f: (item_acc, item) =>
+        let item_name = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
+        let qualified_name = concat(module_name, ".", item_name)
+        map_insert(item_acc, qualified_name, item)
+      )
+  )
+}
+
+fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
+  let existing = match map_get(scoped, name) {
+    Some { value: entries } => entries
+    None => []
   }
+  map_insert(scoped, name, concat(existing, [item]))
+}
+
+fn build_scoped_data_item_index(typed_module: TypedModule, data_items: Map<String, Node>) -> Map<String, List<Node>> {
+  let module_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)
+  let local = typed_module.items
+    |> filter(item => is_data_def_item(item: item))
+    |> fold(init: empty_map(), f: (acc, item) =>
+      insert_scoped_data_item(
+        scoped: acc,
+        name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: item),
+        item: item
+      )
+    )
+  module_imports(n: typed_module.module)
+    |> fold(init: local, f: (acc, imp) =>
+      let import_path = authored_name_at(source_indices: typed_module.type_env.source_indices, node: imp)
+      if import_is_all(imp) {
+        acc
+      } else {
+        import_specific_names_at(n: imp, source_indices: typed_module.type_env.source_indices)
+          |> fold(init: acc, f: (inner, imported_name) =>
+            let qualified = concat(import_path, ".", imported_name)
+            match map_get(data_items, qualified) {
+              Some { value: imported_item } =>
+                insert_scoped_data_item(scoped: inner, name: imported_name, item: imported_item)
+              None => inner
+            }
+          )
+      }
+    )
 }
 
 fn rust_serde_rename_template_text() -> String {
@@ -520,6 +724,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
   }
   let shared_types = emit_info.shared_types
   let registry = typed.item_registry
+  let data_items = build_data_item_index(modules: typed.modules)
   let workflow_funcs = collect_workflow_funcs(modules: typed.modules, registry: registry, read_only_params_index: emit_info.read_only_params_index)
   let workflow_default_diags = validate_workflow_param_defaults(workflow_funcs: workflow_funcs)
   if workflow_default_diags |> count > 0 {
@@ -533,7 +738,7 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     )
   )
   let test_projections = extract_test_projections(typed: typed)
-  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map))
+  let module_files = typed.modules |> map(tm => emit_module_full(typed_module: tm, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: svc_module_map, data_items: data_items))
   let test_files = typed.modules
     |> map(tm => emit_test_file(
       module_name: authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module),
@@ -636,12 +841,13 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     read_only_params: empty_map()
   }
   let shared_types = emit_info.shared_types
-  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map())
+  emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]))
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Map<String, Bool>, svc_module_map: Map<String, String>) -> TextFile {
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Map<String, Bool>, svc_module_map: Map<String, String>, data_items: Map<String, Node>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
+  let scoped_data_items = build_scoped_data_item_index(typed_module: typed_module, data_items: data_items)
   let prelude = emit_prelude()
   // Collect locally-defined type names so imports can skip them.
   let local_type_names = typed_module.items
@@ -666,25 +872,40 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   )
   let svc_imports_str = if extern_svc_imports |> count == 0 { "" }
     else { concat("\n", extern_svc_imports |> join(separator: "\n")) }
-  // RC1: For enums defined in this module, add `use EnumName::*;` so
+  // RC1: For enums defined in this module, add `use self::EnumName::*;` so
   // variant names are in scope without qualification.
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
-    |> map(item => concat("use ", authored_name(env: scope.type_env, node: item), "::*;"))
+    |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   // Wire contract: find the module's wire_contract data item (if any)
   // and pass it to each item for per-enum resolution. No collapse to string.
-  let wire_contract_item = typed_module.items |> filter(i => authored_name(env: scope.type_env, node: i) == "wire_contract") |> first
+  // P2/P3: only the module-local data declaration identified as `wire_contract`
+  // may authorize module coproduct serde. No structural/order fallback: resolved
+  // item nodes can lose source spans, so the secondary check uses Node.name as
+  // the remaining binding carrier and still requires the item registry to say
+  // this binding is DataItem.
+  let wire_contract_item = typed_module.items
+    |> filter(i =>
+      item_binding_is_named(env: scope.type_env, node: i, name: "wire_contract")
+      && match map_get(scope.item_registry, "wire_contract") {
+        Some { value: info } => info.kind == DataItem
+        None => false
+      })
+    |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))
+    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items))
     |> join(separator: "\n\n")
   let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   // Avoid collision with the CLI entry point (src/main.rs)
   let filename = if raw_filename == "main" { "main_mod" } else { raw_filename }
+  let module_attrs = if authored_name(env: scope.type_env, node: m) == "std.error_primitives" {
+    "#![allow(non_camel_case_types)]\n\n"
+  } else { "" }
   let content = concat("// Generated by v2 compiler -- do not edit.\n",
     "// Source module: ", authored_name(env: scope.type_env, node: m), "\n\n",
-    prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
+    module_attrs, prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
     items_str, "\n")
   TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content }
 }
@@ -855,13 +1076,13 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?) -> String {
+fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
     concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
@@ -1027,7 +1248,7 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
-fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?) -> String {
+fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>) -> String {
   let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
@@ -1036,7 +1257,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
   } else {
     // Resolve serde tag per-enum from the module's wire contract data item
     let serde_enum_tag = match wire_contract_item {
-      Some { value: wc } => resolve_wire_serde_tag(wire_item: wc, source_indices: env.source_indices)
+      Some { value: _ } => resolve_wire_serde_tag_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices, data_items: data_items)
       None => rust_serde_tag_attr()
     }
     emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_enum_tag: serde_enum_tag)
@@ -4252,9 +4473,9 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
-  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices)
+  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
-  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices)
+  let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices, op_node: op_node, env: env, shared_types: shared_types)
   let body = concat(
     "if self.dry_run.is_dry_run() {\n",
     make_indent(level: depth + 2),dry_run_body, "\n",
@@ -4272,7 +4493,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
 // If mock data is available, use it. Otherwise, emit compile_error!().
 // For conjunctive output types (tuples), extract fields by name/from_key
 // from the mock JSON — matching the real path's extraction pattern.
-fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: List<Node>, registry: Map<String, ItemInfo>, source_indices: Map<String, NewlineIndex>, op_node: Node, env: TypeEnv, shared_types: Map<String, Bool>) -> String {
   let log_line = concat("eprintln!(\"[dry-run] ", op_name, "\");")
   if mock_props |> count > 0 {
     let first_mock = mock_props |> first
@@ -4287,35 +4508,60 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
         // Single-field conjunctions (return type = field type) use from_value.
         let is_multi_field_conj = inferred.connective == Conj && inferred.children |> count > 1
         if is_multi_field_conj {
-          // Output is a conjunction (record → tuple). Extract fields from
-          // mock JSON using from_key paths (or field names as fallback),
-          // then construct the tuple. This mirrors emit_from_key_extraction.
           let children = inferred.children
-          let extract_lines = children |> map(ch =>
-            let ch_name = authored_name_at(source_indices: source_indices, node: ch)
-            let field_name = emit_ident(name: ch_name, target: Rust)
-            let from_path = match child_from_key(ch: ch, source_indices: source_indices) {
-              Some { value: p } => p
-              None => ch_name
+          let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
+          if has_response_200_property(op_node: op_node, source_indices: source_indices) && match wire_opt {
+            None => true
+            Some { value: _ } => false
+          } {
+            concat(log_line, "\ncompile_error!(\"REST response_200 (dry-run): declared HTTP 200 body type is present but could not be resolved; illegal state\");\n")
+          } else {
+            let use_typed_wire = match wire_opt {
+              Some { value: tn } => !is_json_wire_declaration_type(t: tn, source_indices: source_indices)
+              None => false
             }
-            let raw = match ch.inferred {
-              Some { value: Resolved { node: tn } } =>
-                emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
-              _ =>
-                concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
+            let prelude = match wire_opt {
+              Some { value: tn } =>
+                if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
+                  concat("let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
+                } else {
+                  let wire_ty = match tn.inferred {
+                    Some { value: Resolved { node: rt } } => rt
+                    _ => tn
+                  }
+                  concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices), " = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
+                }
+              None => concat("let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n")
             }
-            // Optional fields: wrap extracted value in Some()
-            match ch.return_cardinality {
-              CardOptional => "{raw}\nlet {field_name} = Some({field_name});"
-              _ => raw
-            }
-          )
-          let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
-          let result_body = concat("(", field_names |> join(separator: ", "), ")")
-          concat(log_line, "\n",
-            "let json_body: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
-            extract_lines |> join(separator: "\n"),
-            "\nOk(", result_body, ")")
+            let extract_lines = children |> map(ch =>
+              let ch_name = authored_name_at(source_indices: source_indices, node: ch)
+              let field_name = emit_ident(name: ch_name, target: Rust)
+              let from_path = match child_from_key(ch: ch, source_indices: source_indices) {
+                Some { value: p } => p
+                None => ch_name
+              }
+              let raw = match ch.inferred {
+                Some { value: Resolved { node: tn } } =>
+                  if use_typed_wire {
+                    match wire_opt {
+                      Some { value: wire_node } => emit_typed_wire_field_assign(field_name: field_name, from_path: from_path, wire_node: wire_node, source_indices: source_indices)
+                      None => concat("let ", field_name, " = compile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n")
+                    }
+                  } else {
+                    emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+                  }
+                _ =>
+                  concat("let ", field_name, " = compile_error!(\"unresolved type for mock field: ", ch_name, "\");")
+              }
+              match ch.return_cardinality {
+                CardOptional => concat(raw, "\nlet ", field_name, " = Some(", field_name, ");")
+                _ => raw
+              }
+            )
+            let field_names = children |> map(ch => emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
+            let result_body = concat("(", field_names |> join(separator: ", "), ")")
+            concat(log_line, "\n", prelude, extract_lines |> join(separator: "\n"), "\nOk(", result_body, ")")
+          }
         } else {
           concat(log_line, "\n",
             "let mock_value: serde_json::Value = serde_json::from_str(r#\"", mock_json, "\"#)?;\n",
@@ -4329,14 +4575,14 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
   }
 }
 
-fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices) }
+fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
+  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
   else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
   else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
   else { emit_local_call(op_name: op_name) }
 }
 
-fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let client_init = "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_indices: source_indices)
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
@@ -4351,7 +4597,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   )
   let send_line = "let response = request.send().await?;"
   // RE-1e: Response code mapping
-  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices)
+  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env)
   let all_lines = concat([client_init, url_line, auth_line],
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
@@ -4572,6 +4818,110 @@ fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>)
   is_conj && from_key_count > 0
 }
 
+fn has_response_200_property(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  op_node.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200")
+}
+
+// Returns none when the property is absent or when it is present but the body type
+// cannot be resolved. Emitters must combine with has_response_200_property for fail-closed behavior.
+fn operation_response_200_resolved_type(op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node? {
+  match op_node.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200") |> first {
+    Some { value: p } => {
+      let v = field_init_node_value(n: p)
+      match v.inferred {
+        Some { value: Resolved { node: tn } } => Some { value: tn }
+        _ => {
+          let type_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: v))
+          if type_name == "" { none } else { lookup_type_by_name(env: env, name: type_name) }
+        }
+      }
+    }
+    None => none
+  }
+}
+
+fn is_json_wire_declaration_type(t: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  let n = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: t))
+  if n == "Json" { true }
+  else {
+    let parts = n |> split(delimiter: ".")
+    match parts |> last {
+      Some { value: last } => last == "Json"
+      None => false
+    }
+  }
+}
+
+fn path_segment_is_list_index(seg: String) -> Bool {
+  if string_length(s: seg) == 0 { false }
+  else { seg |> chars |> all(c => c >= 48 && c <= 57) }
+}
+
+type WirePathProjection {
+  expr: String
+  node: Node?
+  ok: Bool
+}
+
+fn wire_child_for_segment(wire_node: Node, seg: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  let normed = normalize_access_type_node(n: wire_node)
+  match normed.children |> filter(ch =>
+    let authored = authored_name_at(source_indices: source_indices, node: ch)
+    let wire_key = match child_from_key(ch: ch, source_indices: source_indices) {
+      Some { value: k } => k
+      None => authored
+    }
+    wire_key == seg
+  ) |> first {
+    Some { value: ch } => Some { value: ch }
+    None => none
+  }
+}
+
+fn advance_wire_path_projection(state: WirePathProjection, seg: String, full_path: String, source_indices: Map<String, NewlineIndex>) -> WirePathProjection {
+  if !state.ok { state }
+  else if path_segment_is_list_index(seg: seg) {
+    let next_node = match state.node {
+      Some { value: n } => Some { value: for_each_element_type_node(n: n, source_indices: source_indices) }
+      None => none
+    }
+    WirePathProjection {
+      expr: concat("(", state.expr, ").get(", seg, ").ok_or_else(|| format!(\"REST path missing index ", seg, " at ", full_path, "\"))?")
+      node: next_node
+      ok: true
+    }
+  } else {
+    match state.node {
+      Some { value: n } =>
+        match wire_child_for_segment(wire_node: n, seg: seg, source_indices: source_indices) {
+          Some { value: ch } => WirePathProjection {
+            expr: concat("(", state.expr, ").", emit_ident(name: authored_name_at(source_indices: source_indices, node: ch), target: Rust))
+            node: Some { value: resolved_type(n: ch) }
+            ok: true
+          }
+          None => WirePathProjection { expr: state.expr, node: none, ok: false }
+        }
+      None => WirePathProjection { expr: state.expr, node: none, ok: false }
+    }
+  }
+}
+
+fn emit_wire_struct_path_chain(base: String, wire_node: Node, from_path: String, source_indices: Map<String, NewlineIndex>) -> WirePathProjection {
+  let segs = from_path |> split(delimiter: "/") |> filter(s => s != "")
+  segs |> fold(init: WirePathProjection { expr: base, node: Some { value: wire_node }, ok: true }, f: (acc, seg) =>
+    advance_wire_path_projection(state: acc, seg: seg, full_path: from_path, source_indices: source_indices)
+  )
+}
+
+fn emit_typed_wire_field_assign(field_name: String, from_path: String, wire_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+  let projection = emit_wire_struct_path_chain(base: "__rest_wire", wire_node: wire_node, from_path: from_path, source_indices: source_indices)
+  if projection.ok {
+    concat("let ", field_name, " = ", projection.expr, ".clone();\n")
+  } else {
+    concat("let ", field_name, " = compile_error!(\"REST typed response path could not be resolved against declared 200 body: ", from_path, "\");\n")
+  }
+}
+
 // RFC 6901 JSON Pointer escaping: ~ becomes ~0, / becomes ~1
 fn escape_json_pointer_segment(seg: String) -> String {
   seg |> replace("~", "~0") |> replace("/", "~1")
@@ -4601,10 +4951,35 @@ fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: S
 }
 
 // RE-1i: Emit JSON pointer extraction for all output fields.
-// Deserializes to serde_json::Value, extracts each field by path, returns tuple.
-fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+// When `response { 200 => NonJsonType }` is declared, deserializes the 200 body to
+// that type and projects fields via Rust field chains (same slash paths as `from`).
+fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let rt = resolved_type(n: op_node)
   let children = rt.children
+  let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
+  if has_response_200_property(op_node: op_node, source_indices: source_indices) && match wire_opt {
+    None => true
+    Some { value: _ } => false
+  } {
+    "compile_error!(\"REST response_200: declared HTTP 200 body type is present but could not be resolved (empty name, missing TypeEnv binding, or inference gap); illegal state\");\n"
+  } else {
+  let use_typed_wire = match wire_opt {
+    Some { value: tn } => !is_json_wire_declaration_type(t: tn, source_indices: source_indices)
+    None => false
+  }
+  let prelude = match wire_opt {
+    Some { value: tn } =>
+      if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
+        "let json_body: serde_json::Value = response.json().await?;\n"
+      } else {
+        let wire_ty = match tn.inferred {
+          Some { value: Resolved { node: rt } } => rt
+          _ => tn
+        }
+        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices), " = response.json().await?;\n")
+      }
+    None => "let json_body: serde_json::Value = response.json().await?;\n"
+  }
   let extract_lines = children |> map(ch =>
     let ch_name = authored_name_at(source_indices: source_indices, node: ch)
     let field_name = emit_ident(name: ch_name, target: Rust)
@@ -4614,7 +4989,14 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
     }
     match ch.inferred {
       Some { value: Resolved { node: tn } } =>
-        emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+        if use_typed_wire {
+          match wire_opt {
+            Some { value: wire_node } => emit_typed_wire_field_assign(field_name: field_name, from_path: from_path, wire_node: wire_node, source_indices: source_indices)
+            None => concat("let ", field_name, " = compile_error!(\"REST typed response: response_200 wire type missing despite typed projection; illegal state\");\n")
+          }
+        } else {
+          emit_json_value_extract(var_name: field_name, from_path: from_path, dag_type_name: authored_name_at(source_indices: source_indices, node: tn))
+        }
       _ =>
         concat("let ", field_name, " = compile_error!(\"unresolved type for output field: ", ch_name, "\");")
     }
@@ -4625,10 +5007,8 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
   } else {
     concat("(", field_names |> join(separator: ", "), ")")
   }
-  concat(
-    "let json_body: serde_json::Value = response.json().await?;\n",
-    extract_lines |> join(separator: "\n"),
-    "\nOk(", tuple_body, ")")
+  concat(prelude, extract_lines |> join(separator: "\n"), "\nOk(", tuple_body, ")")
+  }
 }
 
 // Emit response body for operations without `from` key annotations.
@@ -4646,17 +5026,17 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
   }
 }
 
-fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
   if response_props |> count == 0 {
     if use_from_key {
-      emit_from_key_extraction(op_node: op_node, source_indices: source_indices)
+      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
     } else {
       emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
     }
   } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices))
+    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -4666,7 +5046,7 @@ fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: M
   }
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let name = field_init_node_name_at(n: prop, source_indices: source_indices)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   // RFC 9110: 2xx = success, everything else = error
@@ -4681,7 +5061,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: N
     else { code_str }
   if is_success {
     if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices), " },")
+      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env), " },")
     } else {
       concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
     }

@@ -14,6 +14,8 @@ import std.serialization { VariantEncoding }
 import std.types { HttpMethod, AuthScheme }
 
 // Wire contract: OpenAI API returns enum values as snake_case strings.
+// Single authority: same `VariantEncoding` value as `extdeps.llm.llm` (`llm_snake_wire_contract`);
+// module-local `wire_contract` is the per-module binding name the emitter resolves (`05_emit_rust.dag`).
 data wire_contract: VariantEncoding = llm_snake_wire_contract
 
 // -- Models --------------------------------------------------------
@@ -82,8 +84,17 @@ type ToolCall {
 // multimodal `content` arrays are not modeled here — gap-carried below.
 // 🟢 TERMINAL provider-domain coproduct for the modeled narrow text-message
 // row. Full Chat Completions message variants remain gap-carried by
+<<<<<<< HEAD
 // `structural_coverage_gap_openai_chat_message_full_api_surface`; request wire
 // role-string serialization remains gap-carried separately.
+=======
+// `structural_coverage_gap_openai_chat_message_full_api_surface`.
+//
+// Request wire for this row (`messages[].role` as system/developer/user/assistant)
+// is ratcheted by pipeline tests in `src/v2/tests/src/pipeline.rs`:
+// `openai_chat_message_role_wire_matches_llm_snake_contract` (emitted serde attrs)
+// and `openai_chat_message_row_json_matches_chat_completions_wire_tags` (golden JSON).
+>>>>>>> origin/main
 type OpenAiChatMessageRole = System | Developer | User | Assistant
 
 // Chat Completions API message row: wire accepts plain-string `content` for
@@ -94,10 +105,52 @@ type OpenAiChatMessage {
   content: String
 }
 
+<<<<<<< HEAD
 // Typed inputs close the Json bypass; outputs still JSON-path-project until
 // `response { 200 => Typed... }` lands. Queryable receipt for lenses/audits.
 data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
   "closure:rest_typed_response_body|llm.OpenAI.ChatCompletion|residue:output_fields_use_json_path_projection"
+=======
+// Narrow 200-OK wire slice for Chat Completions (`response { 200 => … }` + serde).
+// Tool calls / multimodal message bodies remain outside this carrier (same narrow
+// slice as the historical `from` JSON-pointer paths).
+type OpenAiChatCompletion200Message {
+  role: String
+  content: String
+}
+
+type OpenAiChatCompletion200Choice {
+  index: Int
+  message: OpenAiChatCompletion200Message
+  finish_reason: OpenAiFinishReason
+}
+
+type OpenAiChatCompletion200Usage {
+  prompt_tokens: Int
+  completion_tokens: Int
+  total_tokens: Int
+}
+
+// Chat completion **object** envelope per OpenAI Chat Completions reference
+// (https://platform.openai.com/docs/api-reference/chat/object): `id`, `object`,
+// `created`, `model`, `choices`, `usage`. `OpenAiChatCompletion200Message` is
+// still a narrow text slice of each `choices[].message` (same projection surface
+// as historical `from` paths); tool_calls, refusal, multimodal content, and
+// `choices[].logprobs` remain gap-carried on `structural_coverage_gap_openai_chat_completion_outputs`.
+type OpenAiChatCompletion200Body {
+  id: String
+  object: String
+  created: Int
+  model: String
+  choices: List<OpenAiChatCompletion200Choice>
+  usage: OpenAiChatCompletion200Usage
+}
+
+// Residuals outside `OpenAiChatCompletion200Body` / nested narrow slices; envelope
+// fields `service_tier` and deprecated `system_fingerprint` are not modeled on the struct.
+data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
+  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Body|missing:service_tier|missing:system_fingerprint|OpenAiChatCompletion200Choice|missing:logprobs|OpenAiChatCompletion200Message|missing:refusal|missing:tool_calls|missing:function_call|missing:annotations|missing:audio|missing:non_string_content|CompletionUsage|missing:completion_tokens_details|missing:prompt_tokens_details"
+>>>>>>> origin/main
 ]
 
 // Full Chat Completions message coproduct (tool_call_id, tool role, function,
@@ -106,6 +159,7 @@ data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> 
   "closure:openai_chat_message_full_coproduct|OpenAiChatMessage|missing:tool_role_with_tool_call_id|missing:function_role|missing:multimodal_content_array"
 ]
 
+<<<<<<< HEAD
 // Chat Completions `messages[].role` must be wire strings (system/developer/
 // user/assistant). Emitter serde for unit enums may not match; same closure
 // as Anthropic request wire — verify before relying on typed bodies for 200s.
@@ -113,6 +167,8 @@ data structural_coverage_gap_openai_chat_request_messages_wire: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.OpenAI.ChatCompletion|OpenAiChatMessageRole|residue:unit_enum_role_must_serialize_as_openai_role_strings"
 ]
 
+=======
+>>>>>>> origin/main
 // -- Service: REST transport wiring ------------------------------
 
 service llm.OpenAI {
@@ -147,7 +203,7 @@ service llm.OpenAI {
       body: { model: model, messages: messages, temperature: temperature, max_tokens: max_tokens }
     }
     response {
-      200 => Json
+      200 => OpenAiChatCompletion200Body
       400 => OpenAiErrorShape
       401 => OpenAiErrorShape
       403 => OpenAiErrorShape
@@ -156,7 +212,7 @@ service llm.OpenAI {
       5xx => OpenAiErrorShape
     }
     mock_response {
-      200 => { id: "chatcmpl-mock123", object: "chat.completion", choices: [{ index: 0, message: { role: "assistant", content: "Mock response from GPT" }, finish_reason: "stop" }], model: "gpt-4o", usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } } "Successful completion",
+      200 => { id: "chatcmpl-mock123", object: "chat.completion", created: 1710000000, choices: [{ index: 0, message: { role: "assistant", content: "Mock response from GPT" }, finish_reason: "stop" }], model: "gpt-4o", usage: { prompt_tokens: 20, completion_tokens: 8, total_tokens: 28 } } "Successful completion",
       400 => { error: { message: "Invalid request", type: "invalid_request_error", code: null } } "Invalid request",
       401 => { error: { message: "Incorrect API key provided", type: "invalid_api_key", code: "invalid_api_key" } } "Invalid API key",
       429 => { error: { message: "Rate limit reached", type: "rate_limit_exceeded", code: "rate_limit_exceeded" } } "Rate limited"

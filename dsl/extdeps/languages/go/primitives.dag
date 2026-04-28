@@ -31,6 +31,7 @@
 // alias linkage only on GoIntegerAliasPrimitive (byte/rune).
 //
 // STRING (spec §String types, https://go.dev/ref/spec#String_types): a string
+<<<<<<< HEAD
 // value is an immutable sequence of bytes — not UTF-8 text as the primary
 // authority. UTF-8 is a source-literal / conversion refinement layered on
 // that byte sequence; it is modeled as a separate algebra+carrier arm from the
@@ -39,6 +40,18 @@
 // SUBSTRATE-GAP FLAGS: IntegerOverflow / terminal / text carriers mirror the
 // Rust pilot’s bridge pattern (algebra.dag + bit.dag by tag); post-DB-11 these
 // become refinements on carriers / algebras.
+=======
+// value is an immutable sequence of bytes (free monoid over bytes). UTF-8 is
+// not a second carrier/algebra authority on the predeclared `string` row — it
+// is source text / `[]rune` conversion and belongs in operator or stdlib
+// slices, not parallel sum arms on `GoStringPrimitive`.
+//
+// SUBSTRATE-GAP FLAGS: Integer overflow / terminal / numeric carriers still use
+// structural tag bridges (algebra.dag + bit.dag by tag), same honest-state
+// pattern as rust/primitives.dag — but Go’s overflow enum is spec-only
+// (`GoModularWrapOnFixedWidth`), not Rust’s three-way operator zoo. Post-DB-11
+// these become refinements on carriers / algebras.
+>>>>>>> origin/main
 
 module extdeps.languages.go.primitives
 
@@ -49,6 +62,7 @@ type GoIntegerAlgebra
   = GoOrderedRingAlgebra
   | GoSemiringAlgebra
 
+<<<<<<< HEAD
 // Float algebra tags must be introduced in a multi-arm sum (same rule as
 // rust/primitives.dag: a single-arm `type X = Tag` leaves `Tag` unresolved).
 // Width-split tags keep float32 vs float64 structurally honest.
@@ -59,10 +73,30 @@ type GoFloatAlgebra
 // Bool + empty struct share one closed algebra-tag sum (mirrors rust
 // `NonIntegerAlgebra` grouping for non-integer scalars). String is separate —
 // spec value domain is byte sequence, not UTF-8 monoid (see header note).
+=======
+// Float width is a single authority on `GoFloatPrimitive` (`GoFloatWidth`).
+// IEEE width fixes both the approximate-field algebra tag and the IEEE-754
+// bits carrier witness — do not duplicate width as independent algebra+carrier
+// fields on the same row.
+//
+// Practice 4 (docs/modeling-discipline.md): **🟢 GREEN (terminal coproduct).**
+// Ledger — both arms are spec-realized and consumed: `GoFloat32Width` /
+// `GoFloat64Width` are the irreducible width distinction for Go’s two
+// predeclared floating-point types (spec §Floating-point_types); each arm has a
+// matching `GoFloatPrimitive` row in `go_spec_predeclared_primitives`.
+type GoFloatWidth
+  = GoFloat32Width
+  | GoFloat64Width
+
+// Bool + empty struct share one closed algebra-tag sum (mirrors rust
+// `NonIntegerAlgebra` grouping for non-integer scalars). String is separate —
+// spec value domain is byte sequence (see header note).
+>>>>>>> origin/main
 type GoSpecDiscreteAlgebra
   = GoCanonicalTwoElementBooleanAlgebra
   | GoTerminalAlgebra
 
+<<<<<<< HEAD
 // Primary arm: immutable byte sequence (Go spec string value). Second arm:
 // UTF-8 as an explicit refinement / alternate view — not asserted as the spec
 // authority for the `string` predeclared type itself (M3 / extdeps fidelity).
@@ -74,6 +108,8 @@ type GoStringCarrier
   = GoImmutableByteSequenceCarrier
   | GoUtf8CodeUnitSequenceViewCarrier
 
+=======
+>>>>>>> origin/main
 
 // --- Target carrier tags (value-domain witnesses; not ABI / GC shape). ---
 
@@ -86,6 +122,7 @@ type GoTargetCarrier
   | GoTerminalCarrier
 
 
+<<<<<<< HEAD
 type GoFloatCarrier
   = GoFloat32BitsCarrier
   | GoFloat64BitsCarrier
@@ -99,6 +136,51 @@ type GoIntegerOverflow
   = GoTwoComplementWrap
   | GoSaturating
   | GoTrap
+=======
+// Go spec §Integer overflow (https://go.dev/ref/spec#Integer_overflow): if an
+// operation yields a value that cannot fit the result type's width, the result
+// is truncated to fit — modular arithmetic on the fixed bit width. That is the
+// sole built-in overflow fact for Go's fixed-width predeclared integers; it is
+// not Rust's operator-level Saturating/Trap/debug-release matrix (those stay in
+// rust/primitives.dag only).
+//
+// Closed sum (not a unary type alias): `GoModularWrapOnFixedWidth` is introduced
+// here as a variant so structural loading / v2 bootstrap resolve the tag.
+//
+// Multi-arm sum (same structural rule as rust/primitives.dag `IntegerOverflow` and
+// this file's float tags): a single-arm `type X = Tag` leaves `Tag` unresolved in
+// the v2 bootstrap compiler — `GoModularWrapOnFixedWidth` must be introduced as a
+// sum arm. Tranche-1 rows use only `GoModularWrapOnFixedWidth`. The two additional
+// arms are **parse scaffolding only** (never populated in this authority slice);
+// future operator/substrate refinements get their own rows — not Rust `Saturating`
+// / `Trap` names copied onto the Go spec surface.
+//
+// Practice 4: **🟢 GREEN** — `GoModularWrapOnFixedWidth` is the terminal ledger entry
+// for Go spec §Integer_overflow on fixed-width predeclared numerics in this slice.
+// **🟡 YELLOW (scaffold)** — `GoIntegerOverflowRefinementReservedA/B` exist only for
+// the v2 “≥2 sum arms” tag-resolution constraint; named trigger: same-row engine
+// consumption of overflow refinements, or bootstrap accepting single-arm sums.
+type GoIntegerOverflow
+  = GoModularWrapOnFixedWidth
+  | GoIntegerOverflowRefinementReservedA
+  | GoIntegerOverflowRefinementReservedB
+
+
+// Spec-backed string value = immutable byte sequence (monoid + byte carrier).
+// Second arms are v2 parse scaffolding only (never used in data) — same
+// single-arm-resolution issue as `GoIntegerOverflow`; do **not** add a UTF-8
+// parallel authority here (header §STRING).
+//
+// Practice 4: **🟢 GREEN** — first arms are the terminal string-value witnesses.
+// **🟡 YELLOW** — reserved arms; trigger: bootstrap / loader closes single-arm sums.
+type GoSpecStringAlgebraTag
+  = GoImmutableByteSequenceMonoidAlgebra
+  | GoSpecStringAlgebraParseReserved
+
+type GoSpecStringCarrierTag
+  = GoImmutableByteSequenceCarrier
+  | GoSpecStringCarrierParseReserved
+>>>>>>> origin/main
 
 
 type GoComplexComponentWidth
@@ -132,8 +214,12 @@ type GoPrimitive
     }
   | GoFloatPrimitive {
       target_name: String
+<<<<<<< HEAD
       algebra: GoFloatAlgebra
       carrier: GoFloatCarrier
+=======
+      width: GoFloatWidth
+>>>>>>> origin/main
     }
   | GoComplexPrimitive {
       target_name: String
@@ -141,8 +227,13 @@ type GoPrimitive
     }
   | GoStringPrimitive {
       target_name: String
+<<<<<<< HEAD
       algebra: GoStringAlgebra
       carrier: GoStringCarrier
+=======
+      algebra: GoSpecStringAlgebraTag
+      carrier: GoSpecStringCarrierTag
+>>>>>>> origin/main
     }
   | GoBooleanPrimitive {
       target_name: String
@@ -235,6 +326,7 @@ data go_uint64_integer_range: GoIntegerRangeFact = {
 // aliases, floats, complex, bool, string. (int/uint/uintptr omitted — implementation width.)
 data go_spec_predeclared_primitives: List<GoPrimitive> = [
   GoIntegerPrimitive { target_name: "int8", algebra: GoOrderedRingAlgebra, carrier: GoByteCarrier,
+<<<<<<< HEAD
     range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoTwoComplementWrap },
   GoIntegerPrimitive { target_name: "int16", algebra: GoOrderedRingAlgebra, carrier: GoWord16Carrier,
     range_min_inclusive: "-32768", range_max_inclusive: "32767", overflow: GoTwoComplementWrap },
@@ -264,6 +356,35 @@ data go_spec_predeclared_primitives: List<GoPrimitive> = [
     carrier: GoFloat32BitsCarrier },
   GoFloatPrimitive { target_name: "float64", algebra: GoApproximateField64Algebra,
     carrier: GoFloat64BitsCarrier },
+=======
+    range_min_inclusive: "-128", range_max_inclusive: "127", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "int16", algebra: GoOrderedRingAlgebra, carrier: GoWord16Carrier,
+    range_min_inclusive: "-32768", range_max_inclusive: "32767", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "int32", algebra: GoOrderedRingAlgebra, carrier: GoWord32Carrier,
+    range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "int64", algebra: GoOrderedRingAlgebra, carrier: GoWord64Carrier,
+    range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
+    overflow: GoModularWrapOnFixedWidth },
+
+  GoIntegerPrimitive { target_name: "uint8", algebra: GoSemiringAlgebra, carrier: GoByteCarrier,
+    range_min_inclusive: "0", range_max_inclusive: "255", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "uint16", algebra: GoSemiringAlgebra, carrier: GoWord16Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "65535", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "uint32", algebra: GoSemiringAlgebra, carrier: GoWord32Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "4294967295", overflow: GoModularWrapOnFixedWidth },
+  GoIntegerPrimitive { target_name: "uint64", algebra: GoSemiringAlgebra, carrier: GoWord64Carrier,
+    range_min_inclusive: "0", range_max_inclusive: "18446744073709551615", overflow: GoModularWrapOnFixedWidth },
+
+  GoIntegerAliasPrimitive { target_name: "byte", canon_name: "uint8", algebra: GoSemiringAlgebra,
+    carrier: GoByteCarrier, range_min_inclusive: "0", range_max_inclusive: "255",
+    overflow: GoModularWrapOnFixedWidth },
+  GoIntegerAliasPrimitive { target_name: "rune", canon_name: "int32", algebra: GoOrderedRingAlgebra,
+    carrier: GoWord32Carrier, range_min_inclusive: "-2147483648", range_max_inclusive: "2147483647",
+    overflow: GoModularWrapOnFixedWidth },
+
+  GoFloatPrimitive { target_name: "float32", width: GoFloat32Width },
+  GoFloatPrimitive { target_name: "float64", width: GoFloat64Width },
+>>>>>>> origin/main
 
   GoComplexPrimitive { target_name: "complex64", component_width: GoComplex64Components },
   GoComplexPrimitive { target_name: "complex128", component_width: GoComplex128Components },

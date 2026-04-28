@@ -40,6 +40,37 @@ mod int_literal_ranges;
 pub mod lens_apply;
 pub mod lens_testgen;
 
+<<<<<<< HEAD
+=======
+/// Effect-enumeration lens. Authority lives in
+/// `src/v3/lenses/effect_enumeration.dag`; the Rust projection is
+/// auto-emitted into `src/v3/compiler/src/lens_effect_enumeration_generated.rs`
+/// and wrapped here so callers use `v3_compiler::lens_effect_enumeration`.
+/// Editing the lens means editing the `.dag` and regenerating the checked-in
+/// projection in the same change.
+pub mod lens_effect_enumeration {
+    #[allow(
+        dead_code,
+        unused_imports,
+        unused_parens,
+        unused_variables,
+        clippy::clone_on_copy,
+        clippy::collapsible_else_if
+    )]
+    mod generated {
+        use crate::dag::*;
+        use crate::diagnostics::*;
+
+        include!("lens_effect_enumeration_generated.rs");
+    }
+
+    pub use generated::{
+        enumerate_effects, CoverageGap, EffectEnumerationReport, EffectFact, RedundantReadError,
+        StructuralEffectShape, TransactionalPattern,
+    };
+}
+
+>>>>>>> origin/main
 /// Unused-parameters lens. Authority lives in `src/v3/lenses/unused_parameters.dag`;
 /// the Rust projection is emitted into `lens_unused_parameters_generated.rs` and
 /// wrapped here inline (same host pattern as `lens_cost` / `lens_provenance`).
@@ -283,7 +314,13 @@ pub mod lens_unused_parameters {
     }
 }
 
+<<<<<<< HEAD
+=======
+/// DB-8 / m1_3 / R1C-E: shared `PROGRAM_FIXTURES` + reflected harness table.
+pub mod emit_rust_roundtrip_fixtures;
+>>>>>>> origin/main
 pub mod post_emit_verifier;
+pub mod r1c_e_gates;
 pub mod test_runner;
 pub mod serialize {
     use crate::dag::{Behavior, Dag};
@@ -1162,7 +1199,6 @@ mod regen_parse_tables_emit;
 )]
 #[path = "tokenize_generated.rs"]
 mod tokenize;
-mod tokenize_char_class;
 
 pub use regen_parse_emit::{render_parse_generated_rs, RenderParseGeneratedError};
 pub use regen_parse_tables_emit::{
@@ -1342,6 +1378,19 @@ pub fn compile_to_dag(source: &str, file: &str) -> Result<Dag, CompileError> {
     }
 }
 
+/// Structural witness for integer literal range narrowing: the
+/// `IntegerAlgebra` and `TargetCarrier` variant payload [`dag::DeclarationId`]s
+/// used to match rows in `rust_pilot_primitives`, derived from std
+/// `OrderedRing<C>` / `Semiring<C>` by declaration identity (no template-name
+/// string routing).
+pub fn integer_literal_routing_witness(
+    dag: &Dag,
+    declaration: dag::DeclarationId,
+) -> Option<(dag::DeclarationId, dag::DeclarationId)> {
+    int_literal_ranges::integer_routing_witness_for_decl(dag, declaration)
+        .map(|w| (w.algebra_variant_ty, w.carrier_variant_ty))
+}
+
 /// Lower `src/v3/std/parse_surface.dag` for codegen (`regen_parse`, SG-2 staging tests).
 ///
 /// Unlike [`compile_to_dag`], this starts from a bootstrap Dag that omits the embedded
@@ -1372,59 +1421,6 @@ pub fn compile_parse_surface_std_authority_dag(
     file: &str,
 ) -> Result<Dag, CompileError> {
     compile_onto_parse_surface_free_bootstrap(source, file)
-}
-
-/// `emit_rust_module` pattern-matches `SurfaceItem` using the embedded bootstrap
-/// mirror, which can trail `parse_surface.dag` by one field on `TypeAlias` until
-/// `regen_bootstrap` is refreshed. Patch emitted `lower_helpers` Rust so the
-/// `TypeAlias` arm includes `refinement` when absent (DB-11 / `regen_lens` / SG-6).
-///
-/// **Dissolution:** delete this helper and the call sites in `regen_lens` and
-/// SG-6 `emit_registry_module` when `regen_lens` + rustfmt output already contains
-/// `refinement: __i_refinement` on `TypeAlias` (i.e. `emit` matches `parse_surface`
-/// and `sg6_lower_helpers_generated_module_matches_checked_in_snapshot` is green
-/// with the `patch_` call removed from those paths).
-///
-/// **Fail-closed:** if the mirror still omits `refinement` on `TypeAlias`, the
-/// pre-patch substring must be present; otherwise this panics. A silent
-/// `replace` no-op (e.g. rustfmt rewrote line breaks) would otherwise match the
-/// idempotency check while shipping a broken `lower_helpers` arm.
-pub fn patch_lower_helpers_generated_type_alias_refinement(src: &str) -> String {
-    if src.contains("refinement: __i_refinement") {
-        return src.to_string();
-    }
-    // Exact rustfmt line breaks for `regen_lens` + `lower_helpers` (see SG-6 snapshot).
-    const LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT: &str = concat!(
-        "        SurfaceItem::TypeAlias {",
-        "\n            name: __i_name,",
-        "\n            type_params: __i_type_params,",
-        "\n            target: __i_target,",
-        "\n            span: __i_span,",
-    );
-    const LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT: &str = concat!(
-        "        SurfaceItem::TypeAlias {",
-        "\n            name: __i_name,",
-        "\n            type_params: __i_type_params,",
-        "\n            target: __i_target,",
-        "\n            refinement: __i_refinement,",
-        "\n            span: __i_span,",
-    );
-    if !src.contains(LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT) {
-        panic!(
-            "patch_lower_helpers_generated_type_alias_refinement: pre-DB-11 `TypeAlias` \
-             emit pattern not found; rustfmt/emit shape may have changed. Update this bridge, \
-             or run `regen_bootstrap` / regen the embedded mirror so `refinement` is native."
-        );
-    }
-    let out = src.replace(
-        LOWER_HELPERS_TYPE_ALIAS_WITHOUT_REFINEMENT,
-        LOWER_HELPERS_TYPE_ALIAS_WITH_REFINEMENT,
-    );
-    assert_ne!(
-        out, src,
-        "patch should have inserted `refinement: __i_refinement` on `TypeAlias`"
-    );
-    out
 }
 
 /// PB-1-a generated snapshot helper: load the committed std-fixture
@@ -1629,16 +1625,36 @@ fn first_differing_line(lhs: &[u8], rhs: &[u8]) -> String {
         rhs.len()
     )
 }
-
 #[cfg(test)]
-mod lower_helpers_type_alias_refinement_patch_tests {
-    use super::patch_lower_helpers_generated_type_alias_refinement;
+mod tokenize_ascii_parity_tests {
+    use super::tokenize::{byte_matches, ScannerCharClass};
 
     #[test]
-    fn is_noop_when_type_alias_arm_already_binds_refinement_placeholder() {
-        let s =
-            "match __i_item { SurfaceItem::TypeAlias { refinement: __i_refinement, .. } => {} }";
-        let out = patch_lower_helpers_generated_type_alias_refinement(s);
-        assert_eq!(out, s);
+    fn ascii_byte_class_predicates_match_std_unicode_ascii_boundary() {
+        for byte in 0u8..=127 {
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::Whitespace),
+                byte.is_ascii_whitespace(),
+                "tokenizer whitespace predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::Digit),
+                byte.is_ascii_digit(),
+                "tokenizer digit predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::IdentStart),
+                (byte.is_ascii_alphabetic() || byte == b'_'),
+                "tokenizer ident-start predicate diverged at byte {byte:#04x}"
+            );
+
+            assert_eq!(
+                byte_matches(byte, ScannerCharClass::IdentContinue),
+                (byte.is_ascii_alphanumeric() || byte == b'_'),
+                "tokenizer ident-continue predicate diverged at byte {byte:#04x}"
+            );
+        }
     }
 }
