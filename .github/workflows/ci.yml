@@ -65,6 +65,16 @@ jobs:
       - name: Fabrication sentinel ratchet (P0-C)
         run: bash scripts/check-fabrication-sentinels.sh
 
+      - name: Release-doc authority check (P2 single-authority discipline)
+        # Forbidden-string consumer for release-control docs. Authority:
+        # docs/r2-structure.md §"Release-doc authority discipline".
+        run: bash scripts/check-release-doc-authority.sh
+
+      - name: Release-doc authority self-test (consumer not ceremonial)
+        # Prevents future RETRACTION_PATTERNS broadening from silently
+        # neutering the consumer.
+        run: bash scripts/test-check-release-doc-authority.sh
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
