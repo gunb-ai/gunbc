@@ -28,7 +28,7 @@ R3 has nine lanes (revised 2026-04-28 per Director review of #1078), each closin
 4. **T-Verification-L5-L6-Corpus** — corpus-driven verification: L5 cross-target consistency + L6 structural-form coverage. Depends on (a) all 3 Shape A targets grounded and (b) L4 corpus existing first. **Also tests no-engine discipline**: L5 fails if engine policy resolves inconsistently across targets; L6 fails if fail-closed gaps are silently engine-resolved
 5. **T-FixedPoint** — self-hosting facet 2: compile `compiler.dag` → bit-identical Rust output
 6. **T-Int128** — Tier 2 Int128/Word128 substrate (the int-lit closure half deferred from R2)
-7. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos (YAML, Terraform, K8s, or SPICE) exercising the "one workflow → full-stack artifacts" thesis claim
+7. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos exercising the "one workflow → full-stack artifacts" thesis claim. **Director-locked 2026-04-28**: primary pair = OpenAPI spec + Markdown drift-lock; SQL DDL is the alternative if OpenAPI runs into design surface issues. Other candidates (YAML/K8s, Terraform, SPICE, etc.) are post-R3 ecosystem work, not R3 demos
 8. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization)
 9. **T-Bridge-Retirement** — unified ledger of named identity bridges retired (`SourceSpan.file` participation checks, `mark_bootstrap_secret_nominal_opacity()`, canonical lens-name dispatch, `include_str!` side channels, exact-string patching residual). Surfaced by Reflective Pattern B (2026-04-25 analysis); without a unified lane these get scattered across PB / Substrate / Verification work without a unified retirement ledger
 
@@ -59,9 +59,10 @@ Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as delive
 - **T-Int128.**
   - `tier2_int128_overflow_proven` — the runtime-safety claim for integer overflow extends from i64-bounded (R2 close) to Int128/Word128 substrate; no `IntLit` magnitude exceeds carrier without compile-time rejection
   - `int_lit_full_int128_word128_consumer` — int-literal magnitude consumer covers the full range, not just i64-bounded
-- **T-Omni-Shape-B.**
-  - `omni_yaml_emission_demo` — one workflow `.dag` declaration emits to a runnable Kubernetes/Terraform/YAML config + a runnable backend service
-  - `omni_documentation_emission_demo` — same workflow `.dag` emits to a documentation artifact (Markdown / OpenAPI spec) that drift-locks against the implementation
+- **T-Omni-Shape-B** (Director-locked target pair 2026-04-28: OpenAPI + Markdown drift-lock primary; SQL DDL alternative).
+  - `omni_openapi_backend_emission_demo` — one workflow `.dag` declaration emits to (a) an OpenAPI spec describing the workflow's external API + (b) a runnable backend service implementing it. Both derive from the same `compile_to_dag` result
+  - `omni_documentation_drift_lock_demo` — same workflow `.dag` emits to a Markdown documentation artifact that drift-locks against the implementation (cannot describe behavior the implementation doesn't have, by construction)
+  - `omni_sql_ddl_alternative_demo` — alternative gate triggered ONLY if `omni_openapi_backend_emission_demo` hits design-surface issues that defer it; same workflow emits to a SQL DDL schema + the backend that implements it. Replaces the OpenAPI gate per the locked alternative; not a third gate
   - `omni_layers_share_one_node_tree` — **structural coherence gate** per THESIS:213: for each demo workflow, every emitted layer (Shape A backend + Shape B configuration + Shape B documentation) derives from the same `compile_to_dag` result. Structurally checkable at compile time: per-workflow count of `compile_to_dag` invocations = 1; all emitters consume the same `Dag` value via the typed substrate query surface. **This is the structural acceptance predicate for "coherence between layers is structural, not checked"** — the property holds by construction (same Node tree); the gate verifies the demos satisfy that construction. Distinct from L4/L5 which are runtime equivalence checks
   - Counts as 2 Shape B targets per THESIS §"Omni-emission" `O(1)` per Shape B target claim
 - **T-Anthropic-Wire.**

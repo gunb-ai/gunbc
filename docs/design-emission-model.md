@@ -142,39 +142,39 @@ These are **structural facts derivable from program use** — lifetime, escape, 
 
 **Question:** when the fold needs to pick "minimum" satisfier, what declares the ordering?
 
-**Re-framing:** the fold should *not* "pick minimum." It should look up canonical (Modeling problem 2). But for diagnostics — telling users "your unannotated `Int` could be `i32`, `i64`, `i128`; canonical is `i64`; here are the alternatives" — the substrate needs to enumerate inhabitants in some order.
+**Re-framing:** the fold should *not* "pick minimum." After Modeling problem 2's correction, the right reframe is: when the program is structurally complete (all relevant axes refined), there is exactly one matching candidate; "smaller" doesn't enter. When the program is structurally under-specified, the fold fails-closed and the diagnostic enumerates the candidates in some order so the user knows what refinement to add.
 
-**The honest answer:** the ordering is *structural*, declared in the substrate. For integer carriers, "smaller" means "narrower bound" — declared by the bound carrier itself. For ownership variants of strings, there is no natural ordering; the substrate declares an enumeration order for diagnostics, not a "minimum."
+**The honest answer:** the ordering is *structural*, declared in the substrate, used for diagnostic enumeration only. For integer carriers, "smaller" means "narrower bound" — declared by the bound carrier itself. For ownership variants of strings, there is no natural ordering; the substrate declares an enumeration order for diagnostics. **Neither is engine policy** — both are declared facts.
 
-**The work:** declared ordering exists per *category* of inhabitance, attached to the algebra. For algebras with a natural ordering (cardinality bounds), the ordering falls out of the bound carrier. For algebras without (ownership/lifetime variants), the substrate either declares a diagnostic-only enumeration order or omits ordering and emits all alternates as equally-canonical-eligible.
+**The work:** declared ordering exists per *category* of inhabitance, attached to the algebra. For algebras with a natural ordering (cardinality bounds), the ordering falls out of the bound carrier. For algebras without (ownership/lifetime variants), the substrate declares a diagnostic-only enumeration order. The fold itself does not consult ordering for emission decisions; it consults ordering only when constructing fail-closed diagnostics.
 
-This is substrate completion. The "minimum-satisfier selection" framing was hiding this modeling decision under engine policy.
+This is substrate completion. The "minimum-satisfier selection" framing was hiding this modeling decision under engine policy; the corrected framing is "ordering is for telling users what their alternatives are, not for the fold to pick between them."
 
 ### Modeling problem 5 — fail-closed diagnostic surface
 
-**Question:** when the fold fails (no inhabitant; multiple inhabitants without canonical; inconsistent annotation), what does the diagnostic look like?
+**Question:** when the fold fails (no inhabitant; multiple inhabitants because the program is under-refined on some structural axis), what does the diagnostic look like?
 
 **The diagnostic is itself a structural fact.** It must name:
 - What the program declared (the algebra + refinement that was searched)
 - What the substrate declared (the inhabitants found, or the absence)
-- What would resolve the under-determinism (canonical to declare, refinement to add, annotation to write)
+- What would resolve the under-determinism (refinement to add, structural axis to declare on the program, or substrate fact to extend if no candidate exists)
 
-**Worked example.** User writes `Int` without bounds. Fold runs, finds 7 candidates (i8/i16/i32/i64/i128 + isize/usize wide bound). No canonical because `Int` without refinement has no canonical declared (per recommendation in Modeling problem 2). Fold returns:
+**Worked example.** User writes `Int` without bounds. Fold runs, finds 5 candidates (Int8/Int16/Int32/Int64/Int128). All 5 are meaningfully different (bound differs); the program hasn't said which bound it needs. Fold returns:
 
 ```
-EmissionDiagnostic::UnderDetermined {
+EmissionDiagnostic::UnderRefined {
   program_intent: AlgebraInhabitance(OrderedRing, refinement: None),
-  candidates: [Int8, Int16, Int32, Int64, Int128, ISize, USize],
-  canonical: None,
+  candidates: [Int8, Int16, Int32, Int64, Int128],
+  unspecified_axis: "bound",
   resolution_hints: [
     "add refinement bound: `Int(min..max)` will narrow the search",
-    "declare canonical at language level: extend dsl/extdeps/languages/rust/types.dag",
-    "annotate program-side: `@target(rust) annotate field: Int64`"
+    "for typical 64-bit integer use: `Int(-2^63..2^63)` grounds to Int64",
+    "for 32-bit: `Int(-2^31..2^31)` grounds to Int32"
   ]
 }
 ```
 
-**The work:** designing the `EmissionDiagnostic` carrier in the substrate. This is small but load-bearing — it's the structural surface for "the substrate is incomplete in this specific way."
+**The work:** designing the `EmissionDiagnostic` carrier in the substrate. This is small but load-bearing — it's the structural surface for "the substrate is complete; the program is not." (Distinguish from `EmissionDiagnostic::NoInhabitant` for "the substrate doesn't have a candidate for this case at all.")
 
 ### Modeling problem 6 — language spec as substrate
 
@@ -185,7 +185,7 @@ Today: scattered across `dsl/std/coercion.dag` (schema) + `dsl/extdeps/languages
 **The structural shape needs:**
 - Declared primitive set (with refinement-bound shape per primitive)
 - Declared algebra inhabitance per primitive (with refinement parameters)
-- Declared canonical choices when multiple primitives inhabit the same algebra at the same refinement
+- Declared structural axes that distinguish candidates when multiple primitives appear to inhabit the same algebra (per Modeling problem 2 corrected: model the meaningful axis as a refinement; cosmetic equivalents collapse)
 - Declared structural ordering for diagnostic enumeration
 - Declared construction patterns (how a target value of this primitive is *constructed* from other target values — needed for emission of compound types)
 - Declared operator dispatch (how `OrderedRing.add` projects onto `i64.add` vs `BigInt.add` etc. — already partially in `MethodContract`)
@@ -203,8 +203,8 @@ Today: scattered across `dsl/std/coercion.dag` (schema) + `dsl/extdeps/languages
 
 **What the substrate must declare:**
 - Per-target language specs (Modeling problem 6) cover *each* mapping individually
-- A *cross-target meta-spec* declares: which inhabitances are *required* to be canonical across all Shape A targets? (e.g., "every Shape A target must declare canonical for `FreeMonoid<Char>` at no-refinement, because `.dag` `String` is portable across all targets")
-- Without this meta-spec, a target language spec could omit a canonical declaration without diagnostic, breaking cross-target portability silently
+- A *cross-target meta-spec* declares: which inhabitances are *required* to have at least one structural-completeness candidate across all Shape A targets? (e.g., "every Shape A target must have a candidate inhabiting `OrderedRing` covering the common bound `(-2^31..2^31)`, because `.dag` `Int(-2^31..2^31)` is portability-required")
+- Without this meta-spec, a target language spec could omit an inhabitance covering a portable case without diagnostic, breaking cross-target portability silently
 
 **The work:** designing the cross-target meta-spec. This is substrate-level — declares which inhabitances are portability requirements vs target-specific niceties. Failing to declare this leaves portability as policy rather than structural fact.
 
@@ -227,7 +227,7 @@ The lane was sized as "M (~1-2 weeks first-cut)" per [`docs/thesis/target-ground
 | Modeling problem | Lane home | Size |
 |---|---|---|
 | 1. Refinement composition | T-Ground-Rust XL (extends substrate per-target) + T-Substrate cardinality-substrate prereq (already in R2) | Folds into existing |
-| 2. Canonical choice | T-Ground-Rust + T-Ground-Python + T-Ground-Go (each declares canonical for its primitive set) | Folds into existing |
+| 2. Structural axes (replaces "canonical choice" framing) | T-Ground-Rust + T-Ground-Python + T-Ground-Go (each declares the structural axes — ownership/growability/encoding/etc. — that distinguish its primitive families) | Folds into existing |
 | 3. User annotation as program substrate | **NEW LANE** — substrate work for program-side `@target` annotations | M |
 | 4. Declared structural ordering | T-Substrate (declared ordering on cardinality bounds; declared enumeration order on alternates) | Folds into existing |
 | 5. Fail-closed diagnostic surface | **NEW LANE** — `EmissionDiagnostic` carrier substrate | S |
@@ -488,56 +488,9 @@ fold_dag_string_function_param_transient_to_rust_strslice: TestClaim {
 
 ---
 
-### Example 5 — `Int` (no canonical declared) → fail-closed `EmissionDiagnostic::UnderDetermined`
+### Example 5 — duplicate of Example 1; consolidated
 
-**Demonstrates:** Modeling problem 5 (fail-closed diagnostic surface); structure under-determines, no canonical to fall back on.
-
-**Substrate facts (intentionally incomplete to demonstrate diagnostic):**
-```
-inhabits Int8   : OrderedRing  bound = (-2^7..2^7)
-inhabits Int16  : OrderedRing  bound = (-2^15..2^15)
-inhabits Int32  : OrderedRing  bound = (-2^31..2^31)
-inhabits Int64  : OrderedRing  bound = (-2^63..2^63)
-inhabits Int128 : OrderedRing  bound = (-2^127..2^127)
-
-// NOTE: no canonical declared for OrderedRing without refinement
-```
-
-**Program input:**
-```
-data x: Int = 0
-```
-
-**Fold steps:**
-1. Read program intent: algebra = `OrderedRing`; refinement = none
-2. Walk substrate inhabitants: 5 candidates
-3. Apply refinement filter: all 5 still valid
-4. Apply canonical-choice: **no canonical declared** for this algebra/refinement combination
-5. Result: under-determined → fail-closed
-
-**Expected output:**
-```
-EmissionDiagnostic::UnderDetermined {
-  program_intent: AlgebraInhabitance(OrderedRing, refinement: None),
-  candidates: [Int8, Int16, Int32, Int64, Int128],
-  canonical: None,
-  resolution_hints: [
-    "add refinement bound: `Int(min..max)` will narrow the search",
-    "declare canonical at language level: extend dsl/extdeps/languages/rust/types.dag",
-    "annotate program-side: `@target(rust) annotate x: Int64`"
-  ]
-}
-```
-
-**Test claim shape:**
-```
-fold_dag_int_no_canonical_fails_closed: TestClaim {
-  setup: rust_language_spec_without_int_canonical()
-  source: "data x: Int = 0"
-  expected_emission: None
-  expected_diagnostic: matches(EmissionDiagnostic::UnderDetermined { candidates: [_; 5], .. })
-}
-```
+> **Consolidated 2026-04-28:** this example previously demonstrated "no canonical declared" using a substrate variant intentionally missing a canonical fact. Per Modeling problem 2 corrected, "canonical declaration" was the wrong framing — the bound differences ARE meaningful and belong as refinements, not as candidates needing canonical disambiguation. Example 1 already demonstrates the correct fail-closed-on-under-refined case (`UnderRefined` diagnostic carrier). This example is retained as a placeholder slot to preserve example numbering through the doc; the test-case shape has migrated to Example 1.
 
 ---
 
