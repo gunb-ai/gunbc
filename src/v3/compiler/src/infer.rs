@@ -2473,32 +2473,6 @@ fn callable_instantiation_conflict(
     }
 }
 
-<<<<<<< HEAD
-/// `resolve_callable_target` runs before `decide_transform`'s per-input narrowing
-/// pass can restamp a literal port. When the port is still the default `Int`
-/// literal type but the source literal is known to fit a range-backed expected
-/// parameter (via substrate range facts), treat the binding as compatible so
-/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
-/// authoritative in the transform `decide_transform` path.
-fn range_compatible_default_int_literal_argument(
-    dag: &Dag,
-    input_port: PortId,
-    expected_param_decl: DeclarationId,
-) -> bool {
-    let Some(int_ty) = dag.int_shape() else {
-        return false;
-    };
-    if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
-        return false;
-    }
-    let Some(lit) = literal_int_at(dag, input_port) else {
-        return false;
-    };
-    matches!(
-        int_literal_fits_expected_type(dag, lit, expected_param_decl),
-        Ok(Some(true))
-    )
-=======
 /// `port_type_context` reports the default `Int` type shape for integer literals, so
 /// [`bind_expected_decl_to_actual_context`] can reject a callee that expects a range-backed
 /// narrow type (`UInt8`, …). The main transform decision path already allows in-range
@@ -2529,7 +2503,6 @@ fn int_literal_implicit_bind_tolerated_for_expected(
         Ok(None) => Ok(false),
         Err(diag) => Err(diag),
     }
->>>>>>> origin/main
 }
 
 fn resolve_callable_target(
@@ -2622,24 +2595,14 @@ fn resolve_callable_target(
             let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                 return CallableTargetResolution::Retry;
             };
-            let binds = bind_expected_decl_to_actual_context(
+            if !bind_expected_decl_to_actual_context(
                 dag,
                 expected_input,
                 &actual_ctx,
                 &mut arguments,
                 0,
-<<<<<<< HEAD
-            ) || range_compatible_default_int_literal_argument(
-                dag,
-                *input_port,
-                expected_input,
-            );
-            if !binds {
-                return CallableTargetResolution::Fail(callable_instantiation_conflict(
-=======
             ) {
                 match int_literal_implicit_bind_tolerated_for_expected(
->>>>>>> origin/main
                     dag,
                     expected_input,
                     *input_port,
@@ -2713,24 +2676,14 @@ fn resolve_callable_target(
                 let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                     return CallableTargetResolution::Retry;
                 };
-                let binds = bind_expected_decl_to_actual_context(
+                if !bind_expected_decl_to_actual_context(
                     dag,
                     expected_input.declaration,
                     &actual_ctx,
                     &mut arguments,
                     0,
-<<<<<<< HEAD
-                ) || range_compatible_default_int_literal_argument(
-                    dag,
-                    *input_port,
-                    expected_input.declaration,
-                );
-                if !binds {
-                    return CallableTargetResolution::Fail(callable_instantiation_conflict(
-=======
                 ) {
                     match int_literal_implicit_bind_tolerated_for_expected(
->>>>>>> origin/main
                         dag,
                         expected_input.declaration,
                         *input_port,
