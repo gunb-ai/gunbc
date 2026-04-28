@@ -34,9 +34,11 @@
 // (`PythonPrimitive = …`) is walkable for Engine / future loaders.
 //
 // LESSON 5 (grounding-pilot-receipt.md): subset-only axes are structurally
-// partitioned — string algebra/carrier tags live only on PythonStringPrimitive;
-// integer carrier discipline lives only on PythonIntegerPrimitive; the
-// terminal sentinel pair lives only on PythonUnitPrimitive.
+// partitioned — every `PythonPrimitive` variant carries its own per-variant
+// algebra-tag and carrier-tag witness types, so any algebra/carrier pair
+// other than the spec-valid one is unrepresentable by construction (no
+// `PythonBooleanPrimitive { algebra: TerminalAlgebra }`,
+// no `PythonIntegerPrimitive { carrier: BitCarrier }`).
 //
 // STRING (language ref §"Text Sequence Type — str",
 // docs.python.org/3/library/stdtypes.html#textseq): a `str` value is an
@@ -50,7 +52,7 @@
 // SUBSTRATE-GAP FLAGS:
 //   1. Python `int` is arbitrary precision — no fixed-width carrier and no
 //      modular-wrap overflow. Tranche-1 models this with the
-//      `PythonUnboundedIntegerCarrier` sentinel (no `range_min/max`,
+//      `PythonIntUnboundedCarrier` sentinel (no `range_min/max`,
 //      no `overflow` field) so consumers cannot read a false fixed width.
 //      Post-DB-11 / cardinality substrate this becomes
 //      `OrderedRing<UnboundedSignedInteger>` with countably-infinite
@@ -62,137 +64,160 @@
 //      the int-coercion edge — that lives in coercion / operator slices,
 //      not on the predeclared primitive row.
 //   3. Algebra and carrier identity is still carried by structural tags
-//      (`PythonIntegerAlgebra` / `PythonNonIntegerAlgebra` /
-//      `PythonTargetCarrier` / `PythonSpecString*Tag`), same bridge pattern
-//      as rust/primitives.dag and go/primitives.dag, until the .dag
-//      substrate exposes type expressions as data values.
+//      (per-variant `Python<Variant>SpecAlgebraTag` /
+//      `Python<Variant>SpecCarrierTag`), same bridge pattern as
+//      rust/primitives.dag and go/primitives.dag, until the .dag substrate
+//      exposes type expressions as data values.
 
 module extdeps.languages.python.primitives
 
 // =========================================================================
-// Algebra tags, partitioned by integer / non-integer / string class.
+// Per-variant algebra / carrier witness tags.
+//
+// State-space modeling discipline: each `PythonPrimitive` variant gets its
+// own dedicated algebra-tag and carrier-tag sum, so the spec-valid
+// (algebra, carrier) pair is the *only* representable assignment for that
+// row. Sharing a broad `PythonNonIntegerAlgebra` across Boolean and Unit
+// (or a broad `PythonTargetCarrier` across Integer / Boolean / Unit) would
+// admit nonsense rows like `PythonBooleanPrimitive { algebra: TerminalAlgebra }`
+// — illegal-states-unrepresentable forbids that.
 //
 // Practice 4 (docs/modeling-discipline.md) ledger annotations follow the
-// post-#1046 Go file style: each closed coproduct names its GREEN
-// (terminal / consumed) and YELLOW (parse-scaffold reserved) arms.
-// Single-arm `type X = Tag` declarations leave `Tag` unresolved in the
-// v2 bootstrap compiler — every coproduct below has ≥2 arms by
-// construction, with reserved arms named for their dissolution trigger.
+// post-#1046 Go file style: each closed coproduct names its **🟢 GREEN**
+// (terminal / consumed) arm and its **🟡 YELLOW** (parse-scaffold reserved)
+// arm. Every coproduct below has ≥2 arms by construction (v2 bootstrap
+// loader rejects unary `type X = Tag` aliases), with reserved arms named
+// for their dissolution trigger: bootstrap / loader closes single-arm sums,
+// at which point the reserved arms (and these per-variant tag types
+// entirely) collapse into direct algebra/carrier references — see
+// substrate-gap flag #3.
 // =========================================================================
 
-// Python `int` is the only spec-predeclared integer; it inhabits the
-// (unbounded, signed) ordered ring. The reserved arm exists solely so the
-// v2 bootstrap loader resolves `PythonIntegerAlgebra` as a sum, not a unary
-// alias.
+// --- Integer primitive witness tags ---
 //
-// Practice 4: **🟢 GREEN** — `PythonOrderedRingAlgebra` is the terminal
-// algebra-tag for Python's spec integer.
-// **🟡 YELLOW (scaffold)** — `PythonIntegerAlgebraReserved` exists only for
-// the v2 "≥2 sum arms" tag-resolution constraint; named trigger:
-// bootstrap / loader closes single-arm sums, OR a future stdlib-authority
-// slice lands a second integer algebra row (e.g., a Semiring inhabitant
-// from numerics packages — would still NOT belong on this language-spec
-// row; reserved arm dissolves regardless).
-type PythonIntegerAlgebra
-  = PythonOrderedRingAlgebra
-  | PythonIntegerAlgebraReserved
+// Practice 4: **🟢 GREEN** — `PythonIntOrderedRingAlgebra` is the terminal
+// algebra-tag for Python's spec integer (signed, additive inverse exists).
+// **🟡 YELLOW (scaffold)** — `PythonIntegerSpecAlgebraReserved`.
+type PythonIntegerSpecAlgebraTag
+  = PythonIntOrderedRingAlgebra
+  | PythonIntegerSpecAlgebraReserved
 
-// Bool + None share one closed algebra-tag sum (mirrors rust
-// `NonIntegerAlgebra` and go `GoSpecDiscreteAlgebra` grouping). String is
-// separate — its value-domain is a sequence monoid, not a discrete scalar.
+// Practice 4: **🟢 GREEN** — `PythonIntUnboundedCarrier` is the honest
+// declaration that Python `int` is arbitrary-precision (substrate-gap
+// flag #1; DB-11 will refine to a countably-infinite cardinality witness).
+// **🟡 YELLOW (scaffold)** — `PythonIntegerSpecCarrierReserved`.
+type PythonIntegerSpecCarrierTag
+  = PythonIntUnboundedCarrier
+  | PythonIntegerSpecCarrierReserved
+
+
+// --- Boolean primitive witness tags ---
 //
-// Practice 4: **🟢 GREEN (terminal coproduct).** Both arms are spec-realized
-// and consumed: `PythonCanonicalTwoElementBooleanAlgebra` is the value-domain
-// of `bool`; `PythonTerminalAlgebra` is the single-inhabitant algebra of
-// `NoneType`. Each arm has a matching `PythonPrimitive` row in
-// `python_spec_predeclared_primitives` / `python_dag_unit_target_primitive`.
-type PythonNonIntegerAlgebra
-  = PythonCanonicalTwoElementBooleanAlgebra
-  | PythonTerminalAlgebra
+// Practice 4: **🟢 GREEN** — `PythonBoolCanonicalTwoElementBooleanAlgebra`
+// is the terminal algebra-tag for Python's spec `bool`.
+// **🟡 YELLOW (scaffold)** — `PythonBooleanSpecAlgebraReserved`.
+type PythonBooleanSpecAlgebraTag
+  = PythonBoolCanonicalTwoElementBooleanAlgebra
+  | PythonBooleanSpecAlgebraReserved
+
+// Practice 4: **🟢 GREEN** — `PythonBoolBitCarrier` is the algebra
+// value-domain witness for `bool` (per `dsl/std/integer.dag:4` carrier-vs-
+// evidence convention; not CPython object representation).
+// **🟡 YELLOW (scaffold)** — `PythonBooleanSpecCarrierReserved`.
+type PythonBooleanSpecCarrierTag
+  = PythonBoolBitCarrier
+  | PythonBooleanSpecCarrierReserved
 
 
-// =========================================================================
-// Target carrier tags (value-domain witnesses; not CPython object layout).
+// --- String primitive witness tags ---
 //
-// `PythonUnboundedIntegerCarrier` is the honest declaration that Python's
-// spec `int` is arbitrary-precision — there is no fixed bit-width and no
-// modular-wrap field on `PythonIntegerPrimitive`. Substrate-gap flag #1
-// names DB-11 / cardinality dissolution.
+// Practice 4: **🟢 GREEN** —
+// `PythonStrImmutableUnicodeCodePointSequenceMonoidAlgebra` is the
+// terminal algebra-tag for Python `str` (header §STRING).
+// **🟡 YELLOW (scaffold)** — `PythonStringSpecAlgebraReserved`. Encoding
+// (UTF-8 / UTF-16) is NOT a second arm here.
+type PythonStringSpecAlgebraTag
+  = PythonStrImmutableUnicodeCodePointSequenceMonoidAlgebra
+  | PythonStringSpecAlgebraReserved
+
+// Practice 4: **🟢 GREEN** — `PythonStrUnicodeCodePointSequenceCarrier` is
+// the terminal carrier-tag for Python `str`.
+// **🟡 YELLOW (scaffold)** — `PythonStringSpecCarrierReserved`.
+type PythonStringSpecCarrierTag
+  = PythonStrUnicodeCodePointSequenceCarrier
+  | PythonStringSpecCarrierReserved
+
+
+// --- Unit (None / NoneType) primitive witness tags ---
 //
-// `PythonBitCarrier` and `PythonTerminalCarrier` mirror the Rust/Go
-// convention of declaring the algebra value-domain witness (per
-// `dsl/std/integer.dag:4` "Int is a CARRIER (Word64) with EVIDENCE…"),
-// not CPython object representation (CPython stores both `True`/`False`
-// as singleton PyBool objects; that is target-codegen / runtime, not
-// algebra value-domain).
-//
-// Practice 4: **🟢 GREEN (terminal coproduct).** All three arms are
-// consumed by tranche-1 rows: integer (UnboundedInteger), bool (Bit), and
-// None (Terminal). No reserved scaffolds — three arms is already ≥2.
-// =========================================================================
+// Practice 4: **🟢 GREEN** — `PythonUnitTerminalAlgebra` is the
+// single-inhabitant algebra of `NoneType`.
+// **🟡 YELLOW (scaffold)** — `PythonUnitSpecAlgebraReserved`.
+type PythonUnitSpecAlgebraTag
+  = PythonUnitTerminalAlgebra
+  | PythonUnitSpecAlgebraReserved
 
-type PythonTargetCarrier
-  = PythonUnboundedIntegerCarrier
-  | PythonBitCarrier
-  | PythonTerminalCarrier
-
-
-// String value = immutable Unicode code-point sequence (monoid + Unicode
-// code-point carrier). Reserved arms are v2 parse scaffolding only (never
-// used in data) — same single-arm-resolution issue as `PythonIntegerAlgebra`;
-// do **not** add a UTF-8 / UTF-16 / encoding parallel authority here
-// (header §STRING).
-//
-// Practice 4: **🟢 GREEN** — first arms are the terminal string-value
-// witnesses (algebra: immutable codepoint-sequence monoid; carrier:
-// Unicode code-point sequence). **🟡 YELLOW (scaffold)** — reserved arms
-// exist only for the v2 "≥2 sum arms" tag-resolution constraint; named
-// trigger: bootstrap / loader closes single-arm sums.
-type PythonSpecStringAlgebraTag
-  = PythonImmutableUnicodeCodePointSequenceMonoidAlgebra
-  | PythonSpecStringAlgebraParseReserved
-
-type PythonSpecStringCarrierTag
-  = PythonUnicodeCodePointSequenceCarrier
-  | PythonSpecStringCarrierParseReserved
+// Practice 4: **🟢 GREEN** — `PythonUnitTerminalCarrier` is the
+// single-inhabitant carrier sentinel for `None` (DB-11 will refine to
+// `Cardinality<T, Exactly(1)>`).
+// **🟡 YELLOW (scaffold)** — `PythonUnitSpecCarrierReserved`.
+type PythonUnitSpecCarrierTag
+  = PythonUnitTerminalCarrier
+  | PythonUnitSpecCarrierReserved
 
 
 // =========================================================================
 // Sum-typed Python spec primitive (Lesson 5 partition).
 //
 // Sum-typed so each spec primitive's structurally-meaningful axes attach
-// only where they have meaning: integer carrier discipline only on
-// `PythonIntegerPrimitive`; string algebra/carrier tags only on
-// `PythonStringPrimitive`. State-space modeling discipline — no
-// `bool: PythonUnboundedIntegerCarrier`, no `int: PythonUnicodeCodePointSequenceCarrier`.
+// only where they have meaning, AND each variant's algebra/carrier fields
+// are typed by per-variant singleton-tag pairs (see witness-tag block
+// above) — illegal-states-unrepresentable: a `PythonBooleanPrimitive` can
+// only carry `PythonBoolCanonicalTwoElementBooleanAlgebra` and
+// `PythonBoolBitCarrier`; a `PythonIntegerPrimitive` can only carry
+// `PythonIntOrderedRingAlgebra` and `PythonIntUnboundedCarrier`; etc.
 //
 // No `range_min/max` and no `overflow` field on `PythonIntegerPrimitive`:
 // substrate-gap flag #1 — Python's spec `int` is unbounded, so a
 // fixed-range / fixed-overflow row would be a lie. Consumers needing
 // concrete-width integer routing should consult target-specific lanes
 // (Rust / Go `*_integer_range` rows) rather than synthesizing a width here.
+//
+// Practice 4 (docs/modeling-discipline.md): **🟢 GREEN (terminal coproduct).**
+// Ledger — all four arms are spec-realized and consumed; each has a
+// matching row in `python_spec_predeclared_primitives` /
+// `python_dag_unit_target_primitive`:
+//   - `PythonIntegerPrimitive` ↔ row `int` (spec §"Numeric Types" — int).
+//   - `PythonBooleanPrimitive` ↔ row `bool` (spec §"Boolean Type — bool").
+//   - `PythonStringPrimitive`  ↔ row `str`  (spec §"Text Sequence — str").
+//   - `PythonUnitPrimitive`    ↔ row `None` (spec §"The Null Object — None").
+// No reserved scaffold arm needed (already ≥2 arms by construction).
+// Dissolution trigger for the partition itself: when DB-11 / cardinality
+// substrate lets algebra+carrier be referenced as data, all four variants
+// collapse into a single record-shaped row with refinement-typed fields,
+// and `PythonPrimitive` retires alongside the per-variant witness tags.
 // =========================================================================
 
 type PythonPrimitive
   = PythonIntegerPrimitive {
       target_name: String
-      algebra: PythonIntegerAlgebra
-      carrier: PythonTargetCarrier
+      algebra: PythonIntegerSpecAlgebraTag
+      carrier: PythonIntegerSpecCarrierTag
     }
   | PythonStringPrimitive {
       target_name: String
-      algebra: PythonSpecStringAlgebraTag
-      carrier: PythonSpecStringCarrierTag
+      algebra: PythonStringSpecAlgebraTag
+      carrier: PythonStringSpecCarrierTag
     }
   | PythonBooleanPrimitive {
       target_name: String
-      algebra: PythonNonIntegerAlgebra
-      carrier: PythonTargetCarrier
+      algebra: PythonBooleanSpecAlgebraTag
+      carrier: PythonBooleanSpecCarrierTag
     }
   | PythonUnitPrimitive {
       target_name: String
-      algebra: PythonNonIntegerAlgebra
-      carrier: PythonTargetCarrier
+      algebra: PythonUnitSpecAlgebraTag
+      carrier: PythonUnitSpecCarrierTag
     }
 
 
@@ -206,16 +231,16 @@ type PythonPrimitive
 // `bytes` / `bytearray` deferred to next tranche.
 data python_spec_predeclared_primitives: List<PythonPrimitive> = [
   PythonIntegerPrimitive { target_name: "int",
-    algebra: PythonOrderedRingAlgebra,
-    carrier: PythonUnboundedIntegerCarrier },
+    algebra: PythonIntOrderedRingAlgebra,
+    carrier: PythonIntUnboundedCarrier },
 
   PythonBooleanPrimitive { target_name: "bool",
-    algebra: PythonCanonicalTwoElementBooleanAlgebra,
-    carrier: PythonBitCarrier },
+    algebra: PythonBoolCanonicalTwoElementBooleanAlgebra,
+    carrier: PythonBoolBitCarrier },
 
   PythonStringPrimitive { target_name: "str",
-    algebra: PythonImmutableUnicodeCodePointSequenceMonoidAlgebra,
-    carrier: PythonUnicodeCodePointSequenceCarrier }
+    algebra: PythonStrImmutableUnicodeCodePointSequenceMonoidAlgebra,
+    carrier: PythonStrUnicodeCodePointSequenceCarrier }
 ]
 
 // DAG Unit → Python: `None` (the sole inhabitant of `NoneType`) is the
@@ -228,6 +253,6 @@ data python_spec_predeclared_primitives: List<PythonPrimitive> = [
 // `python_type_checkpoints` in `python/types.dag`.
 data python_dag_unit_target_primitive: PythonPrimitive = PythonUnitPrimitive {
   target_name: "None",
-  algebra: PythonTerminalAlgebra,
-  carrier: PythonTerminalCarrier
+  algebra: PythonUnitTerminalAlgebra,
+  carrier: PythonUnitTerminalCarrier
 }
