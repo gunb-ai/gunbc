@@ -3326,11 +3326,14 @@ mod execute_command_timebound_tests {
         );
     }
 
-    /// Linux: the unshare bootstrap re-`exec`s the user `command` with logical `stderr` to
-    /// `/dev/null` (and `child_wait` still drains the **wrapper** pipe for util-linux/bootstrap only).
-    /// If logical `>&2` were still the piped handle, the loop below would fill the pipe and stall
-    /// until the wall cap — this test passing is the receipt that they are **not** the same
-    /// authority (PR #792; c.f. the helper-binary protocol described in `build_execute_command_unshare`).
+    /// Linux: a logical command that writes a large volume to `>&2` must complete within the
+    /// wall bound. Wrapper stderr is `Stdio::null()` and the helper inherits stdio normally;
+    /// the parent never reads from any pipe attached to the child stderr, so there's no
+    /// pipe-buffer-fill stall to worry about. This test passing is the live-state receipt
+    /// that the helper-wired path correctly nulls logical stderr (no shared-channel hazard
+    /// with the wall-bound timeout). Pre-helper this same test guarded against a pipe-stall
+    /// regression on the wrapper-stderr drain path; post-helper it remains a useful
+    /// volume-sanity receipt against future plumbing changes.
     #[test]
     #[cfg(target_os = "linux")]
     fn unshare_path_drains_piped_stderr_so_huge_logical_stderr_does_not_stall() {
