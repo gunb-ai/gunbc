@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::dag::{
     AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TypeConnective,
     ValueBody,
@@ -33,182 +35,241 @@ pub(crate) enum IntegerRangeLookup {
     Invalid(Diagnostic),
 }
 
+/// Structural witness for routing integer literals: `IntegerAlgebra` and
+/// `TargetCarrier` variant **payload type** ids (the `constructor` field on
+/// `FieldValue::Variant`), derived from std `OrderedRing<C>` / `Semiring<C>`
+/// by `DeclarationId` equality on template and carrier type declarations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct IntegerRoutingWitness {
+    pub(crate) algebra_variant_ty: DeclarationId,
+    pub(crate) carrier_variant_ty: DeclarationId,
+}
+
+/// Integration / structural tests: witness for `decl`'s resolved integer
+/// instantiation (`OrderedRing` / `Semiring` + word carrier), if any.
+pub(crate) fn integer_routing_witness_for_decl(
+    dag: &Dag,
+    decl: DeclarationId,
+) -> Option<IntegerRoutingWitness> {
+    integer_routing_witness_walk(dag, decl, 0)
+}
+
 pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerRangeLookup {
-    let Some(key) = integer_routing_key_for_decl(dag, decl, 0) else {
+    let Some(witness) = integer_routing_witness_walk(dag, decl, 0) else {
         return IntegerRangeLookup::Missing;
     };
-    let mut matches = Vec::new();
-    for decl in dag
-        .declarations()
-        .iter()
-        .filter(|decl| is_integer_range_fact(dag, decl.meta_tag))
-    {
-        match integer_range_fact(dag, decl) {
-            Ok(fact) if fact.key == key => matches.push(fact),
-            Ok(_) => {}
+    let Some(pilot) = dag.rust_pilot_primitives() else {
+        return IntegerRangeLookup::Missing;
+    };
+    let Some(body) = pilot.value_body.as_ref() else {
+        return IntegerRangeLookup::Missing;
+    };
+    let ValueBody::List(elements) = body else {
+        return IntegerRangeLookup::Missing;
+    };
+
+    let integer_primitive_ctor = match rust_primitive_integer_variant_ty(dag) {
+        Some(id) => id,
+        None => {
+            return IntegerRangeLookup::Invalid(malformed_integer_range_fact(
+                "bootstrap: RustPrimitive.IntegerPrimitive variant type is unavailable".to_string(),
+                pilot.span.clone(),
+            ));
+        }
+    };
+
+    let mut matches: Vec<PilotIntegerMatch> = Vec::new();
+    for element in elements {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = element
+        else {
+            continue;
+        };
+        if *constructor != integer_primitive_ctor {
+            continue;
+        }
+        match pilot_integer_row(witness, payload, pilot.span.clone()) {
+            Ok(Some(m)) => matches.push(m),
+            Ok(None) => {}
             Err(diag) => return IntegerRangeLookup::Invalid(diag),
         }
     }
+
     if matches.is_empty() {
         return IntegerRangeLookup::Missing;
     }
-    if let Some(fact) = matches.iter().find(|fact| fact.range.is_none()) {
+    if let Some(row) = matches.iter().find(|row| row.range.is_none()) {
         return IntegerRangeLookup::Invalid(malformed_integer_range_fact(
             format!(
-                "malformed IntegerRangeFact row for `{}`/`{}`; integer literal range narrowing is unavailable",
-                key.algebra, key.carrier
+                "malformed rust_pilot_primitives IntegerPrimitive row for routing witness {:?}; integer literal range narrowing is unavailable",
+                (witness.algebra_variant_ty, witness.carrier_variant_ty)
             ),
-            fact.span.clone(),
+            row.span.clone(),
         ));
     }
     if matches.len() > 1 {
         return IntegerRangeLookup::Invalid(malformed_integer_range_fact(
             format!(
-                "duplicate IntegerRangeFact rows for `{}`/`{}`; integer literal range narrowing is ambiguous",
-                key.algebra, key.carrier
+                "duplicate rust_pilot_primitives IntegerPrimitive rows for routing witness {:?}; integer literal range narrowing is ambiguous",
+                (witness.algebra_variant_ty, witness.carrier_variant_ty)
             ),
             matches[1].span.clone(),
         ));
     }
-    let fact = matches.remove(0);
-    match fact.range {
+    let row = matches.remove(0);
+    match row.range {
         Some(range) => IntegerRangeLookup::Found(range),
-        None => unreachable!("malformed matching facts are handled before duplicate detection"),
+        None => unreachable!("malformed matching rows are handled before duplicate detection"),
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct IntegerRoutingKey {
-    algebra: String,
-    carrier: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct IntegerRangeFact {
-    key: IntegerRoutingKey,
+struct PilotIntegerMatch {
     range: Option<IntegerRange>,
     span: SourceSpan,
 }
 
-fn integer_routing_key_for_decl(
+fn integer_routing_witness_walk(
     dag: &Dag,
     decl: DeclarationId,
     depth: usize,
-) -> Option<IntegerRoutingKey> {
+) -> Option<IntegerRoutingWitness> {
     if depth >= 32 {
-        // Alias/connective chains this deep are outside the current
-        // reconciliation contract. Treat the range lookup as unavailable
-        // and let callers fall through to the existing type diagnostics.
         return None;
     }
     let declaration = dag.declaration(decl);
     match &declaration.connective {
         TypeConnective::Atom(AtomPayload::ResolvedByName(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
-            integer_routing_key_for_decl(dag, *next, depth + 1)
+            integer_routing_witness_walk(dag, *next, depth + 1)
         }
         TypeConnective::Instantiation {
             template,
             arguments,
         } => {
             if arguments.is_empty() {
-                return integer_routing_key_for_decl(dag, *template, depth + 1);
+                return integer_routing_witness_walk(dag, *template, depth + 1);
             }
-            let template_name = dag.declaration(*template).name.as_deref()?;
-            let algebra = match template_name {
-                "OrderedRing" => "OrderedRingAlgebra",
-                "Semiring" => "SemiringAlgebra",
-                _ => return None,
-            };
-            let carrier = arguments
-                .first()
-                .and_then(|arg| dag.declaration(arg.value).name.as_deref())
-                .and_then(carrier_tag_for_std_type)?;
-            Some(IntegerRoutingKey {
-                algebra: algebra.to_string(),
-                carrier: carrier.to_string(),
-            })
+            let carrier = arguments.first()?.value;
+            integer_instantiation_witness(dag, *template, carrier)
         }
         _ => None,
     }
 }
 
-fn carrier_tag_for_std_type(name: &str) -> Option<&'static str> {
-    match name {
-        "Byte" => Some("ByteCarrier"),
-        "Word16" => Some("Word16Carrier"),
-        "Word32" => Some("Word32Carrier"),
-        "Word64" => Some("Word64Carrier"),
-        _ => None,
-    }
-}
-
-fn is_integer_range_fact(dag: &Dag, meta_tag: Option<DeclarationId>) -> bool {
-    let Some(meta_tag) = meta_tag else {
-        return false;
-    };
-    dag.declaration(meta_tag).name.as_deref() == Some("IntegerRangeFact")
-}
-
-fn integer_range_fact(
+fn integer_instantiation_witness(
     dag: &Dag,
-    decl: &crate::dag::Declaration,
-) -> Result<IntegerRangeFact, Diagnostic> {
-    let value_body = decl.value_body.as_ref().ok_or_else(|| {
-        malformed_integer_range_fact(
-            "IntegerRangeFact declaration is missing a value body".to_string(),
-            decl.span.clone(),
-        )
-    })?;
-    let ValueBody::Structural { fields } = value_body else {
+    template: DeclarationId,
+    carrier_decl: DeclarationId,
+) -> Option<IntegerRoutingWitness> {
+    let ordered_ring = dag.declaration_by_name("OrderedRing")?.id;
+    let semiring = dag.declaration_by_name("Semiring")?.id;
+    let algebra_variant_ty = if template == ordered_ring {
+        disj_variant_payload_ty(dag, "IntegerAlgebra", "OrderedRingAlgebra")?
+    } else if template == semiring {
+        disj_variant_payload_ty(dag, "IntegerAlgebra", "SemiringAlgebra")?
+    } else {
+        return None;
+    };
+    let carrier_variant_ty = std_word_carrier_to_target_carrier_variant_ty(dag, carrier_decl)?;
+    Some(IntegerRoutingWitness {
+        algebra_variant_ty,
+        carrier_variant_ty,
+    })
+}
+
+fn disj_variant_payload_ty(
+    dag: &Dag,
+    sum_name: &str,
+    variant_label: &str,
+) -> Option<DeclarationId> {
+    let decl = dag.declaration_by_name(sum_name)?;
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.label == variant_label)
+        .map(|v| v.ty)
+}
+
+fn std_word_carrier_to_target_carrier_variant_ty(
+    dag: &Dag,
+    carrier_decl: DeclarationId,
+) -> Option<DeclarationId> {
+    let byte = dag.declaration_by_name("Byte")?.id;
+    let word16 = dag.declaration_by_name("Word16")?.id;
+    let word32 = dag.declaration_by_name("Word32")?.id;
+    let word64 = dag.declaration_by_name("Word64")?.id;
+    let label = if carrier_decl == byte {
+        "ByteCarrier"
+    } else if carrier_decl == word16 {
+        "Word16Carrier"
+    } else if carrier_decl == word32 {
+        "Word32Carrier"
+    } else if carrier_decl == word64 {
+        "Word64Carrier"
+    } else {
+        return None;
+    };
+    disj_variant_payload_ty(dag, "TargetCarrier", label)
+}
+
+fn rust_primitive_integer_variant_ty(dag: &Dag) -> Option<DeclarationId> {
+    let rust_primitive = dag.declaration_by_name("RustPrimitive")?;
+    let TypeConnective::Disj { variants } = &rust_primitive.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.label == "IntegerPrimitive")
+        .map(|v| v.ty)
+}
+
+fn pilot_integer_row(
+    witness: IntegerRoutingWitness,
+    payload: &[FieldValue],
+    default_span: SourceSpan,
+) -> Result<Option<PilotIntegerMatch>, Diagnostic> {
+    // IntegerPrimitive field order: target_name, algebra, carrier, range_*, is_copy, overflow
+    if payload.len() < 5 {
+        return Ok(None);
+    }
+    let FieldValue::Variant {
+        constructor: algebra_ctor,
+        ..
+    } = &payload[1]
+    else {
         return Err(malformed_integer_range_fact(
-            "IntegerRangeFact declaration must have a structural value body".to_string(),
-            decl.span.clone(),
+            "rust_pilot_primitives IntegerPrimitive `algebra` must be a variant value".to_string(),
+            default_span.clone(),
         ));
     };
-    let key = IntegerRoutingKey {
-        algebra: variant_label_for_value(
-            dag,
-            require_field(fields, "algebra").ok_or_else(|| {
-                malformed_integer_range_fact(
-                    "IntegerRangeFact is missing `algebra`".to_string(),
-                    decl.span.clone(),
-                )
-            })?,
-        )
-        .ok_or_else(|| {
-            malformed_integer_range_fact(
-                "IntegerRangeFact `algebra` must be an IntegerAlgebra variant".to_string(),
-                decl.span.clone(),
-            )
-        })?,
-        carrier: variant_label_for_value(
-            dag,
-            require_field(fields, "carrier").ok_or_else(|| {
-                malformed_integer_range_fact(
-                    "IntegerRangeFact is missing `carrier`".to_string(),
-                    decl.span.clone(),
-                )
-            })?,
-        )
-        .ok_or_else(|| {
-            malformed_integer_range_fact(
-                "IntegerRangeFact `carrier` must be a TargetCarrier variant".to_string(),
-                decl.span.clone(),
-            )
-        })?,
+    let FieldValue::Variant {
+        constructor: carrier_ctor,
+        ..
+    } = &payload[2]
+    else {
+        return Err(malformed_integer_range_fact(
+            "rust_pilot_primitives IntegerPrimitive `carrier` must be a variant value".to_string(),
+            default_span.clone(),
+        ));
     };
+    if *algebra_ctor != witness.algebra_variant_ty || *carrier_ctor != witness.carrier_variant_ty {
+        return Ok(None);
+    }
 
     let range = (|| {
-        let min_decimal = literal_string(require_field(fields, "range_min_inclusive")?)?;
-        let max_decimal = literal_string(require_field(fields, "range_max_inclusive")?)?;
+        let min_decimal = literal_string(payload.get(3)?)?;
+        let max_decimal = literal_string(payload.get(4)?)?;
         let min = min_decimal.parse().ok()?;
         let max = max_decimal.parse().ok()?;
         if min > max {
             return None;
         }
         Some(IntegerRange {
-            target_name: literal_string(require_field(fields, "target_name")?)?,
+            target_name: literal_string(payload.first()?)?,
             min_decimal,
             max_decimal,
             min,
@@ -216,18 +277,10 @@ fn integer_range_fact(
         })
     })();
 
-    Ok(IntegerRangeFact {
-        key,
+    Ok(Some(PilotIntegerMatch {
         range,
-        span: decl.span.clone(),
-    })
-}
-
-fn require_field<'a>(fields: &'a [(String, FieldValue)], name: &str) -> Option<&'a FieldValue> {
-    fields
-        .iter()
-        .find(|(field_name, _)| field_name == name)
-        .map(|(_, value)| value)
+        span: default_span,
+    }))
 }
 
 fn literal_string(value: &FieldValue) -> Option<String> {
@@ -235,21 +288,6 @@ fn literal_string(value: &FieldValue) -> Option<String> {
         FieldValue::Literal(LiteralBits::String(value)) => Some(value.clone()),
         _ => None,
     }
-}
-
-fn variant_label_for_value(dag: &Dag, value: &FieldValue) -> Option<String> {
-    let FieldValue::Variant { constructor, .. } = value else {
-        return None;
-    };
-    dag.declarations()
-        .iter()
-        .find_map(|decl| match &decl.connective {
-            TypeConnective::Disj { variants } => variants
-                .iter()
-                .find(|variant| variant.ty == *constructor)
-                .map(|variant| variant.label.clone()),
-            _ => None,
-        })
 }
 
 pub(crate) fn literal_int_at(dag: &Dag, port: PortId) -> Option<i64> {
@@ -296,5 +334,309 @@ fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic
         message,
         span,
         fixes: Vec::new(),
+    }
+}
+
+/// Bootstrap-only gate: walk **every** `IntegerPrimitive` row in
+/// `rust_pilot_primitives` and fail closed if any row is structurally
+/// ill-formed, range strings do not parse to `i128`, `min > max`, or
+/// `(algebra, carrier)` witness pairs collide.
+///
+/// Call this once when constructing the extdeps-including bootstrapped `Dag`
+/// so drift or corruption in the pilot list surfaces at `Dag::new()`,
+/// not only when a particular std type is queried.
+pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
+    const EXPECTED_INTEGER_ROWS: usize = 8;
+    const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
+
+    enum PilotListSnapshot {
+        List(Vec<FieldValue>),
+        MissingBody,
+        NotList,
+    }
+
+    // Authority file for span when the declaration is absent (extdeps fixture).
+    const RUST_PILOT_PRIMITIVES_AUTHORITY: &str = "dsl/extdeps/languages/rust/primitives.dag";
+
+    let (default_span, pilot_elements) = {
+        let Some(pilot) = dag.rust_pilot_primitives() else {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "bootstrap: `rust_pilot_primitives` is missing from the extdeps fixture; \
+                 integer range authority is unavailable (expected extdeps `primitives.dag` load)"
+                    .to_string(),
+                SourceSpan::new(RUST_PILOT_PRIMITIVES_AUTHORITY, 0, 0),
+            ));
+            return;
+        };
+        let sp = pilot.span.clone();
+        let snap = match pilot.value_body.as_ref() {
+            None => PilotListSnapshot::MissingBody,
+            Some(ValueBody::List(els)) => PilotListSnapshot::List(els.clone()),
+            Some(_) => PilotListSnapshot::NotList,
+        };
+        (sp, snap)
+    };
+
+    let elements: &[FieldValue] = match &pilot_elements {
+        PilotListSnapshot::List(els) => els,
+        PilotListSnapshot::MissingBody => {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "bootstrap: rust_pilot_primitives is missing a value body".to_string(),
+                default_span,
+            ));
+            return;
+        }
+        PilotListSnapshot::NotList => {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "bootstrap: rust_pilot_primitives must be ValueBody::List".to_string(),
+                default_span,
+            ));
+            return;
+        }
+    };
+
+    let Some(integer_ctor) = rust_primitive_integer_variant_ty(dag) else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: RustPrimitive.IntegerPrimitive variant is unavailable".to_string(),
+            default_span,
+        ));
+        return;
+    };
+
+    let Some(ord_algebra) = disj_variant_payload_ty(dag, "IntegerAlgebra", "OrderedRingAlgebra")
+    else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: IntegerAlgebra.OrderedRingAlgebra is unavailable for pilot validation"
+                .to_string(),
+            default_span,
+        ));
+        return;
+    };
+    let Some(sem_algebra) = disj_variant_payload_ty(dag, "IntegerAlgebra", "SemiringAlgebra")
+    else {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: IntegerAlgebra.SemiringAlgebra is unavailable for pilot validation"
+                .to_string(),
+            default_span,
+        ));
+        return;
+    };
+    let mut allowed_carriers: HashSet<DeclarationId> = HashSet::new();
+    for label in [
+        "ByteCarrier",
+        "Word16Carrier",
+        "Word32Carrier",
+        "Word64Carrier",
+    ] {
+        if let Some(c) = disj_variant_payload_ty(dag, "TargetCarrier", label) {
+            allowed_carriers.insert(c);
+        }
+    }
+    if allowed_carriers.is_empty() {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            "bootstrap: no TargetCarrier word variant payload types for pilot validation"
+                .to_string(),
+            default_span,
+        ));
+        return;
+    }
+
+    let mut witnesses: HashSet<(DeclarationId, DeclarationId)> = HashSet::new();
+    let mut integer_rows: usize = 0;
+
+    for element in elements {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = element
+        else {
+            continue;
+        };
+        if *constructor != integer_ctor {
+            continue;
+        }
+        integer_rows += 1;
+
+        if payload.len() < INTEGER_PRIMITIVE_FIELD_COUNT {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                format!(
+                    "rust_pilot_primitives IntegerPrimitive row has {} fields; expected {}",
+                    payload.len(),
+                    INTEGER_PRIMITIVE_FIELD_COUNT
+                ),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let FieldValue::Variant {
+            constructor: algebra_ctor,
+            ..
+        } = &payload[1]
+        else {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `algebra` must be a variant value"
+                    .to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        };
+        if *algebra_ctor != ord_algebra && *algebra_ctor != sem_algebra {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `algebra` must be OrderedRingAlgebra or SemiringAlgebra (variant payload type id)".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let FieldValue::Variant {
+            constructor: carrier_ctor,
+            ..
+        } = &payload[2]
+        else {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `carrier` must be a variant value"
+                    .to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        };
+        if !allowed_carriers.contains(carrier_ctor) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `carrier` must be a word TargetCarrier (Byte/Word16/Word32/Word64) variant payload type id".to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        if literal_string(&payload[0]).is_none() {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `target_name` must be a string literal"
+                    .to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let (min_s, max_s) = match (literal_string(&payload[3]), literal_string(&payload[4])) {
+            (Some(a), Some(b)) => (a, b),
+            _ => {
+                dag.attach_diagnostic(malformed_integer_range_fact(
+                    "rust_pilot_primitives IntegerPrimitive range bounds must be string literals"
+                        .to_string(),
+                    default_span.clone(),
+                ));
+                continue;
+            }
+        };
+
+        if !matches!(payload[5], FieldValue::Literal(LiteralBits::Bool(_))) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `is_copy` must be a bool literal"
+                    .to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        if !matches!(&payload[6], FieldValue::Variant { .. }) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                "rust_pilot_primitives IntegerPrimitive `overflow` must be a variant value"
+                    .to_string(),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        let (min_n, max_n) = match (min_s.parse::<i128>(), max_s.parse::<i128>()) {
+            (Ok(mn), Ok(mx)) => (mn, mx),
+            _ => {
+                dag.attach_diagnostic(malformed_integer_range_fact(
+                    format!(
+                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse to i128"
+                    ),
+                    default_span.clone(),
+                ));
+                continue;
+            }
+        };
+        if min_n > max_n {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                format!(
+                    "rust_pilot_primitives IntegerPrimitive range order invalid: min {min_s} > max {max_s}"
+                ),
+                default_span.clone(),
+            ));
+            continue;
+        }
+
+        if !witnesses.insert((*algebra_ctor, *carrier_ctor)) {
+            dag.attach_diagnostic(malformed_integer_range_fact(
+                format!(
+                    "duplicate rust_pilot_primitives IntegerPrimitive (algebra, carrier) witness: ({algebra_ctor:?}, {carrier_ctor:?})"
+                ),
+                default_span.clone(),
+            ));
+        }
+    }
+
+    if integer_rows != EXPECTED_INTEGER_ROWS {
+        dag.attach_diagnostic(malformed_integer_range_fact(
+            format!(
+                "rust_pilot_primitives must list exactly {EXPECTED_INTEGER_ROWS} IntegerPrimitive rows (pilot int scope); found {integer_rows}"
+            ),
+            default_span,
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uint8_witness_matches_u8_pilot_row_constructors() {
+        let dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "bootstrap diagnostics: {:?}",
+            dag.diagnostics()
+        );
+        let uint8 = dag
+            .declaration_by_name("UInt8")
+            .expect("UInt8 in bootstrap")
+            .id;
+        let witness = integer_routing_witness_for_decl(&dag, uint8).expect("UInt8 witness");
+        let pilot = dag.rust_pilot_primitives().expect("pilot");
+        let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list body") else {
+            panic!("expected list");
+        };
+        let integer_primitive_ctor = rust_primitive_integer_variant_ty(&dag).expect("ctor");
+        let mut matched = 0usize;
+        for element in elements {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = element
+            else {
+                continue;
+            };
+            if *constructor != integer_primitive_ctor {
+                continue;
+            }
+            let FieldValue::Variant { constructor: a, .. } = &payload[1] else {
+                continue;
+            };
+            let FieldValue::Variant { constructor: c, .. } = &payload[2] else {
+                continue;
+            };
+            if *a == witness.algebra_variant_ty && *c == witness.carrier_variant_ty {
+                matched += 1;
+            }
+        }
+        assert_eq!(
+            matched, 1,
+            "exactly one pilot IntegerPrimitive row for UInt8 witness"
+        );
     }
 }
