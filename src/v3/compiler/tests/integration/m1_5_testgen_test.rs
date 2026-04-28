@@ -94,12 +94,9 @@ fn structural_fields(decl: &Declaration) -> &[(String, FieldValue)] {
         Some(ValueBody::List(_)) => {
             panic!("generated claim should lower as Structural (record shape), got List")
         }
-<<<<<<< HEAD
-=======
         Some(ValueBody::Map(_)) => {
             panic!("generated claim should lower as Structural (record shape), got Map")
         }
->>>>>>> origin/main
         None => panic!("generated claim declaration should carry a structural value body"),
     }
 }

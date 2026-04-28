@@ -25,20 +25,12 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
-<<<<<<< HEAD
-    ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode, BranchEmitParticipation,
-    BranchNode, BranchPattern, CardinalityBound, Cluster, Dag, Declaration, DeclarationId, Field,
-    IntraClusterCall, LiteralBits, LoopBound, LoopNode, MemberDescent, NodeId, NonEmptyList,
-    NonSingletonList, Path, PayloadBinding, PhantomParameter, PortId, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective, ValueNode,
-=======
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
     Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
     LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
     PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueNode,
->>>>>>> origin/main
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -948,8 +940,6 @@ fn value_body_contains_undischarged_scalar_literal(
                 })
             })
         }
-<<<<<<< HEAD
-=======
         crate::dag::ValueBody::Map(entries) => {
             map_value_type(dag, expected_type).is_some_and(|value_type| {
                 entries.entries().iter().any(|(_, value)| {
@@ -957,7 +947,6 @@ fn value_body_contains_undischarged_scalar_literal(
                 })
             })
         }
->>>>>>> origin/main
         crate::dag::ValueBody::Unparsed(_) => false,
     }
 }
@@ -2316,30 +2305,7 @@ fn type_to_declaration_id(
         }
         SurfaceType::Optional { inner, span } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
-<<<<<<< HEAD
-            let id = dag.alloc_declaration_id();
-            dag.push_declaration(Declaration {
-                id,
-                name: None,
-                connective: TypeConnective::Cardinality {
-                    element,
-                    bound: CardinalityBound::AtMostOne,
-                },
-                type_params: Vec::new(),
-                phantom_params: Vec::new(),
-                meta_tag: None,
-                specialization_parent: None,
-                inhabits: None,
-
-                value_body: None,
-                refinement: None,
-                nominal_opacity: None,
-                span: span.clone(),
-            });
-            id
-=======
             dag.alloc_cardinality_decl(element, CardinalityBound::AtMostOne, span.clone())
->>>>>>> origin/main
         }
         SurfaceType::Arrow {
             inputs,
@@ -2861,8 +2827,6 @@ fn lower_list_to_structural(
     Some(crate::dag::ValueBody::List(lowered))
 }
 
-<<<<<<< HEAD
-=======
 fn lower_map_to_structural(
     name: &str,
     expr: &SurfaceExpr,
@@ -2949,7 +2913,6 @@ fn lower_string_map_entries(
     }
 }
 
->>>>>>> origin/main
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`
 /// edges until it reaches a declaration whose connective is
 /// `Conj`. Returns the `DeclarationId` of that Conj declaration — or
@@ -5389,10 +5352,7 @@ fn resolve_data_path(
             resolve_structural_field_path(dag, fields, segments, span)
         }
         crate::dag::ValueBody::List(_) => None,
-<<<<<<< HEAD
-=======
         crate::dag::ValueBody::Map(_) => None,
->>>>>>> origin/main
     }
 }
 
@@ -7333,10 +7293,7 @@ mod tests {
             items: vec![SurfaceItem::TypeAlias {
                 name: "Dimension".to_string(),
                 type_params: vec!["Unit".to_string(), "Carrier".to_string()],
-<<<<<<< HEAD
-=======
                 nominal_opaque: false,
->>>>>>> origin/main
                 target: surface_named_type("Carrier"),
                 refinement: None,
                 span: SourceSpan::new(file, 0, 1),

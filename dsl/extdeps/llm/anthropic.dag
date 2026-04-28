@@ -8,11 +8,7 @@
 //
 module extdeps.llm.anthropic
 
-<<<<<<< HEAD
-import extdeps.llm.llm { StopReason, TokenUsage, llm_snake_wire_contract }
-=======
 import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract }
->>>>>>> origin/main
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
 import std.serialization { VariantEncoding }
@@ -110,11 +106,6 @@ type AnthropicChatMessage
   = UserMessage { content: List<AnthropicUserContentBlock> }
   | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
-<<<<<<< HEAD
-// Outputs still JSON-path-project; same downstream closure as OpenAI slice.
-data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
-  "closure:rest_typed_response_body|llm.Anthropic.Messages|residue:output_fields_use_json_path_projection"
-=======
 // Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
 // Tool-use / image assistant rows remain outside this carrier.
 type AnthropicMessages200TextBlock {
@@ -154,7 +145,6 @@ type AnthropicMessages200Body {
 
 data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
   "closure:anthropic_messages_200_residual|AnthropicMessages200Body|missing:container|AnthropicMessages200TextBlock|missing:thinking|missing:tool_use|missing:redacted_thinking|missing:web_search|missing:server_tool_use|missing:citations|AnthropicMessages200Usage|missing:cache_creation_input_tokens|missing:cache_read_input_tokens|missing:service_tier"
->>>>>>> origin/main
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects

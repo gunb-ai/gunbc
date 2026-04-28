@@ -117,8 +117,6 @@ mod p0_std_render_repeat_string_test;
 mod pb1_bootstrap_full_snapshot_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
-<<<<<<< HEAD
-=======
 #[path = "integration/r1c_d_pb_census_gates_test.rs"]
 mod r1c_d_pb_census_gates_test;
 #[path = "integration/r1c_e_emit_gates_dag_test.rs"]
@@ -127,7 +125,6 @@ mod r1c_e_emit_gates_dag_test;
 mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
->>>>>>> origin/main
 #[path = "integration/sg0_census_test.rs"]
 mod sg0_census_test;
 #[path = "integration/sg1_tokenize_authority_test.rs"]

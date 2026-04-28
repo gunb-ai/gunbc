@@ -32,15 +32,9 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-<<<<<<< HEAD
-    ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, Field,
-    LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective,
-=======
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId,
     Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
     TemplateArgument, TransformNode, TransformTarget, TypeConnective,
->>>>>>> origin/main
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -1269,12 +1263,9 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                                 ) {
                                     return Decision::Fail(t.output, diag);
                                 }
-<<<<<<< HEAD
-=======
                                 // Default literal shape is `Int`; align the argument port with
                                 // the callee's narrow range-backed type (same as `let` / `data`
                                 // pre-seed + `Decision::Set` reunion for annotated literals).
->>>>>>> origin/main
                                 return Decision::Set(*input_port, *expected_ty);
                             }
                             Ok(Some(false)) | Ok(None) => {}
@@ -2482,32 +2473,6 @@ fn callable_instantiation_conflict(
     }
 }
 
-<<<<<<< HEAD
-/// `resolve_callable_target` runs before `decide_transform`'s per-input narrowing
-/// pass can restamp a literal port. When the port is still the default `Int`
-/// literal type but the source literal is known to fit a range-backed expected
-/// parameter (via substrate range facts), treat the binding as compatible so
-/// callable resolution can proceed; narrowing + `MagnitudeOutOfRange` remain
-/// authoritative in the transform `decide_transform` path.
-fn range_compatible_default_int_literal_argument(
-    dag: &Dag,
-    input_port: PortId,
-    expected_param_decl: DeclarationId,
-) -> bool {
-    let Some(int_ty) = dag.int_shape() else {
-        return false;
-    };
-    if !matches!(dag.port(input_port).state(), PortState::Resolved(ty) if *ty == int_ty) {
-        return false;
-    }
-    let Some(lit) = literal_int_at(dag, input_port) else {
-        return false;
-    };
-    matches!(
-        int_literal_fits_expected_type(dag, lit, expected_param_decl),
-        Ok(Some(true))
-    )
-=======
 /// `port_type_context` reports the default `Int` type shape for integer literals, so
 /// [`bind_expected_decl_to_actual_context`] can reject a callee that expects a range-backed
 /// narrow type (`UInt8`, …). The main transform decision path already allows in-range
@@ -2538,7 +2503,6 @@ fn int_literal_implicit_bind_tolerated_for_expected(
         Ok(None) => Ok(false),
         Err(diag) => Err(diag),
     }
->>>>>>> origin/main
 }
 
 fn resolve_callable_target(
@@ -2631,24 +2595,14 @@ fn resolve_callable_target(
             let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                 return CallableTargetResolution::Retry;
             };
-            let binds = bind_expected_decl_to_actual_context(
+            if !bind_expected_decl_to_actual_context(
                 dag,
                 expected_input,
                 &actual_ctx,
                 &mut arguments,
                 0,
-<<<<<<< HEAD
-            ) || range_compatible_default_int_literal_argument(
-                dag,
-                *input_port,
-                expected_input,
-            );
-            if !binds {
-                return CallableTargetResolution::Fail(callable_instantiation_conflict(
-=======
             ) {
                 match int_literal_implicit_bind_tolerated_for_expected(
->>>>>>> origin/main
                     dag,
                     expected_input,
                     *input_port,
@@ -2722,24 +2676,14 @@ fn resolve_callable_target(
                 let Some(actual_ctx) = port_type_context(dag, *input_port) else {
                     return CallableTargetResolution::Retry;
                 };
-                let binds = bind_expected_decl_to_actual_context(
+                if !bind_expected_decl_to_actual_context(
                     dag,
                     expected_input.declaration,
                     &actual_ctx,
                     &mut arguments,
                     0,
-<<<<<<< HEAD
-                ) || range_compatible_default_int_literal_argument(
-                    dag,
-                    *input_port,
-                    expected_input.declaration,
-                );
-                if !binds {
-                    return CallableTargetResolution::Fail(callable_instantiation_conflict(
-=======
                 ) {
                     match int_literal_implicit_bind_tolerated_for_expected(
->>>>>>> origin/main
                         dag,
                         expected_input.declaration,
                         *input_port,
@@ -3526,29 +3470,7 @@ pub(crate) fn concretize_decl_with_subst(
             {
                 return existing;
             }
-<<<<<<< HEAD
-            let id = dag.alloc_declaration_id();
-            dag.push_declaration(Declaration {
-                id,
-                name: None,
-                connective: TypeConnective::Cardinality {
-                    element: specialized_element,
-                    bound,
-                },
-                type_params: Vec::new(),
-                phantom_params: Vec::new(),
-                meta_tag: None,
-                specialization_parent: None,
-                inhabits: None,
-                value_body: None,
-                refinement: None,
-                nominal_opacity: None,
-                span: decl.span,
-            });
-            id
-=======
             dag.alloc_cardinality_decl(specialized_element, bound, decl.span.clone())
->>>>>>> origin/main
         }
         _ => current,
     }
@@ -5513,21 +5435,6 @@ mod bool_logical_operator_arrow_tests {
 
     #[test]
     fn bootstrapped_secret_is_marked_nominal_opaque() {
-<<<<<<< HEAD
-        let dag = Dag::new();
-        let secret = dag
-            .declaration_by_name("Secret")
-            .expect("bootstrap Secret declaration");
-        assert!(
-            secret.nominal_opacity.is_some(),
-            "Secret must consume the nominal-opacity carrier before Modeling dispatch"
-        );
-    }
-
-    #[test]
-    fn bool_logical_and_resolves_via_boolean_algebra_meet_not_pending_fallback() {
-=======
->>>>>>> origin/main
         let dag = Dag::new();
         let secret = dag
             .declaration_by_name("Secret")

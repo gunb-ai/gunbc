@@ -84,17 +84,12 @@ type ToolCall {
 // multimodal `content` arrays are not modeled here — gap-carried below.
 // 🟢 TERMINAL provider-domain coproduct for the modeled narrow text-message
 // row. Full Chat Completions message variants remain gap-carried by
-<<<<<<< HEAD
-// `structural_coverage_gap_openai_chat_message_full_api_surface`; request wire
-// role-string serialization remains gap-carried separately.
-=======
 // `structural_coverage_gap_openai_chat_message_full_api_surface`.
 //
 // Request wire for this row (`messages[].role` as system/developer/user/assistant)
 // is ratcheted by pipeline tests in `src/v2/tests/src/pipeline.rs`:
 // `openai_chat_message_role_wire_matches_llm_snake_contract` (emitted serde attrs)
 // and `openai_chat_message_row_json_matches_chat_completions_wire_tags` (golden JSON).
->>>>>>> origin/main
 type OpenAiChatMessageRole = System | Developer | User | Assistant
 
 // Chat Completions API message row: wire accepts plain-string `content` for
@@ -105,12 +100,6 @@ type OpenAiChatMessage {
   content: String
 }
 
-<<<<<<< HEAD
-// Typed inputs close the Json bypass; outputs still JSON-path-project until
-// `response { 200 => Typed... }` lands. Queryable receipt for lenses/audits.
-data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
-  "closure:rest_typed_response_body|llm.OpenAI.ChatCompletion|residue:output_fields_use_json_path_projection"
-=======
 // Narrow 200-OK wire slice for Chat Completions (`response { 200 => … }` + serde).
 // Tool calls / multimodal message bodies remain outside this carrier (same narrow
 // slice as the historical `from` JSON-pointer paths).
@@ -150,7 +139,6 @@ type OpenAiChatCompletion200Body {
 // fields `service_tier` and deprecated `system_fingerprint` are not modeled on the struct.
 data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
   "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Body|missing:service_tier|missing:system_fingerprint|OpenAiChatCompletion200Choice|missing:logprobs|OpenAiChatCompletion200Message|missing:refusal|missing:tool_calls|missing:function_call|missing:annotations|missing:audio|missing:non_string_content|CompletionUsage|missing:completion_tokens_details|missing:prompt_tokens_details"
->>>>>>> origin/main
 ]
 
 // Full Chat Completions message coproduct (tool_call_id, tool role, function,
@@ -159,16 +147,6 @@ data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> 
   "closure:openai_chat_message_full_coproduct|OpenAiChatMessage|missing:tool_role_with_tool_call_id|missing:function_role|missing:multimodal_content_array"
 ]
 
-<<<<<<< HEAD
-// Chat Completions `messages[].role` must be wire strings (system/developer/
-// user/assistant). Emitter serde for unit enums may not match; same closure
-// as Anthropic request wire — verify before relying on typed bodies for 200s.
-data structural_coverage_gap_openai_chat_request_messages_wire: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.OpenAI.ChatCompletion|OpenAiChatMessageRole|residue:unit_enum_role_must_serialize_as_openai_role_strings"
-]
-
-=======
->>>>>>> origin/main
 // -- Service: REST transport wiring ------------------------------
 
 service llm.OpenAI {

@@ -278,8 +278,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
-<<<<<<< HEAD
-=======
     // R1C-D (PB census `.dag` `TestClaim` wrappers): runner-side receipt
     // for the six PB census gates in `tests/fixtures/r1_pb_census_gates.dag`.
     // Asserts `TestRunner` dispatches each PB census predicate to a wired
@@ -297,7 +295,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
->>>>>>> origin/main
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
