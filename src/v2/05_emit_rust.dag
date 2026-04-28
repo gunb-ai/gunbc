@@ -449,7 +449,7 @@ fn build_scoped_data_item_index(typed_module: TypedModule, data_items: Map<Strin
       if import_is_all(imp) {
         acc
       } else {
-        import_specific_names_at(import: imp, source_indices: typed_module.type_env.source_indices)
+        import_specific_names_at(n: imp, source_indices: typed_module.type_env.source_indices)
           |> fold(init: acc, f: (inner, imported_name) =>
             let qualified = concat(import_path, ".", imported_name)
             match map_get(data_items, qualified) {
