@@ -278,12 +278,18 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
     wire_contract_item: wire_contract_item,
     source_indices: source_indices,
     data_items: data_items,
-    seen_aliases: empty_map()
+    seen_aliases: empty_map(),
+    fuel: 32
   )
 }
 
-fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>, seen_aliases: Map<String, Bool>) -> String {
-  match wire_contract_item {
+fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>, seen_aliases: Map<String, Bool>, fuel: Int) -> String {
+  if fuel <= 0 {
+    emit_error_expr(
+      message: "wire_contract: VariantEncoding alias chain exceeded recursion limit",
+      target: Rust
+    )
+  } else { match wire_contract_item {
     None => rust_serde_tag_attr()
     Some { value: wc } =>
       if is_data_def_item(item: wc) {
@@ -314,7 +320,8 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
                               wire_contract_item: Some { value: aliased_data },
                               source_indices: source_indices,
                               data_items: data_items,
-                              seen_aliases: map_insert(seen_aliases, alias_name, true)
+                              seen_aliases: map_insert(seen_aliases, alias_name, true),
+                              fuel: fuel - 1
                             )
                           None =>
                             emit_error_expr(
@@ -343,7 +350,8 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
                                 wire_contract_item: Some { value: node },
                                 source_indices: source_indices,
                                 data_items: data_items,
-                                seen_aliases: map_insert(seen_aliases, alias_name, true)
+                                seen_aliases: map_insert(seen_aliases, alias_name, true),
+                                fuel: fuel - 1
                               )
                             } else {
                               resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
@@ -377,7 +385,8 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
                             wire_contract_item: Some { value: node },
                             source_indices: source_indices,
                             data_items: data_items,
-                            seen_aliases: seen_aliases
+                            seen_aliases: seen_aliases,
+                            fuel: fuel - 1
                           )
                         } else {
                           resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
@@ -399,7 +408,7 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
       } else {
         resolve_wire_serde_tag(wire_item: wc, source_indices: source_indices)
       }
-  }
+  } }
 }
 
 fn build_data_item_index(modules: List<TypedModule>) -> Map<String, List<Node>> {

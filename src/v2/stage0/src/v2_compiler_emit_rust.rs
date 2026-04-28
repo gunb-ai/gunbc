@@ -299,9 +299,23 @@ pub fn item_binding_is_named(env: Rc<TypeEnv>, node: &Rc<Node>, name: &String) -
 }
 
 pub fn resolve_wire_serde_tag_for_coproduct(
+    wire_contract_item: Option<Rc<Node>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+) -> String {
+    resolve_wire_serde_tag_for_coproduct_seen(
+        wire_contract_item,
+        source_indices,
+        data_items,
+        v2_rt::rc_empty_map::<String, bool>(),
+    )
+}
+
+pub fn resolve_wire_serde_tag_for_coproduct_seen(
     mut wire_contract_item: Option<Rc<Node>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut data_items: Rc<HashMap<String, Rc<Node>>>,
+    mut data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    mut seen_aliases: Rc<HashMap<String, bool>>,
 ) -> String {
     loop {
         match wire_contract_item {
@@ -322,48 +336,81 @@ pub fn resolve_wire_serde_tag_for_coproduct(
                                 break resolve_wire_serde_tag(&init, source_indices.clone());
                             }
                             ExprData::ExprVar { .. } => {
-                                match v2_rt::map_get(
-                                    &data_items,
-                                    expr_var_name_at(init.clone(), source_indices.clone()),
-                                ) {
-                                    Some(aliased_data) => {
-                                        let __tco_0 = Some(aliased_data.clone());
-                                        wire_contract_item = __tco_0;
-                                        continue;
-                                    }
-                                    None => match init.inferred.clone() {
-                                        None => {
-                                            break emit_error_expr("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string(), RenderTarget::Rust);
-                                        }
-                                        Some(inf) => match (*inf.clone()).clone() {
-                                            InferredNode::Resolved { node, .. } => {
-                                                if is_data_def_item(&node) {
-                                                    {
-                                                        let __tco_0 = Some(node.clone());
+                                let alias_name =
+                                    expr_var_name_at(init.clone(), source_indices.clone());
+                                if (v2_rt::map_get(&seen_aliases, alias_name.clone()) != None) {
+                                    break emit_error_expr(
+                                        v2_rt::concat(
+                                            "wire_contract: cyclic VariantEncoding alias: "
+                                                .to_string(),
+                                            alias_name.clone(),
+                                        ),
+                                        RenderTarget::Rust,
+                                    );
+                                } else {
+                                    match v2_rt::map_get(&data_items, alias_name.clone()) {
+                                        Some(candidates) => {
+                                            if ((candidates.clone().len() as i64) == 1) {
+                                                match candidates.clone().first().cloned() {
+                                                    Some(aliased_data) => {
+                                                        let __tco_0 = Some(aliased_data.clone());
+                                                        let __tco_1 = v2_rt::rc_map_insert(
+                                                            seen_aliases,
+                                                            alias_name.clone(),
+                                                            true,
+                                                        );
                                                         wire_contract_item = __tco_0;
+                                                        seen_aliases = __tco_1;
                                                         continue;
                                                     }
-                                                } else {
-                                                    break resolve_wire_serde_tag(
-                                                        &node,
-                                                        source_indices.clone(),
+                                                    None => {
+                                                        break emit_error_expr(v2_rt::concat("wire_contract: missing VariantEncoding data alias: ".to_string(), alias_name.clone()), RenderTarget::Rust);
+                                                    }
+                                                }
+                                            } else {
+                                                break emit_error_expr(v2_rt::concat("wire_contract: ambiguous VariantEncoding data alias: ".to_string(), alias_name.clone()), RenderTarget::Rust);
+                                            }
+                                        }
+                                        None => match init.inferred.clone() {
+                                            None => {
+                                                break emit_error_expr("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string(), RenderTarget::Rust);
+                                            }
+                                            Some(inf) => match (*inf.clone()).clone() {
+                                                InferredNode::Resolved { node, .. } => {
+                                                    if is_data_def_item(&node) {
+                                                        {
+                                                            let __tco_0 = Some(node.clone());
+                                                            let __tco_1 = v2_rt::rc_map_insert(
+                                                                seen_aliases,
+                                                                alias_name.clone(),
+                                                                true,
+                                                            );
+                                                            wire_contract_item = __tco_0;
+                                                            seen_aliases = __tco_1;
+                                                            continue;
+                                                        }
+                                                    } else {
+                                                        break resolve_wire_serde_tag(
+                                                            &node,
+                                                            source_indices.clone(),
+                                                        );
+                                                    }
+                                                }
+                                                InferredNode::CompilerError { message, .. } => {
+                                                    break emit_error_expr(
+                                                        v2_rt::concat(
+                                                            "wire_contract: ".to_string(),
+                                                            message.clone(),
+                                                        ),
+                                                        RenderTarget::Rust,
                                                     );
                                                 }
-                                            }
-                                            InferredNode::CompilerError { message, .. } => {
-                                                break emit_error_expr(
-                                                    v2_rt::concat(
-                                                        "wire_contract: ".to_string(),
-                                                        message.clone(),
-                                                    ),
-                                                    RenderTarget::Rust,
-                                                );
-                                            }
-                                            InferredNode::TypeVariable { .. } => {
-                                                break emit_error_expr("wire_contract: unresolved type variable in wire_contract initializer".to_string(), RenderTarget::Rust);
-                                            }
+                                                InferredNode::TypeVariable { .. } => {
+                                                    break emit_error_expr("wire_contract: unresolved type variable in wire_contract initializer".to_string(), RenderTarget::Rust);
+                                                }
+                                            },
                                         },
-                                    },
+                                    }
                                 }
                             }
                             _ => match init.inferred.clone() {
@@ -409,10 +456,12 @@ pub fn resolve_wire_serde_tag_for_coproduct(
     }
 }
 
-pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<String, Rc<Node>>> {
+pub fn build_data_item_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<Vec<Rc<Node>>>>> {
     modules.iter().cloned().fold(
-        v2_rt::rc_empty_map::<String, Rc<Node>>(),
-        |acc: Rc<HashMap<String, Rc<Node>>>, tm: Rc<TypedModule>| {
+        v2_rt::rc_empty_map::<String, Rc<Vec<Rc<Node>>>>(),
+        |acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, tm: Rc<TypedModule>| {
             let module_name = authored_name_at(
                 tm.type_env.clone().source_indices.clone(),
                 &tm.module.clone(),
@@ -430,16 +479,31 @@ pub fn build_data_item_index(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<HashMap<St
             .cloned()
             .fold(
                 acc,
-                |item_acc: Rc<HashMap<String, Rc<Node>>>, item: Rc<Node>| {
+                |item_acc: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>, item: Rc<Node>| {
                     let item_name =
                         authored_name_at(tm.type_env.clone().source_indices.clone(), &item);
+                    let existing_unqualified = match v2_rt::map_get(&item_acc, item_name.clone()) {
+                        Some(entries) => entries.clone(),
+                        None => Rc::new(vec![]),
+                    };
+                    let with_unqualified = v2_rt::rc_map_insert(
+                        item_acc.clone(),
+                        item_name.clone(),
+                        v2_rt::concat(existing_unqualified.clone(), Rc::new(vec![item.clone()])),
+                    );
+                    let qualified_name = v2_rt::concat(
+                        v2_rt::concat(module_name.clone(), ".".to_string()),
+                        item_name.clone(),
+                    );
+                    let existing_qualified =
+                        match v2_rt::map_get(&with_unqualified, qualified_name.clone()) {
+                            Some(entries) => entries.clone(),
+                            None => Rc::new(vec![]),
+                        };
                     v2_rt::rc_map_insert(
-                        v2_rt::rc_map_insert(item_acc, item_name.clone(), item.clone()),
-                        v2_rt::concat(
-                            v2_rt::concat(module_name.clone(), ".".to_string()),
-                            item_name.clone(),
-                        ),
-                        item.clone(),
+                        with_unqualified.clone(),
+                        qualified_name.clone(),
+                        v2_rt::concat(existing_qualified.clone(), Rc::new(vec![item.clone()])),
                     )
                 },
             )
@@ -1196,7 +1260,7 @@ pub fn emit_module_full(
     emit_info: &Rc<EmitGraphInfo>,
     shared_types: Rc<HashMap<String, bool>>,
     svc_module_map: Rc<HashMap<String, String>>,
-    data_items: Rc<HashMap<String, Rc<Node>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
 ) -> Rc<TextFile> {
     {
         let m = typed_module.module.clone();
@@ -1808,7 +1872,7 @@ pub fn emit_typed_item(
     shared_types: Rc<HashMap<String, bool>>,
     emit_info: &Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
-    data_items: Rc<HashMap<String, Rc<Node>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
 ) -> String {
     {
         let env = scope.type_env.clone();
@@ -2073,7 +2137,7 @@ pub fn emit_type_def_from_connective(
     env: &Rc<TypeEnv>,
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: &Option<Rc<Node>>,
-    data_items: Rc<HashMap<String, Rc<Node>>>,
+    data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
 ) -> String {
     {
         let type_params = emit_type_params(&item.params.clone(), env.source_indices.clone());
