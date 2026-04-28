@@ -170,7 +170,7 @@ Compromises being made by the R2 + R3 split:
 |---|---|---|
 | Tier 3 mirror dissolution (4 mirrors) | Requires Evaluator (R2 capacity) to execute std bodies | T-Tier3-Dissolution |
 | Lens-producer file retirement (3 files) | Requires Evaluator + PB-1 generated bin-shim emit pattern | T-LensProducer-Retirement |
-| L4-L7 verification harness | Requires Evaluator + full Grounding (Rust + Python) | T-Verification-L4L7 |
+| R3 verification harness ({L4, L5, L7}; L6 reclassified to R2) | Requires Evaluator + full Grounding (Rust + Python) | T-Verification-L4-L7-Direct + T-Verification-L5-Corpus (L6 lives in R2-T-Ground-CrossTarget-Meta) |
 | Self-hosting facet 2 fixed-point | Requires SG-0 = 0 (T-LensProducer-Retirement first) | T-FixedPoint |
 | Tier 2 Int128/Word128 substrate | Self-contained substrate work; sized to fit R3 cycle | T-Int128 |
 | Shape B omni-emission demos (≥2) | Needs Evaluator + Shape B emitter `.dag` programs | T-Omni-Shape-B |
@@ -206,7 +206,7 @@ Compromises being made by the R2 + R3 split:
 
 **At R3-close, the consequence layer falls out:**
 - Tier 3 mirrors dissolved → SG-0 → 0 → fixed-point self-hosting → facet 2 closes
-- L4-L7 verification harness proves emit/eval match + cross-target consistency + form coverage + algebraic laws
+- R3 verification harness ({L4, L5, L7}) proves emit/eval match + cross-target consistency + algebraic laws. L6 (structural form coverage) was reclassified to R2-T-Ground-CrossTarget-Meta as a structural cross-product fold; not part of the R3 runtime harness
 - Tier 2 fully extends to Int128/Word128
 - Omni-emission demonstrated end-to-end (≥2 Shape B targets)
 - Provider parity (Anthropic + OpenAI typed wires)

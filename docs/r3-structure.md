@@ -119,7 +119,7 @@ T-Tier3-Diss  T-LensProducer  T-V-L4-L7-Direct  T-FixedPoint  T-Omni-Shape-B  (T
                                                   T-LP-Retire)                  substrate)
                                   │
                                   ▼
-                         T-V-L5-Corpus (L5+L6)
+                         T-V-L5-Corpus (L5 only; L6 moved to R2-T-Ground-CrossTarget-Meta)
                                   ▲
                                   │
                   (also gated on R2-Grounding-Rust
@@ -215,7 +215,7 @@ T-LensProducer-Retirement (XL) → SG-0 non-test = 0 → T-FixedPoint (M)
 
 **Question:** Are L4-L7 sequential or parallel?
 
-L4 (emit/eval match) and L7 (algebraic-law witnesses) share the Evaluator; L5 (cross-target) needs all three Shape A targets grounded; L6 (form coverage) is a corpus-construction problem.
+L4 (emit/eval match) and L7 (algebraic-law witnesses) share the Evaluator; L5 (cross-target) needs all three Shape A targets grounded. L6 (form coverage) was reclassified out of R3 as a structural cross-product fold (lives in R2-T-Ground-CrossTarget-Meta).
 
 **DECISION (Director-locked 2026-04-28; further corrected per Codex Pattern B finding 2026-04-28):** L4 + L7 land in parallel post-R2 as `T-Verification-L4-L7-Direct` (Evaluator-direct, runtime). L5 (after R2-Grounding-Rust + R2-Grounding-Python land) lands in `T-Verification-L5-Corpus`. **L6 was reclassified out of corpus-driven verification** — it's a structural cross-product fold over substrate × language-specs, checkable at compile time with no corpus or runtime; lives in R2's T-Ground-CrossTarget-Meta lane scope. The R3 verification surface is now {L4, L5, L7} = three runtime levels; L6 is a structural acceptance gate at R2.
 

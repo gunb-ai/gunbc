@@ -269,7 +269,7 @@ R3 keeps T-Verification-L4L7 as the verification lane that *proves* the no-engin
 
 - L4 (`l4_emit_eval_match`): for every program, emitted target output equals `.dag` evaluation. **If the fold fabricates a target choice that .dag doesn't evaluate to, L4 fails — verifies the no-engine claim by execution.**
 - L5 (`l5_cross_target_consistency`): emitted Rust/Python/Go produce equivalent runtime behavior. **Any engine policy that resolves inconsistently across targets would fail L5.**
-- L6 (`l6_structural_form_coverage`): every structural form emits to every target. **Verifies that fail-closed gaps are explicitly diagnosed, not silently engine-resolved.**
+- L6 (`l6_structural_form_coverage`) — **moved to R2's T-Ground-CrossTarget-Meta lane** as a structural cross-product fold (per gpt-5-5-pro Pattern B finding 2026-04-28). Not part of the R3 verification surface; the R3 surface is {L4, L5, L7}. The R2 structural fold walks `(6 connectives × 5 behaviors × cardinality) × Shape A targets` and verifies each pair has an emission path declared.
 - L7 (`l7_algebraic_laws_witnessed`): every algebra has runtime-constructed witnesses. **Verifies that algebra inhabitance is declared and structural, not engine-policy-asserted.**
 
 These four together are the structural test of the no-engine discipline.
@@ -355,16 +355,15 @@ data count: Int(0..2^32) = 100
 ```
 
 **Fold steps:**
-1. Read program intent: algebra = `Semiring` (no negatives → not `OrderedRing`); refinement = `(0..2^32)`
+1. Read program intent: algebra = `Semiring` (no negatives → not `OrderedRing`); refinement bound = `(0..2^32)`
 2. Walk substrate inhabitants of `Semiring`: { UInt8, UInt16, UInt32, UInt64, UInt128 }
-3. Apply refinement filter: program bound `(0..2^32)` must be ⊆ candidate bound
-   - UInt8 (0..2^8): NO — program bound exceeds
-   - UInt16 (0..2^16): NO — program bound exceeds
-   - UInt32 (0..2^32): YES — exact match (program bound ⊆ candidate bound)
-   - UInt64 (0..2^64): YES — strict subset
-   - UInt128 (0..2^128): YES — strict subset
-4. Apply minimum-bound match (declared structural ordering): `UInt32` is the minimum (its bound exactly equals program bound)
-5. Result: unique answer = `UInt32`
+3. Apply **exact-bound** match (per Modeling problem 4 corrected: ordering is diagnostic-only; the fold does not consult ordering for emission):
+   - UInt8 (0..2^8): NO — bound differs
+   - UInt16 (0..2^16): NO — bound differs
+   - UInt32 (0..2^32): YES — bound exactly matches program refinement
+   - UInt64 (0..2^64): NO — bound differs (a different inhabitance, not a "wider valid" candidate)
+   - UInt128 (0..2^128): NO — bound differs
+4. Result: unique answer = `UInt32` (exactly one match by structural-bound predicate; no ordering consulted)
 
 **Expected output:** emit `100u32`.
 
@@ -378,7 +377,9 @@ fold_dag_int_refined_to_rust_u32: TestClaim {
 }
 ```
 
-**Note:** "minimum bound" is structurally declared via bound subsumption ordering, not engine "minimum-satisfier" policy. The candidate that exactly matches the program's refinement is structurally distinguished from candidates that strictly contain it.
+**Note on bound matching (corrected 2026-04-28 per gpt-5-5-pro Pattern B finding):** the fold uses *exact* refinement matching, not bound-subsumption + minimum-selection. UInt64's bound `(0..2^64)` is not "a valid wider candidate" for `Int(0..2^32)`; it's a *different inhabitance* with a *different bound*. If the program writes a refinement bound that no candidate exactly matches (e.g., `Int(0..1000)`), the fold fails-closed with a diagnostic naming the nearest declared candidates (e.g., "narrow to `Int(0..2^16)` for UInt16; widen to `Int(0..2^32)` for UInt32"). This is consistent with Modeling problem 4 corrected: ordering is diagnostic-only; the fold's emission predicate is exact match. Removing min-selection from the emission predicate dissolves the contradiction the prior framing introduced.
+
+**Note (corrected 2026-04-28):** the original phrasing here used "minimum bound" / "subsumption ordering," which contradicted Modeling problem 4's "ordering is diagnostic-only" framing. The corrected fold uses **exact-bound match** as the structural predicate. UInt64 / UInt128 are different inhabitances with different bounds, not "wider valid candidates." See the §"Note on bound matching" callout above.
 
 ---
 
@@ -673,7 +674,7 @@ When the 8 examples above pass as `.dag` `TestClaim` declarations:
 
 1. **No engine** — the fold is mechanical at every step. Each step reads a declared substrate fact (inhabits / refinement / structural property / lifetime analysis result) and applies it; nothing is decided by policy.
 2. **Under-refinement fails closed, not silently picked** (Examples 1, 5, 6) — when the program hasn't declared enough structural facts to uniquely determine the target, the diagnostic surfaces what's missing. There is no "canonical default" engine fallback.
-3. **Refinement composes structurally** (Examples 2, 6) — bounds participate in the fold via subsumption ordering. "Minimum-satisfier" is a structural property, not an engine choice.
+3. **Refinement composes structurally with exact-bound match** (Examples 2, 6) — bounds participate in the fold as exact match (program refinement = candidate refinement). Bound subsumption + minimum-selection is *not* used by the fold for emission (it would re-introduce ordering as engine policy, contradicting Modeling problem 4 corrected). Ordering is diagnostic-only.
 4. **Apparent multi-inhabitance dissolves through structural modeling** (Examples 3, 4, 7) — what looked like "multiple inhabitants needing canonical choice" was actually meaningful structural differences (ownership, growability, lifetime, encoding). Modeling those differences as substrate facts + deriving program intent from program structure yields a unique answer per use site.
 5. **Program intent is derived from program structure, not annotations** (Examples 3, 4, 7) — lifetime/escape/use analysis reads the program graph and produces the structural facts the fold composes against. No annotation surface.
 6. **Fail-closed has typed diagnostics with resolution hints** (Examples 1, 5, 6) — when the fold can't determine, `EmissionDiagnostic` names what would resolve (refinement to add, substrate fact to declare, or genuine "no candidate covers this case").
