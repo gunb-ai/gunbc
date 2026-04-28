@@ -160,6 +160,7 @@ pub struct PartialFunction<K, V> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum Ordering {
     Less,
     Equal,
@@ -167,6 +168,7 @@ pub enum Ordering {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum AlgebraProfile {
     OrderedRingProfile,
     ApproximateFieldProfile,
@@ -178,6 +180,7 @@ pub enum AlgebraProfile {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum ContainerSource {
     SameAsReceiver,
     Named { name: String },
@@ -192,6 +195,7 @@ impl ContainerSource {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum AlgebraTypeTemplate {
     ReceiverSelf,
     ReceiverElement,
@@ -221,6 +225,7 @@ pub enum AlgebraTypeTemplate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum CollectionSizeEffect {
     ShrinkEffect,
     ProjectionEffect,
@@ -228,6 +233,7 @@ pub enum CollectionSizeEffect {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum CostShape {
     ShapeConstant,
     ShapeLinearScan,

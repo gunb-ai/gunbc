@@ -1244,9 +1244,39 @@ pub fn emit_module_full(
         })
         .first()
         .cloned();
+        let wire_contract_record_lit_candidates = Rc::new({
+            let mut __result = Vec::new();
+            for i in typed_module.items.clone().iter().cloned() {
+                if ((is_data_def_item(&i)
+                    && match i.type_annotation.clone() {
+                        Some(ta) => {
+                            (authored_name(scope.type_env.clone(), ta.clone()).as_str()
+                                == "VariantEncoding".to_string().as_str())
+                        }
+                        None => false,
+                    })
+                    && match i.body.clone() {
+                        Some(body) => match (*body.expr_data.clone()).clone() {
+                            ExprData::ExprRecordLit { .. } => true,
+                            _ => false,
+                        },
+                        None => false,
+                    })
+                {
+                    __result.push(i);
+                }
+            }
+            __result
+        });
         let wire_contract_item = match wire_contract_by_name {
             Some(v) => Some(v.clone()),
-            None => None,
+            None => {
+                if ((wire_contract_record_lit_candidates.clone().len() as i64) == 1) {
+                    wire_contract_record_lit_candidates.clone().first().cloned()
+                } else {
+                    None
+                }
+            }
         };
         let items_str = Rc::new({
             let mut __result = Vec::new();

@@ -602,6 +602,7 @@ pub fn scan_number(source: &Rc<SourceRef>, pos: &Rc<TokPos>) -> Rc<ScanResult> {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
 pub enum StringScanResult {
     ClosedString { content: String, end_pos: i64 },
     InterpolationStart { content: String, end_pos: i64 },
