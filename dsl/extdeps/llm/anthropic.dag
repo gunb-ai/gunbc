@@ -118,7 +118,13 @@ type AnthropicMessages200Usage {
   output_tokens: Int
 }
 
-type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseTurn | Refusal
+// 🟢 TERMINAL provider-domain coproduct for Anthropic Messages `stop_reason`
+// wire values. Dissolution receipt: fact placement fails because every value is
+// the same response-field fact consumed at `stop_reason`; variant-is-data would
+// demote Anthropic's closed API enum into free-form text; algebraic form has no
+// std operation/ref target; dimensional split has no independent axes beyond the
+// documented reason-token domain.
+type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseTurn | Refusal | ModelContextWindowExceeded
 
 // Message object envelope for POST /v1/messages 200 responses per Anthropic docs
 // (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
