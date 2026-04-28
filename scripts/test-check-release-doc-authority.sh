@@ -1,28 +1,14 @@
 #!/usr/bin/env bash
 # Self-test for scripts/check-release-doc-authority.sh.
 #
-# Per gpt-5-5-pro meta-review on PR #1078 (2026-04-28T03:47Z): the
-# release-doc authority consumer needs at least one negative fixture
-# proving live forbidden strings actually fail the check. Without
-# this, a future change to RETRACTION_PATTERNS could silently neuter
-# the consumer (broaden patterns until everything passes), and the
-# loop's central concern — "the guardrail becomes ceremonial" — would
-# return.
-#
-# This script:
-#   1. Creates a temporary fixture file with each forbidden string
-#      in a clearly-live (non-retraction) context
-#   2. Runs the consumer against it
-#   3. Asserts the consumer detects each violation (exit code != 0)
-#   4. Cleans up
-#   5. Then creates a second fixture with the same strings in
-#      retraction context and asserts the consumer passes
-#
-# Usage:
-#   bash scripts/test-check-release-doc-authority.sh
+# Why: without this, a future change to RETRACTION_PATTERNS could
+# silently neuter the consumer (broaden patterns until everything
+# passes) and the guardrail would become ceremonial. Per-string
+# isolation negative tests prove every forbidden string is caught
+# individually; bundling would only prove "at least one caught."
 #
 # Exit codes:
-#   0 — both negative and positive cases verified
+#   0 — all negative + positive assertions verified
 #   1 — at least one assertion failed (consumer is broken)
 
 set -euo pipefail
@@ -47,17 +33,10 @@ mkdir -p "$TMPDIR/docs/thesis"
 echo "" > "$TMPDIR/docs/r3-structure.md"
 echo "" > "$TMPDIR/docs/thesis/r2-r3-thesis-mapping.md"
 
-# ---------------------------------------------------------------
-# Negative cases (per-string): each forbidden string must be caught
-# in isolation. Per gpt-5-5-pro/codex review on PR #1078:
-# bundling all forbidden strings into one fixture only proves
-# "at least one caught" not "each caught" — future broadening that
-# silently exempts a single string (e.g., @target) would still pass
-# the bundled test. Per-string isolation tests prevent that.
-# ---------------------------------------------------------------
-
-# Helper: write a fixture containing exactly one live forbidden string
-# in non-retraction context, run the consumer, expect non-zero exit.
+# Negative cases: each forbidden string in isolation must fail the
+# consumer (proves every string is caught individually, not just "at
+# least one caught"). Helper writes one live forbidden string in
+# non-retraction context and asserts non-zero exit.
 test_negative_single() {
   local forbidden="$1"
   local content="$2"
@@ -108,9 +87,7 @@ test_negative_t_verification_l4l7() {
     "T-Verification-L4L7 verifies the no-engine claim via runtime evaluation."
 }
 
-# ---------------------------------------------------------------
-# Positive case: forbidden strings in retraction context should pass
-# ---------------------------------------------------------------
+# Positive case: forbidden strings in retraction context should pass.
 test_positive() {
   cat > "$TMPDIR/docs/r2-structure.md" <<'EOF'
 # R2 Structure (test fixture — retraction context)
