@@ -121,7 +121,7 @@ Per THESIS §"Omni-emission (1:1 effort applied to full-stack systems)":
 | Claim | Disposition | Lane / gate | Evidence | Status |
 |---|---|---|---|---|
 | **One workflow declaration projects onto every layer of a real application** | R3 | T-Omni-Shape-B (≥2 demos) | r3-structure.md §T-Omni-Shape-B | ⏳ R3 dispatch |
-| **Coherence between layers is structural, not checked** | R3 | T-Verification-L4L7 (cross-target consistency proves drift-impossible) | r3-structure.md | ⏳ R3 |
+| **Coherence between layers is structural, not checked** | R1 + R2 (structural property; live by construction) | not a release gate — same-Node-tree derivation is the authority | THESIS:213 — "drift is impossible because every layer derives from the same Node tree." Property holds whenever Shape A emission is structural; T-Verification-L5-L6-Corpus *exercises* the claim operationally but does NOT establish it (the harness cannot be the authority for a structural-by-construction property without making the harness a parallel authority — exactly the Engine-framing failure mode `docs/design-emission-model.md` retracts) | ✅ live (continuous discipline) — exercised by R3 corpus but not gated on it |
 | **Shape A: O(1) per language target** | R2 | T-Ground (Rust + Python + Go) | 3 targets fully grounded by R2-close | 🟡 in flight |
 | **Shape B: O(1) per artifact class** | R3 | T-Omni-Shape-B (≥2 Shape B targets demonstrate the claim) | r3-structure.md §T-Omni-Shape-B | ⏳ R3 |
 | **Target-level cost complexity composes with .dag-level CX** | post-R3 ecosystem | falls out from L4-L7 harness + cost lens | implicit | 🟡 implicit |
