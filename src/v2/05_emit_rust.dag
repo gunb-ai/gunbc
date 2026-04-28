@@ -268,13 +268,21 @@ fn item_binding_is_named(env: TypeEnv, node: Node, name: String) -> Bool {
 
 // `wire_contract_item` from emit_module_full is the `data wire_contract = …` node.
 // The data item's `body` is the initializer expression; when it aliases an imported
-// `VariantEncoding` constant (e.g. `llm_snake_wire_contract`), the resolved
-// `StringVariant { naming: … }` structure is carried on `body.inferred`, not as
-// `wire_contract_item.body` being a VariantEncoding record root. Deref through
-// `Resolved` so `resolve_wire_serde_tag` sees the real encoding shape.
+// `VariantEncoding` constant (e.g. `llm_snake_wire_contract`), follow the authored
+// data binding through the data-item index before consulting inference. Ambiguous
+// data names and alias cycles fail closed instead of falling back to default serde.
 // Typed `data wire_contract: VariantEncoding = StringVariant { … }` bodies keep
 // `ExprRecordLit` while `inferred` may point at the type expression — prefer the literal.
-fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, Node>) -> String {
+fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>) -> String {
+  resolve_wire_serde_tag_for_coproduct_seen(
+    wire_contract_item: wire_contract_item,
+    source_indices: source_indices,
+    data_items: data_items,
+    seen_aliases: empty_map()
+  )
+}
+
+fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>, seen_aliases: Map<String, Bool>) -> String {
   match wire_contract_item {
     None => rust_serde_tag_attr()
     Some { value: wc } =>
@@ -290,13 +298,36 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
               ExprRecordLit { parent_enum: _ } =>
                 resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
               ExprVar { binding_kind: _ } =>
-                match map_get(data_items, expr_var_name_at(texpr: init, source_indices: source_indices)) {
-                  Some { value: aliased_data } =>
-                    resolve_wire_serde_tag_for_coproduct(
-                      wire_contract_item: Some { value: aliased_data },
-                      source_indices: source_indices,
-                      data_items: data_items
-                    )
+                let alias_name = expr_var_name_at(texpr: init, source_indices: source_indices)
+                if map_get(seen_aliases, alias_name) != none {
+                  emit_error_expr(
+                    message: concat("wire_contract: cyclic VariantEncoding alias: ", alias_name),
+                    target: Rust
+                  )
+                } else {
+                  match map_get(data_items, alias_name) {
+                    Some { value: candidates } =>
+                      if candidates |> count == 1 {
+                        match first(candidates) {
+                          Some { value: aliased_data } =>
+                            resolve_wire_serde_tag_for_coproduct_seen(
+                              wire_contract_item: Some { value: aliased_data },
+                              source_indices: source_indices,
+                              data_items: data_items,
+                              seen_aliases: map_insert(seen_aliases, alias_name, true)
+                            )
+                          None =>
+                            emit_error_expr(
+                              message: concat("wire_contract: missing VariantEncoding data alias: ", alias_name),
+                              target: Rust
+                            )
+                        }
+                      } else {
+                        emit_error_expr(
+                          message: concat("wire_contract: ambiguous VariantEncoding data alias: ", alias_name),
+                          target: Rust
+                        )
+                      }
                   None =>
                     match init.inferred {
                       None =>
@@ -308,10 +339,11 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
                         match inf {
                           Resolved { node } =>
                             if is_data_def_item(item: node) {
-                              resolve_wire_serde_tag_for_coproduct(
+                              resolve_wire_serde_tag_for_coproduct_seen(
                                 wire_contract_item: Some { value: node },
                                 source_indices: source_indices,
-                                data_items: data_items
+                                data_items: data_items,
+                                seen_aliases: map_insert(seen_aliases, alias_name, true)
                               )
                             } else {
                               resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
@@ -329,6 +361,7 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
                         }
                     }
                 }
+                }
               _ =>
                 match init.inferred {
                   None =>
@@ -340,10 +373,11 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
                     match inf {
                       Resolved { node } =>
                         if is_data_def_item(item: node) {
-                          resolve_wire_serde_tag_for_coproduct(
+                          resolve_wire_serde_tag_for_coproduct_seen(
                             wire_contract_item: Some { value: node },
                             source_indices: source_indices,
-                            data_items: data_items
+                            data_items: data_items,
+                            seen_aliases: seen_aliases
                           )
                         } else {
                           resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
@@ -368,18 +402,24 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
   }
 }
 
-fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
+fn build_data_item_index(modules: List<TypedModule>) -> Map<String, List<Node>> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     tm.items
       |> filter(item => is_data_def_item(item: item))
       |> fold(init: acc, f: (item_acc, item) =>
         let item_name = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
-        map_insert(
-          map_insert(item_acc, item_name, item),
-          concat(module_name, ".", item_name),
-          item
-        )
+        let existing_unqualified = match map_get(item_acc, item_name) {
+          Some { value: entries } => entries
+          None => []
+        }
+        let with_unqualified = map_insert(item_acc, item_name, concat(existing_unqualified, [item]))
+        let qualified_name = concat(module_name, ".", item_name)
+        let existing_qualified = match map_get(with_unqualified, qualified_name) {
+          Some { value: entries } => entries
+          None => []
+        }
+        map_insert(with_unqualified, qualified_name, concat(existing_qualified, [item]))
       )
   )
 }
@@ -766,7 +806,7 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
   emit_module_full(typed_module: typed_module, registry: registry, emit_info: emit_info, shared_types: shared_types, svc_module_map: empty_map(), data_items: build_data_item_index(modules: [typed_module]))
 }
 
-fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Map<String, Bool>, svc_module_map: Map<String, String>, data_items: Map<String, Node>) -> TextFile {
+fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, shared_types: Map<String, Bool>, svc_module_map: Map<String, String>, data_items: Map<String, List<Node>>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
   let prelude = emit_prelude()
@@ -997,7 +1037,7 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, Node>) -> String {
+fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
@@ -1169,7 +1209,7 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
-fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, Node>) -> String {
+fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>) -> String {
   let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
