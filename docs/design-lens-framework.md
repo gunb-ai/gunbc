@@ -489,6 +489,8 @@ Director's framing refinements:
 
 **Recommendation:** **(d)** — matches the current signature exactly. Each `validate` call returns one `OptionalDiagnostic`; the fold accumulates `SomeDiagnostic { value }` results into `DimensionFail.violations: List<Diagnostic>`. No spec change needed; the discipline is "fold accumulates; validate stays per-call." Practical effect: a program with two tenant-flow violations on different sub-DAGs yields two Diagnostics in `violations`. This satisfies "report all" without changing the validate signature or introducing per-instance configuration.
 
+**DECISION (Director-locked 2026-04-28 via dialogue): (d).** No substrate change. The arity-over-error-space pattern (Director observation per Q6 dialogue) makes "report-all" fall out by construction — the fold's accumulation already gives empty list = pass, many entries = many failures. No special "report all vs short-circuit" decision; the existing signature does it.
+
 ### Q8 — Side-condition composition with mixed presence
 
 **Status:** REFERENCED in §"Open design questions" item 5. `Lens<SymbolicCost> × Lens<SecurityLabel>` — complexity has no validate (always `NoDiagnostic`); IFC has validate. Cross-product `Lens<(SymbolicCost, SecurityLabel)>` — what's the validate behavior?
