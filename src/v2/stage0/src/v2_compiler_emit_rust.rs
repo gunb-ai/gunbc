@@ -42,9 +42,7 @@ pub use crate::v2_compiler_infer_emit_info::{
     find_variant_parent, is_enum_in_summaries, is_known_variant, lookup_emit_type_summary,
     variant_belongs_to_enum, EmitGraphInfo, TypeRepr, TypeSummary,
 };
-pub use crate::v2_compiler_infer_env::{
-    authored_name, lookup_type, lookup_type_by_name, TypeBinding, TypeEnv,
-};
+pub use crate::v2_compiler_infer_env::{authored_name, lookup_type_by_name, TypeBinding, TypeEnv};
 use crate::v2_compiler_infer_items::ItemKind::DataItem;
 pub use crate::v2_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 pub use crate::v2_compiler_infer_service::{
@@ -101,13 +99,13 @@ pub use crate::v2_std_core::{
     field_access_field_at, field_binding_name_at, field_binding_pattern, field_init_node_name_at,
     field_init_node_value, find_child_named, foreach_body, foreach_collection, foreach_variable_at,
     generic_param_name_at, if_condition, if_else_branch, if_then_branch, import_is_all,
-    import_specific_names_at, index_base, index_expr, intern_find, is_compiler_error,
-    is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
-    let_binding_name_at, let_body, let_value, make_arg_node, make_error_node, make_expr_node,
-    make_named_expr_node, make_span, match_arm_nodes, match_scrutinee, method_arg_nodes,
-    method_receiver, module_imports, module_items, param_node_default_value, param_node_name_at,
-    param_node_type_expr, record_lit_type_name_at, resource_use_name_at, resource_use_resource,
-    return_value, service_config_auth, service_config_auth_input, service_config_auth_source,
+    import_specific_names_at, index_base, index_expr, is_compiler_error, is_file_transport,
+    is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at, let_binding_name_at,
+    let_body, let_value, make_arg_node, make_error_node, make_expr_node, make_named_expr_node,
+    make_span, match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, module_imports,
+    module_items, param_node_default_value, param_node_name_at, param_node_type_expr,
+    record_lit_type_name_at, resource_use_name_at, resource_use_resource, return_value,
+    service_config_auth, service_config_auth_input, service_config_auth_source,
     service_config_endpoint, slice_base, slice_end, slice_start, transport_auth_header_name,
     transport_auth_token, transport_base_url, transport_env, transport_has_auth, transport_headers,
     transport_method, transport_path_template, transport_query, transport_request_body,
@@ -295,11 +293,9 @@ pub fn resolve_wire_serde_tag(
     }
 }
 
-pub fn module_binding_named(env: &Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    match intern_find(env.intern_table.clone(), name) {
-        Some(ident) => lookup_type(env.clone(), ident.clone()),
-        None => None,
-    }
+pub fn item_binding_is_named(env: Rc<TypeEnv>, node: &Rc<Node>, name: &String) -> bool {
+    ((authored_name(env, node.clone()).as_str() == name.clone().as_str())
+        || (node.name.clone().as_str() == name.clone().as_str()))
 }
 
 pub fn resolve_wire_serde_tag_for_coproduct(
@@ -1239,8 +1235,22 @@ pub fn emit_module_full(
                 local_enum_uses.clone().join(&"\n".to_string()),
             )
         };
-        let wire_contract_item =
-            module_binding_named(&scope.type_env.clone(), "wire_contract".to_string());
+        let wire_contract_item = Rc::new({
+            let mut __result = Vec::new();
+            for i in typed_module.items.clone().iter().cloned() {
+                if (item_binding_is_named(scope.type_env.clone(), &i, &"wire_contract".to_string())
+                    && match v2_rt::map_get(&registry, "wire_contract".to_string()) {
+                        Some(info) => (info.kind.clone() == ItemKind::DataItem),
+                        None => false,
+                    })
+                {
+                    __result.push(i);
+                }
+            }
+            __result
+        })
+        .first()
+        .cloned();
         let items_str = Rc::new({
             let mut __result = Vec::new();
             for item in typed_module.items.clone().iter().cloned() {
