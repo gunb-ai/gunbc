@@ -6,7 +6,7 @@
 
 **Supersedes** the "Coercion engine" framing in [`docs/thesis/target-grounding-proposal.md`](thesis/target-grounding-proposal.md) §"Substrate work" and the `T-Ground-Engine` lane framing in [`ROADMAP.md`](../ROADMAP.md) and [`docs/briefs/grounding-manager.md`](briefs/grounding-manager.md). Those documents predate the cascade-promotion thesis-discipline tightening (2026-04-25); they describe the work as "engine + selection + tie-breaking" which contradicts THESIS:171.
 
-**Affects in-flight work:** [PR #989](https://github.com/gunb-ai/gunbc/pull/989) "Engine Phase 2" (stern-ant-452 + merry-bat) is implementing inhabitance-search + selection + tie-breaking. This doc supersedes that framing; PR #989 needs realignment per §"Affected lanes" below.
+**Affects already-merged work:** [PR #989](https://github.com/gunb-ai/gunbc/pull/989) "T-Ground-Engine: Phase 2 pilot-list enumeration (slice 1)" merged on main with the inhabitance-search + selection + tie-breaking framing. **Post-merge realignment is required** per §"Affected lanes" below — slice 1 code on main needs follow-up PR(s) to retract selection logic and use `EmissionDiagnostic` carrier; further slices (Phase 2 slice 2+) hold until the design promotes.
 
 ## Goal
 
@@ -241,17 +241,17 @@ R3 keeps T-Verification-L4L7 as the verification lane that *proves* the no-engin
 
 These four together are the structural test of the no-engine discipline.
 
-## Affected lanes (in flight)
+## Affected lanes (post-merge realignment)
 
-[PR #989](https://github.com/gunb-ai/gunbc/pull/989) "Engine Phase 2" (stern-ant-452 + merry-bat) is implementing the prior framing. **Realignment options:**
+[PR #989](https://github.com/gunb-ai/gunbc/pull/989) "T-Ground-Engine: Phase 2 pilot-list enumeration (slice 1)" merged on main (stern-ant-452 + merry-bat) before this design doc was authored. The slice-1 code on main implements the prior framing (inhabitance-search + selection + tie-breaking). **Post-merge realignment options:**
 
-**(a)** Continue PR #989 with renamed scope as `T-Ground-Coercion-Fold` — but only the structural-fold subset; remove selection logic and tie-breaking; use `EmissionDiagnostic` carrier for under-determinism. This is the smallest change to in-flight work.
+**(a)** Follow-up PR retracts selection logic + tie-breaking from slice-1 code; renames the lane (or its primary types) per `T-Ground-Coercion-Fold`; introduces `EmissionDiagnostic` carrier for under-determinism. Slice-1 code stays on main; semantics are corrected in-place.
 
-**(b)** Pause PR #989 until the modeling problems (1-7) above are scoped as lanes and at least Modeling problem 6 (LanguageSpec schema) lands. PR #989 then consumes the new substrate.
+**(b)** Hold further slices (Phase 2 slice 2+) until LanguageSpec schema lands; slice-1 code on main remains as-is until follow-up cleanup wave. Avoids further engine-framed code while LanguageSpec is designed.
 
-**(c)** Re-dispatch PR #989's worker on the new lane structure — they continue contributing but to the modeling-problem lanes rather than the engine lane.
+**(c)** Combine: ship (b) immediately (hold further slices) and queue (a) as a follow-up cleanup PR once LanguageSpec lands and consumers can route through the new substrate.
 
-**Recommendation: (b).** PR #989 currently has under-determined scope because the substrate it should consume doesn't exist yet. Pausing prevents baking in selection logic that will need rework once LanguageSpec schema lands.
+**Recommendation: (c).** (b) is the immediate hold; (a) is the substantive cleanup that follows once LanguageSpec lands. (c) is the realistic sequencing — slice-1 stays on main but doesn't get more engine-framed siblings.
 
 This is a Director call (cross-program coordination); see Open call 1 below.
 
@@ -259,11 +259,11 @@ This is a Director call (cross-program coordination); see Open call 1 below.
 
 ### 1. Director sign-off on no-engine discipline + R2 lane restructure
 
-**Required before:** R2-T-Ground-Engine work continues (PR #989 + any new dispatches under current framing).
+**Required before:** any further engine-framed slice ships (Phase 2 slice 2+ or sibling dispatches).
 
 **Decision needed:**
 - Adopt this design (no engine; modeling problems are lanes)
-- Resolve PR #989 status (recommendation: pause until LanguageSpec lands)
+- Resolve PR #989 post-merge status (recommendation: option (c) — hold further slices + queue follow-up cleanup once LanguageSpec lands)
 - Approve replacement R2 lane structure (T-Ground-Engine → 5 lanes per §"Recommended R2 lane structure update")
 
 **Ownership:** Director #828.
