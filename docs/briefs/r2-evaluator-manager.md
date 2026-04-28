@@ -32,19 +32,35 @@ R2's Goal 7 — **Runtime evaluator for `.dag` programs**. The Evaluator is the 
 
 ## Pre-dispatch design lock cadence (per #1078 locked structure)
 
-Before worker dispatch begins on the implementation sub-lanes above, **5 design PRs land sequentially**:
+Before worker dispatch begins on the implementation sub-lanes above, **5 design PRs land per their dependency graph** (parallelize where independent; serialize where there's a real dependency):
 
-| PR | Locks | Status |
-|---|---|---|
-| **PR-A** | Runtime value model — closed-over environments, lazy/eager strategy, memoization | NOT YET AUTHORED |
-| **PR-B** | Witness construction surface — concrete shape for runtime materialization | NOT YET AUTHORED |
-| **PR-C** | Reflection completeness spec — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`? | NOT YET AUTHORED (consumed by R3-T-LensProducer-Retirement) |
-| **PR-D** | L5 corpus type spec — algebraic equivalence over curated corpus (locked direction; specific design here) | NOT YET AUTHORED (consumed by R3-T-V-L5-Corpus) |
-| **PR-E** | Final integration design — synthesizes PR-A through PR-D into the implementation roadmap | NOT YET AUTHORED |
+```
+                    ┌───────→ PR-B (Witness construction surface)
+                    │              │
+       PR-A ────────┤              ↓
+       (Runtime     │              │
+        value       ├───────→ PR-E ←─── PR-C (Reflection completeness spec)
+        model)      │       (Final         │
+                    │       integration)   ↓
+                    └─────────────────────┴── (consumed by R3-T-LensProducer-Retirement)
+                                          
+       PR-D (L5 corpus type spec) ──→ PR-E (independent of A/B/C; cross-target equivalence)
+                                          (consumed by R3-T-V-L5-Corpus)
+```
 
-Plus **LanguageSpec parallel** (R2-T-Ground-LanguageSpec sub-lane) — Grounding Manager authors the LanguageSpec schema in parallel; Evaluator Manager consumes it for cross-target equivalence work.
+| PR | Depends on | Parallelizable with | Locks | Status |
+|---|---|---|---|---|
+| **PR-A** | (foundational) | — | Runtime value model — closed-over environments, lazy/eager strategy, memoization | NOT YET AUTHORED |
+| **PR-B** | PR-A | PR-C, PR-D | Witness construction surface — concrete shape for runtime materialization | NOT YET AUTHORED |
+| **PR-C** | (foundational; substrate-reflection-shape) | PR-A, PR-B, PR-D | Reflection completeness spec — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`? | NOT YET AUTHORED (consumed by R3-T-LensProducer-Retirement) |
+| **PR-D** | (foundational; cross-target spec) | PR-A, PR-B, PR-C | L5 corpus type spec — algebraic equivalence over curated corpus (locked direction; specific design here) | NOT YET AUTHORED (consumed by R3-T-V-L5-Corpus) |
+| **PR-E** | All of PR-A through PR-D | (synthesis; serializes after) | Final integration design — synthesizes PR-A through PR-D into the implementation roadmap | NOT YET AUTHORED |
 
-**Director-discretionary timing:** Evaluator design lock cadence may run during R1's final week (mirror of R2's pre-R1-close pattern); design-only work doesn't conflict with R1 closure.
+**Sequencing principle (per Director directive 2026-04-28):** "focus on dependencies — writing code is fast; we get stuck in review." Parallelize PR-A, PR-C, PR-D as independent foundational design locks; PR-B serializes after PR-A (witness construction uses runtime values); PR-E synthesizes after all four. Worker dispatch on implementation sub-lanes blocks on PR-E.
+
+Plus **LanguageSpec parallel** (R2-T-Ground-LanguageSpec sub-lane) — Grounding Manager authors the LanguageSpec schema in parallel; Evaluator Manager consumes it for cross-target equivalence work. Independent of PR-A through PR-E.
+
+**Timing:** Evaluator design lock cadence dispatches **post-#1078-merge** (now). R1 close coordination handled by R1 Closure Manager (PR #1065); per Director directive R1 ASAP, design work shouldn't block on R1 closure mechanics. Specific R1-handover items coordinated via cross-manager queue (see Cross-program dependencies below).
 
 ## Cross-program dependencies
 
