@@ -241,6 +241,399 @@ R3 keeps T-Verification-L4L7 as the verification lane that *proves* the no-engin
 
 These four together are the structural test of the no-engine discipline.
 
+## Worked examples
+
+These are concrete walkthroughs of the structural fold for representative cases. Each example includes the substrate facts it depends on, the program input, the fold steps, and the expected output (target code OR `EmissionDiagnostic`). **These serve as test cases** — the structure is intentionally reproducible: each example can be lifted into a `.dag` `TestClaim` once the substrate lanes (T-Ground-LanguageSpec + T-Ground-Annotation + T-Ground-Diagnostic + T-Ground-CrossTarget-Meta) land.
+
+### Example 1 — `Int` → Rust `i64` (canonical, no refinement)
+
+**The simplest case.** Demonstrates: canonical-choice declaration; mechanical fold without selection logic.
+
+**Substrate facts (must be declared):**
+```
+// In dsl/extdeps/languages/rust/types.dag (or successor LanguageSpec home)
+inhabits Int8   : OrderedRing  bound = (-2^7..2^7)
+inhabits Int16  : OrderedRing  bound = (-2^15..2^15)
+inhabits Int32  : OrderedRing  bound = (-2^31..2^31)
+inhabits Int64  : OrderedRing  bound = (-2^63..2^63)
+inhabits Int128 : OrderedRing  bound = (-2^127..2^127)
+
+canonical OrderedRing without refinement = Int64   // declared substrate fact
+```
+
+**Program input:**
+```
+data x: Int = 0
+```
+
+**Fold steps:**
+1. Read program intent: algebra = `OrderedRing`; refinement = none (`Int` without bounds)
+2. Walk substrate inhabitants of `OrderedRing`: { Int8, Int16, Int32, Int64, Int128 }
+3. Apply refinement filter: refinement = none → all 5 candidates valid
+4. Apply canonical-choice fact: `canonical OrderedRing without refinement = Int64`
+5. Result: unique answer = `Int64`
+
+**Expected output:** emit `0i64` (Rust target).
+
+**Test claim shape:**
+```
+fold_dag_int_to_rust_i64_canonical: TestClaim {
+  setup: standard_rust_language_spec()
+  source: "data x: Int = 0"
+  expected_emission: "0i64"
+  expected_diagnostic: None
+}
+```
+
+---
+
+### Example 2 — `Int(0..2^32)` → Rust `u32` (refinement-driven)
+
+**Demonstrates:** refinement composition with algebra inhabitance (Modeling problem 1); minimum bound matching is structural via subsumption, not engine policy.
+
+**Substrate facts (must be declared):**
+```
+inhabits UInt8   : Semiring  bound = (0..2^8)
+inhabits UInt16  : Semiring  bound = (0..2^16)
+inhabits UInt32  : Semiring  bound = (0..2^32)
+inhabits UInt64  : Semiring  bound = (0..2^64)
+inhabits UInt128 : Semiring  bound = (0..2^128)
+
+// Declared structural ordering on Semiring bounds: bound subsumption
+// (a is "smaller than or equal to" b iff a's range is contained in b's)
+```
+
+**Program input:**
+```
+data count: Int(0..2^32) = 100
+```
+
+**Fold steps:**
+1. Read program intent: algebra = `Semiring` (no negatives → not `OrderedRing`); refinement = `(0..2^32)`
+2. Walk substrate inhabitants of `Semiring`: { UInt8, UInt16, UInt32, UInt64, UInt128 }
+3. Apply refinement filter: program bound `(0..2^32)` must be ⊆ candidate bound
+   - UInt8 (0..2^8): NO — program bound exceeds
+   - UInt16 (0..2^16): NO — program bound exceeds
+   - UInt32 (0..2^32): YES — exact match (program bound ⊆ candidate bound)
+   - UInt64 (0..2^64): YES — strict subset
+   - UInt128 (0..2^128): YES — strict subset
+4. Apply minimum-bound match (declared structural ordering): `UInt32` is the minimum (its bound exactly equals program bound)
+5. Result: unique answer = `UInt32`
+
+**Expected output:** emit `100u32`.
+
+**Test claim shape:**
+```
+fold_dag_int_refined_to_rust_u32: TestClaim {
+  setup: standard_rust_language_spec()
+  source: "data count: Int(0..2^32) = 100"
+  expected_emission: "100u32"
+  expected_diagnostic: None
+}
+```
+
+**Note:** "minimum bound" is structurally declared via bound subsumption ordering, not engine "minimum-satisfier" policy. The candidate that exactly matches the program's refinement is structurally distinguished from candidates that strictly contain it.
+
+---
+
+### Example 3 — `String` → Rust `String` (canonical, multiple inhabitants)
+
+**Demonstrates:** Modeling problem 2 (canonical choice when multiple inhabitants exist); same algebra, same refinement, but multiple structurally-valid candidates.
+
+**Substrate facts (must be declared):**
+```
+inhabits String  : FreeMonoid<Char>  ownership = Owned
+inhabits StrSlice: FreeMonoid<Char>  ownership = Borrowed   // Rust &str
+inhabits CowStr  : FreeMonoid<Char>  ownership = LazyClone  // Rust Cow<str>
+
+canonical FreeMonoid<Char> without ownership annotation = String   // owned default
+```
+
+**Program input:**
+```
+data name: String = "Alice"
+```
+
+**Fold steps:**
+1. Read program intent: algebra = `FreeMonoid<Char>`; refinement = none
+2. Walk substrate inhabitants of `FreeMonoid<Char>`: { String, StrSlice, CowStr }
+3. Apply refinement filter: no refinement → all 3 candidates valid
+4. Apply canonical-choice fact: `canonical FreeMonoid<Char> without ownership annotation = String`
+5. Result: unique answer = `String`
+
+**Expected output:** emit `String::from("Alice")` (or equivalent).
+
+**Test claim shape:**
+```
+fold_dag_string_to_rust_owned_canonical: TestClaim {
+  setup: standard_rust_language_spec()
+  source: "data name: String = \"Alice\""
+  expected_emission_contains: "String"
+  expected_emission_does_not_contain: ["&str", "Cow"]
+  expected_diagnostic: None
+}
+```
+
+---
+
+### Example 4 — `String` → Rust `&str` (annotation-driven)
+
+**Demonstrates:** Modeling problem 3 (user annotation as program-side substrate); annotation overrides canonical without engine state.
+
+**Substrate facts:** same as Example 3.
+
+**Program input:**
+```
+data name: String @target(rust) annotate name: Borrowed = "Alice"
+```
+
+**Fold steps:**
+1. Read program intent: algebra = `FreeMonoid<Char>`; refinement = none; **annotation = Borrowed (target = rust)**
+2. Walk substrate inhabitants of `FreeMonoid<Char>`: { String, StrSlice, CowStr }
+3. Apply refinement filter: no refinement → all 3 candidates valid
+4. Apply annotation as filter: `ownership == Borrowed` → only `StrSlice` matches
+5. Result: unique answer = `StrSlice`
+
+**Expected output:** emit `&str` (with appropriate lifetime construction).
+
+**Test claim shape:**
+```
+fold_dag_string_borrowed_annotation_to_rust_strslice: TestClaim {
+  setup: standard_rust_language_spec()
+  source: "data name: String @target(rust) annotate name: Borrowed = \"Alice\""
+  expected_emission_contains: "&str"
+  expected_diagnostic: None
+}
+```
+
+**Note:** the annotation is *program-side substrate*, not engine state. The fold reads it the same way it reads any other declared fact. If the annotation were inconsistent with the program type (e.g., annotating a non-string field as `Borrowed`), the fold would fail-closed at validation time, not at emission.
+
+---
+
+### Example 5 — `Int` (no canonical declared) → fail-closed `EmissionDiagnostic::UnderDetermined`
+
+**Demonstrates:** Modeling problem 5 (fail-closed diagnostic surface); structure under-determines, no canonical to fall back on.
+
+**Substrate facts (intentionally incomplete to demonstrate diagnostic):**
+```
+inhabits Int8   : OrderedRing  bound = (-2^7..2^7)
+inhabits Int16  : OrderedRing  bound = (-2^15..2^15)
+inhabits Int32  : OrderedRing  bound = (-2^31..2^31)
+inhabits Int64  : OrderedRing  bound = (-2^63..2^63)
+inhabits Int128 : OrderedRing  bound = (-2^127..2^127)
+
+// NOTE: no canonical declared for OrderedRing without refinement
+```
+
+**Program input:**
+```
+data x: Int = 0
+```
+
+**Fold steps:**
+1. Read program intent: algebra = `OrderedRing`; refinement = none
+2. Walk substrate inhabitants: 5 candidates
+3. Apply refinement filter: all 5 still valid
+4. Apply canonical-choice: **no canonical declared** for this algebra/refinement combination
+5. Result: under-determined → fail-closed
+
+**Expected output:**
+```
+EmissionDiagnostic::UnderDetermined {
+  program_intent: AlgebraInhabitance(OrderedRing, refinement: None),
+  candidates: [Int8, Int16, Int32, Int64, Int128],
+  canonical: None,
+  resolution_hints: [
+    "add refinement bound: `Int(min..max)` will narrow the search",
+    "declare canonical at language level: extend dsl/extdeps/languages/rust/types.dag",
+    "annotate program-side: `@target(rust) annotate x: Int64`"
+  ]
+}
+```
+
+**Test claim shape:**
+```
+fold_dag_int_no_canonical_fails_closed: TestClaim {
+  setup: rust_language_spec_without_int_canonical()
+  source: "data x: Int = 0"
+  expected_emission: None
+  expected_diagnostic: matches(EmissionDiagnostic::UnderDetermined { candidates: [_; 5], .. })
+}
+```
+
+---
+
+### Example 6 — `Int(0..2^65)` → fail-closed `EmissionDiagnostic::NoInhabitant`
+
+**Demonstrates:** Modeling problem 5 again, but for the "no inhabitant" case rather than "multiple without canonical."
+
+**Substrate facts:** as in Example 1 (Rust integer family up to Int128).
+
+**Program input:**
+```
+data huge: Int(0..2^65) = 36893488147419103232
+```
+
+**Fold steps:**
+1. Read program intent: algebra = `OrderedRing`; refinement = `(0..2^65)`
+2. Walk substrate inhabitants: { Int8, Int16, Int32, Int64, Int128 }
+3. Apply refinement filter: program bound `(0..2^65)` must be ⊆ candidate bound
+   - Int8 through Int64: NO — program bound exceeds (Int64 caps at 2^63)
+   - Int128: YES — strict subset
+4. Result: 1 candidate (Int128)
+5. Result: unique answer = `Int128`
+
+**Wait** — actually this case succeeds with `Int128`. Let me restate to demonstrate fail-closed-on-no-inhabitant:
+
+**Restated program input (genuinely exceeds all candidates):**
+```
+data astronomical: Int(0..2^200) = 1
+```
+
+**Fold steps (restated):**
+1. Read program intent: algebra = `OrderedRing`; refinement = `(0..2^200)`
+2. Walk substrate inhabitants: { Int8, Int16, Int32, Int64, Int128 }
+3. Apply refinement filter: program bound exceeds Int128's `2^127` — no candidates pass
+4. Result: zero candidates → fail-closed
+
+**Expected output:**
+```
+EmissionDiagnostic::NoInhabitant {
+  program_intent: AlgebraInhabitance(OrderedRing, refinement: (0..2^200)),
+  candidates_considered: [Int8, Int16, Int32, Int64, Int128],
+  resolution_hints: [
+    "Rust's largest signed integer is i128 (range -2^127..2^127); Int(0..2^200) cannot ground to a Rust primitive",
+    "consider arbitrary-precision integer carrier (post-R3 substrate work)",
+    "narrow the bound: Int(0..2^127) grounds to Int128"
+  ]
+}
+```
+
+**Test claim shape:**
+```
+fold_dag_int_exceeds_target_fails_closed: TestClaim {
+  setup: standard_rust_language_spec()
+  source: "data astronomical: Int(0..2^200) = 1"
+  expected_emission: None
+  expected_diagnostic: matches(EmissionDiagnostic::NoInhabitant { .. })
+}
+```
+
+---
+
+### Example 7 — `List<Int>` → Rust `Vec<i64>` (compound, recursive fold)
+
+**Demonstrates:** how the fold composes through container types; each level reads its own substrate facts.
+
+**Substrate facts (must be declared):**
+```
+inhabits Vec<T>      : Container<T>  ownership = Owned
+inhabits Slice<T,N>  : Container<T>  ownership = Borrowed       // Rust &[T]
+inhabits Box<[T]>    : Container<T>  ownership = OwnedFixed
+
+canonical Container<T> without ownership annotation = Vec<T>
+
+// Plus Int → Int64 canonical from Example 1
+```
+
+**Program input:**
+```
+data nums: List<Int> = [1, 2, 3]
+```
+
+**Fold steps:**
+1. Read program intent: algebra = `Container<T>` where T = Int; refinement = none
+2. Walk substrate inhabitants of `Container<T>`: { Vec, Slice, Box[T] }
+3. Apply refinement filter: no refinement → all valid
+4. Apply canonical-choice: `canonical Container<T> without ownership annotation = Vec<T>`
+5. Recursive fold on T (= Int): produces Int64 per Example 1
+6. Result: `Vec<Int64>`
+
+**Expected output:** emit `vec![1i64, 2i64, 3i64]` (or equivalent `Vec<i64>` literal).
+
+**Test claim shape:**
+```
+fold_dag_list_int_to_rust_vec_i64: TestClaim {
+  setup: standard_rust_language_spec()
+  source: "data nums: List<Int> = [1, 2, 3]"
+  expected_emission_contains: ["Vec<i64>", "vec!"]
+  expected_diagnostic: None
+}
+```
+
+**Note:** the recursive structure makes the fold a fold (in the algebraic sense). Each level reads facts, returns a result, composes with the parent level's result. No engine state crosses levels.
+
+---
+
+### Example 8 — Cross-target consistency: `Int` → Rust `i64` AND Python `int` AND Go `int64`
+
+**Demonstrates:** Modeling problem 7 (cross-target uniformity meta-spec); same `.dag` algebra reaches three target-language vocabularies via three independent language specs.
+
+**Substrate facts:**
+
+**Rust spec** (as Example 1).
+
+**Python spec:**
+```
+inhabits int : OrderedRing  bound = unbounded   // Python ints are arbitrary precision
+canonical OrderedRing without refinement = int
+```
+
+**Go spec:**
+```
+inhabits int    : OrderedRing  bound = (-2^31..2^31) on 32-bit / (-2^63..2^63) on 64-bit  // architecture-dependent
+inhabits int8   : OrderedRing  bound = (-2^7..2^7)
+inhabits int16  : OrderedRing  bound = (-2^15..2^15)
+inhabits int32  : OrderedRing  bound = (-2^31..2^31)
+inhabits int64  : OrderedRing  bound = (-2^63..2^63)
+
+canonical OrderedRing without refinement = int64   // explicit-width default
+```
+
+**Cross-target meta-spec:** `OrderedRing` without refinement is portability-required (every Shape A target must declare a canonical for it).
+
+**Program input:**
+```
+data x: Int = 0
+```
+
+**Fold runs three times (one per target):**
+- Rust: `0i64`
+- Python: `0`
+- Go: `int64(0)` or `var x int64 = 0`
+
+**Test claim shape:**
+```
+fold_dag_int_cross_target_consistent: TestClaim {
+  setup: standard_rust_python_go_language_specs()
+  source: "data x: Int = 0"
+  expected_emissions: {
+    rust:   contains("i64"),
+    python: contains("int"),
+    go:     contains("int64")
+  }
+  expected_diagnostic: None
+}
+```
+
+**Note:** the *cross-target meta-spec* is what verifies all three targets have a canonical declared. Without it, Python could omit a canonical (since its `int` is already arbitrary-precision and trivially canonical), and a future target spec could similarly omit, breaking portability silently. The meta-spec is the structural guarantee, not engine policy.
+
+---
+
+### What these examples collectively prove
+
+When the 8 examples above pass as `.dag` `TestClaim` declarations:
+
+1. **No engine** — the fold is mechanical at every step. Each step reads a declared substrate fact (inhabits / canonical / annotation / structural ordering) and applies it; nothing is decided by policy.
+2. **Refinement composes** (Examples 2, 6) — bounds participate in the fold structurally via subsumption ordering.
+3. **Canonical choice is declared, not chosen** (Examples 1, 3, 7) — the substrate says which inhabitance is canonical; the fold reads it.
+4. **User annotation is program substrate, not engine state** (Example 4) — annotations live in the program, the fold reads them, no special path.
+5. **Fail-closed has typed diagnostics with resolution hints** (Examples 5, 6) — when the fold can't determine, `EmissionDiagnostic` names what would resolve.
+6. **Compound types compose recursively** (Example 7) — the fold is structural at every nesting level.
+7. **Cross-target works because each language spec is independent + the meta-spec enforces portability** (Example 8) — three folds, three results, no shared engine.
+
+These are the *structural test of "no separate coercion engine"*. If any example required engine policy to produce its expected output, the no-engine claim would be falsified. Each example is reproducible against the substrate facts named in its setup.
+
 ## Affected lanes (post-merge realignment)
 
 [PR #989](https://github.com/gunb-ai/gunbc/pull/989) "T-Ground-Engine: Phase 2 pilot-list enumeration (slice 1)" merged on main (stern-ant-452 + merry-bat) before this design doc was authored. The slice-1 code on main implements the prior framing (inhabitance-search + selection + tie-breaking). **Post-merge realignment options:**
