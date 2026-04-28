@@ -11294,31 +11294,35 @@ pub fn emit_dry_run_branch_from_props(
         Some(tn) => !is_json_wire_declaration_type(tn, source_indices.clone()),
         None => false,
     };
-    let prelude = if use_typed_wire {
-        let tn = wire_opt
-            .as_ref()
-            .expect("use_typed_wire implies response_200 resolved type")
-            .clone();
-        let wire_ty = match tn.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: rt, .. }) => rt,
-            _ => tn.clone(),
-        };
-        let rust_ty = render_rust_type(wire_ty, shared_types.clone(), source_indices.clone());
-        v2_rt::concat(
+    let prelude = match (use_typed_wire, wire_opt.clone()) {
+        (true, Some(tn)) => {
+            let wire_ty = match tn.inferred.clone().as_deref().cloned() {
+                Some(InferredNode::Resolved { node: rt, .. }) => rt,
+                _ => tn.clone(),
+            };
+            let rust_ty = render_rust_type(wire_ty, shared_types.clone(), source_indices.clone());
             v2_rt::concat(
-                v2_rt::concat("let __rest_wire: ".to_string(), rust_ty),
-                " = serde_json::from_str(r#\"".to_string(),
-            ),
-            v2_rt::concat(mock_json.clone(), "\"#)?;\n".to_string()),
-        )
-    } else {
-        v2_rt::concat(
+                v2_rt::concat(
+                    v2_rt::concat("let __rest_wire: ".to_string(), rust_ty),
+                    " = serde_json::from_str(r#\"".to_string(),
+                ),
+                v2_rt::concat(mock_json.clone(), "\"#)?;\n".to_string()),
+            )
+        }
+        (true, None) => {
+            return v2_rt::concat(
+                log_line,
+                "\ncompile_error!(\"REST typed dry-run: response_200 wire type missing despite typed projection; illegal state\");\n"
+                    .to_string(),
+            );
+        }
+        (false, _) => v2_rt::concat(
             v2_rt::concat(
                 "let json_body: serde_json::Value = serde_json::from_str(r#\"".to_string(),
                 mock_json,
             ),
             "\"#)?;\n".to_string(),
-        )
+        ),
     };
     let extract_parts: Vec<String> = children
         .iter()
