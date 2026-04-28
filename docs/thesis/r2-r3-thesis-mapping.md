@@ -75,7 +75,7 @@ Per THESIS §"Concept unifications":
 
 | Claim | Disposition | Lane / gate | Evidence | Status |
 |---|---|---|---|---|
-| **Coercion cost = complexity** | R3 | T-Verification-L4L7 (verifies via cost lens evaluation) + post-R3 ecosystem | Implicit; R3 harness exercises it | 🟡 indirect |
+| **Coercion cost = complexity** | R3 | T-CostLens-Composition / `cost_lens_reads_target_realization` + `coercion_cost_equals_complexity_by_construction` + `no_coercion_cost_dimension` (R3 lane 10; Director-locked 2026-04-28). Plus R2 substrate facts: per-operation cost on `dsl/std/algebra.dag` + per-primitive realization cost on language specs | Per [`docs/design-emission-model.md`](../design-emission-model.md) Modeling problem 8 — cost lens reads (1) `.dag` algebra-level cost + (2) target-primitive realization cost via the language spec; composes structurally; verifies the unification holds by construction (not by reviewer convention). No "coercion cost" dimension | ⏳ R3 dispatch (gated on R2-Evaluator + R2-T-Substrate per-op algebra cost + R2-T-Ground-LanguageSpec per-primitive realization cost) |
 | **Coercion = emission** | R3 | T-Ground-Dissolve (R2 closes coercion scaffolding; R3 verifies emission-as-coercion claim) | T-Ground-Dissolve PR (R2) + R3 harness | 🟡 R2 close + R3 verify |
 | **Target language spec = transport spec = interpreter runtime** | R3 | T-Verification-L4L7 (cross-target equivalence under shared interpreter) | r3-structure.md | ⏳ R3 |
 | **Idempotency + cancellation + redundancy = algebraic simplification** | R2 | T-ImpossibleBugs Class 3 (unenumerated effects — already exercises this via algebra inhabitance) | PR #971 ✓ | ✅ landed in R2 |
