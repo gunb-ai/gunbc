@@ -73,23 +73,32 @@ The honest answer is: `u32` *uniquely* inhabits `Semiring` at exactly that refin
 
 **The honest framing (corrected 2026-04-28 per user direction):** "multiple inhabitants at the same algebra+refinement" is itself a smell. Either the candidates are *structurally equivalent* (cosmetic — same thing under different names) and they collapse into one, or they're *meaningfully different* (different semantic invariants — ownership, lifetime, mutability, encoding) and the difference belongs in the substrate as additional structural facts. There is no third category requiring "canonical choice" engine machinery.
 
-**Worked example.** Rust offers `String`, `Box<str>`, `Vec<u8>`, `Box<[u8]>`, `&str`, `Cow<str>`. Are these cosmetic variants of `FreeMonoid<Char>` or meaningfully different?
+**Worked example.** When the program writes `.dag` `String` (semantically: a sequence of unicode chars), what Rust types are candidates? The answer depends on which algebra the program intends.
 
-| Candidate | Owned? | Growable? | UTF-8 invariant? | Lifetime |
-|---|---|---|---|---|
-| `String` | yes | yes | yes | self-contained |
-| `Box<str>` | yes | no | yes | self-contained |
-| `Vec<u8>` | yes | yes | no | self-contained |
-| `Box<[u8]>` | yes | no | no | self-contained |
-| `&str` | no | n/a | yes | borrowed |
-| `Cow<str>` | conditional | conditional | yes | conditional |
+**Algebra distinction first** (corrected 2026-04-28 per user clarification):
 
-These are **meaningfully different** on four structural dimensions: ownership, growability, encoding-invariant, lifetime. Modeling these dimensions as substrate refinements (or as additional algebras) means each combination of program structural intent maps to a unique target. **No canonical needed** — the candidates aren't tied; they inhabit *different* algebra+refinement combinations.
+| Algebra | Semantic | Rust candidates |
+|---|---|---|
+| `FreeMonoid<Char>` | sequence of unicode chars (UTF-8 by Rust's definition of `str`) | `String`, `Box<str>`, `&str`, `Cow<str>` |
+| `FreeMonoid<Byte>` | sequence of raw bytes (no UTF-8 invariant) | `Vec<u8>`, `Box<[u8]>` |
+
+So `Vec<u8>` is **not** a candidate for `.dag` `String` — it inhabits a *different algebra*. The algebra choice (FreeMonoid<Char> vs FreeMonoid<Byte>) carries the encoding distinction structurally; encoding is not a separate refinement axis.
+
+**Within `FreeMonoid<Char>`** (the algebra that `.dag` `String` typically inhabits), the candidates differ on three structural axes:
+
+| Candidate | Owned? | Growable? | Lifetime |
+|---|---|---|---|
+| `String` | yes | yes | self-contained |
+| `Box<str>` | yes | no | self-contained |
+| `&str` | no | n/a | borrowed |
+| `Cow<str>` | conditional | conditional | conditional |
+
+These are **meaningfully different** on three structural dimensions: ownership, growability, lifetime. Modeling these as substrate refinements (or as additional algebras) means each combination of program structural intent maps to a unique target. **No canonical needed** — the candidates inhabit *different* algebra+refinement combinations.
 
 **The work.** Surface every meaningful difference between apparent multi-inhabitants as a structural fact:
+- The algebra choice (FreeMonoid<Char> vs FreeMonoid<Byte>) carries the encoding distinction structurally — UTF-8 vs raw bytes is the algebra, not a refinement axis
 - Add ownership as a refinement on `FreeMonoid<Char>` (or a separate algebra `OwnedFreeMonoid<Char>` vs `BorrowedFreeMonoid<Char>`)
 - Add growability as a refinement (or as the distinction `FreeMonoid` (growable) vs `Sequence<N>` (fixed-size))
-- Add encoding-invariant as a refinement (`FreeMonoid<Char>` UTF-8 vs `FreeMonoid<Byte>` raw)
 - Lifetime is a structural property derivable from program use (see Modeling problem 3 below)
 
 After modeling, **the choice falls out**: each combination of (owned, growable, encoded) yields a unique target. The "canonical choice" framing was hiding the fact that we hadn't done this modeling work.
@@ -390,12 +399,19 @@ fold_dag_int_refined_to_rust_u32: TestClaim {
 **Substrate facts (must be declared):**
 ```
 // String family — meaningfully different on multiple axes
-inhabits RustString : FreeMonoid<Char>  ownership = Owned        growable = yes  encoding = UTF-8  lifetime = self
-inhabits BoxedStr   : FreeMonoid<Char>  ownership = Owned        growable = no   encoding = UTF-8  lifetime = self
-inhabits VecOfBytes : FreeMonoid<Byte>  ownership = Owned        growable = yes  encoding = raw    lifetime = self
-inhabits BoxedBytes : FreeMonoid<Byte>  ownership = Owned        growable = no   encoding = raw    lifetime = self
-inhabits StrSlice   : FreeMonoid<Char>  ownership = Borrowed     growable = n/a  encoding = UTF-8  lifetime = source
-inhabits CowOfStr   : FreeMonoid<Char>  ownership = Conditional  growable = n/a  encoding = UTF-8  lifetime = conditional
+// Algebra carries encoding structurally — FreeMonoid<Char> is UTF-8 (Rust's
+// definition of `str`); FreeMonoid<Byte> is raw bytes. No "encoding" refinement
+// axis; encoding IS the algebra.
+
+inhabits RustString : FreeMonoid<Char>  ownership = Owned        growable = yes  lifetime = self
+inhabits BoxedStr   : FreeMonoid<Char>  ownership = Owned        growable = no   lifetime = self
+inhabits StrSlice   : FreeMonoid<Char>  ownership = Borrowed     growable = n/a  lifetime = source
+inhabits CowOfStr   : FreeMonoid<Char>  ownership = Conditional  growable = n/a  lifetime = conditional
+
+// Different algebra (FreeMonoid<Byte>) — NOT candidates for `.dag` String;
+// candidates only when program intent is FreeMonoid<Byte>:
+inhabits VecOfBytes : FreeMonoid<Byte>  ownership = Owned        growable = yes  lifetime = self
+inhabits BoxedBytes : FreeMonoid<Byte>  ownership = Owned        growable = no   lifetime = self
 ```
 
 **Program input:**

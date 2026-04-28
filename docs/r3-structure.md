@@ -149,7 +149,7 @@ R3 commits to closing the consequence layer of the thesis. The following are *no
 
 ## Design challenges — direction ratified 2026-04-28; specific decisions split between DECIDED and SCHEDULED
 
-Director review of #1078 (2026-04-28T01:32:45Z) ratified the recommendations below. **Two distinct release states** apply across the 8 challenges (per gpt-5-5-pro meta-review feedback at 03:02Z that "DECISIONS LOCKED" was conflating ratified-direction with specific-decision):
+Director review of #1078 (2026-04-28T01:32:45Z) ratified the recommendations below. **Two distinct release states** apply across the 8 challenges (per gpt-5-5-pro meta-review feedback at 03:02Z that "DECISIONS LOCKED" was conflating ratified-direction with specific-decision): [retraction-context: explaining the supersession of the prior state-name framing]
 
 - **DECIDED** = specific design decision is final; no further PR needed for the design itself (only implementation): challenges #4 (SG-0 = 0 + ≤1 trampoline), #5 (L4-L7 split + L6 reclassified to R2), #6 (OpenAPI + Markdown drift-lock; SQL DDL alternative), #7 (perf measurable or post-R3), #8 (mechanical replication; post-R3 generalize-providers trigger)
 - **DIRECTION RATIFIED, SPECIFIC DECISION SCHEDULED** = direction is locked but specific design lands in a named follow-up PR before R2-Evaluator dispatch: challenges #1 (Evaluator runtime-value model — PR-B), #2 (reflection completeness spec — PR-C), #3 (cross-target equivalence semantics — PR-D)

@@ -24,10 +24,22 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 # Release-control docs covered by this consumer.
+#
+# Scope: docs that carry live release-control authority (program / lane /
+# state). Design docs that *discuss* retracted concepts in narrative
+# (e.g., docs/design-emission-model.md, which explains why the engine
+# framing was retracted and what replaced it) are intentionally OUT of
+# scope — they're explanatory authorities, not release-control authorities.
+# Including them would force every retraction-narrative line to carry an
+# explicit marker, neutering the check the way claude-opus-4-7 review
+# warned against (broad retraction patterns silently allow live framings).
+#
+# If a release-control fact starts living in a design doc, the design doc
+# should be added to this list, and any retraction-narrative lines in it
+# get explicit [retraction-context] markers per the discipline rule.
 RELEASE_DOCS=(
   "docs/r2-structure.md"
   "docs/r3-structure.md"
-  "docs/design-emission-model.md"
   "docs/thesis/r2-r3-thesis-mapping.md"
 )
 
@@ -71,7 +83,7 @@ RETRACTION_PATTERNS=(
   # Explicit author marker for legitimate retrospective prose that
   # discusses retracted concepts inline. Use this sparingly — it's
   # the author opting out of the narrow check. Form: [retraction-context]
-  "\[retraction-context\]"
+  "\[retraction-context"  # matches [retraction-context] and [retraction-context: explanation]
 )
 
 violations=0
