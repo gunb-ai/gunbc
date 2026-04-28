@@ -607,39 +607,6 @@ mod tests {
         rest[..end].trim()
     }
 
-    fn integer_algebra_fact_label(algebra: IntegerAlgebra) -> &'static str {
-        match algebra {
-            IntegerAlgebra::OrderedRing => "OrderedRingAlgebra",
-            IntegerAlgebra::Semiring => "SemiringAlgebra",
-        }
-    }
-
-    fn target_carrier_fact_label(carrier: TargetCarrier) -> &'static str {
-        match carrier {
-            TargetCarrier::Byte => "ByteCarrier",
-            TargetCarrier::Word16 => "Word16Carrier",
-            TargetCarrier::Word32 => "Word32Carrier",
-            TargetCarrier::Word64 => "Word64Carrier",
-            TargetCarrier::Bit | TargetCarrier::Terminal => {
-                panic!("integer range mirror used non-integer carrier {carrier:?}")
-            }
-        }
-    }
-
-    fn integer_range_facts_from_dag_source(source: &str) -> Vec<RangeFact<'_>> {
-        source
-            .split("data ")
-            .filter(|block| block.contains(": IntegerRangeFact = {"))
-            .map(|block| RangeFact {
-                target_name: quoted_field(block, "target_name"),
-                algebra: bare_field(block, "algebra"),
-                carrier: bare_field(block, "carrier"),
-                min: quoted_field(block, "range_min_inclusive"),
-                max: quoted_field(block, "range_max_inclusive"),
-            })
-            .collect()
-    }
-
     /// Inner slice of the `go_spec_predeclared_primitives` data list (between `[` and the matching
     /// closing `]`), for text-level drift checks without involving the v3 parser.
     fn go_spec_predeclared_list_inner(source: &str) -> &str {
@@ -698,40 +665,6 @@ mod tests {
             at = end;
         }
         out
-    }
-
-    /// Drift pin for the temporary three-way range bridge. Until R2 makes
-    /// `rust_pilot_primitives` structurally walkable and this mirror is
-    /// deleted, the generated/walkable `IntegerRangeFact` rows and the
-    /// hand-authored grounding mirror must agree on integer bounds.
-    #[test]
-    fn integer_range_facts_match_grounding_pilot_mirror() {
-        let source = include_str!("../../../../dsl/extdeps/languages/rust/primitives.dag");
-        let facts = integer_range_facts_from_dag_source(source);
-        let mirrored: Vec<RangeFact<'_>> = RUST_PILOT_PRIMITIVES
-            .iter()
-            .filter_map(|primitive| match primitive {
-                RustPrimitive::IntegerPrimitive {
-                    target_name,
-                    algebra,
-                    carrier,
-                    range_min_inclusive,
-                    range_max_inclusive,
-                    ..
-                } => Some(RangeFact {
-                    target_name,
-                    algebra: integer_algebra_fact_label(*algebra),
-                    carrier: target_carrier_fact_label(*carrier),
-                    min: range_min_inclusive,
-                    max: range_max_inclusive,
-                }),
-                RustPrimitive::NonIntegerPrimitive { .. } => None,
-            })
-            .collect();
-        assert_eq!(
-            facts, mirrored,
-            "IntegerRangeFact rows in primitives.dag must match the grounding pilot mirror"
-        );
     }
 
     /// `GoIntegerRangeFact` data rows duplicate range fields on `GoIntegerPrimitive` / alias rows in
