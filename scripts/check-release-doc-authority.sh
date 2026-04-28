@@ -65,6 +65,15 @@ FORBIDDEN_STRINGS=(
   "canonical choice"
   "@target"
   "DECISIONS LOCKED"
+  # Added 2026-04-28 per codex finding on PR #1078 commit ca9b4c66:
+  # T-Verification-L4L7 was the prior single-lane name; r3-structure.md
+  # split into T-Verification-L4-L7-Direct (L4+L7 Evaluator-direct) and
+  # T-Verification-L5-Corpus (L5 corpus-driven). The thesis-mapping doc
+  # had stale T-Verification-L4L7 in 8 per-claim rows that the v1
+  # consumer didn't catch — exactly the structured-state-drift class
+  # named as v2-guardrail follow-up. Adding here keeps the v1 string
+  # check fresh while v2 is in flight.
+  "T-Verification-L4L7"
 )
 
 # Lines that count as "retraction context" — if a line containing a

@@ -397,7 +397,7 @@ Plus existing:
 
 ### Recommended R3 lane structure update
 
-R3 keeps T-Verification-L4L7 as the verification lane that *proves* the no-engine claim:
+R3 keeps the verification lanes that *prove* the no-engine claim — split per Codex Pattern B finding 2026-04-28 into `T-Verification-L4-L7-Direct` (Evaluator-direct: L4 + L7) and `T-Verification-L5-Corpus` (corpus-driven: L5 only):
 
 - L4 (`l4_emit_eval_match`): for every program, emitted target output equals `.dag` evaluation. **If the fold fabricates a target choice that .dag doesn't evaluate to, L4 fails — verifies the no-engine claim by execution.**
 - L5 (`l5_cross_target_consistency`): emitted Rust/Python/Go produce equivalent runtime behavior. **Any engine policy that resolves inconsistently across targets would fail L5.**

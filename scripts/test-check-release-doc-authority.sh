@@ -103,6 +103,11 @@ test_negative_decisions_locked() {
     "DECISIONS LOCKED 2026-04-28: Director ratified all 8 challenges as final decisions."
 }
 
+test_negative_t_verification_l4l7() {
+  test_negative_single "T-Verification-L4L7" \
+    "T-Verification-L4L7 verifies the no-engine claim via runtime evaluation."
+}
+
 # ---------------------------------------------------------------
 # Positive case: forbidden strings in retraction context should pass
 # ---------------------------------------------------------------
@@ -142,13 +147,14 @@ EOF
 
 failures=0
 
-# Per-string negative tests (5)
+# Per-string negative tests (6)
 for test_fn in \
   test_negative_t_ground_engine \
   test_negative_t_ground_annotation \
   test_negative_canonical_choice \
   test_negative_at_target \
-  test_negative_decisions_locked; do
+  test_negative_decisions_locked \
+  test_negative_t_verification_l4l7; do
   forbidden="${test_fn#test_negative_}"
   echo "Test (negative/$forbidden): live string should fail consumer..."
   if "$test_fn"; then

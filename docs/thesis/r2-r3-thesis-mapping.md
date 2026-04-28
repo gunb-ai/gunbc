@@ -27,7 +27,7 @@ Per THESIS §"Tier 1 — Structural correctness (impossible to write the bug)":
 | **Stale imports caught at compile time** | R1 | T-LaneE / Tier-1 type system | Module resolution + strict reference (live) | ✅ live |
 | **Cross-target drift caught at compile time** | R2 | T-Substrate / SourceFiltering canonical authority | PR #1004 (Worker 2 brief) | ✅ landed in R2 |
 | **CX gate: every recursive function terminates with a proven bound** | R1 | T-LaneE / `complexity_merge_sort_*` | E-family carrier port (R1 lane work) | 🟡 R1 closure |
-| **Coercion = emission (no separate coercion engine)** | R3 | T-Verification-L4L7 + T-Ground-Dissolve | R2-T-Ground-Dissolve closes; R3 verifies | 🟡 R2 partial / R3 close |
+| **Coercion = emission (no separate coercion engine)** | R3 | T-Verification-L4-L7-Direct (L4 emit/eval match) + T-Ground-Dissolve | R2-T-Ground-Dissolve closes; R3 verifies via L4 | 🟡 R2 partial / R3 close |
 | **Ownership: no aliased mutation in emitted code** | R1 | T-LaneE / ownership lens | Live since L1 (CM-inventory) | ✅ live |
 | **Grounding completeness — Rust target primitives structurally modeled** | R2 | T-Ground-Rust XL | R2 amendment 2026-04-28 (folds Rust XL into R2 scope) | 🟡 in flight (Pilot ✓; PR #989 slice-1 merged with engine framing — post-merge cleanup queued per [`docs/design-emission-model.md`](../design-emission-model.md) §"Affected lanes (post-merge realignment)"; Rust dispatch pending) |
 | **Grounding completeness — Python target primitives structurally modeled** | R2 | T-Ground-Python L | R2 amendment 2026-04-28 (folds Python L into R2 scope) | ⏳ pending dispatch (post-R1 close) |
@@ -36,7 +36,7 @@ Per THESIS §"Tier 1 — Structural correctness (impossible to write the bug)":
 | **Sealed-accessor patterns at type level (Secret<T>)** | R2 | T-Modeling Secret<T> + T-Substrate NominalOpacity | #900 carrier ✓; #937 walker ✓; PR A in flight (Copernicus); PR B pending | 🟡 in flight |
 | **`Dimension<Carrier>` proof-dimension framework (one-parameter; behavioral analysis carrier)** | R2 | T-Modeling Dimensions | PR #886 — landed `Dimension<Carrier>` per `src/v3/std/dimensions.dag:61` (`name` / `witness_of` / `compose` / `identity` / `break_diagnostic`) | ✅ landed in R2 |
 | **Phantom-parameter typed value wrappers (`Duration<Unit>`, `Money<Currency>`)** | post-R3 modeling | not yet a named lane | ROADMAP `:450` — "The live tree does not yet support this shape." Not the same as `Dimension<Carrier>`; requires substrate for typed value wrappers with phantom parameters propagating through arithmetic + algebra inhabitance for those wrappers (abelian group with compare, no multiplication). Adjacent to DB-18 user-defined parametric algebra attachment | ⏳ post-R3 (no lane) |
-| **User-authored lenses validate programs (THESIS §"User-defined dimensions")** | R1 + R3 verification | T-LensAPI (R1) + T-Verification-L4L7 (R3 verifies the claim end-to-end) | T-LensAPI lane R1 — `user_authored_lens_compiles` Day-1 gate; `lens_composition_associative` ext gate via `AlgebraicLaw` | 🟡 R1 closure for compile-side; R3 for runtime-validation receipt |
+| **User-authored lenses validate programs (THESIS §"User-defined dimensions")** | R1 + R3 verification | T-LensAPI (R1) + T-Verification-L4-L7-Direct (R3 verifies the claim end-to-end via L4 emit/eval match + L7 algebraic-law witnesses) | T-LensAPI lane R1 — `user_authored_lens_compiles` Day-1 gate; `lens_composition_associative` ext gate via `AlgebraicLaw` | 🟡 R1 closure for compile-side; R3 for runtime-validation receipt |
 | **Fabrication path closures (B-series)** | R2 | T-Substrate B-wave Tier 0 | PR #817 (B2 Arrow re-derive→fail-closed); PR #820 (B1 Go UnknownVariant); PR #821 (B3 fold template-formal) | ✅ landed in R2 |
 
 **Tier 1 gaps from THESIS:** none identified — every Tier-1 sub-claim mapped.
@@ -52,7 +52,7 @@ Per THESIS §"Tier 2 — Runtime safety (proven safe or total)":
 | **Integer overflow — proven safe at full Int128/Word128** | R3 | T-Int128 (M-L) | r3-structure.md §T-Int128 | ⏳ R3 dispatch |
 | **Out-of-bounds — proven safe or total** | R2 | T-ImpossibleBugs Class 2 (unhandled-diagnostic-paths) | PR #969 iterating | 🟡 in flight |
 | **Force-unwrap — proven safe or total** | R2 | T-ImpossibleBugs Class 1 (nested-optional flatten) | PR #890 ✓; PR #962 follow-ups ✓ | ✅ landed in R2 |
-| **Partial functions — made total** | R2 + R3 | T-ImpossibleBugs (R2 partial) + T-Verification-L4L7 (R3 verifies totality) | R2 dissolves call sites; R3 harness verifies no partials remain | 🟡 R2 partial / R3 close |
+| **Partial functions — made total** | R2 + R3 | T-ImpossibleBugs (R2 partial) + T-Verification-L4-L7-Direct (R3 verifies totality via L4 emit/eval match — no failed evaluations) | R2 dissolves call sites; R3 harness verifies no partials remain | 🟡 R2 partial / R3 close |
 
 **Tier 2 gaps from THESIS:** none identified — every Tier-2 sub-claim mapped, with int-lit's Int128/Word128 closure deferred to R3 (per existing R2 scope decision: "full Int128/Word128 closure remains separate Substrate scope").
 
@@ -62,10 +62,10 @@ Per THESIS §"Tier 3 — Verification from structure":
 
 | Claim | Disposition | Lane / gate | Evidence | Status |
 |---|---|---|---|---|
-| **L4: emitted code matches .dag evaluation** | R3 | T-Verification-L4L7 / `l4_emit_eval_match` | r3-structure.md §T-Verification-L4L7 | ⏳ R3 dispatch (gated on R2-Evaluator) |
-| **L5: same .dag → same behavior in Rust/Python/Go** | R3 | T-Verification-L4L7 / `l5_cross_target_consistency` | r3-structure.md §T-Verification-L4L7 | ⏳ R3 dispatch (gated on R2-Evaluator + R2-Grounding-Rust + R2-Grounding-Python) |
+| **L4: emitted code matches .dag evaluation** | R3 | T-Verification-L4-L7-Direct / `l4_emit_eval_match` | r3-structure.md §T-Verification-L4-L7-Direct | ⏳ R3 dispatch (gated on R2-Evaluator) |
+| **L5: same .dag → same behavior in Rust/Python/Go** | R3 | T-Verification-L5-Corpus / `l5_cross_target_consistency` | r3-structure.md §T-Verification-L5-Corpus | ⏳ R3 dispatch (gated on R2-Evaluator + R2-Grounding-Rust + R2-Grounding-Python + T-Verification-L4-L7-Direct corpus) |
 | **L6: every structural form compiles to every target** | R2 (structural fold, not runtime) | T-Ground-CrossTarget-Meta / `l6_structural_form_coverage` (cross-product fold over substrate × language-specs; compile-time checkable, no corpus or runtime) | Reclassified 2026-04-28 per Codex Pattern B finding: classifying L6 as corpus-driven verification let runtime authority gate a structurally-checkable property — same anti-pattern as the omni-coherence finding. The fold walks `(6 type connectives × 5 behaviors × cardinality variants) × Shape A targets` and verifies each pair has an emission path declared. Lane home: R2-T-Ground-CrossTarget-Meta (structural acceptance gate, not runtime check) | ⏳ R2 (structural acceptance gate) |
-| **L7: operations obey declared algebraic laws** | R3 | T-Verification-L4L7 / `l7_algebraic_laws_witnessed` | r3-structure.md §T-Verification-L4L7 (witness construction via R2-Evaluator) | ⏳ R3 dispatch |
+| **L7: operations obey declared algebraic laws** | R3 | T-Verification-L4-L7-Direct / `l7_algebraic_laws_witnessed` | r3-structure.md §T-Verification-L4-L7-Direct (witness construction via R2-Evaluator) | ⏳ R3 dispatch |
 
 **Tier 3 gaps from THESIS:** none identified. **R3 verification surface = {L4, L5, L7}** = three runtime-verification claims. **L6 was reclassified to R2** as a structural cross-product fold (lives in T-Ground-CrossTarget-Meta) per Codex Pattern B finding 2026-04-28 — see L6 row above. The four THESIS levels are still all mapped, just split between R3 (runtime) and R2 (structural).
 
@@ -77,7 +77,7 @@ Per THESIS §"Concept unifications":
 |---|---|---|---|---|
 | **Coercion cost = complexity** | R3 | T-CostLens-Composition / `cost_lens_reads_target_realization` + `coercion_cost_equals_complexity_by_construction` + `no_coercion_cost_dimension` (R3 lane 10; Director-locked 2026-04-28). Plus R2 substrate facts: per-operation cost on `dsl/std/algebra.dag` + per-primitive realization cost on language specs | Per [`docs/design-emission-model.md`](../design-emission-model.md) Modeling problem 8 — cost lens reads (1) `.dag` algebra-level cost + (2) target-primitive realization cost via the language spec; composes structurally; verifies the unification holds by construction (not by reviewer convention). No "coercion cost" dimension | ⏳ R3 dispatch (gated on R2-Evaluator + R2-T-Substrate per-op algebra cost + R2-T-Ground-LanguageSpec per-primitive realization cost) |
 | **Coercion = emission** | R3 | T-Ground-Dissolve (R2 closes coercion scaffolding; R3 verifies emission-as-coercion claim) | T-Ground-Dissolve PR (R2) + R3 harness | 🟡 R2 close + R3 verify |
-| **Target language spec = transport spec = interpreter runtime** | R3 | T-Verification-L4L7 (cross-target equivalence under shared interpreter) | r3-structure.md | ⏳ R3 |
+| **Target language spec = transport spec = interpreter runtime** | R3 | T-Verification-L5-Corpus (cross-target equivalence under shared interpreter — this is the L5 claim) | r3-structure.md | ⏳ R3 |
 | **Idempotency + cancellation + redundancy = algebraic simplification** | R2 | T-ImpossibleBugs Class 3 (unenumerated effects — already exercises this via algebra inhabitance) | PR #971 ✓ | ✅ landed in R2 |
 
 ## Disposition table — Epistemic stacking
@@ -88,7 +88,7 @@ Per THESIS §"Epistemic stacking (load-bearing for codegen — must not be dropp
 |---|---|---|---|---|
 | **Every concept is a node in an ontological DAG rooted at minimal primitives** | R1 + R2 | T-Substrate (primitive substrate) + INVARIANTS P1 enforcement | `dsl/std/algebra.dag` is authority; live | ✅ live (continuous discipline) |
 | **Concrete types attach by inhabitance (algebra-inhabitance carrier shape)** | R2 | T-Substrate parametric algebra + T-Modeling `Dimension<Carrier>` proof-dimension framework | PR #886 (proof-dimension framework) + parametric algebra (R2 carriers) — substrate shape that *enables* algebra-inhabitance declarations; the live tree does not yet have a phantom-parameter typed-value-wrapper consumer per ROADMAP `:450` | 🟡 carrier-shape landed in R2; phantom-parameter consumer is post-R3 modeling work |
-| **Operations fall out from algebra inhabitance** | R3 | T-Verification-L4L7 (L7 algebraic laws witnessed via Evaluator) | r3-structure.md | ⏳ R3 |
+| **Operations fall out from algebra inhabitance** | R3 | T-Verification-L4-L7-Direct (L7 algebraic laws witnessed via Evaluator) | r3-structure.md | ⏳ R3 |
 | **Math primitives and domain primitives share one substrate** | R2 | T-Substrate + T-Modeling | NominalOpacity + Dimension<Carrier> on same substrate | ✅ landed in R2 |
 
 ## Disposition table — Substrate shape

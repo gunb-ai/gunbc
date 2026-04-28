@@ -222,7 +222,7 @@ T-LensProducer-Retirement (XL) → SG-0 non-test = 0 → T-FixedPoint (M)
 
 **DECISION (Director-locked 2026-04-28):** T-FixedPoint closes under "SG-0 non-test = 0 + ≤1 first-time-bootstrap trampoline allowed per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) §`First-time bootstrap`." The trampoline is *outside* `src/v3/`; the in-tree floor stays 0.
 
-### 5. T-Verification-L4L7 sequencing
+### 5. Verification-lane sequencing (Direct vs Corpus)
 
 **Question:** Are L4-L7 sequential or parallel?
 
