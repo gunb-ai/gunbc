@@ -138,6 +138,8 @@ These are **structural facts derivable from program use** — lifetime, escape, 
 
 ### Modeling problem 4 — declared structural ordering ("which is smaller")
 
+**Re-framed 2026-04-28:** "declared structural ordering" is no longer about choosing between tied candidates ("minimum-satisfier"). After Modeling problem 2's correction, ties don't exist — meaningful differences are modeled structurally so candidates uniquely match program intent. Ordering remains useful for *diagnostic enumeration* (telling users "your unrefined `Int` could be Int8/Int16/.../Int128 — here are the bounds") but is no longer load-bearing for emission.
+
 **Question:** when the fold needs to pick "minimum" satisfier, what declares the ordering?
 
 **Re-framing:** the fold should *not* "pick minimum." It should look up canonical (Modeling problem 2). But for diagnostics — telling users "your unannotated `Int` could be `i32`, `i64`, `i128`; canonical is `i64`; here are the alternatives" — the substrate needs to enumerate inhabitants in some order.
