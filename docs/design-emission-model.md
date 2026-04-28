@@ -891,15 +891,15 @@ These are the design questions the engine framing was hiding. Surfacing them as 
 
 ## Affected lanes (post-merge realignment)
 
-[PR #989](https://github.com/gunb-ai/gunbc/pull/989) "T-Ground-Engine: Phase 2 pilot-list enumeration (slice 1)" merged on main (stern-ant-452 + merry-bat) before this design doc was authored. The slice-1 code on main implements the prior framing (inhabitance-search + selection + tie-breaking). **Post-merge realignment options:**
+[PR #989](https://github.com/gunb-ai/gunbc/pull/989) "T-Ground-Engine: Phase 2 pilot-list enumeration (slice 1)" merged on main (stern-ant-452 + merry-bat) before this design doc was authored. **Actual slice-1 footprint** (per R2 Grounding Manager review 2026-04-28; verified at `src/v3/grounding_engine/src/lib.rs`): ~370 lines of structural-equality validation (`validate_loaded_rust_primitive_type_structure`, `validate_rust_primitive_type_structure`, `validate_mirror_consistency`, `validate_first_rust_pilot_row_matches_mirror`). Failure type is `StructureMismatch { location, expected, actual }`. **There is no selection logic, no inhabitance-search, no tie-breaking** — slice-1 is a one-way mirror-consistency probe between `Dag::rust_pilot_primitives()` and the `RUST_PILOT_PRIMITIVES` Rust mirror. `Coercion-Fold`'s `EmissionDiagnostic::{UnderRefined, NoInhabitant}` framing has no edge in slice-1; the only failure channel today is `StructureMismatch`. **Post-merge realignment options:**
 
-**(a)** Follow-up PR retracts selection logic + tie-breaking from slice-1 code; renames the lane (or its primary types) per `T-Ground-Coercion-Fold`; introduces `EmissionDiagnostic` carrier for under-determinism. Slice-1 code stays on main; semantics are corrected in-place.
+**(a)** Follow-up PR **renames** the `grounding_engine` crate / types per `T-Ground-Coercion-Fold` (or re-homes the mirror probe under `T-Ground-LanguageSpec` once that lands), and **introduces** `EmissionDiagnostic` as a separate typed carrier for under-determinism (currently no consumer exists; the carrier lands when fold work begins). Slice-1's mirror-consistency probe stays in place. **Sizing: S (rename + crate-relocation + introduce unused typed EmissionDiagnostic).** Not M — there's nothing to "retract" because there's no selection logic to remove.
 
 **(b)** Hold further slices (Phase 2 slice 2+) until LanguageSpec schema lands; slice-1 code on main remains as-is until follow-up cleanup wave. Avoids further engine-framed code while LanguageSpec is designed.
 
 **(c)** Combine: ship (b) immediately (hold further slices) and queue (a) as a follow-up cleanup PR once LanguageSpec lands and consumers can route through the new substrate.
 
-**Recommendation: (c).** (b) is the immediate hold; (a) is the substantive cleanup that follows once LanguageSpec lands. (c) is the realistic sequencing — slice-1 stays on main but doesn't get more engine-framed siblings.
+**Recommendation: (c).** (b) is the immediate hold; (a) is the rename/re-home/re-type cleanup that follows once LanguageSpec lands. (c) is the realistic sequencing — slice-1's mirror-consistency probe stays on main, gets renamed and re-homed under LanguageSpec, and the typed `EmissionDiagnostic` lands when fold consumers actually start using it.
 
 This is a Director call (cross-program coordination); see Open call 1 below.
 
@@ -948,7 +948,7 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 **Substrate sequencing locked 2026-04-28:**
 - **R2-T-Substrate-Lens-Primitive** (small substrate addition; ~1.5-2 weeks at gunbc velocity) declares `Lens<C>` parametric type + generic fold + cost-basis discipline. **Lands in R2** to avoid dual-representation risk per user direction "anything pushed out compounds exponentially."
 - **R3 lanes consume `Lens<C>`**: T-CostLens-Composition (cost basis = SymbolicCost), T-Verification-L4-L7-Direct (cost basis = emit/eval-match witness; algebraic-law witness), T-Bridge-Retirement (where applicable). Each is an instance, not a separate framework.
-- **L6 collapses with the lens framework** per Director's insight: structural-form-coverage IS `Lens<EmissionPathPresent>` over substrate × language-specs. R2-T-Ground-CrossTarget-Meta scope reduces correspondingly.
+- **L6 collapses with the lens framework** per Director's insight: structural-form-coverage IS `Lens<EmissionPathPresent>` over substrate × language-specs. R2-T-Ground-CrossTarget-Meta scope reduces correspondingly. **Coordination flag (per R2 Grounding Manager review 2026-04-28):** to avoid authoring L6 twice, R2-T-Ground-CrossTarget-Meta and R2-T-Substrate-Lens-Primitive should land in coordinated sequence — Lens-Primitive lands first; CrossTarget-Meta consumes `Lens<EmissionPathPresent>` rather than authoring a parallel cross-product fold. If Lens-Primitive lands first, CrossTarget-Meta's scope is `Lens<EmissionPathPresent>` instance authoring + per-target spec authoring, not generic fold infrastructure.
 
 **Director's locked design decisions** (per response on #1078, recorded here for `design-lens-framework.md` authoring):
 1. **Pure monoidal**, not stateful. Memory-peak (anamorphism + state) is a separate framework.
