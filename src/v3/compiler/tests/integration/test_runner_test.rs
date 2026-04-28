@@ -857,3 +857,16 @@ fn test_runner_runs_sub_type_alias_where_lowers_gate() {
 
     assert_all_pass(&results);
 }
+
+#[test]
+fn test_runner_runs_p0_repeat_string_correct_gate() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let gate = manifest_dir.join("tests/fixtures/r1_gates.dag");
+    let source =
+        std::fs::read_to_string(&gate).unwrap_or_else(|err| panic!("read {gate:?}: {err}"));
+    let dag = compile_clean(&source, "src/v3/compiler/tests/fixtures/r1_gates.dag");
+    let results = TestRunner::new(&dag).run_suite("p0_repeat_string_correct_gate");
+
+    assert_eq!(results.len(), 1);
+    assert_all_pass(&results);
+}
