@@ -878,14 +878,14 @@ When the 8 examples above pass as `.dag` `TestClaim` declarations:
 
 ### Open design calls surfaced by the examples
 
-The reframe from "canonical choice + annotations" to "structural modeling + program-derived intent" surfaces real design calls that need Director sign-off before R2-Evaluator dispatch:
+The reframe from "canonical choice + annotations" to "structural modeling + program-derived intent" surfaces real design calls that need Director sign-off **before R2-T-Ground dispatch (the engine-reframe lanes: Coercion-Fold, LanguageSpec, Lifetime-Analyzer, Diagnostic, CrossTarget-Meta, Dissolve)**. R2-Evaluator dispatch is unrelated parallel work and not gated on these calls — see §"Open call 1" Timeline.
 
 1. **Strict vs pragmatic minimally-complete** (Example 3): does `data name: String = "Alice"` emit `Box<str>` (strict — what the program declares) or `String` (pragmatic — what the program might want later)? **DECISION (locked 2026-04-28 per user direction): strict.** Pragmatic adds engine policy disguised as ergonomics. If users need ergonomic defaults, they declare them via substrate-level refinement defaults, not engine guesses.
 2. **Lifetime/escape analyzer scope** (Example 4): R2 covers (a) top-level data bindings, (b) function parameters with transient use, (c) function return values via R2-T-Ground-Lifetime-Analyzer. **DECISION (locked 2026-04-28 per user direction): d/e/f LAND IN R3** — closures (d), async lifetimes (e), self-referential / Pin (f) are R3 work, not deferred to post-R3. **Lane home: T-LensProducer-Retirement** (folded into existing R3 lane; the lifetime analyzer is structurally what replaces `lens_apply.rs`'s reflection work, so the advanced lifetime cases land alongside the retirement). The R3 verification surface (`T-Verification-L4-L7-Direct`) needs the analyzer for non-trivial programs; deferring to post-R3 would constrain R3's runnable corpus.
 3. **Apparent multi-inhabitance audit** (general): for every case that looked like "multiple inhabitants needing canonical," re-audit per Modeling problem 2 corrected: is the difference cosmetic (collapse) or meaningful (model the structural axis)? **Recommendation: enumerate the cases as part of T-Ground-LanguageSpec lane scope; each case is a sub-task that either retracts a candidate or extends substrate refinement.**
 4. **Required structural axes for Rust target** (general): the String family example surfaced (ownership, growability, encoding, lifetime). The integer family used (bound, signedness via algebra). What other axes does Rust need? Float family (precision, NaN-handling), reference family (mutability, lifetime, raw vs reference). **Recommendation: T-Ground-Rust XL lane scope explicitly enumerates the structural axes needed per Rust primitive family before substrate-population begins.**
 
-These are the design questions the engine framing was hiding. Surfacing them as open calls means R2-Evaluator dispatch waits on real design work, not on engine implementation.
+These are the design questions the engine framing was hiding. Surfacing them as open calls means **R2-T-Ground dispatch waits on real design work**, not on engine implementation. R2-Evaluator dispatch is parallel and proceeds independently — see §"Open call 1" Timeline for the gate scope.
 
 ## Affected lanes (post-merge realignment)
 
