@@ -737,7 +737,6 @@ mod tests {
         }
     }
 
-
     /// Fail-closed shape — a routing key with no declared inhabitant
     /// returns NoInhabitant rather than silently picking. (BooleanAlgebra
     /// over Word64 is out-of-pilot-scope; using it here as a probe.)
