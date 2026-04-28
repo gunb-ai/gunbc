@@ -3844,3 +3844,75 @@ mod unshare_bootstrap_sentinel_tests {
         );
     }
 }
+
+/// **P2(c) hardening — helper-path validation rejects non-executables.** (api-review
+/// codex/codex-default sha 143b7da5, BLOCKING.) Without this check, the override env var
+/// could point at a directory or non-x file: \[unshare] would fail to exec it → empty
+/// sentinel → `NamespaceSetupFailed` → direct fallback runs the user command, silently
+/// converting helper misconfiguration into a possible `Matched` logical exit.
+#[cfg(all(test, target_os = "linux"))]
+mod helper_path_validation_tests {
+    use super::is_regular_executable_file;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn directory_is_rejected() {
+        let dir = std::env::temp_dir();
+        // tmp dir definitely exists and is a directory.
+        assert!(dir.is_dir());
+        assert!(
+            !is_regular_executable_file(&dir),
+            "directory must NOT pass helper-path validation"
+        );
+    }
+
+    #[test]
+    fn non_executable_file_is_rejected() {
+        let path = std::env::temp_dir().join(format!(
+            "gunbc_pb_runtime_helper_validation_nonexec_{}",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("write tmp");
+        let mut perms = std::fs::metadata(&path).expect("meta").permissions();
+        perms.set_mode(0o644); // explicitly NO execute bit
+        std::fs::set_permissions(&path, perms).expect("chmod 644");
+        let result = is_regular_executable_file(&path);
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            !result,
+            "non-executable file must NOT pass helper-path validation"
+        );
+    }
+
+    #[test]
+    fn missing_file_is_rejected() {
+        let path = std::path::PathBuf::from(format!(
+            "/tmp/gunbc_pb_runtime_helper_validation_missing_{}_{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        assert!(!path.exists());
+        assert!(
+            !is_regular_executable_file(&path),
+            "missing path must NOT pass helper-path validation"
+        );
+    }
+
+    #[test]
+    fn executable_file_is_accepted() {
+        // /bin/sh is universally a regular executable file on Linux.
+        let path = if std::path::Path::new("/bin/sh").exists() {
+            std::path::PathBuf::from("/bin/sh")
+        } else {
+            std::path::PathBuf::from("/usr/bin/sh")
+        };
+        assert!(
+            is_regular_executable_file(&path),
+            "regular executable {} must pass helper-path validation",
+            path.display()
+        );
+    }
+}
