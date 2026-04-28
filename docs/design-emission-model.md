@@ -217,7 +217,129 @@ Today: scattered across `dsl/std/coercion.dag` (schema) + `dsl/extdeps/languages
 
 **The work:** designing the cross-target meta-spec. This is substrate-level — declares which inhabitances are portability requirements vs target-specific niceties. Failing to declare this leaves portability as policy rather than structural fact.
 
-### Modeling problem 8 — first-class language-spec emission (dogfooding)
+### Modeling problem 8 — cost lens over emission must be structural composition (not a separate dimension)
+
+**Load-bearing claim** (per user direction 2026-04-28): the cost lens should be **FREE for coercion**. If it isn't, that's a structural modeling gap — analyze it, don't paper over it with a separate "coercion cost" dimension.
+
+**Why this is a thesis-faithfulness test, not a feature request.** THESIS already commits to two unifications:
+1. **"Coercion = emission"** (THESIS:171, 186) — emission *is* coercion; not a separate phase
+2. **"Coercion cost = complexity"** (THESIS:185) — coercion's cost *is* the complexity dimension
+
+Composing these: emission's cost = coercion's cost = complexity. So the cost lens applied to a program-with-emission target should *automatically* include realization cost. **No new lens, no new dimension, no per-target cost lookup table** — just the existing complexity lens reading structural facts that include target-language-spec-declared per-primitive costs.
+
+If the cost lens *cannot* analyze coercion for free, exactly one of three gaps exists:
+
+| Gap | Failure mode | What it implies |
+|---|---|---|
+| **(a) Cost lens doesn't read target-side facts** | Cost lens currently analyzes `.dag` programs, not target-emitted programs. Per-primitive realization cost (e.g., `u32.add` = O(1), `BigInt.add` = O(n)) isn't in the lens's input set | Modeling gap — wire cost lens to read language-spec realization-cost declarations |
+| **(b) Cost lens has its own per-target table** | The lens duplicates target language spec by maintaining its own per-target cost facts, parallel to the language spec's primitive declarations | P2 violation — parallel authority. Cost facts live in language spec; lens consumes them. No duplicate table |
+| **(c) "Coercion = emission" is reviewer-convention, not structure** | The unification is asserted but not held by construction; emission proceeds via paths the cost lens can't structurally see | Thesis-faithfulness gap — emission must produce a *cost-analyzable* artifact for the unification to hold by construction |
+
+**Required substrate facts for the unification to be structurally true:**
+
+1. **Algebra-level cost** — `dsl/std/algebra.dag` declares per-operation cost shape (e.g., `OrderedRing.add` has cost `O(1)` symbolic; `Vec.append` has cost `O(amortized 1)`)
+2. **Target-primitive realization cost** — language spec (`dsl/extdeps/languages/{rust,python,go}/`) declares per-primitive cost shape per operation (e.g., Rust's `u32.add` = O(1) word op; Rust's `BigInt.add` = O(digit_count))
+3. **Composition rule** — cost lens reads (1) program's algebra-level cost + (2) emitted target's per-primitive cost via the language spec → produces total realization cost. Composition is structural fold, not engine policy.
+
+**If all three are declared facts, the cost lens is free for coercion by construction.** No additional work needed beyond reading the substrate.
+
+### Worked examples — cost lens applied to emitted target
+
+**Setup:** assume the substrate facts above are declared. Cost lens runs the same way for both examples; only the input refinement differs.
+
+#### Example A — `Int(0..2^32) + Int(0..2^32)` → Rust `u32 + u32`
+
+**Program input:**
+```
+data x: Int(0..2^32) = 100
+data y: Int(0..2^32) = 50
+data z: Int(0..2^32) = x + y
+```
+
+**Cost-lens fold:**
+1. Algebra cost (from `algebra.dag`): `Semiring.add` carries cost shape `O(1)` symbolic
+2. Emission resolves `x + y` to Rust `u32 + u32` (per Example 2)
+3. Target realization cost (from language spec): Rust `u32.add` = O(1) word operation
+4. **Composed**: O(1) algebra × O(1) realization = **O(1) total**
+
+**Cost lens output:** `CostExpr(work=1, span=1, asymptotic_class=O(1))`. Reading: this addition is constant-time per word. No engine policy; just composition of declared facts.
+
+#### Example B — same program emitted as `BigInt + BigInt` (hypothetical, post-R3 substrate)
+
+If the user widened the bound to require `BigInt`:
+```
+data x: Int(0..2^512) = 100
+data y: Int(0..2^512) = 50
+data z: Int(0..2^512) = x + y
+```
+
+**Cost-lens fold:**
+1. Algebra cost: same — `Semiring.add` symbolic shape O(1)
+2. Emission resolves to Rust `BigInt + BigInt` (post-R3, when arbitrary-precision substrate lands)
+3. Target realization cost (declared on Rust language spec for BigInt): `BigInt.add` = O(digit_count)
+4. **Composed**: O(1) algebra × O(digit_count) realization = **O(digit_count) total**
+
+**Cost lens output:** `CostExpr(work=O(digit_count), span=O(digit_count), asymptotic_class=O(n))`. Same program, structurally larger bound, structurally larger cost. **The compiler doesn't choose** — the user's program structure (the bound they declared) determines the target, and the cost lens reports the consequence.
+
+#### Example C — coercion across types in one expression
+
+```
+data n: Int(0..2^32) = 100
+data total: Int(0..2^64) = n + n
+```
+
+**Cost-lens fold:**
+1. The expression `n + n` has program-side type `Int(0..2^64)` (program declared); inputs are `Int(0..2^32)`
+2. Emission emits *some* coercion path: `n: u32 → u64; n: u32 → u64; u64 + u64`
+3. Algebra cost: `Semiring.add` = O(1)
+4. Target realization cost:
+   - `u32 → u64` widen: O(1) (declared in language spec; no cost for word-widening on 64-bit)
+   - `u64.add`: O(1)
+5. **Composed**: O(1) widening × 2 + O(1) add = **O(1) total**
+
+**Coercion cost is not extra.** It's just the cost of the widening operations declared in the language spec, composed structurally with the algebra cost. **No "coercion dimension" — the cost lens already analyzes coercion because coercion IS the widening operations declared on target primitives.**
+
+### Where the gaps actually are today
+
+Per the lens-capability register and v3 lens audit (2026-04-21):
+- **`src/v3/lenses/complexity.dag`** — currently produces a single integer depth per port. Does NOT yet read target-side per-primitive cost facts. **Gap (a)** is real.
+- **`src/v3/lenses/cost.dag`** — PROXY. No named size variables; Dimension wiring deferred. Does NOT yet compose with target realization. **Gap (a) + gap (c)**.
+- **Language specs (`dsl/extdeps/languages/*/`)** — declare primitive types but do NOT yet declare per-primitive cost shapes. **Substrate fact (2) above is missing.**
+- **§6a `MethodContract`** — DOES declare per-method cost shape (Goal 5 R2 receipt). This is the start of substrate fact (1) for method-call costs, but not yet generalized to all algebra operations.
+
+**Current assessment:** the unification "coercion cost = complexity" is asserted but **not held by construction**. The cost lens is *not* free for coercion today; it would require:
+- Generalizing per-method cost (§6a `MethodContract`) to per-operation cost on every algebra in `algebra.dag`
+- Adding per-primitive realization-cost declarations to language specs
+- Wiring the cost lens to compose `.dag`-algebra cost + target-realization cost via the language spec
+
+**This is real substrate work**, not feature work. It belongs in R2 + R3:
+
+| Substrate completion task | Lane home | Sizing |
+|---|---|---|
+| Per-operation cost on every algebra in `algebra.dag` | R2-T-Substrate / extends §6a `MethodContract` pattern | M |
+| Per-primitive realization-cost declarations on language specs | R2-T-Ground-LanguageSpec (folds into existing scope per Modeling problem 6) | S (per target; ~3 targets) |
+| Cost lens composition rule (`.dag` algebra cost × target realization cost) | R3-T-CostLens-Composition (new lane; consumes both above) | M |
+| Verify "coercion cost = complexity" holds by construction | R3-T-Verification-L4-L7-Direct extension OR new structural acceptance gate | S |
+
+**The R3 lane (T-CostLens-Composition) is post-R2-Evaluator** because the verification needs the Evaluator to construct cost witnesses at runtime. Adding it to R3 keeps the consequence-layer framing — once R2 lands the substrate facts (algebra cost + target realization cost), R3 lands the lens composition + verification.
+
+### Recommendation: add T-CostLens-Composition to R3
+
+Per the dispositions above, the unification "coercion cost = complexity" needs:
+- R2: substrate facts (algebra cost shapes + target realization costs)
+- R3: composition lane (`T-CostLens-Composition`)
+
+**Proposed addition to r3-structure.md lane structure:**
+
+| Lane | Size | Manager | Covers | R2-close dependency |
+|---|---|---|---|---|
+| **T-CostLens-Composition** | M | **Verification Manager** (or new Cost Manager) | Cost lens reads (1) algebra-level cost + (2) target-primitive realization cost via language spec; composes structurally; verifies "coercion cost = complexity" holds by construction. **No "coercion cost" dimension** — falls out of existing complexity lens reading substrate facts | R2-Evaluator (witness construction) + R2-T-Ground-LanguageSpec (target realization-cost declarations) + R2 algebra-cost extension |
+
+This makes the cost lens free for coercion by *substrate construction* — exactly what the user direction said it should be.
+
+**Open call (added 2026-04-28):** Director sign-off on whether this lane lands as part of R3 or as a post-R3 cycle. Recommendation: **R3** — it's a small mechanical lane once R2 substrate facts are declared; deferring to post-R3 risks "coercion cost = complexity" remaining asserted-not-structural, which would falsify the thesis claim by construction.
+
+### Modeling problem 9 — first-class language-spec emission (dogfooding)
 
 **Question:** if a language spec is `.dag`, does the compiler emit Shape A on its own spec?
 
@@ -242,7 +364,8 @@ The lane was sized as "M (~1-2 weeks first-cut)" per [`docs/thesis/target-ground
 | 5. Fail-closed diagnostic surface | **NEW LANE** — `EmissionDiagnostic` carrier substrate | S |
 | 6. Language spec as substrate | **NEW LANE** — `LanguageSpec` schema authoring + per-target population | M (was hidden as part of "T-Ground-Engine") |
 | 7. Cross-target uniformity meta-spec | **NEW LANE** — cross-target portability requirements | S |
-| 8. First-class language-spec emission | **POST-R3** — dogfooding | not in R2/R3 |
+| 8. Cost lens over emission (structural composition) | R2 substrate facts (algebra cost on `algebra.dag` + per-primitive realization cost on language specs) + **R3 lane T-CostLens-Composition** for the lens fold + structural verification that "coercion cost = complexity" holds by construction | M (R3) + S (R2 substrate extensions) |
+| 9. First-class language-spec emission | **POST-R3** — dogfooding | not in R2/R3 |
 
 What remains as a "fold lane":
 - **T-Ground-Coercion-Fold** (rename of T-Ground-Engine) — the mechanical implementation that reads declared facts and returns unique answer or `EmissionDiagnostic`. **S size, not M.** Most of the work was in the modeling problems above; the fold itself is small.
@@ -792,7 +915,7 @@ If §1 lands, the following docs need amendment:
 
 ### 3. Post-R3 dogfooding decision
 
-Modeling problem 8 (first-class language-spec emission) is post-R3. Whether it ships as part of ecosystem buildout or as an explicit later release is open.
+Modeling problem 9 (first-class language-spec emission) is post-R3. Whether it ships as part of ecosystem buildout or as an explicit later release is open.
 
 **Ownership:** post-R3, not pre-promotion.
 
