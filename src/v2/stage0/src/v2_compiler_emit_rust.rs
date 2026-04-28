@@ -11248,8 +11248,7 @@ pub fn emit_dry_run_branch_from_props(
             v2_rt::concat(
                 v2_rt::concat(
                     log_line,
-                    "\ncompile_error!(\"no mock data available for dry-run operation: "
-                        .to_string(),
+                    "\ncompile_error!(\"no mock data available for dry-run operation: ".to_string(),
                 ),
                 op_name.clone(),
             ),
@@ -11369,7 +11368,12 @@ pub fn emit_dry_run_branch_from_props(
     let field_names: Vec<String> = children
         .iter()
         .cloned()
-        .map(|ch| emit_ident(authored_name_at(source_indices.clone(), &ch), RenderTarget::Rust))
+        .map(|ch| {
+            emit_ident(
+                authored_name_at(source_indices.clone(), &ch),
+                RenderTarget::Rust,
+            )
+        })
         .collect();
     let result_body = v2_rt::concat(
         v2_rt::concat("(".to_string(), field_names.join(&", ".to_string())),
