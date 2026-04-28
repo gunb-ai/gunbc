@@ -934,7 +934,7 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 5. **User-authored lens substrate:** T-LensAPI rescope to lens-as-monoid in same wave as `Lens<C>` lands. User-lens surface inherits structurally.
 6. **Three worked instances sufficient for generality validation:** complexity (additive numeric monoid), tenant-flow (set union + categorical authorization), IFC (lattice join + downgrade rejection). Stretch goals (memory-peak, energy, latency) are post-R3 instances.
 
-**The doc `docs/design-lens-framework.md`** (Director-authored post-#1078-merge) is the spec for the R2-T-Substrate-Lens-Primitive substrate work and the contract R3 lens instances consume.
+**The doc [`docs/design-lens-framework.md`](design-lens-framework.md)** (PROPOSAL skeleton authored 2026-04-28; Director extends post-#1078-merge for full spec) is the separate authority for the lens framework — three worked instances (complexity / tenant-flow / IFC), Director's 6 locked design decisions, migration plan for the 4 existing PROXY/STUB lenses, and the up-front validation checklist (design-phase + implementation-phase + migration-phase self-checks). This is the contract R2-T-Substrate-Lens-Primitive substrate work delivers and R3 lens instances consume.
 
 **Ownership:** post-R3, not pre-promotion.
 
