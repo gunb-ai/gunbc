@@ -4572,28 +4572,12 @@ fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>)
   is_conj && from_key_count > 0
 }
 
-fn response_200_declared_type_name(op_node: Node, source_indices: Map<String, NewlineIndex>) -> String? {
-  match op_node.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200") |> first {
-    Some { value: p } => {
-      let v = field_init_node_value(n: p)
-      let n = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: v))
-      if n == "" { none } else { Some { value: n } }
-    }
-    None => none
-  }
+fn has_response_200_property(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  op_node.properties |> any(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200")
 }
 
-fn declared_response_200_requires_typed_wire(declared: String) -> Bool {
-  if declared == "Json" { false }
-  else {
-    let parts = declared |> split(delimiter: ".")
-    match parts |> last {
-      Some { value: last } => last != "Json"
-      None => true
-    }
-  }
-}
-
+// Returns none when the property is absent or when it is present but the body type
+// cannot be resolved. Emitters must combine with has_response_200_property for fail-closed behavior.
 fn operation_response_200_resolved_type(op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node? {
   match op_node.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200") |> first {
     Some { value: p } => {
@@ -4677,16 +4661,12 @@ fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: S
 fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let rt = resolved_type(n: op_node)
   let children = rt.children
-  let decl_name_opt = response_200_declared_type_name(op_node: op_node, source_indices: source_indices)
   let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
-  if match decl_name_opt {
-    Some { value: n } => declared_response_200_requires_typed_wire(declared: n)
-    None => false
-  } && match wire_opt {
+  if has_response_200_property(op_node: op_node, source_indices: source_indices) && match wire_opt {
     None => true
     Some { value: _ } => false
   } {
-    "compile_error!(\"REST response_200: declared non-Json body type could not be resolved in TypeEnv for typed projection\");\n"
+    "compile_error!(\"REST response_200: declared HTTP 200 body type is present but could not be resolved (empty name, missing TypeEnv binding, or inference gap); illegal state\");\n"
   } else {
   let use_typed_wire = match wire_opt {
     Some { value: tn } => !is_json_wire_declaration_type(t: tn, source_indices: source_indices)

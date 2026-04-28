@@ -11785,28 +11785,21 @@ pub fn has_from_key_fields(
     }
 }
 
-/// Authoritative name text on the `response { 200 => Name }` arm (if any).
-pub fn response_200_declared_type_name(
+/// True when the operation surface syntax includes a `response_200` field init.
+pub fn has_response_200_property(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<String> {
-    for p in op_node.properties.iter().cloned() {
-        if field_init_node_name_at(p.clone(), source_indices.clone()).as_str() == "response_200" {
-            let v = field_init_node_value(&p);
-            let n = authored_name_at(
-                source_indices.clone(),
-                &normalize_access_type_node(v.clone()),
-            );
-            if n.is_empty() {
-                return None;
-            }
-            return Some(n);
-        }
-    }
-    None
+) -> bool {
+    op_node.properties.iter().any(|p| {
+        field_init_node_name_at(p.clone(), source_indices.clone()).as_str() == "response_200"
+    })
 }
 
-/// Resolved type for `response { 200 => T }` on a service operation, if present.
+/// Resolved type for `response { 200 => T }` on a service operation.
+///
+/// Returns [`None`] both when the property is absent and when it is present but
+/// the body type cannot be resolved. Callers that need fail-closed behavior must
+/// combine with [`has_response_200_property`]: present + [`None`] is illegal.
 pub fn operation_response_200_resolved_type(
     op_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -11831,10 +11824,6 @@ pub fn operation_response_200_resolved_type(
         }
     }
     None
-}
-
-pub fn declared_response_200_requires_typed_wire(declared: &str) -> bool {
-    !(declared == "Json" || declared.ends_with(".Json"))
 }
 
 pub fn is_json_wire_declaration_type(
@@ -11976,16 +11965,11 @@ pub fn emit_from_key_extraction(
     {
         let rt = resolved_type(op_node.clone());
         let children = rt.children.clone();
-        let decl_name_opt =
-            response_200_declared_type_name(op_node.clone(), source_indices.clone());
         let wire_opt =
             operation_response_200_resolved_type(op_node.clone(), source_indices.clone(), env);
-        if match decl_name_opt.clone() {
-            Some(ref n) => declared_response_200_requires_typed_wire(n.as_str()),
-            None => false,
-        } && wire_opt.is_none()
+        if has_response_200_property(op_node.clone(), source_indices.clone()) && wire_opt.is_none()
         {
-            return "compile_error!(\"REST response_200: declared non-Json body type could not be resolved in TypeEnv for typed projection\");\n".to_string();
+            return "compile_error!(\"REST response_200: declared HTTP 200 body type is present but could not be resolved (empty name, missing TypeEnv binding, or inference gap); illegal state\");\n".to_string();
         }
         let use_typed_wire = match wire_opt.clone() {
             Some(tn) => !is_json_wire_declaration_type(tn.clone(), source_indices.clone()),
