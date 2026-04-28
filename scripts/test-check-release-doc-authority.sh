@@ -264,11 +264,17 @@ fi
 
 if [ "$limitation_failures" -gt 0 ]; then
   echo ""
-  echo "Self-test PARTIAL: contract assertions pass, but $limitation_failures pinned-"
+  echo "Self-test FAILED: contract assertions pass, but $limitation_failures pinned-"
   echo "limitation test(s) flipped — the v1 foot-gun is no longer exhibited, meaning"
-  echo "v2 narrowing has likely landed. Update the test name + flip the assertion to"
-  echo "match the new consumer contract."
-  exit 0
+  echo "v2 narrowing has likely landed. The test must be updated:"
+  echo "  - rename test_foot_gun_currently_allowed (the v1 limitation no longer applies)"
+  echo "  - flip the assertion (consumer should now reject the foot-gun fixture)"
+  echo "  - update the test display message to match the new consumer contract"
+  echo ""
+  echo "Exiting non-zero per gpt-5-5-pro/codex review — the script's message says"
+  echo "'force the test update,' so the script must actually fail to make CI force"
+  echo "the next implementer to do the update rather than silently drift."
+  exit 1
 fi
 
 echo ""
