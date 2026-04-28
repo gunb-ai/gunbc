@@ -1332,10 +1332,10 @@ fn run_linux_unshare_then_direct(
             }
         }
         UnshareBootstrapStage::LogicalExecFailed => {
-            // Probe passed but `exec(2)` returned a failure (TOCTOU, ENOEXEC, ETXTBSY, ...).
-            // The bootstrap's exit code is sh's, NOT the logical command's — surface as
-            // `SpawnFailed` so a claim expecting (e.g.) 126 cannot Match an unexec'd binary
-            // (P2(c) regression manager flagged on draft review).
+            // Probe passed but `execvp(3)` returned a failure (TOCTOU, ENOEXEC, ETXTBSY,
+            // ...). The wrapper exit code is the helper binary's, NOT the logical command's
+            // — surface as `SpawnFailed` so a claim expecting (e.g.) 126 cannot Match an
+            // unexec'd binary (P2(c) regression manager flagged on draft review).
             ExecuteCommandHostOutcome::SpawnFailed {
                 wrapper: None,
                 direct: format!(
