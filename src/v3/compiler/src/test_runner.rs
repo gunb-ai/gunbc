@@ -759,27 +759,38 @@ impl Drop for UnshareReadyPipe {
 #[cfg(target_os = "linux")]
 const GUNBC_EXECUTE_COMMAND_BOOTSTRAP_PATH_ENV: &str = "GUNBC_EXECUTE_COMMAND_BOOTSTRAP";
 
-/// True iff `path` is a regular file with at least one execute bit set. We don't trust
-/// `Path::exists()` alone for the helper because a directory or non-executable file would
-/// pass that check, then `unshare(1)` would fail to `exec` the bad path, the helper would
-/// never write its sentinel, the parent would classify the empty result as
-/// `NamespaceSetupFailed`, and the direct fallback would run the logical command — silently
-/// converting a setup-failure into a possible `Matched` logical exit, violating P2(c).
-/// (api-review codex/codex-default sha 143b7da5, BLOCKING.)
+/// True iff `path` is a regular file that the calling process can actually `execve` —
+/// i.e. it exists, is a regular file (not a directory or symlink-to-directory), AND the
+/// effective uid/gid has execute permission per `access(2)` with `X_OK`. We don't trust
+/// `Path::exists()` (would pass directories) and we don't trust a bare mode-bit check
+/// (would pass `--x------` files our uid cannot exec, leading to `EACCES` at exec time
+/// → empty sentinel → `NamespaceSetupFailed` → direct fallback runs the logical command,
+/// silently converting setup-failure into a possible `Matched` logical exit).
+///
+/// `access(2)` is the kernel-supplied atomic check that combines uid/gid against the file
+/// permissions (api-review codex sha 523776b BLOCKING follow-up + sha 143b7da5 BLOCKING
+/// original; together close the P2(c) silent-direct-fallback class for the helper path).
 #[cfg(target_os = "linux")]
 fn is_regular_executable_file(path: &std::path::Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::ffi::OsStrExt;
     let Ok(meta) = std::fs::metadata(path) else {
         return false;
     };
     if !meta.is_file() {
         return false;
     }
-    // Any of owner/group/other execute bits set is sufficient — execvp only needs *some*
-    // exec capability for the calling user, but verifying that precisely requires uid/gid
-    // checks that don't add safety here (kernel will EACCES at exec time, which produces a
-    // typed `LogicalExecFailed` outcome — not a setup-failure-fallback-to-direct path).
-    (meta.permissions().mode() & 0o111) != 0
+    // Build a NUL-terminated byte vec for libc::access. Reject paths containing interior
+    // NULs (cannot be passed to access(2) at all).
+    let bytes = path.as_os_str().as_bytes();
+    if bytes.contains(&0) {
+        return false;
+    }
+    let mut c_path = Vec::with_capacity(bytes.len() + 1);
+    c_path.extend_from_slice(bytes);
+    c_path.push(0);
+    // SAFETY: c_path is NUL-terminated; access(2) is signal-safe and read-only.
+    let rc = unsafe { libc::access(c_path.as_ptr() as *const libc::c_char, libc::X_OK) };
+    rc == 0
 }
 
 /// Locates the `gunbc_execute_command_bootstrap` helper binary at runtime. The cargo
@@ -3913,6 +3924,36 @@ mod helper_path_validation_tests {
             is_regular_executable_file(&path),
             "regular executable {} must pass helper-path validation",
             path.display()
+        );
+    }
+
+    /// **BLOCKING regression (api-review codex sha 523776b).** A file with execute bits
+    /// set only for a uid/gid the calling process is NOT (e.g. `--x------` owned by root
+    /// while we run as a non-root test runner) must be rejected — otherwise `unshare`
+    /// would `EACCES` at exec time, the helper would never write the sentinel, and we'd
+    /// silently route to direct fallback, violating P2(c).
+    ///
+    /// Construction: drop ALL execute bits (mode 0o400 = `r--------`) on a file we own;
+    /// `access(X_OK)` returns -1/EACCES and the validator rejects. This exercises the
+    /// uid-aware check rather than just "any bit set."
+    #[test]
+    fn non_executable_to_calling_uid_is_rejected() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!(
+            "gunbc_pb_runtime_helper_validation_uid_aware_{}",
+            std::process::id()
+        ));
+        std::fs::write(&path, b"#!/bin/sh\nexit 0\n").expect("write tmp");
+        let mut perms = std::fs::metadata(&path).expect("meta").permissions();
+        // mode 0o400: owner can read but not execute; nobody can execute.
+        // access(X_OK) by the caller (us, the owner) → EACCES. Validator must reject.
+        perms.set_mode(0o400);
+        std::fs::set_permissions(&path, perms).expect("chmod 400");
+        let result = is_regular_executable_file(&path);
+        let _ = std::fs::remove_file(&path);
+        assert!(
+            !result,
+            "file with no execute permission for the calling uid must be rejected (P2(c))"
         );
     }
 }
