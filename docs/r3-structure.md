@@ -201,7 +201,7 @@ T-LensProducer-Retirement (XL) → SG-0 non-test = 0 → T-FixedPoint (M)
 - Does T-FixedPoint require *every* hand-Rust file retired, or just the lens-producer subset?
 - Does the bin-shim pattern itself need to be expressible in `.dag`, or is the trampoline allowed to be hand-Rust under "first-time bootstrap" §`First-time bootstrap` resolution choice?
 
-**Recommendation:** T-FixedPoint closes under "SG-0 non-test = 0 + ≤1 first-time-bootstrap trampoline allowed per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) §`First-time bootstrap`." The trampoline is *outside* `src/v3/`; the in-tree floor stays 0.
+**DECISION (Director-locked 2026-04-28):** T-FixedPoint closes under "SG-0 non-test = 0 + ≤1 first-time-bootstrap trampoline allowed per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) §`First-time bootstrap`." The trampoline is *outside* `src/v3/`; the in-tree floor stays 0.
 
 ### 5. T-Verification-L4L7 sequencing
 
@@ -209,7 +209,7 @@ T-LensProducer-Retirement (XL) → SG-0 non-test = 0 → T-FixedPoint (M)
 
 L4 (emit/eval match) and L7 (algebraic-law witnesses) share the Evaluator; L5 (cross-target) needs all three Shape A targets grounded; L6 (form coverage) is a corpus-construction problem.
 
-**Recommendation:** L4 + L7 in parallel as soon as Evaluator + R2 close (witnesses construct via Evaluator; emit/eval match needs Evaluator). L5 after R2-Grounding-Rust + R2-Grounding-Python land. L6 after the corpus exists (needs L4 first to define what gets emitted).
+**DECISION (Director-locked 2026-04-28):** L4 + L7 land in parallel post-R2 as `T-Verification-L4-L7-Direct`. L5 (after R2-Grounding-Rust + R2-Grounding-Python land) and L6 (after the corpus exists) land in `T-Verification-L5-L6-Corpus`. Lane is split into two per Director rearrange #1; see §"Lane structure" table.
 
 ### 6. Shape B target choice
 
@@ -217,11 +217,10 @@ L4 (emit/eval match) and L7 (algebraic-law witnesses) share the Evaluator; L5 (c
 
 **Candidates:** YAML/K8s, Terraform HCL, OpenAPI spec, JSON Schema, SPICE netlist, SQL DDL, Markdown documentation.
 
-**Recommendation:** prioritize by **thesis demonstration value**:
-1. **OpenAPI + SQL DDL** (or equivalent backend pair) — exercises "one workflow → full-stack" claim cleanly because both layers derive from the same workflow `.dag`
-2. **Markdown documentation** — exercises drift-lock claim ("documentation can't drift from implementation")
+**DECISION (Director-locked 2026-04-28):** OpenAPI + Markdown drift-lock as the primary pair. Demo SQL DDL as alternative if OpenAPI runs into its own design surface (e.g., complex schema generation). Defer SPICE / HDL / niche targets to post-R3 ecosystem work.
 
-Defer SPICE / HDL / niche targets to post-R3 ecosystem work.
+- **Primary:** OpenAPI spec emission + Markdown documentation drift-lock — exercises both "one workflow → full-stack" and "documentation can't drift from implementation"
+- **Alternative:** SQL DDL pair if OpenAPI proves too complex for R3 scope
 
 ### 7. Tier 3 mirror dissolution mechanics
 
@@ -233,7 +232,7 @@ The four mirrors (termination, computation, induction, effect-carrier) currently
 - Is consumer migration mechanical (just `use std::termination::merge_evidence` instead of the Rust mirror) or does it require API redesign?
 - Performance implications: does running `.dag` bodies via Evaluator have measurable overhead vs. compiled-Rust mirrors? What's the acceptable threshold?
 
-**Recommendation:** for R3, accept mirror retirement *with* potential performance regression up to a defined threshold (e.g., 2x slower in the affected paths). Performance optimization of evaluated paths is post-R3 work; structural close is the R3 deliverable.
+**DECISION (Director-locked 2026-04-28):** Either measurable as a `.dag` TestClaim (`tier3_mirror_dissolution_perf_within_budget` with explicit numeric threshold) OR explicitly post-R3 with no in-R3 perf gate. The narrative "≤2x slower acceptable" was ambiguous; the choice is between *enforced budget* and *deferred entirely*. Recommended path: **explicitly post-R3** unless someone authors the perf-budget claim with concrete numbers and tooling. R3 deliverable is structural close; perf is downstream.
 
 ### 8. R3 Anthropic vs R2 OpenAI
 
@@ -241,17 +240,31 @@ The four mirrors (termination, computation, induction, effect-carrier) currently
 
 R2 #1028 lands OpenAI typed wire (held until stabilizes per current Substrate Manager direction). R3-T-Anthropic-Wire is parallel work for the Anthropic provider.
 
-**Recommendation:** R3-T-Anthropic-Wire mechanically replicates the R2 OpenAI pattern. If the OpenAI pattern wasn't generalized (i.e., each provider has its own typed-wire lane), this is a **post-R3 dissolution opportunity** — generalize the pattern across providers. For R3, ship Anthropic in parallel with the OpenAI shape.
+**DECISION (Director-locked 2026-04-28):** Mechanical replication of the R2 OpenAI pattern; named post-R3 *generalize-across-providers* dissolution opportunity. R3 ships Anthropic typed wire in parallel with the OpenAI shape; post-R3 work generalizes the pattern as a single provider-typing program if multiple providers warrant.
+
+## Pre-R2-Evaluator design lock cadence (added 2026-04-28 per Director rearrange #2)
+
+The 8 design challenges above are not resolvable via comment-thread back-and-forth — that's ~1-2 weeks of substantive design work even at gunbc velocity. Director rearrange #2 pinned the resolution to explicit milestone PRs:
+
+| PR | Scope | Closes | Status |
+|---|---|---|---|
+| **PR-A** (this PR — #1078) | r2-structure.md amendment + r3-structure.md pre-promotion + thesis-mapping + design-emission-model | Frame; lane structure; engine reframe | In review |
+| **PR-B** | Evaluator runtime-value model decision (closed-over environments, lazy/eager, memoization, witness construction) | Design challenge #1 — biggest open question | Pending |
+| **PR-C** | Reflection completeness spec doc (definition of "complete" for `reflect_program_dag_nodes_in_file`) | Design challenge #2 | Pending |
+| **PR-D** | Cross-target equivalence semantics (algebraic-equal corpus) | Design challenge #3 | Pending |
+| **PR-E** | Evaluator dispatch brief (after PR-A through PR-D land) | Worker dispatch precondition | Pending |
+
+Workers cannot dispatch on under-specified scope, especially on multi-week T-Verification critical path. PR-B through PR-D are gates; PR-E starts Evaluator implementation work.
 
 ## Dependency on R2
 
 R3 cannot start meaningful work until R2 closes. Specifically:
 
-- **R2-Evaluator** is the upstream gate for **5 of 7 R3 lanes** (T-Tier3, T-LensProducer, T-Verification, T-FixedPoint, T-Omni-Shape-B). Without it, R3 dispatchers spin.
-- **R2-Grounding (full)** is the upstream gate for T-Verification-L4L7 (specifically L5 cross-target).
-- **R2 substrate carriers** (NominalOpacity, ValueBody::Map, parametric algebra) feed T-Int128 and T-Anthropic-Wire as parallel substrate work.
+- **R2-Evaluator** is the upstream gate for **6 of 9 R3 lanes** (T-Tier3, T-LensProducer, T-Verification-L4-L7-Direct, T-Verification-L5-L6-Corpus, T-FixedPoint, T-Omni-Shape-B). Without it, R3 dispatchers spin.
+- **R2-Grounding-Rust + R2-Grounding-Python** are the upstream gate for T-Verification-L5-L6-Corpus (specifically L5 cross-target).
+- **R2 substrate carriers** (NominalOpacity, ValueBody::Map, parametric algebra) feed T-Int128 + T-Anthropic-Wire + T-Bridge-Retirement as parallel substrate-completion work.
 
-R3 spin-up therefore aligns with R2-close, not earlier. **Pre-R3 brief authoring may begin during R2 final week** (Director-discretionary, mirroring R2's pre-R1-close pattern), but worker dispatch waits for R2-Evaluator landing.
+**R3 worker dispatch precondition (Director-locked 2026-04-28 per rearrange #4):** R2-Evaluator landed AND R2-Grounding-Rust+Python landed. Pre-R3 *brief authoring* may begin during R2 final week (Director-discretionary, mirroring R2's pre-R1-close pattern), but worker dispatch waits for the joint precondition. This prevents R3 brief authoring from spawning drift if R2 close definition slips.
 
 ## R3 closure criteria
 
