@@ -204,8 +204,8 @@ fn dag_needs_go_result_prelude(
         .iter()
         .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
         || top_level_binds
-        .iter()
-        .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
+            .iter()
+            .any(|bind| port_uses_substrate_result_or_div_error(dag, bind.value))
         || function_decls
             .iter()
             .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
