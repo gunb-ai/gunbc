@@ -1112,6 +1112,73 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Recommendation:** **(c)** — per-operation cost on each inhabitance, fine-grained. Reason: matches the algebra-inhabitance discipline (each algebra has known operations; each inhabitance declares the operation's realization cost on that target). Loose coupling (b) creates parallel-representation debt (cost lives in two places: inhabitance + cost declaration). Per-primitive (a) doesn't disambiguate which operation's cost is meant.
 
+**DECISION (Director-locked 2026-04-28 via dialogue): (c5) — RealizationCost as record of `Cost<Unit>` coordinates, with `Cost<Unit> = Dimension<Unit, SymbolicExpr>` and `Unit` substrate-declared primitives (sibling to existing SI base units in dimensions.dag).**
+
+Director directive: cost is *not* a coproduct of "Time | Space | Energy" — those are coordinates, not alternatives. Per `feedback_coproduct_dissolution`: dissolve into coordinates. Director's nervousness about modeling fundamental concepts (Time, Space, Energy) is addressed by treating them as **substrate-declared primitives** (sibling to Meters/Seconds/Kilograms in `dimensions.dag:93-99`), not user-extensible labels.
+
+**Substrate shape:**
+
+```
+// Existing substrate (PR #886, dimensions.dag):
+type Dimension<Unit, Carrier> { value: Carrier }
+type SymbolicExpr   // existing complexity-expression carrier
+
+// New primitive Unit types (sibling to Meters, Seconds, Kilograms, ...):
+type Bits             // storage / memory cells (digital)
+type CPUCycles        // computation steps (single-core)
+// (Future: type Joules, type NetworkOps — added as substrate primitives,
+//  not user-extensible coproducts)
+
+// Cost<Unit> dissolves into Dimension<Unit, SymbolicExpr>:
+type Cost<Unit> = Dimension<Unit, SymbolicExpr>
+
+// RealizationCost is a record (coordinates, not sum):
+type RealizationCost {
+  storage: Cost<Bits>                       // "N bits per stored representation"
+  access:  Map<AlgebraOp, Cost<CPUCycles>>  // "M cycles per algebra operation"
+}
+
+// Existing SymbolicCost (algorithmic complexity) refines as a record with
+// time-flavored coordinates:
+type SymbolicCost {
+  work: Cost<CPUCycles>     // sequential time
+  span: Cost<CPUCycles>     // parallel time (critical path)
+}
+
+// Each inhabitance declares its realization cost:
+inhabits Int32 : OrderedRing {
+  realization = RealizationCost {
+    storage = Cost<Bits> { value: 32 }                     // 32-bit register
+    access  = {
+      add: Cost<CPUCycles> { value: 1 }                    // ADD instruction
+      mul: Cost<CPUCycles> { value: 1 }                    // MUL instruction
+    }
+  }
+}
+
+inhabits SPICEDigitalIntCircuit : OrderedRing<Int(N)> {
+  realization = RealizationCost {
+    storage = Cost<Bits> { value: N }                      // N-bit synthesized circuit
+    access  = {
+      add: Cost<CPUCycles> { value: N }                    // adder circuit
+      mul: Cost<CPUCycles> { value: N^2 }                  // multiplier circuit
+    }
+  }
+}
+```
+
+**Why (c5) lands cleanly:**
+
+1. **No new framework** — reuses existing `Dimension<Unit, Carrier>` from PR #886. Same substrate that carries `Duration<Seconds>` carries `Cost<Bits>`. One DAG-grounded concept (Q1's epistemic-stacking discipline applied recursively).
+2. **No coproduct compression** — Time/Space/Energy aren't alternatives; they're coordinates in a record. Dissolution per `feedback_coproduct_dissolution`.
+3. **Treats fundamental concepts as primitives** — Bits and CPUCycles are substrate-declared sibling to Meters/Seconds. Not user-extensible labels; substrate primitives matching the existing SI-unit pattern.
+4. **Cross-target comparisons fall out per coordinate** — pSPICE-vs-Verilog: "same .dag concept, different `Cost<Bits>` profile" or "different `Cost<CPUCycles>` profile." Each axis compares independently.
+5. **Future axes attach by adding a Unit primitive** — `type Joules` lands when energy analysis matters; no framework change required.
+
+**Sparse fail-closed access map:** `Map<AlgebraOp, Cost<CPUCycles>>` is sparse — only declared ops have cost; missing op = `Witness.Violates` per the lens framework's read-channel discipline. Forces honest modeling; no silent zero-cost.
+
+**Cadence consequence:** PR-I (Q3 + Q4 cadence) lands the substrate primitives (`Bits`, `CPUCycles`) + `Cost<Unit>` alias + `RealizationCost` record + per-inhabitance declarations on language specs. Sized within the original 1-2 day estimate (one substrate type alias + two primitive types + record schema; per-inhabitance declarations come during T-Ground-LanguageSpec dispatch).
+
 ### Q4 — L4 emit/eval match acceptance corpus
 
 **Status:** L5 corpus type DECIDED ("algebraic equivalence over curated corpus"). L4 corpus content NOT enumerated.
