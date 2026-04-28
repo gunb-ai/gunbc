@@ -2917,7 +2917,7 @@ fn render_value_body(dag: &Dag, value: &ValueBody) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        ValueBody::Map(entries) => render_map(dag, entries),
+        ValueBody::Map(entries) => render_map(dag, entries.entries()),
         ValueBody::Unparsed(span) => format!("<unparsed:{}:{}>", span.file, span.byte_start),
     }
 }
@@ -2939,7 +2939,7 @@ fn render_field_value(dag: &Dag, value: &FieldValue) -> String {
                 .collect::<Vec<_>>()
                 .join(", ")
         ),
-        FieldValue::Map(entries) => render_map(dag, entries),
+        FieldValue::Map(entries) => render_map(dag, entries.entries()),
         FieldValue::Variant {
             constructor,
             payload,
