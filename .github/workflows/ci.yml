@@ -81,7 +81,6 @@ jobs:
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-            target/
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/stage0/src/**') }}
           restore-keys: |
             cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-

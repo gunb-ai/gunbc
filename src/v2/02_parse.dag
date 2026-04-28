@@ -1278,6 +1278,7 @@ fn parse_type_after_kw(tokens: List<Token>, ctx: ParseContext, start_span: Sourc
   let type_params = type_params_result.params
   let tokens = skip_newlines(tokens: type_params_result.tokens)
   let ctx = type_params_result.ctx
+  let tokens = type_body_tokens_after_modifiers(tokens: tokens)
 
   // Record type: type Name { fields }
   match eat(tokens: tokens, expected: ExpectLBrace) {

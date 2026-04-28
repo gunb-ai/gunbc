@@ -50,6 +50,7 @@ fn rust_stdout(source: &str) -> String {
         // See common::RustcHarness::compile: strip RUSTC_BOOTSTRAP so the ratchet
         // CI step's libtest unlock does not leak into child rustc invocations.
         .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
@@ -366,5 +367,179 @@ fn double(x: Int) -> Int = x + x
     assert_eq!(
         shared_module, wrapper_module,
         "emit_go_module wrapper drifted from emit::emit_module"
+    );
+}
+
+#[test]
+fn emit_go_fails_closed_on_div_prelude_diverror_collision() {
+    let dag = compile_to_dag(
+        "type DivError = Bad | Worse\n\
+let x = 6 / 2",
+        "go_diverror_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_go(&dag).expect_err("Go emit must reject DivError prelude collision");
+    assert!(
+        matches!(err, v3_compiler::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("DivError")),
+        "expected explicit DivError collision error, got {err:?}"
+    );
+}
+
+#[test]
+fn emit_go_emits_diverror_prelude_for_explicit_result_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { DivError, Result }\n\
+fn passthrough(x: Result<Int, DivError>) -> Result<Int, DivError> = x\n",
+        "go_explicit_result_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        out.contains("type DivError int"),
+        "explicit Result<Int, DivError> usage needs DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
+fn emit_go_emits_result_carrier_for_non_diverror_result_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { Result }\n\
+fn passthrough(x: Result<Int, String>) -> Result<Int, String> = x\n",
+        "go_explicit_result_string_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        out.contains("type v3Result[T any, E any] interface"),
+        "explicit Result<Int, String> usage needs the generic Go Result carrier; got: {out}"
+    );
+    assert!(
+        !out.contains("type DivError int"),
+        "non-DivError Result usage should not emit the integer division error prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_go_emits_result_carrier_for_result_field_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { Result }\n\
+type Holder { value: Result<Int, String> }\n",
+        "go_result_field_string_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        out.contains("type v3Result[T any, E any] interface"),
+        "type fields using Result<Int, String> need the generic Go Result carrier; got: {out}"
+    );
+    assert!(
+        !out.contains("type DivError int"),
+        "non-DivError Result fields should not emit the integer division error prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_go_emits_diverror_prelude_for_result_field_without_division() {
+    let dag = compile_to_dag(
+        "import std.error_primitives { DivError, Result }\n\
+type Holder { value: Result<Int, DivError> }\n",
+        "go_result_field_diverror_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        out.contains("type v3Result[T any, E any] interface"),
+        "type fields using Result<Int, DivError> need the generic Go Result carrier; got: {out}"
+    );
+    assert!(
+        out.contains("type DivError int"),
+        "type fields using Result<Int, DivError> need DivError prelude even without `/`; got: {out}"
+    );
+}
+
+#[test]
+fn emit_go_checked_division_roundtrips_ok_and_errors_when_go_is_available() {
+    let Some(ok) = go_stdout("let x = 6 / 2\n") else {
+        return;
+    };
+    assert_eq!(ok, "{3}");
+
+    let Some(divide_by_zero) = go_stdout("let x = 6 / 0\n") else {
+        return;
+    };
+    assert_eq!(divide_by_zero, "{0}");
+}
+
+#[test]
+fn emit_go_checked_division_prelude_maps_overflow() {
+    let dag = compile_to_dag("let x = 6 / 2\n", "go_div_overflow_prelude.v3").expect("compiles");
+    let out = emit(&dag, EmitTarget::Go).expect("emits go program").text;
+    assert_eq!(
+        out.matches("return v3Err[int64, DivError]{Value: Overflow}")
+            .count(),
+        1,
+        "Go checked-division prelude must map min-int / -1 to Overflow; got: {out}"
+    );
+}
+
+#[test]
+fn emit_go_omits_div_prelude_for_user_diverror_signature_without_division() {
+    let dag = compile_to_dag(
+        "type DivError = DivideByZero | Overflow\n\
+fn passthrough(x: DivError) -> DivError = x\n",
+        "go_user_diverror_signature_no_div.v3",
+    )
+    .expect("compiles");
+    let out = emit_module(&dag, EmitTarget::Go)
+        .expect("emits go module")
+        .text;
+    assert!(
+        !out.contains("func v3intdiv"),
+        "user DivError signatures should not trigger integer division prelude; got: {out}"
+    );
+    assert!(
+        out.matches("type DivError").count() == 1,
+        "user DivError should emit once without colliding with a std prelude; got: {out}"
+    );
+}
+
+#[test]
+fn emit_go_fails_closed_on_div_prelude_helper_collision() {
+    let dag = compile_to_dag(
+        "fn v3intdiv(a: Int, b: Int) -> Int = a + b\n\
+let x = 6 / 2",
+        "go_div_helper_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_go(&dag).expect_err("Go emit must reject division helper collision");
+    assert!(
+        matches!(err, v3_compiler::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("v3intdiv")),
+        "expected explicit v3intdiv collision error, got {err:?}"
+    );
+}
+
+#[test]
+fn emit_go_fails_closed_on_div_prelude_top_level_bind_collision() {
+    let dag = compile_to_dag(
+        "let v3intdiv = 0\n\
+let x = 6 / 2",
+        "go_div_helper_bind_collision.v3",
+    )
+    .expect("compiles");
+    let err = emit_go(&dag).expect_err("Go emit must reject division helper bind collision");
+    assert!(
+        matches!(err, v3_compiler::EmitError::UnsupportedBehavior(ref message)
+            if message.contains("v3intdiv")),
+        "expected explicit v3intdiv bind collision error, got {err:?}"
     );
 }

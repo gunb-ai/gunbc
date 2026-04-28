@@ -334,8 +334,10 @@ fn test_3a3_refined_parameter_compiles() {
     // lowering creates a predicate Declaration and a refined type
     // Declaration, and the refined decl's `refinement` edge points at
     // the predicate. Internal use of `d` (e.g. `n / d`) is fine
-    // because the `/` operator doesn't require a refinement.
-    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n / d";
+    // because the `/` operator doesn't require a refinement. Division now
+    // returns the fail-closed `Result<Int, DivError>` carrier.
+    let src = "import std.error_primitives { DivError, Result }\n\
+fn div(n: Int, d: Int where d != 0) -> Result<Int, DivError> = n / d";
     let dag = cached_compile_to_dag(src, "test.v3");
     let div = dag
         .declaration_by_name("div")
@@ -903,7 +905,8 @@ fn test_3a3_substrate_integrity_behavior_still_five_variants() {
     // verify the DAG contains no unexpected Behavior variant — the
     // predicate sub-DAG is built from Value/Transform/Bind, all
     // pre-existing variants.
-    let src = "fn div(n: Int, d: Int where d != 0) -> Int = n / d";
+    let src = "import std.error_primitives { DivError, Result }\n\
+fn div(n: Int, d: Int where d != 0) -> Result<Int, DivError> = n / d";
     let dag = cached_compile_to_dag(src, "test.v3");
     for node in dag.nodes() {
         match node {
