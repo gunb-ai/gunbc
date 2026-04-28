@@ -188,6 +188,7 @@ mod compiler_tests {
             "dsl/extdeps/github/github.dag",
             "dsl/gunbc/auth/credentials.dag",
             "dsl/gunbc/tools/gist.dag",
+            "dsl/std/error_primitives.dag",
             "dsl/std/algebra.dag",
             "dsl/std/encoding.dag",
             "dsl/std/errors.dag",

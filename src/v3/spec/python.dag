@@ -702,6 +702,14 @@ data python_list_instantiation: TypeInstantiationRealization = {
   cost: 1
 }
 
+// v3 `Result<ok, err>` — `python_source_filtering` omits `dsl/std/`; prelude defines `DivError` + `__v3_idiv`.
+data python_result_instantiation: TypeInstantiationRealization = {
+  language: python_language
+  target: Result
+  carrier: "typing.Union[typing.Tuple[typing.Literal['Ok'], {key}], typing.Tuple[typing.Literal['Err'], {value}]]"
+  cost: 1
+}
+
 // List structural-sum → Python list surface; pattern-role + templates are spec-owned.
 data python_non_empty_list_instantiation: TypeInstantiationRealization = {
   language: python_language
