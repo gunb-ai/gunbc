@@ -396,6 +396,49 @@ Three additional items the Director review identified as R2-expansion (not R3):
 
 ~~**Timeline:** R2-Evaluator design questions resolve before R2-Evaluator worker dispatch begins. R3-specific design questions (Shape B choice, L4-L7 sequencing, etc.) may resolve during R2's final week / R3 brief-authoring window.~~
 
+### 4. Release-doc authority discipline (added 2026-04-28 per gpt-5-5-pro meta-review)
+
+The PR #1078 review loop surfaced a recurring pattern across 9 review events / 83 minutes / 5 codex passes / 1 cursor / 2 claude / 1 openai-pro: reviewers kept finding the same P2 single-authority shape in new clothing (lane count drift, Evaluator gating count drift, T-Ground-Engine surviving the no-engine reframe, T-Ground-Annotation surviving the no-annotation reframe, "DECISIONS LOCKED" coexisting with "RECOMMENDATION", Shape B target locks not propagating to gates, escape-hatch language adjacent to structured-program language). gpt-5-5-pro meta-reviewer at 2026-04-28T03:02:37Z verdict: PAUSE_AND_REGROUP — promote the pattern into a guardrail before iterating further.
+
+**Release-doc authority discipline (specialization of P2 Boundary Discipline at the release-control surface):**
+
+Every release-control fact lives in exactly one place with exactly one state. State drift across sibling docs (or within a single doc) is forbidden as live framing.
+
+**Release-control facts** include (non-exhaustive): lane counts, Evaluator-gated counts, R2/R3 lane membership, target-pair locks (Shape B etc.), engine/annotation/canonical lane existence, design-call open/closed state, decision states (DECIDED vs DIRECTION-RATIFIED-PENDING-PR vs OPEN), gate names, gate predicates.
+
+**State machine for each fact:**
+- `OPEN` — under active design discussion
+- `PROPOSED` — direction proposed, not yet ratified
+- `DIRECTION-RATIFIED, SPECIFIC-DECISION-SCHEDULED` — direction locked; specific design lands in named follow-up PR
+- `DECIDED` — specific design final, only implementation remains
+- `CLOSED` — work complete or moved out of release scope
+- `SUPERSEDED` — replaced by a named successor; original strikethrough'd inline
+- `RETRACTED` — explicitly removed from release ledger; original strikethrough'd inline
+- `DEFERRED` — moved to a future release with named target
+
+**Discipline rules:**
+
+1. **Single home.** Each release-control fact has one authoritative location named in this doc or [`docs/r3-structure.md`](r3-structure.md). Other docs project / cite, never re-author.
+2. **Single state.** A fact may not simultaneously hold two states (e.g., `DECIDED` and `OPEN`). When superseding, the prior framing is strikethrough'd inline with a `🔄 SUPERSEDED <date>` marker pointing at the successor.
+3. **Cascade discipline.** When a fact changes state, the change is propagated to every document that *projects* it in the same PR. Specifically the engine/annotation/lane-count/target-pair changes that recurred in the #1078 review loop must cascade across r2-structure.md, r3-structure.md, design-emission-model.md, thesis/r2-r3-thesis-mapping.md, and ROADMAP.md before merge.
+4. **Forbidden-string consumer.** A doc-consistency consumer (script or CI gate) checks for forbidden stale lane/concept names appearing outside retraction-context markers. See §"Doc consistency check" below for the live consumer.
+5. **State name correctness.** "DECISIONS LOCKED" cannot be used for items where the substantive decision is "scheduled in a follow-up PR." Such items are `DIRECTION-RATIFIED, SPECIFIC-DECISION-SCHEDULED`.
+
+**Why this is a P2 specialization, not a separate principle.** P2 says every fact lives in exactly one authoritative place. The release-control surface adds: each fact also has exactly one state, and the state transitions are auditable. Both are single-authority discipline; the addition is the state-machine vocabulary at the release surface.
+
+**Receipt:** PR #1078's review history (9 events, 83 minutes, 5 codex passes catching the same shape in different clothing) is the empirical case study. Each round caught one stale string while another sibling table preserved a different one. Without this rule, the next release-doc PR will repeat the loop.
+
+**Doc consistency check** (small consumer; see `scripts/check-release-doc-authority.sh`):
+
+```bash
+# Forbidden-string consumer — fails if any stale concept name appears in
+# live (non-retraction-context) sections of release-control docs.
+# Lives at scripts/check-release-doc-authority.sh; runs in CI on changed
+# release-control docs.
+```
+
+The script consumes a forbidden-string list (T-Ground-Engine outside retraction; T-Ground-Annotation outside retraction; "canonical choice" as live carrier; @target annotation outside retraction; "DECISIONS LOCKED" applied to DIRECTION-RATIFIED-SCHEDULED items, etc.) and reports violations. It's a small, mechanical consumer — not a full state-machine validator — but it catches the recurring pattern from the #1078 review loop with one bash invocation.
+
 ### 2. ~~Pre-promotion `≤5 irreducible-shim` gate-name review~~ — **RETRACTED (2026-04-25 cascade promotion)**
 
 > **🔄 RETRACTED** — both Option A (sharpen the ≤5/3/2 trajectory) and Option B (rename gate to `pb_hand_rust_at_boundary_floor`) framed gate-name choices around fractional-shim numbers. Under the cascade-promoted 0-floor target per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) (LIVE 2026-04-25; supersedes the prior ≤5-floor framing in `docs/design-pure-bootstrap.md`), the gate threshold is **0**, not "boundary-determined 2-3". Both options below are moot. The predicate name `pb_hand_rust_at_shim_floor` is retained as housekeeping (semantic shifted: "shim floor" now reads as 0 under cascade promotion); a future predicate rename to `pb_hand_rust_zero` is post-cascade housekeeping, not a pre-promotion blocker. Section preserved below for audit-trail readability of how the design call was framed before cascade.
