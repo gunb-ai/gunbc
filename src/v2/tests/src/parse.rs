@@ -9,6 +9,23 @@ use std::rc::Rc;
 use crate::helpers::*;
 use v2_compiler::v2_std_core::{InferredNode, TokenShape};
 
+/// Median wall time over several tokenize passes, plus the token count from the last pass.
+/// Stabilizes `large_time / small_time` when the small baseline is only a few milliseconds
+/// (noisy on shared CI runners).
+fn median_tokenize_secs(source: &str) -> (f64, usize) {
+    const RUNS: usize = 5;
+    let mut samples = Vec::with_capacity(RUNS);
+    let mut last_len = 0usize;
+    for _ in 0..RUNS {
+        let t0 = std::time::Instant::now();
+        let toks = tokenize(source);
+        last_len = toks.len();
+        samples.push(t0.elapsed().as_secs_f64());
+    }
+    samples.sort_by(|a, b| a.total_cmp(b));
+    (samples[RUNS / 2], last_len)
+}
+
 // ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 
 #[test]
@@ -420,8 +437,6 @@ fn tokenizer_non_ascii_performance_regression() {
 
 #[test]
 fn tokenizer_scales_linearly_with_file_size() {
-    use std::time::Instant;
-
     // Use smallest non-trivial .dag to establish baseline
     let small_source = read_v2_file("src/v2/ownership.dag"); // ~23KB
     let large_source = read_v2_file("src/v2/02_parse.dag"); // ~271KB
@@ -431,27 +446,22 @@ fn tokenizer_scales_linearly_with_file_size() {
     let _ = tokenize(&small_source);
     let _ = tokenize(&large_source);
 
-    let start = Instant::now();
-    let small_tokens = tokenize(&small_source);
-    let small_time = start.elapsed();
-
-    let start = Instant::now();
-    let large_tokens = tokenize(&large_source);
-    let large_time = start.elapsed();
+    let (small_time, small_count) = median_tokenize_secs(&small_source);
+    let (large_time, large_count) = median_tokenize_secs(&large_source);
 
     let size_ratio = large_source.len() as f64 / small_source.len() as f64;
-    let time_ratio = large_time.as_secs_f64() / small_time.as_secs_f64().max(0.001);
+    let time_ratio = large_time / small_time.max(0.001);
 
     eprintln!(
-        "small: {}B, {} tokens, {:.3}s | large: {}B, {} tokens, {:.3}s | size ratio: {:.1}x, time ratio: {:.1}x",
-        small_source.len(), small_tokens.len(), small_time.as_secs_f64(),
-        large_source.len(), large_tokens.len(), large_time.as_secs_f64(),
+        "small: {}B, {} tokens, {:.3}s (median of 5) | large: {}B, {} tokens, {:.3}s (median of 5) | size ratio: {:.1}x, time ratio: {:.1}x",
+        small_source.len(), small_count, small_time,
+        large_source.len(), large_count, large_time,
         size_ratio, time_ratio,
     );
 
     // If tokenization is O(n), time ratio should be ≈ size ratio.
-    // Allow ~3× slack on that ratio: a few-ms `small_time` on loaded CI VMs
-    // otherwise inflates `large_time / small_time`. True O(n²) is ~size_ratio².
+    // Allow ~3× slack on that ratio: loaded CI VMs still jitter `large_time`.
+    // True O(n²) is ~size_ratio².
     const LINEAR_MARGIN: f64 = 2.9;
     assert!(
         time_ratio < size_ratio * LINEAR_MARGIN,
@@ -464,31 +474,22 @@ fn tokenizer_scales_linearly_with_file_size() {
 
 #[test]
 fn tokenizer_scanning_scales_linearly() {
-    use std::time::Instant;
-
     let small_source = read_v2_file("src/v2/ownership.dag");
     let large_source = read_v2_file("src/v2/02_parse.dag");
 
     let _ = tokenize(&small_source);
     let _ = tokenize(&large_source);
 
-    let start = Instant::now();
-    let small_tokens = tokenize(&small_source);
-    let small_count = small_tokens.len();
-    let small_time = start.elapsed();
-
-    let start = Instant::now();
-    let large_tokens = tokenize(&large_source);
-    let large_count = large_tokens.len();
-    let large_time = start.elapsed();
+    let (small_time, small_count) = median_tokenize_secs(&small_source);
+    let (large_time, large_count) = median_tokenize_secs(&large_source);
 
     let size_ratio = large_source.len() as f64 / small_source.len() as f64;
-    let time_ratio = large_time.as_secs_f64() / small_time.as_secs_f64().max(0.001);
+    let time_ratio = large_time / small_time.max(0.001);
 
     eprintln!(
-        "scan-only: small: {}B, {} tokens, {:.3}s | large: {}B, {} tokens, {:.3}s | size ratio: {:.1}x, time ratio: {:.1}x",
-        small_source.len(), small_count, small_time.as_secs_f64(),
-        large_source.len(), large_count, large_time.as_secs_f64(),
+        "scan-only: small: {}B, {} tokens, {:.3}s (median of 5) | large: {}B, {} tokens, {:.3}s (median of 5) | size ratio: {:.1}x, time ratio: {:.1}x",
+        small_source.len(), small_count, small_time,
+        large_source.len(), large_count, large_time,
         size_ratio, time_ratio,
     );
 
