@@ -56,7 +56,11 @@ This is the load-bearing section. The "engine" framing was hiding work — work 
 
 **Worked example.** A `.dag` program declares `count: Int(0..2^32)`. The intent is "non-negative 32-bit integer." Rust offers `u8`, `u16`, `u32`, `u64`, `u128`, `usize`. Each inhabits `Semiring<WordN>` (no negatives → no `OrderedRing`). The fold must determine: which target inhabits `Semiring` *at the refinement bound* `(0..2^32)`?
 
-The honest answer is: `u32` *uniquely* inhabits `Semiring` at exactly that refinement. `u64` inhabits at a wider refinement (also acceptable but not minimum). `u16` does not inhabit at this refinement (overflow). `usize` is platform-dependent.
+The honest answer is: `u32` is the unique inhabitant of `Semiring` at exactly the program's refinement `(0..2^32)`. The other candidates are *different inhabitances* with *different refinement bounds* — not "wider valid candidates" the fold could fall back to:
+
+- `u8` / `u16` inhabit at *narrower* refinements `(0..2^8)` / `(0..2^16)` — overflow at the program's bound; rejected by the structural inhabitance check, not by ordering
+- `u64` / `u128` inhabit at *wider* refinements `(0..2^64)` / `(0..2^128)` — these are **different inhabitance facts**, not "acceptable wider" emission candidates. The fold's emission predicate is exact-bound match, so `u64` is **not** a candidate for `Int(0..2^32)`. It IS a *diagnostic alternative*: if the program author wants `u64`, they declare `Int(0..2^64)` instead. Ordering is for surfacing this alternative in the diagnostic, never for picking an emission target.
+- `usize` is platform-dependent — its bound is not a fixed `0..2^N`; it's a different inhabitance shape (architecture-dependent), separately diagnostic-surfaced.
 
 **What the substrate must declare** for this to be a structural fold:
 - Each target primitive declares its `Semiring` inhabitance with a *cardinality bound* attached (`u32` inhabits `Semiring<Word32>` at bound `0..2^32`; not just "inhabits Semiring")
@@ -516,7 +520,7 @@ fold_dag_int_refined_to_rust_u32: TestClaim {
 
 ---
 
-### Example 3 — `String` (top-level data binding) → Rust `String` (ownership derived from program structure)
+### Example 3 — `String` (top-level data binding) → Rust `Box<str>` (ownership + non-growability derived from program structure)
 
 **Demonstrates:** Modeling problem 2 (structural distinctions, not canonical choice) + Modeling problem 3 (lifetime/ownership derived from program structure, no annotations). The `.dag` `String` and Rust `String`/`Box<str>`/`&str`/`Cow<str>` are *meaningfully different* on (ownership, growability, encoding, lifetime). Modeling those differences as substrate facts + deriving program intent from program structure yields a unique answer.
 

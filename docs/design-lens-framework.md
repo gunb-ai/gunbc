@@ -95,7 +95,7 @@ type SymbolicCost = CostExpr {
 | `compose` (Bind) | `CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))` |
 | `parallel` (Branch) | `CostExpr(work=a.work + b.work, span=max(a.span, b.span), class=max(a.class, b.class))` |
 | `iterate` (Loop) | `CostExpr(work=body.work × bound, span=body.span × bound, class=multiply_class(body.class, bound))` |
-| `validate` | None (complexity has no side-condition; always Satisfied) |
+| `validate` | None (complexity has no side-condition; always `DimensionOk`) |
 
 **Worked program:**
 ```
@@ -113,7 +113,7 @@ data z = compute_summary(y, in)        // bind: O(1)
 6. `read(compute_summary)` → `CostExpr(1, 1, O(1))`
 7. `compose(...)` → final = `CostExpr(O(n log n) work, O(n) span, O(n log n) class)`
 
-**Result:** `Satisfied { composed: CostExpr(work=O(n log n), span=O(n), class=O(n log n)), witnesses: [...per-step...] }`
+**Result:** `DimensionOk { dimension_name: "complexity", composed: CostExpr(work=O(n log n), span=O(n), class=O(n log n)), witnesses: [...per-step...] }`
 
 **Coercion-cost-as-instance:** the coercion case (Modeling problem 8 in design-emission-model.md) is the same `Lens<SymbolicCost>` with a *different* `read` function — instead of reading from `algebra.dag`, it reads from per-target language spec (Rust `u32.add` → CostExpr(1, 1, O(1)); Rust `BigInt.add` → CostExpr(digits, digits, O(n))). **Same fold; different cost-basis source.** That's the unification falling out structurally.
 
@@ -136,7 +136,7 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 | `compose` (Bind) | Set union — sequential composition accumulates capabilities |
 | `parallel` (Branch) | Set union — parallel branches require all capabilities of any arm |
 | `iterate` (Loop) | Set union of body × any-iter (bound doesn't matter for capability set; all iterations together) |
-| `validate(set)` | Reject if program crosses tenant boundary not granted in declared workflow capability grant — emit `EmissionDiagnostic::CapabilityViolation { required: set, granted: workflow.cap_grant, missing: set ∖ granted }` |
+| `validate(set)` | Reject if program crosses tenant boundary not granted in declared workflow capability grant — emit `Diagnostic { kind: CapabilityViolation, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance) |
 
 **Worked program:**
 ```
@@ -153,7 +153,7 @@ data summary = write[TenantB].report    // CapSet: {Write(TenantB)}
 4. `compose(...)` → `{Read(TenantA), Write(TenantB)}`
 5. `validate({Read(TenantA), Write(TenantB)})` against grant `{Read(TenantA), Write(TenantA)}`:
    - Missing: `{Write(TenantB)}` — **NOT GRANTED**
-6. **Result:** `Violated { diagnostics: [CapabilityViolation { required: {Read(TenantA), Write(TenantB)}, granted: {Read(TenantA), Write(TenantA)}, missing: {Write(TenantB)} }] }`
+6. **Result:** `DimensionFail { dimension_name: "tenant-flow", violations: [Diagnostic { kind: CapabilityViolation, message: "required: {Read(TenantA), Write(TenantB)}, granted: {Read(TenantA), Write(TenantA)}, missing: {Write(TenantB)}", ... }], witnesses: [...] }`
 
 The lens fail-closes structurally: the program crosses a tenant boundary that requires explicit grant. **Same fold framework as complexity; different monoid (set union); side-condition enforces the categorical authorization check.**
 
@@ -177,7 +177,7 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 | `compose` (Bind) | Lattice join (`max`) — sequential composition takes the highest label |
 | `parallel` (Branch) | Lattice join (`max`) — parallel branches yield the highest label |
 | `iterate` (Loop) | Lattice join (`max`) of body × any-iter (label doesn't change with bound) |
-| `validate(label)` | Reject if program output label ⊐ sink's clearance — emit `EmissionDiagnostic::IFCDowngradeViolation { computed: label, sink_clearance: sink.label, downgrade_required: label ⊐ sink.label }` |
+| `validate(label)` | Reject if program output label ⊐ sink's clearance — emit `Diagnostic { kind: IFCDowngradeViolation, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance) |
 
 **Worked program:**
 ```
@@ -195,7 +195,7 @@ data output = write[Sink].report                 // label: TopSecret (sink expec
 5. `compose(TopSecret, Public)` → `TopSecret`
 6. `validate(TopSecret)` against sink clearance `Confidential`:
    - `TopSecret ⊐ Confidential` → downgrade required, NOT granted
-7. **Result:** `Violated { diagnostics: [IFCDowngradeViolation { computed: TopSecret, sink_clearance: Confidential, downgrade_required: true }] }`
+7. **Result:** `DimensionFail { dimension_name: "ifc", violations: [Diagnostic { kind: IFCDowngradeViolation, message: "computed: TopSecret, sink_clearance: Confidential, downgrade_required: true", ... }], witnesses: [...] }`
 
 The lens enforces lattice-based information flow without explicit declassification. **Same fold framework as complexity + tenant-flow; different monoid (lattice join); side-condition enforces the lattice-ordered authorization check (different from set authorization).**
 
@@ -205,7 +205,7 @@ The three instances cover three distinct monoid shapes:
 
 | Instance | Monoid | Side-condition | Failure mode |
 |---|---|---|---|
-| Complexity | Additive numeric (work + span + class) | None (always Satisfied) | n/a |
+| Complexity | Additive numeric (work + span + class) | None (always `DimensionOk`) | n/a |
 | Tenant-flow | Set union | Set difference against grant | Capabilities missing from grant |
 | IFC | Lattice join (`max` on lattice order) | Lattice comparison against clearance | Downgrade required without grant |
 
@@ -235,8 +235,8 @@ This section enumerates the validation work that must happen *before* substrate 
 These run as paper exercises (no code) before any `.dag` substrate work begins. Failure here means the design isn't ready.
 
 **D1. Three worked examples each pass the fold by construction.**
-- Walk through Instance 1 (complexity) on a 3-step program. Verify the fold output matches the expected `Satisfied { composed: ..., witnesses: ... }`.
-- Walk through Instance 2 (tenant-flow) on a cross-tenant program. Verify the fold produces `Violated` when expected.
+- Walk through Instance 1 (complexity) on a 3-step program. Verify the fold output matches the expected `DimensionOk { dimension_name: "complexity", composed: ..., witnesses: ... }`.
+- Walk through Instance 2 (tenant-flow) on a cross-tenant program. Verify the fold produces `DimensionFail` when expected.
 - Walk through Instance 3 (IFC) on a TopSecret-to-Confidential leak. Verify lattice-comparison rejects as expected.
 - **Pass criterion:** each fold trace matches expected output. Failure = monoid or side-condition spec is wrong.
 
@@ -260,7 +260,7 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 
 **D5. DimensionReport<C> covers all failure modes.**
 - Enumerate failure modes across the 3 instances (complexity has none; tenant has CapabilityViolation; IFC has IFCDowngradeViolation).
-- Verify each maps to an `EmissionDiagnostic` variant.
+- Verify each maps to a `Diagnostic` value with an appropriate `CompilerDiagnosticKind` variant (lens instances may extend `CompilerDiagnosticKind` with their own kinds, e.g., `CapabilityViolation`, `IFCDowngradeViolation`).
 - **Pass criterion:** no failure mode requires fabricating a result; all surface as typed diagnostics. Failure = the result type needs additional variants.
 
 **D6. Director's 6 locked decisions hold under examples.**
@@ -298,7 +298,7 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 - **Pass criterion:** all 3 TestClaims evaluate true.
 
 **I5. Cross-domain product fixture passes.**
-- TestClaim `lens_product_complexity_x_ifc_correct`: program that satisfies complexity but violates IFC, composed via `Lens<C> × Lens<D>`, returns Violated with the IFC diagnostic.
+- TestClaim `lens_product_complexity_x_ifc_correct`: program that satisfies complexity but violates IFC, composed via `Lens<C> × Lens<D>`, returns `DimensionFail` with the IFC `Diagnostic` in `violations`.
 - **Pass criterion:** product fold + conjunctive side-condition behaves correctly.
 
 **I6. L6 reframe: structural-form-coverage as `Lens<EmissionPathPresent>` passes.**
