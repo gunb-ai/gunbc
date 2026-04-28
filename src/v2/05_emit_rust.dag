@@ -740,37 +740,14 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   // Wire contract: find the module's wire_contract data item (if any)
   // and pass it to each item for per-enum resolution. No collapse to string.
-  let wire_contract_by_name = typed_module.items
+  // P2/P3: only a declaration identified as `wire_contract` may authorize module coproduct serde.
+  // No structural/order fallback — if the binding name is lost upstream, emit stays fail-closed
+  // (`wire_contract_item: none` → default serde tag) until inference preserves identity.
+  let wire_contract_item = typed_module.items
     |> filter(i =>
          authored_name(env: scope.type_env, node: i) == "wire_contract"
          || i.name == "wire_contract")
     |> first
-  // If `wire_contract` is not discoverable by name (e.g. lost `ident_span`), recover only when
-  // there is exactly one `data …: VariantEncoding = <record literal>` candidate (P2/P3).
-  let wire_contract_record_lit_candidates = typed_module.items
-    |> filter(i =>
-         is_data_def_item(item: i)
-         && match i.type_annotation {
-           Some { value: ta } => authored_name(env: scope.type_env, node: ta) == "VariantEncoding"
-           None => false
-         }
-         && match i.body {
-           Some { value: body } =>
-             match body.expr_data {
-               ExprRecordLit { parent_enum: _ } => true
-               _ => false
-             }
-           None => false
-         })
-  let wire_contract_item = match wire_contract_by_name {
-    Some { value: v } => Some { value: v }
-    None =>
-      if wire_contract_record_lit_candidates |> count == 1 {
-        wire_contract_record_lit_candidates |> first
-      } else {
-        none
-      }
-  }
   let items_str = typed_module.items
     |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item))
     |> join(separator: "\n\n")
