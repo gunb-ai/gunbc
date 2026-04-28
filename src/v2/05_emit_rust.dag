@@ -4252,7 +4252,7 @@ fn emit_operation_method(service_name: String, transport: Node, op_node: Node, r
   let ret_type = render_rust_type(n: resolved_type(n: op_node), shared_types: shared_types, source_indices: env.source_indices)
   let eff_transport = effective_operation_transport(op_node: op_node, fallback: transport)
   let op_inferred = resolved_type(n: op_node)
-  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types)
+  let real_body = emit_transport_call(transport: eff_transport, op_name: op_text, registry: registry, depth: depth + 2, inferred: op_inferred, service_item: service_item, op_node: op_node, source_indices: env.source_indices, shared_types: shared_types, env: env)
   let mock_props = op_node.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: env.source_indices)))
   let dry_run_body = emit_dry_run_branch_from_props(op_name: op_text, inferred: resolved_type(n: op_node), mock_props: mock_props, registry: registry, source_indices: env.source_indices)
   let body = concat(
@@ -4329,14 +4329,14 @@ fn emit_dry_run_branch_from_props(op_name: String, inferred: Node, mock_props: L
   }
 }
 
-fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>) -> String {
-  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types) }
+fn emit_transport_call(transport: Node, op_name: String, registry: Map<String, ItemInfo>, depth: Int, inferred: Node, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
+  if is_rest_transport(t: transport, source_indices: source_indices) { emit_rest_call(op_name: op_name, transport: transport, registry: registry, depth: depth, service_item: service_item, op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env) }
   else if is_shell_transport(t: transport) { emit_shell_call(op_name: op_name, transport: transport, registry: registry, depth: depth, inferred: inferred, op_node: op_node, source_indices: source_indices) }
   else if is_file_transport(t: transport, source_indices: source_indices) { emit_file_call(op_name: op_name, inferred: inferred) }
   else { emit_local_call(op_name: op_name) }
 }
 
-fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>) -> String {
+fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemInfo>, depth: Int, service_item: Node, op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let client_init = "let client = reqwest::Client::builder().user_agent(\"gunbc/1.0\").build()?;"
   let url_line = emit_rest_url_line(transport: transport, op_name: op_name, source_indices: source_indices)
   let http_method = emit_rest_http_method(transport: transport, source_indices: source_indices)
@@ -4351,7 +4351,7 @@ fn emit_rest_call(op_name: String, transport: Node, registry: Map<String, ItemIn
   )
   let send_line = "let response = request.send().await?;"
   // RE-1e: Response code mapping
-  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types)
+  let response_handling = emit_response_code_handling(op_node: op_node, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env)
   let all_lines = concat([client_init, url_line, auth_line],
     header_lines, [query_line, body_line, send_line, response_handling])
     |> filter(l => l != "")
@@ -4572,11 +4572,39 @@ fn has_from_key_fields(op_node: Node, source_indices: Map<String, NewlineIndex>)
   is_conj && from_key_count > 0
 }
 
-fn operation_response_200_resolved_type(op_node: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn response_200_declared_type_name(op_node: Node, source_indices: Map<String, NewlineIndex>) -> String? {
   match op_node.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200") |> first {
-    Some { value: p } => match field_init_node_value(n: p).inferred {
-      Some { value: Resolved { node: tn } } => Some { value: tn }
-      _ => none
+    Some { value: p } => {
+      let v = field_init_node_value(n: p)
+      let n = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: v))
+      if n == "" { none } else { Some { value: n } }
+    }
+    None => none
+  }
+}
+
+fn declared_response_200_requires_typed_wire(declared: String) -> Bool {
+  if declared == "Json" { false }
+  else {
+    let parts = declared |> split(delimiter: ".")
+    match parts |> last {
+      Some { value: last } => last != "Json"
+      None => true
+    }
+  }
+}
+
+fn operation_response_200_resolved_type(op_node: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Node? {
+  match op_node.properties |> filter(p => field_init_node_name_at(n: p, source_indices: source_indices) == "response_200") |> first {
+    Some { value: p } => {
+      let v = field_init_node_value(n: p)
+      match v.inferred {
+        Some { value: Resolved { node: tn } } => Some { value: tn }
+        _ => {
+          let type_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: v))
+          if type_name == "" { none } else { lookup_type_by_name(env: env, name: type_name) }
+        }
+      }
     }
     None => none
   }
@@ -4646,10 +4674,20 @@ fn emit_json_value_extract(var_name: String, from_path: String, dag_type_name: S
 // RE-1i: Emit JSON pointer extraction for all output fields.
 // When `response { 200 => NonJsonType }` is declared, deserializes the 200 body to
 // that type and projects fields via Rust field chains (same slash paths as `from`).
-fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>) -> String {
+fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let rt = resolved_type(n: op_node)
   let children = rt.children
-  let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices)
+  let decl_name_opt = response_200_declared_type_name(op_node: op_node, source_indices: source_indices)
+  let wire_opt = operation_response_200_resolved_type(op_node: op_node, source_indices: source_indices, env: env)
+  if match decl_name_opt {
+    Some { value: n } => declared_response_200_requires_typed_wire(declared: n)
+    None => false
+  } && match wire_opt {
+    None => true
+    Some { value: _ } => false
+  } {
+    "compile_error!(\"REST response_200: declared non-Json body type could not be resolved in TypeEnv for typed projection\");\n"
+  } else {
   let use_typed_wire = match wire_opt {
     Some { value: tn } => !is_json_wire_declaration_type(t: tn, source_indices: source_indices)
     None => false
@@ -4659,7 +4697,11 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
       if is_json_wire_declaration_type(t: tn, source_indices: source_indices) {
         "let json_body: serde_json::Value = response.json().await?;\n"
       } else {
-        concat("let __rest_wire: ", render_rust_type(n: resolved_type(n: tn), shared_types: shared_types, source_indices: source_indices), " = response.json().await?;\n")
+        let wire_ty = match tn.inferred {
+          Some { value: Resolved { node: rt } } => rt
+          _ => tn
+        }
+        concat("let __rest_wire: ", render_rust_type(n: wire_ty, shared_types: shared_types, source_indices: source_indices), " = response.json().await?;\n")
       }
     None => "let json_body: serde_json::Value = response.json().await?;\n"
   }
@@ -4688,6 +4730,7 @@ fn emit_from_key_extraction(op_node: Node, source_indices: Map<String, NewlineIn
     concat("(", field_names |> join(separator: ", "), ")")
   }
   concat(prelude, extract_lines |> join(separator: "\n"), "\nOk(", tuple_body, ")")
+  }
 }
 
 // Emit response body for operations without `from` key annotations.
@@ -4705,17 +4748,17 @@ fn emit_plain_response_body(op_node: Node, transport: Node, source_indices: Map<
   }
 }
 
-fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>) -> String {
+fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let use_from_key = has_from_key_fields(op_node: op_node, source_indices: source_indices)
   let response_props = op_node.properties |> filter(p => has_response_prefix(name: field_init_node_name_at(n: p, source_indices: source_indices)))
   if response_props |> count == 0 {
     if use_from_key {
-      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types)
+      emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env)
     } else {
       emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices)
     }
   } else {
-    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types))
+    let arms = response_props |> map(p => emit_response_arm(prop: p, op_node: op_node, use_from_key: use_from_key, transport: transport, source_indices: source_indices, shared_types: shared_types, env: env))
     concat(
       "let status = response.status().as_u16();\n",
       "match status {\n",
@@ -4725,7 +4768,7 @@ fn emit_response_code_handling(op_node: Node, transport: Node, source_indices: M
   }
 }
 
-fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>) -> String {
+fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: Node, source_indices: Map<String, NewlineIndex>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
   let name = field_init_node_name_at(n: prop, source_indices: source_indices)
   let code_str = substring(s: name, start: 9, end: string_length(s: name))
   // RFC 9110: 2xx = success, everything else = error
@@ -4740,7 +4783,7 @@ fn emit_response_arm(prop: Node, op_node: Node, use_from_key: Bool, transport: N
     else { code_str }
   if is_success {
     if use_from_key {
-      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types), " },")
+      concat("    ", pattern, " => { ", emit_from_key_extraction(op_node: op_node, source_indices: source_indices, shared_types: shared_types, env: env), " },")
     } else {
       concat("    ", pattern, " => { ", emit_plain_response_body(op_node: op_node, transport: transport, source_indices: source_indices), " },")
     }
