@@ -9,4 +9,5 @@ description = "Integration tests for the v2 self-hosted compiler"
 v2-compiler = { path = "../stage0" }
 
 [dev-dependencies]
+serde = { workspace = true }
 serde_json = { workspace = true }
