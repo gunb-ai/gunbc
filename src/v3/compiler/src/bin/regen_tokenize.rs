@@ -581,7 +581,11 @@ struct SharedSyntaxAuthority {
 impl SharedSyntaxAuthority {
     fn from_authority(dag: &Dag, source: &str) -> Self {
         let keywords = match data_body_named(dag, "dag_keyword_set") {
-            ValueBody::Map(entries) => entries.iter().map(|(key, _)| key.clone()).collect(),
+            ValueBody::Map(entries) => entries
+                .entries()
+                .iter()
+                .map(|(key, _)| key.clone())
+                .collect(),
             other => panic!("dag_keyword_set: expected ValueBody::Map, got {other:?}"),
         };
         let operators = parse_named_string_fields(
