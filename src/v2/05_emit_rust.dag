@@ -411,26 +411,55 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
   } }
 }
 
-fn build_data_item_index(modules: List<TypedModule>) -> Map<String, List<Node>> {
+fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
     tm.items
       |> filter(item => is_data_def_item(item: item))
       |> fold(init: acc, f: (item_acc, item) =>
         let item_name = authored_name_at(source_indices: tm.type_env.source_indices, node: item)
-        let existing_unqualified = match map_get(item_acc, item_name) {
-          Some { value: entries } => entries
-          None => []
-        }
-        let with_unqualified = map_insert(item_acc, item_name, concat(existing_unqualified, [item]))
         let qualified_name = concat(module_name, ".", item_name)
-        let existing_qualified = match map_get(with_unqualified, qualified_name) {
-          Some { value: entries } => entries
-          None => []
-        }
-        map_insert(with_unqualified, qualified_name, concat(existing_qualified, [item]))
+        map_insert(item_acc, qualified_name, item)
       )
   )
+}
+
+fn insert_scoped_data_item(scoped: Map<String, List<Node>>, name: String, item: Node) -> Map<String, List<Node>> {
+  let existing = match map_get(scoped, name) {
+    Some { value: entries } => entries
+    None => []
+  }
+  map_insert(scoped, name, concat(existing, [item]))
+}
+
+fn build_scoped_data_item_index(typed_module: TypedModule, data_items: Map<String, Node>) -> Map<String, List<Node>> {
+  let module_name = authored_name_at(source_indices: typed_module.type_env.source_indices, node: typed_module.module)
+  let local = typed_module.items
+    |> filter(item => is_data_def_item(item: item))
+    |> fold(init: empty_map(), f: (acc, item) =>
+      insert_scoped_data_item(
+        scoped: acc,
+        name: authored_name_at(source_indices: typed_module.type_env.source_indices, node: item),
+        item: item
+      )
+    )
+  module_imports(n: typed_module.module)
+    |> fold(init: local, f: (acc, imp) =>
+      let import_path = authored_name_at(source_indices: typed_module.type_env.source_indices, node: imp)
+      if import_is_all(imp) {
+        acc
+      } else {
+        import_specific_names_at(import: imp, source_indices: typed_module.type_env.source_indices)
+          |> fold(init: acc, f: (inner, imported_name) =>
+            let qualified = concat(import_path, ".", imported_name)
+            match map_get(data_items, qualified) {
+              Some { value: imported_item } =>
+                insert_scoped_data_item(scoped: inner, name: imported_name, item: imported_item)
+              None => inner
+            }
+          )
+      }
+    )
 }
 
 fn rust_serde_rename_template_text() -> String {
