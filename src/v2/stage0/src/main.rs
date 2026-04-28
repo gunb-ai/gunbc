@@ -6,14 +6,15 @@ use clap::{Parser, Subcommand};
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use v2_compiler::cli_run;
-use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_compiler_compile;
 use v2_compiler::v2_compiler_compile::PipelineResult;
+use v2_compiler::v2_compiler_artifact;
 use v2_compiler::v2_std_core::{
-    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at,
-    CompilerDiagnostic, NewlineIndex,
+    diagnostic_to_message, diagnostic_to_span,
+    byte_to_line_col, source_line_at, NewlineIndex,
+    CompilerDiagnostic,
 };
+use v2_compiler::cli_run;
 
 #[derive(Parser)]
 #[command(name = "v2-compiled", about = "Generated CLI from DAG compiler")]
@@ -42,7 +43,7 @@ enum Commands {
         #[arg(long, default_value = "rust")]
         target: String,
     },
-    /// Execute a .dag program directly (interpreter)
+/// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
         #[arg(long = "source-root")]
@@ -117,10 +118,8 @@ fn build_module_index(source_roots: &[String]) -> HashMap<String, std::path::Pat
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
                 if let Some(existing) = index.get(&module_path) {
-                    panic!(
-                        "duplicate module path '{}': declared in both {:?} and {:?}",
-                        module_path, existing, path
-                    );
+                    panic!("duplicate module path '{}': declared in both {:?} and {:?}",
+                        module_path, existing, path);
                 }
                 index.insert(module_path, path);
             }
@@ -146,12 +145,9 @@ fn resolve_transitively_with_seen(
                 continue;
             }
             if let Some(file_path) = index.get(&module_path) {
-                let file_content = std::fs::read_to_string(file_path).unwrap_or_else(|e| {
-                    panic!(
-                        "failed to read imported module '{}' at {:?}: {}",
-                        module_path, file_path, e
-                    )
-                });
+                let file_content = std::fs::read_to_string(file_path)
+                    .unwrap_or_else(|e| panic!("failed to read imported module '{}' at {:?}: {}",
+                        module_path, file_path, e));
                 let rel_path = file_path.to_string_lossy().to_string();
                 let source = Rc::new(v2_compiler::v2_compiler_compile::SourceFile {
                     path: rel_path.clone(),
@@ -171,23 +167,15 @@ fn resolve_transitively_with_seen(
 
 fn main() {
     let cli = Cli::parse();
-    let _result = match cli.command {
-        Commands::Compile {
-            source_roots,
-            source_dir,
-            output_dir,
-            target,
-        } => {
+let _result = match cli.command {
+        Commands::Compile { source_roots, source_dir, output_dir, target } => {
             let render_target = match target.as_str() {
                 "rust" => v2_compiler_artifact::RenderTarget::Rust,
                 "python" => v2_compiler_artifact::RenderTarget::Python,
                 "go" => v2_compiler_artifact::RenderTarget::Go,
                 "dag" => v2_compiler_artifact::RenderTarget::Dag,
                 other => {
-                    eprintln!(
-                        "unknown target: {}. supported: rust, python, go, dag",
-                        other
-                    );
+                    eprintln!("unknown target: {}. supported: rust, python, go, dag", other);
                     std::process::exit(1);
                 }
             };
@@ -195,11 +183,7 @@ fn main() {
             let sources = if !source_roots.is_empty() {
                 // FF-9: Import-driven resolution from source roots
                 let index = build_module_index(&source_roots);
-                eprintln!(
-                    "indexed {} modules from {} source roots",
-                    index.len(),
-                    source_roots.len()
-                );
+                eprintln!("indexed {} modules from {} source roots", index.len(), source_roots.len());
 
                 // Entry modules: all .dag files in the FIRST source root.
                 // Additional roots are dependency pools resolved via imports.
@@ -237,11 +221,9 @@ fn main() {
                         resolved.push(Rc::new(v2_compiler_compile::SourceFile { path, content }));
                     }
                 }
-                eprintln!(
-                    "resolved {} sources (transitive import closure)",
-                    resolved.len()
-                );
+                eprintln!("resolved {} sources (transitive import closure)", resolved.len());
                 resolved
+
             } else if let Some(dir) = source_dir {
                 // Legacy: flat directory scan (backward compatibility)
                 let mut dag_paths = Vec::new();
@@ -256,13 +238,9 @@ fn main() {
                         content,
                     }));
                 }
-                eprintln!(
-                    "compiling {} .dag files from {} (target: {})",
-                    sources.len(),
-                    dir,
-                    target
-                );
+                eprintln!("compiling {} .dag files from {} (target: {})", sources.len(), dir, target);
                 sources
+
             } else {
                 eprintln!("error: provide --source-root or --source-dir");
                 std::process::exit(1);
@@ -280,18 +258,12 @@ fn main() {
                 std::fs::write(&out_path, &*file.content)
                     .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
             }
-            eprintln!(
-                "compiled: {} files emitted, {} diagnostics",
-                result.files.len(),
-                result.diagnostics.len()
-            );
+            eprintln!("compiled: {} files emitted, {} diagnostics",
+                result.files.len(), result.diagnostics.len());
             render_diagnostics(&result);
             // Complexity violations are non-blocking (analyzer limitations).
             let hard_errors = result.diagnostics.iter().any(|d| {
-                !matches!(
-                    *d.diagnostic.clone(),
-                    CompilerDiagnostic::ComplexityUnknown { .. }
-                )
+                !matches!(*d.diagnostic.clone(), CompilerDiagnostic::ComplexityUnknown { .. })
             });
             if hard_errors {
                 std::process::exit(1);
@@ -300,14 +272,11 @@ fn main() {
                 eprintln!("error: no files emitted");
                 std::process::exit(1);
             }
-        }
+        },
 
-        Commands::Run {
-            source_roots,
-            function,
-        } => {
+        Commands::Run { source_roots, function } => {
             cli_run::handle_run(source_roots, function);
-        }
+        },
     };
 }
 
@@ -373,10 +342,7 @@ fn render_one_diagnostic(
                 indent,
                 " ".repeat(gutter_width),
                 " ".repeat(col_offset),
-                "^".repeat(std::cmp::min(
-                    span_len,
-                    line_text.len().saturating_sub(col_offset)
-                ))
+                "^".repeat(std::cmp::min(span_len, line_text.len().saturating_sub(col_offset)))
             );
         }
     }
