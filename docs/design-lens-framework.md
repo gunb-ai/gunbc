@@ -21,13 +21,13 @@ This is the structural primitive that THESIS implies but doesn't make explicit:
 
 ```
 Lens<C> = {
-  name:     String              // dimension identifier (populates DimensionReport.dimension_name)
-  read:     Node → Witness<C>   // per-node cost basis (read from substrate facts; typed failure channel)
-  unit:     C                   // identity element of C's monoid
-  compose:  (C, C) → C          // sequential composition (Bind)
-  parallel: (C, C) → C          // parallel composition (Branch)
-  iterate:  (C, Bound) → C      // bounded iteration (Loop)
-  validate: C → Witness<C>      // side-condition (optional; for fail-closed lenses)
+  name:     String                  // dimension identifier (populates DimensionReport.dimension_name)
+  read:     Node → Witness<C>       // per-node cost basis (typed failure channel for missing per-node facts)
+  unit:     C                       // identity element of C's monoid
+  compose:  (C, C) → C              // sequential composition (Bind)
+  parallel: (C, C) → C              // parallel composition (Branch)
+  iterate:  (C, Bound) → C          // bounded iteration (Loop)
+  validate: C → OptionalDiagnostic  // aggregate side-condition (optional; aggregate-level location via Diagnostic.span)
 }
 ```
 
@@ -35,11 +35,23 @@ Lens<C> = {
 
 ```
 type Witness<Carrier>
-  = Inhabits(Carrier)              // fact present; carries the read value
-  | Violates { reason: String, at: Behavior }   // fact missing; structured failure
+  = Inhabits(Carrier)                                   // fact present; carries the read value
+  | Violates { reason: String, at: Behavior }           // fact missing; structured failure with per-NODE Behavior
 ```
 
 The fold accumulates `Witness<C>` outputs from `read`. Any `Violates` becomes a `Diagnostic` in the final `DimensionFail.violations` — no fabricated carrier ever reaches `compose`. This matches the existing `AnalysisDimension.witness_of: fn(Dag, Behavior) -> Witness<Carrier>` pattern at `dimensions.dag:74`.
+
+**Why `validate` returns `OptionalDiagnostic` and not `Witness<C>`** (per codex BLOCKING finding on `c9898163`): `Witness<C>.Violates { reason, at: Behavior }` carries a per-NODE Behavior reference — appropriate for `read`'s per-node lookups, but **wrong for aggregate validation**. By the time `validate` runs, the fold has composed many nodes' Witnesses into a single aggregate `C`; there is no single Behavior to put in `at`. Reusing `Witness<C>` here would force fabricating `at: Behavior` (parallel-representation debt + fail-closed violation) or losing location info entirely. The right shape is `OptionalDiagnostic` from `src/v3/std/dimensions.dag:41-43`:
+
+```
+type OptionalDiagnostic
+  = NoDiagnostic                                        // validation passed
+  | SomeDiagnostic { value: Diagnostic }                // validation failed; aggregate-level diagnostic
+```
+
+`Diagnostic` carries `span: SourceSpan` — the natural location for an aggregate validation failure (the workflow root binding, the sink declaration, etc.), not a per-node Behavior. This matches the existing `AnalysisDimension.break_diagnostic: fn(Behavior, Carrier) -> OptionalDiagnostic` pattern at `dimensions.dag:77` (note: `break_diagnostic` takes a per-Behavior input but the lens-framework `validate` is purely aggregate-level, so it drops the Behavior parameter — only `OptionalDiagnostic` shape is reused).
+
+The fold lifts a `SomeDiagnostic { value }` into `DimensionFail.violations`; `NoDiagnostic` lets the fold produce `DimensionOk`.
 
 A lens is a *generic algebra* over the 5 L1 behaviors. The compiler provides:
 
@@ -107,7 +119,7 @@ type SymbolicCost = CostExpr {
 | `compose` (Bind) | `CostExpr(work=a.work + b.work, span=a.span + b.span, class=max(a.class, b.class))` |
 | `parallel` (Branch) | `CostExpr(work=a.work + b.work, span=max(a.span, b.span), class=max(a.class, b.class))` |
 | `iterate` (Loop) | `CostExpr(work=body.work × bound, span=body.span × bound, class=multiply_class(body.class, bound))` |
-| `validate` | None (complexity has no side-condition; always `DimensionOk` if all reads `Inhabits`) |
+| `validate(c)` | Always `NoDiagnostic` — complexity has no side-condition; final result is `DimensionOk` if all reads `Inhabits` |
 
 **Worked program:**
 ```
@@ -149,7 +161,7 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 | `compose` (Bind) | Set union — sequential composition accumulates capabilities |
 | `parallel` (Branch) | Set union — parallel branches require all capabilities of any arm |
 | `iterate` (Loop) | Set union of body × any-iter (bound doesn't matter for capability set; all iterations together) |
-| `validate(set)` | Reject if program crosses tenant boundary not granted in declared workflow capability grant — emit `Diagnostic { kind: CapabilityViolation, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance) |
+| `validate(set)` | If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root span>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` points at the workflow declaration, not a per-node Behavior — aggregate-level location) |
 
 **Worked program:**
 ```
@@ -165,8 +177,8 @@ data summary = write[TenantB].report    // CapSet: {Write(TenantB)}
 3. `read(write[TenantB].report)` → `Inhabits({Write(TenantB)})`
 4. `compose(...)` → `{Read(TenantA), Write(TenantB)}`
 5. `validate({Read(TenantA), Write(TenantB)})` against grant `{Read(TenantA), Write(TenantA)}`:
-   - Missing: `{Write(TenantB)}` — **NOT GRANTED**
-6. **Result:** `DimensionFail { dimension_name: "tenant-flow", violations: [Diagnostic { kind: CapabilityViolation, message: "required: {Read(TenantA), Write(TenantB)}, granted: {Read(TenantA), Write(TenantA)}, missing: {Write(TenantB)}", ... }], witnesses: [...] }`
+   - Missing: `{Write(TenantB)}` — returns `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root>, message: "required: {Read(TenantA), Write(TenantB)}, granted: {Read(TenantA), Write(TenantA)}, missing: {Write(TenantB)}", ... } }`
+6. **Result:** `DimensionFail { dimension_name: "tenant-flow", violations: [<the Diagnostic from step 5>], witnesses: [...] }` (fold lifts `SomeDiagnostic.value` into `violations`)
 
 The lens fail-closes structurally: the program crosses a tenant boundary that requires explicit grant. **Same fold framework as complexity; different monoid (set union); side-condition enforces the categorical authorization check.**
 
@@ -191,7 +203,7 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 | `compose` (Bind) | Lattice join (`max`) — sequential composition takes the highest label |
 | `parallel` (Branch) | Lattice join (`max`) — parallel branches yield the highest label |
 | `iterate` (Loop) | Lattice join (`max`) of body × any-iter (label doesn't change with bound) |
-| `validate(label)` | Reject if program output label ⊐ sink's clearance — emit `Diagnostic { kind: IFCDowngradeViolation, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance) |
+| `validate(label)` | If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration span>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` points at the sink declaration, not a per-node Behavior — aggregate-level location) |
 
 **Worked program:**
 ```
@@ -208,8 +220,8 @@ data output = write[Sink].report                 // label: TopSecret (sink expec
 4. `read(write[Sink].report)` → `Inhabits(Public)` (the sink itself doesn't carry data; its label is the clearance constraint, applied via `validate`)
 5. `compose(TopSecret, Public)` → `TopSecret`
 6. `validate(TopSecret)` against sink clearance `Confidential`:
-   - `TopSecret ⊐ Confidential` → downgrade required, NOT granted
-7. **Result:** `DimensionFail { dimension_name: "ifc", violations: [Diagnostic { kind: IFCDowngradeViolation, message: "computed: TopSecret, sink_clearance: Confidential, downgrade_required: true", ... }], witnesses: [...] }`
+   - `TopSecret ⊐ Confidential` → returns `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration>, message: "computed: TopSecret, sink_clearance: Confidential, downgrade_required: true", ... } }`
+7. **Result:** `DimensionFail { dimension_name: "ifc", violations: [<the Diagnostic from step 6>], witnesses: [...] }` (fold lifts `SomeDiagnostic.value` into `violations`)
 
 The lens enforces lattice-based information flow without explicit declassification. **Same fold framework as complexity + tenant-flow; different monoid (lattice join); side-condition enforces the lattice-ordered authorization check (different from set authorization).**
 
@@ -294,9 +306,10 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 
 **I1. `dsl/std/lens.dag` declares `Lens<C>` and type-checks against existing substrate.**
 - Lens<C> declaration includes the 7 fields (`name`, `read`, `unit`, `compose`, `parallel`, `iterate`, `validate`).
-- `read: Node → Witness<C>` (typed failure channel; reuses `Witness<Carrier>` from `src/v3/std/dimensions.dag:35-37`).
-- Type-checks against existing `BoundedLattice<T>`, `DimensionReport<Carrier>`, and `Witness<Carrier>` patterns.
-- **Pass criterion:** substrate parses; structural-form ratchet remains green; no fabricated-carrier path exists in `read` (codex BLOCKING discipline).
+- `read: Node → Witness<C>` (typed per-NODE failure channel; reuses `Witness<Carrier>` from `src/v3/std/dimensions.dag:35-37`).
+- `validate: C → OptionalDiagnostic` (aggregate-level failure channel; reuses `OptionalDiagnostic` from `src/v3/std/dimensions.dag:41-43`; location info via `Diagnostic.span: SourceSpan`, not per-node `Behavior`).
+- Type-checks against existing `BoundedLattice<T>`, `DimensionReport<Carrier>`, `Witness<Carrier>`, and `OptionalDiagnostic` patterns.
+- **Pass criterion:** substrate parses; structural-form ratchet remains green; no fabricated-carrier path in `read` (per-NODE) and no fabricated-`Behavior` path in `validate` (aggregate) — both codex BLOCKINGs.
 
 **I2. Generic fold machinery `fold_lens<C>` is small.**
 - Implementation in `src/v3/std/lens.dag` (or equivalent) is ≤ 200 lines.
