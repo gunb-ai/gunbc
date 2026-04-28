@@ -376,7 +376,32 @@ Three additional items the Director review identified as R2-expansion (not R3):
 
 > **🔄 CLOSED.** The 8 design challenges in [`docs/r3-structure.md`](r3-structure.md) §"Design challenges — direction ratified 2026-04-28; specific decisions split between DECIDED and SCHEDULED" were ratified in the Director review of #1078 at 2026-04-28T01:32:45Z, with **two distinct release states** (per gpt-5-5-pro meta-review feedback at 03:02Z): **DECIDED** for challenges #4-#8 (specific design final, no further design PR needed) and **DIRECTION RATIFIED, SPECIFIC DECISION SCHEDULED** for challenges #1-#3 (direction locked; specific design lands in named follow-up PRs PR-B/C/D before R2-Evaluator dispatch). The dispatch cadence (PR-A → PR-B → PR-C → PR-D → PR-E + LanguageSpec parallel) is named in [`docs/r3-structure.md`](r3-structure.md) §"Pre-R2-Evaluator design lock cadence."
 >
-> The original anchor reference (§"Design challenges to resolve up-front") no longer exists; the section was retitled to reflect the locked-decisions state. New design questions surfaced after this date (e.g., from the worked-examples reframe) are tracked in [`docs/design-emission-model.md`](design-emission-model.md) §"Open design calls surfaced by the examples" — those are the live open questions for the substrate-completion lanes.
+> The original anchor reference (§"Design challenges to resolve up-front") no longer exists; the section was retitled to reflect the locked-decisions state.
+
+### 4. Pre-T-Ground / pre-T-Substrate-Lens-Primitive design questions — **OPEN; surfaced 2026-04-28 per Director directive**
+
+**Surfaced:** the no-engine emission reframe + lens-framework introduction surfaced 8 modeling-hard design questions that need lock before per-target / per-lens dispatch. Director directive 2026-04-28: *"surface all design questions up front; modeling will be incredibly hard to get right per language; ensure verification (testing) discussion + discussion up front; otherwise leaving complex modeling problems open-ended will fail (per `feedback_holistic_over_patches.md`, `project_ownership_holistic.md` — alias/clone class)."*
+
+**Authority docs** for the surfacing:
+- Q1–Q5 (T-Ground / cross-target modeling): [`docs/design-emission-model.md`](design-emission-model.md) §"Design questions to surface and lock before dispatch"
+- Q6–Q8 (lens-framework spec semantics): [`docs/design-lens-framework.md`](design-lens-framework.md) §"Design questions to lock before substrate dispatch"
+
+**Required before dispatch:** Director sign-off on Q1–Q8 alternatives (accept recommendation, propose alternative, or surface sub-question). Each question includes: precise statement, alternatives enumerated, cascade implications listed, TestClaim shape proposed regardless of which alternative is chosen.
+
+**Cadence PRs** (modeled on PR-A through PR-E that locked R2-Evaluator design):
+
+| PR | Locks | Before dispatch of |
+|---|---|---|
+| **PR-F** | Q1 (BoundDeclaration) + Q2 Rust axes | T-Ground-Coercion-Fold + T-Ground-Rust |
+| **PR-G** | Q2 Python axes | T-Ground-Python |
+| **PR-H** | Q2 Go axes | T-Ground-Go |
+| **PR-I** | Q3 (per-primitive realization cost) + Q4 (L4 corpus shape) | T-Ground-LanguageSpec + T-Verification-L4-L7-Direct |
+| **PR-J** | Q5 (L6 cardinality enumeration — only if recommendation rejected) | T-Ground-CrossTarget-Meta |
+| **PR-K** | Q6 + Q7 + Q8 (lens framework spec) | T-Substrate-Lens-Primitive |
+
+**Ownership:** Director authors decisions inline in `design-emission-model.md` and `design-lens-framework.md` design-questions sections, OR as separate PRs PR-F through PR-K. Worker dispatch on the corresponding lane waits until the relevant cadence PR(s) merge.
+
+**Non-blocking for #1078:** the surfacing itself is the deliverable; the locking is downstream.
 
 ~~Surfaced by 2026-04-28 R2 amendment folding Evaluator into R2 scope. The Evaluator is the largest single new lane; design questions affect downstream R3 consumers and should resolve before worker dispatch.~~
 

@@ -396,6 +396,97 @@ Things to think through during design phase that could surface gaps:
 
 These are research-questions for the design phase; not blockers for the substrate primitive itself but worth recording.
 
+## Design questions to lock before substrate dispatch
+
+**Status:** SURFACED 2026-04-28 per Director directive — modeling per-language is hard; verification (testing) discipline must be built in; open-ended modeling fails (alias/clone class).
+
+The questions below are pre-dispatch decisions for the lens framework. Each names alternatives, cascade implications, TestClaim shape, and recommendation. Director signoff before T-Substrate-Lens-Primitive dispatch.
+
+### Q6 — `Witness<C>` generality across non-trivial monoids
+
+**Status:** REFERENCED in §"Open design questions" item 1. Tenant-flow witnesses are set-difference results; IFC witnesses are lattice-comparison failures. Existing `Witness<C>.Violates { reason: String, at: Behavior }` carries a string `reason` and a `Behavior` reference.
+
+**Question:** does the existing `Witness<C>` from `src/v3/std/dimensions.dag:35-37` generalize to non-trivial monoids (set-difference for tenant-flow; lattice-comparison for IFC), or does it need extension?
+
+**Alternatives:**
+- (a) Witness<C> is sufficient as-is. Set-difference/lattice-comparison results encode into `reason: String` (e.g., "missing capabilities: {Read(TenantA)}" or "TopSecret ⊐ Confidential"). String is opaque but lossy — downstream consumers can't programmatically extract the structural failure.
+- (b) Extend `Witness<C>` to carry a typed failure payload: `Violates { reason: ViolationReason<C>, at: Behavior }` where `ViolationReason<C>` is an instance-specific sum type. Each lens instance declares its own ViolationReason variants.
+- (c) Keep `Witness<C>` as-is for read-channel failures (per-Behavior); add a separate aggregate-Violation type for validate-channel failures. Decouples per-Behavior from aggregate.
+- (d) Relocate non-trivial structural failures from Witness<C> into `Diagnostic` (which already carries SourceSpan + structured kind). `Witness<C>.Violates` stays simple (per-Behavior, string reason); rich structural failures accumulate at the Diagnostic level.
+
+**Cascade implications:**
+- (a): opaque-strings-attract-heuristics anti-pattern (per `feedback_opaque_strings_attract_heuristics`). Downstream consumers reading the reason string for programmatic filtering = bridge.
+- (b): substrate change to dimensions.dag — affects all consumers of Witness<C> (existing AnalysisDimension, lens framework, future analyzers). Reverse cascade.
+- (c): introduces parallel-representation between read-channel and validate-channel failure carriers. The current design has `read: Witness<C>` and `validate: OptionalDiagnostic` — already two channels. Adding a third type for structural validate failures is more parallel rep.
+- (d): keeps Witness<C> simple; pushes structural failure data into Diagnostic.kind (which is `CompilerDiagnosticKind` sum type — already extends per-instance per `feedback_state_space_vs_behavioral_invariants`).
+
+**TestClaim shape:**
+- `witness_for_tenant_flow_carries_missing_capabilities_structurally` (verifies set-difference is recoverable from witness)
+- `witness_for_ifc_carries_label_comparison_structurally` (verifies lattice-comparison is recoverable from witness)
+- `no_string_parsing_in_witness_consumers` (anti-bridge — no consumer reads `reason: String` programmatically)
+
+**Recommendation:** **(d)** — `Witness<C>` stays as-is for per-Behavior read-channel failures (string reason is fine for human-readable per-node error messages); structural validate-channel failures encode into `Diagnostic.kind` sum-type variants. Lens instances that need rich structural failure data (tenant-flow, IFC) extend `CompilerDiagnosticKind` with their own variants (e.g., `CapabilityViolation { required, granted, missing }`, `IFCDowngradeViolation { computed, sink_clearance }`). This matches how the worked instances already encode validate failures (per the §"Three worked instances" section above). Witness<C> doesn't need extension.
+
+### Q7 — Error-recovery semantics for partial validate failure
+
+**Status:** REFERENCED in §"Open design questions" item 2. "Director's 'no silent fabrication' rule says report all" — but the spec doesn't actually state report-all semantics.
+
+**Question:** when a program partially violates a side-condition (some paths leak; others don't), does `validate` report all violations or stop at the first?
+
+**Alternatives:**
+- (a) **Report-all**: the fold collects every validate failure across the DAG and emits a `DimensionFail` carrying ALL of them in `violations: List<Diagnostic>`. Implementer has to traverse the whole DAG even after first failure.
+- (b) **Short-circuit**: the fold stops at the first validate failure; `DimensionFail.violations` carries one Diagnostic. Faster but loses information.
+- (c) **Configurable**: lens declaration includes `failure_mode: ReportAll | ShortCircuit`. Each lens instance picks. Surface area increases.
+- (d) **Per-call-site report-all, single aggregate**: each individual `validate` call returns at most one `OptionalDiagnostic` (the current shape); the fold collects them into the aggregate `violations: List<Diagnostic>`. So no SINGLE validate gives a list — but the DimensionFail accumulates them.
+
+**Cascade implications:**
+- (a) requires fold infrastructure to traverse the full DAG and accumulate failures; implementer can't early-terminate.
+- (b) loses information that may be needed for diagnostic UX (the user wants ALL their tenant violations, not just the first one).
+- (c) per-instance configuration adds complexity; deferring the choice to lens authors splits the discipline.
+- (d) matches the current `validate: (Dag, C) → OptionalDiagnostic` signature. Each validate call yields zero or one diagnostic; the fold accumulates.
+
+**TestClaim shape:**
+- `validate_yields_at_most_one_diagnostic_per_call`
+- `dimensionfail_violations_accumulate_across_dag` (the fold collects)
+- `lens_does_not_silently_drop_violations` (no fabrication)
+- `report_all_test_program_with_two_independent_violations` (cross-validation: program with two distinct tenant violations produces two Diagnostics in violations)
+
+**Recommendation:** **(d)** — matches the current signature exactly. Each `validate` call returns one `OptionalDiagnostic`; the fold accumulates `SomeDiagnostic { value }` results into `DimensionFail.violations: List<Diagnostic>`. No spec change needed; the discipline is "fold accumulates; validate stays per-call." Practical effect: a program with two tenant-flow violations on different sub-DAGs yields two Diagnostics in `violations`. This satisfies "report all" without changing the validate signature or introducing per-instance configuration.
+
+### Q8 — Side-condition composition with mixed presence
+
+**Status:** REFERENCED in §"Open design questions" item 5. `Lens<SymbolicCost> × Lens<SecurityLabel>` — complexity has no validate (always `NoDiagnostic`); IFC has validate. Cross-product `Lens<(SymbolicCost, SecurityLabel)>` — what's the validate behavior?
+
+**Question:** when forming the cross-product `Lens<C> × Lens<D>` and one of them has no side-condition, what's the cross-product's validate semantics?
+
+**Alternatives:**
+- (a) **Conjunctive**: cross-product validate is `validate_C(c) ∧ validate_D(d)`. If either fails, result is failure. NoDiagnostic from one side defaults to "passed" for that conjunct. (Standard logical conjunction.)
+- (b) **Per-side independent**: cross-product validate runs both; combined result is `DimensionFail` if EITHER fails. Same outcome as (a) but framed differently.
+- (c) **Side-eject**: lenses without validate eject from the cross-product; cross-product validate is just the validate of the lens that has one. (Loses symmetry.)
+- (d) **Validate-required**: cross-product requires BOTH lenses to have validate. NoDiagnostic-only lenses can't compose. (Restrictive.)
+
+**Cascade implications:**
+- (a): standard semantics; matches `feedback_modeling_philosophy` (compose facts forward; conjunction is the natural product). No extra surface.
+- (b): same outcome as (a) operationally; just different framing.
+- (c) breaks the product symmetry — `Lens<C> × Lens<D>` ≠ `Lens<D> × Lens<C>` when only one has validate.
+- (d) excludes complexity from cross-products; loses the "complexity × IFC" use case the design wants.
+
+**TestClaim shape:**
+- `cross_product_validate_is_conjunction`
+- `cross_product_with_no_validate_side_treats_as_nodiagnostic`
+- `complexity_x_ifc_validates_ifc_when_complexity_has_no_validate` (the worked case from D5)
+- `cross_product_symmetric_under_lens_swap` (verifies a × b ≡ b × a in terms of validate outcome)
+
+**Recommendation:** **(a)** — conjunctive. Cross-product validate = `validate_C(dag, c) ∧ validate_D(dag, d)` where NoDiagnostic acts as logical TRUE. Result is `DimensionFail` if either is `SomeDiagnostic`; `DimensionOk` if both are `NoDiagnostic`. This is the standard product-monoid semantic and preserves cross-product symmetry. Implements via straightforward fold-time conjunction.
+
+### Pre-dispatch design-PR cadence (lens framework)
+
+| PR | Locks | Before dispatch of | TestClaim gate |
+|---|---|---|---|
+| **PR-K** | Witness<C> generality decision (Q6) + error-recovery semantics (Q7) + cross-product composition (Q8) | T-Substrate-Lens-Primitive | All Q6 + Q7 + Q8 TestClaims pass |
+
+Single cadence PR; the three questions are tightly coupled (all about lens-framework spec semantics) and benefit from being decided together. Director signoff before T-Substrate-Lens-Primitive dispatch.
+
 ## Cross-refs
 
 - Parent: [`docs/design-emission-model.md`](design-emission-model.md) §"Modeling problem 8 — cost lens over emission" + §"Open call 4 — Lens-as-parametric-monoid framework"
