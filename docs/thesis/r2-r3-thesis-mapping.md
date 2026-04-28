@@ -206,7 +206,7 @@ Compromises being made by the R2 + R3 split:
 - Modeling discipline applied (single authority, no fabrication, typed carriers)
 
 **At R3-close, the consequence layer falls out:**
-- Tier 3 mirrors dissolved → SG-0 → 0 → fixed-point self-hosting → facet 2 closes
+- Tier 3 mirrors dissolved (mirror bodies replaced by Evaluator-backed authority inside `dag.rs` / `dag/effects.rs` / `workflow_idempotency.rs`; consumer/mirror-symbol count reaches zero); **SG-0 reaches 0 via T-LensProducer-Retirement + broader PB-Substrate / generated-file retirement, not as a direct Tier 3 SG-0 consequence** (Tier 3 SG-0 delta is usually 0 because the hand-authored file remains on the census after mirror-block retirement — per PB Manager review 2026-04-28); fixed-point self-hosting → facet 2 closes
 - R3 verification harness ({L4, L5, L7}) proves emit/eval match + cross-target consistency + algebraic laws. L6 (structural form coverage) was reclassified to R2-T-Ground-CrossTarget-Meta as a structural cross-product fold; not part of the R3 runtime harness
 - Tier 2 fully extends to Int128/Word128
 - Omni-emission demonstrated end-to-end (≥2 Shape B targets)

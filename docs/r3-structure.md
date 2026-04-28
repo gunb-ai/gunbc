@@ -47,7 +47,7 @@ Each lane owns one or more concrete `.dag` `TestClaim` gates. Authored as delive
 - **T-LensProducer-Retirement.**
   - `lens_apply_dot_rs_retired` — `src/v3/compiler/src/lens_apply.rs` deleted; lens application routes through PB-Runtime interpreter-as-data
   - `lens_testgen_dot_rs_retired` — `src/v3/compiler/src/lens_testgen.rs` deleted
-  - `regen_lens_dot_rs_retired` — `src/v3/compiler/src/regen_lens.rs` deleted
+  - `regen_lens_dot_rs_retired` — `src/v3/compiler/src/bin/regen_lens.rs` deleted
   - `sg0_non_test_zero` — SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` count reaches 0 per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md)
 - **T-Verification-L4-L7-Direct** (Evaluator-direct).
   - `l4_emit_eval_match` — for every `.dag` program in the certification corpus, emitted target output equals `.dag` evaluation output (algebraic equality, not byte-equal)
@@ -87,7 +87,7 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
 
 | Lane | Size | Manager | Covers | R2-close dependency |
 |---|---|---|---|---|
-| **T-Tier3-Dissolution** | M | **Tier 3 Manager** (or PB Manager continuing post-R2) | Four hand-Rust mirrors of `.dag` types retired; SG-0 reduction | R2-Evaluator (executes std bodies); ValueBody::Map (already landed in R2 carriers) |
+| **T-Tier3-Dissolution** | M | **Tier 3 Manager** (or PB Manager continuing post-R2) | Four hand-Rust mirrors of `.dag` types retired (mirror bodies replaced by Evaluator-backed authority inside `dag.rs` / `dag/effects.rs` / `workflow_idempotency.rs`); **consumer count / mirror-symbol count reaches zero**. SG-0 delta is reported and **usually 0** because the hand-authored file remains on the census after mirror-block retirement — SG-0 reaches 0 through broader PB-Substrate / generated-file retirement + T-LensProducer-Retirement, not as a direct Tier 3 consequence (per PB Manager review 2026-04-28) | R2-Evaluator (executes std bodies); ValueBody::Map carrier (landed in R2 post-#1017; map read-path/API + arrow-body evaluation are the remaining substrate gaps for `kernel_algebra_profile`) |
 | **T-LensProducer-Retirement** | XL | **PB Manager (post-R2 continuation)** | Three program-sized hand-Rust files retired via PB-Runtime + PB-1 patterns. **Plus advanced lifetime analyzer cases d/e/f** (closures, async lifetimes, self-referential/Pin) folded into this lane per design-emission-model.md Open call 2 — the lifetime analyzer is structurally what replaces `lens_apply.rs`'s reflection work, so advanced cases land alongside retirement | R2-Evaluator (interpreter-as-data); PB-1 generated bin-shim pattern (which itself depends on Evaluator); R2-T-Ground-Lifetime-Analyzer (a/b/c basic cases) |
 | **T-Verification-L4-L7-Direct** | M | **Verification Manager** (new) | L4 emit/eval match harness + L7 algebraic-law witness construction. Evaluator-direct; can start as soon as R2-Evaluator + R2 close. **Consumes `Lens<C>` from R2-T-Substrate-Lens-Primitive** (L4 + L7 are instances of the lens framework — different cost basis per claim) | R2-Evaluator (witness construction) + **R2-T-Substrate-Lens-Primitive** |
 | **T-Verification-L5-Corpus** | M | **Verification Manager** | L5 cross-target equivalence only. Corpus-driven; needs (a) all 3 Shape A targets grounded, (b) L4 corpus from T-Verification-L4-L7-Direct existing first. (L6 form coverage moved to R2-T-Ground-CrossTarget-Meta as a structural cross-product fold; see §"Acceptance" note.) | R2-Grounding-Rust + R2-Grounding-Python + T-Verification-L4-L7-Direct |
