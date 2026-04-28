@@ -510,6 +510,7 @@ fn bootstrap_fixed_point() {
 fn gist_full_pipeline() {
     let gist_files = [
         "dsl/std/types.dag",
+        "dsl/std/error_primitives.dag",
         "dsl/std/errors.dag",
         "dsl/std/resources.dag",
         "dsl/extdeps/cloud/cloud.dag",
@@ -734,30 +735,22 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
 static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let pass1 = &*CI_PASS1;
     let ws = crate::helpers::workspace_root();
-    let stage0_src = ws.join("src/v2/stage0/src");
-
-    // Copy pass1 generated .rs files into the workspace's stage0 source.
-    ci_timing("PASS2: start copy .rs files into workspace");
-    let pass1_src = pass1.output_dir.join("src");
-    for entry in std::fs::read_dir(&pass1_src).unwrap() {
-        let entry = entry.unwrap();
-        let path = entry.path();
-        if path.extension().map(|e| e == "rs").unwrap_or(false) {
-            std::fs::copy(&path, stage0_src.join(entry.file_name())).unwrap();
-        }
-    }
-    ci_timing("PASS2: copy done, start workspace rebuild");
-
-    // Rebuild workspace binary — incremental, all deps already compiled.
+    // Rebuild the pass1 crate in place. This keeps the fixed-point check
+    // hermetic: the ignored CI tests run concurrently, so copying pass1 files
+    // into the workspace can race with freshness/lint/test gates.
+    ci_timing("PASS2: start generated crate rebuild");
+    let stage1_target_dir = std::env::temp_dir().join("v2-ci-pass2-target");
+    let _ = std::fs::remove_dir_all(&stage1_target_dir);
     let build1 = std::process::Command::new("cargo")
         .arg("build")
-        .arg("-p")
-        .arg("v2-compiler")
+        .arg("--manifest-path")
+        .arg(pass1.output_dir.join("Cargo.toml"))
         .arg("--release")
+        .env("CARGO_TARGET_DIR", &stage1_target_dir)
         .output()
         .expect("stage1 build failed");
     ci_timing(&format!(
-        "PASS2: workspace rebuild done (success={})",
+        "PASS2: generated crate rebuild done (success={})",
         build1.status.success()
     ));
     assert!(
@@ -765,7 +758,7 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-    let stage1_bin = ws.join("target/release/v2-compiler");
+    let stage1_bin = stage1_target_dir.join("release/v2_compiler");
 
     // Self-compile pass 2
     ci_timing("PASS2: start self-compile");
@@ -882,9 +875,9 @@ fn ci_freshness() {
 #[test]
 #[ignore] // CI: cargo test -p v2-compiler-tests ci_ -- --ignored
 fn ci_fixed_point() {
+    let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
-    let ws = crate::helpers::workspace_root();
-    let pass1_src = ws.join("src/v2/stage0/src");
+    let pass1_src = pass1.output_dir.join("src");
     let pass2_src = pass2.output_dir.join("src");
     if let Err(diff) = diff_excluding_hand_maintained(&pass1_src, &pass2_src) {
         eprintln!("Fixed point NOT reached — diff:\n{}", diff);

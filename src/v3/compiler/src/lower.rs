@@ -2894,7 +2894,23 @@ fn lower_string_map_entries(
             )?,
         ));
     }
-    Some(FieldMap::from_entries(lowered).expect("lower_string_map_entries rejects duplicates"))
+    match FieldMap::from_entries(lowered) {
+        Ok(map) => Some(map),
+        Err(duplicate) => {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` map body repeats key `{}`",
+                        duplicate.key
+                    ),
+                    span: SourceSpan::new("<lower-field-map-invariant>", 0, 0),
+                    fixes: Vec::new(),
+                },
+            );
+            None
+        }
+    }
 }
 
 /// Walk a declaration through `Instantiation` / `ResolvedIdentifier`

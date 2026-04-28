@@ -347,7 +347,7 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
     modules |> flat_map(m =>
       let m_name = authored_name_at(source_indices: source_indices, node: m)
       let imports_std_types = module_imports(n: m) |> any(imp => authored_name_at(source_indices: source_indices, node: imp) == "std.types")
-      if m_name != "std.types" && m_name != "std.algebra" && imports_std_types == false {
+      if m_name != "std.types" && m_name != "std.algebra" && m_name != "std.error_primitives" && imports_std_types == false {
         [DepEdge { from_module: "std.types", to_module: m_name }]
       } else {
         []
@@ -368,7 +368,7 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
   let in_degree_map = modules |> fold(init: empty_map(), f: (acc, m) =>
     let m_name = authored_name_at(source_indices: source_indices, node: m)
     let imports_std_types = module_imports(n: m) |> any(imp => authored_name_at(source_indices: source_indices, node: imp) == "std.types")
-    let implicit_std_types_in_degree = if has_std_types && m_name != "std.types" && m_name != "std.algebra" && imports_std_types == false { 1 } else { 0 }
+    let implicit_std_types_in_degree = if has_std_types && m_name != "std.types" && m_name != "std.algebra" && m_name != "std.error_primitives" && imports_std_types == false { 1 } else { 0 }
     map_insert(acc, m_name, module_imports(n: m) |> count + implicit_std_types_in_degree)
   )
 
