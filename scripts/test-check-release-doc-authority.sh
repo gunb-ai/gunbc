@@ -48,36 +48,59 @@ echo "" > "$TMPDIR/docs/r3-structure.md"
 echo "" > "$TMPDIR/docs/thesis/r2-r3-thesis-mapping.md"
 
 # ---------------------------------------------------------------
-# Negative case: live forbidden strings should fail the check
+# Negative cases (per-string): each forbidden string must be caught
+# in isolation. Per gpt-5-5-pro/codex review on PR #1078:
+# bundling all forbidden strings into one fixture only proves
+# "at least one caught" not "each caught" — future broadening that
+# silently exempts a single string (e.g., @target) would still pass
+# the bundled test. Per-string isolation tests prevent that.
 # ---------------------------------------------------------------
-test_negative() {
-  cat > "$TMPDIR/docs/r2-structure.md" <<'EOF'
-# R2 Structure (test fixture — live forbidden strings)
 
-This is a fixture intended to fail the consumer.
+# Helper: write a fixture containing exactly one live forbidden string
+# in non-retraction context, run the consumer, expect non-zero exit.
+test_negative_single() {
+  local forbidden="$1"
+  local content="$2"
 
-## Lane structure
+  cat > "$TMPDIR/docs/r2-structure.md" <<EOF
+# R2 Structure (test fixture — live forbidden string: $forbidden)
 
-T-Ground-Engine is a live lane in this fixture.
-
-## Decisions locked
-
-DECISIONS LOCKED 2026-04-28: Director ratified that T-Ground-Annotation
-remains live as a parallel-authority annotation surface using @target syntax.
-The canonical choice is documented inline.
-
-(All forbidden strings appear in non-retraction context; consumer should fail.)
+$content
 EOF
   cd "$TMPDIR"
   if bash "$TEST_CONSUMER" >/dev/null 2>&1; then
     cd "$ROOT"
-    echo "FAIL: consumer passed on a fixture with live forbidden strings"
-    echo "  Expected: consumer should detect T-Ground-Engine, T-Ground-Annotation,"
-    echo "  canonical choice, @target, DECISIONS LOCKED in non-retraction context"
+    echo "FAIL [negative/$forbidden]: consumer passed on a fixture with live '$forbidden'"
+    echo "  Expected: consumer should detect '$forbidden' in non-retraction context"
     return 1
   fi
   cd "$ROOT"
   return 0
+}
+
+test_negative_t_ground_engine() {
+  test_negative_single "T-Ground-Engine" \
+    "T-Ground-Engine is a live lane in this fixture."
+}
+
+test_negative_t_ground_annotation() {
+  test_negative_single "T-Ground-Annotation" \
+    "T-Ground-Annotation is a live program-side substrate lane."
+}
+
+test_negative_canonical_choice() {
+  test_negative_single "canonical choice" \
+    "When multiple inhabitants exist, the canonical choice is declared at the language level."
+}
+
+test_negative_at_target() {
+  test_negative_single "@target" \
+    "Users annotate program-side intent via @target syntax."
+}
+
+test_negative_decisions_locked() {
+  test_negative_single "DECISIONS LOCKED" \
+    "DECISIONS LOCKED 2026-04-28: Director ratified all 8 challenges as final decisions."
 }
 
 # ---------------------------------------------------------------
@@ -119,14 +142,24 @@ EOF
 
 failures=0
 
-echo "Test 1 (negative): live forbidden strings should fail consumer..."
-if test_negative; then
-  echo "  PASS"
-else
-  failures=$((failures + 1))
-fi
+# Per-string negative tests (5)
+for test_fn in \
+  test_negative_t_ground_engine \
+  test_negative_t_ground_annotation \
+  test_negative_canonical_choice \
+  test_negative_at_target \
+  test_negative_decisions_locked; do
+  forbidden="${test_fn#test_negative_}"
+  echo "Test (negative/$forbidden): live string should fail consumer..."
+  if "$test_fn"; then
+    echo "  PASS"
+  else
+    failures=$((failures + 1))
+  fi
+done
 
-echo "Test 2 (positive): retraction-context forbidden strings should pass consumer..."
+# Positive test (1) — retraction-context strings should pass
+echo "Test (positive): retraction-context forbidden strings should pass consumer..."
 if test_positive; then
   echo "  PASS"
 else
