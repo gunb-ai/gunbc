@@ -284,7 +284,7 @@ pub fn validate_first_rust_pilot_row_matches_mirror() -> StructureResult<()> {
             expected: "non-empty mirror slice".to_string(),
             actual: "empty".to_string(),
         })?;
-    validate_enumerated_rust_pilot_row_matches_mirror(dag, &disj_variants, 0, first, mirror0)
+    validate_enumerated_rust_pilot_row_matches_mirror(&dag, &disj_variants, 0, first, mirror0)
 }
 
 fn validate_enumerated_rust_pilot_row_matches_mirror(
