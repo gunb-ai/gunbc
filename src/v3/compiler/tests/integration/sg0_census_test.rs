@@ -227,6 +227,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
+    // PB Tier-2 lower-helper exact-string patch class (#1014): zero-residual receipt +
+    // source ratchet; see `bridge_lower_helpers_patch_zero_residual_test.rs` module docs.
+    "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs",
     // R2 PB canonical-lens bridge ratchet (PR #1183 — disposition for
     // `bridge_canonical_lens_name_dispatch_retired`). Pins the remaining
     // `include_str!` / name-dispatch surface in `test_runner.rs` per
