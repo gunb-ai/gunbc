@@ -406,11 +406,27 @@ check_q4_landed_pr_in_history() {
       # mktemp avoids the $$-PID approach: a crashed run on a shared
       # dev box could leak /tmp/gh-stderr-$$ files; mktemp gives unique
       # path + cleanup is paired in this scope.
-      local gh_stderr_file
-      gh_stderr_file="$(mktemp)"
-      pr_state="$(gh pr view "$pr_num" --repo "$REPO_SLUG" --json state --jq '.state' 2>"$gh_stderr_file" || true)"
-      gh_stderr="$(cat "$gh_stderr_file" 2>/dev/null || true)"
-      rm -f "$gh_stderr_file"
+      #
+      # Retry a few times on transient GitHub API failures. CI observed
+      # `HTTP 504: 504 Gateway Timeout` from graphql on `gh pr view`,
+      # which incorrectly fails Q4 when PRs are actually merged.
+      local attempt gh_stderr_file
+      for attempt in 1 2 3 4 5; do
+        gh_stderr_file="$(mktemp)"
+        pr_state="$(gh pr view "$pr_num" --repo "$REPO_SLUG" --json state --jq '.state' 2>"$gh_stderr_file" || true)"
+        gh_stderr="$(cat "$gh_stderr_file" 2>/dev/null || true)"
+        rm -f "$gh_stderr_file"
+        if [ "$pr_state" = "MERGED" ]; then
+          break
+        fi
+        if echo "$gh_stderr" | grep -qiE '504|502|503|timeout|rate limit'; then
+          if [ "$attempt" -lt 5 ]; then
+            sleep $((attempt * 2))
+            continue
+          fi
+        fi
+        break
+      done
       if [ "$pr_state" = "MERGED" ]; then
         continue
       fi
