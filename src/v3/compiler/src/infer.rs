@@ -165,6 +165,19 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Resolved(existing)
                             if type_shapes_equivalent(dag, &existing, &ty) => {}
                         PortState::Resolved(existing) => {
+                            match int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
+                                IntLiteralNarrowMerge::Merge => {
+                                    dag.set_port_type(port, ty);
+                                    changed = true;
+                                    continue;
+                                }
+                                IntLiteralNarrowMerge::Reject(diag) => {
+                                    dag.mark_unresolved(port, diag);
+                                    changed = true;
+                                    continue;
+                                }
+                                IntLiteralNarrowMerge::NotApplicable => {}
+                            }
                             if is_retryable_generic_decl(dag, existing.declaration)
                                 || is_retryable_generic_decl(dag, ty.declaration)
                             {
@@ -825,6 +838,56 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
     changed
 }
 
+/// T-Modeling int-lit / PR #806 consumer: allow `i64` default-typed int
+/// literal output ports to refine to a range-backed fixed-width `IntegerPrimitive`
+/// when the magnitude fits, without treating it as a conflicting resolution.
+#[derive(Debug)]
+enum IntLiteralNarrowMerge {
+    /// Narrow to the fixed-width type — caller should `set_port_type` to `to`.
+    Merge,
+    /// Not a default-`Int` literal → fixed-width call-site narrow case.
+    NotApplicable,
+    /// Preserve typed diagnostics (e.g. [`Diagnostic::MagnitudeOutOfRange`]) like the
+    /// annotated-`let` value-node path, not a silent fallback to `TypeMismatch`.
+    Reject(Diagnostic),
+}
+
+fn int_literal_magnitude_narrow_merge(
+    dag: &Dag,
+    port: PortId,
+    from: &TypeShape,
+    to: &TypeShape,
+) -> IntLiteralNarrowMerge {
+    let Some(lit) = literal_int_at(dag, port) else {
+        return IntLiteralNarrowMerge::NotApplicable;
+    };
+    let Some(int_shape) = dag.int_shape() else {
+        return IntLiteralNarrowMerge::NotApplicable;
+    };
+    if !type_shapes_equivalent(dag, from, &int_shape) {
+        return IntLiteralNarrowMerge::NotApplicable;
+    }
+    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
+    match int_literal_fits_expected_type(dag, lit, to.declaration) {
+        Ok(Some(true)) => IntLiteralNarrowMerge::Merge,
+        Ok(Some(false)) => match integer_range_for_decl(dag, to.declaration) {
+            IntegerRangeLookup::Found(bound) => IntLiteralNarrowMerge::Reject(
+                magnitude_out_of_range_for_interval(lit, *to, bound, span),
+            ),
+            IntegerRangeLookup::Invalid(diag) => IntLiteralNarrowMerge::Reject(diag),
+            IntegerRangeLookup::Missing => {
+                IntLiteralNarrowMerge::Reject(Diagnostic::ResolveError {
+                    name: "(internal: integer literal out of range but no range fact)".to_string(),
+                    span,
+                    fixes: Vec::new(),
+                })
+            }
+        },
+        Err(diag) => IntLiteralNarrowMerge::Reject(diag),
+        Ok(None) => IntLiteralNarrowMerge::NotApplicable,
+    }
+}
+
 enum Decision {
     Set(PortId, TypeShape),
     Fail(PortId, Diagnostic),
@@ -837,6 +900,59 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
     let behavior = dag.nodes()[index].clone();
     match &behavior {
         Behavior::Value(v) => {
+            // `let x: UInt8 = 5` seeds the value port to `UInt8` after lowering;
+            // the Int literal Value node would otherwise re-stamp `Int64` here and
+            // clobber host narrowing. If the port is already a non-`Int` type, only
+            // defer (Retry) when range facts prove the literal fits that type.
+            // Otherwise fail closed with `MagnitudeOutOfRange` (same contract as
+            // call-site narrowing) or fall through so normal mismatch handling
+            // applies when there is no range-backed check.
+            if let LiteralBits::Int(literal) = &v.data {
+                if let PortState::Resolved(existing) = dag.port(v.output).state() {
+                    if let Some(int_sh) = dag.int_shape() {
+                        if !type_shapes_equivalent(dag, existing, &int_sh) {
+                            match int_literal_fits_expected_type(
+                                dag,
+                                *literal,
+                                existing.declaration,
+                            ) {
+                                Ok(Some(true)) => return Decision::Retry,
+                                Ok(Some(false)) => {
+                                    match integer_range_for_decl(dag, existing.declaration) {
+                                        IntegerRangeLookup::Found(range) => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                magnitude_out_of_range_for_interval(
+                                                    *literal,
+                                                    *existing,
+                                                    range,
+                                                    v.span.clone(),
+                                                ),
+                                            );
+                                        }
+                                        IntegerRangeLookup::Invalid(diag) => {
+                                            return Decision::Fail(v.output, diag);
+                                        }
+                                        IntegerRangeLookup::Missing => {
+                                            return Decision::Fail(
+                                                v.output,
+                                                Diagnostic::ResolveError {
+                                                    name: "(internal: integer literal out of range but no range fact)"
+                                                        .to_string(),
+                                                    span: v.span.clone(),
+                                                    fixes: Vec::new(),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                                Err(diag) => return Decision::Fail(v.output, diag),
+                                Ok(None) => {}
+                            }
+                        }
+                    }
+                }
+            }
             let shape_and_name = match &v.data {
                 // Unconstrained integer literals keep the existing explicit
                 // default to Int64. Expected-type narrowing happens at
@@ -2022,15 +2138,6 @@ fn resolve_arrow_decl_walk(
     }
 }
 
-fn literal_decl_id(dag: &Dag, literal: &LiteralBits) -> Option<DeclarationId> {
-    let name = match literal {
-        LiteralBits::Int(_) => "Int",
-        LiteralBits::Bool(_) => "Bool",
-        LiteralBits::String(_) => "String",
-    };
-    dag.declaration_by_name(name).map(|decl| decl.id)
-}
-
 fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
     let resolved_decl = match dag.port(port).state() {
         PortState::Resolved(ty) => ty.declaration,
@@ -2043,8 +2150,14 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
         });
     };
     match dag.node(produced_by) {
-        Behavior::Value(v) => Some(PortTypeContext {
-            decl: literal_decl_id(dag, &v.data)?,
+        // Use the port's resolved declaration, not the literal's default
+        // substrate type (`Int` for all int literals). After range narrowing the
+        // literal port may already be `UInt8` / etc.; `literal_decl_id`-style
+        // `Int` here makes `resolve_callable_target` think the argument is still
+        // the default `Int`, producing spurious implicit-template conflicts against
+        // a `UInt8` parameter (e.g. `id_u8(7)`).
+        Behavior::Value(_) => Some(PortTypeContext {
+            decl: resolved_decl,
             subst: SubstStack::new(),
         }),
         Behavior::Transform(t) => match &t.target {

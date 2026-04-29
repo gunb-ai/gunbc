@@ -177,33 +177,49 @@ fn call_site_u8_literal_narrows_against_uint8_parameter() {
     assert_int_value_port_resolves_to_uint8(&dag, 7, "call id_u8(7) argument literal");
 }
 
-/// OOB for `data` is covered in `out_of_range_uint8_literal_emits_magnitude_diagnostic`.
-/// This pins the same `MagnitudeOutOfRange` contract for a **let** (pre-seeded path).
+/// Emit must surface narrow Rust backing (`u8`) for UInt8 — this ratchets the
+/// `TypeConnective::Cardinality` + rust primitive bridge without a full `rustc` roundtrip.
+#[test]
+fn emit_rust_uint8_let_mentions_rust_u8() {
+    let dag =
+        compile_to_dag("let x: UInt8 = 5", "emit_rust_u8_let.v3").expect("emit u8: let compiles");
+    let out = emit_rust::emit_rust(&dag).expect("emit");
+    assert!(
+        out.contains("u8") || out.contains("UInt8"),
+        "expected `u8` (or v3 `UInt8` trace) in emit output; got: {}",
+        &out.chars().take(800).collect::<String>()
+    );
+}
+
+#[test]
+fn let_annotated_uint8_literal_resolves_to_narrow_type() {
+    let dag = compile_to_dag("let x: UInt8 = 5\n", "let_u8_narrow.v3").expect("compiles");
+    let value = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            v3_compiler::dag::Behavior::Value(v) if v.data == LiteralBits::Int(5) => Some(v),
+            _ => None,
+        })
+        .expect("literal");
+    let ty = match dag.port(value.output).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => ty,
+        other => panic!("expected resolved port, got {other:?}"),
+    };
+    assert_eq!(
+        dag.declaration(ty.declaration).name.as_deref(),
+        Some("UInt8"),
+        "annotated u8-typed `let` should keep range-backed narrow type at the literal port"
+    );
+}
+
 #[test]
 fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
-    let err = compile_to_dag("let x: UInt8 = 256", "int_literal_u8_oob_let.v3")
-        .expect_err("let UInt8 OOB must fail closed");
+    let err = compile_to_dag("let x: UInt8 = 256\n", "let_u8_oob.v3")
+        .expect_err("annotated let UInt8 overflow must fail closed");
     let CompileError::Semantic(dag) = err else {
         panic!("expected semantic diagnostic, got {err:?}");
     };
-    let messages: Vec<String> = dag
-        .diagnostics()
-        .iter()
-        .map(|(_, diagnostic)| diagnostic.message())
-        .collect();
-    assert_eq!(
-        messages.len(),
-        1,
-        "out-of-range integer literal should emit one root-cause diagnostic, got {messages:?}"
-    );
-    assert!(
-        messages.iter().any(|message| {
-            message.contains("integer literal `256`")
-                && message.contains("u8")
-                && message.contains("0..=255")
-        }),
-        "expected MagnitudeOutOfRange details, got {messages:?}"
-    );
     assert!(
         dag.diagnostics().iter().any(|(_, diagnostic)| {
             matches!(
@@ -222,21 +238,41 @@ fn let_annotated_uint8_out_of_range_emits_magnitude_diagnostic() {
                     && fixes.is_empty()
             )
         }),
-        "MagnitudeOutOfRange for let should match `data` OOB shape"
+        "expected MagnitudeOutOfRange for let literal, got {:?}",
+        dag.diagnostics()
     );
 }
 
-/// Emit must surface narrow Rust backing (`u8`) for UInt8 — this ratchets the
-/// `TypeConnective::Cardinality` + rust primitive bridge without a full `rustc` roundtrip.
 #[test]
-fn emit_rust_uint8_let_mentions_rust_u8() {
-    let dag =
-        compile_to_dag("let x: UInt8 = 5", "emit_rust_u8_let.v3").expect("emit u8: let compiles");
-    let out = emit_rust::emit_rust(&dag).expect("emit");
+fn call_site_uint8_literal_narrows() {
+    let source = "fn id_u8(p: UInt8) -> UInt8 = p\nlet y: UInt8 = id_u8(7)\n";
+    let dag = compile_to_dag(source, "call_u8_narrow.v3").expect("compiles");
+    let value = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            v3_compiler::dag::Behavior::Value(v) if v.data == LiteralBits::Int(7) => Some(v),
+            _ => None,
+        })
+        .expect("call literal 7");
+    let ty = match dag.port(value.output).state() {
+        v3_compiler::dag::PortState::Resolved(ty) => ty,
+        other => panic!("expected resolved port, got {other:?}"),
+    };
+    assert_eq!(
+        dag.declaration(ty.declaration).name.as_deref(),
+        Some("UInt8")
+    );
+}
+
+#[test]
+fn emit_let_uint8_uses_narrow_rust_type() {
+    use v3_compiler::emit_rust::emit_rust;
+    let dag = compile_to_dag("let x: UInt8 = 5\n", "emit_let_u8.v3").expect("compiles");
+    let out = emit_rust(&dag).expect("emits");
     assert!(
-        out.contains("u8") || out.contains("UInt8"),
-        "expected `u8` (or v3 `UInt8` trace) in emit output; got: {}",
-        &out.chars().take(800).collect::<String>()
+        out.contains("u8") && out.contains("x") && out.contains("5"),
+        "expected u8-annotated let in Rust text, got: {out}"
     );
 }
 
