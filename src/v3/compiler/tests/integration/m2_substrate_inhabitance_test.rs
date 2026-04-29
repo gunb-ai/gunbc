@@ -984,16 +984,9 @@ fn substrate_coproducts_match_runtime_carriers() {
             (String::from("TypeParam"), vec![String::from("_0")]),
         ]
     );
-    assert_eq!(
-        sum_variants(&dag, "Interval"),
-        vec![
-            (
-                String::from("ExactInterval"),
-                vec![String::from("lo"), String::from("hi")],
-            ),
-            (String::from("Unbounded"), Vec::new()),
-        ]
-    );
+    // `Interval<D>` is substrate-authoritative but not reified as a named bootstrap
+    // declaration (type parameter); see `r2_pr_pref_interval_substrate_test` for the
+    // Rust mirror + `try_exact_interval` receipts.
     assert_eq!(
         sum_variants(&dag, "CardinalityBound"),
         vec![
