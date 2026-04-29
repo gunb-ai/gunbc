@@ -164,6 +164,12 @@ fn emit_r1_gates_fixture(manifest_path: &Path, v3_dir: &Path) {
     let out_path = fixtures_dir.join("r1_gates.dag");
 
     println!("cargo:rerun-if-changed={}", template_path.display());
+    for p0_script in [
+        manifest_path.join("../../../scripts/r1_p0_no_fabrication_sentinel.sh"),
+        manifest_path.join("../../../scripts/r1_p0_rest_ops_aligned.py"),
+    ] {
+        println!("cargo:rerun-if-changed={}", p0_script.display());
+    }
     println!("cargo:rerun-if-changed={}", lens_path.display());
     println!("cargo:rerun-if-changed={}", merge_sort_pair_v3.display());
     println!(
