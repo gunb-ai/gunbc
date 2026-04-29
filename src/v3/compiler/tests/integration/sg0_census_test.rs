@@ -232,6 +232,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
+    "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
