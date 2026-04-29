@@ -78,11 +78,10 @@ Class-5 lowering for real `Lens<C>` **data** instances + `fold_lens<C>` in subst
 
 ### 6.2 Additional substrate / API gaps (beyond 6.1)
 
-1. **Root-scoped analysis vs generic fold**  
-   `analyze_workflow(d, workflow_root)` takes an explicit **root** `NodeId`. Spec `fold_lens<C>: Lens<C> → Dag → DimensionReport<C>` has **no** root parameter. Unless every program has a single distinguished root discoverable from `Dag` alone, M3 needs one of:  
-   - a **root-parameterized** fold / lens application primitive, or  
-   - a **redesign** so idempotency is expressed as per-Behavior reads that still compose to the same verdict only when fold order matches bind-tree discipline (non-trivial), or  
-   - acceptance that idempotency dimension runs only on a **filtered** node set (new substrate hook).
+1. **Workflow root vs fold entry (spec alignment, not a missing primitive)**  
+   `analyze_workflow(d, workflow_root)` matches the **DB-3 evaluation API**: `analyze(d, workflow: NodeId, dim)` in [`docs/design-dimension-abstraction.md`](design-dimension-abstraction.md) §"Dimension evaluation". The dimension record in substrate is **`AnalysisDimension<Carrier>`** (`src/v3/std/dimensions.dag`); DB-3 and older prose use colloquial `Dimension<Carrier>` for that analysis shape — see the **Substrate naming note** in [`docs/design-lens-framework.md`](design-lens-framework.md) §The `Lens<C>` primitive.  
+   The one-line diagram `fold_lens<C>: Lens<C> → Dag → DimensionReport<C>` in that lens doc is **abbreviated**; it must **not** be read as superseding DB-3 or inventing a rootless authority. M3 should **name the substrate target** the fold extends (dimension evaluation / `analyze`-shaped driver — today’s seam includes `fold_lens_over_reflected_program` in `src/v3/compiler/src/lens_apply.rs`) and thread **`workflow: NodeId` the same way DB-3 does**, rather than treating “no `NodeId` on the diagram” as a greenfield substrate gap (INVARIANTS.md — *Unnamed substrate target* / design commitments must name the carrier).  
+   Remaining work: reconcile the lens-framework diagram (and any lowering plan) with **`analyze(d, workflow, …)`**, plus idempotency-specific bind-tree modeling — **not** “substrate lacks a workflow root hook.”
 
 2. **Report type is not a pure monoid carrier**  
    `WorkflowIdempotencyReport` sums **verdict** + **unsupported**; `Lens<C>` wants one `C` with `Monoid<C>` for sequential. Need a staged model: e.g. extract `WorkflowEffect` + classify shape **before** fold, then run monoid only on linear fragment; **or** widen `C` to an internal tagged type with monoid laws only on a subset (document partial monoid / error algebra).
@@ -96,16 +95,16 @@ Class-5 lowering for real `Lens<C>` **data** instances + `fold_lens<C>` in subst
 
 ## 7. Explicit acceptance line for @briansrls
 
-**There *is* at least one substantive blocker beyond the shared class-5 + `fold_lens<C>` prerequisite:** the **root-scoped `NodeId` parameter** and the **non-monoidal outer report sum** (`WorkflowIdempotencyReport`) must be reconciled with the generic per-`Behavior` fold + single-carrier `Monoid<C>` story **before** M3 implementation can be honest without scaffolding.
+**There *is* at least one substantive blocker beyond the shared class-5 + honest `Lens<C>` instance / fold-driver prerequisite:** the **non-monoidal outer report sum** (`WorkflowIdempotencyReport` = composition verdict ∪ unsupported) must be reconciled with a single sequential carrier `Monoid<C>` (and with `Lens<C>.branch` / `iterate` until those algebras exist). **Workflow root scoping is not an extra substrate hole:** DB-3 already locks `analyze(d, workflow: NodeId, …)`; idempotency’s explicit `workflow_root` lines up with that. A rootless whole-`Dag`-only fold would be a **new design commitment** (must name substrate + ratchet), not something the abbreviated `fold_lens` one-liner forces by itself.
 
-If product direction locks “idempotency is always whole-program fold with identity off roots,” that is a **modeling decision + possible new primitive**, not just lowering debt.
+If product direction ever locked “idempotency is always rootless whole-program fold,” that would **contradict** DB-3’s named evaluation shape and would need an explicit decision — it does **not** follow from today’s `analyze_workflow` API.
 
 ---
 
 ## 8. M3 implementation checklist (after prerequisites land)
 
 1. [ ] Lock carrier: `CompositionVerdict` vs full `WorkflowIdempotencyReport` vs new internal `C` with projection to report.
-2. [ ] Lock application model: root-parameterized fold vs whole-Dag fold vs filtered visit strategy; update `design-lens-framework.md` or `dimensions.dag` if new primitive.
+2. [ ] Lock application entry: align emitted/spec fold with DB-3 **`analyze(d, workflow: NodeId, dim)`** (substrate record: **`AnalysisDimension<Carrier>`**); amend `design-lens-framework.md` if the `fold_lens` sketch still omits `workflow` so the named substrate target is explicit end-to-end.
 3. [ ] Specify `read(dag, b)` for all five `Behavior` variants + `Witness<C>` for missing / non-holder cases.
 4. [ ] Declare `Monoid<C>.op` = first-breaker-wins path equivalent to `compose_effects`; prove associativity on linear fragments.
 5. [ ] Declare `branch` / `iterate` stubs or unsupported widening until Branch/Loop/Parallel algebra exists (`effects.dag` already documents graduation).
@@ -119,6 +118,6 @@ If product direction locks “idempotency is always whole-program fold with iden
 ## 9. Rust oracle information **not** captured by “per-Behavior read + aggregate validate” alone
 
 - **`ElementRef<OperationEffect>`** in `BrokenBy` ties the verdict to **index position in the op list** — a `read` per `Behavior` does not naturally yield that without either carrying list context in `Witness<C>` or composing at a **list-shaped** substrate node (not one `Behavior` = one op today).
-- **`analyze_workflow` root selection** is caller-provided `NodeId` — aggregate `validate` sees `Dag` + composed `C` but **not** the root unless `C` or `DimensionReport` carries it.
+- **`analyze_workflow` root selection** is caller-provided `NodeId` — aggregate `validate(dag, c)` (lens-framework shape) does not take `workflow` as an argument, so a **naïve** “only validate at the end” story can lose the root unless `C` / `DimensionReport` carries it. **Mitigation:** thread `workflow` at the **DB-3 `analyze(d, workflow, dim)`-shaped** fold entry (same authority as dimension evaluation), not only inside `validate`.
 
 So: **yes**, there is oracle information (list-indexed breaker + explicit root) that a naïve “read each Behavior once, validate once” story does not encode without extra fields or a richer `Witness<C>` payload.
