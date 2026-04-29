@@ -21,9 +21,7 @@ fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
         .declaration_by_name(name)
         .unwrap_or_else(|| panic!("`{name}` missing from std bootstrap"));
     match &decl.connective {
-        TypeConnective::Conj { children } => {
-            children.iter().map(|f| f.label.clone()).collect()
-        }
+        TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
         other => panic!("`{name}` is not a Conj: {other:?}"),
     }
 }
@@ -46,10 +44,12 @@ fn method_template_contract_distinct_from_method_contract() {
          declarations (P2 single-authority)"
     );
 
-    let template_fields: HashSet<String> =
-        conj_field_labels(&dag, "MethodTemplateContract").into_iter().collect();
-    let metadata_fields: HashSet<String> =
-        conj_field_labels(&dag, "MethodContract").into_iter().collect();
+    let template_fields: HashSet<String> = conj_field_labels(&dag, "MethodTemplateContract")
+        .into_iter()
+        .collect();
+    let metadata_fields: HashSet<String> = conj_field_labels(&dag, "MethodContract")
+        .into_iter()
+        .collect();
     assert!(
         template_fields.is_disjoint(&metadata_fields),
         "MethodTemplateContract and §6a MethodContract field sets must be \
@@ -62,8 +62,9 @@ fn method_template_contract_distinct_from_method_contract() {
 #[test]
 fn method_template_contract_does_not_carry_cost_data() {
     let dag = generated_std_bootstrap_dag();
-    let labels: HashSet<String> =
-        conj_field_labels(&dag, "MethodTemplateContract").into_iter().collect();
+    let labels: HashSet<String> = conj_field_labels(&dag, "MethodTemplateContract")
+        .into_iter()
+        .collect();
 
     for forbidden in ["cost_shape", "size_effect", "callback_element_position"] {
         assert!(
@@ -101,9 +102,7 @@ fn assert_dag_method_unique(rows: &[Vec<Field>], list_name: &str) {
         let dag_method_field = row
             .iter()
             .find(|f| f.label == "dag_method")
-            .unwrap_or_else(|| {
-                panic!("row in `{list_name}` missing `dag_method` field")
-            });
+            .unwrap_or_else(|| panic!("row in `{list_name}` missing `dag_method` field"));
         assert!(
             seen.insert(dag_method_field.ty),
             "duplicate `dag_method` in `{list_name}` — per-target \

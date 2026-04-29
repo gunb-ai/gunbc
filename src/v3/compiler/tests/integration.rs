@@ -65,8 +65,6 @@ mod lane3_stage_3b_db1_test;
 mod lens_register_correspondence_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
-#[path = "integration/method_template_contract_test.rs"]
-mod method_template_contract_test;
 #[path = "boundary/m1_3_emit_go_test.rs"]
 mod m1_3_emit_go_test;
 #[path = "boundary/m1_3_emit_rust_test.rs"]
@@ -113,6 +111,8 @@ mod m2_lens_unused_parameters_migration_test;
 mod m2_lens_variant_payload_migration_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
+#[path = "integration/method_template_contract_test.rs"]
+mod method_template_contract_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
 mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
