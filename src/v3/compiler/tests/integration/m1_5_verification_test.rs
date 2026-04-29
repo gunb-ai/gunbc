@@ -224,6 +224,14 @@ fn bootstrap_loads_verification_authority_types() {
                     String::from("authority_doc"),
                 ],
             ),
+            (
+                String::from("SubstrateResearchDeferredClaim"),
+                vec![
+                    String::from("deferred_gate"),
+                    String::from("target_lane"),
+                    String::from("authority_doc"),
+                ],
+            ),
         ]
     );
 }

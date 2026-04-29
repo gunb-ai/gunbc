@@ -171,6 +171,16 @@ Until both happen, the signal is in-flight. A signal that sits >7 days unreceive
 
 ---
 
+## Audit debt — `std.verification` deferral predicates (non-blocking)
+
+**Recorded:** 2026-04-29 (Director clarification: gunb-ai/gunbc#1130; #1179 direction ratified — separate TC1 fixture + `SubstrateResearchDeferredClaim`).
+
+| Topic | Status | Notes |
+|---|---|---|
+| Unify vs split deferral carriers | open (design hygiene) | Today: `ReleaseDeferredClaim` is runner-valid only for `r1_release_acceptance.dag` (R1 release-acceptance discipline); `SubstrateResearchDeferredClaim` is runner-valid only for `tc1_substrate_lens_eta_equivalence_deferred.dag` (TC1 / R2 substrate research). **Open question for a future R2 pass:** collapse into one `DeferredAcceptanceClaim` with a discriminator (fixture / authority lane), or keep separate predicates with fixture-scoped runner gates. Either path preserves current fail-closed behavior. **Not a merge blocker for #1179.** |
+
+---
+
 ## Cross-refs
 
 - Parent: [`docs/r2-structure.md`](r2-structure.md) §"R2 Release Manager" + §"Manager structure" + §"Cross-manager dependency discipline" + §"Escalation signal channel".
