@@ -1,0 +1,37 @@
+// extdeps/languages/rust/method_template_contracts.dag -- per-method,
+// per-target render-template rows for the Rust target, populating the
+// `MethodTemplateContract` substrate carrier in
+// `src/v3/std/emit_model.dag`.
+//
+// SCOPE (T-Ground-LanguageSpec scope E phase 1): bootstrap-fixture
+// scaffolding only. The list lands as `[]` — empty but typed and
+// bootstrap-loadable — so the v3 integration test
+// `method_template_contract_per_target_dag_method_unique` walks a real
+// declaration instead of the prior vacuous zero-row default. Row
+// population is gated on the `MethodRef` registry currently under
+// authoring at jolly-ram-908 (per Substrate-comment anticipation at
+// `src/v3/std/emit_model.dag:362-364`); rows fill in once the registry
+// declares top-level method references that satisfy the
+// `dag_method: DeclarationRef` field's structural target.
+//
+// AUTHORITY: this file is the single declaration site for
+// `rust_method_template_contracts`. The legacy parallel authorities
+// (`MethodTranslation` in `runtime.dag` + `SimpleMethodSpec` in
+// `emit.dag`) remain the v2 emit-pipeline source-of-truth until phase 2
+// (parallel-rep retirement) lands; the row-list here is net-additive in
+// phase 1.
+//
+// BOOTSTRAP: this file is loaded into the bootstrap Dag via the
+// `extdeps_bootstrap_fixture_authority` substrate carrier
+// (`src/v3/std/extdeps_bootstrap_fixtures.dag`) and the
+// `EXTDEPS_BOOTSTRAP_PATH_KEYS` regen filter
+// (`src/v3/compiler/src/bootstrap.rs`). Both must list this file's
+// virtual path in the same order — the lockstep is asserted at
+// bootstrap snapshot init.
+
+module extdeps.languages.rust.method_template_contracts
+
+import v3.std.emit_model { MethodTemplateContract }
+
+
+data rust_method_template_contracts: List<MethodTemplateContract> = []
