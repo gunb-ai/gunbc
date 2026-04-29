@@ -29,7 +29,7 @@ src/v3/std/diagnostics.dag	10	12179	bc414c493551b464
 src/v3/std/dimensions.dag	21	40239	d595746d2bda22f6
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	34	65593	49cc4eb1f1faadcd
-src/v3/std/extdeps_bootstrap_fixtures.dag	4	4912	e2b6d96f5900a70a
+src/v3/std/extdeps_bootstrap_fixtures.dag	4	12175	6deea03a77be5cf3
 src/v3/std/induction.dag	56	88794	546f74c63c189c50
 src/v3/std/lens.dag	6	9852	28d5539a5b28716e
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
@@ -40,5 +40,5 @@ src/v3/std/substrate.dag	57	124531	9d03ca981cab59c3
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
-src/v3/std/verification.dag	29	61103	1783953091ac80db
+src/v3/std/verification.dag	29	63198	3a003447ed1d0797
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
