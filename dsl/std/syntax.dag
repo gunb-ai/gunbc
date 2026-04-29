@@ -75,11 +75,10 @@ type ItemForm {
 // -- Algebra field kind -----------------------------------------------
 // Which algebra field an operator dispatches through on the operand type.
 // Variants correspond 1:1 to field names on algebraic structure types
-// in std/algebra.dag (Ring.add, Field.reciprocal, OrderedRing.quotient, etc.).
+// in std/algebra.dag (Ring.add, Field.reciprocal, etc.).
 
 type AlgebraFieldKind
-  = AlgAdd | AlgMul | AlgReciprocal | AlgQuotient | AlgRemainder
-  | AlgCompare | AlgMeet | AlgJoin
+  = AlgAdd | AlgMul | AlgReciprocal | AlgCompare | AlgMeet | AlgJoin
 
 // Single authority for kind → field name mapping. Both the compiler's
 // child lookup (04_types.dag) and serialization (compile.dag) derive
@@ -94,8 +93,6 @@ data algebra_field_entries: List<AlgebraFieldEntry> = [
   { kind: AlgAdd, field_name: "add" },
   { kind: AlgMul, field_name: "mul" },
   { kind: AlgReciprocal, field_name: "reciprocal" },
-  { kind: AlgQuotient, field_name: "quotient" },
-  { kind: AlgRemainder, field_name: "remainder" },
   { kind: AlgCompare, field_name: "compare" },
   { kind: AlgMeet, field_name: "meet" },
   { kind: AlgJoin, field_name: "join" }
