@@ -64,7 +64,7 @@ The 8-question design dialogue resolved into a cadence whose merge gates worker 
 | **T-Ground-Coercion-Fold** *(NEW; replaces engine framing)* | S | **PRE-CASCADE FOOTPRINT LANDED** via PR #989 + commit `c0cc8b260` (Phase 2 pilot-list enumeration slice 1; mirror-consistency probe). Per `design-emission-model.md` §"Affected lanes" option (c): hold further engine-framed slices + queue cleanup wave once LanguageSpec lands. Future slices gated on PR-F + Substrate ValueBody-list/sum | Refinement composition as structural fold over substrate facts |
 | **T-Ground-LanguageSpec** *(NEW)* | M | NOT YET AUTHORED — **gated on PR-I merge** | Structured language-spec substrate; absorbs Reflective Pattern E retirement; per-primitive `RealizationCost` |
 | **T-Ground-Lifetime-Analyzer** *(NEW; no annotations)* | M | NOT YET AUTHORED | Structural ownership/lifetime derivation from program use |
-| **T-Ground-Diagnostic** *(NEW)* | S | NOT YET AUTHORED | Declared structural ordering for diagnostic enumeration |
+| **T-Ground-Diagnostic** *(NEW)* | S | **BRIEF LANDED** — [`t-ground-diagnostic.md`](t-ground-diagnostic.md) | Declared structural ordering for diagnostic enumeration; `EmissionDiagnostic` carrier (implementation pending) |
 | **T-Ground-CrossTarget-Meta** *(NEW)* | S | NOT YET AUTHORED — **gated on PR-J merge (likely no-op)** | Cross-target uniformity meta-spec; owns L6 per-(form × target) load-completeness check |
 | T-Ground-Tests | S | NOT YET AUTHORED | L4 routing correctness verification |
 | T-Ground-Dissolve | S | NOT YET AUTHORED | Track-13 dissolution: delete `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` |
@@ -141,7 +141,7 @@ Pending — post-spawn manager-authored autonomously:
 - T-Ground-Coercion-Fold Phase 2 implementation (gated on PR-F + Substrate ValueBody-list/sum)
 - T-Ground-LanguageSpec (gated on PR-I; absorbs target primitive/range duplication retirement)
 - T-Ground-Lifetime-Analyzer (M; structural ownership/lifetime derivation)
-- T-Ground-Diagnostic (S)
+- T-Ground-Diagnostic (S) — brief [`t-ground-diagnostic.md`](t-ground-diagnostic.md)
 - T-Ground-CrossTarget-Meta (S; gated on PR-J no-op confirmation)
 - T-Ground-Tests
 - T-Ground-Dissolve (Track-13 cleanup)
