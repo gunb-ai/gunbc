@@ -360,3 +360,81 @@ fn r2_pr_d_cross_target_equivalence_harness_primitives_suite_passes() {
     );
     assert_eq!(results[0].result, ClaimResult::Pass);
 }
+
+/// PR-A (Evaluator Manager): runtime-value model — named structural gate
+/// `evaluator_runtime_value_model_landed` compiles and passes `Compiles`
+/// under `TestRunner` (see `docs/briefs/r2-pr-a-runtime-value-model.md`).
+const R2_PR_A_RUNTIME_VALUE_FIXTURE: &str =
+    include_str!("../fixtures/r2_evaluator_runtime_value_model.dag");
+const R2_PR_A_RUNTIME_VALUE_FIXTURE_PATH: &str =
+    "src/v3/compiler/tests/fixtures/r2_evaluator_runtime_value_model.dag";
+
+#[test]
+fn r2_pr_a_runtime_value_model_suite_passes() {
+    let dag = match compile_to_dag(
+        R2_PR_A_RUNTIME_VALUE_FIXTURE,
+        R2_PR_A_RUNTIME_VALUE_FIXTURE_PATH,
+    ) {
+        Ok(dag) => {
+            assert!(
+                dag.diagnostics().is_empty(),
+                "{R2_PR_A_RUNTIME_VALUE_FIXTURE_PATH}: expected empty module diagnostics, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+            dag
+        }
+        Err(CompileError::Semantic(dag)) => panic!(
+            "{R2_PR_A_RUNTIME_VALUE_FIXTURE_PATH} should lower without module diagnostics. Got `Err(Semantic)`: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => {
+            panic!("unexpected compile error for {R2_PR_A_RUNTIME_VALUE_FIXTURE_PATH}: {other:?}")
+        }
+    };
+
+    let results = TestRunner::new(&dag).run_suite("r2_evaluator_runtime_value_model_suite");
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name,
+        "evaluator_runtime_value_model_landed"
+    );
+    assert_eq!(results[0].result, ClaimResult::Pass);
+}
+
+/// TC2 (Evaluator Manager): evaluation-order independence theorem shape.
+/// This is an author-now/fire-later `Compiles` fixture until PB-Runtime and
+/// T-Substrate-Lens-Primitive make strategy comparison executable.
+const TC2_EVALUATION_ORDER_FIXTURE: &str =
+    include_str!("../fixtures/tc2_evaluation_order_independence_deferred.dag");
+const TC2_EVALUATION_ORDER_FIXTURE_PATH: &str =
+    "src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag";
+
+#[test]
+fn tc2_evaluation_order_independence_suite_passes() {
+    let dag = match compile_to_dag(TC2_EVALUATION_ORDER_FIXTURE, TC2_EVALUATION_ORDER_FIXTURE_PATH)
+    {
+        Ok(dag) => {
+            assert!(
+                dag.diagnostics().is_empty(),
+                "{TC2_EVALUATION_ORDER_FIXTURE_PATH}: expected empty module diagnostics, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+            dag
+        }
+        Err(CompileError::Semantic(dag)) => panic!(
+            "{TC2_EVALUATION_ORDER_FIXTURE_PATH} should lower without module diagnostics. Got `Err(Semantic)`: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => {
+            panic!("unexpected compile error for {TC2_EVALUATION_ORDER_FIXTURE_PATH}: {other:?}")
+        }
+    };
+
+    let results = TestRunner::new(&dag).run_suite("tc2_evaluation_order_independence_suite");
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name,
+        "evaluation_order_independent_lens_results"
+    );
+    assert_eq!(results[0].result, ClaimResult::Pass);
+}
