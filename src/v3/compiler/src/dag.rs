@@ -465,6 +465,25 @@ pub enum FieldValue {
 // from `std/substrate.dag`; keep the substrate authority there, not here.
 include!("dag_scalar_generated.rs");
 
+/// Well-formed closed intervals for totally ordered `D`: rejects `lo > hi`.
+///
+/// Substrate `ExactInterval` carries independent `lo`/`hi` fields; the dissolution
+/// ledger in `substrate.dag` records Track 9 constructor asymmetry — use this
+/// API when bounds are not syntactically trivial (e.g. not `lo == hi`).
+impl<D: Copy + PartialEq + Eq + Ord> Interval<D> {
+    pub fn try_exact_interval(lo: D, hi: D) -> Option<Self> {
+        (lo <= hi).then_some(Self::ExactInterval { lo, hi })
+    }
+
+    /// `true` when this is `Unbounded`, or `ExactInterval` with `lo <= hi`.
+    pub fn is_ordered_closed(&self) -> bool {
+        match self {
+            Self::ExactInterval { lo, hi } => lo <= hi,
+            Self::Unbounded => true,
+        }
+    }
+}
+
 /// PR-PreF additive constructors on [`CardinalityBound`] (`Interval<Cardinal>`).
 impl CardinalityBound {
     pub const AT_MOST_ONE: Self = Self::ExactInterval { lo: 0, hi: 1 };

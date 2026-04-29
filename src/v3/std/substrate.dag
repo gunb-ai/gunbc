@@ -83,14 +83,31 @@ type AtomPayload
 type Cardinal = Int
 type Ordinal = Int
 
-// Parametric closed interval on a totally ordered domain (inclusive bounds).
+// 🟡 SCAFFOLD — parametric closed interval on a totally ordered domain (inclusive
+// bounds). **Dissolution / terminal classification (4-pattern):**
+// - **Pattern 1 (fact placement):** fails — `ExactInterval` is one fact shape with
+//   two witness fields; `Unbounded` is a distinct terminal atom.
+// - **Pattern 2 (variant-is-data):** fails — record variant vs unit-like atom.
+// - **Pattern 3 (algebraic form):** passes — segment + top (`Unbounded`) matches the
+//   Q1 ordered-numeric interval algebra carrier.
+// - **Pattern 4 (dimensional):** partial — `D` tags the coordinate kind only; no
+//   unified numeric axis until instantiated (`Cardinal`, `Ordinal`, …).
+//
+// **Constructor-validation asymmetry (Track 9 debt, same class as `ParamRef`):**
+// `ExactInterval { lo, hi }` does not enforce `lo <= hi` at the substrate witness;
+// Rust-side `Interval::try_exact_interval` is the fail-closed constructor for alloc
+// paths. Self-hosted constructors should add the same authority in the Lane 3c cycle.
 type Interval<D>
   = ExactInterval { lo: D, hi: D }
   | Unbounded
 
-// Named connective bound (spec targets / carrier string); mirror is
-// `pub type CardinalityBound = Interval<Cardinal>` in `dag_scalar_generated.rs`.
-type CardinalityBound = Interval<Cardinal>
+// 🟢 TERMINAL at connective-bound naming scope. Preserves `Exact` / `AtMostOne` /
+// `Unbounded` as distinct spec-facing constructors; maps onto `Interval<Cardinal>`
+// additively via Rust `CardinalityBound::as_cardinal_interval` (PR-PreF).
+type CardinalityBound
+  = Exact(Int)
+  | AtMostOne
+  | Unbounded
 
 type ConjField {
   label: String
@@ -155,7 +172,7 @@ type TypeConnective
     }
   | Cardinality {
       element: DeclarationId
-      bound: Interval<Cardinal>
+      bound: CardinalityBound
     }
   | Instantiation {
       template: DeclarationId
@@ -323,10 +340,7 @@ type Cluster {
 // See `docs/design-mutual-recursion-lowering.md` for the full
 // dissolution receipt and named trigger rationale.
 type LoopBound
-  = Cardinality {
-      count: PortId
-      iteration: Interval<Ordinal>
-    }
+  = Cardinality { count: PortId }
   | Descent { cluster: ClusterId }
 
 type ValueNode {

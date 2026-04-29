@@ -53,3 +53,12 @@ fn no_lattice_to_interval_collapse_bridge() {
         std::any::TypeId::of::<Interval<Ordinal>>()
     );
 }
+
+#[test]
+fn interval_try_exact_interval_rejects_inverted_bounds() {
+    assert!(Interval::<Cardinal>::try_exact_interval(2, 1).is_none());
+    let ok = Interval::try_exact_interval(1, 2).expect("ordered");
+    assert!(ok.is_ordered_closed());
+    let forged = Interval::ExactInterval { lo: 2, hi: 1 };
+    assert!(!forged.is_ordered_closed());
+}

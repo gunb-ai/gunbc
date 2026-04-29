@@ -24,6 +24,9 @@ import std.algebra {
 // `ParserStreamSize` / `WorklistDrainSize` keep parser advance vs worklist drain distinct from
 // generic `CollectionSize` (P2 facts-flow-forward). Explicit repeat counts split zero vs
 // Peano-positive (no negative `Int` inhabitant).
+// PR-PreF: definite-count variants (`ExplicitCount*`, `Forever`) bridge additively to
+// `Interval<Cardinal>` in `dag.rs` via `size_bound_cardinal_interval`; label-shaped variants
+// intentionally have no `Interval` projection (no forged numeric facet).
 type SizeBound
   = CollectionSize { param: String }
   | ParserStreamSize { witness: String }

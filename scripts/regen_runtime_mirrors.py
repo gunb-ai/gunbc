@@ -825,6 +825,8 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
         "// Rust mirrors use nonnegative width carriers matching `ExactInterval` uses.\n"
         "pub type Cardinal = u32;\n\n"
         "pub type Ordinal = u32;\n",
+        "// For ordered `D`, well-formed `ExactInterval` (`lo <= hi`): use\n"
+        "// `Interval::try_exact_interval` in `dag.rs` (substrate cannot express the constraint).\n",
         render_sum(
             "Interval",
             sums["Interval"],
@@ -832,7 +834,12 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             output_name="Interval",
             type_params="D: Copy + PartialEq + Eq",
         ),
-        "\npub type CardinalityBound = Interval<Cardinal>;\n",
+        render_sum(
+            "CardinalityBound",
+            sums["CardinalityBound"],
+            "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
+            output_name="CardinalityBound",
+        ),
         render_record(
             records["TemplateArgument"],
             output_name="TemplateArgument",
