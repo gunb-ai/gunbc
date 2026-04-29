@@ -4,11 +4,11 @@
 
 use crate::dag::{
     AtomPayload, Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm,
-    BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, ClusterId, CreateCause, Dag,
-    DeclarationId, EffectShape, FieldValue, HttpMethodScalar, IdempotentShape, KeySource,
-    LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList, OperationEffect, OperatorKind,
-    Path, PayloadBinding, PortId, TransformNode, TransformTarget, TypeConnective, ValueNode,
-    WorkflowEffect,
+    BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound, ClusterId,
+    CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar, IdempotentShape,
+    KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList, OperationEffect,
+    OperatorKind, Path, PayloadBinding, PortId, TransformNode, TransformTarget, TypeConnective,
+    ValueNode, WorkflowEffect,
 };
 use crate::diagnostics::SourceSpan;
 
@@ -107,28 +107,101 @@ fn v3_list_empty_cons_ids(dag: &Dag) -> ReflectResult<(DeclarationId, Declaratio
     Ok((empty, cons))
 }
 
-/// Optional `T?` as the substrate `List` sum (`Empty` | `Cons`) — two-variant present/absent
-/// carrier per design-reflection-completeness §4.1 (not a bool flag).
-fn reflect_optional_list_spine<T>(
+fn named_record_type_root(dag: &Dag, name: &str) -> ReflectResult<DeclarationId> {
+    let mut decl_id = dag
+        .declaration_by_name(name)
+        .ok_or(ReflectError("missing substrate record type"))?
+        .id;
+    const PEEL_MAX: usize = 64;
+    for _ in 0..PEEL_MAX {
+        match &dag.declaration(decl_id).connective {
+            TypeConnective::Conj { .. } => return Ok(decl_id),
+            TypeConnective::Instantiation { template, .. } if {
+                matches!(
+                    &dag.declaration(*template).connective,
+                    TypeConnective::Conj { .. }
+                )
+            } =>
+            {
+                decl_id = *template;
+            }
+            TypeConnective::Instantiation { template, arguments } if arguments.is_empty() => {
+                decl_id = *template;
+            }
+            _ => return err("substrate record type is not Conj"),
+        }
+    }
+    err("substrate record peel depth exceeded")
+}
+
+fn conj_field_ty(dag: &Dag, conj_decl_id: DeclarationId, label: &str) -> ReflectResult<DeclarationId> {
+    let decl = dag.declaration(conj_decl_id);
+    let TypeConnective::Conj { children } = &decl.connective else {
+        return err("expected Conj");
+    };
+    children
+        .iter()
+        .find(|c| c.label == label)
+        .map(|c| c.ty)
+        .ok_or(ReflectError("missing Conj field"))
+}
+
+fn peel_to_optional_cardinality_decl(dag: &Dag, mut ty: DeclarationId) -> ReflectResult<DeclarationId> {
+    const PEEL_MAX: usize = 64;
+    for _ in 0..PEEL_MAX {
+        match &dag.declaration(ty).connective {
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+                return Ok(ty);
+            }
+            TypeConnective::Instantiation { template, .. } => ty = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => ty = *next,
+            _ => return err("expected optional T? cardinality"),
+        }
+    }
+    err("optional cardinality peel depth exceeded")
+}
+
+fn optional_some_none_constructor_ids(
     dag: &Dag,
+    cardinality_decl_id: DeclarationId,
+) -> ReflectResult<(DeclarationId, DeclarationId)> {
+    let disj_id = dag
+        .optional_match_disj(cardinality_decl_id)
+        .ok_or(ReflectError("missing optional Some/None sum"))?;
+    let decl = dag.declaration(disj_id);
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        return err("optional match row is not Disj");
+    };
+    let some_ty = variants
+        .iter()
+        .find(|v| v.label == "Some")
+        .ok_or(ReflectError("Some"))?
+        .ty;
+    let none_ty = variants
+        .iter()
+        .find(|v| v.label == "None")
+        .ok_or(ReflectError("None"))?
+        .ty;
+    Ok((some_ty, none_ty))
+}
+
+/// Optional `T?` using the same `Some` / `None` sum as inference (`Cardinality` → match disj).
+fn reflect_optional_sum<T>(
+    dag: &Dag,
+    cardinality_decl_id: DeclarationId,
     opt: Option<T>,
     mut reflect_some: impl FnMut(&Dag, T) -> ReflectResult<FieldValue>,
 ) -> ReflectResult<FieldValue> {
-    let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
+    let (some_ty, none_ty) = optional_some_none_constructor_ids(dag, cardinality_decl_id)?;
     Ok(match opt {
         None => FieldValue::Variant {
-            constructor: empty_id,
+            constructor: none_ty,
             payload: vec![],
         },
         Some(x) => FieldValue::Variant {
-            constructor: cons_id,
-            payload: vec![
-                reflect_some(dag, x)?,
-                FieldValue::Variant {
-                    constructor: empty_id,
-                    payload: vec![],
-                },
-            ],
+            constructor: some_ty,
+            payload: vec![reflect_some(dag, x)?],
         },
     })
 }

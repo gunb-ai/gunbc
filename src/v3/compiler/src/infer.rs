@@ -32,9 +32,9 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId,
-    Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
-    TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, CardinalityBound, Dag, Declaration,
+    DeclarationId, Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId,
+    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -134,6 +134,7 @@ fn try_reconcile_int_literal_decision_set(
 }
 
 pub fn infer(dag: &mut Dag) {
+    ensure_all_optional_match_disjs(dag);
     // Fixpoint loop. Runs decide for every node, then pattern
     // resolution + exhaustiveness + uniqueness for every Branch.
     // Pattern resolution is folded into the loop (not run after it)
@@ -406,6 +407,22 @@ fn ensure_optional_match_disj(
     dag.set_optional_match_disj(cardinality_decl_id, disj_id);
 
     Some(disj_id)
+}
+
+/// Materialize `Some`/`None` match sums for every `Cardinality(_, AtMostOne)` row so
+/// downstream structural consumers (substrate reflection, lenses) can use
+/// `Dag::optional_match_disj` without requiring an optional scrutinee on a Branch.
+fn ensure_all_optional_match_disjs(dag: &mut Dag) {
+    let decl_ids: Vec<DeclarationId> = dag.declarations().iter().map(|d| d.id).collect();
+    for decl_id in decl_ids {
+        if matches!(
+            &dag.declaration(decl_id).connective,
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne
+        ) && existing_optional_match_disj_decl(dag, decl_id).is_none()
+        {
+            let _ = ensure_optional_match_disj(dag, decl_id);
+        }
+    }
 }
 
 /// For every Branch node, resolve each Path's `BranchPattern` by
