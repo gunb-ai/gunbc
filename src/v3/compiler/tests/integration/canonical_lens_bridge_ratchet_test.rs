@@ -26,11 +26,23 @@ fn test_runner_source() -> String {
     fs::read_to_string(&path).expect("read test_runner.rs source")
 }
 
-/// Strip Rust line (`//`) and block (`/* … */`) comments from `src` so
-/// the bridge ratchets anchor on live syntax only — historical or
-/// example text in docstrings must not mask bridge removal or fabricate
-/// bridge growth. String literals are preserved verbatim (the `//`
-/// inside a string is not a comment).
+/// Strip Rust comments from `src` so the bridge ratchets anchor on
+/// live syntax only — historical or example text in docstrings must
+/// not mask bridge removal or fabricate bridge growth.
+///
+/// Handles enough Rust lexical forms to keep comments inside literals
+/// from being treated as comments, and to keep lifetime ticks from
+/// being treated as char-literal openers:
+///
+/// - Line comments (`// …\n`) and block comments (`/* … */`, **nested**
+///   per Rust 2021 spec).
+/// - Normal/byte strings (`"…"`, `b"…"`) with `\\` escapes.
+/// - Raw strings (`r"…"`, `r#"…"#`, `r##"…"##`, …) and raw byte strings
+///   (`br"…"`, `br#"…"#`, …) — escapes do not process; closer matches
+///   the opener's `#` count.
+/// - Char literals (`'a'`, `'\n'`) and byte char literals (`b'a'`)
+///   distinguished from lifetime ticks (`'a`, `'static`, `'_`) by
+///   bounded lookahead for a closing `'`.
 fn strip_comments(src: &str) -> String {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
@@ -38,8 +50,25 @@ fn strip_comments(src: &str) -> String {
     let n = bytes.len();
     while i < n {
         let b = bytes[i];
-        // String literal: copy through, honoring `\"` escapes.
-        if b == b'"' {
+        // Raw string: `r"…"` / `r#"…"#` / `br"…"` / `br#"…"#` (any
+        // number of `#`). Escapes do not process; closer matches the
+        // opener's `#` count.
+        if let Some(open_len) = match_raw_string_open(bytes, i) {
+            let pounds = open_len - 2 - if bytes[i] == b'b' { 1 } else { 0 };
+            // open_len = (b? r # … " ); start of body is i + open_len.
+            let body_start = i + open_len;
+            let close = find_raw_string_close(bytes, body_start, pounds);
+            let end = close + 1 + pounds;
+            out.push_str(&src[i..end.min(n)]);
+            i = end.min(n);
+            continue;
+        }
+        // Normal/byte string literal: optional `b` prefix, opens with `"`.
+        if b == b'"' || (b == b'b' && i + 1 < n && bytes[i + 1] == b'"') {
+            if b == b'b' {
+                out.push('b');
+                i += 1;
+            }
             out.push('"');
             i += 1;
             while i < n {
@@ -55,16 +84,44 @@ fn strip_comments(src: &str) -> String {
             }
             continue;
         }
-        // Char literal vs lifetime: `'a` / `'static` are lifetimes (no
-        // closing quote); `'a'` / `'\n'` are char literals. Look ahead to
-        // distinguish — if a closing `'` appears within 4 bytes (max char
-        // literal payload: `'\xNN'`), treat as a char literal and skip
-        // through it. Otherwise treat the `'` as ordinary punctuation
-        // (lifetime tick) and copy a single byte. This keeps comments
-        // after `&'a str`-style annotations visible to the strippers.
-        if b == b'\'' {
-            let lookahead_start = i + 1;
-            let lookahead_end = (i + 5).min(n);
+        // Char / byte-char literal vs lifetime: `'a` / `'static` are
+        // lifetimes (no closing quote); `'a'` / `'\n'` / `b'a'` are char
+        // literals. Look ahead to distinguish — if a closing `'` appears
+        // within ~6 bytes (max payload incl. byte prefix: `b'\xNN'`),
+        // treat as a char literal and skip through it. Otherwise treat
+        // the `'` as a lifetime tick and copy a single byte.
+        if b == b'\''
+            || (b == b'b' && i + 1 < n && bytes[i + 1] == b'\'' && {
+                // Don't grab `b'<lifetime>` as char literal — but `b<ident>`
+                // is just `b` followed by punctuation; not a normal pattern.
+                // Apply the same lookahead test to the `'` after the `b`.
+                let test_start = i + 2;
+                let test_end = (i + 7).min(n);
+                let mut found = false;
+                let mut k = test_start;
+                while k < test_end {
+                    if bytes[k] == b'\\' && k + 1 < n {
+                        k += 2;
+                        continue;
+                    }
+                    if bytes[k] == b'\'' {
+                        found = true;
+                        break;
+                    }
+                    k += 1;
+                }
+                found
+            })
+        {
+            let tick_at = if b == b'b' {
+                out.push('b');
+                i += 1;
+                i
+            } else {
+                i
+            };
+            let lookahead_start = tick_at + 1;
+            let lookahead_end = (tick_at + 6).min(n);
             let mut closing: Option<usize> = None;
             let mut j = lookahead_start;
             while j < lookahead_end {
@@ -79,14 +136,12 @@ fn strip_comments(src: &str) -> String {
                 j += 1;
             }
             if let Some(close) = closing {
-                // Real char literal — copy through.
-                out.push_str(&src[i..=close]);
+                out.push_str(&src[tick_at..=close]);
                 i = close + 1;
                 continue;
             }
-            // Lifetime / unmatched apostrophe — copy single byte.
             out.push('\'');
-            i += 1;
+            i = tick_at + 1;
             continue;
         }
         // Line comment.
@@ -97,19 +152,76 @@ fn strip_comments(src: &str) -> String {
             }
             continue;
         }
-        // Block comment.
+        // Block comment, nested per Rust 2021.
         if b == b'/' && i + 1 < n && bytes[i + 1] == b'*' {
             i += 2;
-            while i + 1 < n && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
+            let mut depth: usize = 1;
+            while i + 1 < n && depth > 0 {
+                if bytes[i] == b'/' && bytes[i + 1] == b'*' {
+                    depth += 1;
+                    i += 2;
+                } else if bytes[i] == b'*' && bytes[i + 1] == b'/' {
+                    depth -= 1;
+                    i += 2;
+                } else {
+                    i += 1;
+                }
             }
-            i = (i + 2).min(n);
             continue;
         }
         out.push(b as char);
         i += 1;
     }
     out
+}
+
+/// Detect the opening of a raw / raw-byte string at `i`. Returns the
+/// length of the opener (`r"…`, `r#"…`, `br#"…`, etc.) including the
+/// final `"`. Returns `None` if no raw-string opener starts at `i`.
+fn match_raw_string_open(bytes: &[u8], i: usize) -> Option<usize> {
+    let n = bytes.len();
+    let mut p = i;
+    if p >= n {
+        return None;
+    }
+    if bytes[p] == b'b' {
+        p += 1;
+    }
+    if p >= n || bytes[p] != b'r' {
+        return None;
+    }
+    p += 1;
+    while p < n && bytes[p] == b'#' {
+        p += 1;
+    }
+    if p < n && bytes[p] == b'"' {
+        Some(p - i + 1)
+    } else {
+        None
+    }
+}
+
+/// Find the closing `"` of a raw string starting at `body_start`, where
+/// `pounds` is the opener's `#` count. The closer is the first `"`
+/// followed by exactly `pounds` `#` characters. Returns the position of
+/// the closing `"`. If unterminated, returns the end of input minus the
+/// pound padding (best-effort).
+fn find_raw_string_close(bytes: &[u8], body_start: usize, pounds: usize) -> usize {
+    let n = bytes.len();
+    let mut i = body_start;
+    while i < n {
+        if bytes[i] == b'"' {
+            let mut k = 0;
+            while k < pounds && i + 1 + k < n && bytes[i + 1 + k] == b'#' {
+                k += 1;
+            }
+            if k == pounds {
+                return i;
+            }
+        }
+        i += 1;
+    }
+    n.saturating_sub(pounds + 1)
 }
 
 /// Category A: canonical-lens `include_str!` bridge constants in
@@ -271,6 +383,40 @@ fn strip_comments_distinguishes_lifetimes_from_char_literals() {
     assert!(stripped.contains("&'a str"));
     assert!(stripped.contains("&'static str"));
     assert!(stripped.contains("'x'"));
+}
+
+#[test]
+fn strip_comments_handles_raw_strings() {
+    // Raw strings (r"…", r#"…"#, br#"…"#) must NOT have their bodies
+    // interpreted as code, so embedded // and /* */ inside the raw-string
+    // body are preserved verbatim. Closer must match the opener's # count.
+    let src = r####"
+        let a = r"a // not a comment, b /* still raw */ c";
+        let b = r#"hash one " in middle"#;
+        let c = r##"two hashes "# still inside"##;
+        let d = br#"byte raw"#;
+        // marker_real_comment
+    "####;
+    let stripped = strip_comments(src);
+    // Real line comment stripped.
+    assert!(!stripped.contains("marker_real_comment"));
+    // Raw-string bodies preserved verbatim.
+    assert!(stripped.contains("a // not a comment"));
+    assert!(stripped.contains("b /* still raw */ c"));
+    assert!(stripped.contains("hash one \" in middle"));
+    assert!(stripped.contains("two hashes \"# still inside"));
+    assert!(stripped.contains("byte raw"));
+}
+
+#[test]
+fn strip_comments_handles_nested_block_comments() {
+    let src = "code_a /* outer /* inner */ still_outer */ code_b // marker\n";
+    let stripped = strip_comments(src);
+    assert!(stripped.contains("code_a"));
+    assert!(stripped.contains("code_b"));
+    assert!(!stripped.contains("inner"));
+    assert!(!stripped.contains("still_outer"));
+    assert!(!stripped.contains("marker"));
 }
 
 #[test]
