@@ -89,7 +89,7 @@ Granularity column distinguishes whether the row tracks a full lane, a sub-lane,
 
 | Identifier | Granularity | Scope | Gate (demo = gate) | Status | Last signal | Notes |
 |---|---|---|---|---|---|---|
-| Nested-optional flatten | class | gated on cardinality refinement | `nested_optional_flatten_impossible_structural` | not-started | worker brief authored ([`r2-impossible-bugs-nested-optional-flatten-worker.md`](briefs/r2-impossible-bugs-nested-optional-flatten-worker.md)) | Coordinate with Substrate Manager. Flips to `in-flight` when first worker PR opens. |
+| Nested-optional flatten | class | gated on cardinality refinement | `nested_optional_flatten_compile_error` in `t_impossiblebugs_nested_optional_flatten.dag` (runner: `t_impossiblebugs_nested_optional_flatten_suite_passes_through_runner`) | green | #890 + #962 (impl) + #1173 (class-close / structural test) | **Class closed.** Substrate work #890 + #962; audit + runner-backed TestClaim #1173. No substrate gaps surfaced. |
 | Unhandled diagnostic paths | class | Tier 2 substrate | `unhandled_diagnostic_paths_impossible_structural` | not-started | worker brief authored ([`r2-impossible-bugs-unhandled-diagnostic-paths-worker.md`](briefs/r2-impossible-bugs-unhandled-diagnostic-paths-worker.md)) | Substrate-gap escalations route to Substrate Manager. Flips to `in-flight` when first worker PR opens. |
 | Unenumerated effects | class | post-effects-design-doc per #808 | `unenumerated_effects_impossible_structural` | green | #971 (unenumerated effects lens landing) | Closed-system effects model is canonical reference. |
 
