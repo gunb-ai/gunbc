@@ -383,12 +383,11 @@ pub(crate) fn magnitude_out_of_range(
     bound: IntervalInt,
     span: SourceSpan,
 ) -> Diagnostic {
-    let IntervalInt::ExactInterval {
+    let Some(ExactIntIntervalFacts {
         target_name,
         min_decimal,
         max_decimal,
-        ..
-    } = bound
+    }) = bound.exact_interval_facts()
     else {
         unreachable!(
             "magnitude_out_of_range is only for fixed-range targets (ExactInterval); \
@@ -397,9 +396,9 @@ pub(crate) fn magnitude_out_of_range(
     };
     Diagnostic::MagnitudeOutOfRange {
         literal: literal.to_string(),
-        target: target_name.to_string(),
-        range_min_inclusive: min_decimal.to_string(),
-        range_max_inclusive: max_decimal.to_string(),
+        target: target_name,
+        range_min_inclusive: min_decimal,
+        range_max_inclusive: max_decimal,
         expected,
         span,
         fixes: Vec::new(),
