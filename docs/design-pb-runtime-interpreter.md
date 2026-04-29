@@ -93,13 +93,18 @@ type Value
 
 The implementation of `evaluate` is itself a `.dag` program — a fold over `Behavior` variants per the Evaluator's PR-B runtime-value model. Each `Behavior` variant has a structural-evaluation rule:
 
-- `Behavior::Value(v)` → emit `LiteralValue(v.payload)`
-- `Behavior::Transform(t)` → recursive evaluate of inputs; apply `t.target` (callable / field-project / operator) to result
-- `Behavior::Branch(b)` → evaluate `b.input`; pattern-match against `b.paths`; recursive evaluate selected `path.body` with `path.binding` bound
-- `Behavior::Loop(l)` → fold over `l.bound` (cardinality bounded iteration or descent-bounded recursion); evaluate `l.body` per iteration with accumulator
-- `Behavior::Bind(b)` → bind `b.params` to provided argument values in a fresh evaluation frame (see §3.3 below); evaluate `b.body` in that frame; the frame goes out of scope when the call returns.
+- `Behavior::Value(v)` → emit `LiteralValue(v.payload)`.
+- `Behavior::Transform(t)` → recursive evaluate `t.inputs`; apply `t.target` to result. Per `t.target` variant:
+  - `Callable(decl_id)` → resolve `decl_id`'s declared Arrow type; on `ArrowBody::UserDefined(body_node_id)`, bind `t.inputs` to the function's declared parameters in a fresh evaluation frame (see §3.3); evaluate `body_node_id` in that frame; the frame pops when the call returns. Other `ArrowBody` variants (`ExternalRealization` / `Pending` / `NoBody` / `Unparsed`) signal non-evaluable cases — `ExternalRealization` dispatches to the host-bound implementation; the rest are evaluation-time errors per `feedback_fail_closed_discipline.md`.
+  - `FieldProject { field_label, field_child }` → project `field_label` from the (single-input) record value.
+  - `Operator(op_kind)` → apply the primitive operator to the input values.
+- `Behavior::Branch(b)` → evaluate `b.input`; pattern-match against `b.paths`; recursive evaluate the selected `path.body` (a `NodeId`) with `path.binding` bound in a fresh frame.
+- `Behavior::Loop(l)` → fold over `l.bound` (cardinality bounded iteration or descent-bounded recursion per the `LoopBound` coproduct); evaluate `l.body` (a `NodeId`) per iteration with accumulator bound to `l.init`'s value initially, threaded through subsequent iterations.
+- `Behavior::Bind(b)` → registers a binding (`b.name` becomes resolvable; the value reachable through `b.result_port` becomes the bound value). Does NOT execute a body — `BindNode` carries no body field; the body that *uses* the bound name lives at downstream Transform/Bind nodes referencing `b.name` (via `Callable(decl_id)` for function-form binds) or via PortId wiring (for `let`/`where`-form binds). The fresh evaluation frame for function-form Bind happens at the `Transform(Callable(...))` site, not at the `Bind` site itself.
 
 These five rules ARE the runtime. The `.dag` declaration of `evaluate`'s body IS the spec.
+
+**Substrate-shape note.** Function bodies live on the type's `ArrowBody::UserDefined(NodeId)`, not on `BindNode`. `BindNode` registers names + parameter ports; the body it "binds" is reached via the corresponding type declaration. This matches the v3 substrate at `src/v3/std/substrate.dag` `ArrowBody = UserDefined(NodeId) | ExternalRealization(DeclarationId) | Pending | NoBody | Unparsed(SourceSpan)`.
 
 ### 3.3 What is NOT a `Value` (runtime evaluator state vs observable result)
 
@@ -143,62 +148,75 @@ Both run on the same substrate carriers. They produce different things. PB-Runti
 
 ### 4.1 The bin-shim class
 
-Hand-Rust binary entrypoints currently in `src/v3/compiler/src/bin/`:
+The closed set of hand-Rust binary entrypoints under `src/v3/compiler/src/bin/` is the canonical authority **`EXPECTED_HAND_AUTHORED_NON_TEST`** at `src/v3/compiler/tests/integration/sg0_census_test.rs:170` (filtered by path prefix `src/v3/compiler/src/bin/`). At authoring time of this lock, that subset includes:
 
 ```
-r1c_e_emit_gates.rs
-regen_bootstrap.rs
-regen_lens.rs
-regen_parse.rs
-regen_parse_tables.rs
-regen_tokenize.rs
-regen_v3.rs
-self_host_fixed_point.rs
+src/v3/compiler/src/bin/r1c_e_emit_gates.rs
+src/v3/compiler/src/bin/regen_bootstrap.rs
+src/v3/compiler/src/bin/regen_lens.rs
+src/v3/compiler/src/bin/regen_parse.rs
+src/v3/compiler/src/bin/regen_parse_tables.rs
+src/v3/compiler/src/bin/regen_tokenize.rs
+src/v3/compiler/src/bin/regen_v3.rs
+src/v3/compiler/src/bin/self_host_fixed_point.rs
 ```
 
-Each is a thin host shim — typically <200 lines — that:
+**The ratchet authority — not this listing — is canonical.** Refresh by reading the live ratchet at retirement-PR authoring time; any new bin-shim added to the source tree must appear in `EXPECTED_HAND_AUTHORED_NON_TEST` (sub-ratchet contract per `sg0_census_test.rs:347`) and is therefore covered by the retirement program by construction. The TestClaim shape in §7.3 cites this authority directly rather than this snapshot list.
+
+Each entry is a thin host shim — typically <200 lines — that:
 1. Constructs a `Dag` (loads bootstrap or compiles a registry-declared `.dag` file)
 2. Runs a compiler pipeline phase (compile / tokenize / parse / regen)
 3. Writes output to a registry-declared path
 
-The dissolution observation: **none of the actual logic in these shims is Rust-specific.** Each is a 4-step pipeline of (load → compile → project → write) that maps cleanly to a `.dag` program with `ExecuteCommand` or `WriteFile` substrate primitives.
+The dissolution observation: **none of the actual logic in these shims is Rust-specific.** Each pipeline is expressible as a `.dag` function returning a process-exit carrier — see §4.2 below.
 
 ### 4.2 The emit pattern
 
-A bin-shim is a `.dag` declaration of the form:
+A bin-shim is a `.dag` declaration that points at a `.dag` entry function, NOT a separate pipeline DSL. The `.dag` language already has function calls + record returns; bin-shims compose load/compile/write as ordinary `.dag` calls. No parallel-representation pipeline coproduct.
 
 ```
+// Entry point is an ordinary .dag function returning a process-exit carrier.
+fn regen_lens_main() -> std.process.ProcessExit {
+  let dag = std.bootstrap.load_dag();
+  let entries = compile.lens_registry.read(dag, regen_dag_lens_registry);
+  for entry in entries {
+    let module_text = emit.rust.emit_module(dag, entry);
+    std.fs.write(entry.generated_file, module_text);
+  }
+  std.process.ProcessExit.success
+}
+
+// Bin-shim = entry-point declaration + binary metadata.
 data regen_lens_shim: BinShim = {
   entrypoint_name: "regen_lens"
   description: "Unified lens-regen driver. Reads LensRegistryEntry records and regenerates each lens module."
-  pipeline: [
-    LoadDag { source: BootstrapDag },
-    CompileLensRegistry { registry_decl: regen_dag_lens_registry },
-    EmitRustModules { output_dir: workspace_root_relative("src/v3/compiler/src/") },
-  ]
-  exit_code_on_success: 0
-  exit_code_on_failure: 1
+  entry: regen_lens_main
 }
 ```
 
-Where `BinShim` is a substrate-declared carrier (lives in `dsl/std/runtime/bin_shim.dag`):
+Where `BinShim` is a substrate-declared carrier (lives in `dsl/std/runtime/bin_shim.dag` or equivalent — Substrate Manager picks per their dispatch):
 
 ```
 type BinShim {
-  entrypoint_name: NonEmptyStr           // becomes binary name in Cargo.toml [[bin]] target
-  description: String                     // populates the Rust file's doc comment
-  pipeline: NonEmptyList<PipelineStep>    // sequential steps; each is a `.dag` operation
-  exit_code_on_success: Int
-  exit_code_on_failure: Int
+  entrypoint_name: NonEmptyStr     // becomes binary name in Cargo.toml [[bin]] target
+  description: String              // populates the Rust file's doc comment
+  entry: DeclarationRef            // points at a `.dag` fn () -> std.process.ProcessExit
 }
-
-type PipelineStep
-  = LoadDag { source: DagSource }
-  | CompileLensRegistry { registry_decl: DeclarationRef }
-  | EmitRustModules { output_dir: WorkspacePath }
-  | RunTestSuite { fixture_dag: WorkspacePath }
-  | // ... (other pipeline-step variants per lane scope)
 ```
+
+**No `PipelineStep` DSL.** Earlier drafts of this doc proposed a coproduct over `LoadDag` / `CompileLensRegistry` / `EmitRustModules` / etc. as separate pipeline-step variants. That was parallel-representation: `.dag` is already the pipeline DSL — function calls compose; records return; sequencing is structural. Reintroducing a step-DSL would duplicate the language inside itself. Codex review on PR #1176 caught this as a substrate-fact-introduction-without-P1 violation; corrected to the simpler `entry: DeclarationRef` shape.
+
+**`std.process.ProcessExit` substrate prerequisite.** The entry function returns a process-exit carrier (success / failure with exit code + optional message). `std.process.ProcessExit` does NOT yet exist in the substrate at HEAD; it's a substrate-fact-introduction prerequisite for Item 5 retirement, owned by Substrate Manager (per anti-bridge invariant #2 in §6 below). The carrier shape is downstream of the actual feature ask; sketch:
+
+```
+// Substrate-fact-introduction prerequisite — Substrate Manager owns the shape.
+// Sketch (subject to P1 procedure when authored):
+type ProcessExit
+  = Success
+  | Failure { exit_code: Int, message: String }
+```
+
+Until Substrate Manager declares `std.process.ProcessExit`, bin-shim retirement workers MUST signal a P1 escalation rather than authoring locally. This makes the substrate-prerequisite explicit and sequenced: PR-PreF-style work (Substrate-side authoring of `ProcessExit`) gates Item 5 retirement.
 
 The emitter for `BinShim` declarations is a `.dag` program (analogous to existing emit modules per `dsl/extdeps/languages/rust/emit.dag`) that produces a Rust file shaped like:
 
@@ -207,27 +225,20 @@ The emitter for `BinShim` declarations is a `.dag` program (analogous to existin
 //
 // {description}
 
-use gunbc_runtime::{Dag, Pipeline};
+use gunbc_runtime::{Dag, ProcessExit};
 
 fn main() -> ExitCode {
-    match run() {
-        Ok(()) => ExitCode::from({exit_code_on_success}),
-        Err(message) => {
+    match {entry_fn_qualified_name}(&Dag::new()) {
+        ProcessExit::Success => ExitCode::SUCCESS,
+        ProcessExit::Failure { exit_code, message } => {
             eprintln!("{message}");
-            ExitCode::from({exit_code_on_failure})
+            ExitCode::from(exit_code as u8)
         }
     }
 }
-
-fn run() -> Result<(), String> {
-    let dag = Dag::new();
-    Pipeline::new()
-        // ... (one .step() per pipeline element, with substrate-declared step bodies)
-        .execute(&dag)
-}
 ```
 
-The emitted Rust is standardized — the only per-shim variation is the pipeline composition + entry-point name. The Rust shape itself is one template.
+The emitted Rust is standardized — per-shim variation is the entry function name only. The Rust shape itself is one template, parameterized by `entry_fn_qualified_name`.
 
 ### 4.3 Dissolution path for the existing bin-shims
 
@@ -316,6 +327,8 @@ TestClaim {
 }
 ```
 
+**Live-substrate predicate match.** `DifferentialEquals { subject_ref, oracle_ref, input_ref }` is an existing `TestPredicate` variant at `src/v3/std/verification.dag:177-181`. The cited `DeclarationRef`s (`pb_runtime_evaluate`, `r2_evaluator_evaluate`, `corpus`) are forward-declarations gated on the prerequisite landings: `r2_evaluator_evaluate` lands with R2-Evaluator's PR-A (Rust crate); `pb_runtime_evaluate` lands with PB-Runtime's `.dag` declaration in R3; `corpus` is authored alongside the worker dispatching this fixture. Worker authors the TestClaim declaration immediately as `ReleaseDeferredClaim`-shape (per `src/v3/std/verification.dag` `ReleaseDeferredClaim` discipline introduced in PR #1128) until prerequisite refs resolve.
+
 Fails if PB-Runtime produces a different `Value` than R2-Evaluator for the same input. Verifies §6 anti-bridge invariant #1.
 
 ### 7.2 BinShim equivalence fixture
@@ -342,19 +355,20 @@ Fails if the emitted Rust shim does not produce the same runtime behavior as the
 
 ### 7.3 No-new-bin-shim-hand-Rust fixture
 
-PB census-style gate verifying `src/v3/compiler/src/bin/` is a closed set after Item 5 lands. Each new `[[bin]]` Cargo.toml entry MUST cite a `BinShim` declaration, not a hand-Rust file path that doesn't exist as `data <name>_shim: BinShim = { ... }`.
+PB census-style gate verifying `src/v3/compiler/src/bin/` is a closed set after Item 5 lands. The actual ratchet authority is `EXPECTED_HAND_AUTHORED_NON_TEST` at `src/v3/compiler/tests/integration/sg0_census_test.rs:170` (filtered by path prefix `src/v3/compiler/src/bin/`); the TestClaim cites that authority directly rather than a parallel list.
+
+**Substrate prerequisite.** `CensusBoundCheck { authority, list_constant, bound }` is an existing `TestPredicate` variant at `src/v3/std/verification.dag:196-200`. However, the cited `list_constant: expected_hand_authored_bin_shims` does NOT exist at HEAD — current declared `CensusListConstant` values are `expected_hand_authored_non_test` (substrate.verification.dag:35) and `expected_hand_authored_test` (substrate.verification.dag:36) only. Adding a new constant is a substrate-fact-introduction event under §P1 owned by Substrate Manager. The bin-shim subset is more naturally a *filter* over `expected_hand_authored_non_test` (path prefix `src/v3/compiler/src/bin/`); whether this is best expressed as (a) a new top-level `CensusListConstant` or (b) a derived predicate over the existing constant + filter is a P1 disposition Substrate Manager owns when the retirement worker dispatches.
 
 ```
 TestClaim {
   name: "no_new_bin_shim_hand_rust"
-  predicate: CensusBoundCheck {
-    authority: hand_rust_bin_shim_count,
-    list_constant: expected_hand_authored_bin_shims,
-    bound: <closed-set count post-retirement>
-  }
+  // predicate: CensusBoundCheck { authority: <SG-0 ratchet authority>, list_constant: <P1-introduced; see above>, bound: <closed-set count post-retirement> }
+  // OR equivalent shape using existing list_constant + subset_predicate via CensusSubsetCount
   // ...
 }
 ```
+
+`CensusSubsetCount { authority, list_constant, subset_predicate }` (`src/v3/std/verification.dag:201-205`) is a plausible alternative shape if the bin-shim set is best expressed as a path-prefix subset of `expected_hand_authored_non_test` — Substrate Manager picks the cleaner P1 disposition.
 
 Fails if hand-Rust bin-shim count exceeds the closed-set retirement schedule. Verifies §6 anti-bridge invariant #3.
 
