@@ -307,8 +307,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // .dag `TestClaim` form when the testgen path covers reflected-Dag
     // structural assertions over std/ types.
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
+    "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
-    "src/v3/compiler/tests/integration/patch_lower_helpers_bridge_zero_residual_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     // R1 release acceptance fixture: strict PB gate 3 plus Director-approved

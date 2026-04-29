@@ -11,7 +11,7 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SELF_BASENAME: &str = "patch_lower_helpers_bridge_zero_residual_test.rs";
+const SELF_BASENAME: &str = "bridge_lower_helpers_patch_zero_residual_test.rs";
 
 /// The retired bridge spells this contiguous substring; keep it out of the
 /// tree except via `concat!(...)` in this file's own needle definition.
@@ -47,7 +47,7 @@ fn visit_rs(root: &Path, offenders: &mut Vec<String>) {
 }
 
 #[test]
-fn patch_lower_helpers_exact_string_patch_bridge_stays_zero_residual() {
+fn lower_helpers_patch_bridge_exact_string_residual_stays_zero() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let mut offenders = Vec::new();
 
