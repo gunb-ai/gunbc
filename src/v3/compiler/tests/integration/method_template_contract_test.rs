@@ -122,9 +122,7 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
         let (_, dag_method) = fields
             .iter()
             .find(|(label, _)| label == "dag_method")
-            .unwrap_or_else(|| {
-                panic!("row {idx} in `{list_name}` missing `dag_method` field")
-            });
+            .unwrap_or_else(|| panic!("row {idx} in `{list_name}` missing `dag_method` field"));
         let FieldValue::Reference(decl_id) = dag_method else {
             panic!(
                 "row {idx} in `{list_name}`: `dag_method` must be a \
