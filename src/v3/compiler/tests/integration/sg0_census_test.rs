@@ -306,6 +306,19 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // substrate" rather than a parallel testgen harness; dissolves into
     // .dag `TestClaim` form when the testgen path covers reflected-Dag
     // structural assertions over std/ types.
+    // Method-declaration registry (R2 Substrate, follow-up to #1175 +
+    // #1186): Director-approved hand-Rust acceptance for the minimal
+    // method-name registry in `dsl/std/methods.dag` + `MethodRef` typed
+    // reference in `src/v3/std/methods.dag` + `MethodTemplateContract.
+    // dag_method` refinement from bare `DeclarationRef` to `MethodRef`.
+    // Four structural claims: registry covers all 63 algebra-template
+    // names (drift-detection), `MethodDeclaration` identity-only,
+    // `MethodTemplateContract.dag_method` field type points at
+    // `MethodRef`, `MethodRef` is a single-field decl wrapper.
+    // Dispatch (#1130) accepted hand-Rust acceptance over the reflected
+    // bootstrap. Dissolves into .dag `TestClaim` form when testgen
+    // covers reflected-Dag structural assertions over std/ types.
+    "src/v3/compiler/tests/integration/method_registry_test.rs",
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
