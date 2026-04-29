@@ -1,6 +1,6 @@
 # PR-D — Cross-target equivalence harness primitives (Evaluator Manager)
 
-**Status:** PROPOSAL — slice 0 structural hook landed (named `TestClaim` + runner-visible suite); deeper harness surfaces deferred with explicit dependencies below.
+**Status:** PROPOSAL — **slice 0 (this PR)** opens the named `TestClaim` + runner-visible suite hook (`evaluator_cross_target_equivalence_harness_primitives_landed` / suite in §Structural acceptance); deeper harness surfaces deferred with explicit dependencies below. Use **landed** in manager-brief consumption rows only **after** this PR merges (keeps open-PR status language honest).
 
 **Parent:** [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) — sub-lane **Cross-target equivalence harness primitives** + design-lock row **PR-D**.
 
