@@ -13,7 +13,8 @@
 //! - [`analyze_lifetime_program`](analyze::analyze_lifetime_program) is the structural fold
 //!   over a [`LifetimeProgram`](program::LifetimeProgram) (bindings + classified use sites).
 //! - [`extract_lifetime_program`](extract::extract_lifetime_program) projects `Dag` →
-//!   `LifetimeProgram` (currently returns an empty program until lowering exposes the R2 graph).
+//!   `LifetimeProgram` (bootstrap authority corpora only; **fail-closed** on user/test
+//!   `data` / `fn` surface until lowering exposes the R2 bind/use graph).
 //! - [`analyze_lifetime_facts`](extract::analyze_lifetime_facts) is the public entry:
 //!   **`(&Dag, &LanguageSpecAxes)` only** — test plan item 7 / no annotation sidecar.
 
@@ -142,6 +143,29 @@ mod tests {
         let program = extract_lifetime_program(&dag).expect("extract ok");
         assert!(program.bindings.is_empty());
         assert!(program.r3_markers.is_empty());
+    }
+
+    /// User- or test-range `data` / `fn` declarations must not map to `Ok(empty)` (C-8).
+    #[test]
+    fn extract_fail_closed_for_user_range_module_with_data_or_fn() {
+        let source =
+            include_str!("../../compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag");
+        let file = "src/v3/compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag";
+        let dag = match v3_compiler::compile_to_dag(source, file) {
+            Ok(d) => d,
+            Err(e) => panic!("fixture compile: {e:?}"),
+        };
+        let err = extract_lifetime_program(&dag).expect_err("extraction must fail closed");
+        match err {
+            EmissionDiagnostic::LifetimeProgramExtractionPending { detail } => {
+                assert!(
+                    detail.contains("mock_service_status")
+                        || detail.contains("r1_mock_backed_invariant_gate"),
+                    "unexpected detail: {detail}"
+                );
+            }
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
     }
 
     #[test]
