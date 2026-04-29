@@ -433,10 +433,18 @@ without piggy-backing on 3b's `complexity_lens_via_framework_correct`:
 - `workflow_root_zero_bind_returns_no_root` — a fixture Dag
   containing only `Value` / `Transform` / `Branch` / `Loop`
   behaviors (no `Bind`) returns `NoRoot`.
-- `workflow_root_multi_bind_returns_ambiguous` — a fixture Dag
-  with 2+ `Bind` behaviors at the same topological "last" tier
-  returns `AmbiguousRoot { candidates }` enumerating every
-  eligible port.
+- `workflow_root_multi_bind_returns_ambiguous` — under α (last
+  topological `Bind`), `Dag.nodes` is a linear order so a
+  pure-α fixture cannot produce ambiguity by construction. The
+  `AmbiguousRoot` arm is reserved for the γ refinement (last
+  `UserCallable` `Bind`) where multiple Binds can carry
+  `emit_participation: Some(UserCallable)` and tie. The α
+  acceptance for this claim is therefore vacuous-but-wired:
+  pin a fixture where γ would tie (≥2 Binds with
+  `emit_participation: UserCallable`) and confirm α still
+  returns `SingleRoot(last_bind.result_port)` — the
+  `AmbiguousRoot` exercise lands in the γ-refinement test
+  pass when γ is wired behind the same accessor.
 - `workflow_root_consumed_by_runtime_entry_point` (R2-Evaluator
   cross-consumer proof) — a smoke test driving R2-Evaluator's
   `evaluate(program, entry, args)` shape (or its substrate
