@@ -1,6 +1,7 @@
 module v3.std.emit_model
 
 import v3.spec.v3_l1 { DeclarationRef }
+import v3.std.methods { MethodRef }
 import std.list { List }
 
 // Target ownership is carried on every shared realization as a
@@ -357,18 +358,25 @@ type PlaceholderConvention
 // `data <target>_method_template_contracts: List<MethodTemplateContract>`
 // list authority, not duplicated on the row (P2 single-authority).
 //
-// `dag_method: DeclarationRef` aligns with the in-file convention
-// (`op: DeclarationRef` on `OperatorRealization`, `language` / `target`
-// on every realization). When a method-declaration registry lands in
-// `dsl/std/`, this field can refine to a typed `MethodRef` without
-// changing consumers.
+// `dag_method: MethodRef` (refined from bare `DeclarationRef` per the
+// #1175 substrate gap). `MethodRef` (`src/v3/std/methods.dag`) wraps a
+// `DeclarationRef` whose target is a `MethodDeclaration` data binding
+// in `dsl/std/methods.dag` — the method-name registry that pins
+// stable identity for the 63 unique method names carried by the
+// `dsl/std/algebra.dag` per-profile template lists. The bare-
+// `DeclarationRef` admits-anything residual is now bounded by the
+// `MethodRef` wrapper; the inner `decl` still admits any declaration
+// at the type level (same residual class as `PatternRealization`
+// `empty_variant` / `cons_variant` at lines 140–152), with the
+// resolution check enforced fail-closed at the boundary until
+// substrate-level refinement-typing-on-DeclarationRef lowers.
 //
 // 🟡 TRANSITIONAL. This carrier consolidates the parallel-rep ×3 between
 // `MethodTranslation` (`runtime.dag`) and `SimpleMethodSpec` (`emit.dag`)
 // across Rust/Python/Go. Row population and old-carrier retirement are
 // Grounding-owned and land in follow-up work.
 type MethodTemplateContract {
-  dag_method: DeclarationRef
+  dag_method: MethodRef
   runtime_template: String
   emit_template: String
   wraps_result: Bool
