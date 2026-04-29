@@ -86,12 +86,7 @@ const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 /// `extdeps_bootstrap_fixture_authority` in `src/v3/std/extdeps_bootstrap_fixtures.dag`.
 /// `Dag::extdeps_bootstrap_fixture_virtual_paths` is compared to this slice when the
 /// committed bootstrap snapshots initialize (`dag.rs` LazyLock).
-pub const EXTDEPS_BOOTSTRAP_PATH_KEYS: &[&str] = &[
-    "dsl/extdeps/languages/rust/primitives.dag",
-    "dsl/extdeps/languages/rust/method_template_contracts.dag",
-    "dsl/extdeps/languages/python/method_template_contracts.dag",
-    "dsl/extdeps/languages/go/method_template_contracts.dag",
-];
+pub const EXTDEPS_BOOTSTRAP_PATH_KEYS: &[&str] = &["dsl/extdeps/languages/rust/primitives.dag"];
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
 ///
