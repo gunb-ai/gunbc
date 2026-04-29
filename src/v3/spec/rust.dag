@@ -251,6 +251,24 @@ data rust_cardinality_bound: TypeRealization = {
   cost: 1
 }
 
+data rust_interval: TypeRealization = {
+  language: rust_language
+  target: Interval
+  carrier: "Interval"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data rust_interval_width: TypeRealization = {
+  language: rust_language
+  target: IntervalWidth
+  carrier: "IntervalWidth"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 data rust_conj_field: TypeRealization = {
   language: rust_language
   target: ConjField

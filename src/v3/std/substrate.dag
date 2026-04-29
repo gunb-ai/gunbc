@@ -4,6 +4,7 @@ import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.substrate_minimal {
   NodeId, PortId, DeclarationId, ClusterId, NonEmptyList, NonSingletonList
 }
+import std.termination { PositiveDescentAmount }
 import std.effects { WorkflowEffect }
 import v3.std.lookup { Lookup }
 
@@ -76,8 +77,30 @@ type AtomPayload
   | ResolvedByName(DeclarationId)
   | TypeParam(String)
 
+// 🟢 TERMINAL. PR-PreF shared bound parent. CardinalityBound, SizeBound,
+// and the cardinality arm of LoopBound all describe bounded intervals over
+// different domains; this parent is the substrate target named by
+// INVARIANTS.md §P1. Existing carriers retrofit as instances instead of
+// growing new sibling bound declarations.
+//
+// `BoundedInterval` stores a lower endpoint plus a nonnegative width, never
+// two independent endpoints. This makes inverted intervals unrepresentable:
+// an upper endpoint is derived by applying the width in the interval domain.
+type IntervalWidth
+  = ZeroWidth
+  | PositiveWidth(PositiveDescentAmount)
+
+// 🟢 TERMINAL. `Interval` is the durable shared bound parent. The bounded
+// variant is lower + nonnegative width; `Unbounded` is the target-side
+// universal bound case. No dissolution trigger: later carriers attach as
+// instances/projections of this parent rather than replacing it.
+type Interval<D>
+  = BoundedInterval { lower: D, width: IntervalWidth }
+  | Unbounded
+
 // 🟢 TERMINAL. Cardinality bounds are structural substrate facts and
-// not a temporary bridge to another representation.
+// not a temporary bridge to another representation. PR-PreF projects this
+// carrier through Interval<Int> for consumers that need the shared parent.
 type CardinalityBound
   = Exact(Int)
   | AtMostOne
