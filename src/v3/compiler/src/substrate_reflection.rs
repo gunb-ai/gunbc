@@ -3,11 +3,12 @@
 //! Reflection is static: no execution, no branch-arm selection, no loop iteration.
 
 use crate::dag::{
-    Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm, BranchEmitParticipation,
-    BranchNode, BranchPattern, BreakingShape, ClusterId, CreateCause, Dag, DeclarationId,
-    EffectShape, FieldValue, HttpMethodScalar, IdempotentShape, KeySource, LiteralBits, LoopBound,
-    LoopNode, NodeId, NonSingletonList, OperationEffect, OperatorKind, Path, PayloadBinding,
-    PortId, TransformNode, TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
+    AtomPayload, Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm,
+    BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, ClusterId, CreateCause, Dag,
+    DeclarationId, EffectShape, FieldValue, HttpMethodScalar, IdempotentShape, KeySource,
+    LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList, OperationEffect, OperatorKind,
+    Path, PayloadBinding, PortId, TransformNode, TransformTarget, TypeConnective, ValueNode,
+    WorkflowEffect,
 };
 use crate::diagnostics::SourceSpan;
 
@@ -42,7 +43,13 @@ fn disj_variant_ty(dag: &Dag, sum_name: &str, variant_label: &str) -> ReflectRes
                     .map(|v| v.ty)
                     .ok_or(ReflectError("missing sum variant"));
             }
-            _ => return err("sum type is not Disj"),
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(name))
+                if name == variant_label =>
+            {
+                // Single-variant enum: `Instantiation → Atom(Label)` (no `Disj` row).
+                return Ok(decl_id);
+            }
+            _ => return err("sum type is not Disj or unit Atom"),
         }
     }
     err("Instantiation peel depth exceeded")
