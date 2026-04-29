@@ -50,7 +50,7 @@ For each class:
 
 Worker briefs MUST consume these without re-litigation:
 
-- **Q6 (Witness<C> + Diagnostic.kind extensibility)**: structural-validation failures encode into `Diagnostic.kind` extensions; relevant for unhandled-diagnostic-paths and unenumerated-effects implementation if/when they surface diagnostic-shape questions during dispatch.
+- **Q6 + Q6.5 (LANDED via #1129)**: two-layer diagnostic-kind authority per [`docs/design-lens-framework.md` §"Q6.5 — Two-layer authority for diagnostic kinds"](../design-lens-framework.md). Layer 1 = `CompilerDiagnosticKind` Substrate-owned closed sum; Layer 2 = lens-instance kinds in lens's own `.dag`. Relevant for unhandled-diagnostic-paths + unenumerated-effects dispatch — these classes consume Layer 1 (compiler-primitive diagnostics); they do not author Layer-2 lens-instance kinds.
 - **Closed-system effects model** (PR #808): canonical authority for unenumerated-effects class; 5-behavior structural fold; no annotation surface.
 
 Full disposition: [`docs/r2-structure.md`](../r2-structure.md) §4.
