@@ -227,6 +227,14 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
+    // R2 PB canonical-lens bridge ratchet (PR #1183 — disposition for
+    // `bridge_canonical_lens_name_dispatch_retired`). Pins the remaining
+    // `include_str!` / name-dispatch surface in `test_runner.rs` per
+    // `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`. .dag-port
+    // / dissolution path is the same gate that closes the bridge itself
+    // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
+    // until then, this hand-Rust ratchet IS the slice's structural gate.
+    "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
     "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
