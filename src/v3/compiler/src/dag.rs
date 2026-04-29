@@ -474,7 +474,7 @@ impl CardinalityBound {
             },
             Self::AtMostOne => Interval::BoundedInterval {
                 lower: 0,
-                width: IntervalWidth::PositiveWidth(PositiveDescentAmount::OneStep),
+                width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::OneUnit),
             },
             Self::Unbounded => Interval::Unbounded,
         }

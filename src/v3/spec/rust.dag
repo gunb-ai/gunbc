@@ -260,6 +260,15 @@ data rust_interval: TypeRealization = {
   cost: 1
 }
 
+data rust_positive_interval_width: TypeRealization = {
+  language: rust_language
+  target: PositiveIntervalWidth
+  carrier: "PositiveIntervalWidth"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 data rust_interval_width: TypeRealization = {
   language: rust_language
   target: IntervalWidth

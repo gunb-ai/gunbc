@@ -27,9 +27,17 @@ pub enum Interval<D> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PositiveIntervalWidth {
+    OneUnit,
+    AdditionalUnit {
+        previous: Box<PositiveIntervalWidth>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IntervalWidth {
     ZeroWidth,
-    PositiveWidth(PositiveDescentAmount),
+    PositiveWidth(PositiveIntervalWidth),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -194,6 +194,15 @@ data go_interval: TypeRealization = {
   cost: 1
 }
 
+data go_positive_interval_width: TypeRealization = {
+  language: go_language
+  target: PositiveIntervalWidth
+  carrier: "PositiveIntervalWidth"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 data go_interval_width: TypeRealization = {
   language: go_language
   target: IntervalWidth

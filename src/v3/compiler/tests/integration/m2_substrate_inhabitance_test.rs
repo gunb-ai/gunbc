@@ -8,7 +8,8 @@ use v3_compiler::dag::{
     promote_to_strict, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
     ArrowBody, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval, IntervalWidth,
     IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
-    ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation, TypeConnective, ValueBody,
+    PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::CompileError;
@@ -995,6 +996,16 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "PositiveIntervalWidth"),
+        vec![
+            (String::from("OneUnit"), Vec::new()),
+            (
+                String::from("AdditionalUnit"),
+                vec![String::from("previous")],
+            ),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "IntervalWidth"),
         vec![
             (String::from("ZeroWidth"), Vec::new()),
@@ -1405,7 +1416,7 @@ fn cardinality_bound_projects_to_interval_parent() {
         CardinalityBound::AtMostOne.interval(),
         Interval::BoundedInterval {
             lower: 0,
-            width: IntervalWidth::PositiveWidth(PositiveDescentAmount::OneStep),
+            width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::OneUnit),
         }
     );
     assert_eq!(CardinalityBound::Unbounded.interval(), Interval::Unbounded);
@@ -1423,6 +1434,7 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "Declaration",
         "TemplateArgument",
         "Interval",
+        "PositiveIntervalWidth",
         "IntervalWidth",
         "PhantomParameter",
         "FieldValue",
