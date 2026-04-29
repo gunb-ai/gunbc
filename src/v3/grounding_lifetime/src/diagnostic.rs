@@ -34,4 +34,11 @@ pub enum EmissionDiagnostic {
     OutOfR2Scope {
         construct: String,
     },
+    /// `Dag` → `LifetimeProgram` lowering is not wired yet, but the reflected DAG
+    /// carries **non-authority** declarations (user / test modules) with `data` or
+    /// `fn` surface — returning `Ok(empty)` would silently drop load-bearing program
+    /// shape (C-8 / modeling-discipline principle 1).
+    LifetimeProgramExtractionPending {
+        detail: String,
+    },
 }

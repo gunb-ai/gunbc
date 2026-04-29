@@ -1,9 +1,10 @@
 //! Structural program slice the analyzer folds over.
 //!
-//! Populated from `Dag` via [`crate::extract::extract_lifetime_program`] (stub
-//! today: empty program when lowering does not yet surface R2 bind graphs).
-//! Worked examples 3–4 are encoded as explicit `LifetimeProgram` values in
-//! unit tests until extraction is complete.
+//! Populated from `Dag` via [`crate::extract::extract_lifetime_program`]. Bootstrap
+//! corpora map to an empty program until lowering surfaces R2 bind graphs; **non-authority**
+//! `data` / `fn` surface fails closed instead of returning an empty program (C-8).
+//! Worked examples 3–4 are encoded as explicit [`LifetimeProgram`] values in unit tests
+//! until extraction is complete.
 //!
 //! ## Practice 4 (`docs/modeling-discipline.md` §4)
 //!
