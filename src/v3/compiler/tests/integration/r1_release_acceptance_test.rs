@@ -131,6 +131,22 @@ data bad_deferred_claim: TestClaim = {
   requires: []
 }
 
+data suite: TestSuite = {
+  name: "bad_deferred_suite",
+  claims: [bad_deferred_claim]
+}
+"##;
+    let dag = compile_to_dag(source, "arbitrary_release_deferred_claim.dag")
+        .expect("well-typed deferral fixture compiles structurally");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(&results[0].result, ClaimResult::Fail(_)),
+        "expected ReleaseDeferredClaim to fail outside release fixture, got {results:?}"
+    );
+}
+
 #[test]
 fn release_deferred_claim_rejects_nonlocal_markers_even_from_release_fixture() {
     let source = r##"
@@ -174,21 +190,5 @@ data suite: TestSuite = {
     assert!(
         matches!(result.result, ClaimResult::Fail(_)),
         "expected ReleaseDeferredClaim to reject nonlocal marker declarations, got {result:?}"
-    );
-}
-
-data suite: TestSuite = {
-  name: "bad_deferred_suite",
-  claims: [bad_deferred_claim]
-}
-"##;
-    let dag = compile_to_dag(source, "arbitrary_release_deferred_claim.dag")
-        .expect("well-typed deferral fixture compiles structurally");
-    let results = TestRunner::new(&dag).run_suite("suite");
-
-    assert_eq!(results.len(), 1);
-    assert!(
-        matches!(&results[0].result, ClaimResult::Fail(_)),
-        "expected ReleaseDeferredClaim to fail outside release fixture, got {results:?}"
     );
 }
