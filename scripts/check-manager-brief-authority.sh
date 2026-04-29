@@ -25,6 +25,19 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Derive the GitHub repo slug for `gh pr view --repo`. Required in CI
+# because `actions/checkout@v4`'s shallow clone may not expose the
+# remote in a form `gh` auto-detects (CI ran `gh pr view 1080` and got
+# nothing, even though locally the same call returns state=MERGED).
+# Falls back to "gunb-ai/gunbc" if origin isn't readable (e.g.,
+# self-test tmpdir with no remote set).
+REPO_SLUG="$(git config --get remote.origin.url 2>/dev/null \
+  | sed -E 's#.*github\.com[:/]##; s#\.git$##' \
+  || echo "")"
+if [ -z "$REPO_SLUG" ]; then
+  REPO_SLUG="gunb-ai/gunbc"
+fi
+
 # 7 R2 manager briefs (mirrors r2-structure.md §"Manager structure"
 # count of 7 standing managers post-Evaluator-add 2026-04-28).
 # Listed explicitly (not glob) so renames surface as violations
@@ -199,9 +212,14 @@ check_q4_landed_pr_in_history() {
     # Stage 1 (primary): gh pr view — works in shallow clone, robust
     # to squash-merge subject variance (PR #900 was squash-merged
     # without "(#900)" suffix; pure git-grep would miss it).
-    local pr_state=""
+    # Pass --repo explicitly: `actions/checkout@v4`'s shallow clone
+    # exposes the remote in a form `gh` doesn't always auto-detect.
+    # Capture stderr so auth/rate-limit failures surface in diagnostics.
+    local pr_state="" gh_stderr=""
     if command -v gh >/dev/null 2>&1; then
-      pr_state="$(gh pr view "$pr_num" --json state --jq '.state' 2>/dev/null || true)"
+      pr_state="$(gh pr view "$pr_num" --repo "$REPO_SLUG" --json state --jq '.state' 2>/tmp/gh-stderr-$$ || true)"
+      gh_stderr="$(cat /tmp/gh-stderr-$$ 2>/dev/null || true)"
+      rm -f /tmp/gh-stderr-$$
       if [ "$pr_state" = "MERGED" ]; then
         continue
       fi
@@ -220,10 +238,14 @@ check_q4_landed_pr_in_history() {
     echo "VIOLATION [Q4 landed-pr-in-history]: $brief"
     echo "  cited claim: 'LANDED via #${pr_num}'"
     echo "  PR is not in MERGED state via either:"
-    echo "    - gh pr view #${pr_num} returning state=MERGED"
+    echo "    - gh pr view #${pr_num} --repo ${REPO_SLUG} returning state=MERGED"
     echo "    - git log finding a merge subject '(#${pr_num})'"
     if [ -n "$pr_state" ] && [ "$pr_state" != "MERGED" ]; then
       echo "    - gh reports state=${pr_state}"
+    fi
+    if [ -n "$gh_stderr" ]; then
+      echo "  gh stderr (truncated to 200 chars):"
+      echo "    $(echo "$gh_stderr" | head -c 200)"
     fi
     brief_violations=$((brief_violations + 1))
   done < <(grep -oE '(LANDED|landed) via #[0-9]+' "$brief" | grep -oE '#[0-9]+' | tr -d '#' | sort -u)
