@@ -2490,5 +2490,6 @@ pub(crate) fn bootstrapped_fixture_dag() -> Dag {
         callable_strategy_variants: CallableStrategyVariants::default(),
         clusters: vec![],
         optional_match_disjs: HashMap::new(),
+        user_declaration_append_begin: 0,
     }
 }

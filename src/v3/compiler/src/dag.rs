@@ -2358,6 +2358,10 @@ pub struct Dag {
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
     optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
+    /// First [`DeclarationId::raw`] value minted **after** the embedded bootstrap fixture
+    /// rows loaded at `Dag` construction (`lower` / `lower_into` append here; callers cannot
+    /// claim fixture provenance for these rows by stamping an authority-looking `span.file`).
+    user_declaration_append_begin: u32,
 }
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
@@ -2366,6 +2370,7 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
+    dag.user_declaration_append_begin = dag.declarations.len() as u32;
     dag
 });
 
@@ -2376,6 +2381,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
     dag.mark_bootstrap_secret_nominal_opacity();
     dag.populate_primitive_cache();
+    dag.user_declaration_append_begin = dag.declarations.len() as u32;
     dag
 });
 
@@ -2386,6 +2392,7 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
     assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
+    dag.user_declaration_append_begin = dag.declarations.len() as u32;
     dag
 });
 
@@ -2417,6 +2424,7 @@ impl Dag {
             callable_strategy_variants: CallableStrategyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
+            user_declaration_append_begin: 0,
         }
     }
 
