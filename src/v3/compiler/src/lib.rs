@@ -425,8 +425,8 @@ pub mod lens_cost {
     mod tests {
         use super::{cost_of, CostLookup};
         use crate::dag::{
-            ArithmeticOp, BranchPattern, Dag, Interval, LiteralBits, LoopBound, OperatorKind, Path,
-            PortId, TransformTarget,
+            ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound, OperatorKind, Path, PortId,
+            TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
