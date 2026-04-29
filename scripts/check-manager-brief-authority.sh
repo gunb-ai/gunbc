@@ -68,6 +68,15 @@ violations=0
 # Extract markdown links of form [text](path) where path is not a URL,
 # not a fragment-only anchor, and not in a known excluded set; verify
 # each path exists on disk relative to the brief's directory.
+#
+# Known limitation (per claude-opus-4-7 review on 91b5274fc): every
+# `](path)` is treated as a filesystem reference. Markdown
+# reference-style link definitions (`[ref]: path`) and code-block
+# examples containing `](foo)` would false-positive. Currently no
+# briefs use either form. DISSOLUTION TRIGGER: first false-positive
+# from a brief that introduces a code-block example or reference-style
+# link, at which point Q1 needs context-aware extraction (skip lines
+# inside fenced code blocks; skip reference definitions).
 
 check_q1_file_existence() {
   local brief="$1"
@@ -371,9 +380,14 @@ check_q4_landed_pr_in_history() {
     # Capture stderr so auth/rate-limit failures surface in diagnostics.
     local pr_state="" gh_stderr=""
     if command -v gh >/dev/null 2>&1; then
-      pr_state="$(gh pr view "$pr_num" --repo "$REPO_SLUG" --json state --jq '.state' 2>/tmp/gh-stderr-$$ || true)"
-      gh_stderr="$(cat /tmp/gh-stderr-$$ 2>/dev/null || true)"
-      rm -f /tmp/gh-stderr-$$
+      # mktemp avoids the $$-PID approach: a crashed run on a shared
+      # dev box could leak /tmp/gh-stderr-$$ files; mktemp gives unique
+      # path + cleanup is paired in this scope.
+      local gh_stderr_file
+      gh_stderr_file="$(mktemp)"
+      pr_state="$(gh pr view "$pr_num" --repo "$REPO_SLUG" --json state --jq '.state' 2>"$gh_stderr_file" || true)"
+      gh_stderr="$(cat "$gh_stderr_file" 2>/dev/null || true)"
+      rm -f "$gh_stderr_file"
       if [ "$pr_state" = "MERGED" ]; then
         continue
       fi
