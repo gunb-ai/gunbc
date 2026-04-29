@@ -14,6 +14,9 @@ the release-acceptance fixture; #1129 records the adjacent design locks.
 
 - **R1 acceptance authority:** [`ROADMAP.md §"Release R1 Program"`](../../ROADMAP.md)
   remains the source for R1 gate semantics and the post-close ledger.
+- **Strict-reading source:** [`THESIS.md §"Tests are structural data"`](../../THESIS.md)
+  remains the reason release gates are `.dag` data rather than host-only
+  ratchets.
 - **Closure shape:** R1 is closed by release acceptance, not by pretending every
   strict census gate is green. Strict receipts that remain RED are represented
   as explicit release deferrals with named target lanes.
@@ -32,7 +35,7 @@ the release-acceptance fixture; #1129 records the adjacent design locks.
 | **R1C-E** | S | T-Emit `.dag` wrappers around existing host harnesses. | **Closed on main.** PR #978 and #1051 landed the rust-fixture, generic-bounds, and omni-demo gate wrappers. |
 | **R1C-F** | S | T-Demo user-authored-lens rejection fixture. | **Closed.** PR #880 landed the rejecting-program demo gate. |
 
-## Working State
+## Working state
 
 Snapshot date: **2026-04-29, origin/main `041ed6780`**. The live authority for
 PB census counts is `src/v3/compiler/tests/integration/sg0_census_test.rs`; this
