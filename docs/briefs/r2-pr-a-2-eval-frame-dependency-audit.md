@@ -38,7 +38,11 @@ redeclaring:
 No `Value`, `LiteralValue`, `RecordValue`, `VariantValue`, `NodeRef`,
 `CardinalityValue`, or `NamedField` declaration exists in `src/v3/std/`. Verified
 via `grep -rn "type Value\|RecordValue\|LiteralValue\|NamedField" src/v3/std/`
-at HEAD `df458e7b7` (0 matches). PR-A.1 must land first; PR-A.2 must not invent
+against `origin/main` at audit time (re-verified at `8d451d1a0`: 0 matches for
+the runtime `Value` carriers; the hits in `clean_emission.dag`,
+`emit_model.dag`, and `substrate.dag` are unrelated `ValueBody`,
+`ValueConstructionSyntax`, `ValueNode`, and `OverrideNamedFieldsAtBindingSite`
+declarations from other layers). PR-A.1 must land first; PR-A.2 must not invent
 a duplicate per `feedback_parallel_representation_debt`.
 
 ### 2. `Map<PortId, Value>` — no instantiable carrier exists
