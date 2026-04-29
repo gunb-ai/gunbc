@@ -66,7 +66,7 @@ Either path is a substrate-level change outside PB authoring authority. PB terri
 - [x] No `PROGRAM_INPUT_SENTINEL` remains (already retired pre-PR; verified by grep).
 - [x] Canonical lens lookup status documented; **not** retired in this PR (substrate gap above).
 - [x] Ratchet test added that fails if the bridge surface grows: pins counts of (1) `include_str!` of `lenses/*.dag` files in `test_runner.rs`, (2) `lens_decl.name.as_deref() == Some("...")` arms, and (3) generic `lens_decl.name.as_deref()` name-keyed lookups. Rule per `feedback_ratchet_only_down`: never increase. See `tests/integration/canonical_lens_bridge_ratchet_test.rs`.
-- [x] Bridge ledger / docs updated for the portion explicitly blocked (this disposition file). Manager brief acceptance ledger entry annotated.
+- [x] Manager brief annotated with partial-retirement / blocker state for the slice (this disposition file). **No per-bridge retirement signal to Verification** — `bridge_retirement_ledger_zero` (the actual unified ledger authority) is not advanced by this PR; the bridge is not retired. This is a blocker/disposition receipt, not a ledger-advance.
 - [x] No replacement string / path side channel introduced.
 
 **Not asserted:** that the bridge has been retired. The PR does not extend the partial retirement; it documents and pins it.
