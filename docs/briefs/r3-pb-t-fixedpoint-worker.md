@@ -47,11 +47,23 @@ Per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101 + `r3-structure.md:60
 **`pb_self_compile_fixed_point_strong`** — authored as a `.dag` `TestClaim` consuming the existing `FixedPointConverges { compile_target, expected }` variant at `src/v3/std/verification.dag:206-209`. Acceptance:
 
 - v3 binary compiles `compiler.dag` → emitted Rust output X.
-- Recompiling `compiler.dag` from X (or running the cycle again) → output X′ where `X == X′` byte-identically.
+- Recompiling `compiler.dag` from X (or running the cycle again) → output X′ where `X == X′` **byte-identically** (per [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) §Design — byte equality, not semantic diff).
 - All Shape-A emitted artifacts (Rust today; Python/Go once R2-Grounding-{Python,Go} land — see §"Cross-lane sequencing") byte-identical between cycle N and cycle N+1.
 - SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` = 0 at the time of evaluation (gate cross-reads the SG-0 census authority — does not duplicate it).
 
 **Substrate is already in place** (`FixedPointConverges` variant exists). No substrate-introduction expected; if the strong-interpretation acceptance surfaces a substrate gap, follow `INVARIANTS.md` §P1 substrate-fact-introduction procedure (signal Substrate Manager; do not introduce ad-hoc).
+
+### Relationship to DB-8 ratchet infrastructure
+
+DB-8 already landed the **mechanical** fixed-point ratchet ([`docs/db-history/db-8.md`](../db-history/db-8.md)): `src/v3/compiler/src/bin/self_host_fixed_point.rs` runs the emit → rustc → run → byte-diff cycle, plus `tests/determinism_test.rs` 5× per-fixture determinism check, plus INVARIANTS D-1, plus CI job `self_host_ratchet` (currently `continue-on-error: true` until Lane 1e closes — see DB-8 acceptance checklist). The cycle is **staged on `default_fixed_point_source`**; the full cycle on `dsl/gunbc/compiler.dag` is gated on `compiler.dag` parsing under v3 and emitted output being a re-emittable CLI.
+
+T-FixedPoint **does not** rebuild this infrastructure. The lane delivers two specific transitions on top of the existing ratchet:
+
+1. **Promote target from `default_fixed_point_source` → `dsl/gunbc/compiler.dag`** in `self_host_fixed_point` (the binary already probes `compiler.dag`; promote it from probe to required gate).
+2. **Graduate CI `self_host_ratchet` from `continue-on-error: true` → merge-blocking** (DB-8 acceptance checklist names this graduation as gated on Lane 1e clearing iteration debt; T-FixedPoint dispatch precondition #3 — T-LensProducer-Retirement closure — subsumes that prerequisite).
+3. Author the `pb_self_compile_fixed_point_strong` `.dag` `TestClaim` so the structural gate lives in `verification.dag` alongside the binary's mechanical check (single authority for the strong horizon's acceptance).
+
+The non-determinism elimination work (HashMap/HashSet/timestamps/paths per `design-fixed-point-ratchet.md` §"Sources of non-determinism") is **not** in T-FixedPoint scope — it's continuing Lane 1e / emit.rs work that surfaces as ratchet failures and routes to whichever lane owns the offending code path.
 
 ## Cross-lane sequencing (Shape-A target coverage)
 
@@ -90,7 +102,7 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 
 - **R1 fixture pressure:** any change required to `r1_release_acceptance_test.rs` predicate evaluation or `verification.dag` `FixedPointConverges` variant shape — that's a substrate or R1-horizon edit; not in this lane's scope. Surface as a substrate gap.
 - **SG-0 census drift:** the SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` count is non-zero at evaluation time — T-LensProducer-Retirement is incomplete; this lane is not yet dispatchable.
-- **Bit-identity fails for a structural reason** (e.g., emitter non-determinism: HashMap iteration order, timestamps, absolute paths in emitted output) — that's an emitter dissolution, not a fixed-point-acceptance edit. Surface to PB Manager; do not paper over with normalization in the gate.
+- **Bit-identity fails for a structural reason** (e.g., emitter non-determinism: HashMap iteration order, timestamps, absolute paths in emitted output — full enumeration in [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) §"Sources of non-determinism") — that's an emitter dissolution, not a fixed-point-acceptance edit. Surface to PB Manager; do not paper over with normalization in the gate. The DB-8 grep gate + `determinism_test.rs` 5× check should catch most of these before the strong gate evaluates.
 - **Trampoline expansion:** the "≤1 first-time-bootstrap trampoline" boundary tightens or expands — that's a Director-level cascade-decision change, not a worker call.
 - **Substrate gap:** any need to introduce a new `TestPredicate` variant or extend `FixedPointConverges` — follow `INVARIANTS.md` §P1; do not author the variant in this lane.
 
@@ -107,7 +119,10 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - Two-horizon authority: [`docs/r2-structure.md`](../r2-structure.md) §"R1 closure criteria" + `r3-structure.md:60` two-horizon clarification
 - Thesis-facet mapping: [`docs/thesis/r2-r3-thesis-mapping.md`](../thesis/r2-r3-thesis-mapping.md) row 136 (Facet 2)
 - SG-0 floor authority: [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) §`First-time bootstrap` (≤1 trampoline rule)
+- DB-8 ratchet design (mechanical authority): [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md)
+- DB-8 history (landed infrastructure): [`docs/db-history/db-8.md`](../db-history/db-8.md)
 - Substrate variant: `src/v3/std/verification.dag:206-209` (`FixedPointConverges`)
+- Ratchet binary (extend, do not rebuild): `src/v3/compiler/src/bin/self_host_fixed_point.rs`
 - R1 fixture (do not edit): `src/v3/compiler/tests/integration/r1_release_acceptance_test.rs:18`
 - Existing test scaffolding (reference, not the strong gate): `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs`, `src/v3/compiler/tests/integration/r1c_d_pb_census_gates_test.rs`
 - Sibling R3-PB lane brief (gating dependency): T-LensProducer-Retirement worker briefs (pending — see `r2-pure-bootstrap-manager.md` §"Sub-briefs … Pending")
