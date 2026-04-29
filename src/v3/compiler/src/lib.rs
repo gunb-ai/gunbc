@@ -39,7 +39,6 @@ mod int_literal_ranges;
 /// (see module docs in `lens_apply.rs`).
 pub mod lens_apply;
 pub mod lens_testgen;
-mod substrate_reflection;
 
 /// Effect-enumeration lens. Authority lives in
 /// `src/v3/lenses/effect_enumeration.dag`; the Rust projection is
