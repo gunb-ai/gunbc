@@ -13,7 +13,7 @@
 T-FixedPoint closes the **R3 thesis facet 2 horizon** of the `pb_self_compile_fixed_point` predicate: `compiler.dag` compiled by the v3 binary produces **bit-identical stage0 Rust + bit-identical emitted artifacts** under fixed-point semantics, with the in-tree hand-Rust floor at zero (per Director-locked decision 2026-04-28 in `r3-structure.md` §"Design challenge 4").
 
 The lane delivers:
-1. The strong-interpretation `.dag` `TestClaim` `pb_self_compile_fixed_point_strong` (per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101) authored against the existing `FixedPointConverges` substrate variant at `src/v3/std/verification.dag:206` — same predicate name, stronger acceptance.
+1. The strong-interpretation `.dag` `TestClaim` `pb_self_compile_fixed_point_strong` (per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101) authored against the existing `FixedPointConverges` substrate variant at `src/v3/std/verification.dag:206` — same `FixedPointConverges` predicate variant, distinct strong claim name (`pb_self_compile_fixed_point_strong`, not the R1 `pb_self_compile_fixed_point`).
 2. Verification that running the cycle a second time on the v3-emitted Rust produces byte-identical output (true fixed point, not just "compiles itself once").
 3. Closure-ledger signal that R3 thesis facet 2 has landed.
 
