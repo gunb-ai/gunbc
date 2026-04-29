@@ -1,5 +1,7 @@
 # R2 Release — B5 Loop construction-closure audit `(S, R2-coupled)`
 
+> **CLOSED — receipt brief.** Construction-closure **holds**; structural gate landed at `src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs` (2026-04-27). Synthesis Tier 2 §5 and ROADMAP record **RESOLVED**; speculative `LoopKind` marker **retired** per `feedback_construction_over_ratchets`. **Do not dispatch** this file as open audit work — reopen only if lowering regresses (new `Behavior::Loop` sites or test failure).
+
 > **R2 Release Manager dispatch.** Per [`docs/briefs/debt-paydown-synthesis-2026-04-25.md` §"Tier 2"](debt-paydown-synthesis-2026-04-25.md) item 5 + [`docs/r2-structure.md` §"R2 Release Manager"](../r2-structure.md). **MUST start with audit, NOT marker design.** Reports to R2 Release Manager once R2 spawns; pre-spawn authoring per inbox #828 PM portion.
 
 ## Read first
