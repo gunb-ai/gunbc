@@ -343,4 +343,4 @@ fi
 
 echo ""
 echo "Self-test PASSED: 9 contract assertions verified"
-echo "  (7 negative — Q1/Q2-md/Q2-prose-numeric/Q4×2/Q5×2 + missing-brief; 1 positive — clean fixture w/ landed-PR)"
+echo "  (8 negative — Q1/Q2-md/Q2-prose-numeric/Q4×2/Q5×2 + missing-brief; 1 positive — clean fixture w/ landed-PR)"
