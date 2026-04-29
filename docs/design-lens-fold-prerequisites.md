@@ -268,7 +268,7 @@ program's output."
 ### Director disposition (2026-04-29, parent inbox #1130)
 
 **Workflow-root = (α) last topological `Bind`, but only behind
-a named `workflow_root_port(d: Dag) -> PortId` helper/accessor.**
+a named `workflow_root_port(d: Dag) -> WorkflowRoot` helper/accessor.**
 The accessor is the framework boundary; the implementation is
 "last topological `Bind`" today, refinable to (γ)
 last-`UserCallable`-Bind later behind the same accessor without
@@ -287,6 +287,29 @@ declared fact that the lens framework and the runtime evaluator
 both consume.
 
 ### Prereq-3 carrier: `workflow_root_port` accessor
+
+**Return-type fail-closed shape (per BLOCKING review on
+PR #1207 at sha `d34ca4a1`):** the accessor must NOT return a
+bare `PortId`. A total `Dag → PortId` return drops the
+no-root and multi-entry cases — a Dag with zero `Bind` nodes
+or multiple eligible roots would require fabricating a
+`PortId` or asserting a positional convention, which violates
+fail-closed substrate semantics. The accessor returns a
+typed `WorkflowRoot` carrier:
+
+```dag
+type WorkflowRoot
+  = SingleRoot(PortId)                               // exactly one eligible root; PortId is its result_port
+  | NoRoot                                           // zero Binds in d.nodes; lens fold short-circuits to DimensionFail
+  | AmbiguousRoot { candidates: List<PortId> }       // 2+ eligible roots under the active α/γ rule; consumer must disambiguate (R2-Evaluator picks via entry-arg; fold_lens reports DimensionFail)
+```
+
+Both consumers (`fold_lens<C>` and R2-Evaluator) handle the
+three variants explicitly. `NoRoot` and `AmbiguousRoot` are
+fail-closed surfaces, not fabrication points. The α
+implementation populates `SingleRoot` only when exactly one
+last-topological-`Bind` exists; γ refinement (last
+`UserCallable` Bind) reuses the same `WorkflowRoot` partition.
 
 The accessor lands as part of Prereq-3 (or as a separate
 sub-slice of Prereq-3 that can lead, since the accessor doesn't
@@ -368,7 +391,7 @@ generic path without bespoke handling.
 ### Prereq-3: `fold_lens<C>` machinery + `workflow_root_port` accessor
 
 **Scope (per Director disposition 2026-04-29):**
-- **3a:** declare `workflow_root_port(d: Dag) -> PortId` in
+- **3a:** declare `workflow_root_port(d: Dag) -> WorkflowRoot` in
   `src/v3/std/substrate.dag` (or sibling) with the α
   implementation (last topological `Bind`). Shared authority —
   R2-Evaluator's runtime entry-point identification consumes
