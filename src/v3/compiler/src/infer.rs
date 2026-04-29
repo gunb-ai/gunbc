@@ -872,7 +872,7 @@ fn int_literal_magnitude_narrow_merge(
         Ok(Some(true)) => IntLiteralNarrowMerge::Merge,
         Ok(Some(false)) => match integer_range_for_decl(dag, to.declaration) {
             IntegerRangeLookup::Found(bound) => IntLiteralNarrowMerge::Reject(
-                magnitude_out_of_range_for_interval(lit, to.clone(), bound, span),
+                magnitude_out_of_range_for_interval(lit, *to, bound, span),
             ),
             IntegerRangeLookup::Invalid(diag) => IntLiteralNarrowMerge::Reject(diag),
             IntegerRangeLookup::Missing => {
