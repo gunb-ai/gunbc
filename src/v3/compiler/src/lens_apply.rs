@@ -2140,7 +2140,7 @@ mod substrate_reflection {
     mod reflection_tests {
         use super::*;
         use crate::compile_to_dag;
-        use crate::dag::{Behavior, FieldValue, LoopBound, TypeConnective};
+        use crate::dag::{Behavior, DeclarationId, FieldValue, LoopBound, TransformTarget, TypeConnective};
 
         fn compile(src: &str, file: &str) -> Dag {
             match compile_to_dag(src, file) {
@@ -2224,6 +2224,102 @@ mod substrate_reflection {
                 .unwrap_or_else(|| {
                     panic!("constructor {constructor:?} not a sum variant payload ty")
                 })
+        }
+
+        /// Peel empty `Instantiation` wrappers to the underlying `Conj` (same contract as
+        /// `substrate_reflection::named_record_type_root`).
+        fn named_conj_root_id(dag: &Dag, substrate_record_name: &str) -> DeclarationId {
+            let mut decl_id = dag
+                .declaration_by_name(substrate_record_name)
+                .unwrap_or_else(|| panic!("missing declaration `{substrate_record_name}`"))
+                .id;
+            const PEEL_MAX: usize = 64;
+            for _ in 0..PEEL_MAX {
+                match &dag.declaration(decl_id).connective {
+                    TypeConnective::Conj { .. } => return decl_id,
+                    TypeConnective::Instantiation {
+                        template,
+                        arguments,
+                    } if arguments.is_empty() => {
+                        decl_id = *template;
+                    }
+                    _ => panic!("`{substrate_record_name}` did not peel to a Conj"),
+                }
+            }
+            panic!("peel depth exceeded for `{substrate_record_name}`");
+        }
+
+        /// Ratchet: reflected `Record` field **order and labels** match the named substrate `Conj`.
+        fn assert_record_matches_named_substrate_conj(
+            dag: &Dag,
+            rec: &[(String, FieldValue)],
+            substrate_record_name: &str,
+        ) {
+            let conj_id = named_conj_root_id(dag, substrate_record_name);
+            let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+                panic!("`{substrate_record_name}` not a Conj after peel");
+            };
+            assert_eq!(
+                rec.len(),
+                children.len(),
+                "`{substrate_record_name}`: reflected field count vs declared Conj arity"
+            );
+            for (i, ((ref_label, _), decl_field)) in rec.iter().zip(children.iter()).enumerate() {
+                assert_eq!(
+                    ref_label, &decl_field.label,
+                    "`{substrate_record_name}`: field {i} label mismatch (reflection vs substrate.dag)"
+                );
+            }
+        }
+
+        /// Ratchet: `FieldValue::Variant` payload slot count matches the declared variant payload
+        /// shape (`Conj` children when the constructor is a record; otherwise 0–1 like
+        /// `sum_variant_payload`).
+        fn assert_sum_variant_payload_matches_substrate(
+            dag: &Dag,
+            sum_decl_name: &str,
+            fv: &FieldValue,
+        ) {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = fv
+            else {
+                panic!("expected sum variant, got {fv:?}");
+            };
+            let ctor_ty = *constructor;
+            let ctor_decl = dag.declaration(ctor_ty);
+            let variant_label = {
+                let sum_decl = dag
+                    .declaration_by_name(sum_decl_name)
+                    .unwrap_or_else(|| panic!("missing sum `{sum_decl_name}`"));
+                let TypeConnective::Disj { variants } = &sum_decl.connective else {
+                    panic!("`{sum_decl_name}` not a Disj");
+                };
+                variants
+                    .iter()
+                    .find(|v| v.ty == ctor_ty)
+                    .map(|v| v.label.as_str())
+                    .unwrap_or_else(|| {
+                        panic!("constructor {ctor_ty:?} is not a variant of `{sum_decl_name}`")
+                    })
+            };
+            match &ctor_decl.connective {
+                TypeConnective::Conj { children } => {
+                    assert_eq!(
+                        payload.len(),
+                        children.len(),
+                        "`{sum_decl_name}`::{variant_label}: payload arity vs declared Conj"
+                    );
+                }
+                _ => {
+                    assert!(
+                        payload.len() <= 1,
+                        "`{sum_decl_name}`::{variant_label}: non-Conj constructor allows at most one payload; got {}",
+                        payload.len()
+                    );
+                }
+            }
         }
 
         #[test]
