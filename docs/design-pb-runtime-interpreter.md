@@ -14,7 +14,7 @@ Authored as a **standalone doc** (week-scale, per PM cadence directive) rather t
 
 This doc locks two coupled facts:
 
-- **Item 4 — PB-Runtime interpreter-as-data shape.** What the runtime that executes `.dag` bodies *is* when expressed as a `.dag` program, not a Rust crate. The structural shape that `fold_lens<C>` consumes; the substrate the Evaluator lowers to as the closed-system thesis matures.
+- **Item 4 — PB-Runtime interpreter-as-data shape.** What the runtime that executes `.dag` bodies *is* when expressed as a `.dag` program, not a Rust crate. The substrate the Evaluator lowers to as the closed-system thesis matures; consumed by lenses *via the Evaluator* when they need a runtime witness for an evaluation result. Reflection (per `docs/design-reflection-completeness.md`) is what `fold_lens<C>` consumes directly — PB-Runtime is the evaluation half that runs *underneath* reflection when a lens needs to compute (vs. inspect) a program. See §3.5 for the precise reflection-vs-evaluation distinction.
 - **Item 5 — PB-1 generated bin-shim emit pattern.** How the binary entrypoints (`regen_lens.rs`, `regen_v3.rs`, etc.) emit from `.dag` declarations rather than being hand-Rust scripts. The generalization of the pattern that retires the last hand-Rust file class on the SG-0 = 0 path.
 
 Both items together gate **R3-T-LensProducer-Retirement** sub-gate 3 (`regen_lens_dot_rs_retired`). Sub-gates 1 + 2 (`lens_apply_dot_rs_retired` + `lens_testgen_dot_rs_retired`) are gated on Item 4 only.
@@ -183,7 +183,7 @@ fn regen_lens_main() -> std.process.ProcessExit {
     let module_text = emit.rust.emit_module(dag, entry);
     std.fs.write(entry.generated_file, module_text);
   }
-  std.process.ProcessExit.success
+  std.process.ExitSuccess
 }
 
 // Bin-shim = entry-point declaration + binary metadata.
@@ -206,17 +206,20 @@ type BinShim {
 
 **No `PipelineStep` DSL.** Earlier drafts of this doc proposed a coproduct over `LoadDag` / `CompileLensRegistry` / `EmitRustModules` / etc. as separate pipeline-step variants. That was parallel-representation: `.dag` is already the pipeline DSL — function calls compose; records return; sequencing is structural. Reintroducing a step-DSL would duplicate the language inside itself. Codex review on PR #1176 caught this as a substrate-fact-introduction-without-P1 violation; corrected to the simpler `entry: DeclarationRef` shape.
 
-**`std.process.ProcessExit` substrate prerequisite.** The entry function returns a process-exit carrier (success / failure with exit code + optional message). `std.process.ProcessExit` does NOT yet exist in the substrate at HEAD; it's a substrate-fact-introduction prerequisite for Item 5 retirement, owned by Substrate Manager (per anti-bridge invariant #2 in §6 below). The carrier shape is downstream of the actual feature ask; sketch:
+**`std.process.ProcessExit` is the existing substrate authority.** The entry function returns the live `ProcessExit` carrier already declared at `dsl/std/process.dag:39-41`:
 
 ```
-// Substrate-fact-introduction prerequisite — Substrate Manager owns the shape.
-// Sketch (subject to P1 procedure when authored):
+// dsl/std/process.dag:39-41 — live substrate authority (DO NOT redeclare).
 type ProcessExit
-  = Success
-  | Failure { exit_code: Int, message: String }
+  = ExitSuccess
+  | ExitFailure { code: Int, reason: String }
 ```
 
-Until Substrate Manager declares `std.process.ProcessExit`, bin-shim retirement workers MUST signal a P1 escalation rather than authoring locally. This makes the substrate-prerequisite explicit and sequenced: PR-PreF-style work (Substrate-side authoring of `ProcessExit`) gates Item 5 retirement.
+The module also exposes standard exit-code constants (`exit_code_success: Int = 0`, `exit_code_general_error: Int = 1`, `exit_code_misuse: Int = 2`) and a convenience constructor `fn exit_failure(reason: String) -> ProcessExit` (line 50).
+
+This is the structural contract for translating `.dag` program return values into host process exit codes — exactly the contract bin-shims need. Bin-shim entry functions return `std.process.ProcessExit` directly; the host (cli_run.rs / emitted bin-shim) checks `type_name=="ProcessExit"` AND `variant_name=="ExitFailure"` to set exit code per the convention documented in `dsl/std/process.dag` lines 11-30.
+
+**No new substrate carrier required for Item 5.** Earlier drafts of this doc claimed `std.process.ProcessExit` "does NOT yet exist" and proposed a sketch shape — that was a verification miss; the carrier already exists. Bin-shim retirement workers consume the existing authority directly.
 
 The emitter for `BinShim` declarations is a `.dag` program (analogous to existing emit modules per `dsl/extdeps/languages/rust/emit.dag`) that produces a Rust file shaped like:
 
@@ -229,10 +232,10 @@ use gunbc_runtime::{Dag, ProcessExit};
 
 fn main() -> ExitCode {
     match {entry_fn_qualified_name}(&Dag::new()) {
-        ProcessExit::Success => ExitCode::SUCCESS,
-        ProcessExit::Failure { exit_code, message } => {
-            eprintln!("{message}");
-            ExitCode::from(exit_code as u8)
+        ProcessExit::ExitSuccess => ExitCode::SUCCESS,
+        ProcessExit::ExitFailure { code, reason } => {
+            eprintln!("{reason}");
+            ExitCode::from(code as u8)
         }
     }
 }
