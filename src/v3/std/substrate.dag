@@ -76,11 +76,22 @@ type AtomPayload
   | ResolvedByName(DeclarationId)
   | TypeParam(String)
 
-// 🟢 TERMINAL. Cardinality bounds are structural substrate facts and
-// not a temporary bridge to another representation.
+// PR-PreF / Q1 — shared ordered-numeric parent for connective cardinality,
+// loop iteration algebra, and (via Rust bridge) size-bound count facets.
+// `Cardinal` / `Ordinal` are domain tags; Rust mirrors use `u32` for both
+// today (see `dag_scalar_generated.rs`).
+type Cardinal = Int
+type Ordinal = Int
+
+// Parametric closed interval on a totally ordered domain (inclusive bounds).
+type Interval<domain>
+  = ExactInterval { lo: domain, hi: domain }
+  | Unbounded
+
+// Retrofit: same variants as `Interval<Cardinal>`; runtime mirror is a single
+// `Interval<Cardinal>` enum (`CardinalityBound` is a Rust type alias).
 type CardinalityBound
-  = Exact(Int)
-  | AtMostOne
+  = ExactInterval { lo: Cardinal, hi: Cardinal }
   | Unbounded
 
 type ConjField {
@@ -146,7 +157,7 @@ type TypeConnective
     }
   | Cardinality {
       element: DeclarationId
-      bound: CardinalityBound
+      bound: Interval<Cardinal>
     }
   | Instantiation {
       template: DeclarationId
@@ -314,7 +325,10 @@ type Cluster {
 // See `docs/design-mutual-recursion-lowering.md` for the full
 // dissolution receipt and named trigger rationale.
 type LoopBound
-  = Cardinality { count: PortId }
+  = Cardinality {
+      count: PortId
+      iteration: Interval<Ordinal>
+    }
   | Descent { cluster: ClusterId }
 
 type ValueNode {
