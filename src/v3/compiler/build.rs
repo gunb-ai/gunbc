@@ -384,6 +384,14 @@ fn main() {
     // `substrate_minimal` + `effects` before full `substrate` so `substrate.dag`
     // can import `WorkflowEffect` for reflected `lane2_workflow` without a
     // module cycle (`effects` still needs `PortId` / list primitives first).
+    //
+    // `methods.dag` before the bulk of `src/v3/std/*.dag`: `emit_model.dag`
+    // declares `MethodTemplateContract { dag_method: MethodRef, ... }` and
+    // lowers that field's type while `MethodRef` is still a collect_symbols
+    // placeholder if `methods.dag` has not run `lower_type_record` yet
+    // (alphabetical order places `emit_model` before `methods`). The field
+    // type id is correct, but `walk_to_conj_decl` fails until the stub is
+    // replaced — keep `methods.dag` in this short priority prefix.
     let staged_entries = collect_dag_entries(
         &std_dir,
         &[
@@ -391,6 +399,7 @@ fn main() {
             "substrate_minimal.dag",
             "effects.dag",
             "substrate.dag",
+            "methods.dag",
         ],
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
