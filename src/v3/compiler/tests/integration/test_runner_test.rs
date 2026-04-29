@@ -857,3 +857,8 @@ fn test_runner_runs_sub_type_alias_where_lowers_gate() {
 
     assert_all_pass(&results);
 }
+
+#[test]
+fn test_runner_runs_p0_repeat_string_v2_oracle_rust_bridge_gate() {
+    crate::common::assert_p0_repeat_string_v2_oracle_rust_bridge_gate_passes();
+}
