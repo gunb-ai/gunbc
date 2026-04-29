@@ -487,6 +487,55 @@ fn lane2_workflow_at(d: Dag, id: NodeId) -> WorkflowEffect? {
   host lane2_workflow_effect_at
 }
 
+// Workflow-root identification (Director-locked α; per
+// `docs/design-lens-framework.md` Q-shape and merged audit
+// `docs/design-lens-fold-prerequisites.md` §"Prereq-3a").
+//
+// 🟡 SCAFFOLD coproduct. The three arms partition every legitimate
+// `Dag` exactly once at the substrate-load boundary:
+//
+//   - `SingleRoot(p)` — exactly one workflow-root `Bind` exists; `p`
+//     is its `result_port`. Under α (last topological `Bind`), this
+//     is the common case for any Dag containing at least one Bind.
+//   - `NoRoot` — zero `Bind` behaviors in `d.nodes`. The fold short-
+//     circuits (`fold_lens<C>` returns `DimensionFail` with a
+//     no-root diagnostic; `R2-Evaluator.evaluate(...)` rejects).
+//   - `AmbiguousRoot { candidates }` — reserved for the
+//     enumerate-all-eligible-entries rule that the runtime evaluator
+//     (`evaluate(program, entry, args)` per Items 4+5 / #1176 §3.2)
+//     consumes for multi-entry programs. The α / γ "last X Bind"
+//     rules cannot populate this arm over a linear `Dag.nodes` —
+//     both pick exactly one element by definition. Pinned here as a
+//     fail-closed surface for the future enumerate-all consumer
+//     wiring; today's α implementation never emits this variant.
+//
+// Pattern 1 (per-call total fact) was rejected: `-> PortId` would
+// fabricate or panic on `NoRoot` cases. Pattern 2 (collapse to
+// `Option<PortId>`) loses the `AmbiguousRoot` channel for the
+// multi-entry consumer. Pattern 3 (this sum) is the dissolution
+// path: each variant carries the structural reason its arm was
+// taken; consumers dispatch fail-closed without fabrication.
+//
+// Dissolution: γ refinement (last `UserCallable` `Bind`) and the
+// enumerate-all rule both reuse this same partition behind the
+// `workflow_root_port` accessor; no carrier change required.
+type WorkflowRoot
+  = SingleRoot(PortId)
+  | NoRoot
+  | AmbiguousRoot { candidates: List<PortId> }
+
+// Workflow-root accessor (per merged audit Prereq-3a). Implements
+// the α rule: last topological `Bind` in `d.nodes`. Returns
+// `WorkflowRoot::SingleRoot(b.result_port)` when exactly one Bind
+// exists; `NoRoot` when zero Binds; never `AmbiguousRoot` under α
+// (linear `d.nodes` cannot tie). Shared authority — both
+// `fold_lens<C>` (workflow-root identification for the equivalence
+// target) and R2-Evaluator (runtime entry-point identification) are
+// the planned consumers.
+fn workflow_root_port(d: Dag) -> WorkflowRoot {
+  host workflow_root_port
+}
+
 // `Lookup<DeclarationId>` monomorphized constructors (same shim story as
 // `miss_int_lookup` in `v3.std.lookup` and `miss_symbolic_cost_lookup` in
 // `std.algebra`). Lives here so `infer_helpers.dag` can call them via

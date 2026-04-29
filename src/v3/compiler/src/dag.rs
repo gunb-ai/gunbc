@@ -1906,6 +1906,20 @@ pub enum Behavior {
     Bind(BindNode),
 }
 
+/// Workflow-root identification (mirrors `WorkflowRoot` in
+/// `src/v3/std/substrate.dag`). The α implementation in
+/// [`Dag::workflow_root_port`] populates `SingleRoot` when at least one
+/// `Bind` exists and `NoRoot` otherwise; `AmbiguousRoot` is reserved
+/// for the future enumerate-all-eligible-entries rule that the runtime
+/// evaluator consumes for multi-entry programs and is never emitted by
+/// the α path.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowRoot {
+    SingleRoot(PortId),
+    NoRoot,
+    AmbiguousRoot { candidates: Vec<PortId> },
+}
+
 impl Behavior {
     pub fn id(&self) -> NodeId {
         match self {
@@ -2958,6 +2972,29 @@ impl Dag {
             Behavior::Bind(b) => b.lane2_workflow(),
             Behavior::Transform(_) | Behavior::Branch(_) | Behavior::Loop(_) => None,
         }
+    }
+
+    /// Workflow-root accessor (Director-locked α implementation per
+    /// `docs/design-lens-fold-prerequisites.md` §"Prereq-3a"). Walks
+    /// `d.nodes` (which is topologically ordered) backwards and returns:
+    ///
+    /// - `WorkflowRoot::SingleRoot(p)` for the last `Behavior::Bind`'s
+    ///   `result_port`, when at least one `Bind` exists.
+    /// - `WorkflowRoot::NoRoot` when zero `Bind` behaviors are present
+    ///   (lens fold short-circuits to `DimensionFail`; runtime evaluation
+    ///   rejects).
+    /// - `WorkflowRoot::AmbiguousRoot { .. }` is intentionally never
+    ///   emitted by this α implementation — the linear `d.nodes` order
+    ///   cannot tie. The variant is reserved at the type level for the
+    ///   future enumerate-all-eligible-entries rule that R2-Evaluator's
+    ///   `evaluate(program, entry, args)` consumes.
+    pub fn workflow_root_port(&self) -> WorkflowRoot {
+        for behavior in self.nodes.iter().rev() {
+            if let Behavior::Bind(b) = behavior {
+                return WorkflowRoot::SingleRoot(b.result_port);
+            }
+        }
+        WorkflowRoot::NoRoot
     }
 
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
