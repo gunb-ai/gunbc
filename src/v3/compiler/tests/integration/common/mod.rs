@@ -26,11 +26,13 @@
 pub mod budgeted;
 pub mod cached_compile;
 pub mod determinism_fixtures;
+pub mod r1_gates_bridge;
 pub mod substrate_receipts;
 
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
 };
+pub use r1_gates_bridge::assert_p0_repeat_string_v2_oracle_rust_bridge_gate_passes;
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
