@@ -521,13 +521,13 @@ fn assert_no_nested_at_most_one(dag: &v3_compiler::dag::Dag, context: &str) {
         let TypeConnective::Cardinality(payload) = &decl.connective else {
             continue;
         };
-        if payload.bound() != CardinalityBound::AtMostOne {
+        if payload.bound() != CardinalityBound::AT_MOST_ONE {
             continue;
         }
         let inner = dag.declaration(payload.element());
         if let TypeConnective::Cardinality(inner_payload) = &inner.connective {
             assert!(
-                inner_payload.bound() != CardinalityBound::AtMostOne,
+                inner_payload.bound() != CardinalityBound::AT_MOST_ONE,
                 "{context}: declaration#{outer} (name={outer_name:?}) wraps \
                  declaration#{inner} (name={inner_name:?}) in AtMostOne, but the \
                  inner declaration is itself Cardinality(AtMostOne, …) — \

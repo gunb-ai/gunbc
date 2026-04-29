@@ -985,10 +985,12 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
-        sum_variants(&dag, "CardinalityBound"),
+        sum_variants(&dag, "Interval"),
         vec![
-            (String::from("Exact"), vec![String::from("_0")]),
-            (String::from("AtMostOne"), Vec::new()),
+            (
+                String::from("ExactInterval"),
+                vec![String::from("lo"), String::from("hi")],
+            ),
             (String::from("Unbounded"), Vec::new()),
         ]
     );
