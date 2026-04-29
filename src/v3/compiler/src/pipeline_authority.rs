@@ -1,6 +1,6 @@
-use crate::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
-use crate::parse::{self, SurfaceItem};
-use crate::tokenize;
+use std::path::Path;
+
+use crate::dag::{ArrowBody, Dag, Declaration, DeclarationId, FieldValue, TypeConnective, ValueBody};
 
 pub(crate) const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 
@@ -101,7 +101,7 @@ pub(crate) fn ordered_pipeline_stages(dag: &Dag) -> Result<Vec<PipelineStageAuth
         return Err("pipeline authority contains no stage bindings".to_string());
     }
 
-    reconcile_with_compile_body(&ordered)?;
+    reconcile_with_compile_body(dag, &ordered)?;
 
     Ok(ordered)
 }
@@ -112,8 +112,18 @@ pub(crate) fn ordered_pipeline_stages(dag: &Dag) -> Result<Vec<PipelineStageAuth
 /// ordering authority; this check ensures the `compile` orchestrator
 /// surface cannot silently drift from that authority. Any divergence is
 /// surfaced as a bootstrap diagnostic (via the caller).
-fn reconcile_with_compile_body(ordered: &[PipelineStageAuthority]) -> Result<(), String> {
-    let body_names = compile_body_stage_names_from_source()?;
+///
+/// **T-Bridge-Retirement (`include_str!` side channel):** stage names in
+/// the `compile` body are read using the `ArrowBody::Unparsed` span already
+/// carried on the lowered `compile` declaration (DB-16 case 2c), then
+/// sliced from the authoritative on-disk `pipeline.dag` next to this crate.
+/// That retires `include_str!("../pipeline.dag")` while case 2c still
+/// keeps two authored carriers in sync until derivation collapses them.
+fn reconcile_with_compile_body(
+    dag: &Dag,
+    ordered: &[PipelineStageAuthority],
+) -> Result<(), String> {
+    let body_names = compile_body_stage_names_from_dag(dag)?;
     let binding_names: Vec<&str> = ordered
         .iter()
         .map(|stage| stage.stage_name.as_str())
@@ -132,29 +142,62 @@ fn reconcile_with_compile_body(ordered: &[PipelineStageAuthority]) -> Result<(),
     Ok(())
 }
 
-fn compile_body_stage_names_from_source() -> Result<Vec<String>, String> {
-    let source = include_str!("../pipeline.dag");
-    let tokens = tokenize::tokenize(source, PIPELINE_AUTHORITY_FILE)
-        .map_err(|diag| format!("failed to tokenize pipeline authority: {diag:?}"))?;
-    let module = parse::parse(&tokens, PIPELINE_AUTHORITY_FILE)
-        .map_err(|diag| format!("failed to parse pipeline authority: {diag:?}"))?;
-
-    let body_span = module
-        .items
+fn pipeline_compile_declaration(dag: &Dag) -> Result<&Declaration, String> {
+    dag.declarations()
         .iter()
-        .find_map(|item| match item {
-            SurfaceItem::FnExternalBody {
-                name, body_span, ..
-            } if name == PIPELINE_COMPILE_FN => Some(body_span.clone()),
-            _ => None,
+        .filter(|decl| {
+            decl.name.as_deref() == Some(PIPELINE_COMPILE_FN)
+                && decl.span.file == PIPELINE_AUTHORITY_FILE
         })
+        .max_by_key(|decl| decl.id.raw())
         .ok_or_else(|| {
-            format!("pipeline authority is missing external-body fn `{PIPELINE_COMPILE_FN}`")
+            format!(
+                "pipeline authority `{}` is missing fn `{PIPELINE_COMPILE_FN}`",
+                PIPELINE_AUTHORITY_FILE
+            )
+        })
+}
+
+fn read_pipeline_authority_text() -> Result<String, String> {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("pipeline.dag");
+    std::fs::read_to_string(&path).map_err(|err| {
+        format!(
+            "failed to read pipeline authority substrate `{}`: {err}",
+            path.display()
+        )
+    })
+}
+
+fn compile_body_stage_names_from_dag(dag: &Dag) -> Result<Vec<String>, String> {
+    let compile = pipeline_compile_declaration(dag)?;
+    let TypeConnective::Arrow { body, .. } = &compile.connective else {
+        return Err(format!(
+            "pipeline `{PIPELINE_COMPILE_FN}` must be an arrow declaration"
+        ));
+    };
+    let ArrowBody::Unparsed(span) = body else {
+        return Err(format!(
+            "pipeline `{PIPELINE_COMPILE_FN}` must carry Unparsed body until case 2c derivation; found non-Unparsed body"
+        ));
+    };
+    if span.file != PIPELINE_AUTHORITY_FILE {
+        return Err(format!(
+            "pipeline `{PIPELINE_COMPILE_FN}` Unparsed span file `{}` does not match `{}`",
+            span.file, PIPELINE_AUTHORITY_FILE
+        ));
+    }
+
+    let source = read_pipeline_authority_text()?;
+    let body = source
+        .get(span.byte_start as usize..span.byte_end as usize)
+        .ok_or_else(|| {
+            "pipeline compile body span is out of bounds for on-disk pipeline.dag".to_string()
         })?;
 
-    let body = source
-        .get(body_span.byte_start as usize..body_span.byte_end as usize)
-        .ok_or_else(|| "pipeline compile body span is out of bounds".to_string())?;
+    compile_body_stage_names_from_braced_block(body)
+}
+
+fn compile_body_stage_names_from_braced_block(body: &str) -> Result<Vec<String>, String> {
     let body = body.trim();
     let body = body
         .strip_prefix('{')
@@ -285,23 +328,40 @@ fn require_snapshot_kind(
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
 
-    fn bootstrapped_stages() -> Vec<PipelineStageAuthority> {
+    fn bootstrapped_stages() -> (Dag, Vec<PipelineStageAuthority>) {
         // Bootstrapping includes reconcile_with_compile_body, so any Dag
         // we build by hand would already match. Start from a Dag that
         // passes reconciliation and mutate the returned vector.
         let dag = Dag::new();
-        ordered_pipeline_stages(&dag).expect("bootstrap pipeline authority is clean")
+        let stages = ordered_pipeline_stages(&dag).expect("bootstrap pipeline authority is clean");
+        (dag, stages)
+    }
+
+    #[test]
+    fn pipeline_authority_does_not_use_include_str_for_pipeline_dag() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join("pipeline_authority.rs");
+        let source = fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!("read {} for include_str ratchet: {err}", path.display());
+        });
+        assert!(
+            !source.contains("include_str!"),
+            "T-Bridge-Retirement: pipeline_authority.rs must not embed pipeline.dag via include_str!; \
+             use Dag-anchored Unparsed spans + on-disk substrate read instead ({})",
+            path.display()
+        );
     }
 
     #[test]
     fn reconcile_rejects_reordered_binding_list() {
-        let mut stages = bootstrapped_stages();
+        let (dag, mut stages) = bootstrapped_stages();
         assert!(stages.len() >= 2, "need >=2 stages to reorder");
         stages.swap(0, 1);
-        let err =
-            reconcile_with_compile_body(&stages).expect_err("reordered bindings must be rejected");
+        let err = reconcile_with_compile_body(&dag, &stages)
+            .expect_err("reordered bindings must be rejected");
         assert!(
             err.contains("pipeline authority drift"),
             "expected drift diagnostic, got: {err}"
@@ -310,7 +370,7 @@ mod tests {
 
     #[test]
     fn reconcile_accepts_matching_order() {
-        let stages = bootstrapped_stages();
-        reconcile_with_compile_body(&stages).expect("matching order must reconcile");
+        let (dag, stages) = bootstrapped_stages();
+        reconcile_with_compile_body(&dag, &stages).expect("matching order must reconcile");
     }
 }
