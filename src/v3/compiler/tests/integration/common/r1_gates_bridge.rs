@@ -1,4 +1,5 @@
-//! Shared receipts for `tests/fixtures/r1_gates.dag` bridge claims (R1C-B / T-P0).
+//! Shared receipts for `tests/fixtures/r1_gates.dag` R1C-B / T-P0 gate (structural
+//! `p0_repeat_string_correct`).
 //!
 //! Keeps a single implementation for suite names + compile path so `test_runner_test` and
 //! feature-specific modules (e.g. P0 oracle) cannot drift.
@@ -8,9 +9,8 @@ use std::path::PathBuf;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
 
-/// Loads `r1_gates.dag` and asserts `p0_repeat_string_v2_oracle_rust_bridge_gate` evaluates one
-/// `Pass` claim (interim v2-oracle bridge; see `r1_gates.template.dag` comments).
-pub fn assert_p0_repeat_string_v2_oracle_rust_bridge_gate_passes() {
+/// Loads `r1_gates.dag` and asserts `p0_repeat_string_correct_gate` evaluates one `Pass` claim.
+pub fn assert_p0_repeat_string_correct_gate_passes() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate_path = manifest_dir.join("tests/fixtures/r1_gates.dag");
     let gate_source = std::fs::read_to_string(&gate_path)
@@ -23,12 +23,12 @@ pub fn assert_p0_repeat_string_v2_oracle_rust_bridge_gate_passes() {
         ),
         Err(e) => panic!("r1_gates.dag: {e:?}"),
     };
-    let results = TestRunner::new(&dag).run_suite("p0_repeat_string_v2_oracle_rust_bridge_gate");
+    let results = TestRunner::new(&dag).run_suite("p0_repeat_string_correct_gate");
     assert_eq!(results.len(), 1, "{results:?}");
     assert_eq!(
         results[0].result,
         ClaimResult::Pass,
-        "expected Pass on p0_repeat_string_v2_oracle_rust_bridge, got {:?}",
+        "expected Pass on p0_repeat_string_correct, got {:?}",
         results[0]
     );
 }

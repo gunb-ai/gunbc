@@ -2779,6 +2779,13 @@ fn lower_data_item(
         Some(map_expr @ SurfaceExpr::Map { .. }) => {
             lower_map_to_structural(name, map_expr, ty_decl_id, symbols, dag)
         }
+        Some(SurfaceExpr::Call {
+            target,
+            args,
+            ..
+        }) if target == "repeat_string" => {
+            try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
+        }
         _ => None,
     };
     dag.declaration_mut(decl_id).value_body = match value_body {
@@ -2786,6 +2793,62 @@ fn lower_data_item(
         None if suppress_unparsed_scaffold => None,
         None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
     };
+}
+
+/// R1C-B / T-P0: fold `data …: String = repeat_string(s: <lit>, n: <lit>)` to a
+/// `ValueBody::Scalar` at lower time so `TestRunner` `OutputEquals` witnesses modeled
+/// `repeat_string` without the v2-oracle bridge.
+fn try_lower_repeat_string_string_data(
+    args: &[SurfaceExpr],
+    ty_decl_id: DeclarationId,
+    dag: &Dag,
+) -> Option<crate::dag::ValueBody> {
+    if !is_string_type_decl(dag, ty_decl_id) {
+        return None;
+    }
+    let [arg0] = args else {
+        return None;
+    };
+    let SurfaceExpr::Record { fields, .. } = arg0 else {
+        return None;
+    };
+    let mut s_value: Option<String> = None;
+    let mut n_value: Option<i64> = None;
+    for field in fields {
+        match field.name.as_str() {
+            "s" => match &field.value {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::String(s),
+                    ..
+                } => s_value = Some(s.clone()),
+                _ => return None,
+            },
+            "n" => match &field.value {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(n),
+                    ..
+                } => n_value = Some(*n),
+                _ => return None,
+            },
+            _ => return None,
+        }
+    }
+    let s = s_value?;
+    let n = n_value?;
+    let folded = fold_repeat_string_semantics(&s, n);
+    Some(crate::dag::ValueBody::Scalar(LiteralBits::String(folded)))
+}
+
+fn is_string_type_decl(dag: &Dag, ty_decl_id: DeclarationId) -> bool {
+    matches!(dag.declaration(ty_decl_id).name.as_deref(), Some("String"))
+}
+
+/// Semantics aligned with `dsl/std/render.dag` `repeat_string` for the gate witness (`n` ≥ 0).
+fn fold_repeat_string_semantics(s: &str, n: i64) -> String {
+    if n <= 0 {
+        return String::new();
+    }
+    s.repeat(n as usize)
 }
 
 fn lower_list_to_structural(
