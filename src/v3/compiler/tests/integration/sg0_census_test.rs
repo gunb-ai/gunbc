@@ -358,6 +358,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
+    // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
+    // `SubstrateResearchDeferredClaim` + `tc1_substrate_lens_eta_equivalence_deferred.dag`.
+    // SG-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
+    // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724;
+    // cycle-5 merge hygiene gunb-ai/gunbc#1142 c4341940508).
+    "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",

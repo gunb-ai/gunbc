@@ -161,6 +161,8 @@ mod t_impossiblebugs_unenumerated_effects_test;
 mod t_pb_b_1_dag_runner_test;
 #[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
 mod t_pb_b_brief_d_fixture_smoke_test;
+#[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
+mod tc1_substrate_lens_eta_equivalence_deferred_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/thesis_parallelism_test.rs"]
