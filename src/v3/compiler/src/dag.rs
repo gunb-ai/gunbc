@@ -49,7 +49,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-use crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS;
+use crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
@@ -465,6 +465,22 @@ pub enum FieldValue {
 // from `std/substrate.dag`; keep the substrate authority there, not here.
 include!("dag_scalar_generated.rs");
 
+impl CardinalityBound {
+    pub fn interval(self) -> Interval<u32> {
+        match self {
+            Self::Exact(value) => Interval::BoundedInterval {
+                lower: value,
+                width: IntervalWidth::ZeroWidth,
+            },
+            Self::AtMostOne => Interval::BoundedInterval {
+                lower: 0,
+                width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::OneUnit),
+            },
+            Self::Unbounded => Interval::Unbounded,
+        }
+    }
+}
+
 mod cardinality_payload;
 pub use cardinality_payload::CardinalityPayload;
 
@@ -687,26 +703,19 @@ impl AtomPayload {
 ///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
 ///   inference — so `Unparsed` does not persist for those stages in a
 ///   bootstrapped DAG. **`fn compile` (case 2c)** has no `PipelineStageBinding`:
-///   **`Unparsed` persists** on its Arrow body. Pipeline ordering authority is
-///   the declaration order of the `PipelineStageBinding` records in the Dag —
-///   `ordered_pipeline_stages` reads that structural order directly at runtime.
-///   The `compile` body is retained as a second surface-level expression of
-///   the same ordering and `ordered_pipeline_stages` fail-closes on any drift
-///   between the two (`reconcile_with_compile_body`) so the bindings remain
-///   the single runtime authority without silently diverging from the
-///   orchestrator surface. The `compile` body is the human-readable pipeline
-///   contract that the binding records satisfy — a reader sees the pipeline
-///   in one glance as `{ parse; lower; infer; ... }` rather than
-///   reconstructing it from a binding table. The bindings are the runtime
-///   authority; the body is the surface the bindings commit to; the
-///   fail-closed reconcile keeps that contract honest (P3) without letting
-///   the body become a second runtime source (P2). This is **bridge shape**,
-///   not terminal: two authored carriers kept consistent by reconcile. PR #637
-///   narrowed the prior body-span-as-authority shape; the bridge itself
-///   remains scheduled debt (see `docs/history/roadmap-scheduled-deletions.md`
-///   case 2c) until derivation collapses the two carriers to a single
-///   authored source — e.g., regen emits the `compile` body from binding
-///   declaration order. The signature still flows forward through the
+///   **`Unparsed` persists** on its Arrow body. Pipeline **runtime** ordering
+///   authority is the declaration order of the `PipelineStageBinding` records
+///   in the Dag — `ordered_pipeline_stages` reads that structural order only.
+///   The human-readable `compile` body remains a second **authored** surface;
+///   fail-closed drift detection between it and the bindings is **suspended**
+///   (PR #1171 disposition, 2026-04-29): the lowered Dag does not carry an
+///   ordered stage list inside `compile`, and neither compile-time embed nor
+///   runtime source-file read satisfies R3 `bridge_include_str_side_channels_retired`
+///   for that check — see `pipeline_authority::ordered_pipeline_stages`. Until
+///   derivation, review/regen discipline keeps the two carriers aligned. PR #637
+///   narrowed the prior body-span-as-authority shape; scheduled debt remains
+///   (see `docs/history/roadmap-scheduled-deletions.md` case 2c). The signature
+///   still flows forward through the
 ///   declaration table so callers can type-check against it, and the body
 ///   source span is preserved so M2+ parser extensions can reach in for case 1.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
@@ -724,9 +733,9 @@ impl AtomPayload {
 /// named dissolution (M3 / M2 grammar). **`Unparsed` on `pipeline.dag`'s
 /// `compile` (DB-16 case 2c)** is different — a **bootstrap-range carrier
 /// in bridge shape**: body span is no longer the ordering authority
-/// (structural binding order is), but two authored carriers still require
-/// `reconcile_with_compile_body` to stay consistent, so 2c remains scheduled
-/// debt with its own dissolution trigger (derivation, not the M2 parser
+/// (structural binding order is), but two authored carriers still exist until
+/// derivation; runtime reconcile is suspended pending a structural witness, so
+/// 2c remains scheduled debt with its own dissolution trigger (derivation, not the M2 parser
 /// milestone). User-range
 /// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
@@ -2354,7 +2363,7 @@ pub struct Dag {
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
     dag.mark_bootstrap_secret_nominal_opacity();
-    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
+    assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
     dag
@@ -2374,7 +2383,7 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
     dag.mark_bootstrap_secret_nominal_opacity();
-    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
+    assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
     dag
@@ -3045,8 +3054,8 @@ impl Dag {
 
     /// Typed accessor for the `rust_pilot_primitives` data declaration
     /// from `dsl/extdeps/languages/rust/primitives.dag` (path authorized by
-    /// B4.4 `extdeps_bootstrap_fixture_authority` and the regen host's
-    /// `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter over `EXTDEPS_FILES`). Returns the
+    /// B4.4 `bootstrap_fixture_authority` and the regen host's
+    /// `BOOTSTRAP_FIXTURE_PATH_KEYS` filter over `EXTDEPS_FILES`). Returns the
     /// top-level `List<RustPrimitive>` declaration whose *type* the
     /// target-grounding engine walks structurally (`RustPrimitive =
     /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
@@ -3067,7 +3076,7 @@ impl Dag {
     }
 
     /// Virtual paths from the B4.4 extdeps-bootstrap fixture carrier
-    /// (`extdeps_bootstrap_fixture_authority` in
+    /// (`bootstrap_fixture_authority` in
     /// `src/v3/std/extdeps_bootstrap_fixtures.dag`), in the order fields
     /// appear on the lowered `ValueBody::Structural` body.
     ///
@@ -3076,11 +3085,11 @@ impl Dag {
     /// has zero fields (degenerate); callers that require a non-empty set should
     /// assert separately.
     ///
-    /// Used to keep the regen host's `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter
+    /// Used to keep the regen host's `BOOTSTRAP_FIXTURE_PATH_KEYS` filter
     /// aligned with the substrate declaration (compared in this module's bootstrap
     /// `LazyLock` initializers).
-    pub fn extdeps_bootstrap_fixture_virtual_paths(&self) -> Option<Vec<String>> {
-        let decl = self.declaration_by_name("extdeps_bootstrap_fixture_authority")?;
+    pub fn bootstrap_fixture_virtual_paths(&self) -> Option<Vec<String>> {
+        let decl = self.declaration_by_name("bootstrap_fixture_authority")?;
         let body = decl.value_body.as_ref()?;
         let ValueBody::Structural { fields } = body else {
             return None;
@@ -3617,14 +3626,14 @@ impl Default for Dag {
     }
 }
 
-/// PB-1-e B4.4: the substrate `extdeps_bootstrap_fixture_authority` carrier and
-/// [`EXTDEPS_BOOTSTRAP_PATH_KEYS`](crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS)
+/// PB-1-e B4.4: the substrate `bootstrap_fixture_authority` carrier and
+/// [`BOOTSTRAP_FIXTURE_PATH_KEYS`](crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS)
 /// must list the same virtual paths in the same order — the const is the regen
 /// filter; the `.dag` declaration is runtime authority.
-fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
-    let Some(paths) = dag.extdeps_bootstrap_fixture_virtual_paths() else {
+fn assert_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
+    let Some(paths) = dag.bootstrap_fixture_virtual_paths() else {
         panic!(
-            "bootstrap snapshot must expose `extdeps_bootstrap_fixture_authority` as a \
+            "bootstrap snapshot must expose `bootstrap_fixture_authority` as a \
              structural `ValueBody` with well-formed `virtual_path` fields on each fixture \
              slot (missing declaration, non-structural body, or malformed fixture records). \
              Regenerate via `regen_bootstrap` after editing \
@@ -3634,11 +3643,11 @@ fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
     if !paths
         .iter()
         .map(String::as_str)
-        .eq(EXTDEPS_BOOTSTRAP_PATH_KEYS.iter().copied())
+        .eq(BOOTSTRAP_FIXTURE_PATH_KEYS.iter().copied())
     {
         panic!(
-            "`EXTDEPS_BOOTSTRAP_PATH_KEYS` must match `extdeps_bootstrap_fixture_authority` \
-             virtual_path fields in order.\n  substrate: {paths:?}\n  regen keys: {EXTDEPS_BOOTSTRAP_PATH_KEYS:?}"
+            "`BOOTSTRAP_FIXTURE_PATH_KEYS` must match `bootstrap_fixture_authority` \
+             virtual_path fields in order.\n  substrate: {paths:?}\n  regen keys: {BOOTSTRAP_FIXTURE_PATH_KEYS:?}"
         );
     }
 }
@@ -3962,5 +3971,48 @@ mod tests {
             "Wrap = Alias; Alias = Int? should peel through both Instantiations to the \
              canonical `Int?` decl (recursive alias chain, not one step)"
         );
+    }
+
+    #[test]
+    fn cardinality_idempotence_does_not_collapse_non_at_most_one_inner_bound() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let exact_two = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: exact_two,
+            name: None,
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+                int_decl,
+                CardinalityBound::Exact(2),
+            )),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_exact_spoof_test", 0, 0),
+        });
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, exact_two, CardinalityBound::AtMostOne),
+            None,
+            "AtMostOne over Exact(2) is optional fixed-cardinality, not nested optional"
+        );
+
+        let optional_exact_two = dag.alloc_cardinality_decl(
+            exact_two,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_exact_spoof_test", 0, 0),
+        );
+        let TypeConnective::Cardinality(payload) = &dag.declaration(optional_exact_two).connective
+        else {
+            panic!("optional Exact(2) should remain a Cardinality declaration");
+        };
+        assert_eq!(payload.element(), exact_two);
+        assert_eq!(payload.bound(), CardinalityBound::AtMostOne);
     }
 }

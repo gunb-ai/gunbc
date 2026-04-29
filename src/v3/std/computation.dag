@@ -24,6 +24,8 @@ import std.algebra {
 // `ParserStreamSize` / `WorklistDrainSize` keep parser advance vs worklist drain distinct from
 // generic `CollectionSize` (P2 facts-flow-forward). Explicit repeat counts split zero vs
 // Peano-positive (no negative `Int` inhabitant).
+// PR-PreF: constant explicit counts project through Interval<Int>; symbolic size
+// parameters remain SizeBound until their refs become first-class.
 type SizeBound
   = CollectionSize { param: String }
   | ParserStreamSize { witness: String }

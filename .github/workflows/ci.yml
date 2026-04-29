@@ -13,6 +13,11 @@ on:
 
 permissions:
   contents: read
+  # Manager-brief authority check uses `gh pr view --json state` to
+  # verify "LANDED via #N" claims map to MERGED PRs. Default
+  # GITHUB_TOKEN scopes don't include pull-request read; without this
+  # the check fails with "Resource not accessible by integration".
+  pull-requests: read
 
 # Cancel in-flight runs on new pushes to the same PR. Keyed on the PR
 # number (not `head_ref`) so two fork PRs that happen to share a branch
@@ -64,6 +69,31 @@ jobs:
 
       - name: Fabrication sentinel ratchet (P0-C)
         run: bash scripts/check-fabrication-sentinels.sh
+
+      - name: Release-doc authority check (P2 single-authority discipline)
+        # Forbidden-string consumer for release-control docs. Authority:
+        # docs/r2-structure.md §"Release-doc authority discipline".
+        run: bash scripts/check-release-doc-authority.sh
+
+      - name: Release-doc authority self-test (consumer not ceremonial)
+        # Prevents future RETRACTION_PATTERNS broadening from silently
+        # neutering the consumer.
+        run: bash scripts/test-check-release-doc-authority.sh
+
+      - name: Manager-brief authority check (P2 single-authority discipline)
+        # Verifies 7 R2 manager briefs cite live authorities and use
+        # consistent projections. Q1 (file existence) + Q2 (anchor
+        # existence) + Q4 (LANDED via #N reachability) + Q5 (cross-brief
+        # lane-count consistency). Authority: gpt-5-5-pro meta-review
+        # on PR #1126.
+        run: bash scripts/check-manager-brief-authority.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Manager-brief authority self-test (consumer not ceremonial)
+        # Prevents future MANAGER_BRIEFS or pattern-set changes from
+        # silently neutering the consumer.
+        run: bash scripts/test-check-manager-brief-authority.sh
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0

@@ -67,6 +67,14 @@ The substrate's stated design principle (from `termination.dag`'s header): the c
 
 External authority: well-founded relations (Zermelo 1904, von Neumann 1929), ranking functions (Floyd 1967, Turing 1949), size-change termination (Lee, Jones, Ben-Amram 2001), lexicographic + multiset orderings (Dershowitz, Manna 1979).
 
+### Worked example: kernel calculus grounding (substrate ≡ typed total λ-calculus + extensions)
+
+The 5-Behavior substrate (`Behavior::Value | Transform | Branch | Loop | Bind` in `src/v3/std/substrate.dag`) is a *typed total* fragment of lambda calculus + structural coproducts + bounded recursion. The mapping is direct: `Transform` is application `(M N)`; `Bind` is let-binding (sugar for `(λx.N) M`); `Arrow.body` is the lambda abstraction `λ(params).body`; `Branch` extends with primitive coproducts (System F + sums); `Loop` replaces the Y-combinator with bounded recursion (totality choice — same as Coq/Agda/Idris-with-totality).
+
+α-conversion is satisfied by construction (NodeId-based binding has no name shadowing); β-reduction is being reified as a substrate citizen via the PB-Runtime interpreter-as-data work (see [`docs/design-pb-runtime-interpreter.md`](docs/design-pb-runtime-interpreter.md)); capture-avoiding substitution is structurally satisfied by DAG-reference identity. The lens framework + `Witness<C>` + `DimensionReport` are **analyses on top of the calculus** (algebraic-effect-handler-shaped per Plotkin & Pretnar 2009), not calculus citizens.
+
+External authority: Church (1932/1936), Curry-Howard correspondence, System F (Girard 1972 / Reynolds 1974), Calculus of Inductive Constructions (Coquand & Huet 1986), Agda's totality discipline. Long-form: [`docs/design-substrate-lambda-calculus-grounding.md`](docs/design-substrate-lambda-calculus-grounding.md) — names the 3 intentional divergences (Loop / Branch / n-ary) + 3 research-level open questions (η-equivalence, confluence, strong normalization).
+
 ### Problem shape: Ungrounded heuristic
 
 A downstream stage computes a fact that was never authored — complexity score, provenance category, likely intent — by applying rules to nearby signals. The heuristic has no declared source; outputs are plausible but trace to nothing. Every corner case becomes another rule; the rule set grows unboundedly.
@@ -83,6 +91,45 @@ A design claim asserts "this needs no new substrate element — it composes from
 
 **Receipt:** A design once claimed multi-target lowering composed from existing Arrow + Body primitives. On implementation it turned out `Arrow.body` didn't carry target-binding information. Fix: explicit substrate extension for external realization on `Arrow.body`; every future design commitment names its substrate target.
 
+### Procedure: substrate-fact introduction (decision procedure for new modeling)
+
+**When to run this:** any time you're about to introduce a new substrate type, sum-type variant, field, or named lane. Run BEFORE authoring; if any check surfaces a gap, redirect rather than escalate.
+
+This procedure operationalizes P1 — workers stuck on "should I add a new type / variant / field?" can self-serve by walking these three checks in order.
+
+**Step 1: DAG-ancestor check** — search for the shared underlying modeling.
+
+> *"Before declaring a new substrate type, ask: what's the shared underlying concept? Does an ancestor type exist in the substrate already?"*
+
+If a parent concept exists, the new fact attaches via inhabitance (algebra-inhabitance, parametric instance, structural sub-type), NOT as a sibling type. Sibling types proliferate without grounding; inhabitance preserves the DAG. Worked examples:
+- `BoundDeclaration` is not a sibling of `CardinalityBound` / `SizeBound` / `LoopBound` — those all share the parent `Interval<D>`. The dissolution: declare `Interval<D>` as the parent; existing types retrofit as instances.
+- `Cost<Unit>` is not a sibling of `Duration<Seconds>` / `Money<USD>` — they all share the parent `Dimension<Unit, Carrier>` (one substrate type, multiple `Unit` instantiations).
+- `Lens<C>.sequential` is not a parallel `compose + unit` field pair — both project from `Monoid<C>`, the structurally-correct parent.
+
+**Step 2: Coproduct-vs-coordinate check** — distinguish alternatives from coordinates.
+
+> *"If proposing `Foo = A | B | C`, ask: are these alternatives (one-at-a-time) or coordinates (all-at-once)?"*
+
+If any single inhabitant carries values for ALL variants simultaneously, the variants are coordinates of a record (`{ a: A, b: B, c: C }`), not a sum type. Sum types compress what should be coordinates and pay the cost downstream. Per [`docs/thesis/structural-decompression.md`](docs/thesis/structural-decompression.md): dissolve into coordinates; the closed system guarantees the dissolution terminates. Worked examples:
+- "Cost = Time | Space | Energy" is wrong shape — every cost has time AND space AND (potentially) energy components. Dissolve to `{ time, space, energy }` (record).
+- "BoundDeclaration = ExactBound | AnyBound | PlatformDependent" — these ARE alternatives (a bound is one kind, not all kinds). Sum type is correct here.
+- "Resource = CPU | Memory | Disk" — coordinates if a single allocation has all three; sum type if any one allocation is exactly one kind. Apply the test.
+
+The "stop at user-input boundary" rule: dissolve coproducts that compress structural facts; preserve coproducts where the USER genuinely picks among alternatives (e.g., an enum the user types in source).
+
+**Step 3: Primitive-vs-lens-extensible check** — classify substrate-declared vs lens-extensible.
+
+> *"If introducing a leaf type (Time, Bits, Joules, Meters), ask: is this a fundamental primitive or a lens-extensible label?"*
+
+Fundamental primitives (physics, computation, mathematics) declare as substrate primitives sibling to existing primitives — not lens-extensible coproducts. **Lens-extensible** (NOT "user-extensible" — the compiler IS a user of its own system; the lens framework is uniform whether authored by compiler team or user) vocabulary belongs in lens-framework instances or domain dimensions where the lens-framework's structural inhabitance lets any author add new variants the same way. Worked examples:
+- `Bits`, `CPUCycles`, `Joules` declare as substrate primitive types (sibling to `Meters`, `Seconds`, `Kilograms` in `src/v3/std/dimensions.dag:93-99` — SI base units). Not `Resource = ... | LensExtensible<Name>`.
+- A `Lens<TenantFlow>` instance declares `CapSet` and `Capability` as lens-extensible domain types — those ARE lens-extensible regardless of who authored the lens (compiler team CapabilityViolation kind variants extend the same way as a user-authored lens). Per `feedback_groundedness_gates_lenses`: language vocabulary is primitives + namespacing; the lens framework's inhabitance is the namespacing.
+- `BoundDeclaration` variants (`StaticBound`, `PlatformDependent`) are substrate-declared because they're computational primitives (every target's bound has one of these shapes); not lens-extensible.
+
+**Escalation rule:** if all three checks pass and you still don't see how to declare the fact, escalate. But running the checks self-serves the most common case where the worker had structural information already and just needed prompting.
+
+**Worked-example tracking:** every time a major design decision applies this procedure, the design doc cites which steps were run and what they revealed. Examples in `docs/design-emission-model.md` Q1, Q2, Q3 (lock paragraphs include the DAG-ancestor + coproduct + primitive checks); `docs/design-lens-framework.md` Lens<C> primitive section (sequential: Monoid<C> structural inhabitance per Step 1).
+
 ### Related rules (home-of-record here)
 
 - **Modeling Faithfulness Invariant** — canonical statement
@@ -90,6 +137,7 @@ A design claim asserts "this needs no new substrate element — it composes from
 - **Design Commitments Must Name The Substrate Target** — unnamed substrate = ungrounded claim
 - **Heuristics Indicate Lost Structure** — heuristic output traces to a dropped upstream fact, not to a declared source
 - **Documentation Describes Live State** — aspirational docs describe a reality the codebase doesn't embody
+- **Substrate-Fact Introduction Procedure** (above) — operational decision procedure for adding new substrate types/variants/fields
 
 ---
 
@@ -152,10 +200,13 @@ A downstream stage reads a lower layer not through its declared accessors but by
 
 ### Reflection evidence is not structural proof
 
-`reflect_program_dag_nodes_in_file` in `lens_apply.rs` currently emits a **shallow behavior spine** (`result_port` plus limited tags) and intentionally drops structural fields (`target`, `inputs`, `input`, `paths`, `source`, `init`, `body`, `bound`, etc.). Consumers that rely on this view — in practice `LensOutputEquals` and `AlgebraicLaw` runners in `test_runner.rs` — therefore only gain **regression evidence** from the current reflection path, not structural self-inspection parity with
-`src/v3/std/substrate.dag`.
+`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior_list`) projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
 
-**Confidence tag for these gates:** treat these paths as `StructuralEvidence::Shallow` until full substrate reflection is landed. PRs using them should state that status explicitly in their acceptance notes and route dissolution via the dedicated lossy-reflection closure row (`ROADMAP.md`), not by claiming by-construction proof.
+Reflection is **authored against** `src/v3/std/substrate.dag` and uses the same **positional variant-payload** contract as bounded lens projection (`sum_variant_payload` ↔ `variant_payload_for_binding` in `lens_apply.rs`). **That is not yet a closed mechanical theorem** over the whole nested `FieldValue` tree: conformance is enforced where sums are built, and integration tests ratchet **record field order vs. named substrate `Conj`** for selected carriers (`ValueNode`, `TransformNode`, `BindNode`). Extend those tests (or add a walker) as new reflected shapes land—do not treat “no lossy mirror” as automatic proof against every `TypeConnective` row.
+
+**Confidence tag for these gates:** `LensOutputEquals` / `AlgebraicLaw` runners that consume `reflect_program_dag_nodes_in_file` should treat the spine as **intended substrate alignment** (bounded by what the lens algebra proves), not as a substitute for a future full DAG-vs-`FieldValue` conformance gate.
+
+**Witness note:** `Witness<Carrier>` (see `src/v3/std/dimensions.dag`) is not yet exercised by this reflection entry point because it does not appear on the five `Behavior` variants; when lens bodies need witness-shaped facts through the same `FieldValue` carrier, extend the `substrate_reflection` submodule in `lens_apply.rs` with the same substrate-shape rule rather than ad hoc mirrors.
 
 ---
 

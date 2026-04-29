@@ -32,8 +32,8 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId,
-    Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, CardinalityBound, Dag, Declaration,
+    DeclarationId, Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
     TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
@@ -49,8 +49,8 @@ use crate::infer_helpers::{
     TemplateArgumentBinding, TemplateArgumentsMatch,
 };
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at, magnitude_out_of_range,
-    IntegerRangeLookup,
+    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at,
+    magnitude_out_of_range_for_interval, IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -88,7 +88,7 @@ fn try_reconcile_int_literal_decision_set(
                     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                     dag.mark_unresolved(
                         port,
-                        magnitude_out_of_range(literal, existing, range, span),
+                        magnitude_out_of_range_for_interval(literal, existing, range, span),
                     );
                     Some(IntLiteralSetReconciliation::Marked)
                 } else {
@@ -114,7 +114,10 @@ fn try_reconcile_int_literal_decision_set(
                     integer_range_for_decl(dag, ty.declaration)
                 {
                     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
-                    dag.mark_unresolved(port, magnitude_out_of_range(literal, ty, range, span));
+                    dag.mark_unresolved(
+                        port,
+                        magnitude_out_of_range_for_interval(literal, ty, range, span),
+                    );
                     Some(IntLiteralSetReconciliation::Marked)
                 } else {
                     None
@@ -145,6 +148,7 @@ pub fn infer(dag: &mut Dag) {
     // after the main loop would leave downstream types stale and
     // violate FAIL-CLOSED.
     loop {
+        ensure_all_optional_match_disjs(dag);
         let mut changed = false;
         let node_count = dag.nodes().len();
         for i in 0..node_count {
@@ -161,10 +165,18 @@ pub fn infer(dag: &mut Dag) {
                         PortState::Resolved(existing)
                             if type_shapes_equivalent(dag, &existing, &ty) => {}
                         PortState::Resolved(existing) => {
-                            if int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
-                                dag.set_port_type(port, ty);
-                                changed = true;
-                                continue;
+                            match int_literal_magnitude_narrow_merge(dag, port, &existing, &ty) {
+                                IntLiteralNarrowMerge::Merge => {
+                                    dag.set_port_type(port, ty);
+                                    changed = true;
+                                    continue;
+                                }
+                                IntLiteralNarrowMerge::Reject(diag) => {
+                                    dag.mark_unresolved(port, diag);
+                                    changed = true;
+                                    continue;
+                                }
+                                IntLiteralNarrowMerge::NotApplicable => {}
                             }
                             if is_retryable_generic_decl(dag, existing.declaration)
                                 || is_retryable_generic_decl(dag, ty.declaration)
@@ -411,6 +423,24 @@ fn ensure_optional_match_disj(
     dag.set_optional_match_disj(cardinality_decl_id, disj_id);
 
     Some(disj_id)
+}
+
+/// Materialize `Some`/`None` match sums for every `Cardinality(_, AtMostOne)` row so
+/// downstream structural consumers (substrate reflection, lenses) can use
+/// `Dag::optional_match_disj` without requiring an optional scrutinee on a Branch.
+fn ensure_all_optional_match_disjs(dag: &mut Dag) {
+    let decl_ids: Vec<DeclarationId> = dag.declarations().iter().map(|d| d.id).collect();
+    for decl_id in decl_ids {
+        if matches!(
+            &dag.declaration(decl_id).connective,
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne
+        ) && existing_optional_match_disj_decl(dag, decl_id).is_none()
+        {
+            ensure_optional_match_disj(dag, decl_id).expect(
+                "AtMostOne cardinality without optional_match_disj should materialize a Some/None disj",
+            );
+        }
+    }
 }
 
 /// For every Branch node, resolve each Path's `BranchPattern` by
@@ -811,25 +841,49 @@ fn resolve_branch_payload_bindings(dag: &mut Dag) -> bool {
 /// T-Modeling int-lit / PR #806 consumer: allow `i64` default-typed int
 /// literal output ports to refine to a range-backed fixed-width `IntegerPrimitive`
 /// when the magnitude fits, without treating it as a conflicting resolution.
+#[derive(Debug)]
+enum IntLiteralNarrowMerge {
+    /// Narrow to the fixed-width type — caller should `set_port_type` to `to`.
+    Merge,
+    /// Not a default-`Int` literal → fixed-width call-site narrow case.
+    NotApplicable,
+    /// Preserve typed diagnostics (e.g. [`Diagnostic::MagnitudeOutOfRange`]) like the
+    /// annotated-`let` value-node path, not a silent fallback to `TypeMismatch`.
+    Reject(Diagnostic),
+}
+
 fn int_literal_magnitude_narrow_merge(
     dag: &Dag,
     port: PortId,
     from: &TypeShape,
     to: &TypeShape,
-) -> bool {
+) -> IntLiteralNarrowMerge {
     let Some(lit) = literal_int_at(dag, port) else {
-        return false;
+        return IntLiteralNarrowMerge::NotApplicable;
     };
     let Some(int_shape) = dag.int_shape() else {
-        return false;
+        return IntLiteralNarrowMerge::NotApplicable;
     };
     if !type_shapes_equivalent(dag, from, &int_shape) {
-        return false;
+        return IntLiteralNarrowMerge::NotApplicable;
     }
-    matches!(
-        int_literal_fits_expected_type(dag, lit, to.declaration),
-        Ok(Some(true))
-    )
+    let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
+    match int_literal_fits_expected_type(dag, lit, to.declaration) {
+        Ok(Some(true)) => IntLiteralNarrowMerge::Merge,
+        Ok(Some(false)) => match integer_range_for_decl(dag, to.declaration) {
+            IntegerRangeLookup::Found(bound) => IntLiteralNarrowMerge::Reject(
+                magnitude_out_of_range_for_interval(lit, to.clone(), bound, span),
+            ),
+            IntegerRangeLookup::Invalid(diag) => IntLiteralNarrowMerge::Reject(diag),
+            IntegerRangeLookup::Missing => IntLiteralNarrowMerge::Reject(Diagnostic::ResolveError {
+                name: "(internal: integer literal out of range but no range fact)".to_string(),
+                span,
+                fixes: Vec::new(),
+            }),
+        },
+        Err(diag) => IntLiteralNarrowMerge::Reject(diag),
+        Ok(None) => IntLiteralNarrowMerge::NotApplicable,
+    }
 }
 
 enum Decision {
@@ -866,7 +920,7 @@ fn decide(dag: &mut Dag, index: usize) -> Decision {
                                         IntegerRangeLookup::Found(range) => {
                                             return Decision::Fail(
                                                 v.output,
-                                                magnitude_out_of_range(
+                                                magnitude_out_of_range_for_interval(
                                                     *literal,
                                                     *existing,
                                                     range,
@@ -1275,7 +1329,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                             IntegerRangeLookup::Found(range) => {
                                 return Decision::Fail(
                                     *input_port,
-                                    magnitude_out_of_range(
+                                    magnitude_out_of_range_for_interval(
                                         literal,
                                         *expected_ty,
                                         range,
@@ -2491,7 +2545,7 @@ fn int_literal_implicit_bind_tolerated_for_expected(
     match int_literal_fits_expected_type(dag, literal, expected) {
         Ok(Some(true)) => Ok(true),
         Ok(Some(false)) => match integer_range_for_decl(dag, expected) {
-            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range(
+            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range_for_interval(
                 literal,
                 TypeShape::new(expected),
                 range,

@@ -997,7 +997,7 @@ pub mod lens_structural_resolution {
 
 mod bootstrap;
 
-pub use bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS;
+pub use bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
 
 #[cfg(feature = "bootstrap-regen-fresh")]
 mod bootstrap_regen_fresh;

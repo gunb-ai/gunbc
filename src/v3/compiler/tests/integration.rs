@@ -37,6 +37,10 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
+#[path = "integration/bridge_lower_helpers_patch_zero_residual_test.rs"]
+mod bridge_lower_helpers_patch_zero_residual_test;
+#[path = "integration/canonical_lens_bridge_ratchet_test.rs"]
+mod canonical_lens_bridge_ratchet_test;
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
@@ -63,6 +67,8 @@ mod lane2_stage_2e_parallelism_test;
 mod lane3_stage_3b_db1_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
+#[path = "integration/lens_substrate_carrier_test.rs"]
+mod lens_substrate_carrier_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
 #[path = "boundary/m1_3_emit_go_test.rs"]
@@ -111,12 +117,18 @@ mod m2_lens_unused_parameters_migration_test;
 mod m2_lens_variant_payload_migration_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
+#[path = "integration/method_registry_test.rs"]
+mod method_registry_test;
+#[path = "integration/method_template_contract_test.rs"]
+mod method_template_contract_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
 mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
+#[path = "integration/r1_release_acceptance_test.rs"]
+mod r1_release_acceptance_test;
 #[path = "integration/r1c_d_pb_census_gates_test.rs"]
 mod r1c_d_pb_census_gates_test;
 #[path = "integration/r1c_e_emit_gates_dag_test.rs"]
@@ -151,6 +163,8 @@ mod t_impossiblebugs_unenumerated_effects_test;
 mod t_pb_b_1_dag_runner_test;
 #[path = "integration/t_pb_b_brief_d_fixture_smoke_test.rs"]
 mod t_pb_b_brief_d_fixture_smoke_test;
+#[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
+mod tc1_substrate_lens_eta_equivalence_deferred_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/thesis_parallelism_test.rs"]

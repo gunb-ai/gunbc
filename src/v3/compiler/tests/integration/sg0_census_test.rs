@@ -227,11 +227,23 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
+    // PB Tier-2 lower-helper exact-string patch class (#1014): zero-residual receipt +
+    // source ratchet; see `bridge_lower_helpers_patch_zero_residual_test.rs` module docs.
+    "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs",
+    // R2 PB canonical-lens bridge ratchet (PR #1183 — disposition for
+    // `bridge_canonical_lens_name_dispatch_retired`). Pins the remaining
+    // `include_str!` / name-dispatch surface in `test_runner.rs` per
+    // `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`. .dag-port
+    // / dissolution path is the same gate that closes the bridge itself
+    // (PB-Runtime interpreter-as-data or typed lens-registry carrier);
+    // until then, this hand-Rust ratchet IS the slice's structural gate.
+    "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs",
     "src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs",
     "src/v3/compiler/tests/integration/common/budgeted.rs",
     "src/v3/compiler/tests/integration/common/cached_compile.rs",
     "src/v3/compiler/tests/integration/common/determinism_fixtures.rs",
     "src/v3/compiler/tests/integration/common/mod.rs",
+    "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
@@ -256,6 +268,18 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
+    // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
+    // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
+    // Q6.5 two-layer diagnostic-kind authority. Five structural claims
+    // over the regenerated bootstrap Dag — Lens<C> 6-field shape,
+    // Diagnostic.kind widened to AnyDiagnosticKind, Layer-1 closed sum
+    // unchanged, AnyDiagnosticKind two-constructor shape, and Layer-2
+    // payload-intentionally-absent gap receipt. Dispatch (#1130 +
+    // `docs/design-lens-framework.md` Q6.5) accepted "focused structural
+    // acceptance tests" rather than a parallel testgen harness.
+    // Dissolves into .dag `TestClaim` form when testgen covers reflected-
+    // Dag structural assertions over std/ types.
+    "src/v3/compiler/tests/integration/lens_substrate_carrier_test.rs",
     "src/v3/compiler/tests/integration/m0_acceptance.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",
@@ -275,9 +299,38 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
+    // T-Ground-LanguageSpec / R2-Substrate: Director-approved hand-Rust
+    // acceptance for `MethodTemplateContract` substrate carrier (PR #1175).
+    // Three structural claims over the regenerated bootstrap Dag —
+    // distinct-from-§6a-MethodContract, no-cost-data field set,
+    // per-target-list `dag_method` uniqueness (vacuous over zero rows
+    // today; load-bearing once Grounding's row-population PR lands).
+    // Dispatch explicitly accepted "focused Rust tests over the reflected
+    // substrate" rather than a parallel testgen harness; dissolves into
+    // .dag `TestClaim` form when the testgen path covers reflected-Dag
+    // structural assertions over std/ types.
+    // Method-declaration registry (R2 Substrate, follow-up to #1175 +
+    // #1186): Director-approved hand-Rust acceptance for the minimal
+    // method-name registry in `dsl/std/methods.dag` + `MethodRef` typed
+    // reference in `src/v3/std/methods.dag` + `MethodTemplateContract.
+    // dag_method` refinement from bare `DeclarationRef` to `MethodRef`.
+    // Four structural claims: registry covers all 63 algebra-template
+    // names (drift-detection), `MethodDeclaration` identity-only,
+    // `MethodTemplateContract.dag_method` field type points at
+    // `MethodRef`, `MethodRef` is a single-field decl wrapper.
+    // Dispatch (#1130) accepted hand-Rust acceptance over the reflected
+    // bootstrap. Dissolves into .dag `TestClaim` form when testgen
+    // covers reflected-Dag structural assertions over std/ types.
+    "src/v3/compiler/tests/integration/method_registry_test.rs",
+    "src/v3/compiler/tests/integration/method_template_contract_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    // R1 release acceptance fixture: strict PB gate 3 plus Director-approved
+    // release deferral markers for the five concession-encoded gates.
+    // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
+    // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
+    "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
     // R1C-D (PB census `.dag` `TestClaim` wrappers): runner-side receipt
     // for the six PB census gates in `tests/fixtures/r1_pb_census_gates.dag`.
     // Asserts `TestRunner` dispatches each PB census predicate to a wired
@@ -308,6 +361,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/t_impossiblebugs_unenumerated_effects_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_1_dag_runner_test.rs",
     "src/v3/compiler/tests/integration/t_pb_b_brief_d_fixture_smoke_test.rs",
+    // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
+    // `SubstrateResearchDeferredClaim` + `tc1_substrate_lens_eta_equivalence_deferred.dag`.
+    // SG-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
+    // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724;
+    // cycle-5 merge hygiene gunb-ai/gunbc#1142 c4341940508).
+    "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",

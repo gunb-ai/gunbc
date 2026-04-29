@@ -76,3 +76,11 @@ fn pads_then_text_like_indent() -> String {
         other => panic!("expected Str(\"  a\"), got {other:?}"),
     }
 }
+
+/// R1C-B — structural `p0_repeat_string_correct` suite through the v3 `TestRunner`.
+/// `repeat_string(s:, n:)` folds at lower time; v2 oracle coverage stays in
+/// `std_render_repeat_string_and_indent_text_match_interpreter`.
+#[test]
+fn p0_repeat_string_correct_gate_passes_through_test_runner() {
+    crate::common::assert_p0_repeat_string_correct_gate_passes();
+}

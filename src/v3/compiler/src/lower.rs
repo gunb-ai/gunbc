@@ -37,7 +37,7 @@ use crate::diagnostics::{
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range,
+    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range_for_interval,
     IntegerRangeLookup,
 };
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
@@ -2779,6 +2779,17 @@ fn lower_data_item(
         Some(map_expr @ SurfaceExpr::Map { .. }) => {
             lower_map_to_structural(name, map_expr, ty_decl_id, symbols, dag)
         }
+        Some(SurfaceExpr::Call { target, args, .. }) => {
+            match (
+                dsl_std_render_repeat_string_decl_id(dag),
+                symbols.get(target),
+            ) {
+                (Some(canonical), Some(&callee)) if callee == canonical => {
+                    try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
+                }
+                _ => None,
+            }
+        }
         _ => None,
     };
     dag.declaration_mut(decl_id).value_body = match value_body {
@@ -2786,6 +2797,107 @@ fn lower_data_item(
         None if suppress_unparsed_scaffold => None,
         None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
     };
+}
+
+/// Substrate fact for the R1C-B `repeat_string` data-body fold: only the declaration
+/// introduced from `dsl/std/render.dag` or `render_repeat_string_bootstrap.dag` (the latter
+/// emitted by `src/v3/compiler/build.rs` from the marked excerpt in `render.dag`) is eligible —
+/// not any other `repeat_string` name binding (user/local shadowing).
+fn dsl_std_render_repeat_string_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    // Closed enum of substrate files that introduce the authoritative `repeat_string`
+    // decl (`dsl/std/render.dag` when present in the bundle, else the bootstrap slice).
+    const REPEAT_STRING_AUTHORITY_SUFFIXES: &[&str] = &[
+        "dsl/std/render.dag",
+        "dsl/std/render_repeat_string_bootstrap.dag",
+    ];
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("repeat_string")
+                && REPEAT_STRING_AUTHORITY_SUFFIXES
+                    .iter()
+                    .any(|suffix| d.span.file.ends_with(suffix))
+        })
+        .map(|d| d.id)
+}
+
+/// R1C-B / T-P0: fold `data …: String = repeat_string(s: <lit>, n: <lit>)` to a
+/// `ValueBody::Scalar` at lower time so `TestRunner` `OutputEquals` witnesses modeled
+/// `repeat_string` without the v2-oracle bridge.
+fn try_lower_repeat_string_string_data(
+    args: &[SurfaceExpr],
+    ty_decl_id: DeclarationId,
+    dag: &Dag,
+) -> Option<crate::dag::ValueBody> {
+    if !is_string_type_decl(dag, ty_decl_id) {
+        return None;
+    }
+    let [arg0] = args else {
+        return None;
+    };
+    let SurfaceExpr::Record { fields, .. } = arg0 else {
+        return None;
+    };
+    let mut s_value: Option<String> = None;
+    let mut n_value: Option<i64> = None;
+    for field in fields {
+        match field.name.as_str() {
+            "s" => match &field.value {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::String(s),
+                    ..
+                } => s_value = Some(s.clone()),
+                _ => return None,
+            },
+            "n" => match &field.value {
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(n),
+                    ..
+                } => n_value = Some(*n),
+                _ => return None,
+            },
+            _ => return None,
+        }
+    }
+    let s = s_value?;
+    let n = n_value?;
+    let folded = fold_repeat_string_semantics(&s, n)?;
+    Some(crate::dag::ValueBody::Scalar(LiteralBits::String(folded)))
+}
+
+fn is_string_type_decl(dag: &Dag, ty_decl_id: DeclarationId) -> bool {
+    if let Some(shape) = dag.string_shape() {
+        return shape.declaration == ty_decl_id;
+    }
+    matches!(dag.declaration(ty_decl_id).name.as_deref(), Some("String"))
+}
+
+/// Upper bound on repeat count for compile-time `repeat_string` folding on `data` bodies.
+const REPEAT_STRING_FOLD_MAX_COUNT: i64 = 1_048_576;
+
+/// Upper bound on produced UTF-8 bytes for the same fold (defense in depth with [`REPEAT_STRING_FOLD_MAX_COUNT`]).
+const REPEAT_STRING_FOLD_MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+
+/// Semantics aligned with `dsl/std/render.dag` `repeat_string` / `repeat_string_loop` (same text
+/// is mechanically sliced into `render_repeat_string_bootstrap.dag` — see `build.rs`):
+/// `remaining <= 0` returns the accumulator immediately (`""` for `repeat_string`), so **both**
+/// `n == 0` and **`n < 0`** fold to an empty string — matches the bounded-loop story in
+/// `dsl/std/render.dag` (not a separate partial semantics for negative `n`).
+///
+/// Fail-closed on excessive `n` or output size so lowering does not materialize unbounded strings
+/// for hostile literals (see R1C-B T-P0 gate — bounded compile-time fold).
+fn fold_repeat_string_semantics(s: &str, n: i64) -> Option<String> {
+    if n <= 0 {
+        return Some(String::new());
+    }
+    if n > REPEAT_STRING_FOLD_MAX_COUNT {
+        return None;
+    }
+    let total = (s.len() as i128).checked_mul(n as i128)?;
+    if total > REPEAT_STRING_FOLD_MAX_OUTPUT_BYTES as i128 {
+        return None;
+    }
+    Some(s.repeat(n as usize))
 }
 
 fn lower_list_to_structural(
@@ -3712,7 +3824,7 @@ fn lower_scalar_literal_for_type(
     if let LiteralBits::Int(value) = literal_bits {
         match integer_range_for_decl(dag, expected_type) {
             IntegerRangeLookup::Found(range) => {
-                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range(
+                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range_for_interval(
                     value,
                     TypeShape::new(expected_type),
                     range,
@@ -7581,5 +7693,24 @@ mod tests {
         };
         assert_eq!(variants.len(), 1);
         assert_eq!(variants[0].ty, int_id);
+    }
+
+    /// `dsl/std/render.dag` `repeat_string_loop` returns on `remaining <= 0` — empty for n∈{0,−}.
+    #[test]
+    fn fold_repeat_string_semantics_non_positive_n_empty() {
+        assert_eq!(fold_repeat_string_semantics("hi", 0).as_deref(), Some(""));
+        assert_eq!(fold_repeat_string_semantics("hi", -1).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn fold_repeat_string_semantics_gate_witness() {
+        assert_eq!(fold_repeat_string_semantics("x", 3).as_deref(), Some("xxx"));
+    }
+
+    #[test]
+    fn fold_repeat_string_semantics_excess_n_fail_closed() {
+        assert!(
+            fold_repeat_string_semantics("x", super::REPEAT_STRING_FOLD_MAX_COUNT + 1).is_none()
+        );
     }
 }

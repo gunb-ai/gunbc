@@ -17,7 +17,7 @@
 // the rustc boundary receipt, so the named T-Sub gate has one program witness.
 //
 // merge-conflicts: union with `origin/main` — keep every `data` gate from main
-// (`sub_match_*`, `sub_type_alias_where_*`, `manual_*`, `testgen_structural_coverage*`) plus this file's
+// (`sub_match_*`, `sub_type_alias_where_*`, `p0_*`, `manual_*`, `testgen_structural_coverage*`) plus this file's
 // `user_authored_lens_compiles_gate`; do not resolve conflicts by keeping only the lens gate.
 
 module std.r1_gates
@@ -31,6 +31,7 @@ import std.verification {
   DeclarationHasRefinement,
   DifferentialEquals,
   LensOutputEquals,
+  OutputEquals,
   ProgramInput,
   ProgramOutputBind,
   TestClaim,
@@ -65,6 +66,50 @@ data sub_type_alias_where_lowers: TestClaim = {
 data sub_type_alias_where_lowers_gate: TestSuite = {
   name: "sub_type_alias_where_lowers_gate",
   claims: [sub_type_alias_where_lowers]
+}
+
+// R1C-B / T-P0 — `p0_repeat_string_correct`: literal `repeat_string(...)` on `data` bodies
+// **constant-folds** at lower time (`lower::try_lower_repeat_string_string_data`). `OutputEquals`
+// compares the **lowered** `ValueBody::Scalar` witness — not an interpreter execution of the std
+// `repeat_string` arrow (ROADMAP: dissolution when in-runner evaluation supersedes this fold).
+// Interim `p0_repeat_string_v2_oracle_rust_bridge` retired.
+data p0_repeat_string_correct: TestClaim = {
+  name: "p0_repeat_string_correct",
+  source: "data repeat_string_returns_n_copies: String = repeat_string(s: \"x\", n: 3)\n",
+  file_name: "r1_p0_repeat_string_correct.v3",
+  predicate: OutputEquals("\"xxx\""),
+  requires: []
+}
+
+data p0_repeat_string_correct_gate: TestSuite = {
+  name: "p0_repeat_string_correct_gate",
+  claims: [p0_repeat_string_correct]
+}
+
+// R1C-B / T-P0 — `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (Worker B): DB-15
+// `ExecuteCommand` host receipts; scripts under `scripts/` mirror v2 integration authority.
+// **Constraint:** paths use `git rev-parse --show-toplevel` — requires a **git** checkout (CI OK);
+// bare tarballs / non-git trees cannot resolve script paths (known; document-only).
+
+data p0_no_fabrication_sentinel: TestClaim = {
+  name: "p0_no_fabrication_sentinel",
+  source: "module p0_no_fabrication_sentinel_host\n",
+  file_name: "p0_no_fabrication_sentinel.v3",
+  predicate: ExecuteCommand("bash", ["-c", "exec bash \"$(git rev-parse --show-toplevel)/scripts/r1_p0_no_fabrication_sentinel.sh\""], 0),
+  requires: []
+}
+
+data p0_rest_ops_aligned: TestClaim = {
+  name: "p0_rest_ops_aligned",
+  source: "module p0_rest_ops_aligned_host\n",
+  file_name: "p0_rest_ops_aligned.v3",
+  predicate: ExecuteCommand("bash", ["-c", "exec python3 \"$(git rev-parse --show-toplevel)/scripts/r1_p0_rest_ops_aligned.py\""], 0),
+  requires: []
+}
+
+data p0_host_sentinel_and_rest_gate: TestSuite = {
+  name: "p0_host_sentinel_and_rest_gate",
+  claims: [p0_no_fabrication_sentinel, p0_rest_ops_aligned]
 }
 
 // Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
