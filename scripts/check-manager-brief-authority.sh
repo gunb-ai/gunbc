@@ -354,8 +354,13 @@ check_q2_prose_section_existence() {
 # ---------------------------------------------------------------------
 # Q4 — LANDED via #N PR-reachability check
 # ---------------------------------------------------------------------
-# Every `LANDED via #N` (or `landed via #N`) claim must correspond to
-# a merge commit reachable from this branch's history.
+# Every `LANDED via #N`, `landed via #N`, or `Landed via #N` claim
+# must correspond to a merge commit reachable from this branch's
+# history. Case-insensitive extraction (per gpt-5-5-pro review on
+# 91b5274f): live briefs use all three case forms — UPPERCASE for
+# emphasized status-table claims, title-case for sentence-leading
+# headings (e.g., r2-release-manager.md "Landed via #1078:"), and
+# lowercase for inline prose.
 
 check_q4_landed_pr_in_history() {
   local brief="$1"
@@ -416,7 +421,7 @@ check_q4_landed_pr_in_history() {
       echo "    $(echo "$gh_stderr" | head -c 200)"
     fi
     brief_violations=$((brief_violations + 1))
-  done < <(grep -oE '(LANDED|landed) via #[0-9]+' "$brief" | grep -oE '#[0-9]+' | tr -d '#' | sort -u)
+  done < <(grep -oEi 'landed via #[0-9]+' "$brief" | grep -oE '#[0-9]+' | tr -d '#' | sort -u)
 
   return $brief_violations
 }

@@ -61,6 +61,11 @@ EOF
 # digits ("7 standing R2 managers") which proved Q5 for a format the
 # live docs don't actually use. Live briefs write
 # "Names this manager one of **7** standing R2 managers".
+#
+# Includes a `landed via #999` claim in the clean fixture (lowercase,
+# matching live brief format) so the Q4 positive path is non-vacuous —
+# per gpt-5-5-pro review on 91b5274f. The tmp git repo (test_q4 setup
+# below) seeds a "(#999)" merge subject so this resolves cleanly.
 write_clean_briefs() {
   local override_brief="${1:-}"
   local override_content="${2:-}"
@@ -79,6 +84,7 @@ References [thesis](../thesis/r2-r3-thesis-mapping.md) — clean.
 
 Names this manager one of **7** standing R2 managers.
 R3 has **10** R3 lanes.
+Substrate landed via #999 (positive Q4 fixture; tmp-git seed).
 EOF
     fi
   done
