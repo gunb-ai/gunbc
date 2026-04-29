@@ -388,16 +388,28 @@ substrate from #1186) and `Lens<C>` consumption. Unblocks
 `complexity_lens_via_framework_correct` as a meaningful
 equivalence test.
 
-**Sizing estimate:** ~3-5 days *after* Prereq-1 + Prereq-2
-land. Cannot be authored before them — without lowered fn-body
-lens-field values, there's nothing for `fold_lens<C>` to fold
-over.
+**Sizing estimate:**
+- 3a: ~1-2 days. Standalone — does not depend on Prereq-1 or
+  Prereq-2; substrate-level `Dag.nodes` walk only. Can land
+  in parallel with Prereq-1 / Prereq-2 to unblock R2-Evaluator
+  early.
+- 3b: ~3-5 days *after* Prereq-1 + Prereq-2 land. Cannot be
+  authored before them — without lowered fn-body lens-field
+  values, there's nothing for `fold_lens<C>` to fold over.
 
 ### Total
 
-~11-17 days at gunbc velocity, sequential (Prereq-2 depends on
-class-5 gap #4 closure; Prereq-3 depends on Prereq-1 + Prereq-2).
-Roughly the same as the original "~5-8 days for 4-lens
+~11-17 days at gunbc velocity, partially parallelizable per the
+Director-locked disposition above:
+- Prereq-1 (~3-5 days) and Prereq-3a (~1-2 days) are
+  independent — both can start immediately. Prereq-3a unblocks
+  R2-Evaluator's runtime entry-point identification ahead of
+  the lens migration.
+- Prereq-2 (~5-7 days) depends on class-5 gap #4 closure
+  (infer-time re-resolution per Director disposition).
+- Prereq-3b (~3-5 days) depends on Prereq-1 + Prereq-2 + Prereq-3a.
+
+Roughly the same total as the original "~5-8 days for 4-lens
 migration" sized in `docs/design-lens-framework.md`'s migration
 plan, plus the substrate lifts that the framework migration
 implicitly assumed but were never separately scheduled.
