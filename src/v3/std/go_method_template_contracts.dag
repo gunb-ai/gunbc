@@ -27,6 +27,24 @@
 // identified. Legacy Go authorities (`MethodTranslation` in
 // `dsl/extdeps/languages/go/runtime.dag`; `go_method_templates: Map`
 // in `dsl/extdeps/languages/go/emit.dag`) continue serving v2 emit.
+//
+// **Tracked dissolution** (per `INVARIANTS.md` scaffold discipline):
+//   - Owner: R2 Substrate Manager (jolly-ram-908) — parser-level
+//     investigation routed via R2 Grounding Manager (silent-ant-322)
+//     2026-04-29 (#1133 inbox msg ID 4343698210). Cross-manager queue
+//     tracks at #1130.
+//   - Trigger: parser-level cause identified. Cheapest reproduction
+//     entry point: rotate per-target file order in
+//     `src/v3/std/extdeps_bootstrap_fixtures.dag` and observe whether
+//     Go rotates into a successful slot — that confirms or rules out
+//     suspected cause #1.
+//   - Action on trigger: redo Go row population mirroring the Rust
+//     and Python sibling files; this comment block deletes; v2 Go
+//     emit consumers migrate to the row authority in Phase 2.
+//   - Timebox: bounded by the Phase 1.5 cleanup wave that already
+//     covers `string_contains` classification + Rust higher-order
+//     dual-template substrate-shape decision (manager dispatch queue
+//     post-#1196 merge); no separate milestone needed.
 
 module v3.std.go_method_template_contracts
 
