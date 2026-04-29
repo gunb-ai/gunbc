@@ -31,7 +31,8 @@ pub use diagnostic::{EmissionDiagnostic, SiteRef};
 pub use extract::{analyze_lifetime_facts, extract_lifetime_program};
 pub use facts::{Encoding, Growability, LifetimeFacts, LifetimeScope, Ownership};
 pub use program::{
-    BindingDef, BindingId, BindingRole, LifetimeProgram, R3Construct, UseKind, UseSite,
+    BindingDef, BindingId, BindingRole, LifetimeProgram, ProgramTypeFamily, R3Construct, UseKind,
+    UseSite,
 };
 
 use std::collections::BTreeMap;
@@ -134,6 +135,15 @@ mod tests {
         assert!(report.is_empty());
     }
 
+    /// Bootstrap `Dag::new()` extraction stays empty until lowering surfaces R2 bind/use graphs.
+    #[test]
+    fn extract_bootstrap_dag_yields_empty_lifetime_program() {
+        let dag = Dag::new();
+        let program = extract_lifetime_program(&dag).expect("extract ok");
+        assert!(program.bindings.is_empty());
+        assert!(program.r3_markers.is_empty());
+    }
+
     /// Test plan item 8 — R3 constructs rejected.
     #[test]
     fn r3_construct_out_of_scope() {
@@ -155,14 +165,14 @@ mod tests {
         let mut bindings = BTreeMap::new();
         bindings.insert(
             BindingId(0),
-            BindingDef {
-                name: "buf".to_string(),
-                role: BindingRole::TopLevelData,
-                uses: vec![UseSite {
+            BindingDef::r2_string_binding(
+                "buf",
+                BindingRole::TopLevelData,
+                vec![UseSite {
                     kind: UseKind::GrowthMutation,
                     site_label: "buf.push".to_string(),
                 }],
-            },
+            ),
         );
         let program = LifetimeProgram {
             bindings,
@@ -174,5 +184,30 @@ mod tests {
             .expect("buf");
         assert_eq!(f.growable, Growability::Yes);
         assert_eq!(f.ownership, Ownership::Owned);
+    }
+
+    #[test]
+    fn unclassified_type_family_fails_closed_on_encoding_axis() {
+        let mut bindings = BTreeMap::new();
+        bindings.insert(
+            BindingId(0),
+            BindingDef {
+                name: "opaque".to_string(),
+                role: BindingRole::TopLevelData,
+                uses: vec![],
+                type_family: ProgramTypeFamily::Unclassified,
+            },
+        );
+        let program = LifetimeProgram {
+            bindings,
+            r3_markers: vec![],
+        };
+        let err =
+            analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
+                .expect_err("encoding under-refined");
+        match err {
+            EmissionDiagnostic::UnderRefined { axis } => assert_eq!(axis, "encoding"),
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
     }
 }
