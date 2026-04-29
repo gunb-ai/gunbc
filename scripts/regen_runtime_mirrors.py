@@ -838,6 +838,7 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             sums["CardinalityBound"],
             "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
             output_name="CardinalityBound",
+            overrides={"Int": "u32"},
         ),
         render_record(
             records["TemplateArgument"],
