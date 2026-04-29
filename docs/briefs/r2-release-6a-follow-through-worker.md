@@ -49,6 +49,8 @@ The migration is **not** a re-pick. The carrier shape is locked; this is consume
 
 **Implication for requirement 3:** ROADMAP dissolution-trigger rows are still **required** by this brief (PR-3 / follow-up); they are **not** implied complete by an empty migration surface in the two lens files.
 
+**Scope boundary (widen-later, RM review):** Broader §6a migration narratives elsewhere name additional lenses (e.g. `idempotency.dag`, `parallelism.dag`). **This receipt covers requirement 1's two named consumer files only** — it is **not** a repo-wide "no `*_templates()` migration surface" claim. Before widening bulk migration, **extend inventory** to any newly in-scope `.dag` modules and tabulate those sites explicitly.
+
 ## Slice — inventory → migrate → track
 
 1. Read `cost.dag` + `complexity.dag` end-to-end; inventory consumption sites for the three carrier fields.
