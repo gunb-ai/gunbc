@@ -1,5 +1,7 @@
 # R2 Release — B5 Loop construction-closure audit `(S, R2-coupled)`
 
+> **CLOSED — receipt brief.** Construction-closure **holds**; structural gate landed at `src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs` (2026-04-27). Synthesis Tier 2 §5 and ROADMAP record **RESOLVED**; speculative `LoopKind` marker **retired** per `feedback_construction_over_ratchets`. **Do not dispatch** this file as open audit work — reopen only if lowering regresses (new `Behavior::Loop` sites or test failure).
+
 > **R2 Release Manager dispatch.** Per [`docs/briefs/debt-paydown-synthesis-2026-04-25.md` §"Tier 2"](debt-paydown-synthesis-2026-04-25.md) item 5 + [`docs/r2-structure.md` §"R2 Release Manager"](../r2-structure.md). **MUST start with audit, NOT marker design.** Reports to R2 Release Manager once R2 spawns; pre-spawn authoring per inbox #828 PM portion.
 
 ## Read first
@@ -40,13 +42,13 @@ Single PR (audit + branch + document) for the closure-holds path. Closure-fails 
 
 ## Acceptance
 
-- [ ] Site enumeration captured in PR description.
-- [ ] Per-site path trace from `Behavior::Loop` construction back to caller.
-- [ ] Binary verdict (closure-holds vs closure-fails) explicitly stated.
-- [ ] If closure-holds: structural integration test lands; gate verification clean (`cargo test --workspace --exclude v2-compiler-tests`); marker brief idea retired in synthesis doc.
-- [ ] If closure-fails: marker spec authored as separate brief; escalation to substrate-amendment per synthesis-doc STOP discipline; this brief closes as audit-receipt-only.
-- [ ] Synthesis-doc Tier 2 §5 row updated to RESOLVED or REOPENED.
-- [ ] DB-8 fixed-point converges bit-identically (regardless of audit outcome).
+- [x] Site enumeration captured in PR description.
+- [x] Per-site path trace from `Behavior::Loop` construction back to caller.
+- [x] Binary verdict (closure-holds vs closure-fails) explicitly stated — **closure-holds**.
+- [x] If closure-holds: structural integration test lands; gate verification clean (`cargo test --workspace --exclude v2-compiler-tests`); marker brief idea retired in synthesis doc.
+- [ ] If closure-fails: marker spec authored as separate brief; escalation to substrate-amendment per synthesis-doc STOP discipline; this brief closes as audit-receipt-only. *(N/A — closure-holds path taken.)*
+- [x] Synthesis-doc Tier 2 §5 row updated to RESOLVED or REOPENED — **RESOLVED**.
+- [x] DB-8 fixed-point converges bit-identically (regardless of audit outcome).
 
 ## STOP-AND-ESCALATE
 
@@ -64,3 +66,7 @@ Per [`docs/escalation-paths.md`](../escalation-paths.md):
 - Discipline anchor: `feedback_construction_over_ratchets`.
 - Originating issue: PR #809.
 - Escalation discipline: [`docs/escalation-paths.md`](../escalation-paths.md).
+
+## Closure receipt (LANDED 2026-04-27)
+
+**Verdict: closure-holds.** Site enumeration + per-site traces + structural gate landed in commit `3e7696f1c` (`audit(v3): loop construction-closure holds + integration test`). Authoritative rows: [`debt-paydown-synthesis-2026-04-25.md`](debt-paydown-synthesis-2026-04-25.md) Tier 2 item 5 (RESOLVED); [`ROADMAP.md`](../../ROADMAP.md) Loop emission semantic invariant (B5). Integration gate: `src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs`.

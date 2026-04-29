@@ -1,0 +1,25 @@
+// std.r2_evaluator_runtime_value_model — PR-A (Evaluator Manager).
+//
+// Structural acceptance hook: `evaluator_runtime_value_model_landed`
+// per docs/briefs/r2-evaluator-manager.md §Acceptance and
+// docs/briefs/r2-pr-a-runtime-value-model.md. Slice 0 uses `Compiles`
+// while the runtime module shape is design-locked; later slices should
+// strengthen this claim to validate the declared Value / EvalFrame /
+// EvalStateStack carriers directly.
+
+module std.r2_evaluator_runtime_value_model
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data evaluator_runtime_value_model_landed: TestClaim = {
+  name: "evaluator_runtime_value_model_landed",
+  source: "// Runtime-value model slice-0 marker; strict substrate carrier checks land with the runtime module.\nlet _: Int = 0\n",
+  file_name: "r2_evaluator_runtime_value_model_marker.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data r2_evaluator_runtime_value_model_suite: TestSuite = {
+  name: "r2_evaluator_runtime_value_model_suite",
+  claims: [evaluator_runtime_value_model_landed]
+}
