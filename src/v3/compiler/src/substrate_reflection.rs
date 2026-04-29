@@ -254,14 +254,20 @@ fn reflect_key_source(dag: &Dag, ks: &KeySource) -> ReflectResult<FieldValue> {
             let id = disj_variant_ty(dag, "KeySource", "PathParam")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![FieldValue::Literal(LiteralBits::String(param.clone()))],
+                payload: vec![FieldValue::Record(vec![(
+                    "param".to_string(),
+                    FieldValue::Literal(LiteralBits::String(param.clone())),
+                )])],
             })
         }
         KeySource::InputField { field } => {
             let id = disj_variant_ty(dag, "KeySource", "InputField")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![FieldValue::Literal(LiteralBits::String(field.clone()))],
+                payload: vec![FieldValue::Record(vec![(
+                    "field".to_string(),
+                    FieldValue::Literal(LiteralBits::String(field.clone())),
+                )])],
             })
         }
         KeySource::CompositeKey { fields } => {
@@ -287,14 +293,20 @@ fn reflect_idempotent_shape(dag: &Dag, s: &IdempotentShape) -> ReflectResult<Fie
             let id = disj_variant_ty(dag, "IdempotentShape", "UpsertEffect")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_key_source(dag, key_source)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "key_source".to_string(),
+                    reflect_key_source(dag, key_source)?,
+                )])],
             })
         }
         IdempotentShape::DeleteEffect { key_source } => {
             let id = disj_variant_ty(dag, "IdempotentShape", "DeleteEffect")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_key_source(dag, key_source)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "key_source".to_string(),
+                    reflect_key_source(dag, key_source)?,
+                )])],
             })
         }
     }
@@ -306,7 +318,10 @@ fn reflect_breaking_shape(dag: &Dag, s: &BreakingShape) -> ReflectResult<FieldVa
             let id = disj_variant_ty(dag, "BreakingShape", "CreateEffect")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_create_cause(dag, cause)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "cause".to_string(),
+                    reflect_create_cause(dag, cause)?,
+                )])],
             })
         }
         BreakingShape::AppendEffect => {
@@ -380,28 +395,40 @@ fn reflect_workflow_effect(dag: &Dag, wf: &WorkflowEffect) -> ReflectResult<Fiel
             let id = disj_variant_ty(dag, "WorkflowEffect", "LinearEffect")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_operation_effect_vec_spine(dag, ops)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "ops".to_string(),
+                    reflect_operation_effect_vec_spine(dag, ops)?,
+                )])],
             })
         }
         WorkflowEffect::BranchEffect { arms } => {
             let id = disj_variant_ty(dag, "WorkflowEffect", "BranchEffect")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_non_singleton_branch_arms(dag, arms)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "arms".to_string(),
+                    reflect_non_singleton_branch_arms(dag, arms)?,
+                )])],
             })
         }
         WorkflowEffect::LoopEffect { body } => {
             let id = disj_variant_ty(dag, "WorkflowEffect", "LoopEffect")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_workflow_effect(dag, body)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "body".to_string(),
+                    reflect_workflow_effect(dag, body)?,
+                )])],
             })
         }
         WorkflowEffect::ParallelEffect { branches } => {
             let id = disj_variant_ty(dag, "WorkflowEffect", "ParallelEffect")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_non_singleton_workflow_branches(dag, branches)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "branches".to_string(),
+                    reflect_non_singleton_workflow_branches(dag, branches)?,
+                )])],
             })
         }
     }
