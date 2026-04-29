@@ -31,7 +31,7 @@
 // structurally today (rust_pilot_primitives is loaded as `ValueBody::List`
 // by `src/v3/grounding_engine/src/lib.rs:7`, registered via
 // `src/v3/std/extdeps_bootstrap_fixtures.dag:23`). What is *not* yet live
-// for this file: no `ExtdepsBootstrapFixture` row has been registered for
+// for this file: no `BootstrapFixture` row has been registered for
 // `python_spec_predeclared_primitives` or `python_dag_unit_target_primitive`,
 // and there is no Python-grounding engine consumer in-tree yet — so today
 // these rows are loaded but unconsumed (Path-2 staging in the
