@@ -111,7 +111,13 @@ This is the only consistent reading: dropping arms at reflection time would requ
 
 ### 7.1 Substrate (R2)
 
-**No substrate carrier change.** All five `Behavior` variants and all reachable types (`LoopBound`, `BranchPath`, `BranchPattern`, `TransformTarget`, `Witness<Carrier>`, `WorkflowEffect`, `BindEmitParticipation`, `BranchEmitParticipation`) are already declared in `src/v3/std/substrate.dag` and `src/v3/std/dimensions.dag`. Reflection is a fold over already-existing structure; the **carriers stay untouched**.
+**No substrate carrier change.** All five `Behavior` variants and all reachable types are already declared in the relevant `src/v3/std/` modules:
+
+- `src/v3/std/substrate.dag`: `Behavior` (line 377), `ValueNode` (320), `TransformNode` (328), `BranchNode` (341), `LoopNode` (350), `BindNode` (366), `LoopBound` (316), `BranchPath` (251), `BranchPattern` (242), `TransformTarget` (232), `BranchEmitParticipation` (338), `BindEmitParticipation` (363).
+- `src/v3/std/dimensions.dag`: `Witness<Carrier>` (line 35).
+- `src/v3/std/effects.dag`: `WorkflowEffect` (line 549) — referenced via `ValueNode.lane2_workflow` and `BindNode.lane2_workflow`.
+
+Reflection is a fold over already-existing structure; the **carriers stay untouched**.
 
 This is the same shape as the Q6.5 disposition — structural completion at a non-substrate-shape seam (the lens-input projection in this case; the diagnostic-carrier widening in Q6.5).
 
@@ -168,8 +174,9 @@ These are positive fixtures — they verify the reflection contract at a lens-in
 - `docs/design-lens-framework.md` §Q6.5 — two-layer diagnostic-kind authority depends on complete reflection at the lens-input boundary.
 - `docs/design-emission-model.md` Q1 refinement — algebra over `LoopBound` carriers is asymmetric (cardinality / descent / cost); reflection presents structural; algebra is downstream.
 - `docs/design-dimension-abstraction.md` — `analyze_symbolic_cost_dimension` execution authority lives in the Evaluator; reflection is the shape it consumes.
-- `src/v3/std/substrate.dag:316-389` — substrate carriers reflection consumes (`LoopBound`, `BranchPath`, `BranchPattern`, `TransformTarget`, `Behavior`, `Dag`).
+- `src/v3/std/substrate.dag:232-389` — substrate carriers reflection consumes (`TransformTarget`, `BranchPattern`, `BranchPath`, `LoopBound`, `BranchEmitParticipation`, `BindEmitParticipation`, `Behavior`, `Dag`).
 - `src/v3/std/dimensions.dag:35-78` — `Witness<Carrier>` and `AnalysisDimension<Carrier>` reflection consumes.
+- `src/v3/std/effects.dag:549` — `WorkflowEffect` consumed via `ValueNode.lane2_workflow?` and `BindNode.lane2_workflow?`.
 - `src/v3/compiler/src/lens_apply.rs:314-1001` — current lossy implementation; dissolution target.
 - `feedback_parallel_representation_debt.md` — anti-bridge invariant shape; reflection lossiness is parallel-representation debt at the lens-input boundary.
 - `feedback_groundedness_gates_lenses.md` — lens analysis is static; reflection presents structural facts; runtime is the Evaluator's concern.
