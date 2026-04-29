@@ -10,6 +10,15 @@
 //! comparison). [`IntervalInt::Unbounded`] exists so Q1’s interval algebra is representable when a
 //! target declares an unbounded value domain (pilot `IntegerPrimitive` rows are all exact today).
 //! [`PlatformDependent`] is out of scope for i64-bounded literal narrowing (deferred targets).
+//!
+//! ## Downstream consumers (range-facts + narrowing)
+//!
+//! | Location | Behavior |
+//! | --- | --- |
+//! | `infer::try_reconcile_int_literal_decision_set` | `let` / `data` pre-seed vs default `Int64` literal; in-range narrow; OOB → `MagnitudeOutOfRange`. |
+//! | `infer::decide_transform` (calls) | Parameter-narrow type vs default-`Int` argument literal; narrow or OOB. |
+//! | `infer::int_literal_implicit_bind_tolerated_for_expected` | Callable template binding when structural binding fails on int literal. |
+//! | `lower` scalar literal lowering | Early reject for OOB literals before inference reunion. |
 
 use std::collections::HashSet;
 
