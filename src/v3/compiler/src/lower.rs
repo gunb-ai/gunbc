@@ -2865,6 +2865,9 @@ fn try_lower_repeat_string_string_data(
 }
 
 fn is_string_type_decl(dag: &Dag, ty_decl_id: DeclarationId) -> bool {
+    if let Some(shape) = dag.string_shape() {
+        return shape.declaration == ty_decl_id;
+    }
     matches!(dag.declaration(ty_decl_id).name.as_deref(), Some("String"))
 }
 
