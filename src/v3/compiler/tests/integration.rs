@@ -37,6 +37,8 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
+#[path = "integration/canonical_lens_bridge_ratchet_test.rs"]
+mod canonical_lens_bridge_ratchet_test;
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]

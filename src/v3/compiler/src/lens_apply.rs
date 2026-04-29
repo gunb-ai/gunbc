@@ -323,6 +323,28 @@ pub fn reflect_program_dag_nodes_in_file(
     Ok(FieldValue::Record(vec![("nodes".to_string(), nodes)]))
 }
 
+/// PR-E (Evaluator): apply a lens declaration as a **fold** over
+/// [`reflect_program_dag_nodes_in_file`] output (substrate-shaped `FieldValue` program spine).
+///
+/// **Not implemented yet.** Completing this requires PB-Runtime / Evaluator convergence for the
+/// lens-instance body over reflected carriers and coordination on runtime `Value` /
+/// closed-over-environment boundaries ([`docs/design-pb-runtime-interpreter.md`](../../../../docs/design-pb-runtime-interpreter.md)
+/// §2–§3; Worker A). See
+/// [`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](../../../../docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md).
+///
+/// Until then, returns [`LensApplyError::UnimplementedLensFold`] (fail-closed — no fabricated
+/// `DimensionReport` or runtime witnesses).
+pub fn fold_lens_over_reflected_program(
+    _program: &Dag,
+    _source_file: &str,
+    _id_space: &Dag,
+    _lens_program: &Dag,
+    _lens_decl: DeclarationId,
+    _inputs: &[FieldValue],
+) -> Result<FieldValue, LensApplyError> {
+    Err(LensApplyError::UnimplementedLensFold)
+}
+
 /// Empty `std.list` spine (`Empty` variant) in the substrate shape expected by `fold`.
 pub fn empty_substrate_list_value(dag: &Dag) -> Result<FieldValue, LensApplyError> {
     let (empty_id, _) = v3_list_empty_cons_ids(dag)?;
@@ -362,6 +384,8 @@ pub enum LensApplyError {
     BadListShape,
     MissingType(&'static str),
     MissingValueBody,
+    /// PR-E: lens fold over reflected program DAG is not implemented yet (Evaluator slice).
+    UnimplementedLensFold,
     /// Substrate → [`FieldValue`] reflection failed (missing sum/variant wiring in id_space).
     SubstrateReflect(&'static str),
 }
@@ -983,6 +1007,19 @@ mod tests {
             .expect("reflect");
         let out = apply_lens_declaration(&lens_dag, lens_id, &[input]).expect("apply");
         assert_eq!(out, FieldValue::Literal(LiteralBits::Int(1)));
+    }
+
+    #[test]
+    fn fold_lens_over_reflected_program_stub_fail_closed() {
+        let prog = compile_to_dag("let x: Int = 1", "fold_lens_prog.v3").expect("prog compiles");
+        let bogus = prog.declarations()[0].id;
+        let err =
+            fold_lens_over_reflected_program(&prog, "fold_lens_prog.v3", &prog, &prog, bogus, &[])
+                .expect_err("PR-E stub");
+        assert!(
+            matches!(err, LensApplyError::UnimplementedLensFold),
+            "{err:?}"
+        );
     }
 
     #[test]
