@@ -14,12 +14,12 @@
 
 use std::collections::HashSet;
 use v3_compiler::dag::{Dag, DeclarationId, Field, TypeConnective};
-use v3_compiler::generated_std_bootstrap_dag;
+use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
     let decl = dag
         .declaration_by_name(name)
-        .unwrap_or_else(|| panic!("`{name}` missing from std bootstrap"));
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
     match &decl.connective {
         TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
         other => panic!("`{name}` is not a Conj: {other:?}"),
@@ -28,13 +28,13 @@ fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
 
 fn decl_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
     dag.declaration_by_name(name)
-        .unwrap_or_else(|| panic!("`{name}` missing from std bootstrap"))
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"))
         .id
 }
 
 #[test]
 fn method_template_contract_distinct_from_method_contract() {
-    let dag = generated_std_bootstrap_dag();
+    let dag = generated_full_bootstrap_dag();
 
     let template_id = decl_id_by_name(&dag, "MethodTemplateContract");
     let metadata_id = decl_id_by_name(&dag, "MethodContract");
@@ -61,7 +61,7 @@ fn method_template_contract_distinct_from_method_contract() {
 
 #[test]
 fn method_template_contract_does_not_carry_cost_data() {
-    let dag = generated_std_bootstrap_dag();
+    let dag = generated_full_bootstrap_dag();
     let labels: HashSet<String> = conj_field_labels(&dag, "MethodTemplateContract")
         .into_iter()
         .collect();

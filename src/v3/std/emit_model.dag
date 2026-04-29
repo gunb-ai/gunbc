@@ -326,6 +326,20 @@ type LanguageSpec {
 //
 // The receiver placeholder `{recv}` is common to both conventions and lives
 // outside this axis.
+//
+// 🟡 SCAFFOLD coproduct. Pattern 1 (per-call template typing) fails because
+// today's templates are opaque `String` values whose placeholder dialect is
+// observable only by string inspection — there is no upstream type-system
+// fact distinguishing `{arg0}/{arg1}` indexed slots from a single named
+// `{arg}` slot. Pattern 2 (collapse to a single labeled record) erases the
+// closed semantic split that consumers actually dispatch on. Pattern 3 is
+// the dissolution path: when method-template substrate parses templates
+// into structured slot facts (a typed `List<TemplateSegment>` with arity
+// and slot-kind known structurally), this convention tag derives from
+// segment shape and the named coproduct retires. Trigger: structured
+// template-segment substrate in a follow-up substrate-completion lane.
+// Until then this scaffold is the single declared authority for the
+// dialect axis.
 type PlaceholderConvention
   = IndexedArgs
   | NamedArg
