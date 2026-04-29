@@ -719,7 +719,7 @@ fn reflect_optional_payload_binding(
     dag: &Dag,
     opt: Option<&PayloadBinding>,
 ) -> ReflectResult<FieldValue> {
-    let path = named_record_type_root(dag, "Path")?;
+    let path = named_record_type_root(dag, "BranchPath")?;
     let binding_card =
         peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, path, "binding")?)?;
     reflect_optional_sum(dag, binding_card, opt.cloned(), |_d, b| {
