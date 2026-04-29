@@ -4060,10 +4060,7 @@ mod tests {
 
     #[test]
     fn cardinality_bound_try_as_cardinal_interval_is_none_for_invalid_exact() {
-        assert_eq!(
-            CardinalityBound::Exact(-1).try_as_cardinal_interval(),
-            None
-        );
+        assert_eq!(CardinalityBound::Exact(-1).try_as_cardinal_interval(), None);
         assert_eq!(
             CardinalityBound::Exact(7).try_as_cardinal_interval(),
             Some(Interval::try_exact_interval(7, 7).expect("7..=7"))

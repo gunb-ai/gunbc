@@ -36,7 +36,10 @@ fn interval_d_shared_parent_consolidation_landed() {
         steps: PositiveDescentAmount::OneStep,
     })
     .expect("one step");
-    assert_eq!(one, Interval::try_exact_interval(1, 1).expect("singleton one"));
+    assert_eq!(
+        one,
+        Interval::try_exact_interval(1, 1).expect("singleton one")
+    );
 
     let steps = PositiveDescentAmount::AdditionalStep {
         previous: Box::new(PositiveDescentAmount::OneStep),
