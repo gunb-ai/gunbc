@@ -468,46 +468,30 @@ fn reflect_bool_port_ref(_dag: &Dag, r: BoolPortRef) -> ReflectResult<FieldValue
 
 fn reflect_workflow_effect(dag: &Dag, wf: &WorkflowEffect) -> ReflectResult<FieldValue> {
     match wf {
-        WorkflowEffect::LinearEffect { ops } => {
-            let id = disj_variant_ty(dag, "WorkflowEffect", "LinearEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "ops".to_string(),
-                    reflect_operation_effect_vec_spine(dag, ops)?,
-                )])],
-            })
-        }
-        WorkflowEffect::BranchEffect { arms } => {
-            let id = disj_variant_ty(dag, "WorkflowEffect", "BranchEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "arms".to_string(),
-                    reflect_non_singleton_branch_arms(dag, arms)?,
-                )])],
-            })
-        }
-        WorkflowEffect::LoopEffect { body } => {
-            let id = disj_variant_ty(dag, "WorkflowEffect", "LoopEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "body".to_string(),
-                    reflect_workflow_effect(dag, body)?,
-                )])],
-            })
-        }
-        WorkflowEffect::ParallelEffect { branches } => {
-            let id = disj_variant_ty(dag, "WorkflowEffect", "ParallelEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "branches".to_string(),
-                    reflect_non_singleton_workflow_branches(dag, branches)?,
-                )])],
-            })
-        }
+        WorkflowEffect::LinearEffect { ops } => sum_variant_payload(
+            dag,
+            "WorkflowEffect",
+            "LinearEffect",
+            vec![reflect_operation_effect_vec_spine(dag, ops)?],
+        ),
+        WorkflowEffect::BranchEffect { arms } => sum_variant_payload(
+            dag,
+            "WorkflowEffect",
+            "BranchEffect",
+            vec![reflect_non_singleton_branch_arms(dag, arms)?],
+        ),
+        WorkflowEffect::LoopEffect { body } => sum_variant_payload(
+            dag,
+            "WorkflowEffect",
+            "LoopEffect",
+            vec![reflect_workflow_effect(dag, body)?],
+        ),
+        WorkflowEffect::ParallelEffect { branches } => sum_variant_payload(
+            dag,
+            "WorkflowEffect",
+            "ParallelEffect",
+            vec![reflect_non_singleton_workflow_branches(dag, branches)?],
+        ),
     }
 }
 
@@ -603,13 +587,7 @@ fn reflect_optional_branch_emit(
     opt: Option<BranchEmitParticipation>,
 ) -> ReflectResult<FieldValue> {
     reflect_optional_sum(dag, cardinality_decl_id, opt, |d, p| match p {
-        BranchEmitParticipation::UserMatch => {
-            let id = disj_variant_ty(d, "BranchEmitParticipation", "UserMatch")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![],
-            })
-        }
+        BranchEmitParticipation::UserMatch => reflect_unit_variant(d, "BranchEmitParticipation", "UserMatch"),
     })
 }
 
@@ -620,11 +598,7 @@ fn reflect_optional_bind_emit(
 ) -> ReflectResult<FieldValue> {
     reflect_optional_sum(dag, cardinality_decl_id, opt, |d, p| match p {
         BindEmitParticipation::UserCallable => {
-            let id = disj_variant_ty(d, "BindEmitParticipation", "UserCallable")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![],
-            })
+            reflect_unit_variant(d, "BindEmitParticipation", "UserCallable")
         }
     })
 }
@@ -734,26 +708,18 @@ fn reflect_branch_paths(dag: &Dag, paths: &[Path]) -> ReflectResult<FieldValue> 
 
 fn reflect_loop_bound(dag: &Dag, b: &LoopBound) -> ReflectResult<FieldValue> {
     match b {
-        LoopBound::Cardinality { count } => {
-            let id = disj_variant_ty(dag, "LoopBound", "Cardinality")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "count".to_string(),
-                    port_fv(*count),
-                )])],
-            })
-        }
-        LoopBound::Descent { cluster } => {
-            let id = disj_variant_ty(dag, "LoopBound", "Descent")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "cluster".to_string(),
-                    cluster_fv(*cluster),
-                )])],
-            })
-        }
+        LoopBound::Cardinality { count } => sum_variant_payload(
+            dag,
+            "LoopBound",
+            "Cardinality",
+            vec![port_fv(*count)],
+        ),
+        LoopBound::Descent { cluster } => sum_variant_payload(
+            dag,
+            "LoopBound",
+            "Descent",
+            vec![cluster_fv(*cluster)],
+        ),
     }
 }
 
