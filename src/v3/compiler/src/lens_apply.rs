@@ -1342,17 +1342,19 @@ mod substrate_reflection {
     }
 
     fn reflect_source_span(span: &SourceSpan) -> FieldValue {
+        // Field names must match `type SourceSpan` in `dsl/std/types.dag` (`file`, `start`, `end`).
+        // The Rust carrier still uses `byte_start` / `byte_end` on [`SourceSpan`].
         FieldValue::Record(vec![
             (
                 "file".to_string(),
                 FieldValue::Literal(LiteralBits::String(span.file.clone())),
             ),
             (
-                "byte_start".to_string(),
+                "start".to_string(),
                 FieldValue::Literal(LiteralBits::Int(i64::from(span.byte_start))),
             ),
             (
-                "byte_end".to_string(),
+                "end".to_string(),
                 FieldValue::Literal(LiteralBits::Int(i64::from(span.byte_end))),
             ),
         ])
@@ -2141,7 +2143,8 @@ mod substrate_reflection {
         use super::*;
         use crate::compile_to_dag;
         use crate::dag::{
-            Behavior, DeclarationId, FieldValue, LoopBound, TransformTarget, TypeConnective,
+            Behavior, DeclarationId, FieldValue, LiteralBits, LoopBound, TransformTarget,
+            TypeConnective,
         };
 
         fn compile(src: &str, file: &str) -> Dag {
@@ -2537,6 +2540,36 @@ mod substrate_reflection {
             let fv = reflect_behavior(&dag, &Behavior::Value(v.clone())).expect("reflect");
             let rec = behavior_inner_record(&fv);
             assert_record_matches_named_substrate_conj(&dag, rec, "ValueNode");
+        }
+
+        #[test]
+        fn reflection_source_span_record_matches_types_dag_conj_decl() {
+            let src = "let x: Int = 7\n";
+            let file = "reflect_schema_source_span.v3";
+            let dag = compile(src, file);
+            let v = dag
+                .nodes()
+                .iter()
+                .find_map(|b| match b {
+                    Behavior::Value(v) if v.span.file == file => Some(v),
+                    _ => None,
+                })
+                .expect("Value node");
+            let fv = reflect_behavior(&dag, &Behavior::Value(v.clone())).expect("reflect");
+            let rec = behavior_inner_record(&fv);
+            let span_rec = match record_get(rec, "span") {
+                FieldValue::Record(fields) => fields.as_slice(),
+                other => panic!("expected span record, got {other:?}"),
+            };
+            assert_record_matches_named_substrate_conj(&dag, span_rec, "SourceSpan");
+            assert_eq!(
+                record_get(span_rec, "start"),
+                &FieldValue::Literal(LiteralBits::Int(i64::from(v.span.byte_start)))
+            );
+            assert_eq!(
+                record_get(span_rec, "end"),
+                &FieldValue::Literal(LiteralBits::Int(i64::from(v.span.byte_end)))
+            );
         }
 
         #[test]
