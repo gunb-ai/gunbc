@@ -1037,6 +1037,34 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Cascade benefit on Q5:** with `Interval<D>` as shared parent, Q5 recommendation (a) "cardinality is connectives axis" is reinforced — `List<T>` carries `Interval<Cardinal>::Unbounded`; `Atom` carries `Interval<Cardinal>::ExactInterval { lo: 1, hi: 1 }`. The L6 cross-product fold becomes `connectives × behaviors × targets` (90 cells) without a separate cardinality-variant axis.
 
+**Q1 refinement (Director-authored 2026-04-29) — asymmetric parent assignment for distinct bound carriers**
+
+Q1's DECISION names `LoopBound::Descent` and `CostBound` as "distinct" from `Interval<D>` but doesn't name their parents. Workers retrofitting bound types would re-litigate; per INVARIANTS.md §P1 substrate-fact-introduction Step 1 (DAG-ancestor check), the parent is determined by the bound's **algebra shape**, not by name similarity. Naming each carrier's parent explicitly:
+
+| Bound carrier | Algebra shape | Parent |
+|---|---|---|
+| CardinalityBound (`List<T>` / `Atom`) | ordered numeric (Cardinal) | `Interval<Cardinal>` |
+| SizeBound | ordered numeric (Cardinal) | `Interval<Cardinal>` |
+| LoopBound::Cardinality | ordered numeric (Ordinal) | `Interval<Ordinal>` |
+| **LoopBound::Descent** | **lattice (DescentEvidence)** | **`BoundedLattice<DescentEvidence>`** (per `dsl/std/termination.dag:60-67`; declared via lens-extensible inhabitance per Q6.5 of design-lens-framework.md) |
+| **CostBound** | **lattice (BigOClass)** | **`BoundedLattice<BigOClass>`** (per Q3 + design-lens-framework.md Instance 1's `inhabits BigOClass : BoundedLattice<BigOClass>` declaration) |
+
+The asymmetry is structurally honest: ordered-numeric bounds have natural interval parent (Interval<D> with `lo`/`hi` bounds and totally ordered comparison); lattice-typed bounds have natural lattice parent (BoundedLattice<C> with `meet`/`join` and partial ordering). Forcing all bounds under Interval<D> would mis-encode lattice-typed semantics; forcing all bounds under BoundedLattice<C> would mis-encode the ordered-numeric range structure.
+
+**Cascade implications for retrofit:**
+- PR-PreF scope unchanged: only ordered-numeric bounds retrofit to `Interval<D>` (CardinalityBound, SizeBound, LoopBound::Cardinality).
+- LoopBound::Descent retrofits onto `BoundedLattice<DescentEvidence>` parent. Currently `dsl/std/termination.dag:60-67` declares the inhabitance via comments only ("DescentEvidence inhabits BoundedLattice"); the inhabitance should land structurally per Q6.5's lens-extensible inhabitance discipline (declared in the substrate's own `.dag`, not via comments).
+- CostBound retrofits onto `BoundedLattice<BigOClass>` parent (per Q3's `Cost<Unit> = Dimension<Unit, SymbolicExpr>` lock; the asymptotic-class projection is a BoundedLattice instance per design-lens-framework.md Instance 1).
+- Workers retrofitting bound types apply this rule deterministically: ordered-numeric → `Interval<D>`; lattice-typed → `BoundedLattice<C>`. No re-litigation per workers; rule is mechanical.
+
+**Anti-bridge invariant:** workers MUST NOT collapse lattice-typed bounds into `Interval<D>` by encoding lattice ordering as `ExactInterval` (e.g., DescentEvidence::Strict ↔ ExactInterval(1, 1)). Lattice ordering is partial; interval ordering is total. The bridge would create false equivalence between distinct algebra structures and break the structural-fact discipline.
+
+**TestClaim shape:**
+- `bound_carrier_parent_matches_algebra_shape` — verifies each bound carrier's declared parent matches its algebra (ordered-numeric → Interval<D>; lattice → BoundedLattice<C>)
+- `no_lattice_to_interval_collapse_bridge` — anti-bridge enforcement; checks no bound carrier has both `Interval<D>` parent AND lattice-typed values
+
+**DECISION (Director-authored 2026-04-29):** asymmetric parent assignment locked. Workers retrofit bound types per their algebra shape: ordered-numeric → `Interval<D>`; lattice-typed → `BoundedLattice<C>`. Cross-references with design-lens-framework.md Q6.5 (lens-extensible inhabitance pattern for declaring lattice-typed bound parents structurally rather than via comments).
+
 ### Q2 — Required structural axes per Rust primitive family (and per target)
 
 **Status:** STRING family enumerated in Example 3 (ownership / growability / encoding / lifetime); INTEGER family used in Examples 1/2/8 (bound / signedness via algebra). Other Rust families not enumerated. Python and Go axes not enumerated at all.
