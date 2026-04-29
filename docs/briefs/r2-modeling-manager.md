@@ -1,6 +1,6 @@
 # R2 Modeling Manager Brief
 
-**Status:** PROPOSAL (per [`docs/r2-structure.md`](../r2-structure.md), LIVE 2026-04-26 via PR #827; refreshed 2026-04-28 post-#1078 merge to consume PR-PreF Interval<D> via Q1 lock + INVARIANTS substrate-fact-introduction procedure). Eligible to spawn pre-R1-close per `r2-structure.md` Transition mechanics step 4 (no technical R1 dependency). NEW manager.
+**Status:** PROPOSAL (per [`docs/r2-structure.md`](../r2-structure.md), LIVE 2026-04-26 via PR #827; refreshed 2026-04-28 post-#1078 merge; Q1 asymmetric-bound-algebra LANDED via #1129 at [`docs/design-emission-model.md`](../design-emission-model.md) §"Q1 — `BoundDeclaration` substrate type" — int-lit item consumes the locked disposition). Eligible to spawn pre-R1-close per `r2-structure.md` Transition mechanics step 4 (no technical R1 dependency). NEW manager.
 
 ## Orient before reading
 
