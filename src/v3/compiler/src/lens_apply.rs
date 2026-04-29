@@ -349,7 +349,10 @@ fn behavior_source_file(behavior: &Behavior) -> &str {
 pub enum LensApplyError {
     NotAnArrow,
     UnsupportedArrowBody,
-    ArityMismatch { expected: usize, got: usize },
+    ArityMismatch {
+        expected: usize,
+        got: usize,
+    },
     MalformedLensRoot,
     UnsupportedConstruct(&'static str),
     TypeMismatch(&'static str),

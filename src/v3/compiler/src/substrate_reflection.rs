@@ -5,10 +5,9 @@
 use crate::dag::{
     Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm, BranchEmitParticipation,
     BranchNode, BranchPattern, BreakingShape, ClusterId, CreateCause, Dag, DeclarationId,
-    EffectShape, FieldValue, HttpMethodScalar, IdempotentShape, KeySource,
-    LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList, OperationEffect, OperatorKind,
-    Path, PayloadBinding, PortId, SourceSpan, TransformNode, TransformTarget, TypeConnective,
-    ValueNode, WorkflowEffect,
+    EffectShape, FieldValue, HttpMethodScalar, IdempotentShape, KeySource, LiteralBits, LoopBound,
+    LoopNode, NodeId, NonSingletonList, OperationEffect, OperatorKind, Path, PayloadBinding,
+    PortId, SourceSpan, TransformNode, TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,7 +47,10 @@ fn cluster_fv(c: ClusterId) -> FieldValue {
 
 fn reflect_source_span(span: &SourceSpan) -> FieldValue {
     FieldValue::Record(vec![
-        ("file".to_string(), FieldValue::Literal(LiteralBits::String(span.file.clone()))),
+        (
+            "file".to_string(),
+            FieldValue::Literal(LiteralBits::String(span.file.clone())),
+        ),
         (
             "byte_start".to_string(),
             FieldValue::Literal(LiteralBits::Int(i64::from(span.byte_start))),
@@ -133,10 +135,7 @@ fn reflect_string_list_spine(dag: &Dag, strings: &[String]) -> ReflectResult<Fie
     for s in strings.iter().rev() {
         tail = FieldValue::Variant {
             constructor: cons_id,
-            payload: vec![
-                FieldValue::Literal(LiteralBits::String(s.clone())),
-                tail,
-            ],
+            payload: vec![FieldValue::Literal(LiteralBits::String(s.clone())), tail],
         };
     }
     Ok(tail)
@@ -146,9 +145,7 @@ fn reflect_optional_declaration_id(
     dag: &Dag,
     opt: Option<DeclarationId>,
 ) -> ReflectResult<FieldValue> {
-    reflect_optional_list_spine(dag, opt, |d, id| {
-        Ok(FieldValue::Reference(id))
-    })
+    reflect_optional_list_spine(dag, opt, |d, id| Ok(FieldValue::Reference(id)))
 }
 
 fn reflect_unit_variant(dag: &Dag, sum_name: &str, label: &str) -> ReflectResult<FieldValue> {
@@ -350,7 +347,10 @@ fn reflect_operation_effect(dag: &Dag, op: &OperationEffect) -> ReflectResult<Fi
     ]))
 }
 
-fn reflect_operation_effect_vec_spine(dag: &Dag, ops: &[OperationEffect]) -> ReflectResult<FieldValue> {
+fn reflect_operation_effect_vec_spine(
+    dag: &Dag,
+    ops: &[OperationEffect],
+) -> ReflectResult<FieldValue> {
     let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
     let mut tail = FieldValue::Variant {
         constructor: empty_id,
@@ -564,7 +564,10 @@ fn reflect_branch_pattern(dag: &Dag, p: &BranchPattern) -> ReflectResult<FieldVa
             Ok(FieldValue::Variant {
                 constructor: id,
                 payload: vec![FieldValue::Record(vec![
-                    ("name".to_string(), FieldValue::Literal(LiteralBits::String(name.clone()))),
+                    (
+                        "name".to_string(),
+                        FieldValue::Literal(LiteralBits::String(name.clone())),
+                    ),
                     ("span".to_string(), reflect_source_span(span)),
                 ])],
             })
@@ -598,7 +601,10 @@ fn reflect_branch_path(dag: &Dag, p: &Path) -> ReflectResult<FieldValue> {
     Ok(FieldValue::Record(vec![
         ("body".to_string(), node_fv(p.body)),
         ("result_port".to_string(), port_fv(p.result_port())),
-        ("pattern".to_string(), reflect_branch_pattern(dag, &p.pattern)?),
+        (
+            "pattern".to_string(),
+            reflect_branch_pattern(dag, &p.pattern)?,
+        ),
         (
             "binding".to_string(),
             reflect_optional_payload_binding(dag, p.binding.as_ref())?,
@@ -682,7 +688,10 @@ fn reflect_transform(dag: &Dag, t: &TransformNode) -> ReflectResult<FieldValue> 
     let inputs = reflect_port_id_list(dag, &t.inputs)?;
     let payload = FieldValue::Record(vec![
         ("id".to_string(), node_fv(t.id)),
-        ("target".to_string(), reflect_transform_target(dag, &t.target)?),
+        (
+            "target".to_string(),
+            reflect_transform_target(dag, &t.target)?,
+        ),
         ("inputs".to_string(), inputs),
         ("result_port".to_string(), port_fv(t.output)),
         ("span".to_string(), reflect_source_span(&t.span)),
@@ -736,7 +745,10 @@ fn reflect_bind(dag: &Dag, b: &BindNode) -> ReflectResult<FieldValue> {
     let emit = reflect_optional_bind_emit(dag, b.emit_participation())?;
     let payload = FieldValue::Record(vec![
         ("id".to_string(), node_fv(b.id)),
-        ("name".to_string(), FieldValue::Literal(LiteralBits::String(b.name.clone()))),
+        (
+            "name".to_string(),
+            FieldValue::Literal(LiteralBits::String(b.name.clone())),
+        ),
         ("result_port".to_string(), port_fv(b.value)),
         ("params".to_string(), params),
         ("span".to_string(), reflect_source_span(&b.span)),
