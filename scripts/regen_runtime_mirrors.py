@@ -692,7 +692,10 @@ def render_sum(
         elif variant.kind == "record":
             lines.append(f"    {variant_name} {{")
             for label, ty in variant.fields or []:
-                lines.append(f"        {label}: {rust_type(ty, overrides)},")
+                field_ty = rust_type(ty, overrides)
+                if name == "PositiveIntervalWidth" and label == "previous":
+                    field_ty = f"Box<{field_ty}>"
+                lines.append(f"        {label}: {field_ty},")
             lines.append("    },")
         else:
             raise ValueError(f"unsupported variant kind {variant.kind}")
@@ -806,6 +809,25 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             sums["AtomPayload"],
             "#[derive(Debug, Clone)]",
             output_name="AtomPayload",
+        ),
+        render_sum(
+            "Interval",
+            sums["Interval"],
+            "#[derive(Debug, Clone, PartialEq, Eq)]",
+            output_name="Interval<D>",
+            overrides={"D": "D"},
+        ),
+        render_sum(
+            "PositiveIntervalWidth",
+            sums["PositiveIntervalWidth"],
+            "#[derive(Debug, Clone, PartialEq, Eq)]",
+            output_name="PositiveIntervalWidth",
+        ),
+        render_sum(
+            "IntervalWidth",
+            sums["IntervalWidth"],
+            "#[derive(Debug, Clone, PartialEq, Eq)]",
+            output_name="IntervalWidth",
         ),
         render_sum(
             "CardinalityBound",
