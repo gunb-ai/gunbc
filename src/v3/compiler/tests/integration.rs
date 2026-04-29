@@ -37,6 +37,8 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
+#[path = "integration/canonical_lens_bridge_ratchet_test.rs"]
+mod canonical_lens_bridge_ratchet_test;
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
@@ -63,6 +65,8 @@ mod lane2_stage_2e_parallelism_test;
 mod lane3_stage_3b_db1_test;
 #[path = "integration/lens_register_correspondence_test.rs"]
 mod lens_register_correspondence_test;
+#[path = "integration/lens_substrate_carrier_test.rs"]
+mod lens_substrate_carrier_test;
 #[path = "integration/m0_acceptance.rs"]
 mod m0_acceptance;
 #[path = "boundary/m1_3_emit_go_test.rs"]
