@@ -2140,7 +2140,9 @@ mod substrate_reflection {
     mod reflection_tests {
         use super::*;
         use crate::compile_to_dag;
-        use crate::dag::{Behavior, DeclarationId, FieldValue, LoopBound, TransformTarget, TypeConnective};
+        use crate::dag::{
+            Behavior, DeclarationId, FieldValue, LoopBound, TransformTarget, TypeConnective,
+        };
 
         fn compile(src: &str, file: &str) -> Dag {
             match compile_to_dag(src, file) {
@@ -2517,6 +2519,107 @@ mod substrate_reflection {
                 panic!("LoopBound variant");
             };
             assert_eq!(loop_bound_variant_label(&dag_d, *d_ty), "Descent");
+        }
+
+        #[test]
+        fn reflection_value_inner_record_matches_value_node_conj_decl() {
+            let src = "let x: Int = 7\n";
+            let file = "reflect_schema_value.v3";
+            let dag = compile(src, file);
+            let v = dag
+                .nodes()
+                .iter()
+                .find_map(|b| match b {
+                    Behavior::Value(v) if v.span.file == file => Some(v),
+                    _ => None,
+                })
+                .expect("Value node");
+            let fv = reflect_behavior(&dag, &Behavior::Value(v.clone())).expect("reflect");
+            let rec = behavior_inner_record(&fv);
+            assert_record_matches_named_substrate_conj(&dag, rec, "ValueNode");
+        }
+
+        #[test]
+        fn reflection_transform_inner_record_matches_transform_node_conj_decl() {
+            let src = "fn f(a: Int, b: Int) -> Int = a + b\n";
+            let file = "reflect_schema_transform.v3";
+            let dag = compile(src, file);
+            let t = dag
+                .nodes()
+                .iter()
+                .find_map(|b| match b {
+                    Behavior::Transform(t) if t.span.file == file => Some(t),
+                    _ => None,
+                })
+                .expect("Transform node");
+            let fv = reflect_behavior(&dag, &Behavior::Transform(t.clone())).expect("reflect");
+            let rec = behavior_inner_record(&fv);
+            assert_record_matches_named_substrate_conj(&dag, rec, "TransformNode");
+        }
+
+        #[test]
+        fn reflection_bind_inner_record_matches_bind_node_conj_decl() {
+            let src = "fn g(x: Int) -> Int = x + 1\n";
+            let file = "reflect_schema_bind.v3";
+            let dag = compile(src, file);
+            let b = dag
+                .nodes()
+                .iter()
+                .find_map(|beh| match beh {
+                    Behavior::Bind(b) if b.span.file == file && !b.params.is_empty() => Some(b),
+                    _ => None,
+                })
+                .expect("Bind node");
+            let fv = reflect_behavior(&dag, &Behavior::Bind(b.clone())).expect("reflect");
+            let rec = behavior_inner_record(&fv);
+            assert_record_matches_named_substrate_conj(&dag, rec, "BindNode");
+        }
+
+        #[test]
+        fn reflection_transform_target_callable_variant_matches_substrate_payload_shape() {
+            let src = "fn id(x: Int) -> Int = x\nlet _: Int = id(1)\n";
+            let file = "reflect_schema_callable.v3";
+            let dag = compile(src, file);
+            let t = dag
+                .nodes()
+                .iter()
+                .find_map(|b| match b {
+                    Behavior::Transform(t) if t.span.file == file => match &t.target {
+                        TransformTarget::Callable(_) => Some(t),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .expect("Callable transform");
+            let fv = reflect_behavior(&dag, &Behavior::Transform(t.clone())).expect("reflect");
+            let rec = behavior_inner_record(&fv);
+            let target = record_get(rec, "target");
+            assert_sum_variant_payload_matches_substrate(&dag, "TransformTarget", target);
+        }
+
+        #[test]
+        fn reflection_transform_target_field_project_variant_matches_substrate_payload_shape() {
+            let src = "\
+type Point { x: Int y: Int }
+fn get_x(point: Point) -> Int = point.x
+";
+            let file = "reflect_schema_field_proj.v3";
+            let dag = compile(src, file);
+            let t = dag
+                .nodes()
+                .iter()
+                .find_map(|b| match b {
+                    Behavior::Transform(t) if t.span.file == file => match &t.target {
+                        TransformTarget::FieldProject { .. } => Some(t),
+                        _ => None,
+                    },
+                    _ => None,
+                })
+                .expect("FieldProject transform");
+            let fv = reflect_behavior(&dag, &Behavior::Transform(t.clone())).expect("reflect");
+            let rec = behavior_inner_record(&fv);
+            let target = record_get(rec, "target");
+            assert_sum_variant_payload_matches_substrate(&dag, "TransformTarget", target);
         }
     }
 }
