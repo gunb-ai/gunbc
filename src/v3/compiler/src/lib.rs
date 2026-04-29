@@ -282,7 +282,7 @@ pub mod lens_unused_parameters {
                     params[0],
                     params[1],
                     body,
-                    LoopBound::Cardinality { count },
+                    LoopBound::cardinality_bounded_count(count),
                     span(),
                 )
             });
@@ -301,7 +301,7 @@ pub mod lens_unused_parameters {
                     params[0],
                     init,
                     body,
-                    LoopBound::Cardinality { count },
+                    LoopBound::cardinality_bounded_count(count),
                     span(),
                 )
             });
@@ -425,8 +425,8 @@ pub mod lens_cost {
     mod tests {
         use super::{cost_of, CostLookup};
         use crate::dag::{
-            ArithmeticOp, BranchPattern, Dag, LiteralBits, LoopBound, OperatorKind, Path, PortId,
-            TransformTarget,
+            ArithmeticOp, BranchPattern, Dag, Interval, LiteralBits, LoopBound, OperatorKind, Path,
+            PortId, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
