@@ -835,8 +835,8 @@ mod reflection_tests {
     fn record_get<'a>(rec: &'a [(String, FieldValue)], key: &str) -> &'a FieldValue {
         rec.iter()
             .find(|(k, _)| k == key)
+            .map(|(_, v)| v)
             .unwrap_or_else(|| panic!("missing field `{key}` in {rec:?}"))
-            .1
     }
 
     fn list_spine_len(dag: &Dag, list: &FieldValue) -> usize {
