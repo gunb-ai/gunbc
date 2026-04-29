@@ -62,6 +62,16 @@ Per `feedback_compiler_is_dag_processor.md`: the compiler knows ONLY `Node` / `C
 
 **Anything beyond these 5 primitives is a downstream lens, not the interpreter.** Cost analysis is a lens. Termination is a lens (descent evidence). Parallelism is a lens. Effect inference is a lens. None of these are part of PB-Runtime; they fold *over* PB-Runtime's outputs.
 
+**Mapping note — "5 execution primitives" ↔ "6 type connectives + 5 L1 behaviors" (per `r2-structure.md` §6 Evaluator brief).** These are different vocabularies at different scopes; not a fork:
+
+- The **5 dispatch primitives** above (`Node` / `Conj` / `Disj` / `Cardinality` / `Bit`) are the **DAG-processor's execution vocabulary** — what the interpreter dispatches on at evaluate-step level. `Node` is the carrier of behavior (each `Behavior` variant lives inside a `Node`); the other four are type-connective shapes encountered during evaluation.
+- The **6 type connectives** in `src/v3/std/substrate.dag` (`Atom` / `Conj` / `Disj` / `Arrow` / `Cardinality` / `Instantiation`) are the **substrate type system's expressivity** — what `.dag` type declarations can describe. R2-Evaluator's runtime-value model authors typed runtime values for each of these six connectives' inhabitants.
+- The **5 L1 behaviors** (`Value` / `Transform` / `Branch` / `Loop` / `Bind`) are **identical in both vocabularies** — they're the `Behavior` variants every interpreter step dispatches on, regardless of which presentation scope you're in.
+
+Concretely, the `Value` coproduct in §3.2 below represents the inhabitants of all 6 type connectives that PB-Runtime needs to carry at evaluation time: `LiteralValue` (Bit + Atom inhabitants via `LiteralBits`), `RecordValue` (Conj inhabitants), `VariantValue` (Disj inhabitants), `NodeRef` (carrier of `Behavior`-bearing nodes — including `Bind` nodes whose binding constructs Arrow values structurally), `CardinalityValue` (Cardinality inhabitants). `Arrow` and `Instantiation` aren't standalone Value variants because Arrow values are structurally represented via `Bind` nodes (closures = bound bodies the runtime navigates via `NodeRef`), and `Instantiation` is a type-level phenomenon that erases at runtime (the runtime carries the instantiated value, not a parametric witness). This matches the Evaluator's PR-A scope without forking the vocabulary.
+
+Anti-bridge invariant #6 (§6 below) reaffirms this: PB-Runtime's `Value` and R2-Evaluator's runtime-value model share a structural definition; the apparent "5 vs 6" numbering reflects different scopes (dispatch vs type-system expressivity), not a fork.
+
 ### 3.2 What PB-Runtime IS (concrete shape)
 
 A `.dag` program declared at `dsl/std/runtime/runtime.dag` (path TBD; PB Manager picks per their dispatch) exposing one entry point:
