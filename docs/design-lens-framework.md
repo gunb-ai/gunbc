@@ -510,9 +510,27 @@ The runtime sees `Lens<TenantFlow>.validate` produce a `Diagnostic { kind: Capab
 **Substrate change required: minimal additive widening of `Diagnostic.kind` to accept the two-layer parent; `CompilerDiagnosticKind` (Layer 1) closed sum stays untouched.** Concretely, `src/v3/compiler/src/diagnostics.dag:Diagnostic.kind` is currently strictly typed `kind: CompilerDiagnosticKind` (closed sum, Layer 1 only). To carry Layer-2 lens-instance kinds in the same `Diagnostic` value (which is what `Lens<C>.validate → OptionalDiagnostic` produces per `dimensions.dag:41-43`), the field type widens additively:
 
 ```
+// Layer 2 lens-instance kind declaration shape (declared via lens framework's structural inhabitance)
+type DiagnosticKindDecl {
+  name: KindName          // kind name; MUST NOT collide with Layer-1 CompilerDiagnosticKind variant names per anti-shadowing protocol above
+  payload: TypeShape      // payload type for this kind (e.g., `{ required: CapSet, granted: CapSet, missing: CapSet }`)
+  lens_instance: LensRef  // the Lens<C> instance that owns this kind
+}
+
+// Layer 2 carrier: a structural pointer to a declared DiagnosticKindDecl + payload checked to inhabit
+// the decl's declared payload type. The two coordinates (decl + payload) are dependent, not independent —
+// the lens framework's existing structural inhabitance check enforces that `payload` inhabits the
+// `TypeShape` named by `kind_decl.payload`. This is the same mechanism that enforces `inhabits Lens<C>`
+// claims at the lens-instance authoring boundary; we reuse it here so a `Diagnostic` cannot carry a
+// payload whose shape disagrees with its declared kind.
+type LensInstanceKindWitness {
+  kind_decl: DeclarationRef     // resolves to a DiagnosticKindDecl in `kind_decl.lens_instance.diagnostic_kinds`
+  payload: <inhabits kind_decl.payload>  // structural inhabitance witness — compiler-checked at construction
+}
+
 type AnyDiagnosticKind
-  = CompilerKind(CompilerDiagnosticKind)              // Layer 1: substrate-owned closed sum (UNCHANGED)
-  | LensInstanceKind(LensRef, KindName, KindPayload)  // Layer 2: lens-namespace-scoped
+  = CompilerKind(CompilerDiagnosticKind)        // Layer 1: substrate-owned closed sum (UNCHANGED)
+  | LensInstanceKind(LensInstanceKindWitness)   // Layer 2: lens-namespace-scoped, dependent-typed
 
 type Diagnostic {
   kind: AnyDiagnosticKind   // widened from CompilerDiagnosticKind to AnyDiagnosticKind
@@ -522,18 +540,11 @@ type Diagnostic {
 }
 ```
 
-The widening is ~5-10 lines in `diagnostics.dag`; `CompilerDiagnosticKind`'s closed sum stays as-is (Layer 1 unchanged). The anti-bridge invariant is preserved because Layer-2 kinds enter via `LensInstanceKind` constructor with structural `LensRef` + `KindName` + `KindPayload`, not by extending `CompilerDiagnosticKind`. Rejected alternative: lens-instance validates returning a different carrier (breaks `OptionalDiagnostic` shape and lens framework spec).
+The widening is ~5-15 lines in `diagnostics.dag`; `CompilerDiagnosticKind`'s closed sum stays as-is (Layer 1 unchanged). The anti-bridge invariant is preserved because Layer-2 kinds enter via the `LensInstanceKind` constructor through `LensInstanceKindWitness` — a structural pointer to a declared `DiagnosticKindDecl` + payload value compiler-checked to inhabit the decl's declared shape — not by extending `CompilerDiagnosticKind`.
 
-`DiagnosticKindDecl` (lens-instance kind declaration shape) is defined as:
+**State-space discipline (per `feedback_state_space_vs_behavioral_invariants.md`).** A flat `LensInstanceKind(LensRef, KindName, KindPayload)` carrier (three independent coordinates) is rejected — it admits illegal states like `(Lens<TenantFlow>, "WrongName", payload-of-different-shape)`. The witness shape collapses kind name + payload into one structural reference (`DeclarationRef → DiagnosticKindDecl`) plus a compiler-checked inhabitance witness over that decl's declared payload. Two dependent coordinates, not three independent ones. The kind name and `lens_instance` recover by projection from `kind_decl`; runtime dispatch reads `kind_decl.lens_instance` (the lens-namespace) and `kind_decl.name` (the dispatched kind) without admitting parallel forks.
 
-```
-// Layer 2 lens-instance kind declaration shape (declared via lens framework's structural inhabitance)
-type DiagnosticKindDecl {
-  name: KindName        // kind name; MUST NOT collide with Layer-1 CompilerDiagnosticKind variant names per anti-shadowing protocol above
-  payload: TypeShape    // payload type for this kind (e.g., `{ required: CapSet, granted: CapSet, missing: CapSet }`)
-  lens_instance: LensRef  // the Lens<C> instance that owns this kind
-}
-```
+Rejected alternative: lens-instance validates returning a different carrier (breaks `OptionalDiagnostic` shape and lens framework spec).
 
 **Note on existing SCAFFOLD:** `src/v3/std/verification.dag:49-62` has a 🟡 SCAFFOLD `DiagnosticKind` that mirrors `CompilerDiagnosticKind` for verification-runner consumption. That SCAFFOLD's dissolution trigger (per its own comment: "replace this mirror with typed references once substrate diagnostics are surfaced as declaration-shaped facts") is **separate** from Q6.5 — it tracks Layer-1 mirror retirement, not Layer-2 carrier authoring. Q6.5's `AnyDiagnosticKind` widening doesn't affect that SCAFFOLD's dissolution path.
 
