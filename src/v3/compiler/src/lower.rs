@@ -7704,6 +7704,8 @@ mod tests {
 
     #[test]
     fn fold_repeat_string_semantics_excess_n_fail_closed() {
-        assert!(fold_repeat_string_semantics("x", super::REPEAT_STRING_FOLD_MAX_COUNT + 1).is_none());
+        assert!(
+            fold_repeat_string_semantics("x", super::REPEAT_STRING_FOLD_MAX_COUNT + 1).is_none()
+        );
     }
 }
