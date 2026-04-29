@@ -777,3 +777,253 @@ pub fn reflect_behavior_list(dag: &Dag, nodes: &[Behavior]) -> ReflectResult<Fie
     }
     Ok(tail)
 }
+
+#[cfg(test)]
+mod reflection_tests {
+    use super::*;
+    use crate::compile_to_dag;
+    use crate::dag::{Behavior, FieldValue, LoopBound};
+
+    fn compile(src: &str, file: &str) -> Dag {
+        match compile_to_dag(src, file) {
+            Ok(d) => {
+                assert!(
+                    d.diagnostics().is_empty(),
+                    "{file}: {:?}",
+                    d.diagnostics()
+                );
+                d
+            }
+            Err(e) => panic!("compile {file}: {e:?}"),
+        }
+    }
+
+    fn behavior_inner_record(fv: &FieldValue) -> &[(String, FieldValue)] {
+        let FieldValue::Variant { payload, .. } = fv else {
+            panic!("expected Behavior variant, got {fv:?}");
+        };
+        assert_eq!(payload.len(), 1, "Behavior variant payload");
+        let FieldValue::Record(fields) = &payload[0] else {
+            panic!("expected inner record");
+        };
+        fields.as_slice()
+    }
+
+    fn record_get<'a>(rec: &'a [(String, FieldValue)], key: &str) -> &'a FieldValue {
+        rec.iter()
+            .find(|(k, _)| k == key)
+            .unwrap_or_else(|| panic!("missing field `{key}` in {rec:?}"))
+            .1
+    }
+
+    fn list_spine_len(dag: &Dag, list: &FieldValue) -> usize {
+        let (empty_id, _) = v3_list_empty_cons_ids(dag).expect("List ids");
+        let mut n = 0;
+        let mut cur = list;
+        loop {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = cur
+            else {
+                panic!("expected List spine");
+            };
+            if *constructor == empty_id {
+                break;
+            }
+            assert_eq!(payload.len(), 2, "Cons payload");
+            n += 1;
+            cur = &payload[1];
+        }
+        n
+    }
+
+    fn loop_bound_variant_label(dag: &Dag, variant_constructor_ty: DeclarationId) -> String {
+        let decl = dag
+            .declaration_by_name("LoopBound")
+            .expect("LoopBound declaration");
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            panic!("LoopBound not a Disj");
+        };
+        variants
+            .iter()
+            .find(|v| v.ty == variant_constructor_ty)
+            .map(|v| v.label.clone())
+            .unwrap_or_else(|| {
+                panic!("constructor {variant_constructor_ty:?} not a LoopBound variant");
+            })
+    }
+
+    #[test]
+    fn reflection_value_includes_all_substrate_fields() {
+        let src = "let x: Int = 7\n";
+        let file = "reflect_value.v3";
+        let dag = compile(src, file);
+        let v = dag
+            .nodes()
+            .iter()
+            .find_map(|b| match b {
+                Behavior::Value(v) if v.span.file == file => Some(v),
+                _ => None,
+            })
+            .expect("Value node");
+        let fv = reflect_behavior(&dag, &Behavior::Value(v.clone())).expect("reflect");
+        let rec = behavior_inner_record(&fv);
+        for key in [
+            "id",
+            "payload",
+            "result_port",
+            "span",
+            "lane2_workflow",
+        ] {
+            let _ = record_get(rec, key);
+        }
+    }
+
+    #[test]
+    fn reflection_transform_includes_target_inputs_and_span() {
+        let src = "fn f(a: Int, b: Int) -> Int = a + b\n";
+        let file = "reflect_transform.v3";
+        let dag = compile(src, file);
+        let t = dag
+            .nodes()
+            .iter()
+            .find_map(|b| match b {
+                Behavior::Transform(t) if t.span.file == file => Some(t),
+                _ => None,
+            })
+            .expect("Transform node");
+        let fv = reflect_behavior(&dag, &Behavior::Transform(t.clone())).expect("reflect");
+        let rec = behavior_inner_record(&fv);
+        for key in [
+            "id",
+            "target",
+            "inputs",
+            "result_port",
+            "span",
+        ] {
+            let _ = record_get(rec, key);
+        }
+    }
+
+    #[test]
+    fn reflection_bind_includes_params_lane2_emit() {
+        let src = "fn g(x: Int) -> Int = x + 1\n";
+        let file = "reflect_bind.v3";
+        let dag = compile(src, file);
+        let b = dag
+            .nodes()
+            .iter()
+            .find_map(|beh| match beh {
+                Behavior::Bind(b) if b.span.file == file && !b.params.is_empty() => Some(b),
+                _ => None,
+            })
+            .expect("Bind node");
+        let fv = reflect_behavior(&dag, &Behavior::Bind(b.clone())).expect("reflect");
+        let rec = behavior_inner_record(&fv);
+        for key in [
+            "id",
+            "name",
+            "result_port",
+            "params",
+            "span",
+            "lane2_workflow",
+            "emit_participation",
+        ] {
+            let _ = record_get(rec, key);
+        }
+    }
+
+    #[test]
+    fn reflection_branch_three_arms_totality() {
+        let src = "\
+type Color = Red | Green | Blue
+fn classify(h: Color) -> Int = match h { Red => 0, Green => 1, Blue => 2 }
+";
+        let file = "reflect_branch_three.v3";
+        let dag = compile(src, file);
+        let br = dag
+            .nodes()
+            .iter()
+            .find_map(|b| match b {
+                Behavior::Branch(br) if br.span.file == file => Some(br),
+                _ => None,
+            })
+            .expect("Branch");
+        assert_eq!(br.paths.len(), 3);
+        let fv = reflect_behavior(&dag, &Behavior::Branch(br.clone())).expect("reflect");
+        let rec = behavior_inner_record(&fv);
+        let paths = record_get(rec, "paths");
+        assert_eq!(list_spine_len(&dag, paths), 3);
+        let FieldValue::Variant { payload, .. } = paths else {
+            panic!("paths list");
+        };
+        assert_eq!(payload.len(), 2);
+        let FieldValue::Record(arm_fields) = &payload[0] else {
+            panic!("first arm record");
+        };
+        for key in ["body", "result_port", "pattern", "binding"] {
+            let _ = record_get(arm_fields, key);
+        }
+    }
+
+    #[test]
+    fn reflection_loop_bound_coproduct_cardinality_vs_descent() {
+        let src_single = "\
+fn count(n: Int) -> Int = if n == 0 then 0 else 1 + count(n - 1)
+let _: Int = count(1)
+";
+        let file_c = "reflect_loop_card.v3";
+        let dag_c = compile(src_single, file_c);
+        let lp_c = dag_c
+            .nodes()
+            .iter()
+            .find_map(|b| match b {
+                Behavior::Loop(l) if l.span.file == file_c => Some(l),
+                _ => None,
+            })
+            .expect("cardinality loop");
+        assert!(matches!(lp_c.bound, LoopBound::Cardinality { .. }));
+        let fv_c = reflect_behavior(&dag_c, &Behavior::Loop(lp_c.clone())).expect("reflect");
+        let rec_c = behavior_inner_record(&fv_c);
+        let bound_c = record_get(rec_c, "bound");
+        let FieldValue::Variant {
+            constructor: c_ty,
+            ..
+        } = bound_c
+        else {
+            panic!("LoopBound variant");
+        };
+        assert_eq!(loop_bound_variant_label(&dag_c, *c_ty), "Cardinality");
+
+        let src_mutual = "\
+fn even(n: Int) -> Bool = if n == 0 then true else odd(n - 1)
+fn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)
+";
+        let file_d = "reflect_loop_desc.v3";
+        let dag_d = compile(src_mutual, file_d);
+        let lp_d = dag_d
+            .nodes()
+            .iter()
+            .find_map(|b| match b {
+                Behavior::Loop(l)
+                    if l.span.file == file_d && matches!(l.bound, LoopBound::Descent { .. }) =>
+                {
+                    Some(l)
+                }
+                _ => None,
+            })
+            .expect("descent loop");
+        let fv_d = reflect_behavior(&dag_d, &Behavior::Loop(lp_d.clone())).expect("reflect");
+        let rec_d = behavior_inner_record(&fv_d);
+        let bound_d = record_get(rec_d, "bound");
+        let FieldValue::Variant {
+            constructor: d_ty,
+            ..
+        } = bound_d
+        else {
+            panic!("LoopBound variant");
+        };
+        assert_eq!(loop_bound_variant_label(&dag_d, *d_ty), "Descent");
+    }
+}
