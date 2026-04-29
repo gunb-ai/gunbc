@@ -362,6 +362,8 @@ pub enum LensApplyError {
     BadListShape,
     MissingType(&'static str),
     MissingValueBody,
+    /// Substrate → [`FieldValue`] reflection failed (missing sum/variant wiring in id_space).
+    SubstrateReflect(&'static str),
 }
 
 /// Lower a declaration [`ValueBody`] into the structural [`FieldValue`] carrier used by the

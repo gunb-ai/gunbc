@@ -373,13 +373,6 @@ fn reflect_bool_port_ref(dag: &Dag, r: BoolPortRef) -> ReflectResult<FieldValue>
     )]))
 }
 
-fn reflect_transform_ref(dag: &Dag, r: TransformRef) -> ReflectResult<FieldValue> {
-    Ok(FieldValue::Record(vec![(
-        "node".to_string(),
-        node_fv(r.node_id()),
-    )]))
-}
-
 fn reflect_workflow_effect(dag: &Dag, wf: &WorkflowEffect) -> ReflectResult<FieldValue> {
     match wf {
         WorkflowEffect::LinearEffect { ops } => {
