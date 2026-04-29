@@ -115,12 +115,12 @@ pub(crate) fn ordered_pipeline_stages(dag: &Dag) -> Result<Vec<PipelineStageAuth
 /// surface cannot silently drift from that authority. Any divergence is
 /// surfaced as a bootstrap diagnostic (via the caller).
 ///
-/// **T-Bridge-Retirement (`include_str!` side channel):** stage names in
+/// **T-Bridge-Retirement (compile-time embed side channel):** stage names in
 /// the `compile` body are read using the `ArrowBody::Unparsed` span already
 /// carried on the lowered `compile` declaration (DB-16 case 2c), then
 /// sliced from the authoritative on-disk `pipeline.dag` next to this crate.
-/// That retires `include_str!("../pipeline.dag")` while case 2c still
-/// keeps two authored carriers in sync until derivation collapses them.
+/// That retires embedding `pipeline.dag` at Rust compile time while case 2c
+/// still keeps two authored carriers in sync until derivation collapses them.
 fn reconcile_with_compile_body(
     dag: &Dag,
     ordered: &[PipelineStageAuthority],
@@ -344,16 +344,19 @@ mod tests {
     }
 
     #[test]
-    fn pipeline_authority_does_not_use_include_str_for_pipeline_dag() {
+    fn pipeline_authority_does_not_embed_pipeline_dag_at_rust_compile_time() {
+        // Ratchet the retired bridge: the old pattern was a compile-time embed
+        // of `../pipeline.dag` (T-Bridge-Retirement / PB include_str lane).
+        const FORBIDDEN: &str = concat!("include_str", "!(\"../pipeline.dag\")");
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("pipeline_authority.rs");
         let source = fs::read_to_string(&path).unwrap_or_else(|err| {
-            panic!("read {} for include_str ratchet: {err}", path.display());
+            panic!("read {} for pipeline.dag embed ratchet: {err}", path.display());
         });
         assert!(
-            !source.contains("include_str!"),
-            "T-Bridge-Retirement: pipeline_authority.rs must not embed pipeline.dag via include_str!; \
+            !source.contains(FORBIDDEN),
+            "T-Bridge-Retirement: pipeline_authority.rs must not embed ../pipeline.dag at Rust compile time; \
              use Dag-anchored Unparsed spans + on-disk substrate read instead ({})",
             path.display()
         );
