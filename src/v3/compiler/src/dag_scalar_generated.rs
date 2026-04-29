@@ -17,12 +17,25 @@ pub enum AtomPayload {
     TypeParam(String),
 }
 
+// PR-PreF domain tags — substrate `type Cardinal = Int` / `Ordinal = Int`;
+// Rust mirrors use nonnegative width carriers matching `ExactInterval` uses.
+pub type Cardinal = u32;
+
+pub type Ordinal = u32;
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CardinalityBound {
-    Exact(u32),
-    AtMostOne,
+pub enum Interval<D: Copy + PartialEq + Eq> {
+    ExactInterval {
+        lo: D,
+        hi: D,
+    },
     Unbounded,
 }
+
+
+pub type CardinalityBound = Interval<Cardinal>;
+
 
 #[derive(Debug, Clone)]
 pub struct TemplateArgument {

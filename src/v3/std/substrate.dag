@@ -84,15 +84,13 @@ type Cardinal = Int
 type Ordinal = Int
 
 // Parametric closed interval on a totally ordered domain (inclusive bounds).
-type Interval<domain>
-  = ExactInterval { lo: domain, hi: domain }
+type Interval<D>
+  = ExactInterval { lo: D, hi: D }
   | Unbounded
 
-// Retrofit: same variants as `Interval<Cardinal>`; runtime mirror is a single
-// `Interval<Cardinal>` enum (`CardinalityBound` is a Rust type alias).
-type CardinalityBound
-  = ExactInterval { lo: Cardinal, hi: Cardinal }
-  | Unbounded
+// Named connective bound (spec targets / carrier string); mirror is
+// `pub type CardinalityBound = Interval<Cardinal>` in `dag_scalar_generated.rs`.
+type CardinalityBound = Interval<Cardinal>
 
 type ConjField {
   label: String

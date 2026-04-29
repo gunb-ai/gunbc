@@ -571,6 +571,14 @@ def parse_types(path: Path) -> tuple[dict[str, RecordDef], dict[str, list[Varian
             i += 1
             continue
 
+        # Single-line substrate aliases (`type Cardinal = Int`,
+        # `type CardinalityBound = Interval<Cardinal>`) — no runtime sum of their own.
+        if "=" in line and "|" not in line.split("=", 1)[1]:
+            rhs = line.split("=", 1)[1].strip()
+            if not rhs.startswith("{") and not rhs.startswith("("):
+                i += 1
+                continue
+
         name = re.match(r"type\s+(\w+)(?:<[^>]+>)?", line).group(1)
         variants: list[VariantDef] = []
         i += 1
@@ -644,6 +652,8 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
     }
     if source in mapping:
         return mapping[source]
+    if source in ("Cardinal", "Ordinal"):
+        return source
     if source.endswith("?"):
         return f"Option<{rust_type(source[:-1], overrides)}>"
     generic_match = re.fullmatch(r"(\w+)<(.+)>", source)
@@ -679,10 +689,14 @@ def render_sum(
     output_name: str | None = None,
     overrides: dict[str, str] | None = None,
     variant_name_overrides: dict[str, str] | None = None,
+    type_params: str | None = None,
 ) -> str:
     output_name = output_name or name
     variant_name_overrides = variant_name_overrides or {}
-    lines = [derives, f"pub enum {output_name} {{"]
+    decl = f"pub enum {output_name}"
+    if type_params is not None:
+        decl += f"<{type_params}>"
+    lines = [derives, f"{decl} {{"]
     for variant in variants:
         variant_name = variant_name_overrides.get(variant.name, variant.name)
         if variant.kind == "unit":
@@ -807,13 +821,18 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             "#[derive(Debug, Clone)]",
             output_name="AtomPayload",
         ),
+        "// PR-PreF domain tags — substrate `type Cardinal = Int` / `Ordinal = Int`;\n"
+        "// Rust mirrors use nonnegative width carriers matching `ExactInterval` uses.\n"
+        "pub type Cardinal = u32;\n\n"
+        "pub type Ordinal = u32;\n",
         render_sum(
-            "CardinalityBound",
-            sums["CardinalityBound"],
+            "Interval",
+            sums["Interval"],
             "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
-            output_name="CardinalityBound",
-            overrides={"Int": "u32"},
+            output_name="Interval",
+            type_params="D: Copy + PartialEq + Eq",
         ),
+        "\npub type CardinalityBound = Interval<Cardinal>;\n",
         render_record(
             records["TemplateArgument"],
             output_name="TemplateArgument",
