@@ -299,7 +299,8 @@ Rationale: consistent with anti-deferral stance — tail-shaped work closes befo
 
 ## Transition mechanics
 
-1. **R1 gates green** → Director declares R1 closed.
+1. **R1 close** — **R1 Closure Manager** declares R1 closed when **release acceptance** and **lane receipts** per `ROADMAP.md §"Release R1 Program"` are satisfied.
+   Closure record: [`docs/briefs/r1-closure-manager.md`](briefs/r1-closure-manager.md) (completion section).
 2. **R1 residual sweep** — every open R1 ledger row gets an R1-or-R2 assignment. No orphaning. Done in the R1 closure PR. Expected to be short under all-gates-green criterion.
 3. **R1 manager dissolution** — all R1 standing managers (Surface, Substrate, Testgen, Self-hosting, Release) archive with closure banners. Their scopes are fully absorbed by R1's gate acceptance; no inheritance into R2 managers.
 4. **R2 manager spin-up** — **seven standing managers** initialized per the revised manager structure above (count updated 2026-04-28 per R1 Closure Manager review — Evaluator Manager added as Goal 7). Each manager gets a dedicated brief (`docs/briefs/r2-grounding-manager.md`, `docs/briefs/r2-substrate-manager.md`, `docs/briefs/r2-modeling-manager.md`, `docs/briefs/r2-impossible-bugs-manager.md`, `docs/briefs/r2-pure-bootstrap-manager.md`, `docs/briefs/r2-release-manager.md`, `docs/briefs/r2-evaluator-manager.md`) naming program scope + owned deliverables + cross-program dependencies + autonomous dispatch authority + reporting cadence. **Pre-stage skeleton briefs before R1 closes** (Director authors skeletons during R1 final week; promotion PR fills in scope-final details) so the R1→R2 transition is not gated on seven fresh authoring cycles. Existing `docs/briefs/grounding-manager.md` migrates content into `r2-grounding-manager.md` and archives. Existing `docs/briefs/pure-bootstrap-zero-manager.md` migrates content into `r2-pure-bootstrap-manager.md` and archives.
