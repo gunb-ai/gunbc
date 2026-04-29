@@ -67,7 +67,7 @@ The 8-question design dialogue resolved into a cadence whose merge gates worker 
 | **T-Ground-Diagnostic** *(NEW)* | S | **BRIEF LANDED** — [`t-ground-diagnostic.md`](t-ground-diagnostic.md) (#1216); implementation pending | Declared structural ordering for diagnostic enumeration; `EmissionDiagnostic` carrier |
 | **T-Ground-CrossTarget-Meta** *(NEW)* | S | **BRIEF LANDED** — [`t-ground-cross-target-meta.md`](t-ground-cross-target-meta.md) (#1224 + L6 form-axis anchor #1229); **implementation gated on PR-J merge (likely no-op)** | Cross-target uniformity meta-spec; owns L6 per-(form × target) load-completeness check |
 | T-Ground-Tests | S | **BRIEF LANDED** — [`t-ground-tests.md`](t-ground-tests.md) (#1223); implementation pending — gated on Q4 lock (PR-I) + Coercion-Fold body | L4 routing correctness verification |
-| T-Ground-Dissolve | S | NOT YET AUTHORED | Track-13 dissolution: delete `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` |
+| T-Ground-Dissolve | S | BRIEF AUTHORED — [`t-ground-dissolve.md`](t-ground-dissolve.md); implementation pending after Coercion-Fold carries the load | Track-13 dissolution: delete `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` |
 
 ## Cross-program dependencies
 
