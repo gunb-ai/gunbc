@@ -28,17 +28,28 @@ fn test_runner_source() -> String {
 
 /// Category A: `include_str!` references that pull canonical lens bytes.
 ///
-/// Counts substrings of the shape `include_str!(concat!(... "/../lenses/"`
-/// and bare `include_str!("../../lenses/` (covers both the `concat!`-wrapped
-/// runner consts and any direct lens include).
+/// Counts each `include_str!` invocation whose argument (possibly across
+/// several lines via `concat!`) contains `/lenses/`. The whole-source scan
+/// handles the multi-line `concat!(env!("CARGO_MANIFEST_DIR"), "/../lenses/…")`
+/// form used in `test_runner.rs`.
 fn count_lens_include_str(src: &str) -> usize {
     let mut n = 0;
-    for line in src.lines() {
-        if line.contains("include_str!")
-            && (line.contains("/lenses/") || line.contains("\"../lenses/"))
-        {
+    let needle = "include_str!";
+    let mut rest = src;
+    while let Some(idx) = rest.find(needle) {
+        let after = &rest[idx + needle.len()..];
+        // Scan the next ~256 bytes — enough to cover a multi-line `concat!(...)`
+        // argument without straying into the next macro invocation.
+        let window_end = after
+            .char_indices()
+            .nth(256)
+            .map(|(i, _)| i)
+            .unwrap_or(after.len());
+        let window = &after[..window_end];
+        if window.contains("/lenses/") {
             n += 1;
         }
+        rest = after;
     }
     n
 }
