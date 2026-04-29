@@ -348,7 +348,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // TC1 substrate lens eta-equivalence (deferred / R2 research): integration for
     // `SubstrateResearchDeferredClaim` + `tc1_substrate_lens_eta_equivalence_deferred.dag`.
     // SG-0 path ratchet: Director sign-off (gunb-ai/gunbc#1130, comment 4341571168;
-    // direction ratified for #1179, comment 4341788769).
+    // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724).
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
