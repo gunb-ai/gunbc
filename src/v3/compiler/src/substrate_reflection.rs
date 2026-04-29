@@ -116,16 +116,20 @@ fn named_record_type_root(dag: &Dag, name: &str) -> ReflectResult<DeclarationId>
     for _ in 0..PEEL_MAX {
         match &dag.declaration(decl_id).connective {
             TypeConnective::Conj { .. } => return Ok(decl_id),
-            TypeConnective::Instantiation { template, .. } if {
-                matches!(
-                    &dag.declaration(*template).connective,
-                    TypeConnective::Conj { .. }
-                )
-            } =>
+            TypeConnective::Instantiation { template, .. }
+                if {
+                    matches!(
+                        &dag.declaration(*template).connective,
+                        TypeConnective::Conj { .. }
+                    )
+                } =>
             {
                 decl_id = *template;
             }
-            TypeConnective::Instantiation { template, arguments } if arguments.is_empty() => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
                 decl_id = *template;
             }
             _ => return err("substrate record type is not Conj"),
@@ -134,7 +138,11 @@ fn named_record_type_root(dag: &Dag, name: &str) -> ReflectResult<DeclarationId>
     err("substrate record peel depth exceeded")
 }
 
-fn conj_field_ty(dag: &Dag, conj_decl_id: DeclarationId, label: &str) -> ReflectResult<DeclarationId> {
+fn conj_field_ty(
+    dag: &Dag,
+    conj_decl_id: DeclarationId,
+    label: &str,
+) -> ReflectResult<DeclarationId> {
     let decl = dag.declaration(conj_decl_id);
     let TypeConnective::Conj { children } = &decl.connective else {
         return err("expected Conj");
@@ -146,7 +154,10 @@ fn conj_field_ty(dag: &Dag, conj_decl_id: DeclarationId, label: &str) -> Reflect
         .ok_or(ReflectError("missing Conj field"))
 }
 
-fn peel_to_optional_cardinality_decl(dag: &Dag, mut ty: DeclarationId) -> ReflectResult<DeclarationId> {
+fn peel_to_optional_cardinality_decl(
+    dag: &Dag,
+    mut ty: DeclarationId,
+) -> ReflectResult<DeclarationId> {
     const PEEL_MAX: usize = 64;
     for _ in 0..PEEL_MAX {
         match &dag.declaration(ty).connective {
