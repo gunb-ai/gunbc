@@ -27,6 +27,10 @@
 
 Granularity column distinguishes whether the row tracks a full lane, a sub-lane, an item, or a class — matches the manager brief's own scope decomposition.
 
+**Gate-string convention.** "Gate" cells are **descriptive identifiers** for the structural-acceptance gate the lane must fire to close. Until a ROADMAP gate-name alignment pass, treat unfamiliar strings as descriptive placeholders rather than ratchet names; the lane-owning manager is the authority on the canonical `.dag` gate string and updates this column on lane-close signal arrival.
+
+**`in-flight` vs `not-started` convention.** `in-flight` requires an active worker PR (open or landed partial) or substrate landings cited in `Last signal`. A row whose only signal is "worker brief authored" stays `not-started` until the first worker PR opens.
+
 ---
 
 ## Per-manager rows
@@ -42,8 +46,8 @@ Granularity column distinguishes whether the row tracks a full lane, a sub-lane,
 | T-Substrate-ParametricAlgebra | sub-lane | `Dimension<Carrier>` parametric attachment (unblocks Modeling Dimensions) | `dimension_phantom_unit_mismatch_structural` | not-started | — | Modeling phantom-worker brief authored. |
 | T-Substrate-ValueBody-list/sum | sub-lane | top-level `ValueBody` list/sum + `std.unicode` bootstrap | `value_body_map_carrier_landed` (Map landed via #1017 + #1068; list/sum pending) | in-flight | #1017, #1068 | **Prereq for R1C-A Sub-deliverable A** — pre-R1-close spawn unblocks R1 closure (per `r2-structure.md` Transition mechanics step 4 carve-out). |
 | T-Substrate-Lens-Primitive | sub-lane | `Lens<C>` parametric in `dsl/std/lens.dag` + `fold_lens<C>` machinery; migrate 4 PROXY/STUB lenses | `lens_primitive_landed` + `cost_lens_is_lens_instance` + `complexity_lens_is_lens_instance` + `idempotency_lens_is_lens_instance` + `parallelism_lens_is_lens_instance` | not-started | — | Spec at [`design-lens-framework.md`](design-lens-framework.md). Director-locked 2026-04-28: pure monoidal; reuses `DimensionReport<Carrier>`; meta-lens deferred post-R3. |
-| B4 Phase 1 carriers | sub-lane | 4 carriers (`DeclarationRef` consumer migration, fold-shape, emit-helper, extdeps-fixture-set) | `b4_phase1_carriers_landed` | in-flight | #1069 (B4.8 Phase-2 site dissolution); B4.2 first-consumer wiring landed | Sub-briefs B4.1 through B4.4. |
-| B4 Phase 2 site dissolutions | sub-lane | 8 site dissolutions | `b4_phase2_site_dissolutions_landed` | in-flight | #1069 | Sub-briefs B4.5 through B4.12. |
+| B4 Phase 1 carriers | sub-lane | 4 carriers (`DeclarationRef` consumer migration, fold-shape, emit-helper, extdeps-fixture-set) | `b4_phase1_carriers_landed` | in-flight | B4.2 first-consumer wiring landed | Sub-briefs B4.1 through B4.4. |
+| B4 Phase 2 site dissolutions | sub-lane | 8 site dissolutions | `b4_phase2_site_dissolutions_landed` | in-flight | #1069 (B4.8 site dissolution) | Sub-briefs B4.5 through B4.12. |
 | **R3-continuation: T-CostLens-Composition** | sub-gate progress | composition lens over `Lens<C>` (consumes T-Substrate-Lens-Primitive) | tracked in R3 ledger at standup; reported here as **sub-gate progress** until then | not-started | — | Gated on T-Substrate-Lens-Primitive close. |
 
 **Watch:** if Substrate workers idle >7 days waiting for Substrate-authored briefs, R2 Release Manager surfaces split-trigger to Director per [`r2-structure.md`](r2-structure.md) §"Watch condition (split trigger)" — recommend dedicated B4 Identity-Carrier Manager.
@@ -67,7 +71,7 @@ Granularity column distinguishes whether the row tracks a full lane, a sub-lane,
 
 | Identifier | Granularity | Scope | Gate (demo = gate) | Status | Last signal | Notes |
 |---|---|---|---|---|---|---|
-| T-Ground-Pilot | lane | pilot validates engine sharpened-(b) | `target_primitives_pilot_structural` | green | — | Validated; gates Rust/Python/Go. |
+| T-Ground-Pilot | lane | pilot validates engine sharpened-(b) | `pilot_inhabitance_routing_stability_landed` | green | #765 (merged 2026-04-25) | Toy inhabitance-search engine for Rust integer family + bool + Unit; gates Rust/Python/Go. |
 | T-Ground-Rust | lane | Rust target primitives | `rust_target_primitives_structural` | in-flight | #1005 (Rust IntegerRangeFact mirror dissolved) | XL. |
 | T-Ground-Python | lane | Python target primitives | `python_target_primitives_structural` | in-flight | #1080 (`primitives.dag`) | L. |
 | T-Ground-Go | lane | Go target primitives | `go_target_primitives_structural` | in-flight | `ac765ce10` + #1046 (tranche 1 + additional) | L. |
@@ -85,8 +89,8 @@ Granularity column distinguishes whether the row tracks a full lane, a sub-lane,
 
 | Identifier | Granularity | Scope | Gate (demo = gate) | Status | Last signal | Notes |
 |---|---|---|---|---|---|---|
-| Nested-optional flatten | class | gated on cardinality refinement | `nested_optional_flatten_impossible_structural` | in-flight | worker brief authored ([`r2-impossible-bugs-nested-optional-flatten-worker.md`](briefs/r2-impossible-bugs-nested-optional-flatten-worker.md)) | Coordinate with Substrate Manager. |
-| Unhandled diagnostic paths | class | Tier 2 substrate | `unhandled_diagnostic_paths_impossible_structural` | in-flight | worker brief authored ([`r2-impossible-bugs-unhandled-diagnostic-paths-worker.md`](briefs/r2-impossible-bugs-unhandled-diagnostic-paths-worker.md)) | Substrate-gap escalations route to Substrate Manager. |
+| Nested-optional flatten | class | gated on cardinality refinement | `nested_optional_flatten_impossible_structural` | not-started | worker brief authored ([`r2-impossible-bugs-nested-optional-flatten-worker.md`](briefs/r2-impossible-bugs-nested-optional-flatten-worker.md)) | Coordinate with Substrate Manager. Flips to `in-flight` when first worker PR opens. |
+| Unhandled diagnostic paths | class | Tier 2 substrate | `unhandled_diagnostic_paths_impossible_structural` | not-started | worker brief authored ([`r2-impossible-bugs-unhandled-diagnostic-paths-worker.md`](briefs/r2-impossible-bugs-unhandled-diagnostic-paths-worker.md)) | Substrate-gap escalations route to Substrate Manager. Flips to `in-flight` when first worker PR opens. |
 | Unenumerated effects | class | post-effects-design-doc per #808 | `unenumerated_effects_impossible_structural` | green | #971 (unenumerated effects lens landing) | Closed-system effects model is canonical reference. |
 
 ### Pure Bootstrap Manager — post-R1 PB
@@ -161,9 +165,9 @@ Until both happen, the signal is in-flight. A signal that sits >7 days unreceive
 **Authority discipline.** Release Manager is the **single ledger owner**, not a parallel decision-maker:
 - Does not author or contest lane-level structural-acceptance gates — those are owned by lane-owning managers per the structural-acceptance-per-lane-close discipline.
 - Does not adjudicate cross-program scope conflicts — those route to Director per [`r2-structure.md`](r2-structure.md) "Director (cross-program coordinator)".
-- Does not relitigate R1 PB census semantics on absorbed R1C rows — ROADMAP is single authority on R1 gate close per [`r2-structure.md`](r2-structure.md) line 136.
+- Does not relitigate R1 PB census semantics on absorbed R1C rows — ROADMAP is single authority on R1 gate close per [`r2-structure.md`](r2-structure.md) §"Pure Bootstrap Manager" ("R1 vs R2 boundary — defers to ROADMAP gate authority").
 
-**R2-close signal emission.** When **all 6 other managers' R2-scope lanes** are `green` (Modeling and Impossible-Bugs fully green; Substrate / PB green on their R2-scope lanes with R3-continuation rows still active; Grounding 11 lanes green; Evaluator 5 sub-lanes green), R2 Release Manager fires `r2_close_signal_to_director_authored` per the Release Manager brief acceptance gate, with R3 continuation readiness summarized from the `r3-continuation`-status rows in this ledger.
+**R2-close signal emission.** When **all 6 other managers' R2-scope lanes** are `green` (Modeling and Impossible-Bugs fully green; Substrate / PB green on their R2-scope lanes with R3-continuation rows still active; Grounding 11 lanes green; Evaluator 5 sub-lanes green), R2 Release Manager fires `r2_close_signal_to_director_authored` per the Release Manager brief acceptance gate, with R3 continuation readiness summarized from the `r3-continuation`-status rows in this ledger. **R3-continuation rows do NOT gate `r2_close_signal_to_director_authored`** — they are R3-scope work tracked here until R3 standup, surfaced as readiness signal alongside the R2-close fire, not as a blocker.
 
 ---
 
