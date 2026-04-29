@@ -145,7 +145,7 @@ Pending — post-spawn manager-authored autonomously:
 - T-Ground-Diagnostic (S) — brief [`t-ground-diagnostic.md`](t-ground-diagnostic.md)
 - T-Ground-CrossTarget-Meta (S; gated on PR-J no-op confirmation) — brief [`t-ground-cross-target-meta.md`](t-ground-cross-target-meta.md)
 - T-Ground-Tests
-- T-Ground-Dissolve (Track-13 cleanup)
+- T-Ground-Dissolve (Track-13 cleanup) — brief [`t-ground-dissolve.md`](t-ground-dissolve.md)
 - T-Ground-Python
 - T-Ground-Go
 - **Cleanup wave**: post-LanguageSpec, retire PR #989's engine-framed structure into the Coercion-Fold framing (per `design-emission-model.md` §"Affected lanes" option (c))
