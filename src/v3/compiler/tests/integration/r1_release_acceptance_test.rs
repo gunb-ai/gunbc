@@ -64,3 +64,50 @@ fn r1_release_acceptance_suite_passes_at_head() {
         );
     }
 }
+
+#[test]
+fn r3_deferred_claim_rejects_untyped_marker_refs() {
+    let source = r#"
+import std.verification { R3DeferredClaim, TestClaim, TestSuite }
+
+type R1GateMarker {}
+type R3LaneMarker {}
+type ReleaseAuthorityDoc {}
+
+data arbitrary_gate: Int = 0
+data r3_lane_marker: R3LaneMarker = {}
+data release_authority_doc: ReleaseAuthorityDoc = {}
+
+data bad_deferred_claim: TestClaim = {
+  name: "bad_deferred",
+  source: "let _: Int = 0",
+  file_name: "bad_deferred.v3",
+  predicate: R3DeferredClaim {
+    deferred_gate: arbitrary_gate,
+    r3_lane: r3_lane_marker,
+    authority_doc: release_authority_doc
+  },
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "bad_deferred_suite",
+  claims: [bad_deferred_claim]
+}
+"#;
+    let dag = compile_to_dag(source, "bad_r3_deferred_claim.dag")
+        .expect("malformed deferral fixture still compiles structurally");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::Fail(reason)
+                if reason.contains("deferred_gate")
+                    && reason.contains("R1GateMarker")
+                    && reason.contains("arbitrary_gate")
+        ),
+        "expected R3DeferredClaim to fail closed on untyped deferred_gate, got {results:?}"
+    );
+}
