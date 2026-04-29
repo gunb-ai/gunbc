@@ -281,16 +281,17 @@ Lane-owner dispatch status (update as sub-deliverables close):
 - [ ] Array, slice, map, struct, pointer
 - [ ] Function, interface, channel
 
-**T-Ground-Engine:** ⏸️ PARKED — Phase 0 audit ✅ (PR #768); Director routed Route 1 + Path 2 (loader-close ships type-structure-only accessor; pilot-list enumeration deferred). Engine split into two phases per Director signal on [PR #768 (2026-04-25T03:27:15Z)](https://github.com/gunb-ai/gunbc/pull/768) — see [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md).
+**T-Ground-Engine / Coercion-Fold:** ✅ PHASE 1 COMPLETE; Phase 2 first-list probe landed pre-R2 engine-reframe. Phase 0 audit ✅ (PR #768); Director routed Route 1 + Path 2 (loader-close shipped type-structure-only accessor; full pilot-list enumeration deferred). Engine split into Phase 1 type-structure validation and Phase 2 enumeration per Director signal on [PR #768 (2026-04-25T03:27:15Z)](https://github.com/gunb-ai/gunbc/pull/768) — see [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md). The newer R2 manager brief reframes this lane as T-Ground-Coercion-Fold and records PR #989 as the merged mirror-consistency probe footprint.
 - [x] Phase 0 substrate audit (concluded escalation-class; PR #768 merged commit `4afc0d794`)
-- **Phase 1 — type-structure validation** (sharpened-(b)): brief at [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md). Dispatchable when [PR #776](https://github.com/gunb-ai/gunbc/pull/776) loader-close merges.
-  - [ ] Engine sibling crate scaffold (`src/v3/grounding_engine/` or worker-discretion)
-  - [ ] Type-structure walker against loader-close `Declaration` accessor
-  - [ ] Variant-aware structural validation (`IntegerPrimitive | NonIntegerPrimitive`)
-  - [ ] Mirror-consistency assertion (links walker output to pilot's `RUST_PILOT_PRIMITIVES`)
-  - [ ] Type-structure-parity / mirror-consistency / state-space-discipline / diagnostic-quality tests
-- **Phase 2 — full pilot enumeration + mirror retirement**: blocked on R2 T-Substrate 4th sub-lane (top-level `ValueBody::List` extension specifically). Brief forward-planned at [`t-ground-engine-phase-2-enumeration.md`](t-ground-engine-phase-2-enumeration.md) (not yet authored). **Two substrate consumers** converge on this sub-lane (both list-of-sum shaped): tokenizer charclass phase-2 + Engine Phase 2. `kernel_algebra_profile` is `Map<String, AlgebraProfile>` — map-shaped, not list-of-sum; needs distinct `ValueBody::Map` substrate work and is tracked as a sibling future T-Substrate sub-lane (per [PR #782](https://github.com/gunb-ai/gunbc/pull/782) re-scoping after codex caught the substrate-shape conflation).
-  - [ ] Walker graduates to walking `rust_pilot_primitives` symbolically
+- **Phase 1 — type-structure validation** (sharpened-(b)): brief at [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md); implemented by `src/v3/grounding_engine/`.
+  - [x] Engine sibling crate scaffold (`src/v3/grounding_engine/`)
+  - [x] Type-structure walker against loader-close `Declaration` accessor
+  - [x] Variant-aware structural validation (`IntegerPrimitive | NonIntegerPrimitive`)
+  - [x] Mirror-consistency assertion (links walker output to pilot's `RUST_PILOT_PRIMITIVES`)
+  - [x] Type-structure-parity / mirror-consistency / state-space-discipline / diagnostic-quality tests
+- **Phase 2 — full pilot enumeration + mirror retirement**: first `ValueBody::List` probe landed; broader symbolic enumeration now waits on PR-F/Q1-Q2 alignment, LanguageSpec realignment, consumer plumbing over the landed list/sum carrier, and the planned mirror-retirement cleanup wave. The list/sum carrier itself is no longer the blocker (R2 Substrate records it as landed), and `kernel_algebra_profile` is not part of this list/sum lane; its `ValueBody::Map` carrier has also landed, with remaining work in map read-path/API and arrow-body evaluation.
+  - [x] First `rust_pilot_primitives` row probe walks `ValueBody::List` and checks mirror consistency
+  - [ ] Full walker graduates to walking `rust_pilot_primitives` symbolically
   - [ ] Pilot `RUST_PILOT_PRIMITIVES` mirror retires
   - [ ] Pilot crate deprecation note added (deferred from Phase 1 because mirror still load-bearing)
   - [ ] Full mirror-elimination claim satisfied (Engine consumes `.dag` declarations directly, no Rust-constant mirror remaining)
