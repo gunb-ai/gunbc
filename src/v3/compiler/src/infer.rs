@@ -49,8 +49,8 @@ use crate::infer_helpers::{
     TemplateArgumentBinding, TemplateArgumentsMatch,
 };
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at, magnitude_out_of_range,
-    IntegerRangeLookup,
+    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at,
+    magnitude_out_of_range_for_interval, IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
@@ -88,7 +88,7 @@ fn try_reconcile_int_literal_decision_set(
                     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
                     dag.mark_unresolved(
                         port,
-                        magnitude_out_of_range(literal, existing, range, span),
+                        magnitude_out_of_range_for_interval(literal, existing, range, span),
                     );
                     Some(IntLiteralSetReconciliation::Marked)
                 } else {
@@ -114,7 +114,10 @@ fn try_reconcile_int_literal_decision_set(
                     integer_range_for_decl(dag, ty.declaration)
                 {
                     let span = node_span_for_port(dag, port).unwrap_or_else(synthetic_span);
-                    dag.mark_unresolved(port, magnitude_out_of_range(literal, ty, range, span));
+                    dag.mark_unresolved(
+                        port,
+                        magnitude_out_of_range_for_interval(literal, ty, range, span),
+                    );
                     Some(IntLiteralSetReconciliation::Marked)
                 } else {
                     None
@@ -1212,7 +1215,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
                             IntegerRangeLookup::Found(range) => {
                                 return Decision::Fail(
                                     *input_port,
-                                    magnitude_out_of_range(
+                                    magnitude_out_of_range_for_interval(
                                         literal,
                                         *expected_ty,
                                         range,
@@ -2431,7 +2434,7 @@ fn int_literal_implicit_bind_tolerated_for_expected(
     match int_literal_fits_expected_type(dag, literal, expected) {
         Ok(Some(true)) => Ok(true),
         Ok(Some(false)) => match integer_range_for_decl(dag, expected) {
-            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range(
+            IntegerRangeLookup::Found(range) => Err(magnitude_out_of_range_for_interval(
                 literal,
                 TypeShape::new(expected),
                 range,
