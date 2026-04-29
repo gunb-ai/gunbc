@@ -40,7 +40,21 @@ Author the `LanguageSpec` schema as `.dag` substrate. Per Modeling problem 6 (`d
 - **External-realization shape** — `Arrow.body` per E-9.
 - **Per-primitive `RealizationCost`** — see B below.
 
-**Canonical home (P1-Step-1 DAG-ancestor check):** the brief proposes `src/v3/std/language_spec.dag` (or, if a closer ancestor surfaces during authoring, attach via inhabitance rather than declare a sibling). Worker MUST run the P1 procedure (`INVARIANTS.md:86-123`) and cite which steps resolved the location, *before* declaring the type. If Step 1 surfaces an existing parent (e.g., a target-spec carrier already in `dsl/extdeps/languages/`), re-home there and cite — escalate if no parent fits and you are tempted to declare a fifth bound-style sibling (see Q1 receipt at `design-emission-model.md:1019-1029` for the worked dissolution pattern).
+**Canonical home — existing type (P1-Step-1 DAG-ancestor receipt landed at brief-author time):** `LanguageSpec` is **already declared** at `src/v3/std/emit_model.dag:302` (12-field record carrying per-area `DeclarationRef` slots: statements / expressions / control_flow / literals / modules / functions / type_applications / type_definitions / record_derive_templates / patterns / collection_ops / values). A second declaration at `dsl/std/languages.dag:438` is a parallel-authority artifact predating the engine-reframe — its dissolution path is named below. **This lane EXTENDS the existing `src/v3/std/emit_model.dag` type; it does NOT author a new `language_spec.dag` file.** Author a new file only if Step 1 surfaces a structural reason the existing 12-field shape cannot host the engine-reframe additions; that decision escalates to manager (#1133) before any new file lands.
+
+**Extensions this lane lands on the existing type** (per Modeling problem 6, `design-emission-model.md:198-206`):
+- Primitive set with refinement-bound shape (Q1 `BoundDeclaration` consumer).
+- Algebra inhabitance per primitive (refinement parameters).
+- Structural axes that distinguish candidates (ownership / growability / encoding / lifetime).
+- Construction patterns for compound emission.
+- Operator dispatch (algebra → target operator).
+- External-realization shape (`Arrow.body` per E-9).
+- Per-primitive `RealizationCost` (B below; Q3 lock).
+- Consumer of Substrate-owned `MethodContract` (E below; rows attach to the LanguageSpec).
+
+**Parallel-authority dissolution:** `dsl/std/languages.dag:438`'s `LanguageSpec` declaration + its `rust_spec` / `go_spec` / `python_spec` data items (lines 1244 / 1268 / 1292) converge with `src/v3/std/emit_model.dag:302` under one authority. If the two shapes have already drifted, this lane resolves the drift explicitly (no silent reconciliation) and lands the dissolution receipt in the PR body. If the shapes are reconcilable, T-Ground-Dissolve retires the duplicate; if they are not (i.e., `dsl/std/languages.dag` carries a structural fact `emit_model.dag` cannot absorb), escalate to manager (#1133) — that is itself a substrate-modeling call.
+
+**P1 procedure receipts** (`INVARIANTS.md:86-123`): worker MUST cite which steps resolved each *new* field added to the existing type, in the PR body. Step 1 (DAG-ancestor) for the type itself is landed by this brief — the parent is `emit_model.dag`'s existing `LanguageSpec`.
 
 ### B. Per-primitive `RealizationCost` (Q3 lock — `design-emission-model.md:1143-1208`)
 
@@ -189,6 +203,7 @@ When this lane lands:
 - Parallel `MethodTranslation` (runtime.dag) ⊕ `SimpleMethodSpec` (emit.dag) × 3 targets collapses to single `MethodContract` row per `(target, dag_method)`.
 - Slice-1 mirror-consistency probe re-homes from `grounding_engine` to LanguageSpec's structural authority.
 - `extdeps/languages/{rust,python,go}/types.dag` table shape converges with `LanguageSpec` reflection (specifics depend on what schema authoring surfaces; if the table shape IS the LanguageSpec realization, the dissolution is in-place renaming + extension, not a separate file delete).
+- **Parallel `LanguageSpec` authority retires:** `dsl/std/languages.dag:438`'s `LanguageSpec` declaration + its `rust_spec` / `go_spec` / `python_spec` data items (lines 1244 / 1268 / 1292) converge under the `src/v3/std/emit_model.dag:302` authority. Drift between the two shapes is resolved explicitly in this lane's PR (no silent reconciliation); structural facts not absorbable by the v3 shape escalate to manager (#1133) before any new file or split lands.
 
 The `coercion.dag` shape that retires is named per the receipt landed on PR — worker MUST cite the specific declarations dissolved (so the dissolution claim is verifiable, not aspirational, per `feedback_holistic_over_patches.md` + `feedback_root_causes_over_quick_fixes.md`).
 
