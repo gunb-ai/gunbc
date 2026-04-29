@@ -257,6 +257,18 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/lane2_stage_2e_parallelism_test.rs",
     "src/v3/compiler/tests/integration/lane3_stage_3b_db1_test.rs",
     "src/v3/compiler/tests/integration/lens_register_correspondence_test.rs",
+    // T-Substrate-Lens-Primitive (R2 Substrate, first slice): Director-
+    // approved hand-Rust acceptance for `Lens<C>` substrate carrier and
+    // Q6.5 two-layer diagnostic-kind authority. Five structural claims
+    // over the regenerated bootstrap Dag — Lens<C> 6-field shape,
+    // Diagnostic.kind widened to AnyDiagnosticKind, Layer-1 closed sum
+    // unchanged, AnyDiagnosticKind two-constructor shape, and Layer-2
+    // payload-intentionally-absent gap receipt. Dispatch (#1130 +
+    // `docs/design-lens-framework.md` Q6.5) accepted "focused structural
+    // acceptance tests" rather than a parallel testgen harness.
+    // Dissolves into .dag `TestClaim` form when testgen covers reflected-
+    // Dag structural assertions over std/ types.
+    "src/v3/compiler/tests/integration/lens_substrate_carrier_test.rs",
     "src/v3/compiler/tests/integration/m0_acceptance.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs",
     "src/v3/compiler/tests/integration/m1_3_lens_unused_parameters_test.rs",

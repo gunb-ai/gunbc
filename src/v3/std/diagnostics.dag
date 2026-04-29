@@ -1,7 +1,8 @@
 module v3.std.diagnostics
 
 import std.list { List }
-import v3.std.substrate { SourceSpan }
+import v3.spec.v3_l1 { DeclarationRef }
+import v3.std.substrate { SourceSpan, TypeShape }
 
 // 🟡 SCAFFOLD. Mirrors the compiler's native diagnostic taxonomy for
 // the staged v3 diagnostics surface. Kept distinct from
@@ -9,6 +10,14 @@ import v3.std.substrate { SourceSpan }
 // imported top-level declaration with the same name during bootstrap.
 // Dissolution trigger: reflected diagnostics or a shared diagnostic
 // kind authority once the staged/bootstrap-local split disappears.
+//
+// Layer 1 (per `docs/design-lens-framework.md` Q6.5 two-layer
+// authority): Substrate-Manager-owned closed sum of compiler-primitive
+// diagnostic kinds. Layer-2 lens-instance kinds live separately under
+// `DiagnosticKindDecl` / `LensInstanceKindWitness` below — they MUST
+// NOT be added as variants here. Adding a Layer-1 kind is rare,
+// design-locked, and requires SCAFFOLD-note acknowledgment of where
+// the diagnostic surfaces.
 type CompilerDiagnosticKind
   = TokenizerError
   | ParseError
@@ -30,11 +39,73 @@ type Correction {
   new_source: String
 }
 
+// Layer 2 lens-instance diagnostic-kind declaration (per
+// `docs/design-lens-framework.md` Q6.5). A `DiagnosticKindDecl`
+// appears inside the `diagnostic_kinds` list of an `inhabits Lens<C>`
+// declaration; the containing inhabitance IS the owning lens (P2
+// single-authority via structural containment, NOT via a duplicated
+// `lens_instance` field). The decl's `name` MUST NOT collide with any
+// `CompilerDiagnosticKind` Layer-1 variant name (anti-shadowing
+// protocol per Q6.5 §Name-collision protocol).
+//
+// 🟡 TRANSITIONAL. Owner-by-containment is the structural authority,
+// not a re-declared field. The decl name is a String today; refines
+// to a typed `KindName` namespace-scoped to the parent lens once the
+// substrate exposes namespace-typed identifiers.
+type DiagnosticKindDecl {
+  name: String
+  payload: TypeShape
+}
+
+// Layer 2 lens-instance kind witness (per Q6.5 §Substrate change
+// required). A structural pointer to a declared `DiagnosticKindDecl`.
+//
+// 🟡 SCAFFOLD coproduct (single-arm record). Pattern 1 (per-call
+// payload typing) fails because the payload's TypeShape is dependent
+// on the runtime-resolved `kind_decl.payload` field — `.dag` grammar
+// today cannot express `payload: <inhabits kind_decl.payload>`
+// (refinement-type-on-sibling-field). Pattern 2 (collapse to a flat
+// `{ kind_decl, payload_kind_shape }` record with a free `TypeShape`
+// payload coordinate) ratifies exactly the parallel-authority illegal
+// state Q6.5's §State-space discipline rejected — three independent
+// coordinates (lens / name / payload-shape) that admit
+// `(Lens<TenantFlow>, "WrongName", payload-of-different-shape)`.
+// Pattern 3 is the dissolution path: when refinement/dependent field
+// typing OR declaration-shaped inhabitance witnesses land in the .dag
+// substrate, this carrier grows a checked `payload` value field
+// constrained to inhabit the shape `kind_decl.payload` names; until
+// then the witness is decl-only — Layer-2 kind identity and
+// namespace authority are present, but the structured payload value
+// is intentionally NOT carried through the substrate. Trigger:
+// dependent-field typing or substrate inhabitance witnesses lower
+// without hand-Rust scaffolding.
+type LensInstanceKindWitness {
+  kind_decl: DeclarationRef
+}
+
+// Two-layer diagnostic-kind parent (Q6.5). `Diagnostic.kind` widens
+// from `CompilerDiagnosticKind` to this sum so a single `Diagnostic`
+// value can carry either Layer-1 (substrate-owned closed sum) or
+// Layer-2 (lens-namespace-scoped) kinds without re-introducing a
+// cross-manager handoff for lens-instance kind authoring.
+//
+// Anti-bridge invariant (Q6.5): adding a lens-instance kind MUST NOT
+// extend `CompilerDiagnosticKind` — Layer-2 kinds enter via
+// `LensInstanceKind(LensInstanceKindWitness)` exclusively. The closed
+// Layer-1 sum stays the authority for compiler-primitive kinds only.
+type AnyDiagnosticKind
+  = CompilerKind(CompilerDiagnosticKind)
+  | LensInstanceKind(LensInstanceKindWitness)
+
 // 🟡 SCAFFOLD until reflected diagnostics replace the compiler's
 // native enum. The record shape is the authority for consumers that
 // only need the diagnostic carrier, including `fixes`.
+//
+// `kind: AnyDiagnosticKind` carries either Layer-1 (closed-sum
+// compiler-primitive) or Layer-2 (lens-instance, namespace-scoped)
+// kinds per Q6.5 two-layer authority.
 type Diagnostic {
-  kind: CompilerDiagnosticKind
+  kind: AnyDiagnosticKind
   span: SourceSpan
   message: String
   fixes: List<Correction>
