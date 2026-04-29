@@ -2800,11 +2800,12 @@ fn lower_data_item(
 }
 
 /// Substrate fact for the R1C-B `repeat_string` data-body fold: only the declaration
-/// introduced from `dsl/std/render.dag` or the bootstrap stub `render_repeat_string_bootstrap.dag`
-/// is eligible — not any other `repeat_string` name binding (user/local shadowing).
+/// introduced from `dsl/std/render.dag` or `render_repeat_string_bootstrap.dag` (the latter
+/// emitted by `src/v3/compiler/build.rs` from the marked excerpt in `render.dag`) is eligible —
+/// not any other `repeat_string` name binding (user/local shadowing).
 fn dsl_std_render_repeat_string_decl_id(dag: &Dag) -> Option<DeclarationId> {
     // Closed enum of substrate files that introduce the authoritative `repeat_string`
-    // decl (`dsl/std/render.dag` when present in the bundle, else the minimal R1C-B stub).
+    // decl (`dsl/std/render.dag` when present in the bundle, else the bootstrap slice).
     const REPEAT_STRING_AUTHORITY_SUFFIXES: &[&str] = &[
         "dsl/std/render.dag",
         "dsl/std/render_repeat_string_bootstrap.dag",
@@ -2877,7 +2878,8 @@ const REPEAT_STRING_FOLD_MAX_COUNT: i64 = 1_048_576;
 /// Upper bound on produced UTF-8 bytes for the same fold (defense in depth with [`REPEAT_STRING_FOLD_MAX_COUNT`]).
 const REPEAT_STRING_FOLD_MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 
-/// Semantics aligned with `dsl/std/render.dag` `repeat_string` / `repeat_string_loop`:
+/// Semantics aligned with `dsl/std/render.dag` `repeat_string` / `repeat_string_loop` (same text
+/// is mechanically sliced into `render_repeat_string_bootstrap.dag` — see `build.rs`):
 /// `remaining <= 0` returns the accumulator immediately (`""` for `repeat_string`), so **both**
 /// `n == 0` and **`n < 0`** fold to an empty string — matches the bounded-loop story in
 /// `dsl/std/render.dag` (not a separate partial semantics for negative `n`).

@@ -5329,8 +5329,8 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                     output: DeclarationId(186),
                     body: ArrowBody::Unparsed(SourceSpan::new(
                         "dsl/std/render_repeat_string_bootstrap.dag",
-                        1225,
-                        1344,
+                        598,
+                        717,
                     )),
                 },
                 type_params: vec![],
@@ -5341,7 +5341,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/render_repeat_string_bootstrap.dag", 1153, 1344),
+                span: SourceSpan::new("dsl/std/render_repeat_string_bootstrap.dag", 526, 717),
             },
             Declaration {
                 id: DeclarationId(201),
@@ -5351,8 +5351,8 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                     output: DeclarationId(186),
                     body: ArrowBody::Unparsed(SourceSpan::new(
                         "dsl/std/render_repeat_string_bootstrap.dag",
-                        1392,
-                        1445,
+                        765,
+                        818,
                     )),
                 },
                 type_params: vec![],
@@ -5363,7 +5363,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/render_repeat_string_bootstrap.dag", 1346, 1445),
+                span: SourceSpan::new("dsl/std/render_repeat_string_bootstrap.dag", 719, 818),
             },
             Declaration {
                 id: DeclarationId(202),
