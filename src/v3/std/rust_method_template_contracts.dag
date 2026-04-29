@@ -23,6 +23,23 @@
 // `runtime_template` rewrites to `{arg}` per the canonical convention
 // (rows with one argument; no positional ambiguity).
 //
+// PHASE-1 OMISSIONS (substrate-shape gap; see PR body for details):
+//   - `all` / `any` / `filter` / `flat_map` are declared in
+//     `dsl/extdeps/languages/rust/emit.dag` as
+//     `rust_higher_order_methods: List<HigherOrderMethodSpec>` with
+//     fields `{ method_name, inline_template, fn_ref_template,
+//     wraps_in_sharing }` — DUAL-TEMPLATE shape distinct from
+//     `SimpleMethodSpec`'s single-template shape. The current
+//     `MethodTemplateContract` carries single `emit_template`;
+//     consolidating dual-template authority into a single field would
+//     lose the inline-vs-fn-ref distinction (semantic drift). Phase 1
+//     omits these 4 rows; legacy `rust_higher_order_methods` continues
+//     serving v2 emit. Phase 1.5 substrate-shape decision (extend
+//     `MethodTemplateContract` to carry dual-template OR sibling
+//     carrier OR per-target structural axis) is a Substrate-owned
+//     cross-manager question — flagged at the brief level for
+//     jolly-ram-908. Same deferral shape as `string_contains`.
+//
 // DRIFT RECEIPTS (resolved in this row set; old authorities retain
 // their pre-consolidation shapes until Phase 2):
 //   - `count`: runtime `"{recv}.len()"` differs from emit
