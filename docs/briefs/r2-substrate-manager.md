@@ -35,7 +35,7 @@ Substrate primitive landing for `Lens<C>` per the 8-question dialogue (Q6/Q7/Q8 
 ```
 Lens<C> = (
   name: String,
-  read: (Dag, Behavior) → Witness<C>,        // Q6: Witness<C> stays as-is; Diagnostic.kind extends for structural failures
+  read: (Dag, Behavior) → Witness<C>,        // Q6: Witness<C> stays as-is; structural failures use lens-owned Diagnostic.kind declarations
   sequential: Monoid<C>,                       // structural inhabitance; replaces parallel compose+unit cascade
   branch: (C, C) → C,
   iterate: (LoopBound, C) → C,
