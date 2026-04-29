@@ -21,17 +21,28 @@ fn err<T>(msg: &'static str) -> ReflectResult<T> {
 }
 
 fn disj_variant_ty(dag: &Dag, sum_name: &str, variant_label: &str) -> ReflectResult<DeclarationId> {
-    let decl = dag
+    let mut decl_id = dag
         .declaration_by_name(sum_name)
-        .ok_or(ReflectError("missing sum type"))?;
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        return err("sum type is not Disj");
-    };
-    variants
-        .iter()
-        .find(|v| v.label == variant_label)
-        .map(|v| v.ty)
-        .ok_or(ReflectError("missing sum variant"))
+        .ok_or(ReflectError("missing sum type"))?
+        .id;
+    const PEEL_MAX: usize = 64;
+    for _ in 0..PEEL_MAX {
+        let decl = dag.declaration(decl_id);
+        match &decl.connective {
+            TypeConnective::Instantiation { template, arguments } if arguments.is_empty() => {
+                decl_id = *template;
+            }
+            TypeConnective::Disj { variants } => {
+                return variants
+                    .iter()
+                    .find(|v| v.label == variant_label)
+                    .map(|v| v.ty)
+                    .ok_or(ReflectError("missing sum variant"));
+            }
+            _ => return err("sum type is not Disj"),
+        }
+    }
+    err("Instantiation peel depth exceeded")
 }
 
 fn port_fv(p: PortId) -> FieldValue {
