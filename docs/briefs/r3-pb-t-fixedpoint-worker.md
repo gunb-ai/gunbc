@@ -44,14 +44,25 @@ These dependencies are cumulative: R2-Evaluator → T-LensProducer-Retirement (X
 
 Per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101 + `r3-structure.md:60`:
 
-**`pb_self_compile_fixed_point_strong`** — authored as a `.dag` `TestClaim` consuming the existing `FixedPointConverges { compile_target, expected }` variant at `src/v3/std/verification.dag:206-209`. Acceptance:
+**`pb_self_compile_fixed_point_strong`** — authored as a `.dag` `TestSuite` **composing two existing `TestPredicate` variants** at `src/v3/std/verification.dag`:
 
-- v3 binary compiles `compiler.dag` → emitted Rust output X.
-- Recompiling `compiler.dag` from X (or running the cycle again) → output X′ where `X == X′` **byte-identically** (per [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) §Design — byte equality, not semantic diff).
-- All Shape-A emitted artifacts (Rust today; Python/Go once R2-Grounding-{Python,Go} land — see §"Cross-lane sequencing") byte-identical between cycle N and cycle N+1.
-- SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` = 0 at the time of evaluation (gate cross-reads the SG-0 census authority — does not duplicate it).
+1. **`FixedPointConverges { compile_target, expected }`** (line 206-209) — one row per Shape-A artifact in the accepted artifact set. Each row asserts: the v3 binary compiles `compiler.dag` to that target → re-compiling from the emitted output produces **byte-identical** output (per [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) §Design — byte equality, not semantic diff). DB-8's `self_host_fixed_point` binary is the runtime mechanic; this row is the structural acceptance.
+2. **`RatchetZero { authority, ratchet_kind }`** (line 210-213) — single row asserting SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` census = 0 at evaluation time. Cross-reads the SG-0 census authority (does not duplicate the list).
 
-**Substrate is already in place** (`FixedPointConverges` variant exists). No substrate-introduction expected; if the strong-interpretation acceptance surfaces a substrate gap, follow `INVARIANTS.md` §P1 substrate-fact-introduction procedure (signal Substrate Manager; do not introduce ad-hoc).
+### Single grounding gate (artifact set derivation)
+
+The accepted artifact set for the `FixedPointConverges` rows is **derived from one grounding fact**: the R2 Release Manager closure ledger's report of "which `R2-Grounding-{Lang}` lanes are closed at the moment of dispatch." Worker reads this once at dispatch and authors exactly one `FixedPointConverges` row per closed-grounding language. The dispatch precondition (§"Dispatch preconditions") and the acceptance artifact set are therefore **the same fact, read once** — not two parallel lists that can drift.
+
+Concretely:
+- If at dispatch the closure ledger reports `R2-Grounding-Rust` closed only → artifact set = {Rust} → one `FixedPointConverges` row.
+- If `R2-Grounding-Rust` + `R2-Grounding-Python` closed → artifact set = {Rust, Python} → two rows.
+- If all three closed → three rows.
+
+The lane closes when every artifact in the set produces the byte-identical cycle. Subsequent `R2-Grounding-{Lang}` closures landing **after** T-FixedPoint closes are addressed by re-evaluating the `TestSuite` against the new ledger reading; if a row regresses, that's a Grounding-lane regression, not a re-opening of T-FixedPoint.
+
+### Substrate readiness check
+
+Both `FixedPointConverges` and `RatchetZero` variants exist on main today (verified at `src/v3/std/verification.dag:206-213`). The strong claim is **substrate-composition**, not substrate-introduction. STOP condition (see §"STOP conditions"): if `TestSuite`-level composition of these two predicates proves structurally insufficient at authoring time (e.g., the runtime cannot evaluate the AND-conjunction across the two predicate kinds, or the SG-0 census authority surface is not addressable from `RatchetZero.authority`), that's a substrate gap → escalate per `INVARIANTS.md` §P1 (signal Substrate Manager; do not extend variants from this lane).
 
 ### Relationship to DB-8 ratchet infrastructure
 
@@ -87,14 +98,18 @@ T-FixedPoint **does not** own:
 
 ## Dispatch preconditions
 
-Per `r3-structure.md` §"R3 worker dispatch precondition": the **joint precondition** is "R2-Evaluator landed AND R2-Grounding-Rust+Python landed" — Director-discretionary brief authoring may begin during R2 final week (this is what authorizes this planning artifact today), but **worker dispatch waits**. For T-FixedPoint specifically, dispatch additionally requires:
+Per `r3-structure.md` §"R3 worker dispatch precondition": the **joint precondition** is "R2-Evaluator landed AND R2-Grounding-Rust+Python landed" — Director-discretionary brief authoring may begin during R2 final week (this is what authorizes this planning artifact today), but **worker dispatch waits**.
+
+PB Manager dispatches when **a single ledger reading** of the R2 Release Manager closure ledger shows all of the following simultaneously:
 
 1. R2 close signal (R2 Release Manager closure ledger).
 2. R2-Evaluator landed and stable (R2 lane closed).
 3. T-LensProducer-Retirement (XL) closed — all three sub-gates (`lens_apply_dot_rs_retired`, `lens_testgen_dot_rs_retired`, `regen_lens_dot_rs_retired`) green; SG-0 non-test census = 0.
-4. PB Manager (continuation) confirms SG-0=0 reading on a clean main before issuing dispatch.
+4. **At least one** `R2-Grounding-{Lang}` lane closed (Rust is the load-bearing minimum; Python/Go closures expand the artifact set per §"Single grounding gate").
 
-If any of (1)-(4) is not met, this brief stays in PROPOSAL state; PB Manager does not dispatch.
+The same ledger reading that satisfies (1)-(4) **derives** the accepted artifact set for the `pb_self_compile_fixed_point_strong` `TestSuite` (§"Acceptance gate"). One ledger reading → both dispatch readiness and artifact-set composition; the brief does not maintain a parallel hand-curated artifact list.
+
+If any of (1)-(3) is not met, or (4) yields the empty set, this brief stays in PROPOSAL state; PB Manager does not dispatch.
 
 ## STOP conditions
 
