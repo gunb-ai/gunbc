@@ -277,6 +277,16 @@ check_q2_prose_section_existence() {
     # (substring match against bare "4" always finds something) —
     # tracked as known limitation; multi-character tokens like
     # `§6a`/`§0.7` are discriminating.
+    # DISSOLUTION TRIGGER: first reviewer-flagged stale `§N` (single-
+    # digit) citation that survives this check because the digit
+    # appears elsewhere in the target file. At that point the check
+    # tightens to require structural context — match `§N` only if
+    # the target file has a heading like `## N`, `### N`, `# N`, or
+    # numbered-list item starting with `N.` at column 0. Until that
+    # surfaces, multi-character disambiguation is the load-bearing
+    # discriminator (and live briefs predominantly use multi-char
+    # forms — §P1/§Q6/§Q6.5/§"Lane structure" — so single-digit `§4`
+    # citations are uncommon).
     while IFS= read -r citation; do
       [ -z "$citation" ] && continue
 
