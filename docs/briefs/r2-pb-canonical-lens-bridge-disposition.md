@@ -35,7 +35,7 @@ The runner re-compiles these bytes via `compile_to_dag(...)` to obtain a "canoni
 
 ## Why these survive — the substrate gap
 
-The dispatch exists because **`INVARIANTS.md` §P2 (executable single authority)** requires `Dag`-coherent reflection: when the runner reflects program nodes via `reflect_program_dag_nodes_in_file(...)` to feed a lens, the `Behavior`/`List` variant `DeclarationId`s in the reflected `FieldValue`s **must come from the same `Dag` instance** that the lens is applied against. Otherwise the lens's pattern-matches on `Behavior::Bind { ... }` etc. compare `DeclarationId`s across `Dag` instances and fail spuriously.
+The dispatch exists because **`INVARIANTS.md` §P2 (Boundary Discipline)** requires `Dag`-coherent reflection: when the runner reflects program nodes via `reflect_program_dag_nodes_in_file(...)` to feed a lens, the `Behavior`/`List` variant `DeclarationId`s in the reflected `FieldValue`s **must come from the same `Dag` instance** that the lens is applied against. Otherwise the lens's pattern-matches on `Behavior::Bind { ... }` etc. compare `DeclarationId`s across `Dag` instances and fail spuriously.
 
 Concretely (see comment block at `test_runner.rs:1762-1772` and `:1832-1833`):
 
