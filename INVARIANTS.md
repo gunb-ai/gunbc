@@ -200,7 +200,7 @@ A downstream stage reads a lower layer not through its declared accessors but by
 
 ### Reflection evidence is not structural proof
 
-`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior`) now projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
+`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior_list`) now projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
 
 **Confidence tag for these gates:** `LensOutputEquals` / `AlgebraicLaw` runners that consume `reflect_program_dag_nodes_in_file` gain **structural** parity with `src/v3/std/substrate.dag` for the reflected spine (still bounded by whatever the lens algebra itself proves). Treat older notes that described reflection as intentionally lossy as **superseded** once this path ships.
 
