@@ -56,7 +56,11 @@ fn interval_d_shared_parent_consolidation_landed() {
 fn bound_carrier_parent_matches_algebra_shape() {
     fn assert_cardinal_interval(_: Interval<Cardinal>) {}
     fn assert_ordinal_interval(_: Interval<Ordinal>) {}
-    assert_cardinal_interval(CardinalityBound::UNBOUNDED.as_cardinal_interval());
+    assert_cardinal_interval(
+        CardinalityBound::UNBOUNDED
+            .try_as_cardinal_interval()
+            .expect("Unbounded"),
+    );
     assert_ordinal_interval(Interval::Unbounded);
 }
 
