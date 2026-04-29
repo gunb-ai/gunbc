@@ -2,12 +2,12 @@
 
 **Status:** PROPOSAL — dispatchable now. Q6.5 two-layer diagnostic authority is **LIVE** on main via PR [#1129](https://github.com/gunb-ai/gunbc/pull/1129); this lane is a **Layer-1 consumer** of `CompilerDiagnosticKind` and does **not** widen that closed sum. Authored 2026-04-29 (R2 Grounding Manager redirect from sibling dispatch).
 
-**Lane:** T-Ground-Diagnostic (S) — item **8** of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane description line 34, lane row line 67, pending list line 144).
+**Lane:** T-Ground-Diagnostic (S) — item **8** of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane description line 34, lane row line 67, pending list line 145).
 
 **Manager:** R2 Grounding Manager ([`r2-grounding-manager.md`](r2-grounding-manager.md)).
 
 **Lineage / authorities consumed (no re-litigation):**
-- R2 manager lane row + acceptance gate: [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 34, 67, 127 (`diagnostic_structural_ordering_landed`), 144.
+- R2 manager lane row + acceptance gate: [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 34, 67, 127 (`diagnostic_structural_ordering_landed`), 145.
 - Q6.5 two-layer authority: [`docs/design-lens-framework.md`](../design-lens-framework.md) §**"Q6.5 — Two-layer authority for diagnostic kinds"** — Layer 1 `CompilerDiagnosticKind` is Substrate-owned; **this lane consumes; does NOT extend**; anti-bridge: lens-instance kinds never enter `CompilerDiagnosticKind`.
 - Engine-reframe + fold failures: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problems **4** (ordering is diagnostic-only; lines ~152–164) and **5** (fail-closed diagnostic surface; lines ~165–188); `EmissionDiagnostic` worked shapes (e.g. `UnderRefined`, `NoInhabitant`; search **EmissionDiagnostic** in that doc); lane table row ~386 (`T-Ground-Diagnostic` owns carrier + resolution-hint structure); **UnderRefined** worked receipts **Example 1** (bound / unrefined `Int`, lines ~417–464) **and Example 5** (algebra ambiguity, `unspecified_axis: "algebra"`, lines ~639–680) **plus** Example 6 as lifted test targets.
 - Fail-closed compilation: [`INVARIANTS.md`](../../INVARIANTS.md) **C-8** (P3) + C-series sentinels — no silent fabrication when the fold cannot determine.
