@@ -151,10 +151,7 @@ mod tests {
         let source =
             include_str!("../../compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag");
         let file = "src/v3/compiler/tests/fixtures/r1_mock_backed_invariant_gate.dag";
-        let dag = match v3_compiler::compile_to_dag(source, file) {
-            Ok(d) => d,
-            Err(e) => panic!("fixture compile: {e:?}"),
-        };
+        let dag = v3_compiler::compile_to_dag(source, file).expect("fixture compile");
         let err = extract_lifetime_program(&dag).expect_err("extraction must fail closed");
         match err {
             EmissionDiagnostic::LifetimeProgramExtractionPending { detail } => {

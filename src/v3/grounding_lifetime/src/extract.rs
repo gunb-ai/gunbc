@@ -19,16 +19,27 @@ use crate::program::{BindingId, LifetimeProgram};
 
 use std::collections::BTreeMap;
 
-/// Span roots that appear on [`Dag::new`] bootstrap fixtures (regenerated snapshots).
+/// Span roots that appear on [`Dag::new()`] bootstrap fixtures (regenerated snapshots).
 ///
 /// Keep aligned with `bootstrap_generated.rs` / `bootstrap_generated_without_parse_surface.rs`
 /// when new fixture corpora land; otherwise user/test modules may be misclassified.
+///
+/// Note: only **three** `src/v3/compiler/*.dag` stubs ship inside the fixture — not every path
+/// under `src/v3/compiler/` (tests live there too).
 fn is_bootstrap_fixture_authority_source_file(file: &str) -> bool {
-    file.starts_with("dsl/std/")
+    if file.starts_with("dsl/std/")
         || file.starts_with("dsl/extdeps/")
         || file.starts_with("src/v3/std/")
         || file.starts_with("src/v3/spec/")
-        || file.starts_with("src/v3/compiler/")
+    {
+        return true;
+    }
+    matches!(
+        file,
+        "src/v3/compiler/operators.dag"
+            | "src/v3/compiler/pipeline.dag"
+            | "src/v3/compiler/regen.dag"
+    )
 }
 
 fn first_non_authority_lifetime_surface_declaration(dag: &Dag) -> Option<(String, String)> {
