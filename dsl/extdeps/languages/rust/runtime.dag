@@ -57,22 +57,16 @@ data string_escape_chars: List<String> = ["\\", "\""]
 // -- Collection operations -------------------------------------------
 // Ref: std::vec::Vec, std::iter::Iterator
 
-// DSL pipe method -> Rust method translation.
-// Each entry maps a DAG method name to its Rust rendering.
-type MethodTranslation {
-  dag_method: String                   // DSL method name
-  rust_template: String                // Rust rendering template
-}
-
-data collection_method_translations: List<MethodTranslation> = [
-  { dag_method: "count",     rust_template: "\{recv\}.len()" },
-  { dag_method: "join",      rust_template: "\{recv\}.join(&\{arg0\})" },
-  { dag_method: "split",     rust_template: "\{recv\}.split(&\{arg0\}).map(|s| s.to_string()).collect::<Vec<_>>()" },
-  { dag_method: "last",      rust_template: "\{recv\}.last().cloned()" },
-  { dag_method: "first",     rust_template: "\{recv\}.first().cloned()" },
-  { dag_method: "enumerate", rust_template: "\{recv\}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()" },
-  { dag_method: "chars",     rust_template: "\{recv\}.chars().map(|c| c as i64).collect::<Vec<_>>()" }
-]
+// `MethodTranslation` + `collection_method_translations` retired in
+// T-Ground-LanguageSpec scope E Phase 2 (#1196 follow-up): zero v2
+// consumers, zero stage0 references, fully dead. Method-template
+// authority is now `rust_method_template_contracts` at
+// `src/v3/std/rust_method_template_contracts.dag` (registry-backed
+// `MethodTemplateContract` rows). v2's emit pipeline still reads the
+// `rust_method_templates()` derived map below — Phase 2 retirement of
+// THAT path is gated on v2's lack of bootstrap-Dag consumer
+// infrastructure and folds into Pure-Bootstrap-Zero / v2 retirement
+// scope (manager dispatch #1133 inbox 4344956791).
 
 // "How does Rust iterate?"
 // Ref: std::iter::IntoIterator trait
