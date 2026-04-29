@@ -44,7 +44,7 @@ Per [`docs/design-lens-framework.md`](../design-lens-framework.md) §Q6.5:
 
 Author a **closed sum** (or equivalent substrate record + tagged variants) for emission/fold failures named in [`docs/design-emission-model.md`](../design-emission-model.md), including at minimum:
 
-- **`UnderRefined`** — program intent or a structural axis is under-specified; candidate set (or axis name) + **resolution hints** per Modeling problem 5. Align field names with worked examples (e.g. bound / algebra / growability axes cited in Examples 1, 3–5).
+- **`UnderRefined`** — program intent or a structural axis is under-specified; candidate set (or axis name) + **resolution hints** per Modeling problem 5. Align field names with worked examples: **Example 1** (bound / refinement gap on `Int`), **Example 5** (algebra ambiguity — `EmissionDiagnostic::UnderRefined { unspecified_axis: "algebra", .. }` per `fold_dag_int_ambiguous_algebra_fails_closed` in `design-emission-model.md` ~672–676), and growability / encoding axes cited in Examples 3–4 where applicable. **Do not collapse** bound-under-refinement and algebra-under-refinement into a single acceptance test — they are distinct `UnderRefined` shapes.
 - **`NoInhabitant`** — substrate does not declare a candidate covering the program’s stated refinement (Example 6 pattern).
 - **Contradiction / multi-site conflict** — when upstream analysis yields incompatible structural constraints (e.g. lifetime analyzer’s `ContradictoryUse` pattern; Coercion-Fold meet on facts).
 
@@ -126,12 +126,13 @@ Worker MUST run the 3-step procedure for **every** new substrate type / variant 
 
 Hermetic, behavior-driven, unit-first (`TESTING.md`); sub-second per `feedback_test_timeout_2s.md`.
 
-1. **UnderRefined shape parity** — lift Example 1 (`design-emission-model.md` ~417-464): unrefined `Int` ⇒ `UnderRefined` with enumerated candidates + `unspecified_axis` / hint structure matching the doc sketch (field names may follow substrate naming; semantics must match).
-2. **NoInhabitant parity** — Example 6 (`design-emission-model.md` ~684-731): refinement present, no covering candidate ⇒ `NoInhabitant` (or equivalent authored name) with structured payload.
-3. **Contradiction / conflict** — two incompatible structural constraints ⇒ typed contradiction variant (align with lifetime analyzer migration path).
-4. **Ordering is diagnostic-only** — regression asserting fold emission path does **not** consult ordering tables for selection; diagnostics may reference declared order for enumeration only (tie to Modeling problem 4).
-5. **Q6.5 non-extension** — automated or manual guard: `CompilerDiagnosticKind` variant set unchanged by this lane’s diff (Layer-1 closed sum ratchet).
-6. **`cargo test` / `clippy` / `fmt`** gates per workspace rules.
+1. **UnderRefined — bound axis (Example 1)** — lift `design-emission-model.md` (~417–464): unrefined `Int` ⇒ `UnderRefined` with enumerated candidates + `unspecified_axis` / hint structure matching the `fold_dag_int_unrefined_fails_closed` `TestClaim` sketch (`unspecified_axis: "bound"` in that doc’s worked shape).
+2. **UnderRefined — algebra ambiguity (Example 5)** — lift `design-emission-model.md` (~639–680): program intent under-determines **which algebra** (distinct from “algebra known, bound missing” in Example 1) ⇒ `UnderRefined` with **`unspecified_axis: "algebra"`** and payload matching `fold_dag_int_ambiguous_algebra_fails_closed` / `expected_diagnostic: matches(EmissionDiagnostic::UnderRefined { unspecified_axis: "algebra", .. })`. **Both** Example 1 and Example 5 **must** land as separate `.dag` `TestClaim` receipts before implementation dispatch treats UnderRefined acceptance as complete.
+3. **NoInhabitant parity** — Example 6 (`design-emission-model.md` ~684–731): refinement present, no covering candidate ⇒ `NoInhabitant` (or equivalent authored name) with structured payload.
+4. **Contradiction / conflict** — two incompatible structural constraints ⇒ typed contradiction variant (align with lifetime analyzer migration path).
+5. **Ordering is diagnostic-only** — regression asserting fold emission path does **not** consult ordering tables for selection; diagnostics may reference declared order for enumeration only (tie to Modeling problem 4).
+6. **Q6.5 non-extension** — automated or manual guard: `CompilerDiagnosticKind` variant set unchanged by this lane’s diff (Layer-1 closed sum ratchet).
+7. **`cargo test` / `clippy` / `fmt`** gates per workspace rules.
 
 ---
 
@@ -139,7 +140,7 @@ Hermetic, behavior-driven, unit-first (`TESTING.md`); sub-second per `feedback_t
 
 When this lane merges:
 
-- Fold failures are **typed structural facts** (`EmissionDiagnostic`), not ad hoc strings or engine exceptions — receipt: Examples 1 / 5 / 6 lifted to tests.
+- Fold failures are **typed structural facts** (`EmissionDiagnostic`), not ad hoc strings or engine exceptions — receipt: **Examples 1, 5, and 6** each lifted to at least one `.dag` `TestClaim` (Example 1 = bound `UnderRefined`; Example 5 = algebra `UnderRefined` with `unspecified_axis: "algebra"`; Example 6 = `NoInhabitant`).
 - **Diagnostic-only ordering** is substrate-declared — receipt: ordering tables / fields are data, not hidden engine policy (`design-emission-model.md:160-163`).
 - **Lane-local `EmissionDiagnostic` mirrors** (e.g. `v3-grounding-lifetime`) have a **named migration path** onto the substrate carrier — receipt tracked in PR sequence with Coercion-Fold / analyzer crates.
 
