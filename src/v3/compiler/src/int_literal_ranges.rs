@@ -76,6 +76,22 @@ impl IntervalInt {
             IntervalInt::ExactInterval { min, max, .. } => *min <= value && value <= *max,
         }
     }
+
+    pub(crate) fn exact_interval_facts(&self) -> Option<ExactIntIntervalFacts> {
+        match self {
+            IntervalInt::ExactInterval {
+                target_name,
+                min_decimal,
+                max_decimal,
+                ..
+            } => Some(ExactIntIntervalFacts {
+                target_name: target_name.clone(),
+                min_decimal: min_decimal.clone(),
+                max_decimal: max_decimal.clone(),
+            }),
+            IntervalInt::Unbounded => None,
+        }
+    }
 }
 
 pub(crate) enum IntegerRangeLookup {
