@@ -66,7 +66,7 @@ Worker briefs MUST consume these without re-litigation:
   - **§5.1** — R3-T-LensProducer-Retirement sub-gate decomposition (sub-gates 1+2 → Item 4 PB-Runtime; sub-gate 3 → Item 5 PB-1 bin-shim).
   - **§5.4** — Cross-program coordination: PB Manager + Evaluator Manager co-author the convergence path. **PB owns** per-shim `BinShim` instance declarations (under `dsl/std/runtime/bin_shims/`) + bin-shim emit pattern + retirement dispatch. **Substrate owns** the `BinShim` carrier-type shape (generalized shape evolution escalates via §P1 substrate-fact-introduction). **Evaluator owns** runtime-value model that PB-Runtime mirrors.
   - **§6** — 6 anti-bridge invariants (no parallel runtime; no Y-combinator escape; no untyped Value; no closure-fabrication; no hand-Rust regen-shim authoring; no bypass-the-5-primitive rule).
-  - **§7** — 3 TestClaim shapes (`pb_runtime_interpreter_equals_evaluator_on_std_dag`; `bin_shim_generated_from_pattern_equals_hand_rust_observably`; `no_new_bin_shim_hand_rust_lands_in_v3`).
+  - **§7** — 3 TestClaim shapes (locked names per design doc): `pb_runtime_equivalent_to_evaluator_on_corpus` (§7.1 PB-Runtime equivalence fixture); `regen_lens_bin_shim_emits_behaviorally_equivalent_to_hand_rust` (§7.2 BinShim equivalence fixture); `no_new_bin_shim_hand_rust` (§7.3 No-new-bin-shim-hand-Rust fixture).
 
 Full disposition: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
 
