@@ -49,7 +49,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
-use crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS;
+use crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
 use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
 use crate::types::TypeShape;
 
@@ -3036,8 +3036,8 @@ impl Dag {
 
     /// Typed accessor for the `rust_pilot_primitives` data declaration
     /// from `dsl/extdeps/languages/rust/primitives.dag` (path authorized by
-    /// B4.4 `extdeps_bootstrap_fixture_authority` and the regen host's
-    /// `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter over `EXTDEPS_FILES`). Returns the
+    /// B4.4 `bootstrap_fixture_authority` and the regen host's
+    /// `BOOTSTRAP_FIXTURE_PATH_KEYS` filter over `EXTDEPS_FILES`). Returns the
     /// top-level `List<RustPrimitive>` declaration whose *type* the
     /// target-grounding engine walks structurally (`RustPrimitive =
     /// IntegerPrimitive | NonIntegerPrimitive {target_name, algebra,
@@ -3058,7 +3058,7 @@ impl Dag {
     }
 
     /// Virtual paths from the B4.4 extdeps-bootstrap fixture carrier
-    /// (`extdeps_bootstrap_fixture_authority` in
+    /// (`bootstrap_fixture_authority` in
     /// `src/v3/std/extdeps_bootstrap_fixtures.dag`), in the order fields
     /// appear on the lowered `ValueBody::Structural` body.
     ///
@@ -3067,11 +3067,11 @@ impl Dag {
     /// has zero fields (degenerate); callers that require a non-empty set should
     /// assert separately.
     ///
-    /// Used to keep the regen host's `EXTDEPS_BOOTSTRAP_PATH_KEYS` filter
+    /// Used to keep the regen host's `BOOTSTRAP_FIXTURE_PATH_KEYS` filter
     /// aligned with the substrate declaration (compared in this module's bootstrap
     /// `LazyLock` initializers).
-    pub fn extdeps_bootstrap_fixture_virtual_paths(&self) -> Option<Vec<String>> {
-        let decl = self.declaration_by_name("extdeps_bootstrap_fixture_authority")?;
+    pub fn bootstrap_fixture_virtual_paths(&self) -> Option<Vec<String>> {
+        let decl = self.declaration_by_name("bootstrap_fixture_authority")?;
         let body = decl.value_body.as_ref()?;
         let ValueBody::Structural { fields } = body else {
             return None;
@@ -3608,14 +3608,14 @@ impl Default for Dag {
     }
 }
 
-/// PB-1-e B4.4: the substrate `extdeps_bootstrap_fixture_authority` carrier and
-/// [`EXTDEPS_BOOTSTRAP_PATH_KEYS`](crate::bootstrap::EXTDEPS_BOOTSTRAP_PATH_KEYS)
+/// PB-1-e B4.4: the substrate `bootstrap_fixture_authority` carrier and
+/// [`BOOTSTRAP_FIXTURE_PATH_KEYS`](crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS)
 /// must list the same virtual paths in the same order — the const is the regen
 /// filter; the `.dag` declaration is runtime authority.
 fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
-    let Some(paths) = dag.extdeps_bootstrap_fixture_virtual_paths() else {
+    let Some(paths) = dag.bootstrap_fixture_virtual_paths() else {
         panic!(
-            "bootstrap snapshot must expose `extdeps_bootstrap_fixture_authority` as a \
+            "bootstrap snapshot must expose `bootstrap_fixture_authority` as a \
              structural `ValueBody` with well-formed `virtual_path` fields on each fixture \
              slot (missing declaration, non-structural body, or malformed fixture records). \
              Regenerate via `regen_bootstrap` after editing \
@@ -3625,11 +3625,11 @@ fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
     if !paths
         .iter()
         .map(String::as_str)
-        .eq(EXTDEPS_BOOTSTRAP_PATH_KEYS.iter().copied())
+        .eq(BOOTSTRAP_FIXTURE_PATH_KEYS.iter().copied())
     {
         panic!(
-            "`EXTDEPS_BOOTSTRAP_PATH_KEYS` must match `extdeps_bootstrap_fixture_authority` \
-             virtual_path fields in order.\n  substrate: {paths:?}\n  regen keys: {EXTDEPS_BOOTSTRAP_PATH_KEYS:?}"
+            "`BOOTSTRAP_FIXTURE_PATH_KEYS` must match `bootstrap_fixture_authority` \
+             virtual_path fields in order.\n  substrate: {paths:?}\n  regen keys: {BOOTSTRAP_FIXTURE_PATH_KEYS:?}"
         );
     }
 }

@@ -124,10 +124,24 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
             .iter()
             .find(|(label, _)| label == "dag_method")
             .unwrap_or_else(|| panic!("row {idx} in `{list_name}` missing `dag_method` field"));
-        let FieldValue::Reference(decl_id) = dag_method else {
+        let FieldValue::Record(method_ref_fields) = dag_method else {
             panic!(
                 "row {idx} in `{list_name}`: `dag_method` must be a \
-                 `FieldValue::Reference(DeclarationId)`; got {dag_method:?}"
+                 `FieldValue::Record` (the `MethodRef {{ decl }}` shape); \
+                 got {dag_method:?}"
+            );
+        };
+        let (_, decl_field) = method_ref_fields
+            .iter()
+            .find(|(label, _)| label == "decl")
+            .unwrap_or_else(|| {
+                panic!("row {idx} in `{list_name}`: `MethodRef` missing `decl` field")
+            });
+        let FieldValue::Reference(decl_id) = decl_field else {
+            panic!(
+                "row {idx} in `{list_name}`: `MethodRef.decl` must be a \
+                 `FieldValue::Reference(DeclarationId)` pointing at a \
+                 `dsl/std/methods.dag` `MethodDeclaration`; got {decl_field:?}"
             );
         };
         assert!(
@@ -140,17 +154,20 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
 
 #[test]
 fn method_template_contract_per_target_dag_method_unique() {
-    // The uniqueness walker is intentionally present, but no target row-list
-    // authorities are loaded yet. Empty `dsl/extdeps/.../method_template_contracts.dag`
-    // scaffolds imported `v3.std.emit_model` from the shared extdeps tree and
-    // polluted the v2 loader; Grounding row-list authorities land after the
-    // Substrate method-declaration registry gives `dag_method` real targets.
-    // Until then this loop is a zero-authority placeholder, not a fake empty
-    // fixture.
+    // Phase 1 (T-Ground-LanguageSpec scope E.1): per-target row lists landed
+    // at `src/v3/std/{rust,python,go}_method_template_contracts.dag`,
+    // populated with registry-backed `MethodRef` rows referencing
+    // `dsl/std/methods.dag`. The walker is now load-bearing: each row
+    // references a top-level `MethodDeclaration` and uniqueness within each
+    // list is verified structurally.
     let dag = generated_full_bootstrap_dag();
     for list_name in EXPECTED_PER_TARGET_LISTS {
         assert_per_target_list_dag_method_unique(&dag, list_name);
     }
 }
 
-const EXPECTED_PER_TARGET_LISTS: &[&str] = &[];
+const EXPECTED_PER_TARGET_LISTS: &[&str] = &[
+    "rust_method_template_contracts",
+    "python_method_template_contracts",
+    "go_method_template_contracts",
+];
