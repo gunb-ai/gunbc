@@ -23,22 +23,13 @@
 // `runtime_template` rewrites to `{arg}` per the canonical convention
 // (rows with one argument; no positional ambiguity).
 //
-// PHASE-1 OMISSIONS (substrate-shape gap; see PR body for details):
-//   - `all` / `any` / `filter` / `flat_map` are declared in
-//     `dsl/extdeps/languages/rust/emit.dag` as
-//     `rust_higher_order_methods: List<HigherOrderMethodSpec>` with
-//     fields `{ method_name, inline_template, fn_ref_template,
-//     wraps_in_sharing }` — DUAL-TEMPLATE shape distinct from
-//     `SimpleMethodSpec`'s single-template shape. The current
-//     `MethodTemplateContract` carries single `emit_template`;
-//     consolidating dual-template authority into a single field would
-//     lose the inline-vs-fn-ref distinction (semantic drift). Phase 1
-//     omits these 4 rows; legacy `rust_higher_order_methods` continues
-//     serving v2 emit. Phase 1.5 substrate-shape decision (extend
-//     `MethodTemplateContract` to carry dual-template OR sibling
-//     carrier OR per-target structural axis) is a Substrate-owned
-//     cross-manager question — flagged at the brief level for
-//     jolly-ram-908. Same deferral shape as `string_contains`.
+// PHASE-1.5 HIGHER-ORDER ROWS:
+//   - `all` / `any` / `filter` / `flat_map` use
+//     `MethodEmitTemplate.HigherOrderTemplates` so the inline-lambda
+//     and function-reference templates remain distinct. The legacy
+//     `rust_higher_order_methods` authority continues serving v2 emit
+//     until Phase 2 retires it; this list is the structural substrate
+//     mirror for the same facts.
 //
 // DRIFT RECEIPTS (resolved in this row set; old authorities retain
 // their pre-consolidation shapes until Phase 2):
@@ -59,7 +50,9 @@ module v3.std.rust_method_template_contracts
 import v3.std.emit_model {
   MethodTemplateContract,
   PlaceholderConvention,
-  NamedArg
+  NamedArg,
+  SingleTemplate,
+  HigherOrderTemplates
 }
 import v3.std.methods { MethodRef }
 import std.methods {
@@ -71,7 +64,11 @@ import std.methods {
   enumerate_method,
   chars_method,
   skip_method,
-  take_method
+  take_method,
+  filter_method,
+  any_method,
+  all_method,
+  flat_map_method
 }
 
 
@@ -79,63 +76,107 @@ data rust_method_template_contracts: List<MethodTemplateContract> = [
   {
     dag_method: { decl: count_method },
     runtime_template: "{recv}.len()",
-    emit_template: "({recv}.len() as i64)",
+    emit_template: SingleTemplate { template: "({recv}.len() as i64)" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: join_method },
     runtime_template: "{recv}.join(&{arg})",
-    emit_template: "{recv}.join(&{arg})",
+    emit_template: SingleTemplate { template: "{recv}.join(&{arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: split_method },
     runtime_template: "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()",
-    emit_template: "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()",
+    emit_template: SingleTemplate { template: "{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()" },
     wraps_result: true,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: last_method },
     runtime_template: "{recv}.last().cloned()",
-    emit_template: "{recv}.last().cloned()",
+    emit_template: SingleTemplate { template: "{recv}.last().cloned()" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: first_method },
     runtime_template: "{recv}.first().cloned()",
-    emit_template: "{recv}.first().cloned()",
+    emit_template: SingleTemplate { template: "{recv}.first().cloned()" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: enumerate_method },
     runtime_template: "{recv}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()",
-    emit_template: "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()",
+    emit_template: SingleTemplate { template: "{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()" },
     wraps_result: true,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: chars_method },
     runtime_template: "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()",
-    emit_template: "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()",
+    emit_template: SingleTemplate { template: "{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()" },
     wraps_result: true,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: skip_method },
     runtime_template: "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()",
-    emit_template: "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()",
+    emit_template: SingleTemplate { template: "{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()" },
     wraps_result: true,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: take_method },
     runtime_template: "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()",
-    emit_template: "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()",
+    emit_template: SingleTemplate { template: "{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()" },
+    wraps_result: true,
+    placeholder_convention: NamedArg
+  },
+  {
+    dag_method: { decl: filter_method },
+    runtime_template: "filter({recv}, {arg})",
+    emit_template: HigherOrderTemplates {
+      inline_template: "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }",
+      fn_ref_template: "{iter}.filter({arg}).collect::<Vec<_>>()",
+      wraps_in_sharing: true
+    },
+    wraps_result: true,
+    placeholder_convention: NamedArg
+  },
+  {
+    dag_method: { decl: any_method },
+    runtime_template: "any({recv}, {arg})",
+    emit_template: HigherOrderTemplates {
+      inline_template: "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }",
+      fn_ref_template: "{iter}.any({arg})",
+      wraps_in_sharing: false
+    },
+    wraps_result: false,
+    placeholder_convention: NamedArg
+  },
+  {
+    dag_method: { decl: all_method },
+    runtime_template: "all({recv}, {arg})",
+    emit_template: HigherOrderTemplates {
+      inline_template: "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }",
+      fn_ref_template: "{iter}.all({arg})",
+      wraps_in_sharing: false
+    },
+    wraps_result: false,
+    placeholder_convention: NamedArg
+  },
+  {
+    dag_method: { decl: flat_map_method },
+    runtime_template: "flat_map({recv}, {arg})",
+    emit_template: HigherOrderTemplates {
+      inline_template: "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }",
+      fn_ref_template: "{iter}.flat_map({arg}).collect::<Vec<_>>()",
+      wraps_in_sharing: true
+    },
     wraps_result: true,
     placeholder_convention: NamedArg
   }

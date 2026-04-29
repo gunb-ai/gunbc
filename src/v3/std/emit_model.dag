@@ -345,6 +345,19 @@ type PlaceholderConvention
   = IndexedArgs
   | NamedArg
 
+// Emit-side template shape for a method render contract. Ordinary methods have
+// a single target expression template; higher-order methods need separate
+// inline-lambda and function-reference templates, plus the Rust sharing wrapper
+// fact. The sum keeps those states explicit instead of admitting optional-field
+// combinations that do not correspond to a real render mode.
+type MethodEmitTemplate
+  = SingleTemplate { template: String }
+  | HigherOrderTemplates {
+      inline_template: String
+      fn_ref_template: String
+      wraps_in_sharing: Bool
+    }
+
 // Per-target, per-method template contract. Sibling carrier to §6a
 // `MethodContract` in `src/v3/std/algebra.dag` — that one carries
 // target-agnostic cost/complexity metadata keyed by
@@ -378,7 +391,7 @@ type PlaceholderConvention
 type MethodTemplateContract {
   dag_method: MethodRef
   runtime_template: String
-  emit_template: String
+  emit_template: MethodEmitTemplate
   wraps_result: Bool
   placeholder_convention: PlaceholderConvention
 }
