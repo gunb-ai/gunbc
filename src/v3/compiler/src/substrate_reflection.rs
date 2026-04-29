@@ -29,7 +29,10 @@ fn disj_variant_ty(dag: &Dag, sum_name: &str, variant_label: &str) -> ReflectRes
     for _ in 0..PEEL_MAX {
         let decl = dag.declaration(decl_id);
         match &decl.connective {
-            TypeConnective::Instantiation { template, arguments } if arguments.is_empty() => {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if arguments.is_empty() => {
                 decl_id = *template;
             }
             TypeConnective::Disj { variants } => {
