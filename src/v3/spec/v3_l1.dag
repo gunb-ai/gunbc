@@ -5,7 +5,9 @@
 //
 // 1. **L1 behavior markers.** Every Behavior variant in
 //    `src/v3/compiler/src/dag.rs` (Value, Transform, Branch, Loop,
-//    Bind) plus the Main-wrapper concept needs a structural anchor
+//    Bind as `Behavior` variants) plus the Main-wrapper concept needs
+//    structural **marker** types (e.g. `ValueBehavior`, not bare `Value`
+//    — PB-Runtime reserves `Value` for the runtime union carrier).
 //    that per-target language spec files can reference. Without
 //    these markers, target spec files would have to identify
 //    behaviors by string name (e.g. `target_name: "Bind"`), which
@@ -52,7 +54,7 @@ module v3.spec.v3_l1
 // Main for the program-entry-point wrapper. Each marker is an
 // empty Conj — it carries no fields because its only role is to
 // be the typed handle that realizations point at.
-type Value {}
+type ValueBehavior {}
 type Transform {}
 type Branch {}
 type Loop {}

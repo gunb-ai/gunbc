@@ -4134,7 +4134,7 @@ fn validate_realization_field_target(
     };
     let is_behavior_marker = |id: DeclarationId| {
         let markers = [
-            dag.declaration_by_name("Value"),
+            dag.declaration_by_name("ValueBehavior"),
             dag.declaration_by_name("Transform"),
             dag.declaration_by_name("Branch"),
             dag.declaration_by_name("Loop"),
@@ -4205,7 +4205,7 @@ fn validate_realization_field_target(
                 Ok(())
             } else {
                 Err(format!(
-                    "BehaviorRealization.target must reference one of the v3_l1 behavior markers (Bind/Branch/Loop/Transform/Value/Main); got declaration {target:?}"
+                    "BehaviorRealization.target must reference one of the v3_l1 behavior markers (Bind/Branch/Loop/Transform/ValueBehavior/Main); got declaration {target:?}"
                 ))
             }
         }
