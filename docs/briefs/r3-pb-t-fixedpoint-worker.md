@@ -51,14 +51,16 @@ Per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101 + `r3-structure.md:60
 
 ### Single grounding gate (artifact set derivation)
 
-The accepted artifact set for the `FixedPointConverges` rows is **derived from one grounding fact**: the R2 Release Manager closure ledger's report of "which `R2-Grounding-{Lang}` lanes are closed at the moment of dispatch." Worker reads this once at dispatch and authors exactly one `FixedPointConverges` row per closed-grounding language. The dispatch precondition (§"Dispatch preconditions") and the acceptance artifact set are therefore **the same fact, read once** — not two parallel lists that can drift.
+Per [`docs/r3-structure.md`](../r3-structure.md) §"R3 worker dispatch precondition" (Director-locked 2026-04-28), all 7 Evaluator-gated lanes (including T-FixedPoint) dispatch under the **joint precondition** "R2-Evaluator landed AND R2-Grounding-Rust+Python landed." That sets a hard floor: **{Rust, Python} are both required** before any T-FixedPoint dispatch can occur. The brief does not introduce a Rust-only carve-out.
 
-Concretely:
-- If at dispatch the closure ledger reports `R2-Grounding-Rust` closed only → artifact set = {Rust} → one `FixedPointConverges` row.
-- If `R2-Grounding-Rust` + `R2-Grounding-Python` closed → artifact set = {Rust, Python} → two rows.
-- If all three closed → three rows.
+The accepted artifact set for the `FixedPointConverges` rows is **derived from one grounding fact**: the R2 Release Manager closure ledger's report of "which `R2-Grounding-{Lang}` lanes are closed at the moment of dispatch." Worker reads this ledger once at dispatch — that single reading both (a) gates dispatch (must show Rust + Python both closed per the authority above) AND (b) derives the artifact set (one `FixedPointConverges` row per closed-grounding language at that reading). One fact, two consumers; no parallel lists.
 
-The lane closes when every artifact in the set produces the byte-identical cycle. Subsequent `R2-Grounding-{Lang}` closures landing **after** T-FixedPoint closes are addressed by re-evaluating the `TestSuite` against the new ledger reading; if a row regresses, that's a Grounding-lane regression, not a re-opening of T-FixedPoint.
+Concretely, **at the earliest dispatch-eligible moment** (Rust+Python floor met):
+- Rust + Python closed (no Go) → artifact set = {Rust, Python} → two `FixedPointConverges` rows.
+- Rust + Python + Go closed → artifact set = {Rust, Python, Go} → three rows.
+- Rust-only (Python pending) → **NOT dispatch-eligible** per `r3-structure.md` authority; PB Manager waits.
+
+The lane closes when every artifact in the dispatch-time set produces the byte-identical cycle. Subsequent `R2-Grounding-Go` closure landing **after** T-FixedPoint closes is addressed by re-evaluating the `TestSuite` against the new ledger reading; if a row regresses, that's a Grounding-lane regression, not a re-opening of T-FixedPoint.
 
 ### Substrate readiness check
 
@@ -102,11 +104,11 @@ PB Manager dispatches when **a single ledger reading** of the R2 Release Manager
 1. R2 close signal (R2 Release Manager closure ledger).
 2. R2-Evaluator landed and stable (R2 lane closed).
 3. T-LensProducer-Retirement (XL) closed — all three sub-gates (`lens_apply_dot_rs_retired`, `lens_testgen_dot_rs_retired`, `regen_lens_dot_rs_retired`) green; SG-0 non-test census = 0.
-4. **At least one** `R2-Grounding-{Lang}` lane closed (Rust is the load-bearing minimum; Python/Go closures expand the artifact set per §"Single grounding gate").
+4. **R2-Grounding-Rust AND R2-Grounding-Python both closed** per `r3-structure.md` §"R3 worker dispatch precondition" Director-locked floor for the 7 Evaluator-gated lanes. R2-Grounding-Go closure is not required for dispatch; if Go is closed at the dispatch reading it expands the artifact set, otherwise the lane targets {Rust, Python} (see §"Single grounding gate").
 
 The same ledger reading that satisfies (1)-(4) **derives** the accepted artifact set for the `pb_self_compile_fixed_point_strong` `TestSuite` (§"Acceptance gate"). One ledger reading → both dispatch readiness and artifact-set composition; the brief does not maintain a parallel hand-curated artifact list.
 
-If any of (1)-(3) is not met, or (4) yields the empty set, this brief stays in PROPOSAL state; PB Manager does not dispatch.
+If any of (1)-(4) is not met, this brief stays in PROPOSAL state; PB Manager does not dispatch.
 
 ## STOP conditions
 
