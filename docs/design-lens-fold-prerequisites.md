@@ -421,6 +421,37 @@ generic path without bespoke handling.
   consuming `workflow_root_port` from 3a for the
   per-port-equivalence test target.
 
+**3a acceptance (per BLOCKING review on PR #1207
+sha `42bf818a4`):** since 3a may land before 3b — and per the
+reflected-facts invariant every substrate addition needs a
+generated-consumer proof — 3a carries its own acceptance
+without piggy-backing on 3b's `complexity_lens_via_framework_correct`:
+
+- `workflow_root_single_bind_returns_single_root` — a fixture
+  Dag with exactly one `Bind` returns `SingleRoot(p)` where `p`
+  is that Bind's `result_port`.
+- `workflow_root_zero_bind_returns_no_root` — a fixture Dag
+  containing only `Value` / `Transform` / `Branch` / `Loop`
+  behaviors (no `Bind`) returns `NoRoot`.
+- `workflow_root_multi_bind_returns_ambiguous` — a fixture Dag
+  with 2+ `Bind` behaviors at the same topological "last" tier
+  returns `AmbiguousRoot { candidates }` enumerating every
+  eligible port.
+- `workflow_root_consumed_by_runtime_entry_point` (R2-Evaluator
+  cross-consumer proof) — a smoke test driving R2-Evaluator's
+  `evaluate(program, entry, args)` shape (or its substrate
+  equivalent) through the same accessor; on `SingleRoot`,
+  evaluation proceeds; on `NoRoot` / `AmbiguousRoot` without an
+  entry-arg disambiguator, evaluation fails closed with a typed
+  diagnostic.
+
+These four claims pin the accessor's behavior and prove the
+shared-authority cross-reference Director requested at the
+substrate-load boundary, not at the consumer-folding boundary.
+3b's downstream `complexity_lens_via_framework_correct` is then
+purely a `fold_lens<C>` correctness test, not a re-test of the
+accessor partition.
+
 **Acceptance:** `fold_lens<C>` lowers to bootstrap; a fixture
 `Lens<Int>` instance + `fold_lens` call returns a
 `DimensionReport<Int>` whose `composed` matches the existing
