@@ -36,8 +36,8 @@ fn first_non_authority_lifetime_surface_declaration(dag: &Dag) -> Option<(String
         if is_bootstrap_fixture_authority_source_file(&decl.span.file) {
             continue;
         }
-        let surface = decl.value_body.is_some()
-            || matches!(&decl.connective, TypeConnective::Arrow { .. });
+        let surface =
+            decl.value_body.is_some() || matches!(&decl.connective, TypeConnective::Arrow { .. });
         if !surface {
             continue;
         }
