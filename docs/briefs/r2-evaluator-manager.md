@@ -24,7 +24,7 @@ R2's Goal 7 — **Runtime evaluator for `.dag` programs**. The Evaluator is the 
 
 | Sub-lane | Size | Status (at brief authoring) | Description |
 |---|---|---|---|
-| **Runtime value model** | M | NOT YET AUTHORED — gated on PR-A design lock. **Cross-program convergence target:** PB-Runtime ([`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §2 LANDED via #1176) — load-bearing distinction: PB-Runtime ≡ R2-Evaluator's runtime model expressed as `.dag` (dissolution-shaped, not parallel). PR-A's `Value` coproduct shape MUST match §3.2; the 5-primitive constraint per §3.1 (`Node | Conj | Disj | Cardinality | Bit` — DAG-processor execution vocabulary, distinct from the 5 L1 `Behavior` variants `Value | Transform | Branch | Loop | Bind` dispatched inside `Node`) constrains PR-A's design space. | Closed-over environments, lazy/eager evaluation strategy, memoization. Per #1078 design challenge #1: locked direction; specific design lands in PR-A. |
+| **Runtime value model** | M | **PR-A design slice authored** — [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) locks the runtime-value / evaluator-state split and opens slice-0 gates. **Naming drift note:** Director dispatch also called this "PR-B runtime-value model"; this manager brief keeps the live PR-A label. **Cross-program convergence target:** PB-Runtime ([`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §2 LANDED via #1176) — load-bearing distinction: PB-Runtime ≡ R2-Evaluator's runtime model expressed as `.dag` (dissolution-shaped, not parallel). PR-A's `Value` coproduct shape MUST match §3.2; the 5-primitive constraint per §3.1 (`Node | Conj | Disj | Cardinality | Bit` — DAG-processor execution vocabulary, distinct from the 5 L1 `Behavior` variants `Value | Transform | Branch | Loop | Bind` dispatched inside `Node`) constrains PR-A's design space. Closed-over environments are **evaluator-internal** `EvalFrame` / `EvalStateStack`, not observable `Value` variants. | Closed-over environments, lazy/eager evaluation strategy, memoization. Per #1078 design challenge #1: locked direction; implementation follows PR-A. |
 | **Body evaluator** | L | NOT YET AUTHORED — gated on Runtime value model | Execute `.dag` function bodies structurally. Bounded forward execution per INVARIANTS P4. Termination by descent evidence (already in substrate per `dsl/std/termination.dag`). |
 | **Lens application** | M | OPEN — complete reflection **landed** (#1170); **PR-E slice 1 landed** — `fold_lens_over_reflected_program` wires reflect → prepend carrier → `apply_lens_declaration` on one `lens_program` ([`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md)) | `reflect_program_dag_nodes_in_file` is structurally complete per [design-reflection completeness](../design-reflection-completeness.md) §"Decision". **Lens application** sub-lane stays **OPEN** for full `Lens<C>` / `DimensionReport` / PB-Runtime fold semantics over that spine; slice 1 is the bounded **reflect+apply** seam only (deeper carriers: PR-E brief + Worker A). |
 | **Witness construction** | M | NOT YET AUTHORED | Runtime materialization of proof artifacts (`Witness::Inhabits` / `Witness::Violates` per `src/v3/std/dimensions.dag`); algebraic-law witnesses (associativity, commutativity, identity). |
@@ -50,7 +50,7 @@ Before worker dispatch begins on the implementation sub-lanes above, **5 design 
 
 | PR | Depends on | Parallelizable with | Locks | Status |
 |---|---|---|---|---|
-| **PR-A** | (foundational) | — | Runtime value model — closed-over environments, lazy/eager strategy, memoization | NOT YET AUTHORED |
+| **PR-A** | (foundational) | — | Runtime value model — closed-over environments, lazy/eager strategy, memoization | **DESIGN SLICE AUTHORED** — [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md); slice-0 `TestClaim` fixtures landed at `r2_evaluator_runtime_value_model.dag` + `tc2_evaluation_order_independence_deferred.dag` |
 | **PR-B** | PR-A | PR-C, PR-D | Witness construction surface — concrete shape for runtime materialization | NOT YET AUTHORED |
 | **PR-C** | (foundational; substrate-reflection-shape) | PR-A, PR-B, PR-D | Reflection completeness spec — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`? | **LANDED via #1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) (consumed by R3-T-LensProducer-Retirement per §"Cascade and gates") |
 | **PR-D** | (foundational; cross-target spec) | PR-A, PR-B, PR-C | L5 corpus type spec — algebraic equivalence over curated corpus (locked direction; specific design here) | **Slice 0 opened** — worker brief [`docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) + structural `TestClaim` hook (consumed by R3-T-V-L5-Corpus); strict cross-target predicates follow LanguageSpec / grounding deps in that brief |
@@ -123,7 +123,8 @@ Full disposition table: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`doc
 
 Each sub-lane closes under a structural acceptance gate authored as a `.dag` `TestClaim`:
 
-- `evaluator_runtime_value_model_landed` — runtime value type declared in substrate; closed-over environment representation correctly implemented
+- `evaluator_runtime_value_model_landed` — runtime value type declared in substrate; closed-over environment representation correctly implemented. **Slice-0 hook:** `src/v3/compiler/tests/fixtures/r2_evaluator_runtime_value_model.dag` uses `Compiles` while [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) locks the carrier split; strengthen to substrate-shape validation when the runtime module lands.
+- `evaluation_order_independent_lens_results` — TC2 Church-Rosser / evaluation-order independence claim. **Slice-0 hook:** `src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag`; gated on PB-Runtime spec landing + T-Substrate-Lens-Primitive landing, then strengthens to strict strategy-output equality over `DimensionReport<C>`.
 - `evaluator_body_evaluator_correctly_executes_std_termination` — Body evaluator correctly executes `dsl/std/termination.dag` body programs (representative test)
 - `evaluator_lens_application_complete_reflection` — `reflect_program_dag_nodes_in_file` returns complete reflection (no shallow/lossy gaps) per [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) §"Decision" (5.1-5.3 sub-questions resolved). **Structural `.dag` claim hook (named target):** add `data evaluator_lens_application_complete_reflection: TestClaim = …` to `src/v3/compiler/tests/fixtures/r2_evaluator_lens_application.template.dag` when R2 gate splices land (see [`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md) §Acceptance hook).
 - `evaluator_witness_construction_per_lens_correct` — runtime witness materialization correct for at least 3 lens instances (complexity / tenant-flow / IFC per design-lens-framework.md)
@@ -133,10 +134,11 @@ Each sub-lane closes under a structural acceptance gate authored as a `.dag` `Te
 
 ## Sub-briefs (authored / pending)
 
-**Authored:** none yet. Brief is the parent skeleton.
+**Authored:**
+- [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) — runtime `Value` model / `EvalFrame` / `EvalStateStack` / lazy thunk + memoization boundary design lock.
 
 **Pending (post-spawn manager authors autonomously):**
-- PR-A worker brief — Runtime value model design lock
+- ~~PR-A worker brief — Runtime value model design lock~~ — **slice authored** at [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md); implementation worker remains pending.
 - PR-B worker brief — Witness construction surface design lock
 - ~~PR-C worker brief — Reflection completeness spec~~ — **LANDED via #1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md)
 - ~~PR-D worker brief — L5 corpus type spec~~ — **slice 0 opened** in [`docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) (this PR; strict L5 multi-target harness: follow §Next implementation slices in that brief)
