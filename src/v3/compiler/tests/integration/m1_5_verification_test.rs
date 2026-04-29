@@ -1,5 +1,6 @@
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{Behavior, Dag, DeclarationId, PortState, TypeConnective};
+use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::CompileError;
 
 fn compile_any(src: &str, file: &str) -> Dag {
@@ -322,4 +323,40 @@ let suite: TestSuite = {
         bind_value_type_decl(&dag, "suite"),
         find_named(&dag, "TestSuite")
     );
+}
+
+/// PR-D (Evaluator Manager): cross-target equivalence harness — named structural gate
+/// `evaluator_cross_target_equivalence_harness_primitives_landed` compiles and passes `Compiles`
+/// under `TestRunner` (see `docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`).
+const R2_PR_D_HARNESS_FIXTURE: &str =
+    include_str!("../fixtures/r2_evaluator_cross_target_equivalence_harness_primitives.dag");
+const R2_PR_D_HARNESS_FIXTURE_PATH: &str =
+    "src/v3/compiler/tests/fixtures/r2_evaluator_cross_target_equivalence_harness_primitives.dag";
+
+#[test]
+fn r2_pr_d_cross_target_equivalence_harness_primitives_suite_passes() {
+    let dag = match compile_to_dag(R2_PR_D_HARNESS_FIXTURE, R2_PR_D_HARNESS_FIXTURE_PATH) {
+        Ok(dag) => {
+            assert!(
+                dag.diagnostics().is_empty(),
+                "{R2_PR_D_HARNESS_FIXTURE_PATH}: expected empty module diagnostics, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+            dag
+        }
+        Err(CompileError::Semantic(dag)) => panic!(
+            "{R2_PR_D_HARNESS_FIXTURE_PATH} should lower without module diagnostics. Got `Err(Semantic)`: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("unexpected compile error for {R2_PR_D_HARNESS_FIXTURE_PATH}: {other:?}"),
+    };
+
+    let results = TestRunner::new(&dag)
+        .run_suite("r2_evaluator_cross_target_equivalence_harness_primitives_suite");
+    assert_eq!(results.len(), 1);
+    assert_eq!(
+        results[0].claim_name,
+        "evaluator_cross_target_equivalence_harness_primitives_landed"
+    );
+    assert_eq!(results[0].result, ClaimResult::Pass);
 }
