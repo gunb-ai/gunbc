@@ -1,6 +1,6 @@
 # PR-D — Cross-target equivalence harness primitives (Evaluator Manager)
 
-**Status:** PROPOSAL — **slice 0 (this PR)** opens the named `TestClaim` + runner-visible suite hook (`evaluator_cross_target_equivalence_harness_primitives_landed` / suite in §Structural acceptance); deeper harness surfaces deferred with explicit dependencies below. Use **landed** in manager-brief consumption rows only **after** this PR merges (keeps open-PR status language honest).
+**Status:** PROPOSAL — **slice 0** opens the named `TestClaim` + runner-visible suite hook (`evaluator_cross_target_equivalence_harness_primitives_landed`); **slice 1** adds `evaluator_cross_target_equivalence_harness_primitives_differential_scaffold` (`TestPredicate::DifferentialEquals` + fixture-local Lane-E stub pair), same suite. Deeper harness surfaces deferred with explicit dependencies below. Use **landed** in manager-brief consumption rows only **after** the relevant slice merges (keeps open-PR status language honest).
 
 **Parent:** [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) — sub-lane **Cross-target equivalence harness primitives** + design-lock row **PR-D**.
 
@@ -32,12 +32,17 @@ Until those land, **slice 0** is intentionally thin: the named `TestClaim` wires
 | Gate name | Fixture | Suite `name` |
 |---|---|---|
 | `evaluator_cross_target_equivalence_harness_primitives_landed` | [`src/v3/compiler/tests/fixtures/r2_evaluator_cross_target_equivalence_harness_primitives.dag`](../../src/v3/compiler/tests/fixtures/r2_evaluator_cross_target_equivalence_harness_primitives.dag) | `r2_evaluator_cross_target_equivalence_harness_primitives_suite` |
+| `evaluator_cross_target_equivalence_harness_primitives_differential_scaffold` | same | same |
+
+**Slice 1 strengthening:** the differential claim exercises existing `DifferentialEquals` runner wiring (host vs emit cost parity on a bundled witness program). It does **not** assert multi-target emit or L5 corpus behavior.
+
+**Slice 1 dissolution trigger:** `ProgramOutputBind` still bridges output-bind identity through fixture `data` (`output_ref` names the bind the runner looks up in compiled `TestClaim.source`). Dissolve when authored claims carry output-bind identity that resolves entirely inside the compiled program `Dag` instead of through fixture stubs (see `test_runner.rs` `program_input_role` comment on the cross-`Dag` bridge).
 
 **Deferred fixture path (if this file moves):** keep the **declaration name** `evaluator_cross_target_equivalence_harness_primitives_landed` stable; update only the module `std.r2_evaluator_cross_target_equivalence_harness_primitives` path in one PR with Evaluator Manager brief + integration test `include_str!` path co-updated.
 
 ## Next implementation slices (ordered)
 
-1. **Slice 1 — oracle stub pair:** second `TestClaim` in the same module using the **existing** `TestPredicate::DifferentialEquals` constructor (substrate sum at `verification.dag`; runner: Lane-E / `test_runner.rs`) with subject/oracle both on trivial `.dag`-expressible functions — proves this fixture file is the home for differential receipts **without** multi-target emit. **Does not** require new `TestPredicate` variants; blocked only if runner/regression gaps surface (then §P1), not because the constructor is absent.
+1. ~~**Slice 1 — oracle stub pair:**~~ **Landed:** second `TestClaim` in the same module using the **existing** `TestPredicate::DifferentialEquals` constructor (substrate sum at `verification.dag`; runner: Lane-E / `test_runner.rs`) with subject/oracle on fixture-local `v3_program_cost` / `v2_oracle_cost` stubs (`miss_int_lookup()` bodies) — proves this fixture file is the home for differential receipts **without** multi-target emit. No new `TestPredicate` variants.
 2. **Slice 2 — emit-scoped receipt:** once §Dependencies (LanguageSpec + Shape A targets) are ready, add a claim using the **existing** `TestPredicate::ForAllTargets` constructor **only** if Director-approved for this fixture (same release-deferral discipline as other scaffold uses); otherwise keep deferral documented here and in manager brief. **Does not** assert `ForAllTargets` is absent from substrate — only that **using** it for real cross-target evidence waits on emit infra + approval.
 3. **Slice 3 — R3 handoff doc:** one paragraph in Verification Manager spawn brief naming `r2_evaluator_cross_target_equivalence_harness_primitives.dag` as the structural import surface for `l5_cross_target_consistency` corpus wiring.
 
