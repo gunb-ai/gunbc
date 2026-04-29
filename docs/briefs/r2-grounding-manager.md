@@ -65,7 +65,7 @@ The 8-question design dialogue resolved into a cadence whose merge gates worker 
 | **T-Ground-LanguageSpec** *(NEW)* | M | NOT YET AUTHORED — **gated on PR-I merge** | Structured language-spec substrate; absorbs Reflective Pattern E retirement; per-primitive `RealizationCost` |
 | **T-Ground-Lifetime-Analyzer** *(NEW; no annotations)* | M | NOT YET AUTHORED | Structural ownership/lifetime derivation from program use |
 | **T-Ground-Diagnostic** *(NEW)* | S | **BRIEF LANDED** — [`t-ground-diagnostic.md`](t-ground-diagnostic.md) | Declared structural ordering for diagnostic enumeration; `EmissionDiagnostic` carrier (implementation pending) |
-| **T-Ground-CrossTarget-Meta** *(NEW)* | S | NOT YET AUTHORED — **gated on PR-J merge (likely no-op)** | Cross-target uniformity meta-spec; owns L6 per-(form × target) load-completeness check |
+| **T-Ground-CrossTarget-Meta** *(NEW)* | S | **BRIEF LANDED** — [`t-ground-cross-target-meta.md`](t-ground-cross-target-meta.md); **implementation gated on PR-J merge (likely no-op)** | Cross-target uniformity meta-spec; owns L6 per-(form × target) load-completeness check |
 | T-Ground-Tests | S | NOT YET AUTHORED | L4 routing correctness verification |
 | T-Ground-Dissolve | S | NOT YET AUTHORED | Track-13 dissolution: delete `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` |
 
@@ -132,6 +132,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 ## Sub-briefs (authored / pending)
 
 Authored:
+- T-Ground-CrossTarget-Meta brief ([`t-ground-cross-target-meta.md`](t-ground-cross-target-meta.md); implementation pending PR-J)
 - T-Ground-Pilot (PR #765, merged)
 - T-Ground-Coercion-Fold Phase 1 typestructure (PR #788, merged; framed under prior engine-naming — to be cascaded post-LanguageSpec)
 - PR #989 (slice 1 mirror-consistency probe; merged on main pre-cascade — cleanup queued per `design-emission-model.md` §"Affected lanes" option (c))
@@ -142,7 +143,7 @@ Pending — post-spawn manager-authored autonomously:
 - T-Ground-LanguageSpec (gated on PR-I; absorbs target primitive/range duplication retirement)
 - T-Ground-Lifetime-Analyzer (M; structural ownership/lifetime derivation)
 - T-Ground-Diagnostic (S) — brief [`t-ground-diagnostic.md`](t-ground-diagnostic.md)
-- T-Ground-CrossTarget-Meta (S; gated on PR-J no-op confirmation)
+- T-Ground-CrossTarget-Meta (S; gated on PR-J no-op confirmation) — brief [`t-ground-cross-target-meta.md`](t-ground-cross-target-meta.md)
 - T-Ground-Tests
 - T-Ground-Dissolve (Track-13 cleanup)
 - T-Ground-Python
