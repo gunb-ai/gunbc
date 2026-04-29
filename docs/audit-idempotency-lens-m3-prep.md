@@ -1,9 +1,14 @@
-# Audit — `idempotency.dag` PROXY/STUB → `Lens<C>` (M3 prep)
+# Audit — `idempotency.dag` PROXY/STUB → DB-3 spine + `Lens<C>` (M3 prep)
 
-**Dispatch:** #1139 / inbox prep for `Lens<IdempotencyVerdict>` migration after substrate prerequisites.  
-**Authority read:** `src/v3/lenses/idempotency.dag`, `src/v3/std/effects.dag` (Stage 2b carriers + `compose_effects` / `lane2_workflow_idempotency_report`), `src/v3/std/substrate.dag` (`lane2_workflow_at` / `ValueNode` / `BindNode`), `src/v3/compiler/src/workflow_idempotency.rs` (Rust oracle), `docs/design-lens-framework.md` §M3 + `Lens<C>` primitive, `m2_lens_idempotency_migration_test.rs`.
+**Dispatch:** #1139 / inbox prep for migrating idempotency onto the **DB-3 dimension** substrate and, when landed, the **R2 `Lens<C>`** primitive — after shared prerequisites.
 
-**Constraint (shared):** Real `data <lens>: Lens<C> = { … }` instances require class-5 data-body / function-value lowering plus generic `fold_lens<C>`. No hand-Rust lens instance, no callable-form fake, no loose per-field decls.
+**Primary authority (DB-3 + substrate + roadmap):** [`docs/design-dimension-abstraction.md`](design-dimension-abstraction.md) (DB-3; **Consumers** in that doc: Lane 2 Stage 2f, Lane 4 4b/4c, and Lane 2 Stages **2b/2d/2e** including idempotency as a Dimension-shaped analysis), [`src/v3/std/dimensions.dag`](../src/v3/std/dimensions.dag) (`Witness<Carrier>`, `DimensionReport<Carrier>`, `AnalysisDimension<Carrier>`), [`ROADMAP.md`](../ROADMAP.md) (`DB-3` → [`docs/db-history/db-3.md`](db-history/db-3.md) receipts).
+
+**Shipped idempotency read:** `src/v3/lenses/idempotency.dag`, `src/v3/std/effects.dag` (Stage 2b carriers + `compose_effects` / `lane2_workflow_idempotency_report`), `src/v3/std/substrate.dag` (`lane2_workflow_at` / `ValueNode` / `BindNode`), `src/v3/compiler/src/workflow_idempotency.rs` (Rust oracle), `m2_lens_idempotency_migration_test.rs`.
+
+**Secondary authority (forward R2 lens spec):** [`docs/design-lens-framework.md`](design-lens-framework.md) (`Lens<C>`, Q6.5 Layer-2 diagnostics, abbreviated `fold_lens` sketch). Use only **after** grounding in DB-3 / `dimensions.dag` so the audit does not invert substrate vs proposal (see §6.2.1).
+
+**Constraint (shared):** Honest **`AnalysisDimension<Carrier>`** (DB-3) **data** values require class-5 record bodies plus a lowered **`analyze(d, workflow: NodeId, dim)`**-shaped evaluation path (`design-dimension-abstraction.md` §Dimension evaluation). The **`Lens<C>`** instance + fold consumer (`design-lens-framework.md`; today’s compiler seam: `fold_lens_over_reflected_program` in `src/v3/compiler/src/lens_apply.rs`) **reuses** `Witness` / `DimensionReport` from `dimensions.dag` — it does not replace DB-3 as naming authority. No hand-Rust lens instance, no callable-form fake, no loose per-field decls.
 
 ---
 
@@ -22,7 +27,9 @@
 
 ---
 
-## 2. Mapping to target `Lens<C>` fields (M3 paper exercise)
+## 2. Mapping to forward `Lens<C>` fields (paper exercise; ground in `AnalysisDimension` + DB-3)
+
+`Lens<C>` field names come from **`design-lens-framework.md`** (R2 proposal). **`AnalysisDimension<Carrier>`** in `dimensions.dag` is the landed analysis record (`witness_of` / `compose` / `identity` / `break_diagnostic`); DB-3 **`analyze(d, workflow, dim)`** is the evaluation entry. When lowering lands, reconcile names (`read` vs `witness_of`, `sequential` vs `compose`+`identity`, etc.) against that substrate — do not treat the lens doc alone as the dimension authority.
 
 | `Lens<C>` field | Idempotency analogue today | Gap / note |
 |-----------------|----------------------------|------------|
@@ -37,7 +44,7 @@
 
 ## 3. Target carrier `C` (“IdempotencyVerdict”) — reconcile with code
 
-`design-lens-framework.md` M3 table suggests `IdempotencyVerdict = IsIdempotent | IsBreaking(Reason)`.
+The lens-framework M3 table in `design-lens-framework.md` (sketch) suggests `IdempotencyVerdict = IsIdempotent | IsBreaking(Reason)`. **Authoritative carriers** for dimension-shaped analysis remain `dimensions.dag` + `effects.dag` (below).
 
 **Actual** Stage 2b types (`effects.dag` / `dag/effects.rs`):
 
@@ -62,7 +69,7 @@ Already authoritative in `compose_effects` / `compose_operation_effects` (Rust).
 
 Today: strings inside `IdempotencyUnsupportedDetail` + enum payloads — **no** `Diagnostic` / `OptionalDiagnostic` on the idempotency path.
 
-If M3 adopts full `fold_lens<C> → DimensionReport<C>`:
+If M3 adopts full **dimension report** integration (`DimensionReport<Carrier>` from `dimensions.dag`) via the lens fold (`design-lens-framework.md`):
 
 - Need lens-namespace **Layer-2** kinds for unsupported workflow shapes / missing `lane2_workflow` per `design-lens-framework.md` §Layer 2 + `Diagnostic.kind` widening (already flagged in that doc).
 
@@ -74,7 +81,9 @@ If M3 keeps **verdict-only** API (retire only Rust oracle, emit same `WorkflowId
 
 ### 6.1 Shared prerequisite (confirmed)
 
-Class-5 lowering for real `Lens<C>` **data** instances + `fold_lens<C>` in substrate — **blocking** for any honest instance declaration.
+**Lane 2 Stage 2f / DB-3 path:** class-5 lowering for real **`AnalysisDimension<Carrier>`** (or DB-3-equivalent) **data** declarations, plus a generic **dimension evaluation** implementation consistent with **`analyze(d, workflow: NodeId, dim)`** (`design-dimension-abstraction.md`) — **blocking** for honest built-in / user-declared dimension values on the shared spine.
+
+**R2 `Lens<C>` path (consumes the same carriers):** full **`Lens<C>`** **data** instances + evaluator fold remain **downstream** of the above; see `design-lens-framework.md` and T-Substrate-Lens-Primitive in `docs/r2-closure-ledger.md` / `docs/r2-structure.md` — not a substitute authority for DB-3 naming.
 
 ### 6.2 Additional substrate / API gaps (beyond 6.1)
 
@@ -87,7 +96,7 @@ Class-5 lowering for real `Lens<C>` **data** instances + `fold_lens<C>` in subst
    `WorkflowIdempotencyReport` sums **verdict** + **unsupported**; `Lens<C>` wants one `C` with `Monoid<C>` for sequential. Need a staged model: e.g. extract `WorkflowEffect` + classify shape **before** fold, then run monoid only on linear fragment; **or** widen `C` to an internal tagged type with monoid laws only on a subset (document partial monoid / error algebra).
 
 3. **Witness / read channel**  
-   For non-`Value`/`Bind` behaviors (Transform, Branch, Loop), there is no `lane2_workflow` field. `read` must return **`Violates`** vs **`Inhabits(unit)`** consistently so the fold does not double-count or fabricate carriers (per `Witness<C>` discipline in design doc).
+   For non-`Value`/`Bind` behaviors (Transform, Branch, Loop), there is no `lane2_workflow` field. `read` / `witness_of` must return **`Violates`** vs **`Inhabits(unit)`** consistently so the fold does not double-count or fabricate carriers (per **`Witness<Carrier>`** in `dimensions.dag`, DB-3).
 
 4. **Optional:** If full `DimensionReport` integration is required, map `Unsupported` / `BrokenBy` to `Diagnostic` + declare kinds — ties to Q6.5 substrate work.
 
@@ -95,7 +104,7 @@ Class-5 lowering for real `Lens<C>` **data** instances + `fold_lens<C>` in subst
 
 ## 7. Explicit acceptance line for @briansrls
 
-**There *is* at least one substantive blocker beyond the shared class-5 + honest `Lens<C>` instance / fold-driver prerequisite:** the **non-monoidal outer report sum** (`WorkflowIdempotencyReport` = composition verdict ∪ unsupported) must be reconciled with a single sequential carrier `Monoid<C>` (and with `Lens<C>.branch` / `iterate` until those algebras exist). **Workflow root scoping is not an extra substrate hole:** DB-3 already locks `analyze(d, workflow: NodeId, …)`; idempotency’s explicit `workflow_root` lines up with that. A rootless whole-`Dag`-only fold would be a **new design commitment** (must name substrate + ratchet), not something the abbreviated `fold_lens` one-liner forces by itself.
+**There *is* at least one substantive blocker beyond the shared class-5 + DB-3 dimension-evaluation / honest **`AnalysisDimension`** declaration prerequisite:** the **non-monoidal outer report sum** (`WorkflowIdempotencyReport` = composition verdict ∪ unsupported) must be reconciled with a single sequential carrier `Monoid<C>` on the forward **`Lens<C>`** shape (and with `branch` / `iterate` until those algebras exist). **Workflow root scoping is not an extra substrate hole:** DB-3 already locks `analyze(d, workflow: NodeId, …)`; idempotency’s explicit `workflow_root` lines up with that. A rootless whole-`Dag`-only fold would be a **new design commitment** (must name substrate + ratchet), not something the abbreviated `fold_lens` one-liner forces by itself.
 
 If product direction ever locked “idempotency is always rootless whole-program fold,” that would **contradict** DB-3’s named evaluation shape and would need an explicit decision — it does **not** follow from today’s `analyze_workflow` API.
 
@@ -109,7 +118,7 @@ If product direction ever locked “idempotency is always rootless whole-program
 4. [ ] Declare `Monoid<C>.op` = first-breaker-wins path equivalent to `compose_effects`; prove associativity on linear fragments.
 5. [ ] Declare `branch` / `iterate` stubs or unsupported widening until Branch/Loop/Parallel algebra exists (`effects.dag` already documents graduation).
 6. [ ] Decide `validate` + diagnostics: verdict-only vs `OptionalDiagnostic` + Layer-2 kinds.
-7. [ ] Author `data idempotency_lens: Lens<…> = { … }` instance (no Rust oracle).
+7. [ ] Author declared instance per landed stack: prefer **`data …: AnalysisDimension<…>`** (DB-3) until class-5 + `analyze` driver is real; then **`data …: Lens<…>`** (`design-lens-framework.md`) when R2 lens primitive is the ratcheted authority — no Rust oracle.
 8. [ ] TestClaim `idempotency_lens_via_framework_correct` per M3: emitted fold matches current `lane2_workflow_idempotency_report` / `analyze_workflow` on fixed fixtures (including unsupported + missing-workflow cases).
 9. [ ] Retire `workflow_idempotency.rs` oracle only when emitted module is sole authority and migration test is rewired to substrate runner (not rustc harness) if policy requires.
 
