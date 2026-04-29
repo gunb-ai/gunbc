@@ -292,14 +292,11 @@ pub fn apply_lens_declaration(
 /// Build a substrate-shaped `Dag` record (only `nodes` is populated faithfully) from a
 /// compiled program [`Dag`], for lenses like `named_function_count` that read `d.nodes`.
 ///
-/// **Scaffold:** reflection is **lossy** relative to `std.substrate.Behavior` — e.g.
-/// `Transform` records expose only `result_port` (no `target` / `inputs`); `Branch` /
-/// `Loop` omit `paths`, bounds, and bodies. Lenses that only need `Bind.name` or a
-/// shallow node list are supported; do not rely on full structural fidelity.
-///
-/// **Dissolution trigger:** dissolve this Rust-side mirror once `.dag` values on disk
-/// (or an equivalent canonical carrier) are consumed directly by the interpreter
-/// without a hand-rolled `Behavior` → [`FieldValue`] reflection pass.
+/// Reflection is **complete** per [`docs/design-reflection-completeness.md`](../../docs/design-reflection-completeness.md):
+/// every substrate-declared field on each [`Behavior`] variant (and nested carriers such as
+/// [`WorkflowEffect`]) projects into [`FieldValue`] with no per-consumer narrowing and no
+/// execution semantics (structural `NodeId` / `PortId` references are not followed into
+/// callee bodies).
 ///
 /// `source_file` limits nodes to those authored in that compilation unit (the merged
 /// bootstrap graph also lives in the same [`Dag`]).
@@ -322,7 +319,7 @@ pub fn reflect_program_dag_nodes_in_file(
         .filter(|b| behavior_source_file(b) == source_file)
         .cloned()
         .collect();
-    let nodes = reflect_behavior_list(id_space, &nodes)?;
+    let nodes = crate::substrate_reflection::reflect_behavior_list(id_space, &nodes)?;
     Ok(FieldValue::Record(vec![("nodes".to_string(), nodes)]))
 }
 
@@ -367,6 +364,12 @@ pub enum LensApplyError {
     MissingValueBody,
     /// Substrate → [`FieldValue`] reflection failed (missing sum/variant wiring in id_space).
     SubstrateReflect(&'static str),
+}
+
+impl From<crate::substrate_reflection::ReflectError> for LensApplyError {
+    fn from(e: crate::substrate_reflection::ReflectError) -> Self {
+        LensApplyError::SubstrateReflect(e.0)
+    }
 }
 
 /// Lower a declaration [`ValueBody`] into the structural [`FieldValue`] carrier used by the
@@ -911,105 +914,6 @@ fn v3_list_empty_cons_ids(dag: &Dag) -> Result<(DeclarationId, DeclarationId), L
         .ok_or(LensApplyError::MissingType("List.Cons"))?
         .ty;
     Ok((empty, cons))
-}
-
-fn behavior_variant_id(dag: &Dag, label: &str) -> Result<DeclarationId, LensApplyError> {
-    let decl = dag
-        .declaration_by_name("Behavior")
-        .ok_or(LensApplyError::MissingType("Behavior"))?;
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        return Err(LensApplyError::MissingType("Behavior"));
-    };
-    variants
-        .iter()
-        .find(|v| v.label == label)
-        .map(|v| v.ty)
-        .ok_or(LensApplyError::MissingType("Behavior variant"))
-}
-
-/// See [`reflect_program_dag_nodes_in_file`] scaffold note — lossy `Behavior` spine.
-fn reflect_behavior_list(dag: &Dag, nodes: &[Behavior]) -> Result<FieldValue, LensApplyError> {
-    let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
-    let mut tail = FieldValue::Variant {
-        constructor: empty_id,
-        payload: vec![],
-    };
-    for behavior in nodes.iter().rev() {
-        let head = reflect_behavior(dag, behavior)?;
-        tail = FieldValue::Variant {
-            constructor: cons_id,
-            payload: vec![head, tail],
-        };
-    }
-    Ok(tail)
-}
-
-/// Lossy mirror of one [`Behavior`] (see [`reflect_program_dag_nodes_in_file`]).
-fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> Result<FieldValue, LensApplyError> {
-    match behavior {
-        Behavior::Value(v) => {
-            let id = behavior_variant_id(dag, "Value")?;
-            let payload = FieldValue::Record(vec![
-                ("payload".to_string(), FieldValue::Literal(v.data.clone())),
-                (
-                    "result_port".to_string(),
-                    FieldValue::Literal(LiteralBits::Int(i64::from(v.output.raw()))),
-                ),
-            ]);
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![payload],
-            })
-        }
-        Behavior::Transform(t) => {
-            let id = behavior_variant_id(dag, "Transform")?;
-            let payload = FieldValue::Record(vec![(
-                "result_port".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(t.output.raw()))),
-            )]);
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![payload],
-            })
-        }
-        Behavior::Branch(b) => {
-            let id = behavior_variant_id(dag, "Branch")?;
-            let payload = FieldValue::Record(vec![(
-                "result_port".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(b.output.raw()))),
-            )]);
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![payload],
-            })
-        }
-        Behavior::Loop(l) => {
-            let id = behavior_variant_id(dag, "Loop")?;
-            let payload = FieldValue::Record(vec![(
-                "result_port".to_string(),
-                FieldValue::Literal(LiteralBits::Int(i64::from(l.output.raw()))),
-            )]);
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![payload],
-            })
-        }
-        Behavior::Bind(b) => {
-            let id = behavior_variant_id(dag, "Bind")?;
-            let record = bindnode_record(b);
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![record],
-            })
-        }
-    }
-}
-
-fn bindnode_record(b: &crate::dag::BindNode) -> FieldValue {
-    FieldValue::Record(vec![(
-        "name".to_string(),
-        FieldValue::Literal(LiteralBits::String(b.name.clone())),
-    )])
 }
 
 /// Fixed `(a, b, c)` triples for R1 `AlgebraicLaw(Associativity, …)` operational checks.
