@@ -5,12 +5,11 @@ use std::process::{Command, Stdio};
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
-    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue, IntraClusterCall,
-    Interval, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NominalOpacity,
-    NonEmptyList, NonSingletonList, OperatorKind, Ordinal, Path, PayloadBinding, PhantomParameter,
-    PortId,
-    PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
-    ValueNode,
+    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue, Interval,
+    IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId,
+    NominalOpacity, NonEmptyList, NonSingletonList, OperatorKind, Ordinal, Path, PayloadBinding,
+    PhantomParameter, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueBody, ValueNode,
 };
 use crate::diagnostics::Diagnostic;
 
@@ -266,9 +265,9 @@ fn render_arrow_body(body: &ArrowBody) -> String {
 
 fn render_cardinality_bound(bound: &CardinalityBound) -> String {
     match bound {
-        CardinalityBound::ExactInterval { lo, hi } => format!(
-            "CardinalityBound::ExactInterval {{ lo: {lo}, hi: {hi} }}"
-        ),
+        CardinalityBound::ExactInterval { lo, hi } => {
+            format!("CardinalityBound::ExactInterval {{ lo: {lo}, hi: {hi} }}")
+        }
         CardinalityBound::Unbounded => "CardinalityBound::Unbounded".to_string(),
     }
 }

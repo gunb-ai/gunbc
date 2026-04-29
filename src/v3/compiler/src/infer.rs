@@ -331,10 +331,14 @@ fn ensure_optional_match_disj(
         return Some(existing);
     }
     let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
-        TypeConnective::Cardinality(p) if p.bound() == crate::dag::CardinalityBound::AT_MOST_ONE => (
-            p.element(),
-            dag.declaration(cardinality_decl_id).span.clone(),
-        ),
+        TypeConnective::Cardinality(p)
+            if p.bound() == crate::dag::CardinalityBound::AT_MOST_ONE =>
+        {
+            (
+                p.element(),
+                dag.declaration(cardinality_decl_id).span.clone(),
+            )
+        }
         _ => return None,
     };
 
