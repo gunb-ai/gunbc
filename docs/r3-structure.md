@@ -225,6 +225,8 @@ T-LensProducer-Retirement (XL) → SG-0 non-test = 0 → T-FixedPoint (M)
 
 **DECISION (Director-locked 2026-04-28):** T-FixedPoint closes under "SG-0 non-test = 0 + ≤1 first-time-bootstrap trampoline allowed per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) §`First-time bootstrap`." The trampoline is *outside* `src/v3/`; the in-tree floor stays 0.
 
+**LOCKED 2026-04-29 → see [`docs/design-pb-runtime-interpreter.md`](design-pb-runtime-interpreter.md):** PB-Runtime interpreter-as-data shape (Item 4) + PB-1 generated bin-shim emit pattern (Item 5) locked. PB-Runtime ≡ R2-Evaluator's runtime model expressed as `.dag` (not parallel; dissolution-shaped); 5-primitive constraint preserved (`Node` / `Conj` / `Disj` / `Cardinality` / `Bit`); `BinShim` substrate carrier + `.dag` emit pattern retires the bin/ class. Gates T-LensProducer-Retirement R3 sub-gates 1 + 2 (Item 4) and sub-gate 3 (Item 5). Bin-shim trampoline lives outside v3's source tree per the chosen first-time-bootstrap resolution (1/2/3).
+
 ### 5. Verification-lane sequencing (Direct vs Corpus)
 
 **Question:** Are L4-L7 sequential or parallel?
