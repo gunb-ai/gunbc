@@ -420,7 +420,9 @@ fn ensure_all_optional_match_disjs(dag: &mut Dag) {
             TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne
         ) && existing_optional_match_disj_decl(dag, decl_id).is_none()
         {
-            let _ = ensure_optional_match_disj(dag, decl_id);
+            ensure_optional_match_disj(dag, decl_id).expect(
+                "AtMostOne cardinality without optional_match_disj should materialize a Some/None disj",
+            );
         }
     }
 }
