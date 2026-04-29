@@ -267,8 +267,16 @@ check_q2_prose_section_existence() {
 
     # Find every §-citation in the line. Two forms:
     #   §"quoted section text"
-    #   §AnchorToken (alphanumeric, hyphens, dots, no spaces — anchors,
-    #                 P1/P5/Q6 tokens, "v2-guardrail-requirement-3", etc.)
+    #   §AnchorToken (alphanumeric-leading; hyphens, dots, no spaces —
+    #                 anchors, P1/P5/Q6/Q8 tokens, "v2-guardrail-
+    #                 requirement-3", numeric "§4"/"§6a"/"§0.7", etc.)
+    # Per gpt-5-5-pro review on b9f7a1c1: digit-leading tokens
+    # (`§4`, `§6a`, `§0.7`) were silently skipped by the prior regex
+    # which required a leading [A-Za-z]. Now `[A-Za-z0-9]`-leading.
+    # Note: short digit-only tokens like `§4` resolve permissively
+    # (substring match against bare "4" always finds something) —
+    # tracked as known limitation; multi-character tokens like
+    # `§6a`/`§0.7` are discriminating.
     while IFS= read -r citation; do
       [ -z "$citation" ] && continue
 
@@ -345,7 +353,7 @@ check_q2_prose_section_existence() {
         echo "  section text not found in target file"
         brief_violations=$((brief_violations + 1))
       fi
-    done < <(echo "$line" | grep -oE '§"[^"]+"|§[A-Za-z][A-Za-z0-9._-]*[A-Za-z0-9]|§[A-Za-z]')
+    done < <(echo "$line" | grep -oE '§"[^"]+"|§[A-Za-z0-9][A-Za-z0-9._-]*[A-Za-z0-9]|§[A-Za-z0-9]')
   done < "$brief"
 
   return $brief_violations
