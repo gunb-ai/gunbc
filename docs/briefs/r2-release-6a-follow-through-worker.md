@@ -40,10 +40,16 @@ The migration is **not** a re-pick. The carrier shape is locked; this is consume
 
 **Audit method:** Read `src/v3/lenses/cost.dag` + `src/v3/lenses/complexity.dag` end-to-end; search for `size_effect`, `cost_shape`, `callback_element_position`, `MethodContract`, and `*_templates(` / template-table access patterns named in requirement 1.
 
+**Checked-in substrate anchors (this receipt is tied to on-disk sources, not a forward-only shape sketch):**
+
+- **`MethodContract` carrier:** declared in **`src/v3/std/algebra.dag`** as `type MethodContract { algebra_id, method_id, size_effect, cost_shape, callback_element_position }` at **lines 127–133** (`module v3.std.algebra`). There is **no** `MethodContract` symbol in **`dsl/std/algebra.dag`** (v2 template tables live there under `module std.algebra`; the Option-3 carrier is **v3-std** substrate).
+- **§6a demo accessor in scoped lens:** **`src/v3/lenses/cost.dag`** — `import std.algebra { MethodContract, … }` (**L35–45**); `fn method_contract_cost_shape(contract: MethodContract) -> CostShape? = contract.cost_shape` (**L59–60**). Lowered Rust mirror: **`src/v3/compiler/src/lens_cost_symbolic_generated.rs`** `method_contract_cost_shape` (regen from the same `.dag`).
+- **Non-claim:** `method_contract_cost_shape` has **no** call sites inside `cost.dag`'s `compute_symbolic_costs` / `entry_for` fold — the symbolic-cost walk remains **free of** `dsl/std/algebra.dag` `*_templates()` pulls **and** does not yet thread `MethodContract` through behavior variants. The accessor is the **checked-in §6a live-receipt API** (design doc §6a:173); it is **not** a statement that every cost path consumes `MethodContract` today.
+
 | Consumer file | Reads of `size_effect` / `cost_shape` / `callback_element_position` from `*_templates()`-style lookup in `dsl/std/algebra.dag` | Notes |
 |---|---|---|
-| `src/v3/lenses/complexity.dag` | **None (0 sites).** | Structural integer-depth lens only; no `std.algebra` method-template metadata path. |
-| `src/v3/lenses/cost.dag` | **None (0 sites).** | §6a **demo** accessor only: `method_contract_cost_shape(contract: MethodContract) -> CostShape? = contract.cost_shape` — reads `cost_shape` off the **unified carrier** (`src/v3/std/algebra.dag` `MethodContract`), not off `dsl/std/algebra.dag` template tables. |
+| `src/v3/lenses/complexity.dag` | **None (0 sites).** | Structural integer-depth lens only; no method-template metadata consumption path. |
+| `src/v3/lenses/cost.dag` | **None (0 sites).** | Template-table pulls: **absent** (requirement-1 conclusion). Separately, **L59–60** defines the §6a accessor that projects `cost_shape` from a `MethodContract` **argument** — carrier type lives in **`src/v3/std/algebra.dag`** per anchors above, not in `dsl/std/algebra.dag`. |
 
 **Implication for requirement 2:** There is **nothing to mechanically replace** in these two files today: no lens-local `*_templates()` reads of the three fields exist here. **Live call-site** `MethodContract` lookup through `Transform` / call-pattern lowering (when cost analysis needs per-method facts on real call edges) remains **future wiring**, not a table-to-carrier rename inside current `.dag` bodies.
 
