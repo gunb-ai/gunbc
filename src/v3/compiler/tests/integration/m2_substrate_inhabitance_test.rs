@@ -6,9 +6,10 @@ use v3_compiler::dag::{
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
     merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
     promote_to_strict, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
-    ArrowBody, CallPattern, DescentEvidence, FieldValue, IterationDimension, IterationPrimitive,
-    LoweringTarget, PositiveDescentAmount, ProportionalDivisor, ShrinkFactor, SizeBound,
-    SubValueRelation, TypeConnective, ValueBody,
+    ArrowBody, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval, IntervalWidth,
+    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::parse_surface;
 use v3_compiler::CompileError;
@@ -985,6 +986,33 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "Interval"),
+        vec![
+            (
+                String::from("BoundedInterval"),
+                vec![String::from("lower"), String::from("width")],
+            ),
+            (String::from("Unbounded"), Vec::new()),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "PositiveIntervalWidth"),
+        vec![
+            (String::from("OneUnit"), Vec::new()),
+            (
+                String::from("AdditionalUnit"),
+                vec![String::from("previous")],
+            ),
+        ]
+    );
+    assert_eq!(
+        sum_variants(&dag, "IntervalWidth"),
+        vec![
+            (String::from("ZeroWidth"), Vec::new()),
+            (String::from("PositiveWidth"), vec![String::from("_0")]),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "CardinalityBound"),
         vec![
             (String::from("Exact"), vec![String::from("_0")]),
@@ -1376,6 +1404,25 @@ fn substrate_coproducts_match_runtime_carriers() {
 }
 
 #[test]
+fn cardinality_bound_projects_to_interval_parent() {
+    assert_eq!(
+        CardinalityBound::Exact(3).interval(),
+        Interval::BoundedInterval {
+            lower: 3,
+            width: IntervalWidth::ZeroWidth,
+        }
+    );
+    assert_eq!(
+        CardinalityBound::AtMostOne.interval(),
+        Interval::BoundedInterval {
+            lower: 0,
+            width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::OneUnit),
+        }
+    );
+    assert_eq!(CardinalityBound::Unbounded.interval(), Interval::Unbounded);
+}
+
+#[test]
 fn rust_dag_realizes_reflected_substrate_types() {
     let dag = Dag::new();
     let type_realization_meta = find_named(&dag, "TypeRealization");
@@ -1386,6 +1433,9 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "Dag",
         "Declaration",
         "TemplateArgument",
+        "Interval",
+        "PositiveIntervalWidth",
+        "IntervalWidth",
         "PhantomParameter",
         "FieldValue",
         "ValueBody",
