@@ -25,12 +25,13 @@ src/v3/std/algebra.dag	42	303630	8be5b86cc9520bc3
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
-src/v3/std/diagnostics.dag	6	7982	6dc35615cc265b02
+src/v3/std/diagnostics.dag	10	12179	325ca57d7d85da7c
 src/v3/std/dimensions.dag	21	40239	d595746d2bda22f6
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	34	65593	49cc4eb1f1faadcd
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	4912	e2b6d96f5900a70a
 src/v3/std/induction.dag	56	88794	546f74c63c189c50
+src/v3/std/lens.dag	6	9852	28d5539a5b28716e
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
 src/v3/std/parse_surface.dag	18	99510	b73114d5b178303d
