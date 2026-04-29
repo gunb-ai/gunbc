@@ -78,7 +78,7 @@ Rationale: artificially delaying PR-A through PR-D wouldn't preserve any real ha
 **Consumes:**
 - **Substrate Manager** — additional carriers needed by runtime values (e.g., closed-over environment representation). Design-pass at lane spin-up identifies the dependency.
 - **Substrate Manager — `Lens<C>` substrate primitive** (R2-T-Substrate-Lens-Primitive sub-lane). Evaluator implements `fold_lens<C>`; substrate declares the type.
-- **PB Manager — PB-Runtime convergence path** (cross-program coordination per [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §5.4). PB Manager owns BinShim substrate carrier authoring + bin-shim emit pattern; Evaluator owns runtime-value model. Cross-coordination at PR-A authoring time so the Value shape lock matches PB-Runtime's mirror requirement.
+- **PB Manager — PB-Runtime convergence path** (cross-program coordination per [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §5.4). **PB Manager owns** per-shim `BinShim` instance declarations + bin-shim emit pattern + retirement dispatch. **Substrate Manager owns** the `BinShim` carrier-type shape itself (generalized evolution escalates via §P1). **Evaluator owns** runtime-value model. Cross-coordination at PR-A authoring time so the Value shape lock matches PB-Runtime's mirror requirement.
 
 ## Locked design decisions consumed (per #1078 8-question dialogue)
 
