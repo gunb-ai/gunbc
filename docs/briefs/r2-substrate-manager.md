@@ -92,7 +92,7 @@ Dispatch sequence: **PR-PreF lands first** (foundational substrate; everything e
 | T-Substrate parametric-algebra-for-Dimensions | M | CLOSED BY AUDIT (PR #836); substrate already exists, consumer dispatchable. **T-Cost-Dimension fail-closed symbolic-cost analysis LANDED via #1003** (DominateScanAcc conjunctive accumulator; relevant to Dimensions consumer modeling). | existing `Declaration.phantom_params` + `phantom_unit_mismatch` carrier |
 | T-Substrate ValueBody-list/sum + std.unicode | L | BRIEF LANDED (PR #790 merged 2026-04-25) | top-level list/sum literal lowering + bootstrap/load-set |
 | **T-Substrate ValueBody-Map** *(NEW; R2 unblocker)* | M | **SUBSTRATE LANDED via #1017** (string-keyed `ValueBody::Map` + nested `FieldValue::Map` carriers; structural lowering of `Map<String, _>` literals). **Tightening landed via #1068** (`FieldMap` newtype with private storage + duplicate-key validation at construction). Consumer plumbing (read-path/API + arrow-body evaluation) pending — unblocks PB Manager `kernel_algebra_profile` mirror dissolution. | top-level map literal substrate |
-| **T-Substrate-Lens-Primitive** *(NEW 2026-04-28)* | M | NOT YET AUTHORED — gated on PR-K lock (Q6+Q7+Q8) | `Lens<C>` 6-field record in `src/v3/std/dimensions.dag` (sibling to existing `AnalysisDimension<Carrier>` + `Dimension<Unit, Carrier>`); Witness<C>+OptionalDiagnostic+DimensionReport<C> already in substrate |
+| **T-Substrate-Lens-Primitive** *(NEW 2026-04-28)* | M | NOT YET AUTHORED — Q6/Q6.5/Q7/Q8 design locks LANDED via #1129 (consumes [`docs/design-lens-framework.md`](../design-lens-framework.md) §"Q6.5 — Two-layer authority for diagnostic kinds (cross-manager protocol)"); ready to dispatch | `Lens<C>` 6-field record in `src/v3/std/dimensions.dag` (sibling to existing `AnalysisDimension<Carrier>` + `Dimension<Unit, Carrier>`); Witness<C>+OptionalDiagnostic+DimensionReport<C> already in substrate. Layer-1 `CompilerDiagnosticKind` stays closed; Layer-2 lens-instance kinds declared in lens's own `.dag` via structural inhabitance (no cross-manager handoff). `Diagnostic.kind` widens additively to accept two-layer parent. |
 | **PR-PreF Interval<D> consolidation** *(NEW 2026-04-28)* | S | NOT YET AUTHORED — Director-authored or Substrate-Manager-authored | shared parent type for CardinalityBound / SizeBound / LoopBound::Cardinality |
 | B4.1 DeclarationRef consumer migration | M | LANDED (PR #826 merged 2026-04-26) | existing carrier consumer migration |
 | B4.2 fold-shape carrier | S | BRIEF AUTHORED (PR #836); **first-consumer wiring LANDED** (`feat(v3): add B4.2 structural fold eligibility`) | structural fold-eligibility query/carrier decision |
@@ -115,7 +115,7 @@ Dispatch sequence: **PR-PreF lands first** (foundational substrate; everything e
 
 **Adjacent territory:**
 - B4's §0.7 file-preference rank carrier touches Pure Bootstrap territory. Coordinate with Pure Bootstrap Manager.
-- **Diagnostic-kind extensibility (Q6 lock)** — structural-validation failures use lens-owned, namespaced `Diagnostic.kind` declarations per `docs/design-lens-framework.md` §"Q6.5 — Two-layer authority for diagnostic kinds (cross-manager protocol)". Substrate Manager owns the substrate mechanics for reflecting/resolving those namespaced kinds under T-Substrate-Lens-Primitive; Evaluator Manager owns carrying produced kinds through `DimensionFail.violations`. The current bootstrap `CompilerDiagnosticKind` sum remains compiler-native vocabulary, not the per-lens extension point.
+- **Diagnostic-kind extensibility (Q6.5 lock LANDED via #1129)** — two-layer authority resolved per [`docs/design-lens-framework.md`](../design-lens-framework.md) §"Q6.5 — Two-layer authority for diagnostic kinds (cross-manager protocol)": Layer 1 = `CompilerDiagnosticKind` closed sum (Substrate-owned, untouched per anti-bridge invariant); Layer 2 = lens-instance kinds declared in lens's own `.dag` via structural inhabitance (lens-author-owned, namespace-scoped, no Substrate handoff at lens-authoring time). Substrate-side change: minimal additive widening of `Diagnostic.kind` field at `src/v3/std/diagnostics.dag:36-37` to accept the two-layer parent; the closed sum stays as-is. Lens authors structurally constrained against name collision with Layer-1 variants per Q6.5's anti-shadowing protocol.
 
 ## Locked design decisions consumed (per #1078 8-question dialogue)
 
@@ -179,7 +179,7 @@ Authored:
 
 Pending — post-spawn manager-authored autonomously:
 - **PR-PreF Interval<D> consolidation** worker brief (or Director-authored inline in design doc)
-- **T-Substrate-Lens-Primitive** worker brief (gated on PR-K design lock)
+- **T-Substrate-Lens-Primitive** worker brief (Q6/Q6.5/Q7/Q8 design locks LANDED via #1129; ready to dispatch)
 - **R3 T-CostLens-Composition** worker brief (gated on Lens<C> primitive landing + R2 close)
 - B4.2 implementation dispatch (brief exists; implementation not yet landed)
 - B4.5–B4.12 Phase 2 implementation briefs that become live as Phase 1 carriers land
@@ -189,7 +189,7 @@ Pending — post-spawn manager-authored autonomously:
 Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 
 - **T-Substrate prereqs (R2):** cardinality-for-int-lit producer landed (#806); nominal-opaque substrate landed (#900) + fail-closed field-projection enforcement landed (#937); parametric-algebra closed by audit; ValueBody-list/sum landed (#790); **ValueBody::Map carrier landed (#1017) + tightened (#1068)** — kernel_algebra_profile no longer a "future sub-lane" at substrate level, only consumer plumbing remains.
-- **T-Substrate-Lens-Primitive:** NEW lane added 2026-04-28; gated on PR-K cadence lock.
+- **T-Substrate-Lens-Primitive:** NEW lane added 2026-04-28; Q6/Q6.5/Q7/Q8 design locks LANDED via #1129 (2026-04-29); ready to dispatch.
 - **PR-PreF Interval<D>:** NEW prepended cadence; foundational substrate consolidation; gates everything else.
 - **B4 Phase 1:** B4.1 (#826), B4.3 (#824), B4.4 (#825) landed; B4.2 first-consumer wiring landed.
 - **B4 Phase 2:** B4.8 LANDED via #1069 (first Phase-2 dissolution); B4.5/B4.6/B4.7/B4.9–B4.12 still queued.

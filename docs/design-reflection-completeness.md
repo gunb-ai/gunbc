@@ -51,7 +51,10 @@ Reflect: `id` (NodeId), `payload` (LiteralBits — already structural), `result_
 Reflect: `id`, `target` (the full `TransformTarget` coproduct: `Callable(DeclarationId)` | `FieldProject { field_label, field_child }` | `Operator(OperatorKind)`), `inputs: List<PortId>`, `result_port`, `span`. **`target` reflection is recursive on its declared shape** — every variant payload is projected, not stringified.
 
 ### 4.3 `Behavior::Branch(BranchNode)`
-Reflect: `id`, `input` (PortId), `paths: List<BranchPath>` — for each path: `body: NodeId`, `result_port: PortId`, `pattern: BranchPattern` (the full coproduct: `UnresolvedVariant { name, span }` | `ResolvedVariant(DeclarationId)`), `binding: PayloadBinding?` (the present/absent shape, with payload reflected when present), `result_port`, `span`, `emit_participation: BranchEmitParticipation?`.
+Reflect:
+
+- On the `BranchNode` itself: `id`, `input` (PortId), `paths: List<BranchPath>` (see below), `branch.result_port` (the BranchNode's own output port), `span`, `emit_participation: BranchEmitParticipation?`.
+- For each `BranchPath` in `paths`: `body: NodeId`, `path.result_port: PortId` (the path's per-arm output port — distinct from the BranchNode's `branch.result_port`), `pattern: BranchPattern` (the full coproduct: `UnresolvedVariant { name, span }` | `ResolvedVariant(DeclarationId)`), `binding: PayloadBinding?` (the present/absent shape, with payload reflected when present).
 
 `paths` carries every arm, full stop. There is no "executed arm" notion at reflection time.
 
@@ -65,7 +68,7 @@ Reflect: `id`, `name`, `result_port`, `params: List<PortId>`, `span`, `lane2_wor
 
 ### 4.6 Body resolution
 
-Behaviors carry `NodeId` references (e.g., `LoopNode.body`, `BranchPath.body`) into other behaviors in the same `Dag`. Reflection presents these as structural references (the `NodeId` value), not as inlined sub-trees. Lens-instance bodies that need to follow a reference fold over `Dag::nodes()` via the keyed accessors (`v3.std.substrate` per DB-14); no inlining at reflection time. This preserves DAG identity (same body referenced from two contexts is the same `NodeId`, not two copies) and keeps reflection a pure structural projection.
+Behaviors carry `NodeId` references (e.g., `LoopNode.body`, `BranchPath.body`) into other behaviors in the same `Dag`. Reflection presents these as structural references (the `NodeId` value), not as inlined sub-trees. Lens-instance bodies that need to follow a reference fold over `Dag::nodes()` via the keyed accessors (`v3.std.substrate` per DB-5 — single-authority keyed lookup; the host-bound accessor implementation is the substrate-external-primitives mechanism per DB-14, but the rule-level lock for "substrate keyed lookup is single-authority" is DB-5); no inlining at reflection time. This preserves DAG identity (same body referenced from two contexts is the same `NodeId`, not two copies) and keeps reflection a pure structural projection.
 
 ### 4.7 Witness structure (`Witness<Carrier>`)
 
@@ -77,7 +80,7 @@ This subsumes the question raised in `r3-structure.md:179` ("are witnesses first
 
 ### 5.1 "Every Node reflected as a structural value, or every Node reflected via its substrate-declared accessor?"
 
-**Both, because they are the same thing.** Reflection produces a `FieldValue` mirroring the substrate-declared shape. The DB-14 keyed accessors (`v3.std.substrate.dag:391-405`) are the runtime authority for lookups *over* `Dag.nodes` / `Dag.ports`; reflection is a fold *across* `Dag.nodes()` that produces the equivalent shape in `FieldValue` carrier. Same content, different carrier — runtime substrate values vs. lens-input `FieldValue` tree.
+**Both, because they are the same thing.** Reflection produces a `FieldValue` mirroring the substrate-declared shape. The DB-5 single-authority keyed accessors (implementation at `v3.std.substrate.dag:391-405`, mechanized via DB-14's external-primitives plumbing) are the runtime authority for lookups *over* `Dag.nodes` / `Dag.ports`; reflection is a fold *across* `Dag.nodes()` that produces the equivalent shape in `FieldValue` carrier. Same content, different carrier — runtime substrate values vs. lens-input `FieldValue` tree.
 
 The framing distinction the r3-structure question raises does not survive scrutiny: there is no path where reflection would emit something *other than* the substrate-declared shape. The carriers' shapes are the authority; reflection projects them faithfully.
 
