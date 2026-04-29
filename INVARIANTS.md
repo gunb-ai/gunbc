@@ -67,6 +67,14 @@ The substrate's stated design principle (from `termination.dag`'s header): the c
 
 External authority: well-founded relations (Zermelo 1904, von Neumann 1929), ranking functions (Floyd 1967, Turing 1949), size-change termination (Lee, Jones, Ben-Amram 2001), lexicographic + multiset orderings (Dershowitz, Manna 1979).
 
+### Worked example: kernel calculus grounding (substrate ≡ typed total λ-calculus + extensions)
+
+The 5-Behavior substrate (`Behavior::Value | Transform | Branch | Loop | Bind` in `src/v3/std/substrate.dag`) is a *typed total* fragment of lambda calculus + structural coproducts + bounded recursion. The mapping is direct: `Transform` is application `(M N)`; `Bind` is let-binding (sugar for `(λx.N) M`); `Arrow.body` is the lambda abstraction `λ(params).body`; `Branch` extends with primitive coproducts (System F + sums); `Loop` replaces the Y-combinator with bounded recursion (totality choice — same as Coq/Agda/Idris-with-totality).
+
+α-conversion is satisfied by construction (NodeId-based binding has no name shadowing); β-reduction is being reified as a substrate citizen via the PB-Runtime interpreter-as-data work (see [`docs/design-pb-runtime-interpreter.md`](docs/design-pb-runtime-interpreter.md)); capture-avoiding substitution is structurally satisfied by DAG-reference identity. The lens framework + `Witness<C>` + `DimensionReport` are **analyses on top of the calculus** (algebraic-effect-handler-shaped per Plotkin & Pretnar 2009), not calculus citizens.
+
+External authority: Church (1932/1936), Curry-Howard correspondence, System F (Girard 1972 / Reynolds 1974), Calculus of Inductive Constructions (Coquand & Huet 1986), Agda's totality discipline. Long-form: [`docs/design-substrate-lambda-calculus-grounding.md`](docs/design-substrate-lambda-calculus-grounding.md) — names the 3 intentional divergences (Loop / Branch / n-ary) + 3 research-level open questions (η-equivalence, confluence, strong normalization).
+
 ### Problem shape: Ungrounded heuristic
 
 A downstream stage computes a fact that was never authored — complexity score, provenance category, likely intent — by applying rules to nearby signals. The heuristic has no declared source; outputs are plausible but trace to nothing. Every corner case becomes another rule; the rule set grows unboundedly.
