@@ -1,0 +1,30 @@
+// std.tc2_evaluation_order_independence_deferred — TC2 (R2 Evaluator semantics).
+//
+// Author-now / fire-later structural `TestClaim` for Church-Rosser-style
+// evaluation-order independence over evaluator runtime values and Lens<C>
+// results. Runtime values remain gated on the closed-over-environment decision
+// in docs/briefs/r2-pr-a-runtime-value-model.md: environments are evaluator
+// state (`EvalFrame` / `EvalStateStack`), not observable Value inhabitants.
+
+module std.tc2_evaluation_order_independence_deferred
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+// Gates on PB-Runtime spec landing (#1176 in review) + T-Substrate-Lens-Primitive landing (R2 Substrate cadence).
+// Evaluation-order strategies enumerated per docs/design-pb-runtime-interpreter.md §3.
+// TC2 — For any program + Lens<C>, two valid evaluation strategies
+// (applicative-order vs normal-order; left-first vs right-first
+// input evaluation in n-ary Transform) yield identical
+// DimensionReport<C>.
+data evaluation_order_independent_lens_results: TestClaim = {
+  name: "evaluation_order_independent_lens_results",
+  source: "// TC2 deferred theorem marker; no evaluator strategy execution yet.\nlet _: Int = 0\n",
+  file_name: "tc2_evaluation_order_independent_lens_results.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data tc2_evaluation_order_independence_suite: TestSuite = {
+  name: "tc2_evaluation_order_independence_suite",
+  claims: [evaluation_order_independent_lens_results]
+}
