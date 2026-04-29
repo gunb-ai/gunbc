@@ -30,7 +30,9 @@ pub use axes::LanguageSpecAxes;
 pub use diagnostic::{EmissionDiagnostic, SiteRef};
 pub use extract::{analyze_lifetime_facts, extract_lifetime_program};
 pub use facts::{Encoding, Growability, LifetimeFacts, LifetimeScope, Ownership};
-pub use program::{BindingDef, BindingId, BindingRole, LifetimeProgram, R3Construct, UseKind, UseSite};
+pub use program::{
+    BindingDef, BindingId, BindingRole, LifetimeProgram, R3Construct, UseKind, UseSite,
+};
 
 use std::collections::BTreeMap;
 
@@ -98,8 +100,9 @@ mod tests {
     #[test]
     fn contradictory_use_emits_diagnostic() {
         let program = LifetimeProgram::contradictory_borrow_and_escape();
-        let err = analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
-            .expect_err("contradiction");
+        let err =
+            analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
+                .expect_err("contradiction");
         match err {
             EmissionDiagnostic::ContradictoryUse { binding, sites } => {
                 assert_eq!(binding, "x");
@@ -113,8 +116,9 @@ mod tests {
     #[test]
     fn under_refined_growability_when_indeterminate() {
         let program = LifetimeProgram::underrefined_growability_indeterminate();
-        let err = analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
-            .expect_err("under refined");
+        let err =
+            analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
+                .expect_err("under refined");
         match err {
             EmissionDiagnostic::UnderRefined { axis } => assert_eq!(axis, "growability"),
             other => panic!("unexpected diagnostic: {other:?}"),
@@ -134,8 +138,9 @@ mod tests {
     #[test]
     fn r3_construct_out_of_scope() {
         let program = LifetimeProgram::with_r3_construct(R3Construct::Closure);
-        let err = analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
-            .expect_err("r3");
+        let err =
+            analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
+                .expect_err("r3");
         match err {
             EmissionDiagnostic::OutOfR2Scope { construct } => {
                 assert_eq!(construct, "closure");

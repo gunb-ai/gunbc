@@ -108,7 +108,10 @@ fn ownership_lifetime_growable_for(
                         axis: "growability".to_string(),
                     });
                 }
-                let growth = binding.uses.iter().any(|u| u.kind == UseKind::GrowthMutation);
+                let growth = binding
+                    .uses
+                    .iter()
+                    .any(|u| u.kind == UseKind::GrowthMutation);
                 if growth {
                     Growability::Yes
                 } else {
