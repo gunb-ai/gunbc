@@ -1,0 +1,12 @@
+[package]
+name = "v3-grounding-lifetime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# T-Ground-Lifetime-Analyzer — structural R2 lifetime / ownership / growability
+# fold over program use sites (no annotation surface). Sibling crate to
+# `grounding_pilot` / `grounding_engine`; does not touch `src/v3/compiler/` SG-0.
+
+[dependencies]
+v3-compiler = { path = "../compiler" }
