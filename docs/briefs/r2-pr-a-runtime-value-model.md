@@ -1,14 +1,14 @@
 # R2 PR-A Runtime Value Model
 
-**Status:** PROPOSAL — Worker A design lock for the R2 Evaluator runtime-value lane. This is the work product for the dispatch sometimes called "PR-B runtime-value model" by the Director; the live Evaluator Manager brief still names this lane **PR-A**. This brief follows the live manager brief label and preserves the dispatch naming drift explicitly.
+**Status:** PROPOSAL - Worker A design lock for the R2 Evaluator runtime-value lane. This is the work product for the dispatch sometimes called "PR-B runtime-value model" by the Director; the live Evaluator Manager brief still names this lane **PR-A**. This brief follows the live manager brief label and preserves the dispatch naming drift explicitly.
 
-**Parent authority:** [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) §"Owned deliverables" and §"Pre-dispatch design lock cadence". **PB-Runtime convergence authority:** [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §2-§3. **P1 authority:** [`INVARIANTS.md`](../../INVARIANTS.md) §P1.
+**Parent authority:** [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) section "Owned deliverables" and section "Pre-dispatch design lock cadence". **PB-Runtime convergence authority:** [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) sections 2-3. **P1 authority:** [`INVARIANTS.md`](../../INVARIANTS.md) P1.
 
 ## Decision
 
 R2-Evaluator's runtime-value model has two layers:
 
-1. **Observable runtime values:** exactly the `Value` coproduct locked in `docs/design-pb-runtime-interpreter.md` §3.2:
+1. **Observable runtime values:** exactly the `Value` coproduct locked in `docs/design-pb-runtime-interpreter.md` section 3.2:
    - `LiteralValue(LiteralBits)`
    - `RecordValue(List<NamedField>)`
    - `VariantValue { tag: DeclarationId, payload: Value }`
@@ -19,7 +19,7 @@ R2-Evaluator's runtime-value model has two layers:
    - `EvalStateStack` is a stack of `EvalFrame`s for nested calls, branch bindings, and loop iterations.
    - `EvalThunk` is the optional lazy boundary carrier: an unevaluated `NodeId` plus an `EvalStateStack` snapshot, memoized by evaluator-owned state.
 
-Closed-over environments therefore live in evaluator state, not in observable `Value`. This follows `docs/design-pb-runtime-interpreter.md` §3.3 and passes `INVARIANTS.md` §P1 locally: the underlying external fact is lexical environment / activation-frame semantics from lambda-calculus evaluation; the carriers are coordinates of evaluation state, not user-visible alternatives in the result domain; and the fact is runtime-substrate state, not a lens-extensible domain label.
+Closed-over environments therefore live in evaluator state, not in observable `Value`. This follows `docs/design-pb-runtime-interpreter.md` section 3.3 and passes `INVARIANTS.md` P1 locally: the underlying external fact is lexical environment / activation-frame semantics from lambda-calculus evaluation; the carriers are coordinates of evaluation state, not user-visible alternatives in the result domain; and the fact is runtime-substrate state, not a lens-extensible domain label.
 
 ## Substrate Targets
 
@@ -65,9 +65,9 @@ type EvalStateKey {
 
 `EvalThunk` is not required for an eager-only first evaluator, but the carrier is the right lazy boundary if the evaluator chooses normal-order evaluation for a call or branch edge. A thunk captures state because evaluating a delayed node must use the lexical environment at thunk creation, not the caller's later frame stack.
 
-`NamedField` is the `RecordValue` field carrier named by `docs/design-pb-runtime-interpreter.md` §3.2. PR-A.1 must not introduce a second `NamedRuntimeField` authority unless it simultaneously amends the PB-Runtime design lock. `EvalFrame.bindings` uses `Map<PortId, Value>` because maps are finite partial functions: duplicate binding for one `PortId` is unrepresentable at the carrier boundary. If `Map<K, V>` is not yet available in the v3 runtime module when PR-A.2 lands, PR-A.2 must either port the existing `Map = PartialFunction` authority or add a fail-closed unique-binding carrier before mirroring evaluator state; it must not fall back to a duplicate-admitting `List<EvalBinding>`.
+`NamedField` is the `RecordValue` field carrier named by `docs/design-pb-runtime-interpreter.md` section 3.2. PR-A.1 must not introduce a second `NamedRuntimeField` authority unless it simultaneously amends the PB-Runtime design lock. `EvalFrame.bindings` uses `Map<PortId, Value>` because maps are finite partial functions: duplicate binding for one `PortId` is unrepresentable at the carrier boundary. If `Map<K, V>` is not yet available in the v3 runtime module when PR-A.2 lands, PR-A.2 must either port the existing `Map = PartialFunction` authority or add a fail-closed unique-binding carrier before mirroring evaluator state; it must not fall back to a duplicate-admitting `List<EvalBinding>`.
 
-No `ClosureValue` variant should be added in R2. The live substrate has `TransformTarget::Callable(DeclarationId)` and `ArrowBody::UserDefined(NodeId)`, so callable identity is declaration/node identity plus the active frame stack at call time. First-class closures with captured environments are not expressible today; adding them would be a new substrate fact and must go through `INVARIANTS.md` §P1 with the Substrate Manager.
+No `ClosureValue` variant should be added in R2. The live substrate has `TransformTarget::Callable(DeclarationId)` and `ArrowBody::UserDefined(NodeId)`, so callable identity is declaration/node identity plus the active frame stack at call time. First-class closures with captured environments are not expressible today; adding them would be a new substrate fact and must go through `INVARIANTS.md` P1 with the Substrate Manager.
 
 ## Evaluation Strategy
 
@@ -118,7 +118,7 @@ Before body evaluation or reflection-projection consumes runtime values:
 
 PR-A.0 is design + structural gates only. It is not the runtime carrier implementation.
 
-- **PR-A.1:** declare the observable `Value` surface in the runtime module, matching `docs/design-pb-runtime-interpreter.md` §3.2 exactly, including the `NamedField` record payload carrier.
+- **PR-A.1:** declare the observable `Value` surface in the runtime module, matching `docs/design-pb-runtime-interpreter.md` section 3.2 exactly, including the `NamedField` record payload carrier.
 - **PR-A.2:** declare and mirror evaluator-internal `EvalFrame` / `EvalStateStack` carriers; wire closed-over environment lookup without adding `Value` variants and without duplicate-admitting frame bindings.
 - **PR-A.3:** lock the executable strategy and memoization boundary (`EvalThunk` if lazy boundaries are enabled; eager baseline first).
 - **PR-B / body evaluator:** implement body execution only after PR-A.1 through PR-A.3 provide the carrier substrate.
