@@ -484,10 +484,16 @@ impl<D: Copy + PartialEq + Eq + Ord> Interval<D> {
     }
 }
 
-/// PR-PreF: spec-facing [`CardinalityBound`] plus projection onto [`Interval<Cardinal>`].
+/// PR-PreF: spec-facing [`CardinalityBound`] plus **fallible** projection onto
+/// [`Interval<Cardinal>`].
 impl CardinalityBound {
     pub const AT_MOST_ONE: Self = Self::AtMostOne;
 
+    /// Exact list cardinality `n` from a **cardinal** witness (`substrate` `Int` mirror).
+    ///
+    /// Payload is stored as `i64` to match the `Exact(Int)` substrate field; callers that
+    /// need only nonnegative cardinals should use this constructor rather than
+    /// [`Self::Exact`], then read the algebra via [`Self::try_as_cardinal_interval`].
     pub const fn exact(n: Cardinal) -> Self {
         Self::Exact(n as i64)
     }
@@ -495,17 +501,15 @@ impl CardinalityBound {
     pub const UNBOUNDED: Self = Self::Unbounded;
 
     /// Maps the named connective carrier onto the shared `Interval<Cardinal>` parent
-    /// (`AtMostOne` ≡ `0..=1` inclusive).
-    pub fn as_cardinal_interval(self) -> Interval<Cardinal> {
+    /// (`AtMostOne` ≡ `0..=1`). Returns [`None`] when [`Self::Exact`] is outside the
+    /// nonnegative `Cardinal` span (no silent `Unbounded` fallback).
+    pub fn try_as_cardinal_interval(self) -> Option<Interval<Cardinal>> {
         match self {
-            Self::AtMostOne => Interval::try_exact_interval(0, 1)
-                .expect("AtMostOne maps to the fixed well-formed interval 0..=1"),
-            Self::Unbounded => Interval::Unbounded,
+            Self::AtMostOne => Interval::try_exact_interval(0, 1),
+            Self::Unbounded => Some(Interval::Unbounded),
             Self::Exact(n) => {
-                let Ok(c) = Cardinal::try_from(n) else {
-                    return Interval::Unbounded;
-                };
-                Interval::try_exact_interval(c, c).unwrap_or(Interval::Unbounded)
+                let c = Cardinal::try_from(n).ok()?;
+                Interval::try_exact_interval(c, c)
             }
         }
     }

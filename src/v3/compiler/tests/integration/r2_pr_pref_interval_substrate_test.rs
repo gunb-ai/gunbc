@@ -16,7 +16,9 @@ fn interval_d_shared_parent_consolidation_landed() {
         CardinalityBound::AtMostOne
     ));
     assert_eq!(
-        CardinalityBound::AT_MOST_ONE.as_cardinal_interval(),
+        CardinalityBound::AT_MOST_ONE
+            .try_as_cardinal_interval()
+            .expect("AtMostOne"),
         Interval::try_exact_interval(0, 1).expect("0..=1")
     );
     let dag = compile_to_dag("data probe: Int = 0\n", "pr_pref_substrate_bootstrap.v3")
