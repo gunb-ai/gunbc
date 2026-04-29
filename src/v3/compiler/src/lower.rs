@@ -3483,12 +3483,6 @@ fn lower_structural_field_value(
         return None;
     }
 
-    if data_name == "go_method_template_contracts" && field_label == "dag_method" {
-        eprintln!(
-            "DEBUG lower_structural_field_value dag_method: expected_type={expected_type:?} connective={:?}",
-            dag.declaration(expected_type).connective
-        );
-    }
     if let Some(conj_id) = walk_to_conj_decl(dag, expected_type) {
         let SurfaceExpr::Record { fields, .. } = expr else {
             report_declaration_error(
