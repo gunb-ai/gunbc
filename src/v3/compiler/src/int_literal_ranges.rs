@@ -1,10 +1,10 @@
 //! Integer literal magnitude vs declared integer types — **Q1 consumer**.
 //!
-//! Authoritative modeling: [`docs/design-emission-model.md`](../../../docs/design-emission-model.md)
+//! Authoritative modeling: [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
 //! §Q1 — `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`, with asymmetric
 //! match (target `Unbounded` universal-accept; target `ExactInterval` exact `lo`/`hi` equality at
 //! the fold). This module implements only the **static** side needed for literal narrowing:
-//! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../dsl/extdeps/languages/rust/primitives.dag)
+//! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../../dsl/extdeps/languages/rust/primitives.dag)
 //! on [`rust_pilot_primitives`](crate::dag::Dag::rust_pilot_primitives) supply
 //! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host `i128`
 //! comparison). [`IntervalInt::Unbounded`] exists so Q1’s interval algebra is representable when a
@@ -47,7 +47,7 @@ pub(crate) enum IntervalInt {
     /// **Dissolution trigger (when this variant is constructed from [`integer_range_for_decl`]):**
     /// a `rust_pilot_primitives` `IntegerPrimitive` row (or successor multi-target table) is
     /// authored for a target whose Q1 `BoundDeclaration` is `StaticBound(Unbounded)` at magnitude
-    /// check — e.g. Python `int` per [`docs/design-emission-model.md`](../../../docs/design-emission-model.md)
+    /// check — e.g. Python `int` per [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
     /// fold example (T-Ground cross-target / language `primitives.dag` work, not this consumer).
     /// Until that producer exists, only [`IntervalInt::ExactInterval`] is returned from the pilot
     /// list; [`Unbounded`] remains for `contains_i64` / Q1 algebra completeness and unit tests.
