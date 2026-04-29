@@ -68,7 +68,7 @@ fn algebra_template_method_names() -> BTreeSet<String> {
     let mut names: BTreeSet<String> = BTreeSet::new();
     let bytes = ALGEBRA_DAG_SOURCE.as_bytes();
     let mut i = 0;
-    while i + 1 < bytes.len() {
+    while i + 5 <= bytes.len() {
         // Find the next `name:` substring; only count occurrences
         // followed by a `"<id>"` literal to ignore type-shape names
         // like `name: "Int"` (those satisfy the literal pattern but
