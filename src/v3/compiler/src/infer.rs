@@ -281,7 +281,7 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
             TypeConnective::Cardinality(p)
-                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+                if p.bound() == crate::dag::CardinalityBound::AT_MOST_ONE =>
             {
                 return existing_optional_match_disj_decl(dag, current);
             }
@@ -310,7 +310,7 @@ fn walk_to_optional_cardinality_decl(dag: &Dag, start: DeclarationId) -> Option<
     for _ in 0..WALK_DEPTH_LIMIT {
         match &dag.declaration(current).connective {
             TypeConnective::Cardinality(p)
-                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+                if p.bound() == crate::dag::CardinalityBound::AT_MOST_ONE =>
             {
                 return Some(current);
             }
@@ -331,7 +331,7 @@ fn ensure_optional_match_disj(
         return Some(existing);
     }
     let (element, span) = match dag.declaration(cardinality_decl_id).connective.clone() {
-        TypeConnective::Cardinality(p) if p.bound() == crate::dag::CardinalityBound::AtMostOne => (
+        TypeConnective::Cardinality(p) if p.bound() == crate::dag::CardinalityBound::AT_MOST_ONE => (
             p.element(),
             dag.declaration(cardinality_decl_id).span.clone(),
         ),
@@ -3195,7 +3195,7 @@ fn walk_to_disj_decl_with_subst(
         match &decl.connective {
             TypeConnective::Disj { .. } => return Some(current),
             TypeConnective::Cardinality(p)
-                if p.bound() == crate::dag::CardinalityBound::AtMostOne =>
+                if p.bound() == crate::dag::CardinalityBound::AT_MOST_ONE =>
             {
                 return existing_optional_match_disj_decl(dag, current);
             }
@@ -4831,7 +4831,7 @@ fn resolve_decl_with_subst(
             let element = p.element();
             let bound = p.bound();
             let specialized_element = resolve_decl_with_subst(dag, element, subst, depth + 1)?;
-            if bound == crate::dag::CardinalityBound::AtMostOne {
+            if bound == crate::dag::CardinalityBound::AT_MOST_ONE {
                 if let Some(idem) =
                     crate::dag::cardinality_idempotent_target(dag, specialized_element, bound)
                 {

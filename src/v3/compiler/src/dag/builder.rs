@@ -140,7 +140,7 @@ impl Dag {
         self.assert_port_exists(init, "push_loop(init)");
         self.assert_node_exists(body, "push_loop(body)");
         match bound {
-            LoopBound::Cardinality { count } => {
+            LoopBound::Cardinality { count, .. } => {
                 self.assert_port_exists(count, "push_loop(bound.count)");
             }
             LoopBound::Descent { cluster } => {
@@ -266,10 +266,10 @@ impl Dag {
     /// that shape; this rechecks it in debug builds.
     fn debug_assert_alloc_cardinality_result_not_nested_at_most_one(&self, id: DeclarationId) {
         if let TypeConnective::Cardinality(p) = &self.declaration(id).connective {
-            if p.bound() == CardinalityBound::AtMostOne {
+            if p.bound() == CardinalityBound::AT_MOST_ONE {
                 let inner = p.element();
                 debug_assert!(
-                    super::cardinality_idempotent_target(self, inner, CardinalityBound::AtMostOne)
+                    super::cardinality_idempotent_target(self, inner, CardinalityBound::AT_MOST_ONE)
                         .is_none(),
                     "alloc_cardinality_decl: result {id:?} = AtMostOne(…, {inner:?}) but inner still \
                      admits idempotent AtMostOne collapse (nested option stack)",
@@ -614,7 +614,7 @@ impl Dag {
                 // element id): if the element is already an optional, the canonical
                 // declaration matches `alloc_cardinality_decl` / `cardinality_idempotent_target`
                 // (e.g. T? with T = U? must not keep a stale outer `Cardinality` wrapper).
-                if bound == CardinalityBound::AtMostOne {
+                if bound == CardinalityBound::AT_MOST_ONE {
                     if let Some(idem) =
                         super::cardinality_idempotent_target(self, specialized_element, bound)
                     {
@@ -989,7 +989,7 @@ mod tests {
             Some("TestList"),
             TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 type_param,
-                CardinalityBound::Unbounded,
+                CardinalityBound::UNBOUNDED,
             )),
             vec![type_param],
         );
@@ -1192,7 +1192,10 @@ mod tests {
         let source = dag.push_value(LiteralBits::Int(4), span());
         let init = dag.push_value(LiteralBits::Int(0), span());
         let body = dag.push_bind("loop_body", init, Vec::new(), span());
-        let bound = LoopBound::Cardinality { count: source };
+        let bound = LoopBound::Cardinality {
+            count: source,
+            iteration: Interval::Unbounded,
+        };
 
         let output = dag.push_loop(source, init, body, bound, span());
 
@@ -1349,7 +1352,7 @@ mod tests {
             None,
             TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 int_decl,
-                CardinalityBound::AtMostOne,
+                CardinalityBound::AT_MOST_ONE,
             )),
             Vec::new(),
         );
@@ -1358,7 +1361,7 @@ mod tests {
             None,
             TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 opt_int,
-                CardinalityBound::AtMostOne,
+                CardinalityBound::AT_MOST_ONE,
             )),
             Vec::new(),
         );

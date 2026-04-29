@@ -465,6 +465,15 @@ pub enum FieldValue {
 // from `std/substrate.dag`; keep the substrate authority there, not here.
 include!("dag_scalar_generated.rs");
 
+/// PR-PreF additive constructors on [`CardinalityBound`] (`Interval<Cardinal>`).
+impl CardinalityBound {
+    pub const AT_MOST_ONE: Self = Self::ExactInterval { lo: 0, hi: 1 };
+    pub const fn exact(n: Cardinal) -> Self {
+        Self::ExactInterval { lo: n, hi: n }
+    }
+    pub const UNBOUNDED: Self = Self::Unbounded;
+}
+
 mod cardinality_payload;
 pub use cardinality_payload::CardinalityPayload;
 
@@ -559,12 +568,12 @@ pub(crate) fn cardinality_idempotent_target(
     element: DeclarationId,
     bound: CardinalityBound,
 ) -> Option<DeclarationId> {
-    if bound != CardinalityBound::AtMostOne {
+    if bound != CardinalityBound::AT_MOST_ONE {
         return None;
     }
     let subject = peel_alias_for_cardinality_idempotence(dag, element, 0);
     match &dag.declaration(subject).connective {
-        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(subject),
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AT_MOST_ONE => Some(subject),
         _ => None,
     }
 }
@@ -1530,6 +1539,21 @@ pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
     }
 }
 
+/// Ordered-numeric facet of [`SizeBound`] as `Interval<Cardinal>` when the variant
+/// carries a definite iteration count (`PR-PreF`). Label-shaped bounds return `None`.
+pub fn size_bound_cardinal_interval(bound: &SizeBound) -> Option<Interval<Cardinal>> {
+    match bound {
+        SizeBound::ExplicitCountZero => Some(Interval::ExactInterval { lo: 0, hi: 0 }),
+        SizeBound::ExplicitCountPositive { steps } => {
+            let hi = positive_descent_count(steps);
+            let hi = u32::try_from(hi).ok()?;
+            Some(Interval::ExactInterval { lo: 1, hi })
+        }
+        SizeBound::Forever => Some(Interval::Unbounded),
+        _ => None,
+    }
+}
+
 /// 🟢 TERMINAL — `IterationDimension` coproduct (`docs/modeling-discipline.md` §4).
 ///
 /// Three-way projection from kernel algebra profiles onto iteration regimes. Authority:
@@ -1779,8 +1803,23 @@ include!("dag_cluster_generated.rs");
 impl LoopBound {
     pub fn count_port(&self) -> Option<PortId> {
         match self {
-            Self::Cardinality { count } => Some(*count),
+            Self::Cardinality { count, .. } => Some(*count),
             Self::Descent { .. } => None,
+        }
+    }
+
+    pub fn cardinality_iteration_interval(&self) -> Option<Interval<Ordinal>> {
+        match self {
+            Self::Cardinality { iteration, .. } => Some(*iteration),
+            Self::Descent { .. } => None,
+        }
+    }
+
+    /// `LoopBound::Cardinality` with unknown iteration range (lowering default / PR-PreF).
+    pub fn cardinality_bounded_count(count: PortId) -> Self {
+        Self::Cardinality {
+            count,
+            iteration: Interval::Unbounded,
         }
     }
 }

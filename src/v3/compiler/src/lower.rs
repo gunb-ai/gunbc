@@ -2305,7 +2305,7 @@ fn type_to_declaration_id(
         }
         SurfaceType::Optional { inner, span } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
-            dag.alloc_cardinality_decl(element, CardinalityBound::AtMostOne, span.clone())
+            dag.alloc_cardinality_decl(element, CardinalityBound::AT_MOST_ONE, span.clone())
         }
         SurfaceType::Arrow {
             inputs,
@@ -2385,7 +2385,7 @@ fn type_to_connective(
         }
         SurfaceType::Optional { inner, .. } => {
             let element = type_to_declaration_id(inner, symbols, local, dag);
-            type_connective_cardinality(dag, element, CardinalityBound::AtMostOne)
+            type_connective_cardinality(dag, element, CardinalityBound::AT_MOST_ONE)
         }
         SurfaceType::Arrow { inputs, output, .. } => TypeConnective::Arrow {
             inputs: inputs
@@ -4394,6 +4394,7 @@ fn lower_fn_item_expr_body(
                 body: loop_body_node,
                 bound: LoopBound::Cardinality {
                     count: param_ports[0],
+                    iteration: crate::dag::Interval::Unbounded,
                 },
                 output: loop_output,
                 span: body_span.clone(),
