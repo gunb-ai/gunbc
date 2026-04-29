@@ -115,12 +115,35 @@ fn assert_dag_method_unique(rows: &[Vec<Field>], list_name: &str) {
 fn method_template_contract_per_target_dag_method_unique() {
     // Substrate-only PR: zero `List<MethodTemplateContract>` data lists exist
     // today (Grounding owns Rust/Python/Go row population). The uniqueness
-    // check is wired here and runs vacuously; it gains teeth when Grounding's
-    // row-population PR lands `data rust_method_template_contracts: List<...>`
-    // and siblings, at which point this test grows to enumerate every such
-    // list and hand it to `assert_dag_method_unique`.
+    // check is wired here and runs vacuously over zero synthetic rows.
     let zero_rows: Vec<Vec<Field>> = Vec::new();
-    assert_dag_method_unique(&zero_rows, "rust_method_template_contracts");
-    assert_dag_method_unique(&zero_rows, "python_method_template_contracts");
-    assert_dag_method_unique(&zero_rows, "go_method_template_contracts");
+    for list_name in EXPECTED_PER_TARGET_LISTS {
+        assert_dag_method_unique(&zero_rows, list_name);
+    }
+
+    // Fail-loud trigger: when Grounding lands ANY of the per-target row lists,
+    // this assertion fires and forces this test to grow real row-walking
+    // logic in lock-step. Without it, the vacuous pass above could silently
+    // outlive its trigger and leave per-target uniqueness unchecked once rows
+    // exist. The list authority is `data <target>_method_template_contracts`
+    // in the per-target extdeps file (Grounding-owned).
+    let dag = generated_full_bootstrap_dag();
+    let landed: Vec<&str> = EXPECTED_PER_TARGET_LISTS
+        .iter()
+        .copied()
+        .filter(|name| dag.declaration_by_name(name).is_some())
+        .collect();
+    assert!(
+        landed.is_empty(),
+        "per-target `MethodTemplateContract` row list(s) have landed: {landed:?}. \
+         Grow this test to enumerate each list's rows and hand them to \
+         `assert_dag_method_unique` instead of relying on the synthetic \
+         zero-row vacuous pass above."
+    );
 }
+
+const EXPECTED_PER_TARGET_LISTS: &[&str] = &[
+    "rust_method_template_contracts",
+    "python_method_template_contracts",
+    "go_method_template_contracts",
+];
