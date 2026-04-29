@@ -80,7 +80,7 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `bridge_mark_bootstrap_secret_nominal_opacity_retired` — name-keyed bootstrap bridge from #937 deleted; nominal-opacity authority lives in source-level declaration (PR A landed in R2)
   - `bridge_canonical_lens_name_dispatch_retired` — lens dispatch routes via `DeclarationRef`/typed identity, not canonical name strings
   - `bridge_include_str_side_channels_retired` — no `include_str!` macro reads source-substrate identity; substrate query surface used instead. **Open disposition (`pipeline_authority`, PR #1171, 2026-04-29):** `compile` remains `ArrowBody::Unparsed`, so compile-body stage order is not yet a structural Dag fact; runtime ordering reads `PipelineStageBinding` only — full gate for this site awaits derivation / lowered compile witness, not file IO.
-  - `bridge_exact_string_patching_residual_retired` — `patch_lower_helpers_*` and similar exact-string patching scaffolds reach 0 residual (some retired in R2 #1014)
+  - `bridge_exact_string_patching_residual_retired` — umbrella row for exact-string patching scaffolds. **PB lower-helper slice (Tier-2 / #1014 lineage) is pinned at zero** in v3-compiler Rust: no `patch_lower_helpers*` code paths remain, and `bridge_lower_helpers_patch_zero_residual_test` ratchets reintroduction. **Other** exact-string patching classes (outside this retired lower-helper post-process bridge) remain **out of scope for this receipt** and keep their own dissolution triggers.
   - `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining
 
 ## Lane structure
