@@ -883,8 +883,13 @@ fn reflect_loop(dag: &Dag, l: &LoopNode) -> ReflectResult<FieldValue> {
 fn reflect_bind(dag: &Dag, b: &BindNode) -> ReflectResult<FieldValue> {
     let id = behavior_variant_id(dag, "Bind")?;
     let params = reflect_port_id_list(dag, &b.params)?;
-    let lane2 = reflect_optional_workflow_effect(dag, b.lane2_workflow())?;
-    let emit = reflect_optional_bind_emit(dag, b.emit_participation())?;
+    let bn = named_record_type_root(dag, "BindNode")?;
+    let lane2_card =
+        peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, bn, "lane2_workflow")?)?;
+    let emit_card =
+        peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, bn, "emit_participation")?)?;
+    let lane2 = reflect_optional_workflow_effect(dag, lane2_card, b.lane2_workflow())?;
+    let emit = reflect_optional_bind_emit(dag, emit_card, b.emit_participation())?;
     let payload = FieldValue::Record(vec![
         ("id".to_string(), node_fv(b.id)),
         (
