@@ -32,7 +32,9 @@ pub mod substrate_receipts;
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
 };
-pub use r1_gates_bridge::assert_p0_repeat_string_v2_oracle_rust_bridge_gate_passes;
+pub use r1_gates_bridge::{
+    assert_p0_host_sentinel_and_rest_gate_passes, assert_p0_repeat_string_correct_gate_passes,
+};
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
