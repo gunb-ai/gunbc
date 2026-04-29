@@ -37,7 +37,7 @@ use crate::diagnostics::{
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range,
+    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range_for_interval,
     IntegerRangeLookup,
 };
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
@@ -3824,7 +3824,7 @@ fn lower_scalar_literal_for_type(
     if let LiteralBits::Int(value) = literal_bits {
         match integer_range_for_decl(dag, expected_type) {
             IntegerRangeLookup::Found(range) => {
-                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range(
+                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range_for_interval(
                     value,
                     TypeShape::new(expected_type),
                     range,
