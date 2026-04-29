@@ -719,7 +719,10 @@ fn reflect_optional_payload_binding(
     dag: &Dag,
     opt: Option<&PayloadBinding>,
 ) -> ReflectResult<FieldValue> {
-    reflect_optional_list_spine(dag, opt.cloned(), |_d, b| {
+    let path = named_record_type_root(dag, "Path")?;
+    let binding_card =
+        peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, path, "binding")?)?;
+    reflect_optional_sum(dag, binding_card, opt.cloned(), |_d, b| {
         Ok(FieldValue::Record(vec![
             (
                 "binding_name".to_string(),
@@ -802,7 +805,10 @@ pub fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> ReflectResult<FieldVa
 
 fn reflect_value(dag: &Dag, v: &ValueNode) -> ReflectResult<FieldValue> {
     let id = behavior_variant_id(dag, "Value")?;
-    let lane2 = reflect_optional_workflow_effect(dag, v.lane2_workflow())?;
+    let vn = named_record_type_root(dag, "ValueNode")?;
+    let lane2_card =
+        peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, vn, "lane2_workflow")?)?;
+    let lane2 = reflect_optional_workflow_effect(dag, lane2_card, v.lane2_workflow())?;
     let payload = FieldValue::Record(vec![
         ("id".to_string(), node_fv(v.id)),
         ("payload".to_string(), FieldValue::Literal(v.data.clone())),
@@ -838,7 +844,10 @@ fn reflect_transform(dag: &Dag, t: &TransformNode) -> ReflectResult<FieldValue> 
 fn reflect_branch(dag: &Dag, b: &BranchNode) -> ReflectResult<FieldValue> {
     let id = behavior_variant_id(dag, "Branch")?;
     let paths = reflect_branch_paths(dag, &b.paths)?;
-    let emit = reflect_optional_branch_emit(dag, b.emit_participation())?;
+    let br = named_record_type_root(dag, "BranchNode")?;
+    let emit_card =
+        peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, br, "emit_participation")?)?;
+    let emit = reflect_optional_branch_emit(dag, emit_card, b.emit_participation())?;
     let payload = FieldValue::Record(vec![
         ("id".to_string(), node_fv(b.id)),
         ("input".to_string(), port_fv(b.input)),
