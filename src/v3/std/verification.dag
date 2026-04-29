@@ -233,6 +233,20 @@ type TestPredicate
       target_lane: DeclarationRef
       authority_doc: DeclarationRef
     }
+  // **🟡 Scaffold — SubstrateResearchDeferredClaim.** R2 substrate / TC1 research
+  // deferral marker — distinct from R1 `ReleaseDeferredClaim` release authority.
+  // The runner accepts this predicate only for claims declared in
+  // `src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag`
+  // and requires `DeclarationRef` edges to fixture-local role types
+  // `Tc1ResearchGateMarker`, `SubstrateLensPrimitiveTargetLaneMarker`, and
+  // `LambdaCalculusGroundingAuthorityDoc`.
+  // Dissolution trigger: replace with a strict lens/substrate theorem claim when
+  // T-Substrate-Lens-Primitive lands.
+  | SubstrateResearchDeferredClaim {
+      deferred_gate: DeclarationRef
+      target_lane: DeclarationRef
+      authority_doc: DeclarationRef
+    }
 
 // Structural runner input role for predicates whose input is the compiled
 // `TestClaim.source` program.
