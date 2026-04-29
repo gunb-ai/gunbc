@@ -606,12 +606,12 @@ pub(crate) fn cardinality_idempotent_target(
     element: DeclarationId,
     bound: CardinalityBound,
 ) -> Option<DeclarationId> {
-    if bound != CardinalityBound::AT_MOST_ONE {
+    if bound != CardinalityBound::AtMostOne {
         return None;
     }
     let subject = peel_alias_for_cardinality_idempotence(dag, element, 0);
     match &dag.declaration(subject).connective {
-        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AT_MOST_ONE => {
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
             Some(subject)
         }
         _ => None,

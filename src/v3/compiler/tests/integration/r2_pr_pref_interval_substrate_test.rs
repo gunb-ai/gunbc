@@ -33,7 +33,10 @@ fn interval_d_shared_parent_consolidation_landed() {
     let steps = PositiveDescentAmount::OneStep;
     let pos = size_bound_cardinal_interval(&SizeBound::ExplicitCountPositive { steps })
         .expect("ExplicitCountPositive maps");
-    assert_eq!(pos, Interval::ExactInterval { lo: 1, hi: 1 });
+    assert_eq!(
+        pos,
+        Interval::try_exact_interval(1, 1).expect("singleton one")
+    );
 
     assert!(matches!(
         size_bound_cardinal_interval(&SizeBound::Forever),
@@ -49,7 +52,7 @@ fn interval_d_shared_parent_consolidation_landed() {
 fn bound_carrier_parent_matches_algebra_shape() {
     fn assert_cardinal_interval(_: Interval<Cardinal>) {}
     fn assert_ordinal_interval(_: Interval<Ordinal>) {}
-    assert_cardinal_interval(CardinalityBound::UNBOUNDED);
+    assert_cardinal_interval(CardinalityBound::UNBOUNDED.as_cardinal_interval());
     assert_ordinal_interval(Interval::Unbounded);
 }
 

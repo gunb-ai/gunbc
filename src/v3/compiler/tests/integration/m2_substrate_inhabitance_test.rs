@@ -995,6 +995,14 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "CardinalityBound"),
+        vec![
+            (String::from("Exact"), vec![String::from("_0")]),
+            (String::from("AtMostOne"), Vec::new()),
+            (String::from("Unbounded"), Vec::new()),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "FieldValue"),
         vec![
             (String::from("Literal"), vec![String::from("_0")]),

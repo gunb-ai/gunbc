@@ -573,9 +573,9 @@ fn render_opt_payload_binding(binding: Option<&PayloadBinding>) -> String {
 
 fn render_loop_bound(bound: &LoopBound) -> String {
     match bound {
-        LoopBound::Cardinality { count, .. } => {
+        LoopBound::Cardinality { count } => {
             format!(
-                "LoopBound::Cardinality {{ count: {}, iteration: Interval::Unbounded }}",
+                "LoopBound::Cardinality {{ count: {} }}",
                 render_port_id(*count)
             )
         }
