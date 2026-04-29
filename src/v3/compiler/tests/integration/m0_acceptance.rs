@@ -154,7 +154,7 @@ fn numeric_recursion_lowers_to_a_bounded_loop() {
         .expect("recursive bind should lower through Loop");
     assert!(matches!(
         loop_node.bound,
-        LoopBound::Cardinality { count } if count == param_port
+        LoopBound::Cardinality { count, .. } if count == param_port
     ));
 
     let answer = bind_named(&dag, "answer");

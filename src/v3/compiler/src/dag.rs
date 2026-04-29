@@ -3901,7 +3901,7 @@ mod tests {
         let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
         let opt_decl = dag.alloc_cardinality_decl(
             int_decl,
-            CardinalityBound::AtMostOne,
+            CardinalityBound::AT_MOST_ONE,
             SourceSpan::new("cardinality_alias_peel_test", 0, 0),
         );
         let alias_decl = dag.alloc_declaration_id();
@@ -3924,7 +3924,7 @@ mod tests {
         });
 
         assert_eq!(
-            cardinality_idempotent_target(&dag, alias_decl, CardinalityBound::AtMostOne),
+            cardinality_idempotent_target(&dag, alias_decl, CardinalityBound::AT_MOST_ONE),
             Some(opt_decl),
             "Alias = Opt (Instantiation with empty args) should peel to Opt before idempotence"
         );
@@ -3937,7 +3937,7 @@ mod tests {
         let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
         let int_opt_decl = dag.alloc_cardinality_decl(
             int_decl,
-            CardinalityBound::AtMostOne,
+            CardinalityBound::AT_MOST_ONE,
             SourceSpan::new("cardinality_chain_peel_test", 0, 0),
         );
         // type Alias = Int?   →  empty-arg alias to the `Int?` declaration
@@ -3980,7 +3980,7 @@ mod tests {
         });
 
         assert_eq!(
-            cardinality_idempotent_target(&dag, wrap_decl, CardinalityBound::AtMostOne),
+            cardinality_idempotent_target(&dag, wrap_decl, CardinalityBound::AT_MOST_ONE),
             Some(int_opt_decl),
             "Wrap = Alias; Alias = Int? should peel through both Instantiations to the \
              canonical `Int?` decl (recursive alias chain, not one step)"

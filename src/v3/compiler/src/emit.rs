@@ -407,7 +407,7 @@ pub(super) fn walk_to_disj(dag: &Dag, start: DeclarationId) -> Option<Declaratio
     for _ in 0..32 {
         match &dag.declaration(current).connective {
             TypeConnective::Disj { .. } => return Some(current),
-            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AT_MOST_ONE => {
                 return dag.optional_match_disj(current);
             }
             TypeConnective::Instantiation { template, .. } => current = *template,
@@ -1691,7 +1691,7 @@ impl<'a> Ctx<'a> {
         let scrutinee_type = primitive_type_id_for_port(self.dag, b.input)?;
         if matches!(
             self.dag.declaration(scrutinee_type).connective,
-            TypeConnective::Cardinality(ref p) if p.bound() == CardinalityBound::AtMostOne
+            TypeConnective::Cardinality(ref p) if p.bound() == CardinalityBound::AT_MOST_ONE
         ) {
             return self.render_optional_branch(b, locals);
         }
@@ -2434,7 +2434,7 @@ impl<'a> Ctx<'a> {
                     )),
                 }
             }
-            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AT_MOST_ONE => {
                 let inner = self.go_type_name_for_decl_at_depth(p.element(), depth + 1)?;
                 Ok(render_named_template(
                     &self.indexes.syntax.type_applications.optional,
@@ -3798,7 +3798,7 @@ mod tests {
             source,
             init,
             body_node,
-            crate::dag::LoopBound::Cardinality { count },
+            crate::dag::LoopBound::cardinality_bounded_count(count),
             SourceSpan::new(file, 0, 1),
         );
         assert!(super::port_is_consumed_from(&dag, loop_out, body_out));

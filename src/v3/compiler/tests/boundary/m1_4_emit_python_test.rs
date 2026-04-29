@@ -714,7 +714,7 @@ fn serialize_loop_node(node: &LoopNode) -> String {
 
 fn serialize_loop_bound(bound: &LoopBound) -> String {
     match bound {
-        LoopBound::Cardinality { count } => {
+        LoopBound::Cardinality { count, .. } => {
             format!("LoopBound_Cardinality(count={})", py_debug(count))
         }
         LoopBound::Descent { cluster } => {

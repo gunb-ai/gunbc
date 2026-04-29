@@ -72,7 +72,7 @@ fn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)
             };
 
             match &lp.bound {
-                LoopBound::Cardinality { count } => {
+                LoopBound::Cardinality { count, .. } => {
                     assert_eq!(
                         *count, lp.source,
                         "cardinality-bound loops use the descent witness port as `count` \

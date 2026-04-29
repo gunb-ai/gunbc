@@ -7,7 +7,7 @@ use crate::dag::{
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
     ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue, Interval,
     IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId,
-    NominalOpacity, NonEmptyList, NonSingletonList, OperatorKind, Ordinal, Path, PayloadBinding,
+    NominalOpacity, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding,
     PhantomParameter, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
     TypeConnective, ValueBody, ValueNode,
 };
