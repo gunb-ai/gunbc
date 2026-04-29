@@ -50,7 +50,7 @@ Before worker dispatch begins on the implementation sub-lanes above, **5 design 
 
 | PR | Depends on | Parallelizable with | Locks | Status |
 |---|---|---|---|---|
-| **PR-A** | (foundational) | — | Runtime value model — closed-over environments, lazy/eager strategy, memoization | **PR-A.0 DESIGN SLICE AUTHORED** — [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md); slice-0 `TestClaim` fixtures introduced by PR-A.0 at `r2_evaluator_runtime_value_model.dag` + `tc2_evaluation_order_independence_deferred.dag` |
+| **PR-A** | (foundational) | — | Runtime value model — closed-over environments, lazy/eager strategy, memoization | **PR-A.0 DESIGN SLICE AUTHORED** — [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md); slice-0 `TestClaim` fixtures introduced by PR-A.0 at `r2_evaluator_runtime_value_model.dag` + `tc2_evaluation_order_independence_deferred.dag`. **PR-A.1 dependency audit authored** — [`r2-pr-a1-runtime-value-dependency-audit.md`](r2-pr-a1-runtime-value-dependency-audit.md) records the flat-name collision between runtime `Value` and the existing L1 behavior marker `type Value {}`; carrier declaration is blocked pending substrate-owned marker rename/split or equivalent identity resolution. |
 | **PR-B** | PR-A | PR-C, PR-D | Witness construction surface — concrete shape for runtime materialization | NOT YET AUTHORED |
 | **PR-C** | (foundational; substrate-reflection-shape) | PR-A, PR-B, PR-D | Reflection completeness spec — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`? | **LANDED via #1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) (consumed by R3-T-LensProducer-Retirement per §"Cascade and gates") |
 | **PR-D** | (foundational; cross-target spec) | PR-A, PR-B, PR-C | L5 corpus type spec — algebraic equivalence over curated corpus (locked direction; specific design here) | **Slice 0 opened** — worker brief [`docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) + structural `TestClaim` hook (consumed by R3-T-V-L5-Corpus); strict cross-target predicates follow LanguageSpec / grounding deps in that brief |
@@ -136,6 +136,7 @@ Each sub-lane closes under a structural acceptance gate authored as a `.dag` `Te
 
 **Authored:**
 - [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) — runtime `Value` model / `EvalFrame` / `EvalStateStack` / lazy thunk + memoization boundary design lock.
+- [`r2-pr-a1-runtime-value-dependency-audit.md`](r2-pr-a1-runtime-value-dependency-audit.md) — PR-A.1 blocker audit: runtime `Value` carrier cannot land while the flat declaration namespace is occupied by the L1 `Value` behavior marker.
 
 **Pending (post-spawn manager authors autonomously):**
 - ~~PR-A worker brief — Runtime value model design lock~~ — **slice authored** at [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md); implementation worker remains pending.
