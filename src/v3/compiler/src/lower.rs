@@ -2860,7 +2860,7 @@ fn try_lower_repeat_string_string_data(
     }
     let s = s_value?;
     let n = n_value?;
-    let folded = fold_repeat_string_semantics(&s, n);
+    let folded = fold_repeat_string_semantics(&s, n)?;
     Some(crate::dag::ValueBody::Scalar(LiteralBits::String(folded)))
 }
 
@@ -2868,12 +2868,28 @@ fn is_string_type_decl(dag: &Dag, ty_decl_id: DeclarationId) -> bool {
     matches!(dag.declaration(ty_decl_id).name.as_deref(), Some("String"))
 }
 
+/// Upper bound on repeat count for compile-time `repeat_string` folding on `data` bodies.
+const REPEAT_STRING_FOLD_MAX_COUNT: i64 = 1_048_576;
+
+/// Upper bound on produced UTF-8 bytes for the same fold (defense in depth with [`REPEAT_STRING_FOLD_MAX_COUNT`]).
+const REPEAT_STRING_FOLD_MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
+
 /// Semantics aligned with `dsl/std/render.dag` `repeat_string` for the gate witness (`n` ≥ 0).
-fn fold_repeat_string_semantics(s: &str, n: i64) -> String {
+///
+/// Fail-closed on excessive `n` or output size so lowering does not materialize unbounded strings
+/// for hostile literals (see R1C-B T-P0 gate — bounded compile-time fold).
+fn fold_repeat_string_semantics(s: &str, n: i64) -> Option<String> {
     if n <= 0 {
-        return String::new();
+        return Some(String::new());
     }
-    s.repeat(n as usize)
+    if n > REPEAT_STRING_FOLD_MAX_COUNT {
+        return None;
+    }
+    let total = (s.len() as i128).checked_mul(n as i128)?;
+    if total > REPEAT_STRING_FOLD_MAX_OUTPUT_BYTES as i128 {
+        return None;
+    }
+    Some(s.repeat(n as usize))
 }
 
 fn lower_list_to_structural(
