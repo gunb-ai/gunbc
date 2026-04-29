@@ -4,8 +4,8 @@
 
 ## Read first
 
-- **[`ROADMAP.md §"Lane acceptance — .dag gates"`](../../ROADMAP.md)** — T-P0 row: `p0_repeat_string_correct` [Day 1, structural receipt pending per ROADMAP] · interim `p0_repeat_string_v2_oracle_rust_bridge` (`.dag` + v2-oracle integration) · `p0_no_fabrication_sentinel` [ext] · `p0_rest_ops_aligned` [ext]. The Day-1 gate uses today's DB-15 schema; the two `[ext]` gates require T-TestGen schema extensions per ROADMAP authority.
-- **[`docs/briefs/r1-closure-manager.md`](r1-closure-manager.md)** — manager scope; verify dependency on R1C-A (schema extensions) at brief authoring before dispatching the `[ext]` gate fixtures.
+- **[`ROADMAP.md §"Lane acceptance — .dag gates"`](../../ROADMAP.md)** — T-P0 row (single authority on **main**): `p0_repeat_string_correct` [Day 1 — structural lower-time fold + `OutputEquals`] · `p0_no_fabrication_sentinel` [Day 1 — `ExecuteCommand` + `scripts/r1_p0_no_fabrication_sentinel.sh`] · `p0_rest_ops_aligned` [Day 1 — `ExecuteCommand` + `scripts/r1_p0_rest_ops_aligned.py`]. The interim `p0_repeat_string_v2_oracle_rust_bridge` is **retired** (see ROADMAP T-P0 line).
+- **[`docs/briefs/r1-closure-manager.md`](r1-closure-manager.md)** — manager scope; the two host receipts above compile against DB-15 **`ExecuteCommand`** (no T-TestGen schema extension required for those predicates).
 - **[`src/v3/compiler/tests/fixtures/r1_gates.dag`](../../src/v3/compiler/tests/fixtures/r1_gates.dag)** — current R1 gate fixture file. Existing TestClaim authoring patterns to mirror for the new fixtures.
 - **[`src/v3/compiler/src/test_runner.rs`](../../src/v3/compiler/src/test_runner.rs)** — runner-dispatch table; new gate predicates need dispatch arms here.
 - **`feedback_construction_over_ratchets`** — fixtures should ground in observable behavior, not author parallel asserts.
@@ -15,7 +15,7 @@
 
 T-P0 features already work. `repeat_string_correct` is verified by integration test against the v2 oracle. The `no_fabrication_sentinel` and `rest_ops_aligned` features are similarly landed but lack `.dag` TestClaim wrappers. This brief authors three fixtures + runner-dispatch wiring.
 
-The Day-1 structural fixture (`p0_repeat_string_correct`) is pending modeled evaluation in v3 (see ROADMAP T-P0 note). The interim bridge (`p0_repeat_string_v2_oracle_rust_bridge`) uses existing DB-15 schema (`OutputEquals` on a lowered literal + v2-oracle integration). The two `[ext]` fixtures depend on R1C-A's predicate-shape work IF they need new predicates beyond the DB-15 surface; **verify at brief authoring** by reading the integration test for each feature to determine the predicate shape needed.
+The Day-1 structural fixture (`p0_repeat_string_correct`) is landed as a compile-time literal fold at lower time (see ROADMAP). The interim bridge (`p0_repeat_string_v2_oracle_rust_bridge`) is retired. The two **ExecuteCommand** host gates do not require new runner predicate shapes beyond DB-15; **verify at brief authoring** only if a future change alters the `ExecuteCommand` surface.
 
 ## Three consumer-side requirements
 
