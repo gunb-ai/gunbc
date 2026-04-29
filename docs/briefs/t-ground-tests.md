@@ -2,16 +2,16 @@
 
 **Status:** PROPOSAL — dispatchable now (no design-cadence gate; consumer wiring is downstream and lands separately). Authored 2026-04-29.
 
-**Lane:** T-Ground-Tests (S) — item **10** of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane description line 38, lane row line 69, acceptance gate line 129 `routing_correctness_l4_verified`, pending list line 146).
+**Lane:** T-Ground-Tests (S) — item **10** of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane description line 38, lane row line 69, acceptance gate line 129 `routing_correctness_l4_verified`, pending list line 147).
 
 **Manager:** R2 Grounding Manager ([`r2-grounding-manager.md`](r2-grounding-manager.md)).
 
 **Lineage / authorities consumed (no re-litigation):**
-- R2 manager lane row + acceptance gate: [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 38, 69, 129, 146; pilot precedent at line 60 + receipt at line 120 (`pilot_inhabitance_routing_stability_landed` — DONE PR #765).
+- R2 manager lane row + acceptance gate: [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 38, 69, 129, 147; pilot precedent at line 60 + receipt at line 120 (`pilot_inhabitance_routing_stability_landed` — DONE PR #765).
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Examples 1-7 are lifted as test cases (per `r2-grounding-manager.md:11` structural-acceptance-per-lane-close discipline); Q4 universal four-property gate (Faithful / Correct / Minimal / Performant; locked PR-I); R3-vs-R2 split for L4-L7 (lines 404-411 — R3 `T-Verification-L4-L7-Direct` is the runtime-equivalence harness; this R2 lane is the **routing-stability** structural sibling that runs purely off substrate facts).
 - Lens framework: [`docs/design-lens-framework.md`](../design-lens-framework.md) Q4 four-property entries and the Faithful/Performant/structural-Minimal lens-instance shape; `Lens<C>.read: (Dag, Behavior) → Witness<C>` substrate input (per design-emission-model.md:1107-1111 distinction: structural-fold properties are `Lens<C>` instances; runtime-equivalence properties live in R3 harness — this lane covers the structural side).
 - Pilot routing-stability test stratum: `src/v3/grounding_pilot/src/lib.rs:408-460` — Stratum A (name-keyed parity) + Stratum B (algebra-homomorphism extension); precedent shape this lane generalizes.
-- Substrate single-authority: row authorities at `src/v3/std/{rust,python,go}_method_template_contracts.dag` (Phase 1 / Phase 2 landed); LanguageSpec axes at `src/v3/std/emit_model.dag:302`; `MethodRef`/`MethodDeclaration` registry at `dsl/std/methods.dag` + `src/v3/std/methods.dag`.
+- Substrate single-authority: row authorities at `src/v3/std/{rust,python,go}_method_template_contracts.dag` (Phase 1 / Phase 2 landed); LanguageSpec axes at `src/v3/std/emit_model.dag:303`; `MethodRef`/`MethodDeclaration` registry at `dsl/std/methods.dag` + `src/v3/std/methods.dag`.
 - Fail-closed: [`INVARIANTS.md`](../../INVARIANTS.md) C-8 (P3) + C-series — every detectable mis-routing is a typed `Diagnostic`; no silent passes.
 - Test discipline: [`TESTING.md`](../../TESTING.md) — hermetic, behavior-driven, unit-first; sub-second per `feedback_test_timeout_2s.md`.
 - Brief shape templates: [`t-ground-languagespec.md`](t-ground-languagespec.md), [`t-ground-lifetime-analyzer.md`](t-ground-lifetime-analyzer.md), [`t-ground-diagnostic.md`](t-ground-diagnostic.md).
@@ -78,7 +78,7 @@ Examples 1-7 from `design-emission-model.md` (lines 415-792) are lifted as the s
 
 ### F. P1 substrate-fact-introduction receipts
 
-Worker MUST run the 3-step procedure (`INVARIANTS.md:86-123`) for any new substrate type / variant / field introduced under this lane:
+Worker MUST run the 3-step procedure (`INVARIANTS.md:94-129`) for any new substrate type / variant / field introduced under this lane:
 
 - **Step 1 (DAG-ancestor):** the per-axis `Witness<C>` and `TestClaim` carriers — does an ancestor exist in `dsl/std/` or `src/v3/std/`? (`Witness<C>` is from `src/v3/std/dimensions.dag`; `TestClaim` is from `src/v3/std/test_claims.dag` if present, else escalate.)
 - **Step 2 (Coproduct-vs-coordinate):** the test outcome shape — `TestClaim::Pass | Fail(Diagnostic)` is a proper alternative; per-axis verdicts on a single (program, target) inhabitance are coordinates of a record.
