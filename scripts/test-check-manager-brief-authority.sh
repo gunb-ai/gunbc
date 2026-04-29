@@ -56,6 +56,11 @@ cat > "$TMPDIR/docs/thesis/r2-r3-thesis-mapping.md" <<'EOF'
 EOF
 
 # Helper: write 7 minimal briefs, optionally overriding one with custom content.
+# Uses markdown-bold form (**7**) to match the format live briefs use —
+# per gpt-5-5-pro review on ea33aeb9d, earlier fixtures used bare
+# digits ("7 standing R2 managers") which proved Q5 for a format the
+# live docs don't actually use. Live briefs write
+# "Names this manager one of **7** standing R2 managers".
 write_clean_briefs() {
   local override_brief="${1:-}"
   local override_content="${2:-}"
@@ -72,8 +77,8 @@ References [r2-structure](../r2-structure.md) — clean.
 References [r3-structure](../r3-structure.md) — clean.
 References [thesis](../thesis/r2-r3-thesis-mapping.md) — clean.
 
-Manager count: 7 standing R2 managers.
-R3 has 10 R3 lanes.
+Names this manager one of **7** standing R2 managers.
+R3 has **10** R3 lanes.
 EOF
     fi
   done
@@ -144,14 +149,19 @@ test_negative_q4_unreachable_pr() {
 # The mismatch must be reported.
 
 test_negative_q5_count_mismatch() {
-  # Default briefs say "7 standing R2 managers"; override one to say 5.
+  # Default briefs say "**7** standing R2 managers"; override one to
+  # say "**5**" — markdown-bold form matches live briefs (per
+  # gpt-5-5-pro review). Pre-fix this test passed silently because
+  # the regex required bare digits and missed the bolded count
+  # entirely on both fixtures, leaving counts_seen empty (no
+  # mismatch to flag).
   write_clean_briefs "r2-evaluator-manager.md" \
-    "# Brief\n\nReferences [r2-structure](../r2-structure.md).\n\nManager count: 5 standing R2 managers (intentional drift)."
+    "# Brief\n\nReferences [r2-structure](../r2-structure.md).\n\nNames this manager one of **5** standing R2 managers (intentional drift)."
 
   cd "$TMPDIR"
   if bash "$TEST_CONSUMER" >/dev/null 2>&1; then
     cd "$ROOT"
-    echo "FAIL [Q5/count-mismatch]: consumer passed on a fixture with mismatched manager counts"
+    echo "FAIL [Q5/count-mismatch]: consumer passed on a fixture with mismatched manager counts (markdown-bold form)"
     return 1
   fi
   cd "$ROOT"
@@ -165,18 +175,21 @@ test_negative_q5_count_mismatch() {
 # but it diverges from canonical (7).
 
 test_negative_q5_divergent_from_canonical() {
+  # All briefs agree on **5** standing R2 managers — agreement is
+  # preserved but diverges from canonical (7). Markdown-bold form
+  # matches live brief format.
   for name in evaluator grounding impossible-bugs modeling pure-bootstrap release substrate; do
     cat > "$TMPDIR/docs/briefs/r2-${name}-manager.md" <<EOF
 # R2 ${name} Manager Brief
 References [r2-structure](../r2-structure.md).
-Manager count: 5 standing R2 managers (all briefs agree but diverges from canonical 7).
+Names this manager one of **5** standing R2 managers (all briefs agree but diverges from canonical 7).
 EOF
   done
 
   cd "$TMPDIR"
   if bash "$TEST_CONSUMER" >/dev/null 2>&1; then
     cd "$ROOT"
-    echo "FAIL [Q5/divergent-from-canonical]: consumer passed on a fixture where all briefs agree on a non-canonical value"
+    echo "FAIL [Q5/divergent-from-canonical]: consumer passed on a fixture where all briefs agree on a non-canonical value (markdown-bold form)"
     return 1
   fi
   cd "$ROOT"

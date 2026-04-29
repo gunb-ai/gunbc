@@ -13,8 +13,16 @@
 #   Q2 — cited section anchor existence (§"section name" + path#anchor)
 #   Q4 — `LANDED via #N` PR is reachable in this branch's history
 #   Q5 — cross-brief lane-count / manager-count projections agree
-# Q3 (controlled status vocabulary) deferred to v2 — too subjective
-# for v1; named below as the next narrowing opportunity.
+# Q3 (controlled status vocabulary) deferred to v2 with concrete
+# dissolution trigger: implement Q3 when ANY status-string drift
+# slips past Q1/Q2/Q4/Q5 in a real review (i.e., a brief edit
+# introduces an unrecognized status keyword that none of the
+# existing checks catch). At that point Q3 has a known unhandled
+# class to encode against. Until then, status vocabulary is
+# captured indirectly by Q5 (count-projection consistency catches
+# the most common drift class — wrong manager/lane counts).
+# DISSOLUTION TRIGGER: first reviewer-flagged status-string drift
+# class that Q1/Q2/Q4/Q5 don't catch.
 #
 # Exit codes:
 #   0 — no violations
@@ -282,18 +290,21 @@ check_q5_cross_brief_projections() {
   # docs/r3-structure.md (lane counts) authority docs.
   # Regex must use POSIX-extended (bash grep -E): [0-9]+, not \d+.
   #
-  # Per claude-opus-4-7 review: empirical check confirms the bare
-  # "standing managers" pattern does NOT substring-match
-  # "standing R2 managers" — the regex requires "managers"
-  # immediately after "standing" with one space, which "R2 " breaks.
-  # The two patterns coexist as separate constraints; if a brief
-  # uses either phrasing the count must match canonical (7).
+  # Markdown bold (`**7**`) handling — per gpt-5-5-pro review on
+  # ea33aeb9d: live briefs write counts with markdown emphasis
+  # (e.g., "Names this manager one of **7** standing R2 managers").
+  # Earlier patterns required a bare leading digit and so missed
+  # every live count claim — the check passed silently because no
+  # matches at all means "0 counts seen → silent OK" per the
+  # mismatch logic below. Patterns now optionally accept "**" before
+  # and after the digit; extraction strips asterisks before
+  # parsing the integer.
   declare -a patterns=(
-    'standing R2 managers||7||[0-9]+ standing R2 managers'
-    'standing managers (no R2 qualifier)||7||[0-9]+ standing managers'
-    'other managers||6||[0-9]+ other managers'
-    'R3 lanes||10||[0-9]+ R3 lanes'
-    'R3-Evaluator-gated lanes||7||[0-9]+ of 10 R3 lanes'
+    'standing R2 managers||7||\*?\*?[0-9]+\*?\*? standing R2 managers'
+    'standing managers (no R2 qualifier)||7||\*?\*?[0-9]+\*?\*? standing managers'
+    'other managers||6||\*?\*?[0-9]+\*?\*? other managers'
+    'R3 lanes||10||\*?\*?[0-9]+\*?\*? R3 lanes'
+    'R3-Evaluator-gated lanes||7||\*?\*?[0-9]+\*?\*? of 10 R3 lanes'
   )
 
   for entry in "${patterns[@]}"; do
@@ -311,8 +322,9 @@ check_q5_cross_brief_projections() {
       while IFS= read -r match; do
         [ -z "$match" ] && continue
         # Extract the leading number from the matched substring.
+        # Strip markdown bold asterisks first (live briefs use **N**).
         local n
-        n="$(echo "$match" | grep -oE '^[0-9]+')"
+        n="$(echo "$match" | tr -d '*' | grep -oE '^[0-9]+')"
         [ -z "$n" ] && continue
         counts_seen["$n"]="${counts_seen[$n]:-}${brief}; "
       done < <(grep -oE "$pattern" "$brief" 2>/dev/null || true)
