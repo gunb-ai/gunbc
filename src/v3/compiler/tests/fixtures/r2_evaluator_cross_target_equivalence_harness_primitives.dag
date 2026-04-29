@@ -1,0 +1,22 @@
+// std.r2_evaluator_cross_target_equivalence_harness_primitives — PR-D (Evaluator Manager).
+//
+// Structural acceptance hook: `evaluator_cross_target_equivalence_harness_primitives_landed`
+// per docs/briefs/r2-evaluator-manager.md §Acceptance. Slice 0 uses `Compiles` only; see
+// docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md for deferred L5-shaped work.
+
+module std.r2_evaluator_cross_target_equivalence_harness_primitives
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data evaluator_cross_target_equivalence_harness_primitives_landed: TestClaim = {
+  name: "evaluator_cross_target_equivalence_harness_primitives_landed",
+  source: "fn trivial_identity(x: Int) -> Int = x\nlet _: Int = trivial_identity(0)\n",
+  file_name: "r2_pr_d_harness_primitive_stub.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data r2_evaluator_cross_target_equivalence_harness_primitives_suite: TestSuite = {
+  name: "r2_evaluator_cross_target_equivalence_harness_primitives_suite",
+  claims: [evaluator_cross_target_equivalence_harness_primitives_landed]
+}
