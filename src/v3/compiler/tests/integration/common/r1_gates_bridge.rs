@@ -1,34 +1,51 @@
-//! Shared receipts for `tests/fixtures/r1_gates.dag` bridge claims (R1C-B / T-P0).
-//!
-//! Keeps a single implementation for suite names + compile path so `test_runner_test` and
-//! feature-specific modules (e.g. P0 oracle) cannot drift.
+//! Shared receipts for `tests/fixtures/r1_gates.dag` R1C-B / T-P0 gates (`p0_repeat_string_correct`,
+//! host sentinel / REST alignment suite).
 
 use std::path::PathBuf;
 
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
 
-/// Loads `r1_gates.dag` and asserts `p0_repeat_string_v2_oracle_rust_bridge_gate` evaluates one
-/// `Pass` claim (interim v2-oracle bridge; see `r1_gates.template.dag` comments).
-pub fn assert_p0_repeat_string_v2_oracle_rust_bridge_gate_passes() {
+fn load_r1_gates_dag() -> v3_compiler::Dag {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate_path = manifest_dir.join("tests/fixtures/r1_gates.dag");
     let gate_source = std::fs::read_to_string(&gate_path)
         .unwrap_or_else(|e| panic!("read {}: {e}", gate_path.display()));
-    let dag = match compile_to_dag(&gate_source, "src/v3/compiler/tests/fixtures/r1_gates.dag") {
+    match compile_to_dag(&gate_source, "src/v3/compiler/tests/fixtures/r1_gates.dag") {
         Ok(d) => d,
         Err(CompileError::Semantic(err_dag)) => panic!(
             "r1_gates.dag semantic errors: {:?}",
             err_dag.diagnostics().iter().collect::<Vec<_>>()
         ),
         Err(e) => panic!("r1_gates.dag: {e:?}"),
-    };
-    let results = TestRunner::new(&dag).run_suite("p0_repeat_string_v2_oracle_rust_bridge_gate");
+    }
+}
+
+/// Loads `r1_gates.dag` and asserts `p0_repeat_string_correct_gate` evaluates one `Pass` claim.
+pub fn assert_p0_repeat_string_correct_gate_passes() {
+    let dag = load_r1_gates_dag();
+    let results = TestRunner::new(&dag).run_suite("p0_repeat_string_correct_gate");
     assert_eq!(results.len(), 1, "{results:?}");
     assert_eq!(
         results[0].result,
         ClaimResult::Pass,
-        "expected Pass on p0_repeat_string_v2_oracle_rust_bridge, got {:?}",
+        "expected Pass on p0_repeat_string_correct, got {:?}",
         results[0]
     );
+}
+
+/// `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (`ExecuteCommand` host scripts).
+pub fn assert_p0_host_sentinel_and_rest_gate_passes() {
+    let dag = load_r1_gates_dag();
+    let results = TestRunner::new(&dag).run_suite("p0_host_sentinel_and_rest_gate");
+    assert_eq!(results.len(), 2, "{results:?}");
+    for r in &results {
+        assert_eq!(
+            r.result,
+            ClaimResult::Pass,
+            "expected Pass on {}: {:?}",
+            r.claim_name,
+            r
+        );
+    }
 }
