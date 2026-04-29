@@ -1,13 +1,18 @@
 // dsl/v3/std/emit_model.dag — v2 CI / `dag run --source-root dsl` facade for
 // `MethodTemplateContract` and friends.
 //
-// Canonical substrate remains `src/v3/std/emit_model.dag` (v3 compiler). This
-// file exists because the v2 interpreter only indexes `--source-root` trees and
-// cannot parse full v3 std syntax; `dsl/extdeps/languages/*/method_template_contracts.dag`
-// imports `v3.std.emit_model` for typed empty bootstrap lists.
+// Canonical substrate: `src/v3/std/emit_model.dag` (v3 compiler). The v2 interpreter
+// indexes only `--source-root` trees and cannot parse full v3 std syntax, so this file
+// supplies a v2-parseable `module v3.std.emit_model` when dsl sources import it (notably
+// CI: `run_ci_pipeline` → `gunbc.tools.ci_runner`).
 //
-// Keep field names and variant tags aligned with the canonical module so
-// drift is obvious at review time.
+// Keep field names and variant tags aligned with the canonical module so drift is
+// obvious at review time.
+//
+// **🟡 Scaffold — dissolution trigger:** delete this facade when CI / `dag run` can
+// index `src/v3/std/emit_model.dag` without v2 parse failures (e.g. `src/v3` as an
+// additional `--source-root` with v3 semantics, or v2 retirement), or when
+// `v3.std.emit_model` no longer needs to resolve under `--source-root dsl` alone.
 
 module v3.std.emit_model
 
