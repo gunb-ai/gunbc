@@ -1,16 +1,20 @@
 //! **Layer:** integration
 //!
 //! Zero-residual **receipt + ratchet** for the PB Tier-2 lower-helper
-//! post-processing bridge tracked as **`bridge_patch_lower_helpers_residual_retired`**
-//! / **`bridge_exact_string_patching_residual_retired`** (lower-helper slice only;
-//! see `docs/r3-structure.md` (T-Bridge-Retirement) and
-//! `docs/briefs/r2-pure-bootstrap-manager.md`).
+//! post-processing bridge tracked in R3 under the exact-string umbrella
+//! **`bridge_exact_string_patching_residual_retired`** (**lower-helper slice**
+//! only; PB brief `docs/briefs/r2-pure-bootstrap-manager.md` names the sibling
+//! Tier-2 row as `bridge_patch_lower` + `_helpers_residual_retired` split
+//! across lines here so this source stays free of the contiguous forbidden
+//! token under scan).
+//! See `docs/r3-structure.md` (T-Bridge-Retirement).
 //!
 //! ## Audit (PB v3-compiler crate, post–PR #1014)
 //!
-//! - `rg 'patch_lower_helpers' src/v3/compiler --glob '*.rs'` → **no matches**
-//!   (the named `patch_lower_helpers_generated_type_alias_refinement` helper and
-//!   `regen_lens` / SG-6 string-patch special cases were deleted in #1014).
+//! - Hand-audit / `rg` for the same **contiguous** token this test forbids (built
+//!   via `concat!` in code) should find **no occurrences** in any crate `.rs` or
+//!   `build.rs` after #1014’s deletions — this test enforces that predicate on
+//!   disk, **including this file** (no self-skip).
 //! - `build.rs` at the crate root → **no** contiguous `patch_lower` + `_helpers`
 //!   substring.
 //! - `src/lib.rs` is under `src/` and covered by the same walk as other compiler
@@ -19,7 +23,8 @@
 //! ## Ratchet scope (narrow)
 //!
 //! Fails CI only if the **contiguous** symbol `patch_lower` + `_helpers` reappears
-//! in any `.rs` under this crate's `src/` or `tests/` trees, or in `build.rs`.
+//! in any `.rs` under this crate's `src/` or `tests/` trees, or in `build.rs`
+//! (including **this** file — no self-skip).
 //! Filesystem read failures fail the test (no silent skip — incomplete scans must
 //! not report a clean bill of health).
 //! This is specific to the **retired lower-helper generated-Rust exact-string patch
@@ -30,10 +35,8 @@ use std::ffi::OsStr;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-const SELF_BASENAME: &str = "bridge_lower_helpers_patch_zero_residual_test.rs";
-
 /// Retired bridge symbols use this contiguous substring (`patch_lower` +
-/// `_helpers`, e.g. `patch_lower_helpers_generated`, `patch_lower_helpers_*`).
+/// `_helpers`, e.g. deleted `*_generated` / `*_refinement` helpers from #1014).
 /// Defined with `concat!` so this source file does not embed the forbidden spelling.
 const FORBIDDEN: &str = concat!("patch_lower", "_helpers");
 
@@ -59,13 +62,6 @@ fn visit_rs(root: &Path, offenders: &mut Vec<String>, scan_errors: &mut Vec<Stri
             continue;
         }
         if path.extension() != Some(OsStr::new("rs")) {
-            continue;
-        }
-        if path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .is_some_and(|n| n == SELF_BASENAME)
-        {
             continue;
         }
         let text = match fs::read_to_string(&path) {
@@ -108,10 +104,10 @@ fn lower_helpers_patch_bridge_exact_string_residual_stays_zero() {
 
     assert!(
         scan_errors.is_empty(),
-        "bridge_patch_lower_helpers_residual_retired: source scan must be complete (scan_errors: {scan_errors:?})"
+        "lower_helper_patch_bridge_zero_residual: source scan must be complete (scan_errors: {scan_errors:?})"
     );
     assert!(
         offenders.is_empty(),
-        "bridge_patch_lower_helpers_residual_retired: `{FORBIDDEN}` must not reappear in v3-compiler Rust after PR #1014 (offenders: {offenders:?})"
+        "lower_helper_patch_bridge_zero_residual: `{FORBIDDEN}` must not reappear in v3-compiler Rust after PR #1014 (offenders: {offenders:?})"
     );
 }
