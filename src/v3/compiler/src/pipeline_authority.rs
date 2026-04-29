@@ -1,6 +1,4 @@
-use crate::dag::{
-    ArrowBody, Dag, DeclarationId, FieldValue, TypeConnective, ValueBody,
-};
+use crate::dag::{ArrowBody, Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 
 pub(crate) const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 
