@@ -563,7 +563,7 @@ pub mod lens_cost {
                 source,
                 init,
                 body,
-                LoopBound::Cardinality { count: source },
+                LoopBound::cardinality_bounded_count(source),
                 span(),
             );
             assert_cost(&dag, loop_port, 1);
@@ -761,7 +761,7 @@ pub mod lens_provenance {
                 source,
                 init,
                 body,
-                LoopBound::Cardinality { count: source },
+                LoopBound::cardinality_bounded_count(source),
                 span(),
             );
             assert_eq!(label(&origin_of(&dag, &loop_port)), "Accumulated");
