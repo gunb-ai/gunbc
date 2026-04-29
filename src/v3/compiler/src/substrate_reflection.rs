@@ -636,9 +636,10 @@ fn reflect_optional_branch_emit(
 
 fn reflect_optional_bind_emit(
     dag: &Dag,
+    cardinality_decl_id: DeclarationId,
     opt: Option<BindEmitParticipation>,
 ) -> ReflectResult<FieldValue> {
-    reflect_optional_list_spine(dag, opt, |d, p| match p {
+    reflect_optional_sum(dag, cardinality_decl_id, opt, |d, p| match p {
         BindEmitParticipation::UserCallable => {
             let id = disj_variant_ty(d, "BindEmitParticipation", "UserCallable")?;
             Ok(FieldValue::Variant {
@@ -663,6 +664,8 @@ fn reflect_transform_target(dag: &Dag, t: &TransformTarget) -> ReflectResult<Fie
             field_child,
         } => {
             let id = disj_variant_ty(dag, "TransformTarget", "FieldProject")?;
+            let field_child_card =
+                peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, id, "field_child")?)?;
             Ok(FieldValue::Variant {
                 constructor: id,
                 payload: vec![FieldValue::Record(vec![
@@ -672,7 +675,7 @@ fn reflect_transform_target(dag: &Dag, t: &TransformTarget) -> ReflectResult<Fie
                     ),
                     (
                         "field_child".to_string(),
-                        reflect_optional_declaration_id(dag, *field_child)?,
+                        reflect_optional_declaration_id(dag, field_child_card, *field_child)?,
                     ),
                 ])],
             })
