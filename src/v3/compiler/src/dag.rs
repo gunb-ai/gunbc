@@ -4057,4 +4057,35 @@ mod tests {
         assert_eq!(payload.element(), exact_two);
         assert_eq!(payload.bound(), CardinalityBound::AtMostOne);
     }
+
+    #[test]
+    fn cardinality_bound_try_as_cardinal_interval_is_none_for_invalid_exact() {
+        assert_eq!(
+            CardinalityBound::Exact(-1).try_as_cardinal_interval(),
+            None
+        );
+        assert_eq!(
+            CardinalityBound::Exact(7).try_as_cardinal_interval(),
+            Some(Interval::try_exact_interval(7, 7).expect("7..=7"))
+        );
+    }
+
+    #[test]
+    fn size_bound_forever_omits_interval_projection_preserves_constant_witness() {
+        assert_eq!(size_bound_cardinal_interval(&SizeBound::Forever), None);
+        assert_eq!(
+            constant_bound_value(&SizeBound::Forever),
+            Some(forever_iteration_bound())
+        );
+    }
+
+    #[test]
+    fn size_bound_explicit_count_positive_is_singleton_interval() {
+        let two = PositiveDescentAmount::AdditionalStep {
+            previous: Box::new(PositiveDescentAmount::OneStep),
+        };
+        let iv = size_bound_cardinal_interval(&SizeBound::ExplicitCountPositive { steps: two })
+            .expect("two steps");
+        assert_eq!(iv, Interval::try_exact_interval(2, 2).expect("2..=2"));
+    }
 }
