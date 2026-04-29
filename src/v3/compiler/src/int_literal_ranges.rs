@@ -55,9 +55,12 @@ pub(crate) enum IntervalInt {
     Unbounded,
 }
 
-/// Subset of an exact integer interval: everything [`Diagnostic::MagnitudeOutOfRange`] needs. This
-/// type is the only input to [`magnitude_out_of_range`], so an unbounded domain cannot be passed
-/// where a fixed range is required.
+/// Decimal endpoints for a **fixed** integer target — the payload of [`MagnitudeOutOfRange`].
+///
+/// **API split:** only [`magnitude_out_of_range`] takes this type. When you have a full
+/// [`IntervalInt`] from [`integer_range_for_decl`], call [`magnitude_out_of_range_for_interval`]
+/// (it uses [`IntervalInt::exact_interval_facts`] and never passes an unbounded domain into the
+/// magnitude diagnostic).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExactIntIntervalFacts {
     pub(crate) target_name: String,
@@ -77,6 +80,8 @@ impl IntervalInt {
         }
     }
 
+    /// Fixed-width pilot rows: `Some` for [`IntervalInt::ExactInterval`]; `None` for
+    /// [`IntervalInt::Unbounded`] (no decimal range to quote in `MagnitudeOutOfRange`).
     pub(crate) fn exact_interval_facts(&self) -> Option<ExactIntIntervalFacts> {
         match self {
             IntervalInt::ExactInterval {
@@ -377,8 +382,10 @@ pub(crate) fn int_literal_fits_expected_type(
     }
 }
 
-/// [`MagnitudeOutOfRange`] for a fixed-width target — only exact decimal facts; see
-/// [`magnitude_out_of_range_for_interval`] when you hold a full [`IntervalInt`].
+/// Build [`Diagnostic::MagnitudeOutOfRange`] from **exact** decimal range facts only.
+///
+/// For a bound that may be [`IntervalInt::Unbounded`], use [`magnitude_out_of_range_for_interval`]
+/// instead — this function does not accept [`IntervalInt`].
 pub(crate) fn magnitude_out_of_range(
     literal: i64,
     expected: TypeShape,
