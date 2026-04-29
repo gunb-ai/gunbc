@@ -328,6 +328,10 @@ pub fn dominates(a: &SymbolicCost, b: &SymbolicCost) -> bool {
 
 SERIALIZE_FUNCTIONS_TEMPLATE = """pub fn serialize_dag(dag: &Dag) -> Vec<u8> {
     let mut out = String::new();
+    out.push_str(&format!(
+        \"APPEND_BEGIN {}\\n\",
+        dag.post_bootstrap_declaration_append_begin()
+    ));
     for declaration in dag.declarations() {
         out.push_str(&format!(
             \"DECL {} {:?}\\n\",
@@ -354,6 +358,17 @@ SERIALIZE_FUNCTIONS_TEMPLATE = """pub fn serialize_dag(dag: &Dag) -> Vec<u8> {
 }
 
 pub fn first_difference(lhs: &Dag, rhs: &Dag) -> Option<DagDifference> {
+    if lhs.post_bootstrap_declaration_append_begin() != rhs.post_bootstrap_declaration_append_begin()
+    {
+        return Some(DagDifference {
+            detail: format!(
+                \"declaration append begin mismatch: pass1={}, pass2={}\",
+                lhs.post_bootstrap_declaration_append_begin(),
+                rhs.post_bootstrap_declaration_append_begin(),
+            ),
+        });
+    }
+
     let lhs_decls = lhs.declarations();
     let rhs_decls = rhs.declarations();
     if lhs_decls.len() != rhs_decls.len() {
@@ -501,17 +516,6 @@ pub fn first_difference(lhs: &Dag, rhs: &Dag) -> Option<DagDifference> {
                 ),
             });
         }
-    }
-
-    if lhs.post_bootstrap_declaration_append_begin() != rhs.post_bootstrap_declaration_append_begin()
-    {
-        return Some(DagDifference {
-            detail: format!(
-                \"declaration append begin mismatch: pass1={}, pass2={}\",
-                lhs.post_bootstrap_declaration_append_begin(),
-                rhs.post_bootstrap_declaration_append_begin(),
-            ),
-        });
     }
 
     None

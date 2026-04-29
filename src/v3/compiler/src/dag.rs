@@ -2367,13 +2367,21 @@ pub struct Dag {
     declaration_append_begin_after_bootstrap: u32,
 }
 
+/// Which committed `bootstrap_*_generated` snapshot shape [`Dag::finalize_runtime_bootstrap_from_generated_snapshot`]
+/// is finalizing — drives extdeps-only asserts and pilot validation.
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum RuntimeBootstrapFixtureKind {
+    /// `bootstrap_generated` / `bootstrap_generated_without_parse_surface`.
+    FullExtdepsPipelineSnapshot,
+    /// `bootstrap_std_generated` (std-only; no extdeps fixture-key assert / pilot walk).
+    StdOnlySnapshot,
+}
+
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
-    dag.mark_bootstrap_secret_nominal_opacity();
-    assert_bootstrap_fixture_paths_match_regen_keys(&dag);
-    dag.populate_primitive_cache();
-    crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
-    dag.stamp_declaration_append_begin_after_bootstrap();
+    dag.finalize_runtime_bootstrap_from_generated_snapshot(
+        RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot,
+    );
     dag
 });
 
@@ -2382,20 +2390,18 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
 // sole writer and the PB-1 equivalence tests ratchet generated == runtime.
 static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
-    dag.mark_bootstrap_secret_nominal_opacity();
-    dag.populate_primitive_cache();
-    dag.stamp_declaration_append_begin_after_bootstrap();
+    dag.finalize_runtime_bootstrap_from_generated_snapshot(
+        RuntimeBootstrapFixtureKind::StdOnlySnapshot,
+    );
     dag
 });
 
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
-    dag.mark_bootstrap_secret_nominal_opacity();
-    assert_bootstrap_fixture_paths_match_regen_keys(&dag);
-    dag.populate_primitive_cache();
-    crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
-    dag.stamp_declaration_append_begin_after_bootstrap();
+    dag.finalize_runtime_bootstrap_from_generated_snapshot(
+        RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot,
+    );
     dag
 });
 
@@ -2451,6 +2457,31 @@ impl Dag {
 
     fn stamp_declaration_append_begin_after_bootstrap(&mut self) {
         self.declaration_append_begin_after_bootstrap = self.next_declaration_id;
+    }
+
+    /// Invariant steps for every `Dag` materialized from a committed
+    /// `bootstrap_*_generated` snapshot before it is cached or cloned for
+    /// [`Dag::new`]. Centralizes bootstrap finalization so the append boundary
+    /// is not tied ad hoc to each `LazyLock` closure.
+    pub(crate) fn finalize_runtime_bootstrap_from_generated_snapshot(
+        &mut self,
+        kind: RuntimeBootstrapFixtureKind,
+    ) {
+        self.mark_bootstrap_secret_nominal_opacity();
+        if matches!(
+            kind,
+            RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot
+        ) {
+            assert_bootstrap_fixture_paths_match_regen_keys(self);
+        }
+        self.populate_primitive_cache();
+        if matches!(
+            kind,
+            RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot
+        ) {
+            crate::int_literal_ranges::validate_rust_pilot_integer_primitives(self);
+        }
+        self.stamp_declaration_append_begin_after_bootstrap();
     }
 
     fn mark_bootstrap_secret_nominal_opacity(&mut self) {
