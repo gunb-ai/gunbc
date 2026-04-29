@@ -265,32 +265,43 @@ typical fixtures (it's specific to lane-2 workflow effects).
 top-level user-facing function's result port. Closest to "the
 program's output."
 
-### Recommendation for the audit
+### Director disposition (2026-04-29, parent inbox #1130)
 
-**(α)** is the simplest and matches what the existing
-per-port fold's downstream consumers (`v3_compiler::lens_cost::
-cost_of` at the Rust boundary) already use: depth at the last
-behavior's result port. **(γ)** is more semantically-typed but
-requires the workflow-root identification to be a structural
-fact, not a positional `last()` pick. **(β)** is too narrow —
-a `complexity_lens` should work on any program, not only
-lane-2 workflow programs.
+**Workflow-root = (α) last topological `Bind`, but only behind
+a named `workflow_root_port(d: Dag) -> PortId` helper/accessor.**
+The accessor is the framework boundary; the implementation is
+"last topological `Bind`" today, refinable to (γ)
+last-`UserCallable`-Bind later behind the same accessor without
+churning consumers. (β) rejected as too narrow — a
+`complexity_lens` should work on any program, not only lane-2
+workflow programs.
 
-### Prerequisite question this raises
+**Cross-reference (Director-requested):** `workflow_root_port`
+is shared authority for **both** `fold_lens<C>`'s workflow-root
+identification AND R2-Evaluator's runtime entry-point
+identification (`evaluate(program, entry, args) -> Value` shape
+from Items 4+5 / #1176 §3.2). Same root-identification problem,
+one accessor surface. The accessor is therefore not a
+lens-framework-private addition; it's a substrate-level
+declared fact that the lens framework and the runtime evaluator
+both consume.
 
-If `fold_lens<C>` semantics depends on workflow-root
-identification, the substrate may need a typed
-`workflow_root: PortId` field on `Dag` (or a derived accessor
-function `workflow_root_port(d: Dag) -> PortId`). This is a
-small substrate addition, but it should be **declared, not
-positionally inferred** at the framework boundary — otherwise
-the framework consumes a positional convention that drifts
-with `d.nodes` insertion order changes.
+### Prereq-3 carrier: `workflow_root_port` accessor
 
-This is a separate sub-audit-question that should be locked
-before authoring `fold_lens<C>` so the existing
-per-port-depth-at-workflow-root equivalence has a stable
-target.
+The accessor lands as part of Prereq-3 (or as a separate
+sub-slice of Prereq-3 that can lead, since the accessor doesn't
+depend on `fold_lens<C>` machinery — only on substrate-level
+`Dag.nodes` walk). Either:
+
+- **Sub-slice 3a:** declare `workflow_root_port(d: Dag) ->
+  PortId` in `src/v3/std/substrate.dag` (or sibling) with the
+  α implementation. R2-Evaluator and `fold_lens<C>` both
+  consume.
+- **Sub-slice 3b:** author `fold_lens<C>` against the accessor
+  from 3a.
+
+3a can land before Prereq-2 closes (no fn-block-body needs).
+3b is gated on Prereq-1 + Prereq-2 as before.
 
 ---
 
@@ -344,17 +355,28 @@ match b { Value(_) => Inhabits(0), Transform(_) => Inhabits(1),
 
 **Sizing estimate:** ~5-7 days. Larger because variant-
 constructor resolution (class-5 gap #4 — three options listed
-in the gap entry) is itself non-trivial; recommend the
-"infer-time re-resolution" option per that gap entry's
-"biggest substrate lift but most general" framing.
+in the gap entry) is itself non-trivial.
 
-### Prereq-3: `fold_lens<C>` machinery + workflow-root identification
+**Director disposition (2026-04-29):** **infer-time
+re-resolution** for variant constructors, per class-5 gap #4's
+"biggest substrate lift but most general" framing. **No
+per-type special cases for `Witness<C>` / `OptionalDiagnostic`
+or any other named coproduct.** The variant-resolution path is
+generic; lens-framework variant constructions inherit the
+generic path without bespoke handling.
 
-**Scope:** Author `fold_lens<C>: Lens<C> → Dag →
-DimensionReport<C>` in `src/v3/std/lens.dag` (or sibling file).
-Decide workflow-root identification (α/β/γ above) and either
-land a `workflow_root_port(d: Dag) -> PortId` accessor or
-encode the choice positionally with explicit comment.
+### Prereq-3: `fold_lens<C>` machinery + `workflow_root_port` accessor
+
+**Scope (per Director disposition 2026-04-29):**
+- **3a:** declare `workflow_root_port(d: Dag) -> PortId` in
+  `src/v3/std/substrate.dag` (or sibling) with the α
+  implementation (last topological `Bind`). Shared authority —
+  R2-Evaluator's runtime entry-point identification consumes
+  the same accessor (per Items 4+5 / #1176 §3.2 cross-reference).
+- **3b:** author `fold_lens<C>: Lens<C> → Dag →
+  DimensionReport<C>` in `src/v3/std/lens.dag` (or sibling),
+  consuming `workflow_root_port` from 3a for the
+  per-port-equivalence test target.
 
 **Acceptance:** `fold_lens<C>` lowers to bootstrap; a fixture
 `Lens<Int>` instance + `fold_lens` call returns a
