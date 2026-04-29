@@ -5,7 +5,7 @@
 //! structural `DeclarationRef` edges on `ReleaseDeferredClaim` markers.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 const FIXTURE_SOURCE: &str = include_str!("../fixtures/r1_release_acceptance.dag");
@@ -129,6 +129,52 @@ data bad_deferred_claim: TestClaim = {
     authority_doc: release_authority_doc
   },
   requires: []
+}
+
+#[test]
+fn release_deferred_claim_rejects_nonlocal_markers_even_from_release_fixture() {
+    let source = r##"
+import std.verification { ReleaseDeferredClaim, TestClaim, TestSuite }
+
+type R1GateMarker {}
+type TargetLaneMarker {}
+type ReleaseAuthorityDoc {}
+
+data gate_marker: R1GateMarker = {}
+data target_lane_marker: TargetLaneMarker = {}
+data release_authority_doc: ReleaseAuthorityDoc = {}
+
+data bad_deferred_claim: TestClaim = {
+  name: "bad_deferred",
+  source: "let _: Int = 0",
+  file_name: "bad_deferred.v3",
+  predicate: ReleaseDeferredClaim {
+    deferred_gate: gate_marker,
+    target_lane: target_lane_marker,
+    authority_doc: release_authority_doc
+  },
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "bad_deferred_suite",
+  claims: [bad_deferred_claim]
+}
+"##;
+    let dag = compile_to_dag(source, "nonlocal_release_deferred_markers.dag")
+        .expect("well-typed deferral fixture compiles structurally");
+    let claim_decl = dag
+        .declaration_by_name("bad_deferred_claim")
+        .expect("bad_deferred_claim is present");
+    let mut claim = TestClaimValue::from_declaration(claim_decl)
+        .expect("bad_deferred_claim lowers structurally");
+    claim.declaration_file = FIXTURE_PATH.to_string();
+
+    let result = TestRunner::new(&dag).run_claim(&claim);
+    assert!(
+        matches!(result.result, ClaimResult::Fail(_)),
+        "expected ReleaseDeferredClaim to reject nonlocal marker declarations, got {result:?}"
+    );
 }
 
 data suite: TestSuite = {

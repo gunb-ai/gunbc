@@ -2047,6 +2047,15 @@ impl<'a> TestRunner<'a> {
             ))
     }
 
+    fn decl_inhabits_role_id(decl: &Declaration, role_id: DeclarationId) -> bool {
+        decl.inhabits == Some(role_id)
+            || decl.meta_tag == Some(role_id)
+            || matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == role_id
+            )
+    }
+
     fn eval_differential_equals(
         &self,
         claim: &TestClaimValue,
@@ -2509,24 +2518,50 @@ impl<'a> TestRunner<'a> {
             ("target_lane", target_lane, "TargetLaneMarker"),
             ("authority_doc", authority_doc, "ReleaseAuthorityDoc"),
         ] {
+            let role_id = match self.release_fixture_local_role_id(role_name) {
+                Ok(id) => id,
+                Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
+            };
             let id = match self.resolve_declaration_ref_id(value, field_label) {
                 Ok(id) => id,
                 Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
             };
             let decl = self.dag.declaration(id);
-            match self.decl_inhabits_named_role(decl, role_name) {
-                Ok(true) => {}
-                Ok(false) => {
-                    return ClaimResult::Fail(format!(
-                        "ReleaseDeferredClaim `{field_label}` must reference a declaration inhabiting `{role_name}`, got `{}`",
-                        decl_display_name(id, decl)
-                    ));
-                }
-                Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
+            if decl.span.file != RELEASE_ACCEPTANCE_FIXTURE {
+                return ClaimResult::Fail(format!(
+                    "ReleaseDeferredClaim `{field_label}` must reference a marker declared in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}` from `{}`",
+                    decl_display_name(id, decl),
+                    decl.span.file
+                ));
+            }
+            if !Self::decl_inhabits_role_id(decl, role_id) {
+                return ClaimResult::Fail(format!(
+                    "ReleaseDeferredClaim `{field_label}` must reference a declaration inhabiting fixture-local `{role_name}`, got `{}`",
+                    decl_display_name(id, decl)
+                ));
             }
         }
 
         ClaimResult::Pass
+    }
+
+    fn release_fixture_local_role_id(&self, role_name: &str) -> Result<DeclarationId, String> {
+        const RELEASE_ACCEPTANCE_FIXTURE: &str =
+            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
+        let mut matches = self.dag.declarations().iter().filter(|decl| {
+            decl.name.as_deref() == Some(role_name) && decl.span.file == RELEASE_ACCEPTANCE_FIXTURE
+        });
+        let Some(role) = matches.next() else {
+            return Err(format!(
+                "release fixture role `{role_name}` is missing from `{RELEASE_ACCEPTANCE_FIXTURE}`"
+            ));
+        };
+        if matches.next().is_some() {
+            return Err(format!(
+                "release fixture role `{role_name}` is declared more than once in `{RELEASE_ACCEPTANCE_FIXTURE}`"
+            ));
+        }
+        Ok(role.id)
     }
 
     fn resolve_census_authority_ref(
