@@ -115,7 +115,7 @@ Dispatch sequence: **PR-PreF lands first** (foundational substrate; everything e
 
 **Adjacent territory:**
 - B4's §0.7 file-preference rank carrier touches Pure Bootstrap territory. Coordinate with Pure Bootstrap Manager.
-- **Diagnostic-kind extensibility (Q6 lock)** — Evaluator Manager extends `Diagnostic.kind` for structural-validation failures. Substrate Manager owns the `CompilerDiagnosticKind` sum; cross-manager coordination at extension time. Known limitation: current substrate is closed sum, tracked under v2 follow-up.
+- **Diagnostic-kind extensibility (Q6 lock)** — lens instances own structural-validation `Diagnostic.kind` declarations in their own namespaced `.dag` authority. Substrate Manager does not own per-lens diagnostic-kind additions; no cross-manager handoff is required merely because a lens needs a new validation failure kind. The Substrate-owned closed diagnostic taxonomy remains untouched for per-lens failures.
 
 ## Locked design decisions consumed (per #1078 8-question dialogue)
 

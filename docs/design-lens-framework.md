@@ -90,7 +90,7 @@ The lens framework **reuses this carrier verbatim** — no parallel `LensReport`
 
 **Carrier reconciliation note (2026-04-28 per codex BLOCKING finding on `4057b8f5`):** an earlier draft of this doc projected a desired `Satisfied { composed, witnesses } | Violated { diagnostics: List<EmissionDiagnostic> }` shape that did not match what's actually declared in `dimensions.dag`. That was parallel-representation debt — the lens framework would either need a separate type (rejected, parallel-representation) or `dimensions.dag` would need a rename cascade (out of scope for the lens primitive lane). **Resolution:** the framework consumes the existing `DimensionReport<Carrier>` as-is. If lens-specific failure data (e.g., richer than `Diagnostic`) is ever needed, that's a follow-up modeling question for `dimensions.dag` itself, not a lens-framework concern.
 
-No silent fabrication; typed diagnostics on side-condition failure (via `Diagnostic` variants on `DimensionFail.violations`).
+No silent fabrication; typed diagnostics on side-condition failure (via lens-local namespaced `Diagnostic.kind` values on `DimensionFail.violations`).
 
 ## Director-locked design decisions (2026-04-28)
 
@@ -197,7 +197,7 @@ type Capability = Read(TenantId) | Write(TenantId) | Network | Filesystem | ...
 | `sequential` (Bind; `Monoid<CapSet>`) | `op = set union`; `identity = {}` (empty set). Monoid law: union is associative + commutative (so this is actually `CommutativeMonoid<CapSet>` — Lens<C> only requires monoid; the commutative refinement is available structurally if a consumer needs it). |
 | `branch` (BranchNode) | Set union — exclusive choice; only one arm runs but compile-time analysis doesn't know which, so defensive accumulation: program must be granted capabilities for any arm it might take |
 | `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | Body's CapSet (the loop bound doesn't matter for capability set — every iteration requires the same caps as the body) |
-| `validate(dag, set)` | Reads `workflow.cap_grant` from `dag` (the `@cap_grant(...)` declaration on the workflow root). If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root span — read from dag>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `CapabilityViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and grant data come from `dag`, not hidden context) |
+| `validate(dag, set)` | Reads `workflow.cap_grant` from `dag` (the `@cap_grant(...)` declaration on the workflow root). If `set ⊆ workflow.cap_grant`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: tenant_flow::CapabilityViolation, span: <workflow root span — read from dag>, message: "required: <set>, granted: <workflow.cap_grant>, missing: <set ∖ granted>", ... } }` (the `tenant_flow::CapabilityViolation` kind is declared in the tenant-flow lens instance namespace; `span` and grant data come from `dag`, not hidden context) |
 
 **Worked program:**
 ```
@@ -213,7 +213,7 @@ data summary = write[TenantB].report    // CapSet: {Write(TenantB)}
 3. `read(write[TenantB].report)` → `Inhabits({Write(TenantB)})`
 4. `compose(...)` → `{Read(TenantA), Write(TenantB)}`
 5. `validate({Read(TenantA), Write(TenantB)})` against grant `{Read(TenantA), Write(TenantA)}`:
-   - Missing: `{Write(TenantB)}` — returns `SomeDiagnostic { value: Diagnostic { kind: CapabilityViolation, span: <workflow root>, message: "required: {Read(TenantA), Write(TenantB)}, granted: {Read(TenantA), Write(TenantA)}, missing: {Write(TenantB)}", ... } }`
+   - Missing: `{Write(TenantB)}` — returns `SomeDiagnostic { value: Diagnostic { kind: tenant_flow::CapabilityViolation, span: <workflow root>, message: "required: {Read(TenantA), Write(TenantB)}, granted: {Read(TenantA), Write(TenantA)}, missing: {Write(TenantB)}", ... } }`
 6. **Result:** `DimensionFail { dimension_name: "tenant-flow", violations: [<the Diagnostic from step 5>], witnesses: [...] }` (fold lifts `SomeDiagnostic.value` into `violations`)
 
 The lens fail-closes structurally: the program crosses a tenant boundary that requires explicit grant. **Same fold framework as complexity; different monoid (set union); side-condition enforces the categorical authorization check.**
@@ -238,7 +238,7 @@ type SecurityLabel = Public | Confidential | Secret | TopSecret
 | `sequential` (Bind; `Monoid<SecurityLabel>`) | `op = lattice join (max)`; `identity = Public` (lattice bottom — the BoundedLattice<SecurityLabel> bottom inhabitance). Monoid law: lattice join is associative + commutative + idempotent (this is `BoundedSemilattice` actually — refinement of Monoid via `BoundedLattice<SecurityLabel>` from `dsl/std/algebra.dag:222`). |
 | `branch` (BranchNode) | Lattice join (`max`) — exclusive choice; defensive worst-case label across arms (only one arm runs but compile-time analysis must allow for either) |
 | `iterate(body, loop_bound)` (LoopNode; `loop_bound: LoopBound`) | Body's label (the loop bound doesn't matter for IFC labels — every iteration produces data with the same label as the body) |
-| `validate(dag, label)` | Reads sink declaration + clearance (`@sink_clearance(...)`) from `dag`. If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration span — read from dag>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `IFCDowngradeViolation` kind is a new `CompilerDiagnosticKind` variant landed alongside this lens instance; `span` and clearance data come from `dag`, not hidden context) |
+| `validate(dag, label)` | Reads sink declaration + clearance (`@sink_clearance(...)`) from `dag`. If `label ⊑ sink.label`: return `NoDiagnostic`. Otherwise: return `SomeDiagnostic { value: Diagnostic { kind: ifc::DowngradeViolation, span: <sink declaration span — read from dag>, message: "computed: <label>, sink_clearance: <sink.label>, downgrade_required: <label ⊐ sink.label>", ... } }` (the `ifc::DowngradeViolation` kind is declared in the IFC lens instance namespace; `span` and clearance data come from `dag`, not hidden context) |
 
 **Worked program:**
 ```
@@ -255,7 +255,7 @@ data output = write[Sink].report                 // label: TopSecret (sink expec
 4. `read(write[Sink].report)` → `Inhabits(Public)` (the sink itself doesn't carry data; its label is the clearance constraint, applied via `validate`)
 5. `compose(TopSecret, Public)` → `TopSecret`
 6. `validate(TopSecret)` against sink clearance `Confidential`:
-   - `TopSecret ⊐ Confidential` → returns `SomeDiagnostic { value: Diagnostic { kind: IFCDowngradeViolation, span: <sink declaration>, message: "computed: TopSecret, sink_clearance: Confidential, downgrade_required: true", ... } }`
+   - `TopSecret ⊐ Confidential` → returns `SomeDiagnostic { value: Diagnostic { kind: ifc::DowngradeViolation, span: <sink declaration>, message: "computed: TopSecret, sink_clearance: Confidential, downgrade_required: true", ... } }`
 7. **Result:** `DimensionFail { dimension_name: "ifc", violations: [<the Diagnostic from step 6>], witnesses: [...] }` (fold lifts `SomeDiagnostic.value` into `violations`)
 
 The lens enforces lattice-based information flow without explicit declassification. **Same fold framework as complexity + tenant-flow; different monoid (lattice join); side-condition enforces the lattice-ordered authorization check (different from set authorization).**
@@ -320,9 +320,9 @@ These run as paper exercises (no code) before any `.dag` substrate work begins. 
 
 **D5. DimensionReport<C> covers all failure modes.**
 - Enumerate failure modes across the 3 instances:
-  - **Read-channel failures** (every instance): substrate has no fact for a node — `read` returns `Violates { reason, at }`; fold short-circuits to `DimensionFail` with that violation surfaced as a `Diagnostic` (kind = `MissingSubstrateFact` or per-instance variant)
-  - **Validate-channel failures** (per instance): complexity has none; tenant has `CapabilityViolation`; IFC has `IFCDowngradeViolation`
-- Verify each maps to a `Diagnostic` value with an appropriate `CompilerDiagnosticKind` variant (lens instances may extend `CompilerDiagnosticKind` with their own kinds).
+  - **Read-channel failures** (every instance): substrate has no fact for a node — `read` returns `Violates { reason, at }`; fold short-circuits to `DimensionFail` with that violation surfaced as a `Diagnostic` (kind = `lens::<instance>::MissingSubstrateFact` or a more specific lens-local kind)
+  - **Validate-channel failures** (per instance): complexity has none; tenant has `tenant_flow::CapabilityViolation`; IFC has `ifc::DowngradeViolation`
+- Verify each maps to a `Diagnostic` value with an appropriate lens-local namespaced `Diagnostic.kind`. Lens instances own their kinds in their own `.dag` authority; the Substrate-owned closed diagnostic sum is not extended for each lens.
 - **Pass criterion:** no failure mode requires fabricating a result; all surface as typed diagnostics — including the read-channel failure mode (per codex BLOCKING finding on `4057b8f5`: `read` must return `Witness<C>`, not `C`, so missing substrate facts cannot fabricate a `C` before validation).
 
 **D6. Director's 6 locked decisions hold under examples.**
@@ -358,8 +358,8 @@ These run during substrate-worker dispatch, before declaring the lane closed. Ea
 **I4. Three worked-example fixtures pass.**
 - Authored as `.dag` `TestClaim` declarations:
   - `lens_complexity_n_log_n_fold_correct`: walks Instance 1's worked program; expects CostExpr(O(n log n), O(n), O(n log n))
-  - `lens_tenant_flow_cross_tenant_violated`: walks Instance 2's worked program; expects CapabilityViolation diagnostic
-  - `lens_ifc_topsecret_to_confidential_violated`: walks Instance 3's worked program; expects IFCDowngradeViolation diagnostic
+  - `lens_tenant_flow_cross_tenant_violated`: walks Instance 2's worked program; expects `tenant_flow::CapabilityViolation` diagnostic
+  - `lens_ifc_topsecret_to_confidential_violated`: walks Instance 3's worked program; expects `ifc::DowngradeViolation` diagnostic
 - **Pass criterion:** all 3 TestClaims evaluate true.
 
 **I5. Cross-domain product fixture passes.**
@@ -444,24 +444,26 @@ The questions below are pre-dispatch decisions for the lens framework. Each name
 - (a): opaque-strings-attract-heuristics anti-pattern (per `feedback_opaque_strings_attract_heuristics`). Downstream consumers reading the reason string for programmatic filtering = bridge.
 - (b): substrate change to dimensions.dag — affects all consumers of Witness<C> (existing AnalysisDimension, lens framework, future analyzers). Reverse cascade.
 - (c): introduces parallel-representation between read-channel and validate-channel failure carriers. The current design has `read: Witness<C>` and `validate: OptionalDiagnostic` — already two channels. Adding a third type for structural validate failures is more parallel rep.
-- (d): keeps Witness<C> simple; pushes structural failure data into Diagnostic.kind (which is `CompilerDiagnosticKind` sum type — already extends per-instance per `feedback_state_space_vs_behavioral_invariants`).
+- (d): keeps Witness<C> simple; pushes structural failure data into lens-local namespaced `Diagnostic.kind` values. The instance owns the kind declaration in its own `.dag`; no Substrate-owned closed-sum extension is required.
 
 **TestClaim shape** (renamed 2026-04-28 per gpt-5-5-pro BLOCKING re P2 single-authority — TestClaim names must reflect the locked decision that rich structural payloads live in `Diagnostic.kind`, NOT in `Witness<C>`):
-- `diagnostic_kind_for_tenant_flow_carries_missing_capabilities_structurally` (verifies set-difference is recoverable from `Diagnostic.kind = CapabilityViolation { required, granted, missing }`, not from `Witness.reason: String`)
-- `diagnostic_kind_for_ifc_carries_label_comparison_structurally` (verifies lattice-comparison is recoverable from `Diagnostic.kind = IFCDowngradeViolation { computed, sink_clearance, downgrade_required }`, not from `Witness.reason: String`)
+- `diagnostic_kind_for_tenant_flow_carries_missing_capabilities_structurally` (verifies set-difference is recoverable from `Diagnostic.kind = tenant_flow::CapabilityViolation { required, granted, missing }`, not from `Witness.reason: String`)
+- `diagnostic_kind_for_ifc_carries_label_comparison_structurally` (verifies lattice-comparison is recoverable from `Diagnostic.kind = ifc::DowngradeViolation { computed, sink_clearance, downgrade_required }`, not from `Witness.reason: String`)
 - `no_string_parsing_in_witness_consumers` (anti-bridge — no consumer reads `Witness.reason: String` programmatically; structural payloads live exclusively in `Diagnostic.kind` extensions per the locked decision below)
 
-**Recommendation:** **(d)** — `Witness<C>` stays as-is for per-Behavior read-channel failures (string reason is fine for human-readable per-node error messages); structural validate-channel failures encode into `Diagnostic.kind` sum-type variants. Lens instances that need rich structural failure data (tenant-flow, IFC) extend `CompilerDiagnosticKind` with their own variants (e.g., `CapabilityViolation { required, granted, missing }`, `IFCDowngradeViolation { computed, sink_clearance }`). This matches how the worked instances already encode validate failures (per the §"Three worked instances" section above). Witness<C> doesn't need extension.
+**Recommendation:** **(d)** — `Witness<C>` stays as-is for per-Behavior read-channel failures (string reason is fine for human-readable per-node error messages); structural validate-channel failures encode into lens-local namespaced `Diagnostic.kind` values. Lens instances that need rich structural failure data (tenant-flow, IFC) declare their own kinds (e.g., `tenant_flow::CapabilityViolation { required, granted, missing }`, `ifc::DowngradeViolation { computed, sink_clearance }`) in the same `.dag` authority as the lens instance. This matches how the worked instances already encode validate failures (per the §"Three worked instances" section above). Witness<C> doesn't need extension.
 
-**DECISION (Director-locked 2026-04-28 via dialogue): (c)/(d) hybrid — Witness<C> stays as-is; rich structural validation failures encode into `Diagnostic.kind` extensions via the lens-framework's structural inhabitance (uniform whether authored by compiler team or user lens — the compiler IS a user of its own system per `feedback_groundedness_gates_lenses`).**
+**DECISION (Director-locked 2026-04-29): (c)/(d) hybrid — Witness<C> stays as-is; rich structural validation failures encode into lens-local namespaced `Diagnostic.kind` declarations via the lens-framework's structural inhabitance. This is uniform whether authored by the compiler team or a user lens — the compiler IS a user of its own system per `feedback_groundedness_gates_lenses`.**
 
 Director's framing refinements:
 
-1. **User/system distinction is artificial.** The compiler uses lenses to enforce violations the same way user-authored lenses do. CapabilityViolation as a `CompilerDiagnosticKind` variant is uniform whether the lens that emits it is `dsl/std/lenses/cost.dag` (compiler-authored) or `user/myproject/lenses/tenant.dag` (user-authored). The kind extension surface is the *same* mechanism for both. INVARIANTS.md P1 procedure Step 3 reflects this — "lens-extensible" replaces the "user-extensible" framing.
+1. **User/system distinction is artificial.** The compiler uses lenses to enforce violations the same way user-authored lenses do. `tenant_flow::CapabilityViolation` is a lens-local diagnostic kind whether the lens that emits it is `dsl/std/lenses/cost.dag` (compiler-authored) or `user/myproject/lenses/tenant.dag` (user-authored). The kind declaration surface is the *same* mechanism for both. INVARIANTS.md P1 procedure Step 3 reflects this — "lens-extensible" replaces the "user-extensible" framing.
 
-2. **`Witness<C>` is one encoding of a deeper pattern (arity over an error space).** Pass = empty error list (zero arity); Fail = non-empty error list. Other valid encodings exist (`List<Error>` with empty = pass; `Maybe<Error>`; `(Result, List<Error>)`). The substrate's existing carriers (Witness<C>, DimensionReport<C>, OptionalDiagnostic) are domain-specific instances of this pattern. **No consolidation at this level** — the carriers work; recognizing the deeper pattern is observational, not actionable. Future authors of new decision/result carriers should follow the same shape (two disjoint variants, one for success-with-data, one for failure-with-context) but no substrate-level abstract `Either<A, B>` is needed.
+2. **Closed-sum handoff is rejected.** The Substrate Manager does not own per-lens diagnostic-kind additions, and Evaluator does not request new global variants from Substrate at lens-authoring time. A lens instance owns its own namespaced kinds in its own `.dag`; `Diagnostic.kind` carries the namespaced value. This preserves the existing closed global diagnostic taxonomy while allowing open lens instances to report typed failures without a cross-manager runtime handoff.
 
-**Substrate change required: NONE.** Witness<C> stays at `dimensions.dag:35-37`. CompilerDiagnosticKind extensions per lens instance happen during PR-K's Lens<C> spec authoring + during T-Substrate-Lens-Primitive dispatch. Compiler-authored and user-authored lens kinds extend the same surface uniformly.
+3. **`Witness<C>` is one encoding of a deeper pattern (arity over an error space).** Pass = empty error list (zero arity); Fail = non-empty error list. Other valid encodings exist (`List<Error>` with empty = pass; `Maybe<Error>`; `(Result, List<Error>)`). The substrate's existing carriers (Witness<C>, DimensionReport<C>, OptionalDiagnostic) are domain-specific instances of this pattern. **No consolidation at this level** — the carriers work; recognizing the deeper pattern is observational, not actionable. Future authors of new decision/result carriers should follow the same shape (two disjoint variants, one for success-with-data, one for failure-with-context) but no substrate-level abstract `Either<A, B>` is needed.
+
+**Substrate change required: NONE.** Witness<C> stays at `dimensions.dag:35-37`. The Substrate-owned closed diagnostic sum stays untouched for per-lens validation failures. Lens-local diagnostic kinds are declared with the lens instance during PR-K's Lens<C> spec authoring + during T-Substrate-Lens-Primitive dispatch. Compiler-authored and user-authored lens kinds use the same lens-local namespacing mechanism uniformly.
 
 ### Q7 — Error-recovery semantics for partial validate failure
 

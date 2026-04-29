@@ -84,7 +84,7 @@ The Evaluator's substrate decisions inherit from #1078's locked design questions
 
 - **Q1**: `Interval<D>` shared parent in substrate; `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent` (asymmetric match rule)
 - **Q3**: `Cost<Unit> = Dimension<Unit, SymbolicExpr>`; `RealizationCost { storage: Cost<Bits>, access: Map<AlgebraOp, Cost<CPUCycles>> }`
-- **Q6**: `Witness<C>` stays as-is; rich structural validation failures encode into `Diagnostic.kind` extensions (subject to substrate diagnostic-kind dissolution per `src/v3/std/diagnostics.dag` SCAFFOLD note)
+- **Q6**: `Witness<C>` stays as-is; rich structural validation failures encode into lens-local namespaced `Diagnostic.kind` declarations owned by the lens instance, with no Substrate-owned closed-sum extension or cross-manager handoff.
 - **Q7**: per-call validate yields one `OptionalDiagnostic`; fold accumulates into `DimensionFail.violations: List<Diagnostic>`
 - **Q8**: cross-product validate is conjunctive (`Lens<C> × Lens<D>` runs both; conjunctive fold)
 
