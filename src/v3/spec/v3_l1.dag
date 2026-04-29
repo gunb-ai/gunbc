@@ -61,6 +61,11 @@ type Loop {}
 type Bind {}
 type Main {}
 
+// **Naming debt (PB-Runtime flat namespace):** only `Value` collided with the
+// evaluator runtime union carrier; it is renamed to `ValueBehavior`. The other
+// L1 markers (`Transform`, `Branch`, …) stay short until a concrete collision
+// forces the same `*Behavior` pattern — rename in one follow-up PR if desired.
+
 // Sentinel meta-type. A field declared `target: DeclarationRef`
 // accepts an identifier value instead of a literal value at the
 // data-body parse site, and that identifier is resolved to a
