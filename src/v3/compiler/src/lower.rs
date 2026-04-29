@@ -37,7 +37,7 @@ use crate::diagnostics::{
 };
 use crate::infer::{concretize_decl_with_subst, SubstStack};
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range,
+    int_literal_fits_expected_type, integer_range_for_decl, magnitude_out_of_range_for_interval,
     IntegerRangeLookup,
 };
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
