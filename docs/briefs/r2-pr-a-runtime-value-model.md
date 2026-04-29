@@ -50,6 +50,13 @@ type EvalThunk {
   node: NodeId
   captured_state: EvalStateStack
 }
+
+type EvalStrategy
+  = ApplicativeOrder { input_order: InputEvaluationOrder }
+  | NormalOrder
+
+type InputEvaluationOrder
+  = LeftFirst
 ```
 
 `EvalThunk` is not required for an eager-only first evaluator, but the carrier is the right lazy boundary if the evaluator chooses normal-order evaluation for a call or branch edge. A thunk captures state because evaluating a delayed node must use the lexical environment at thunk creation, not the caller's later frame stack.
@@ -78,11 +85,11 @@ type EvalMemoKey {
   program: DeclarationId
   node: NodeId
   state_fingerprint: String
-  strategy: String
+  strategy: EvalStrategy
 }
 ```
 
-`state_fingerprint` is a structural digest of the reachable `EvalStateStack` values for the node. It must not be name-only; two calls to the same node with different bindings are distinct. Memo entries cache `Value` results only after the evaluation completes successfully. Diagnostics and partial results are not cached as values.
+`strategy` is a closed carrier, not a string label. PR-A.3 may add variants only when it also defines their evaluation rule and TC2 comparison obligation. `state_fingerprint` is a structural digest of the reachable `EvalStateStack` values for the node. It must not be name-only; two calls to the same node with different bindings are distinct. Memo entries cache `Value` results only after the evaluation completes successfully. Diagnostics and partial results are not cached as values.
 
 ## Acceptance Gates
 
