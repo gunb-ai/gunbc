@@ -44,23 +44,36 @@ These dependencies are cumulative: R2-Evaluator → T-LensProducer-Retirement (X
 
 Per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101 + `r3-structure.md:60`:
 
-**`pb_self_compile_fixed_point_strong`** — authored as a `.dag` `TestSuite` **composing two existing `TestPredicate` variants** at `src/v3/std/verification.dag`:
+**`pb_self_compile_fixed_point_strong`** — authored as a `.dag` `TestSuite` **composing two existing `TestPredicate` variants** at `src/v3/std/verification.dag`. The suite splits the strong horizon into **two structurally distinct claim shapes** (per codex BLOCKING review on sha `f851b3b7`: collapsing the rustc-bootstrap closure with per-target emission byte-stability into one row hides two different determinism properties):
 
-1. **`FixedPointConverges { compile_target, expected }`** (line 206-209) — one row per Shape-A artifact in the accepted artifact set. Each row asserts: the v3 binary compiles `compiler.dag` to that target → re-compiling from the emitted output produces **byte-identical** output (per [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) §Design — byte equality, not semantic diff). DB-8's `self_host_fixed_point` binary is the runtime mechanic; this row is the structural acceptance.
-2. **`RatchetZero { authority, ratchet_kind }`** (line 210-213) — single row asserting SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` census = 0 at evaluation time. Cross-reads the SG-0 census authority (does not duplicate the list).
+#### Row class A — Rust stage0 self-host bootstrap closes (single row, Rust-only)
+
+One `FixedPointConverges { compile_target = Rust, expected = stage0_rust_snapshot }` row asserting the **bootstrap-closing property**: v3 emits compiler.dag → stage0 Rust source → rustc compiles stage0 Rust → resulting binary re-emits compiler.dag → output byte-equals stage0 Rust source. This is the **DB-8 cycle** (emit → rustc → run → diff per [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) §"The cycle"). The Rust target is load-bearing here because stage0 IS Rust; rustc is the bootstrap kernel. This row exists in the suite **independent** of which other Shape-A targets are grounded — it is not a "per-target emission stability" row, it is the rustc-bootstrap closure row.
+
+#### Row class B — Per-target emitted-artifact byte-stability across cycles (one row per dispatch-time grounded target)
+
+One `FixedPointConverges { compile_target = T, expected = artifact_T_snapshot }` row per Shape-A target T in the **frozen dispatch-time materialized artifact set** (see "Frozen materialization" below). Each row asserts: cycle N emits compiler.dag → artifact T_N; cycle N+1 (using the self-hosted compiler) emits compiler.dag → artifact T_{N+1}; T_N and T_{N+1} are byte-identical. This is the **emission determinism** property — distinct from the rustc-bootstrap closure of Row class A. (The Rust target appears here too, separately from Row A: Row A asserts rustc closes; Row B-Rust asserts emitted-Rust is byte-stable across cycles. They share substrate but assert different invariants.)
+
+#### Row class C — SG-0 census = 0
+
+**`RatchetZero { authority, ratchet_kind }`** (line 210-213) — single row asserting SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` census = 0 at evaluation time. Cross-reads the SG-0 census authority (does not duplicate the list).
 
 ### Single grounding gate (artifact set derivation)
 
 Per [`docs/r3-structure.md`](../r3-structure.md) §"R3 worker dispatch precondition" (Director-locked 2026-04-28), all 7 Evaluator-gated lanes (including T-FixedPoint) dispatch under the **joint precondition** "R2-Evaluator landed AND R2-Grounding-Rust+Python landed." That sets a hard floor: **{Rust, Python} are both required** before any T-FixedPoint dispatch can occur. The brief does not introduce a Rust-only carve-out.
 
-The accepted artifact set for the `FixedPointConverges` rows is **derived from one grounding fact**: the R2 Release Manager closure ledger's report of "which `R2-Grounding-{Lang}` lanes are closed at the moment of dispatch." Worker reads this ledger once at dispatch — that single reading both (a) gates dispatch (must show Rust + Python both closed per the authority above) AND (b) derives the artifact set (one `FixedPointConverges` row per closed-grounding language at that reading). One fact, two consumers; no parallel lists.
+The Row-class-B artifact set (per-target emission byte-stability rows, see §"Acceptance gate") is **derived from one grounding fact**: the R2 Release Manager closure ledger's report of "which `R2-Grounding-{Lang}` lanes are closed at the moment of dispatch." Worker reads this ledger once at dispatch — that single reading both (a) gates dispatch (must show Rust + Python both closed per the authority above) AND (b) derives the Row-B target set (one Row B per closed-grounding language at that reading). One fact, two consumers; no parallel lists.
 
-Concretely, **at the earliest dispatch-eligible moment** (Rust+Python floor met):
-- Rust + Python closed (no Go) → artifact set = {Rust, Python} → two `FixedPointConverges` rows.
-- Rust + Python + Go closed → artifact set = {Rust, Python, Go} → three rows.
+#### Frozen materialization (acceptance-shape lock)
+
+Per codex BLOCKING review on sha `f851b3b7` (Finding 2: artifact-set authority must be represented in the acceptance claim, not procedural): once the worker reads the dispatch-time ledger, the resulting Row-B target set is **frozen as the materialized list of `FixedPointConverges` rows in the suite**. The acceptance claim text *is* the artifact-set authority — there is no post-close ledger re-evaluation that retroactively expands or contracts the row set.
+
+Concretely, at the earliest dispatch-eligible moment (Rust+Python floor met):
+- Rust + Python closed (no Go) → Row B target set frozen as {Rust, Python} → suite has Row A + 2 Row Bs + Row C.
+- Rust + Python + Go closed → Row B target set frozen as {Rust, Python, Go} → suite has Row A + 3 Row Bs + Row C.
 - Rust-only (Python pending) → **NOT dispatch-eligible** per `r3-structure.md` authority; PB Manager waits.
 
-The lane closes when every artifact in the dispatch-time set produces the byte-identical cycle. Subsequent `R2-Grounding-Go` closure landing **after** T-FixedPoint closes is addressed by re-evaluating the `TestSuite` against the new ledger reading; if a row regresses, that's a Grounding-lane regression, not a re-opening of T-FixedPoint.
+T-FixedPoint closes when every materialized row evaluates true. **Late-arriving `R2-Grounding-Go` closure after T-FixedPoint closes does not retroactively extend the suite** — it would land as a follow-up TestClaim or a follow-up PR that adds the Go Row B explicitly, not as a silent re-evaluation of the existing materialized rows. (Modeling ledger-quantified target coverage as live substrate — e.g., a `ForAllGroundedTargets` predicate that reads the ledger at evaluation time — is rejected here per the dispatch guardrails: PB territory does not introduce verification substrate. If the closed-system principle later demands that quantification, that's a Substrate Manager / Verification Manager substrate-introduction question per `INVARIANTS.md` §P1 — not a T-FixedPoint deliverable.)
 
 ### Substrate readiness check
 
