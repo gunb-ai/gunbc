@@ -611,9 +611,7 @@ pub(crate) fn cardinality_idempotent_target(
     }
     let subject = peel_alias_for_cardinality_idempotence(dag, element, 0);
     match &dag.declaration(subject).connective {
-        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
-            Some(subject)
-        }
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => Some(subject),
         _ => None,
     }
 }
