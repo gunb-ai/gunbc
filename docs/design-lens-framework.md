@@ -461,7 +461,7 @@ Director's framing refinements:
 
 2. **`Witness<C>` is one encoding of a deeper pattern (arity over an error space).** Pass = empty error list (zero arity); Fail = non-empty error list. Other valid encodings exist (`List<Error>` with empty = pass; `Maybe<Error>`; `(Result, List<Error>)`). The substrate's existing carriers (Witness<C>, DimensionReport<C>, OptionalDiagnostic) are domain-specific instances of this pattern. **No consolidation at this level** — the carriers work; recognizing the deeper pattern is observational, not actionable. Future authors of new decision/result carriers should follow the same shape (two disjoint variants, one for success-with-data, one for failure-with-context) but no substrate-level abstract `Either<A, B>` is needed.
 
-**Substrate change required: NONE.** Witness<C> stays at `dimensions.dag:35-37`. CompilerDiagnosticKind extensions per lens instance happen during PR-K's Lens<C> spec authoring + during T-Substrate-Lens-Primitive dispatch. Compiler-authored and user-authored lens kinds extend the same surface uniformly.
+**Substrate change required (Q6 framing — SUPERSEDED by Q6.5 below; see §Q6.5 for the refined disposition):** the Q6 lock framed extensions as "no substrate change" because `Witness<C>` stays at `dimensions.dag:35-37` and `CompilerDiagnosticKind` extensions were assumed to land per-lens during PR-K. Q6.5 refines this: the carrier surface DOES need a minimal additive widening of `Diagnostic.kind` to accept the two-layer parent — `CompilerDiagnosticKind`'s closed sum stays untouched, but `Diagnostic.kind`'s field type widens to `AnyDiagnosticKind` so it can carry both Layer-1 and Layer-2 kinds. Read this Q6 paragraph as historical framing; the live disposition is Q6.5.
 
 ### Q6.5 — Two-layer authority for diagnostic kinds (cross-manager protocol)
 
@@ -507,7 +507,7 @@ The runtime sees `Lens<TenantFlow>.validate` produce a `Diagnostic { kind: Capab
 
 **DECISION (Director-authored 2026-04-29):** two-layer authority locked. Layer 1 = `CompilerDiagnosticKind` closed sum (Substrate-owned). Layer 2 = lens-instance kinds declared in the lens's own `.dag` via structural inhabitance (lens-author-owned, namespace-scoped). No cross-manager runtime handoff; no closed-sum churn for lens-instance authoring.
 
-**Substrate change required: minimal additive widening of `Diagnostic.kind` to accept the two-layer parent; `CompilerDiagnosticKind` (Layer 1) closed sum stays untouched.** Concretely, `src/v3/compiler/src/diagnostics.dag:Diagnostic.kind` is currently strictly typed `kind: CompilerDiagnosticKind` (closed sum, Layer 1 only). To carry Layer-2 lens-instance kinds in the same `Diagnostic` value (which is what `Lens<C>.validate → OptionalDiagnostic` produces per `dimensions.dag:41-43`), the field type widens additively:
+**Substrate change required: minimal additive widening of `Diagnostic.kind` to accept the two-layer parent; `CompilerDiagnosticKind` (Layer 1) closed sum stays untouched.** Concretely, `src/v3/std/diagnostics.dag:Diagnostic.kind` is currently strictly typed `kind: CompilerDiagnosticKind` (closed sum, Layer 1 only). To carry Layer-2 lens-instance kinds in the same `Diagnostic` value (which is what `Lens<C>.validate → OptionalDiagnostic` produces per `dimensions.dag:41-43`), the field type widens additively:
 
 ```
 // Layer 2 lens-instance kind declaration shape (declared via lens framework's structural inhabitance)
