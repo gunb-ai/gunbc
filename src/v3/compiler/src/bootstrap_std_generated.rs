@@ -12413,5 +12413,6 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         callable_strategy_variants: CallableStrategyVariants::default(),
         clusters: vec![],
         optional_match_disjs: HashMap::new(),
+        declaration_append_begin_after_bootstrap: 594,
     }
 }

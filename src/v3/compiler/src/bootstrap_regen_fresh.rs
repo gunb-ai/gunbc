@@ -15,7 +15,7 @@
 //! retired `bootstrap_std_fixtures_only` dissolution trigger, reframed for
 //! “regen host goes data-native” rather than “in-tree tests stop diffing.”
 
-use crate::dag::{Dag, DeclarationId};
+use crate::dag::{Dag, DeclarationId, RuntimeBootstrapFixtureKind};
 use crate::lower::{collect_symbols_phase, lower_bodies_phase, resolve_pending_identifiers};
 use crate::parse::{parse, SurfaceModule};
 use crate::tokenize::tokenize;
@@ -70,7 +70,9 @@ fn declaration_name_preference_rank(file: &str) -> usize {
 pub fn compile_std_bootstrap_dag() -> Dag {
     let mut dag = Dag::empty();
     load_fixtures(&mut dag, std_fixtures());
-    dag.populate_primitive_cache();
+    dag.finalize_runtime_bootstrap_from_generated_snapshot(
+        RuntimeBootstrapFixtureKind::StdOnlySnapshot,
+    );
     dag
 }
 
@@ -107,7 +109,9 @@ fn load_runtime_bootstrap_authorities(
         .collect();
     load_fixtures(dag, &fixtures);
     crate::bootstrap::materialize_pipeline_realizations(dag);
-    dag.populate_primitive_cache();
+    dag.finalize_runtime_bootstrap_from_generated_snapshot(
+        RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot,
+    );
 }
 
 fn assert_bootstrap_fixture_keys_resolve() {
