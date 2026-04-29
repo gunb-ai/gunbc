@@ -130,7 +130,7 @@ pub mod lens_unused_parameters {
     mod tests {
         use super::{UnusedParametersConfig, UnusedParametersLens};
         use crate::dag::{
-            BranchPattern, Dag, Interval, LiteralBits, LoopBound, Path, PortId, TransformTarget,
+            BranchPattern, Dag, LiteralBits, LoopBound, Path, PortId, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
         use crate::operators::{ArithmeticOp, ComparisonOp, OperatorKind};
