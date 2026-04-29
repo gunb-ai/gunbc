@@ -2,12 +2,12 @@
 
 **Status:** PROPOSAL — **brief authoring dispatchable now** (per R2 Grounding Manager inbox #1203 / #1133, 2026-04-29). **Implementation gated** on **PR-J** merge with **Q5 no-op confirmation** (cardinality-as-connectives axis already collapsed via PR-PreF `Interval<Cardinal>`; PR-J is the single cadence trigger before worker impl dispatch).
 
-**Lane:** T-Ground-CrossTarget-Meta (S) — item **9** of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane description line 35, lane row line 68, pending list line 145).
+**Lane:** T-Ground-CrossTarget-Meta (S) — item **9** of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane description line 35, lane row line 68, pending list line 146).
 
 **Manager:** R2 Grounding Manager ([`r2-grounding-manager.md`](r2-grounding-manager.md)).
 
 **Lineage / authorities consumed (no re-litigation):**
-- R2 manager lane row + cadence row + acceptance gate: [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 35, 52 (PR-J → this lane), 68, 128 (`cross_target_meta_l6_load_completeness_landed`), 145.
+- R2 manager lane row + cadence row + acceptance gate: [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 35, 52 (PR-J → this lane), 68, 128 (`cross_target_meta_l6_load_completeness_landed`), 146.
 - Modeling problem 7 + L6 placement + cross-product shape: [`docs/design-emission-model.md`](../design-emission-model.md) — search **Cross-target uniformity**, **Modeling problem 7**, **L6**, **`l6_structural_form_coverage`**, **Shape A**, **connectives × behaviors × targets**, Q5 / cardinality-as-connectives (lines ~1243–1280, ~408–410, ~818–833, ~959).
 - **Not-a-lens authority:** [`docs/design-lens-framework.md`](../design-lens-framework.md) §**D3 / I6** — L6 is **not** a `Lens<C>` instance; input space is **per-(substrate form cell × Shape A target)**, not `Lens<C>.read: (Dag, Behavior) → Witness<C>`.
 - Q1 / PR-PreF consolidation: `Interval<D>` parent; cardinality on connectives as `Interval<Cardinal>` (`design-emission-model.md` ~1019–1024, ~1038, ~1265–1268). **L6 row/column substrate authority** (P2): **`TypeConnective`** + **`Behavior`** in [`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag) — see §Scope (six + five variants).
