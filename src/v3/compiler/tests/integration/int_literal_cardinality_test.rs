@@ -549,6 +549,21 @@ fn nested_optional_flatten_holds_in_bootstrap_dag() {
 }
 
 #[test]
+fn nested_optional_flatten_holds_for_surface_double_question() {
+    let src = "\
+fn flatten_probe(x: Int??) -> Int? = x
+";
+    let dag = compile_to_dag(src, "nested_optional_surface_double_question.v3")
+        .expect("surface Int?? should silently normalize to Int?");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "surface nested optional should be diagnostic-free, got: {:?}",
+        dag.diagnostics()
+    );
+    assert_no_nested_at_most_one(&dag, "surface T??");
+}
+
+#[test]
 fn nested_optional_flatten_via_generic_specialization() {
     // `unwrap_id` is generic over T and takes/returns `T?`. Calling it with
     // `Int?` makes substitution ask for `Cardinality(AtMostOne, Int?-decl)`,
