@@ -210,6 +210,6 @@ When the R3 Verification Manager spawns (per `r3-structure.md` §"Manager struct
 - B5 audit (TC3 dependency): [`docs/briefs/r2-release-b5-loop-construction-closure-audit-worker.md`](r2-release-b5-loop-construction-closure-audit-worker.md)
 - P4 Decidability (TC3 formal home): `INVARIANTS.md:236` §P4
 - Termination carrier: `dsl/std/termination.dag` (`DescentEvidence` / BoundedLattice)
-- Substrate-fact-introduction procedure (TC3 escalation path): `INVARIANTS.md:86` §"Procedure: substrate-fact introduction"
+- Substrate-fact-introduction procedure (TC3 escalation path): `INVARIANTS.md:94` §"Procedure: substrate-fact introduction"
 - Strong-normalization theorem source (off-main at authoring): PR #1178 `docs/design-substrate-lambda-calculus-grounding.md` §"Strong normalization for the typed fragment"
 - TC3 transition target: R3 Verification Manager (per `docs/r3-structure.md` §"Manager structure" Item 2)
