@@ -3824,7 +3824,7 @@ fn lower_scalar_literal_for_type(
     if let LiteralBits::Int(value) = literal_bits {
         match integer_range_for_decl(dag, expected_type) {
             IntegerRangeLookup::Found(range) => {
-                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range(
+                return LowerScalarLiteralOutcome::Reject(magnitude_out_of_range_for_interval(
                     value,
                     TypeShape::new(expected_type),
                     range,
