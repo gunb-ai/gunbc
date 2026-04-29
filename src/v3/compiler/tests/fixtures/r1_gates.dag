@@ -84,6 +84,29 @@ data p0_repeat_string_correct_gate: TestSuite = {
   claims: [p0_repeat_string_correct]
 }
 
+// R1C-B / T-P0 — `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (Worker B): DB-15
+// `ExecuteCommand` host receipts; scripts under `scripts/` mirror v2 integration authority.
+data p0_no_fabrication_sentinel: TestClaim = {
+  name: "p0_no_fabrication_sentinel",
+  source: "module p0_no_fabrication_sentinel_host\n",
+  file_name: "p0_no_fabrication_sentinel.v3",
+  predicate: ExecuteCommand("bash", ["-c", "exec bash \"$(git rev-parse --show-toplevel)/scripts/r1_p0_no_fabrication_sentinel.sh\""], 0),
+  requires: []
+}
+
+data p0_rest_ops_aligned: TestClaim = {
+  name: "p0_rest_ops_aligned",
+  source: "module p0_rest_ops_aligned_host\n",
+  file_name: "p0_rest_ops_aligned.v3",
+  predicate: ExecuteCommand("bash", ["-c", "exec python3 \"$(git rev-parse --show-toplevel)/scripts/r1_p0_rest_ops_aligned.py\""], 0),
+  requires: []
+}
+
+data p0_host_sentinel_and_rest_gate: TestSuite = {
+  name: "p0_host_sentinel_and_rest_gate",
+  claims: [p0_no_fabrication_sentinel, p0_rest_ops_aligned]
+}
+
 // Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
 // The runner resolves `lens_ref` by name from this fixture DAG, then looks up the same name in
 // the compiled `program_dag` (`TestClaim.source`). The stub body is unused at evaluation time —
