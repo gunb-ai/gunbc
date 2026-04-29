@@ -14,9 +14,10 @@ the release-acceptance fixture; #1129 records the adjacent design locks.
 
 - **R1 acceptance authority:** [`ROADMAP.md §"Release R1 Program"`](../../ROADMAP.md)
   remains the source for R1 gate semantics and the post-close ledger.
-- **Strict-reading source:** [`THESIS.md §"Tests are structural data"`](../../THESIS.md)
-  remains the reason release gates are `.dag` data rather than host-only
-  ratchets.
+- **Strict-reading source:** [`THESIS.md`](../../THESIS.md) structural
+  test-surface claim and [`docs/design-test-infra.md`](../design-test-infra.md)
+  DB-15 authority remain the reason release gates are `.dag` data rather than
+  host-only ratchets.
 - **Closure shape:** R1 is closed by release acceptance, not by pretending every
   strict census gate is green. Strict receipts that remain RED are represented
   as explicit release deferrals with named target lanes.
