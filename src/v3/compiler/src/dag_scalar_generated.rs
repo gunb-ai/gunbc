@@ -17,6 +17,29 @@ pub enum AtomPayload {
     TypeParam(String),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Interval<D> {
+    BoundedInterval {
+        lower: D,
+        width: IntervalWidth,
+    },
+    Unbounded,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PositiveIntervalWidth {
+    OneUnit,
+    AdditionalUnit {
+        previous: Box<PositiveIntervalWidth>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum IntervalWidth {
+    ZeroWidth,
+    PositiveWidth(PositiveIntervalWidth),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CardinalityBound {
     Exact(u32),
