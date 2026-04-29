@@ -377,31 +377,42 @@ pub(crate) fn int_literal_fits_expected_type(
     }
 }
 
+/// [`MagnitudeOutOfRange`] for a fixed-width target — only exact decimal facts; see
+/// [`magnitude_out_of_range_for_interval`] when you hold a full [`IntervalInt`].
 pub(crate) fn magnitude_out_of_range(
+    literal: i64,
+    expected: TypeShape,
+    facts: ExactIntIntervalFacts,
+    span: SourceSpan,
+) -> Diagnostic {
+    Diagnostic::MagnitudeOutOfRange {
+        literal: literal.to_string(),
+        target: facts.target_name,
+        range_min_inclusive: facts.min_decimal,
+        range_max_inclusive: facts.max_decimal,
+        expected,
+        span,
+        fixes: Vec::new(),
+    }
+}
+
+/// OOB diagnostic when the only available model is [`IntervalInt`] (e.g. from
+/// [`integer_range_for_decl`]). Unbounded domains never produce `MagnitudeOutOfRange` for
+/// i64-bounded literals; if that combination appears, fail closed without `unreachable!`.
+pub(crate) fn magnitude_out_of_range_for_interval(
     literal: i64,
     expected: TypeShape,
     bound: IntervalInt,
     span: SourceSpan,
 ) -> Diagnostic {
-    let Some(ExactIntIntervalFacts {
-        target_name,
-        min_decimal,
-        max_decimal,
-    }) = bound.exact_interval_facts()
-    else {
-        unreachable!(
-            "magnitude_out_of_range is only for fixed-range targets (ExactInterval); \
-             Unbounded accepts every i64-representable literal"
-        );
-    };
-    Diagnostic::MagnitudeOutOfRange {
-        literal: literal.to_string(),
-        target: target_name,
-        range_min_inclusive: min_decimal,
-        range_max_inclusive: max_decimal,
-        expected,
-        span,
-        fixes: Vec::new(),
+    match bound.exact_interval_facts() {
+        Some(facts) => magnitude_out_of_range(literal, expected, facts, span),
+        None => Diagnostic::ResolveError {
+            name: "internal: integer literal failed range check but target has no exact interval facts"
+                .to_string(),
+            span,
+            fixes: Vec::new(),
+        },
     }
 }
 
@@ -669,6 +680,23 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TypeShape;
+
+    #[test]
+    fn magnitude_out_of_range_unbounded_target_fails_closed_with_resolve_error() {
+        let dag = Dag::new();
+        let int_decl = dag.declaration_by_name("Int").expect("Int in bootstrap").id;
+        let d = magnitude_out_of_range_for_interval(
+            0,
+            TypeShape::new(int_decl),
+            IntervalInt::Unbounded,
+            SourceSpan::new("t.v3", 0, 0),
+        );
+        assert!(
+            matches!(d, Diagnostic::ResolveError { .. }),
+            "expected fail-closed ResolveError, got {d:?}"
+        );
+    }
 
     #[test]
     fn interval_int_unbounded_accepts_all_i64_literals() {
