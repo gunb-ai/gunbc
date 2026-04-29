@@ -494,9 +494,11 @@ fn lane2_workflow_at(d: Dag, id: NodeId) -> WorkflowEffect? {
 // 🟡 SCAFFOLD coproduct. The three arms partition every legitimate
 // `Dag` exactly once at the substrate-load boundary:
 //
-//   - `SingleRoot(p)` — exactly one workflow-root `Bind` exists; `p`
-//     is its `result_port`. Under α (last topological `Bind`), this
-//     is the common case for any Dag containing at least one Bind.
+//   - `SingleRoot(p)` — α (last topological `Bind`) selected `p` as
+//     the workflow-root port. Emitted whenever the Dag contains at
+//     least one `Bind`; multiple Binds are NOT ambiguous under α —
+//     the linear `d.nodes` order picks exactly one last element by
+//     definition. `p` is the chosen Bind's `result_port`.
 //   - `NoRoot` — zero `Bind` behaviors in `d.nodes`. The fold short-
 //     circuits (`fold_lens<C>` returns `DimensionFail` with a
 //     no-root diagnostic; `R2-Evaluator.evaluate(...)` rejects).
@@ -526,12 +528,13 @@ type WorkflowRoot
 
 // Workflow-root accessor (per merged audit Prereq-3a). Implements
 // the α rule: last topological `Bind` in `d.nodes`. Returns
-// `WorkflowRoot::SingleRoot(b.result_port)` when exactly one Bind
-// exists; `NoRoot` when zero Binds; never `AmbiguousRoot` under α
-// (linear `d.nodes` cannot tie). Shared authority — both
-// `fold_lens<C>` (workflow-root identification for the equivalence
-// target) and R2-Evaluator (runtime entry-point identification) are
-// the planned consumers.
+// `WorkflowRoot::SingleRoot(b.result_port)` when the Dag contains
+// at least one Bind (α picks the last one); `NoRoot` when zero
+// Binds; never `AmbiguousRoot` under α (linear `d.nodes` cannot
+// tie — multiple Binds are not ambiguous, α just picks the last).
+// Shared authority — both `fold_lens<C>` (workflow-root
+// identification for the equivalence target) and R2-Evaluator
+// (runtime entry-point identification) are the planned consumers.
 fn workflow_root_port(d: Dag) -> WorkflowRoot {
   host workflow_root_port
 }
