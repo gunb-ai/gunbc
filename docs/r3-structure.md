@@ -193,6 +193,8 @@ Today it's shallow/lossy (per Reflective Pattern B): doesn't reflect full behavi
 
 **DECISION (Director-locked 2026-04-28):** Reflection completeness spec is a T-LensProducer-Retirement prerequisite. Authored as PR-C in cadence below. R3-T-LensProducer-Retirement consumes that spec.
 
+**LOCKED 2026-04-29 → see [`docs/design-reflection-completeness.md`](design-reflection-completeness.md):** complete reflection = every substrate-declared field on every `Behavior` variant projected via the substrate-declared shape. Sub-questions resolved §5: (1) every Node reflected via substrate-declared shape — not a meaningful distinction since accessors and reflection produce the same content in different carriers; (2) loop iteration counts are *structural* (port references), not runtime (Evaluator concern); (3) every branch arm reflected — static analysis cannot pick an executed arm. No substrate-carrier change required. Gates T-LensProducer-Retirement sub-gates 1 + 2 (lens_apply.rs / lens_testgen.rs); sub-gate 3 (regen_lens.rs / bin-shim) gated separately on PB-Runtime spec.
+
 ### 3. Cross-target equivalence harness — what does "equivalent" mean?
 
 **Question:** For L5 (`l5_cross_target_consistency`), how are emitted Rust/Python/Go programs compared?
