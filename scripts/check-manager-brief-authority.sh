@@ -126,6 +126,15 @@ slugify() {
     | sed -E 's/[^a-z0-9 -]//g; s/  */-/g; s/--*/-/g; s/^-//; s/-$//'
 }
 
+# Strip leading "# " / "## " / ... markdown heading marker from a line
+# and return the heading text. Don't use Bash's `##` glob — it's
+# greedy through the LAST space, so "## Goal 7 — Evaluator XL"
+# becomes "XL" instead of "Goal 7 — Evaluator XL". sed regex with
+# explicit hash-count + whitespace bound avoids that.
+strip_heading_marker() {
+  echo "$1" | sed -E 's/^#{1,6}[[:space:]]+//'
+}
+
 check_q2_anchor_existence() {
   local brief="$1"
   local brief_dir
@@ -163,11 +172,13 @@ check_q2_anchor_existence() {
 
     [ ! -f "$resolved" ] && continue  # Q1 already reports missing files
 
-    # Extract all heading slugs from target.
+    # Extract all heading slugs from target. Use strip_heading_marker
+    # (sed-based) — Bash's `##\#* ` glob is greedy through the LAST
+    # space, dropping multi-word heading text.
     local found=0
     while IFS= read -r heading; do
       heading="${heading#"${heading%%[![:space:]]*}"}"  # ltrim
-      heading="${heading##\#* }"                          # strip leading #s + space
+      heading="$(strip_heading_marker "$heading")"
       local slug
       slug="$(slugify "$heading")"
       if [ "$slug" = "$anchor" ]; then
