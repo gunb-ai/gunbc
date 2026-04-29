@@ -1038,9 +1038,8 @@ mod tests {
     fn fold_lens_over_reflected_program_rejects_non_arrow_lens() {
         let prog = compile_to_dag("let x: Int = 1", "fold_lens_prog.v3").expect("prog compiles");
         let bogus = prog.declarations()[0].id;
-        let err =
-            fold_lens_over_reflected_program(&prog, "fold_lens_prog.v3", &prog, bogus, &[])
-                .expect_err("non-arrow lens decl");
+        let err = fold_lens_over_reflected_program(&prog, "fold_lens_prog.v3", &prog, bogus, &[])
+            .expect_err("non-arrow lens decl");
         assert!(matches!(err, LensApplyError::NotAnArrow), "{err:?}");
     }
 
@@ -1058,14 +1057,9 @@ mod tests {
             .expect("reflect");
         let manual = apply_lens_declaration(&lens_dag, lens_id, std::slice::from_ref(&reflected))
             .expect("apply");
-        let folded = fold_lens_over_reflected_program(
-            &prog,
-            "fold_lens_equiv.v3",
-            &lens_dag,
-            lens_id,
-            &[],
-        )
-        .expect("fold");
+        let folded =
+            fold_lens_over_reflected_program(&prog, "fold_lens_equiv.v3", &lens_dag, lens_id, &[])
+                .expect("fold");
         assert_eq!(folded, manual);
         assert_eq!(folded, FieldValue::Literal(LiteralBits::Int(1)));
     }
@@ -1083,7 +1077,6 @@ mod tests {
         let err = fold_lens_over_reflected_program(
             &prog,
             "fold_lens_arity.v3",
-            &lens_dag,
             &lens_dag,
             lens_id,
             &[FieldValue::Literal(LiteralBits::Int(0))],

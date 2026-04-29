@@ -35,11 +35,13 @@
 
 1. **Plumbing API:** `fold_lens_over_reflected_program` in `lens_apply.rs` is the single seam for
    “lens over reflected program DAG”. **Slice 1 (landed):** it runs
-   `reflect_program_dag_nodes_in_file` then [`apply_lens_declaration`], passing the reflected
-   carrier as the lens’s **first** argument (additional `inputs` follow). Arity must match
-   `1 + inputs.len()` lens formals. Fail-closed errors come from reflection / `apply_lens_declaration`
-   (no fabricated `DimensionReport`). [`LensApplyError::UnimplementedLensFold`] remains reserved
-   for future fold-driver paths not delegated here.
+   `reflect_program_dag_nodes_in_file(program, source_file, lens_program)` then
+   [`apply_lens_declaration`], passing the reflected carrier as the lens’s **first** argument
+   (additional `inputs` follow). Reflection and interpretation therefore share one
+   **declaration-ID authority** (`lens_program`), avoiding constructor-id mismatches. Arity must
+   match `1 + inputs.len()` lens formals. Fail-closed errors come from reflection /
+   `apply_lens_declaration` (no fabricated `DimensionReport`). [`LensApplyError::UnimplementedLensFold`]
+   remains reserved for future fold-driver paths not delegated here.
 2. **Documentation:** this brief + `r2-evaluator-manager.md` cross-refs so
    dispatch (#1131) and reviewers share one target.
 3. **No** new hand-authored `src/v3/compiler/src/*.rs` files (SG-0); extend
@@ -56,13 +58,13 @@
 ## Contract sketch (implementation follow-ups)
 
 **Inputs (conceptual):** compiled **program** `Dag`, `source_file` filter (same
-as reflection), **`id_space`** `Dag` for `List` / `Behavior` constructor ids
-(INVARIANTS P2), **lens** `Dag` + lens root `DeclarationId`, lens **inputs**
-`&[FieldValue]`.
+as reflection), **lens** `Dag` + lens root `DeclarationId` (reflection uses this
+same `Dag` for INVARIANTS P2 `List` / `Behavior` constructor ids as
+[`apply_lens_declaration`]), lens **inputs** `&[FieldValue]`.
 
 **Pipeline:**
 
-1. `reflect_program_dag_nodes_in_file(program, source_file, id_space)?` →
+1. `reflect_program_dag_nodes_in_file(program, source_file, lens_program)?` →
    substrate-shaped `FieldValue` (today: `Record { nodes: List<Behavior> }`).
 2. Interpret / walk the lens arrow body over that carrier via
    [`apply_lens_declaration`] (slice 1: reflected value is the first argument; same bounded
