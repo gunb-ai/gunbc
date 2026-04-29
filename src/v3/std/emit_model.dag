@@ -315,3 +315,62 @@ type LanguageSpec {
   collection_ops: DeclarationRef
   values: DeclarationRef
 }
+
+// Placeholder convention for method-template render strings.
+//
+// `IndexedArgs` — positional placeholders `{arg0}`, `{arg1}`, … as used by
+// `dsl/extdeps/languages/{rust,python,go}/runtime.dag` `MethodTranslation`
+// rows.
+// `NamedArg` — single `{arg}` placeholder as used by Rust `emit.dag`
+// `SimpleMethodSpec` and Python/Go `emit.dag` template maps.
+//
+// The receiver placeholder `{recv}` is common to both conventions and lives
+// outside this axis.
+//
+// 🟡 SCAFFOLD coproduct. Pattern 1 (per-call template typing) fails because
+// today's templates are opaque `String` values whose placeholder dialect is
+// observable only by string inspection — there is no upstream type-system
+// fact distinguishing `{arg0}/{arg1}` indexed slots from a single named
+// `{arg}` slot. Pattern 2 (collapse to a single labeled record) erases the
+// closed semantic split that consumers actually dispatch on. Pattern 3 is
+// the dissolution path: when method-template substrate parses templates
+// into structured slot facts (a typed `List<TemplateSegment>` with arity
+// and slot-kind known structurally), this convention tag derives from
+// segment shape and the named coproduct retires. Trigger: structured
+// template-segment substrate in a follow-up substrate-completion lane.
+// Until then this scaffold is the single declared authority for the
+// dialect axis.
+type PlaceholderConvention
+  = IndexedArgs
+  | NamedArg
+
+// Per-target, per-method template contract. Sibling carrier to §6a
+// `MethodContract` in `src/v3/std/algebra.dag` — that one carries
+// target-agnostic cost/complexity metadata keyed by
+// `(algebra_id, method_id)`; this one carries target-specific render
+// templates keyed by `dag_method`. The two are orthogonal sibling facts
+// attached to method declarations; neither is a parent or child of the
+// other (P1 step 1).
+//
+// Single template-contract fact per row — no cost/complexity fields
+// (P1 step 2). Per-target identity is carried by the containing
+// `data <target>_method_template_contracts: List<MethodTemplateContract>`
+// list authority, not duplicated on the row (P2 single-authority).
+//
+// `dag_method: DeclarationRef` aligns with the in-file convention
+// (`op: DeclarationRef` on `OperatorRealization`, `language` / `target`
+// on every realization). When a method-declaration registry lands in
+// `dsl/std/`, this field can refine to a typed `MethodRef` without
+// changing consumers.
+//
+// 🟡 TRANSITIONAL. This carrier consolidates the parallel-rep ×3 between
+// `MethodTranslation` (`runtime.dag`) and `SimpleMethodSpec` (`emit.dag`)
+// across Rust/Python/Go. Row population and old-carrier retirement are
+// Grounding-owned and land in follow-up work.
+type MethodTemplateContract {
+  dag_method: DeclarationRef
+  runtime_template: String
+  emit_template: String
+  wraps_result: Bool
+  placeholder_convention: PlaceholderConvention
+}
