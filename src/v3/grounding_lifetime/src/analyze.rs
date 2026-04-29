@@ -106,14 +106,17 @@ fn ownership_lifetime_growable_for(
             } else {
                 Ownership::Borrowed
             };
+            // Opaque growability witnesses must fail-closed whenever the axis is
+            // load-bearing — even when ownership meets as `Borrowed` (do not
+            // short-circuit to `NotApplicable` before this check).
+            if axes.string_growability_axis_load_bearing && indeterminate {
+                return Err(EmissionDiagnostic::UnderRefined {
+                    axis: "growability".to_string(),
+                });
+            }
             let growable = if ownership == Ownership::Borrowed {
                 Growability::NotApplicable
             } else if axes.string_growability_axis_load_bearing {
-                if indeterminate {
-                    return Err(EmissionDiagnostic::UnderRefined {
-                        axis: "growability".to_string(),
-                    });
-                }
                 let growth = binding
                     .uses
                     .iter()

@@ -144,6 +144,35 @@ mod tests {
         assert!(program.r3_markers.is_empty());
     }
 
+    #[test]
+    fn function_param_indeterminate_growability_fails_closed_even_when_borrowed() {
+        let mut bindings = BTreeMap::new();
+        bindings.insert(
+            BindingId(0),
+            BindingDef::r2_string_binding(
+                "n",
+                BindingRole::FunctionParameter {
+                    function: "greet".to_string(),
+                },
+                vec![UseSite {
+                    kind: UseKind::IndeterminateGrowability,
+                    site_label: "opaque.call".to_string(),
+                }],
+            ),
+        );
+        let program = LifetimeProgram {
+            bindings,
+            r3_markers: vec![],
+        };
+        let err =
+            analyze_lifetime_program(&program, &LanguageSpecAxes::example_rust_string_family())
+                .expect_err("growability under-refined");
+        match err {
+            EmissionDiagnostic::UnderRefined { axis } => assert_eq!(axis, "growability"),
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
+    }
+
     /// Test plan item 8 — R3 constructs rejected.
     #[test]
     fn r3_construct_out_of_scope() {
