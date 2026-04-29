@@ -1843,12 +1843,13 @@ include!("dag_cluster_generated.rs");
 impl LoopBound {
     pub fn count_port(&self) -> Option<PortId> {
         match self {
-            Self::Cardinality { count, .. } => Some(*count),
+            Self::Cardinality { count } => Some(*count),
             Self::Descent { .. } => None,
         }
     }
 
-    /// `LoopBound::Cardinality` witness: runtime count port only (iteration algebra is downstream).
+    /// `LoopBound::Cardinality` — structural count fact is only `count: PortId`; any
+    /// `Interval<Ordinal>` analysis is downstream over that port (reflection-completeness lock).
     pub fn cardinality_bounded_count(count: PortId) -> Self {
         Self::Cardinality { count }
     }

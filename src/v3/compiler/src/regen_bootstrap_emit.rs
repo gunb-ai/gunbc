@@ -265,9 +265,8 @@ fn render_arrow_body(body: &ArrowBody) -> String {
 
 fn render_cardinality_bound(bound: &CardinalityBound) -> String {
     match bound {
-        CardinalityBound::ExactInterval { lo, hi } => {
-            format!("CardinalityBound::ExactInterval {{ lo: {lo}, hi: {hi} }}")
-        }
+        CardinalityBound::Exact(n) => format!("CardinalityBound::Exact({n})"),
+        CardinalityBound::AtMostOne => "CardinalityBound::AtMostOne".to_string(),
         CardinalityBound::Unbounded => "CardinalityBound::Unbounded".to_string(),
     }
 }
