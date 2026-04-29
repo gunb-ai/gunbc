@@ -1192,10 +1192,7 @@ mod tests {
         let source = dag.push_value(LiteralBits::Int(4), span());
         let init = dag.push_value(LiteralBits::Int(0), span());
         let body = dag.push_bind("loop_body", init, Vec::new(), span());
-        let bound = LoopBound::Cardinality {
-            count: source,
-            iteration: Interval::Unbounded,
-        };
+        let bound = LoopBound::cardinality_bounded_count(source);
 
         let output = dag.push_loop(source, init, body, bound, span());
 

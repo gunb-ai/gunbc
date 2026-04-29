@@ -4392,10 +4392,7 @@ fn lower_fn_item_expr_body(
                 source: param_ports[0],
                 init: param_ports[0],
                 body: loop_body_node,
-                bound: LoopBound::Cardinality {
-                    count: param_ports[0],
-                    iteration: crate::dag::Interval::Unbounded,
-                },
+                bound: LoopBound::cardinality_bounded_count(param_ports[0]),
                 output: loop_output,
                 span: body_span.clone(),
             }));

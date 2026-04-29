@@ -6,8 +6,9 @@ use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
     ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue, IntraClusterCall,
-    LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NominalOpacity,
-    NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PhantomParameter, PortId,
+    Interval, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId, NominalOpacity,
+    NonEmptyList, NonSingletonList, OperatorKind, Ordinal, Path, PayloadBinding, PhantomParameter,
+    PortId,
     PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective, ValueBody,
     ValueNode,
 };
@@ -265,8 +266,9 @@ fn render_arrow_body(body: &ArrowBody) -> String {
 
 fn render_cardinality_bound(bound: &CardinalityBound) -> String {
     match bound {
-        CardinalityBound::Exact(value) => format!("CardinalityBound::Exact({value})"),
-        CardinalityBound::AtMostOne => "CardinalityBound::AtMostOne".to_string(),
+        CardinalityBound::ExactInterval { lo, hi } => format!(
+            "CardinalityBound::ExactInterval {{ lo: {lo}, hi: {hi} }}"
+        ),
         CardinalityBound::Unbounded => "CardinalityBound::Unbounded".to_string(),
     }
 }
@@ -573,9 +575,9 @@ fn render_opt_payload_binding(binding: Option<&PayloadBinding>) -> String {
 
 fn render_loop_bound(bound: &LoopBound) -> String {
     match bound {
-        LoopBound::Cardinality { count } => {
+        LoopBound::Cardinality { count, .. } => {
             format!(
-                "LoopBound::Cardinality {{ count: {} }}",
+                "LoopBound::Cardinality {{ count: {}, iteration: Interval::Unbounded }}",
                 render_port_id(*count)
             )
         }
