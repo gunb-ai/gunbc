@@ -1,0 +1,55 @@
+//! **Layer:** integration
+//!
+//! PR-PreF structural acceptance: `Interval<D>` shared parent for ordered-numeric
+//! bound carriers (`docs/briefs/r2-substrate-manager.md`).
+
+use v3_compiler::compile_to_dag;
+use v3_compiler::dag::{
+    size_bound_cardinal_interval, Cardinal, CardinalityBound, DescentEvidence, Interval, Ordinal,
+    PositiveDescentAmount, SizeBound,
+};
+
+#[test]
+fn interval_d_shared_parent_consolidation_landed() {
+    assert!(matches!(
+        CardinalityBound::AT_MOST_ONE,
+        CardinalityBound::ExactInterval { lo: 0, hi: 1 }
+    ));
+    let dag = compile_to_dag("data probe: Int = 0\n", "pr_pref_substrate_bootstrap.v3")
+        .expect("trivial program compiles");
+    let _ = dag; // receipt: substrate loads with Interval + LoopBound iteration field
+
+    let zero = size_bound_cardinal_interval(&SizeBound::ExplicitCountZero)
+        .expect("ExplicitCountZero maps to interval");
+    assert_eq!(zero, Interval::ExactInterval { lo: 0, hi: 0 });
+
+    let steps = PositiveDescentAmount::OneStep;
+    let pos = size_bound_cardinal_interval(&SizeBound::ExplicitCountPositive { steps })
+        .expect("ExplicitCountPositive maps");
+    assert_eq!(pos, Interval::ExactInterval { lo: 1, hi: 1 });
+
+    assert!(matches!(
+        size_bound_cardinal_interval(&SizeBound::Forever),
+        Some(Interval::Unbounded)
+    ));
+    assert!(size_bound_cardinal_interval(&SizeBound::TreeSize {
+        param: "x".to_string()
+    })
+    .is_none());
+}
+
+#[test]
+fn bound_carrier_parent_matches_algebra_shape() {
+    fn assert_cardinal_interval(_: Interval<Cardinal>) {}
+    fn assert_ordinal_interval(_: Interval<Ordinal>) {}
+    assert_cardinal_interval(CardinalityBound::UNBOUNDED);
+    assert_ordinal_interval(Interval::Unbounded);
+}
+
+#[test]
+fn no_lattice_to_interval_collapse_bridge() {
+    assert_ne!(
+        std::any::TypeId::of::<DescentEvidence>(),
+        std::any::TypeId::of::<Interval<Ordinal>>()
+    );
+}
