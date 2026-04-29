@@ -3945,4 +3945,38 @@ mod tests {
              canonical `Int?` decl (recursive alias chain, not one step)"
         );
     }
+
+    #[test]
+    fn cardinality_idempotence_does_not_collapse_non_at_most_one_inner_bound() {
+        let mut dag = Dag::new();
+        dag.populate_primitive_cache();
+        let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
+        let exact_two = push_test_declaration(
+            &mut dag,
+            None,
+            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+                int_decl,
+                CardinalityBound::Exact(2),
+            )),
+            Vec::new(),
+        );
+
+        assert_eq!(
+            cardinality_idempotent_target(&dag, exact_two, CardinalityBound::AtMostOne),
+            None,
+            "AtMostOne over Exact(2) is optional fixed-cardinality, not nested optional"
+        );
+
+        let optional_exact_two = dag.alloc_cardinality_decl(
+            exact_two,
+            CardinalityBound::AtMostOne,
+            SourceSpan::new("cardinality_exact_spoof_test", 0, 0),
+        );
+        let TypeConnective::Cardinality(payload) = &dag.declaration(optional_exact_two).connective
+        else {
+            panic!("optional Exact(2) should remain a Cardinality declaration");
+        };
+        assert_eq!(payload.element(), exact_two);
+        assert_eq!(payload.bound(), CardinalityBound::AtMostOne);
+    }
 }
