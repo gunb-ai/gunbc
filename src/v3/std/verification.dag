@@ -215,6 +215,24 @@ type TestPredicate
       authority: DeclarationRef
       generated_paths: List<Path>
     }
+  // **🟡 Scaffold — ReleaseDeferredClaim.** R1 release-acceptance concession
+  // marker. Use only in release-acceptance fixtures with explicit Director
+  // sign-off; this is not a generic escape hatch for arbitrary `TestSuite`s.
+  // The runner validates the three `DeclarationRef` edges resolve to
+  // fixture-local role markers named `R1GateMarker`, `TargetLaneMarker`, and
+  // `ReleaseAuthorityDoc`; only then does it treat the well-formed deferral as
+  // a structural acceptance fact. Release-cycle deferral; target lanes may
+  // point at R2, R3, or later release-cycle authorities with explicit Director
+  // sign-off.
+  // Dissolution trigger: when the deferred release target lane's own `.dag`
+  // acceptance claim lands and evaluates green, replace the corresponding
+  // `ReleaseDeferredClaim` fixture row with that strict claim (or delete this
+  // variant entirely once the R1 release-acceptance wrapper retires).
+  | ReleaseDeferredClaim {
+      deferred_gate: DeclarationRef
+      target_lane: DeclarationRef
+      authority_doc: DeclarationRef
+    }
 
 // Structural runner input role for predicates whose input is the compiled
 // `TestClaim.source` program.

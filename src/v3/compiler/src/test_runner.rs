@@ -1404,6 +1404,7 @@ fn evaluate_execute_command_exit_code_with_wall_time(
 #[derive(Debug, Clone)]
 pub struct TestClaimValue {
     pub claim_name: String,
+    pub declaration_file: String,
     pub source: String,
     pub file_name: String,
     pub predicate: FieldValue,
@@ -1519,6 +1520,9 @@ impl<'a> TestRunner<'a> {
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
+                        "ReleaseDeferredClaim" => {
+                            self.eval_release_deferred_claim_shape(claim, &payload)
+                        }
                         "MockBackedInvariant" => {
                             if !claim.requires.is_empty() {
                                 if let Err(reason) = self.validate_resource_requirements(claim) {
@@ -2043,6 +2047,15 @@ impl<'a> TestRunner<'a> {
             ))
     }
 
+    fn decl_inhabits_role_id(decl: &Declaration, role_id: DeclarationId) -> bool {
+        decl.inhabits == Some(role_id)
+            || decl.meta_tag == Some(role_id)
+            || matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == role_id
+            )
+    }
+
     fn eval_differential_equals(
         &self,
         claim: &TestClaimValue,
@@ -2478,6 +2491,79 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn eval_release_deferred_claim_shape(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        const RELEASE_ACCEPTANCE_FIXTURE: &str =
+            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
+        if claim.declaration_file != RELEASE_ACCEPTANCE_FIXTURE {
+            return ClaimResult::Fail(format!(
+                "ReleaseDeferredClaim is only valid in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}`",
+                claim.declaration_file
+            ));
+        }
+
+        let [deferred_gate, target_lane, authority_doc] = payload else {
+            return ClaimResult::Fail(format!(
+                "ReleaseDeferredClaim payload should be exactly three DeclarationRef fields \
+                 (deferred_gate, target_lane, authority_doc); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+
+        for (field_label, value, role_name) in [
+            ("deferred_gate", deferred_gate, "R1GateMarker"),
+            ("target_lane", target_lane, "TargetLaneMarker"),
+            ("authority_doc", authority_doc, "ReleaseAuthorityDoc"),
+        ] {
+            let role_id = match self.release_fixture_local_role_id(role_name) {
+                Ok(id) => id,
+                Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
+            };
+            let id = match self.resolve_declaration_ref_id(value, field_label) {
+                Ok(id) => id,
+                Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
+            };
+            let decl = self.dag.declaration(id);
+            if decl.span.file != RELEASE_ACCEPTANCE_FIXTURE {
+                return ClaimResult::Fail(format!(
+                    "ReleaseDeferredClaim `{field_label}` must reference a marker declared in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}` from `{}`",
+                    decl_display_name(id, decl),
+                    decl.span.file
+                ));
+            }
+            if !Self::decl_inhabits_role_id(decl, role_id) {
+                return ClaimResult::Fail(format!(
+                    "ReleaseDeferredClaim `{field_label}` must reference a declaration inhabiting fixture-local `{role_name}`, got `{}`",
+                    decl_display_name(id, decl)
+                ));
+            }
+        }
+
+        ClaimResult::Pass
+    }
+
+    fn release_fixture_local_role_id(&self, role_name: &str) -> Result<DeclarationId, String> {
+        const RELEASE_ACCEPTANCE_FIXTURE: &str =
+            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
+        let mut matches = self.dag.declarations().iter().filter(|decl| {
+            decl.name.as_deref() == Some(role_name) && decl.span.file == RELEASE_ACCEPTANCE_FIXTURE
+        });
+        let Some(role) = matches.next() else {
+            return Err(format!(
+                "release fixture role `{role_name}` is missing from `{RELEASE_ACCEPTANCE_FIXTURE}`"
+            ));
+        };
+        if matches.next().is_some() {
+            return Err(format!(
+                "release fixture role `{role_name}` is declared more than once in `{RELEASE_ACCEPTANCE_FIXTURE}`"
+            ));
+        }
+        Ok(role.id)
+    }
+
     fn resolve_census_authority_ref(
         &self,
         value: &FieldValue,
@@ -2761,6 +2847,7 @@ impl TestClaimValue {
         };
         Ok(Self {
             claim_name,
+            declaration_file: decl.span.file.clone(),
             source,
             file_name,
             predicate,
