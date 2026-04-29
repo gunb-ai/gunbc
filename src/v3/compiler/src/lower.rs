@@ -4009,9 +4009,10 @@ fn declaration_ref_types_equivalent(
             },
         ) => {
             lhs_inputs.len() == rhs_inputs.len()
-                && lhs_inputs.iter().zip(rhs_inputs.iter()).all(|(lhs, rhs)| {
-                    declaration_ref_types_equivalent(dag, *lhs, *rhs, depth + 1)
-                })
+                && lhs_inputs
+                    .iter()
+                    .zip(rhs_inputs.iter())
+                    .all(|(lhs, rhs)| declaration_ref_types_equivalent(dag, *lhs, *rhs, depth + 1))
                 && declaration_ref_types_equivalent(dag, *lhs_output, *rhs_output, depth + 1)
         }
         (
