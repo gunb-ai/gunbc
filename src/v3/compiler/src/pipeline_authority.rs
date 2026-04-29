@@ -1,10 +1,11 @@
+#[cfg(test)]
+use crate::dag::ArrowBody;
 use crate::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
-use crate::parse::{self, SurfaceItem};
-use crate::tokenize;
 
 pub(crate) const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 
 const PIPELINE_STAGE_BINDING_TYPE: &str = "PipelineStageBinding";
+#[cfg(test)]
 const PIPELINE_COMPILE_FN: &str = "compile";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +31,21 @@ pub(crate) struct PipelineStageAuthority {
 
 /// Pipeline stage order, read structurally from `PipelineStageBinding`
 /// declarations in the Dag. The declaration order of the bindings in
-/// `pipeline.dag` is the ordering authority.
+/// `pipeline.dag` is the **sole runtime ordering authority** on this path.
+///
+/// **DB-16 case 2c / T-Bridge-Retirement disposition (PB review, PR #1171,
+/// 2026-04-29):** `fn compile { … }` still lowers to `ArrowBody::Unparsed` — the
+/// lowered Dag does **not** carry an ordered list of stage names inside the
+/// compile arrow. Without that structural witness, a fail-closed cross-check
+/// against the human-readable `compile` body cannot use the substrate query
+/// surface alone. Prior attempts used either `include_str!("../pipeline.dag")`
+/// (compile-time embed) or `std::fs::read_to_string` + span slicing (runtime
+/// source-text side channel); both are rejected for `bridge_include_str_side_channels_retired`
+/// in this lane. **Compile-body vs binding drift detection is therefore
+/// suspended** until derivation provides a single authored carrier or a
+/// lowered structural compile-body representation. Callers must keep
+/// `PipelineStageBinding` declaration order and the `compile` orchestrator body
+/// in sync by review/regen discipline until then.
 pub(crate) fn ordered_pipeline_stages(dag: &Dag) -> Result<Vec<PipelineStageAuthority>, String> {
     let binding_type_id = dag
         .declaration_by_name(PIPELINE_STAGE_BINDING_TYPE)
@@ -101,88 +116,7 @@ pub(crate) fn ordered_pipeline_stages(dag: &Dag) -> Result<Vec<PipelineStageAuth
         return Err("pipeline authority contains no stage bindings".to_string());
     }
 
-    reconcile_with_compile_body(&ordered)?;
-
     Ok(ordered)
-}
-
-/// Fail-closed cross-check: the `fn compile { ... }` body in
-/// `pipeline.dag` must list the same stages, in the same order, as the
-/// `PipelineStageBinding` declarations. The bindings are the runtime
-/// ordering authority; this check ensures the `compile` orchestrator
-/// surface cannot silently drift from that authority. Any divergence is
-/// surfaced as a bootstrap diagnostic (via the caller).
-fn reconcile_with_compile_body(ordered: &[PipelineStageAuthority]) -> Result<(), String> {
-    let body_names = compile_body_stage_names_from_source()?;
-    let binding_names: Vec<&str> = ordered
-        .iter()
-        .map(|stage| stage.stage_name.as_str())
-        .collect();
-    let body_refs: Vec<&str> = body_names.iter().map(|name| name.as_str()).collect();
-    if binding_names != body_refs {
-        return Err(format!(
-            "pipeline authority drift: `fn compile` body lists [{}] but \
-             `PipelineStageBinding` declaration order is [{}]. The bindings \
-             are the runtime authority — update `fn compile` to match, or \
-             reorder the bindings to match `fn compile`.",
-            body_refs.join(", "),
-            binding_names.join(", ")
-        ));
-    }
-    Ok(())
-}
-
-fn compile_body_stage_names_from_source() -> Result<Vec<String>, String> {
-    let source = include_str!("../pipeline.dag");
-    let tokens = tokenize::tokenize(source, PIPELINE_AUTHORITY_FILE)
-        .map_err(|diag| format!("failed to tokenize pipeline authority: {diag:?}"))?;
-    let module = parse::parse(&tokens, PIPELINE_AUTHORITY_FILE)
-        .map_err(|diag| format!("failed to parse pipeline authority: {diag:?}"))?;
-
-    let body_span = module
-        .items
-        .iter()
-        .find_map(|item| match item {
-            SurfaceItem::FnExternalBody {
-                name, body_span, ..
-            } if name == PIPELINE_COMPILE_FN => Some(body_span.clone()),
-            _ => None,
-        })
-        .ok_or_else(|| {
-            format!("pipeline authority is missing external-body fn `{PIPELINE_COMPILE_FN}`")
-        })?;
-
-    let body = source
-        .get(body_span.byte_start as usize..body_span.byte_end as usize)
-        .ok_or_else(|| "pipeline compile body span is out of bounds".to_string())?;
-    let body = body.trim();
-    let body = body
-        .strip_prefix('{')
-        .and_then(|body| body.strip_suffix('}'))
-        .ok_or_else(|| "pipeline compile body must be a braced block".to_string())?;
-
-    let mut stages = Vec::new();
-    for line in body.lines() {
-        let candidate = line.trim();
-        if candidate.is_empty() || candidate.starts_with("//") {
-            continue;
-        }
-        if !candidate
-            .chars()
-            .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        {
-            return Err(format!(
-                "pipeline compile body contains unsupported stage expression `{candidate}`"
-            ));
-        }
-        stages.push(candidate.to_string());
-    }
-
-    if stages.is_empty() {
-        return Err("pipeline compile body does not list any stages".to_string());
-    }
-
-    Ok(stages)
 }
 
 /// Pipeline stage names in authority order. Thin wrapper over
@@ -287,30 +221,41 @@ fn require_snapshot_kind(
 mod tests {
     use super::*;
 
-    fn bootstrapped_stages() -> Vec<PipelineStageAuthority> {
-        // Bootstrapping includes reconcile_with_compile_body, so any Dag
-        // we build by hand would already match. Start from a Dag that
-        // passes reconciliation and mutate the returned vector.
-        let dag = Dag::new();
-        ordered_pipeline_stages(&dag).expect("bootstrap pipeline authority is clean")
-    }
-
     #[test]
-    fn reconcile_rejects_reordered_binding_list() {
-        let mut stages = bootstrapped_stages();
-        assert!(stages.len() >= 2, "need >=2 stages to reorder");
-        stages.swap(0, 1);
-        let err =
-            reconcile_with_compile_body(&stages).expect_err("reordered bindings must be rejected");
-        assert!(
-            err.contains("pipeline authority drift"),
-            "expected drift diagnostic, got: {err}"
+    fn ordered_pipeline_stages_authority_is_pipeline_stage_binding_only() {
+        let dag = Dag::new();
+        let names = pipeline_compile_order_names(&dag).expect("bootstrap pipeline stages");
+        assert_eq!(
+            names,
+            vec![
+                "parse".to_string(),
+                "lower".to_string(),
+                "infer".to_string(),
+                "compute_ownership".to_string(),
+                "lens_complexity".to_string(),
+                "emit".to_string(),
+            ],
+            "ordering is structural declaration order of PipelineStageBinding rows; update this test when pipeline.dag stage set changes"
         );
     }
 
     #[test]
-    fn reconcile_accepts_matching_order() {
-        let stages = bootstrapped_stages();
-        reconcile_with_compile_body(&stages).expect("matching order must reconcile");
+    fn pipeline_compile_body_remains_unparsed_blocking_structural_retirement() {
+        let dag = Dag::new();
+        let compile = dag
+            .declarations()
+            .iter()
+            .find(|decl| {
+                decl.name.as_deref() == Some(PIPELINE_COMPILE_FN)
+                    && decl.span.file == PIPELINE_AUTHORITY_FILE
+            })
+            .expect("pipeline `compile` declaration");
+        let TypeConnective::Arrow { body, .. } = &compile.connective else {
+            panic!("`compile` must be an arrow declaration");
+        };
+        assert!(
+            matches!(body, ArrowBody::Unparsed(_)),
+            "case 2c: `compile` has no lowered ordered stage list — R3 bridge_include_str_side_channels_retired cannot be satisfied here without a new substrate fact; see module doc on ordered_pipeline_stages"
+        );
     }
 }
