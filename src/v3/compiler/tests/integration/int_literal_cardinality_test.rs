@@ -61,6 +61,27 @@ fn assert_int_value_port_resolves_to_uint8(
 }
 
 #[test]
+/// R2 Modeling Manager structural acceptance — `int_lit_magnitude_overflow_compile_error`:
+/// out-of-range literal vs fixed `ExactInterval` bounds surfaces [`Diagnostic::MagnitudeOutOfRange`].
+fn int_lit_magnitude_overflow_compile_error() {
+    let err = compile_to_dag("data x: UInt8 = 256", "int_lit_gate_u8_oob.v3").expect_err("OOB");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic failure, got {err:?}");
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, d)| {
+            matches!(
+                d,
+                v3_compiler::diagnostics::Diagnostic::MagnitudeOutOfRange { literal, .. }
+                    if literal == "256"
+            )
+        }),
+        "expected MagnitudeOutOfRange, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn int_literals_fit_declared_integer_ranges() {
     let source = r#"
 data i8_max: Int8 = 127
