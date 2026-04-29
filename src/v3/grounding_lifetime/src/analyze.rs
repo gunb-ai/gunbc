@@ -5,12 +5,14 @@ use std::collections::BTreeMap;
 use crate::axes::LanguageSpecAxes;
 use crate::diagnostic::{EmissionDiagnostic, SiteRef};
 use crate::facts::{Encoding, Growability, LifetimeFacts, LifetimeScope, Ownership};
-use crate::program::{BindingDef, BindingId, BindingRole, LifetimeProgram, ProgramTypeFamily, R3Construct, UseKind};
+use crate::program::{
+    BindingDef, BindingId, BindingRole, LifetimeProgram, ProgramTypeFamily, R3Construct, UseKind,
+};
 
 fn encoding_for_binding(binding: &BindingDef) -> Result<Encoding, EmissionDiagnostic> {
     match binding.type_family {
-        crate::program::ProgramTypeFamily::FreeMonoidCharUtf8 => Ok(Encoding::Utf8FreeMonoidChar),
-        crate::program::ProgramTypeFamily::Unclassified => Err(EmissionDiagnostic::UnderRefined {
+        ProgramTypeFamily::FreeMonoidCharUtf8 => Ok(Encoding::Utf8FreeMonoidChar),
+        ProgramTypeFamily::Unclassified => Err(EmissionDiagnostic::UnderRefined {
             axis: "encoding".to_string(),
         }),
     }

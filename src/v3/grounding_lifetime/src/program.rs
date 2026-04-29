@@ -68,7 +68,11 @@ pub struct BindingDef {
 
 impl BindingDef {
     /// Well-formed R2 string examples (`FreeMonoid<Char>` UTF-8 is structurally known).
-    pub fn r2_string_binding(name: impl Into<String>, role: BindingRole, uses: Vec<UseSite>) -> Self {
+    pub fn r2_string_binding(
+        name: impl Into<String>,
+        role: BindingRole,
+        uses: Vec<UseSite>,
+    ) -> Self {
         Self {
             name: name.into(),
             role,
