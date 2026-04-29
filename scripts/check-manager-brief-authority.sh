@@ -187,37 +187,43 @@ check_q4_landed_pr_in_history() {
   while IFS= read -r pr_num; do
     [ -z "$pr_num" ] && continue
 
-    # Two-stage check (squash-merges drop the "(#N)" subject suffix on
-    # some PRs — see d9bade38f for #900 — so a pure git-log grep gives
-    # false negatives). Capture explicitly to avoid SIGPIPE under
-    # pipefail (grep -q exits early, kills upstream git-log).
+    # Two-stage check ordered for CI compatibility (CI uses
+    # fetch-depth=1 shallow clone, so git-log can't see merge history;
+    # gh API works regardless of clone depth).
     #
-    # Stage 1: fast pure-git grep for the common "(#N)" merge subject.
+    # Capture all output explicitly — don't pipe to grep -q under
+    # pipefail (grep -q exits early on first match, causes SIGPIPE
+    # on upstream git-log, pipefail reports pipeline failure).
+    #
+    # Stage 1 (primary): gh pr view — works in shallow clone, robust
+    # to squash-merge subject variance (PR #900 was squash-merged
+    # without "(#900)" suffix; pure git-grep would miss it).
+    local pr_state=""
+    if command -v gh >/dev/null 2>&1; then
+      pr_state="$(gh pr view "$pr_num" --json state --jq '.state' 2>/dev/null || true)"
+      if [ "$pr_state" = "MERGED" ]; then
+        continue
+      fi
+    fi
+
+    # Stage 2 (fallback): pure-git grep for "(#N)" merge subject.
+    # Used when gh is unavailable (offline dev) or auth-blocked.
+    # In CI with fetch-depth=1 this stage finds nothing — that's
+    # why Stage 1 is primary.
     local matches
     matches="$(git log --all --oneline --grep="(#${pr_num})" 2>/dev/null || true)"
     if [ -n "$matches" ]; then
       continue
     fi
 
-    # Stage 2: fall back to gh API (handles squash-merges with no
-    # subject suffix). Resolves the merge commit SHA, then verifies
-    # the SHA is reachable from HEAD.
-    if command -v gh >/dev/null 2>&1; then
-      local merge_sha
-      merge_sha="$(gh pr view "$pr_num" --json mergeCommit --jq '.mergeCommit.oid' 2>/dev/null || true)"
-      if [ -n "$merge_sha" ] && [ "$merge_sha" != "null" ]; then
-        if git cat-file -e "$merge_sha" 2>/dev/null && \
-           git merge-base --is-ancestor "$merge_sha" HEAD 2>/dev/null; then
-          continue
-        fi
-      fi
-    fi
-
     echo "VIOLATION [Q4 landed-pr-in-history]: $brief"
     echo "  cited claim: 'LANDED via #${pr_num}'"
-    echo "  PR is not reachable from HEAD via either:"
-    echo "    - merge subject containing '(#${pr_num})'"
-    echo "    - gh pr view #${pr_num}'s merge commit being an ancestor of HEAD"
+    echo "  PR is not in MERGED state via either:"
+    echo "    - gh pr view #${pr_num} returning state=MERGED"
+    echo "    - git log finding a merge subject '(#${pr_num})'"
+    if [ -n "$pr_state" ] && [ "$pr_state" != "MERGED" ]; then
+      echo "    - gh reports state=${pr_state}"
+    fi
     brief_violations=$((brief_violations + 1))
   done < <(grep -oE '(LANDED|landed) via #[0-9]+' "$brief" | grep -oE '#[0-9]+' | tr -d '#' | sort -u)
 
