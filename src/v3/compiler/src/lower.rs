@@ -4107,7 +4107,7 @@ fn realization_category_for_meta(
 ///     shape every algebra field has.
 ///   - `BehaviorRealization.target` — must be one of the v3_l1
 ///     substrate behavior markers (Bind / Branch / Loop /
-///     Transform / Value / Main).
+///     Transform / ValueBehavior / Main).
 ///   - `CallableRealization.target` — must walk to an Arrow
 ///     declaration (a callable target).
 ///   - `TypeInstantiationRealization.target` — must be a named
