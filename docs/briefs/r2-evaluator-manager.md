@@ -43,7 +43,7 @@ Before worker dispatch begins on the implementation sub-lanes above, **5 design 
         model)      │       (Final         │
                     │       integration)   ↓
                     └─────────────────────┴── (consumed by R3-T-LensProducer-Retirement)
-                                          
+
        PR-D (L5 corpus type spec) ──→ PR-E (independent of A/B/C; cross-target equivalence)
                                           (consumed by R3-T-V-L5-Corpus)
 ```
