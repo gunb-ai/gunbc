@@ -465,6 +465,22 @@ pub enum FieldValue {
 // from `std/substrate.dag`; keep the substrate authority there, not here.
 include!("dag_scalar_generated.rs");
 
+impl CardinalityBound {
+    pub fn interval(self) -> Interval<u32> {
+        match self {
+            Self::Exact(value) => Interval::BoundedInterval {
+                lower: value,
+                width: IntervalWidth::ZeroWidth,
+            },
+            Self::AtMostOne => Interval::BoundedInterval {
+                lower: 0,
+                width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::OneUnit),
+            },
+            Self::Unbounded => Interval::Unbounded,
+        }
+    }
+}
+
 mod cardinality_payload;
 pub use cardinality_payload::CardinalityPayload;
 

@@ -185,6 +185,33 @@ data go_cardinality_bound: TypeRealization = {
   cost: 1
 }
 
+data go_interval: TypeRealization = {
+  language: go_language
+  target: Interval
+  carrier: "Interval"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_positive_interval_width: TypeRealization = {
+  language: go_language
+  target: PositiveIntervalWidth
+  carrier: "PositiveIntervalWidth"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
+data go_interval_width: TypeRealization = {
+  language: go_language
+  target: IntervalWidth
+  carrier: "IntervalWidth"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 data go_conj_field: TypeRealization = {
   language: go_language
   target: ConjField
