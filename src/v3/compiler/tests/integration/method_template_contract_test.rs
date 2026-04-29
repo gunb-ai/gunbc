@@ -13,7 +13,7 @@
 //! - `method_template_contract_does_not_carry_cost_data`
 
 use std::collections::HashSet;
-use v3_compiler::dag::{Dag, DeclarationId, Field, TypeConnective};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -92,20 +92,46 @@ fn method_template_contract_does_not_carry_cost_data() {
     );
 }
 
-/// Helper: extract `dag_method` decl ids from a list of MethodTemplateContract
-/// rows represented as Conj field-binding lists. Used by the uniqueness check.
-/// Today no such lists exist (Grounding owns row population); the check runs
-/// vacuously over zero rows and becomes load-bearing once rows land.
-fn assert_dag_method_unique(rows: &[Vec<Field>], list_name: &str) {
+/// Walk a per-target `List<MethodTemplateContract>` declaration's value body
+/// and assert that every row's `dag_method: DeclarationRef` is unique within
+/// the list. Empty lists vacuously pass (no rows to compare); once Substrate's
+/// method-decl registry lands and rows reference real method declarations,
+/// this check becomes load-bearing.
+fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
+    let decl = dag
+        .declaration_by_name(list_name)
+        .unwrap_or_else(|| panic!("`{list_name}` missing from full bootstrap"));
+    let body = decl.value_body.as_ref().unwrap_or_else(|| {
+        panic!("`{list_name}` has no value body — must be a `data` declaration")
+    });
+    let ValueBody::List(rows) = body else {
+        panic!(
+            "`{list_name}` value body must be `ValueBody::List` \
+             (declared as `List<MethodTemplateContract>`); got {body:?}"
+        );
+    };
+
     let mut seen: HashSet<DeclarationId> = HashSet::new();
-    for row in rows {
-        let dag_method_field = row
+    for (idx, row) in rows.iter().enumerate() {
+        let FieldValue::Record(fields) = row else {
+            panic!(
+                "row {idx} in `{list_name}` is not a `FieldValue::Record` — \
+                 every `MethodTemplateContract` row must be a record literal"
+            );
+        };
+        let (_, dag_method) = fields
             .iter()
-            .find(|f| f.label == "dag_method")
-            .unwrap_or_else(|| panic!("row in `{list_name}` missing `dag_method` field"));
+            .find(|(label, _)| label == "dag_method")
+            .unwrap_or_else(|| panic!("row {idx} in `{list_name}` missing `dag_method` field"));
+        let FieldValue::Reference(decl_id) = dag_method else {
+            panic!(
+                "row {idx} in `{list_name}`: `dag_method` must be a \
+                 `FieldValue::Reference(DeclarationId)`; got {dag_method:?}"
+            );
+        };
         assert!(
-            seen.insert(dag_method_field.ty),
-            "duplicate `dag_method` in `{list_name}` — per-target \
+            seen.insert(*decl_id),
+            "duplicate `dag_method` in `{list_name}` at row {idx} — per-target \
              MethodTemplateContract rows must be unique by `dag_method`"
         );
     }
@@ -113,33 +139,17 @@ fn assert_dag_method_unique(rows: &[Vec<Field>], list_name: &str) {
 
 #[test]
 fn method_template_contract_per_target_dag_method_unique() {
-    // Substrate-only PR: zero `List<MethodTemplateContract>` data lists exist
-    // today (Grounding owns Rust/Python/Go row population). The uniqueness
-    // check is wired here and runs vacuously over zero synthetic rows.
-    let zero_rows: Vec<Vec<Field>> = Vec::new();
-    for list_name in EXPECTED_PER_TARGET_LISTS {
-        assert_dag_method_unique(&zero_rows, list_name);
-    }
-
-    // Fail-loud trigger: when Grounding lands ANY of the per-target row lists,
-    // this assertion fires and forces this test to grow real row-walking
-    // logic in lock-step. Without it, the vacuous pass above could silently
-    // outlive its trigger and leave per-target uniqueness unchecked once rows
-    // exist. The list authority is `data <target>_method_template_contracts`
-    // in the per-target extdeps file (Grounding-owned).
+    // Phase 1 (T-Ground-LanguageSpec scope E): per-target list declarations
+    // landed as empty `List<MethodTemplateContract>` scaffolds via
+    // `dsl/extdeps/languages/{rust,python,go}/method_template_contracts.dag`,
+    // wired into the bootstrap fixture set. Row population is gated on
+    // Substrate's method-decl registry (per `emit_model.dag:362-364`); the
+    // uniqueness walk runs vacuously over zero rows today and becomes
+    // load-bearing once rows reference real method declarations.
     let dag = generated_full_bootstrap_dag();
-    let landed: Vec<&str> = EXPECTED_PER_TARGET_LISTS
-        .iter()
-        .copied()
-        .filter(|name| dag.declaration_by_name(name).is_some())
-        .collect();
-    assert!(
-        landed.is_empty(),
-        "per-target `MethodTemplateContract` row list(s) have landed: {landed:?}. \
-         Grow this test to enumerate each list's rows and hand them to \
-         `assert_dag_method_unique` instead of relying on the synthetic \
-         zero-row vacuous pass above."
-    );
+    for list_name in EXPECTED_PER_TARGET_LISTS {
+        assert_per_target_list_dag_method_unique(&dag, list_name);
+    }
 }
 
 const EXPECTED_PER_TARGET_LISTS: &[&str] = &[
