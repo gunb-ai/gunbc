@@ -42,9 +42,27 @@ pub(crate) enum IntervalInt {
         max: i128,
     },
     /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
-    /// i64-representable literal magnitude. Not yet produced from Rust `IntegerPrimitive` rows.
+    /// i64-representable literal magnitude.
+    ///
+    /// **Dissolution trigger (when this variant is constructed from [`integer_range_for_decl`]):**
+    /// a `rust_pilot_primitives` `IntegerPrimitive` row (or successor multi-target table) is
+    /// authored for a target whose Q1 `BoundDeclaration` is `StaticBound(Unbounded)` at magnitude
+    /// check — e.g. Python `int` per [`docs/design-emission-model.md`](../../../docs/design-emission-model.md)
+    /// fold example (T-Ground cross-target / language `primitives.dag` work, not this consumer).
+    /// Until that producer exists, only [`IntervalInt::ExactInterval`] is returned from the pilot
+    /// list; [`Unbounded`] remains for `contains_i64` / Q1 algebra completeness and unit tests.
     #[allow(dead_code)]
     Unbounded,
+}
+
+/// Subset of an exact integer interval: everything [`Diagnostic::MagnitudeOutOfRange`] needs. This
+/// type is the only input to [`magnitude_out_of_range`], so an unbounded domain cannot be passed
+/// where a fixed range is required.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExactIntIntervalFacts {
+    pub(crate) target_name: String,
+    pub(crate) min_decimal: String,
+    pub(crate) max_decimal: String,
 }
 
 impl IntervalInt {
