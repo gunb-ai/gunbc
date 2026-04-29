@@ -200,11 +200,11 @@ A downstream stage reads a lower layer not through its declared accessors but by
 
 ### Reflection evidence is not structural proof
 
-`reflect_program_dag_nodes_in_file` (via `substrate_reflection::reflect_behavior`) now projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
+`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior`) now projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
 
 **Confidence tag for these gates:** `LensOutputEquals` / `AlgebraicLaw` runners that consume `reflect_program_dag_nodes_in_file` gain **structural** parity with `src/v3/std/substrate.dag` for the reflected spine (still bounded by whatever the lens algebra itself proves). Treat older notes that described reflection as intentionally lossy as **superseded** once this path ships.
 
-**Witness note:** `Witness<Carrier>` (see `src/v3/std/dimensions.dag`) is not yet exercised by this reflection entry point because it does not appear on the five `Behavior` variants; when lens bodies need witness-shaped facts through the same `FieldValue` carrier, extend `substrate_reflection` with the same substrate-shape rule rather than ad hoc mirrors.
+**Witness note:** `Witness<Carrier>` (see `src/v3/std/dimensions.dag`) is not yet exercised by this reflection entry point because it does not appear on the five `Behavior` variants; when lens bodies need witness-shaped facts through the same `FieldValue` carrier, extend the `substrate_reflection` submodule in `lens_apply.rs` with the same substrate-shape rule rather than ad hoc mirrors.
 
 ---
 
