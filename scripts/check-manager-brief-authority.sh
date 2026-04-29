@@ -96,15 +96,16 @@ check_q1_file_existence() {
 }
 
 # ---------------------------------------------------------------------
-# Q2 — Cited section anchor existence
+# Q2 — Cited section anchor existence (markdown form only)
 # ---------------------------------------------------------------------
 # For `path#anchor` markdown links, verify the anchor matches a heading
 # in the target file (heading slugified to GitHub form: lowercase,
 # spaces→dashes, punctuation stripped).
 #
-# Also covers the `§"section name"` and `§N "section name"` prose form:
-# grep for the section name in the most-recently-cited file in the
-# same line. (Imperfect but catches the common case.)
+# Out of scope for v1: `§"section name"` prose-form citations. They're
+# common in the briefs but parsing "what file does this prose §
+# reference" requires more context than a regex can give. v2 candidate;
+# tracked alongside Q3 status-vocabulary as the next narrowing.
 
 slugify() {
   echo "$1" \
@@ -247,9 +248,16 @@ check_q5_cross_brief_projections() {
   # Canonical values match docs/r2-structure.md (manager count) and
   # docs/r3-structure.md (lane counts) authority docs.
   # Regex must use POSIX-extended (bash grep -E): [0-9]+, not \d+.
+  #
+  # Per claude-opus-4-7 review: empirical check confirms the bare
+  # "standing managers" pattern does NOT substring-match
+  # "standing R2 managers" — the regex requires "managers"
+  # immediately after "standing" with one space, which "R2 " breaks.
+  # The two patterns coexist as separate constraints; if a brief
+  # uses either phrasing the count must match canonical (7).
   declare -a patterns=(
     'standing R2 managers||7||[0-9]+ standing R2 managers'
-    'standing managers||7||[0-9]+ standing managers'
+    'standing managers (no R2 qualifier)||7||[0-9]+ standing managers'
     'other managers||6||[0-9]+ other managers'
     'R3 lanes||10||[0-9]+ R3 lanes'
     'R3-Evaluator-gated lanes||7||[0-9]+ of 10 R3 lanes'
@@ -334,22 +342,32 @@ if [ "${#missing_briefs[@]}" -gt 0 ]; then
   exit 1
 fi
 
+# Drive the per-brief checks. Use `|| rc=$?` to prevent `set -e` from
+# exiting on a function that returns non-zero — we WANT to keep going
+# and report all violations across all briefs in a single run, not
+# stop at the first failing one. (Without `||`, `set -e` treats the
+# function call's non-zero return as a failed command.)
+#
+# The functions still return uint8 via `return $brief_violations`, but
+# we read it via $? immediately and accumulate into the global
+# `violations` int — which is plain bash arithmetic and not bounded
+# to 8 bits. This sidesteps the 256-violation truncation foot-gun.
 for brief in "${MANAGER_BRIEFS[@]}"; do
-  check_q1_file_existence "$brief"
-  rc=$?
+  rc=0
+  check_q1_file_existence "$brief" || rc=$?
   violations=$((violations + rc))
 
-  check_q2_anchor_existence "$brief"
-  rc=$?
+  rc=0
+  check_q2_anchor_existence "$brief" || rc=$?
   violations=$((violations + rc))
 
-  check_q4_landed_pr_in_history "$brief"
-  rc=$?
+  rc=0
+  check_q4_landed_pr_in_history "$brief" || rc=$?
   violations=$((violations + rc))
 done
 
-check_q5_cross_brief_projections
-rc=$?
+rc=0
+check_q5_cross_brief_projections || rc=$?
 violations=$((violations + rc))
 
 if [ "$violations" -gt 0 ]; then
