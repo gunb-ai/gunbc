@@ -79,7 +79,7 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `bridge_source_span_file_participation_retired` — no production code path consults `SourceSpan.file` for participation/inclusion logic; participation is structural per declared facts
   - `bridge_mark_bootstrap_secret_nominal_opacity_retired` — name-keyed bootstrap bridge from #937 deleted; nominal-opacity authority lives in source-level declaration (PR A landed in R2)
   - `bridge_canonical_lens_name_dispatch_retired` — lens dispatch routes via `DeclarationRef`/typed identity, not canonical name strings
-  - `bridge_include_str_side_channels_retired` — no `include_str!` macro reads source-substrate identity; substrate query surface used instead
+  - `bridge_include_str_side_channels_retired` — no `include_str!` macro reads source-substrate identity; substrate query surface used instead. **Open disposition (`pipeline_authority`, PR #1171, 2026-04-29):** `compile` remains `ArrowBody::Unparsed`, so compile-body stage order is not yet a structural Dag fact; runtime ordering reads `PipelineStageBinding` only — full gate for this site awaits derivation / lowered compile witness, not file IO.
   - `bridge_exact_string_patching_residual_retired` — `patch_lower_helpers_*` and similar exact-string patching scaffolds reach 0 residual (some retired in R2 #1014)
   - `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining
 
