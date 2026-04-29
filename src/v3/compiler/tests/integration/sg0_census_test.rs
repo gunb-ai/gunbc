@@ -320,6 +320,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // covers reflected-Dag structural assertions over std/ types.
     "src/v3/compiler/tests/integration/method_registry_test.rs",
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
+    "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
