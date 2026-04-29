@@ -27,11 +27,10 @@ fn test_runner_source() -> String {
 }
 
 /// Strip Rust line (`//`) and block (`/* … */`) comments from `src` so
-/// the bridge ratchets anchor on live syntax only. Per Testing Invariants
-/// (TESTING.md), source audits must ignore comments — historical/example
-/// text in docstrings must not mask bridge removal or fabricate bridge
-/// growth. String literals are preserved verbatim (the `//` inside a
-/// string is not a comment).
+/// the bridge ratchets anchor on live syntax only — historical or
+/// example text in docstrings must not mask bridge removal or fabricate
+/// bridge growth. String literals are preserved verbatim (the `//`
+/// inside a string is not a comment).
 fn strip_comments(src: &str) -> String {
     let bytes = src.as_bytes();
     let mut out = String::with_capacity(src.len());
