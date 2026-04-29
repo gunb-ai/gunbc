@@ -1906,18 +1906,39 @@ pub enum Behavior {
     Bind(BindNode),
 }
 
-/// Workflow-root identification (mirrors `WorkflowRoot` in
-/// `src/v3/std/substrate.dag`). The α implementation in
-/// [`Dag::workflow_root_port`] populates `SingleRoot` when at least one
-/// `Bind` exists and `NoRoot` otherwise; `AmbiguousRoot` is reserved
-/// for the future enumerate-all-eligible-entries rule that the runtime
-/// evaluator consumes for multi-entry programs and is never emitted by
-/// the α path.
+/// Workflow-root identification — Rust mirror of
+/// [`crate::dag::WorkflowRoot`]'s declaration in
+/// `src/v3/std/substrate.dag`.
+///
+/// 🟡 SCAFFOLD coproduct (mirroring the .dag receipt). The three arms
+/// partition every legitimate `Dag` exactly once:
+///
+///   - `SingleRoot(p)` — α (last topological `Bind`) selected `p`.
+///     Emitted whenever the Dag contains at least one `Bind`; multiple
+///     Binds are NOT ambiguous under α — linear `d.nodes` picks
+///     exactly one last element by definition.
+///   - `NoRoot` — zero `Bind` behaviors in `d.nodes`. Lens fold short-
+///     circuits to `DimensionFail`; runtime evaluation rejects.
+///   - `AmbiguousRoot { candidates }` — reserved for the future
+///     enumerate-all-eligible-entries rule that R2-Evaluator's
+///     `evaluate(program, entry, args)` consumes for multi-entry
+///     programs (per Items 4+5 / #1176 §3.2). The α / γ "last X Bind"
+///     rules cannot populate this arm; today's α implementation never
+///     emits it. Carried as `NonSingletonList<PortId>` to make the
+///     pre-disambiguation 1-candidate case structurally
+///     unrepresentable — `AmbiguousRoot` requires ≥2 candidates by
+///     construction.
+///
+/// Dissolution: γ refinement and the enumerate-all rule both reuse
+/// this same partition behind the `workflow_root_port` accessor; no
+/// carrier change required when those rules wire.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkflowRoot {
     SingleRoot(PortId),
     NoRoot,
-    AmbiguousRoot { candidates: Vec<PortId> },
+    AmbiguousRoot {
+        candidates: NonSingletonList<PortId>,
+    },
 }
 
 impl Behavior {

@@ -4,10 +4,15 @@
 //! merged audit at `docs/design-lens-fold-prerequisites.md`. Director-
 //! locked α implementation: last topological `Bind` in `d.nodes`.
 //!
-//! Three claims pin the α partition over `WorkflowRoot`:
+//! Three claims in this module pin the α partition over `WorkflowRoot`:
 //! - `workflow_root_single_bind_returns_single_root`
-//! - `workflow_root_zero_bind_returns_no_root`
 //! - `workflow_root_multi_bind_returns_single_under_alpha`
+//! - `workflow_root_ambiguous_unreachable_under_alpha`
+//!
+//! The fourth claim — `workflow_root_zero_bind_returns_no_root` —
+//! lives as a unit test in `src/v3/compiler/src/dag.rs` because
+//! constructing an empty `Dag` requires the crate-private
+//! `Dag::empty()` constructor.
 //!   (renamed from the audit's `_returns_ambiguous` since linear
 //!    `d.nodes` cannot produce ambiguity under α; the test pins
 //!    that α picks the LAST Bind even with multiple Binds present).

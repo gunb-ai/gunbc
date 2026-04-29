@@ -524,7 +524,7 @@ fn lane2_workflow_at(d: Dag, id: NodeId) -> WorkflowEffect? {
 type WorkflowRoot
   = SingleRoot(PortId)
   | NoRoot
-  | AmbiguousRoot { candidates: List<PortId> }
+  | AmbiguousRoot { candidates: NonSingletonList<PortId> }
 
 // Workflow-root accessor (per merged audit Prereq-3a). Implements
 // the α rule: last topological `Bind` in `d.nodes`. Returns
