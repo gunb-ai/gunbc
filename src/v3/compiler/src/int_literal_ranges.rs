@@ -33,7 +33,8 @@ pub(crate) enum IntervalInt {
         max: i128,
     },
     /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
-    /// i64-representable literal magnitude.
+    /// i64-representable literal magnitude. Not yet produced from Rust `IntegerPrimitive` rows.
+    #[allow(dead_code)]
     Unbounded,
 }
 
