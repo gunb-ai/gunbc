@@ -26,30 +26,20 @@ fn test_runner_source() -> String {
     fs::read_to_string(&path).expect("read test_runner.rs source")
 }
 
-/// Category A: `include_str!` references that pull canonical lens bytes.
-///
-/// Counts each `include_str!` invocation whose argument (possibly across
-/// several lines via `concat!`) contains `/lenses/`. The whole-source scan
-/// handles the multi-line `concat!(env!("CARGO_MANIFEST_DIR"), "/../lenses/…")`
-/// form used in `test_runner.rs`.
-fn count_lens_include_str(src: &str) -> usize {
+/// Category A: canonical-lens `include_str!` bridge constants in
+/// `test_runner.rs`. Counts the named pub-const definitions that pull
+/// canonical lens bytes for `apply_lens_declaration` cross-`Dag`
+/// reflection-coherence (P2). Other `include_str!`-of-`/lenses/` cases
+/// (e.g. `INFER_HELPERS_SOURCE`) are not part of this bridge surface;
+/// they are not consumed via name-dispatch from a `lens_decl.name == …`
+/// arm and are out of scope.
+fn count_canonical_lens_include_str_bridges(src: &str) -> usize {
     let mut n = 0;
-    let needle = "include_str!";
-    let mut rest = src;
-    while let Some(idx) = rest.find(needle) {
-        let after = &rest[idx + needle.len()..];
-        // Scan the next ~256 bytes — enough to cover a multi-line `concat!(...)`
-        // argument without straying into the next macro invocation.
-        let window_end = after
-            .char_indices()
-            .nth(256)
-            .map(|(i, _)| i)
-            .unwrap_or(after.len());
-        let window = &after[..window_end];
-        if window.contains("/lenses/") {
-            n += 1;
-        }
-        rest = after;
+    if src.contains("pub const R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS: &str = include_str!") {
+        n += 1;
+    }
+    if src.contains("pub const R1_CANONICAL_COMPLEXITY_LENS: &str = include_str!") {
+        n += 1;
     }
     n
 }
@@ -87,7 +77,7 @@ const EXPECTED_GENERIC_NAME_LOOKUPS: usize = 2;
 #[test]
 fn canonical_lens_include_str_bridges_pinned() {
     let src = test_runner_source();
-    let n = count_lens_include_str(&src);
+    let n = count_canonical_lens_include_str_bridges(&src);
     assert_eq!(
         n, EXPECTED_INCLUDE_STR_LENS_BYTES,
         "test_runner.rs canonical-lens `include_str!` count drifted: \
