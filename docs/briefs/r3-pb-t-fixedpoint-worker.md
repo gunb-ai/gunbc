@@ -78,12 +78,9 @@ The non-determinism elimination work (HashMap/HashSet/timestamps/paths per `desi
 
 ## Cross-lane sequencing (Shape-A target coverage)
 
-`r3-structure.md` lane table specifies "bit-identical stage0 Rust + bit-identical emitted artifacts" — Rust is the load-bearing target (stage0 is Rust). Python + Go bit-identical artifact gates are scoped to whichever Shape-A targets have grounded by the time this lane dispatches:
+`r3-structure.md` lane table specifies "bit-identical stage0 Rust + bit-identical emitted artifacts" — Rust is the load-bearing target (stage0 is Rust). Python + Go coverage is **derived from the single grounding gate** (see §"Single grounding gate (artifact set derivation)"), not maintained as a parallel target list here. The artifact set IS exactly the set of `R2-Grounding-{Lang}` lanes the closure ledger reports closed at dispatch.
 
-- If R2-Grounding-Python + R2-Grounding-Go are already landed at dispatch time, the `pb_self_compile_fixed_point_strong` claim covers Rust + Python + Go.
-- If only Rust is grounded, the lane closes on Rust-only fixed-point; the Python/Go extension follows once those targets land (no separate lane — extends this gate's claim list).
-
-This avoids artificially gating T-FixedPoint on T-Verification-L5-Corpus (cross-target equivalence is L5's lane; T-FixedPoint is single-target byte-identity per cycle).
+This avoids artificially gating T-FixedPoint on T-Verification-L5-Corpus (cross-target *equivalence* is L5's lane; T-FixedPoint is per-target byte-identity across the self-host cycle).
 
 ## Non-goals
 
