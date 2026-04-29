@@ -2362,7 +2362,7 @@ pub struct Dag {
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
-    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
+    assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
     dag
@@ -2380,7 +2380,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
 static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag =
         bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag();
-    assert_extdeps_bootstrap_fixture_paths_match_regen_keys(&dag);
+    assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
     dag
@@ -3612,7 +3612,7 @@ impl Default for Dag {
 /// [`BOOTSTRAP_FIXTURE_PATH_KEYS`](crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS)
 /// must list the same virtual paths in the same order — the const is the regen
 /// filter; the `.dag` declaration is runtime authority.
-fn assert_extdeps_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
+fn assert_bootstrap_fixture_paths_match_regen_keys(dag: &Dag) {
     let Some(paths) = dag.bootstrap_fixture_virtual_paths() else {
         panic!(
             "bootstrap snapshot must expose `bootstrap_fixture_authority` as a \
