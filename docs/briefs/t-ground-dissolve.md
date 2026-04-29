@@ -202,6 +202,7 @@ Escalate to manager (#1133, do not absorb in lane) if:
 - an `InhabitantDecl` row requires a new refinement axis not already in the target / LanguageSpec lanes;
 - a `carrier: String` consumer cannot be rewritten without adding a new target syntax carrier;
 - deleting `coercion.dag` would delete live non-Track-13 helpers whose owner is unclear;
+- implementation discovers a third path for the non-Track-13 helpers (for example, the helpers are themselves dissolvable into Track-13 or belong to a sibling lane) — stop and post to manager before authoring that path;
 - implementation requires a new substrate type rather than deleting the old one;
 - routing parity fails after deletion;
 - any referenced authority doc has drifted materially from this brief.
