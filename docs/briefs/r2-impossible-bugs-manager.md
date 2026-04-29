@@ -50,7 +50,7 @@ For each class:
 
 Worker briefs MUST consume these without re-litigation:
 
-- **Q6 (Witness<C> + Diagnostic.kind extensibility)**: structural-validation failures encode into `Diagnostic.kind` extensions; relevant for unhandled-diagnostic-paths and unenumerated-effects implementation if/when they surface diagnostic-shape questions during dispatch.
+- **Q6 (Witness<C> + lens-local Diagnostic.kind extensibility)**: structural-validation failures encode into lens-local `Diagnostic.kind` declarations; relevant for unhandled-diagnostic-paths and unenumerated-effects implementation if/when they surface diagnostic-shape questions during dispatch.
 - **Closed-system effects model** (PR #808): canonical authority for unenumerated-effects class; 5-behavior structural fold; no annotation surface.
 
 Full disposition: [`docs/r2-structure.md`](../r2-structure.md) §4.

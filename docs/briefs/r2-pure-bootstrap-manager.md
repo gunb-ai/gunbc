@@ -56,7 +56,7 @@ Worker briefs MUST consume these without re-litigation:
 
 - **T-LensProducer-Retirement XL framing kept** (Director cascade Item 8 ratified 2026-04-28): lane stays as one program; 3 internal sub-gates report sub-progress to closure ledger but do NOT split into 3 independent lanes. Reduces lane fragmentation; preserves the "one program" coherence of lens-producer retirement.
 - **T-Bridge-Retirement distribution map** (Director cascade Item 4 ratified 2026-04-28): 5 named bridges; 3 retire under PB ownership (canonical lens-name dispatch / `include_str!` side channels / `patch_lower_helpers_*` residual); 2 retire under Substrate (`SourceSpan.file` + `mark_bootstrap_secret_nominal_opacity()`); Verification owns ledger gate only. **Distribute work, centralize ledger** discipline.
-- **Q6 (lens framework)**: `Witness<C>` substrate stays as-is; structural-validation failures encode into `Diagnostic.kind` extensions. Relevant for PB-Runtime interpreter-as-data work.
+- **Q6 (lens framework)**: `Witness<C>` substrate stays as-is; structural-validation failures encode into lens-local `Diagnostic.kind` declarations. Relevant for PB-Runtime interpreter-as-data work.
 
 Full disposition: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
 

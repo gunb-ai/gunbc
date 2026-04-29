@@ -115,7 +115,7 @@ Dispatch sequence: **PR-PreF lands first** (foundational substrate; everything e
 
 **Adjacent territory:**
 - B4's §0.7 file-preference rank carrier touches Pure Bootstrap territory. Coordinate with Pure Bootstrap Manager.
-- **Diagnostic-kind extensibility (Q6 lock)** — Evaluator Manager extends `Diagnostic.kind` for structural-validation failures. Substrate Manager owns the `CompilerDiagnosticKind` sum; cross-manager coordination at extension time. Known limitation: current substrate is closed sum, tracked under v2 follow-up.
+- **Diagnostic-kind extensibility (Q6 lock; refined 2026-04-29)** — lens structural-validation failures use lens-local diagnostic-kind declarations beside each lens instance. Substrate Manager owns the generic `Lens<C>` carrier and `Diagnostic`/`OptionalDiagnostic` plumbing; it does **not** own per-lens diagnostic-kind extension. No Substrate/Evaluator handoff is required to mutate the closed `CompilerDiagnosticKind` sum for lens validation failures.
 
 ## Locked design decisions consumed (per #1078 8-question dialogue)
 
@@ -124,7 +124,7 @@ Worker briefs MUST consume these without re-litigation:
 - **Q1**: `Interval<D>` shared parent in substrate (PR-PreF prepended); `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent` (asymmetric match rule: target's `Unbounded` universal-accepts; target's `ExactInterval(lo,hi)` requires exact range match).
 - **Q3**: `Cost<Unit> = Dimension<Unit, SymbolicExpr>`; Bits/CPUCycles substrate primitives sibling to SI base units; `RealizationCost { storage: Cost<Bits>, access: Map<AlgebraOp, Cost<CPUCycles>> }`.
 - **Q5**: cardinality is the connectives axis; collapses by construction with Q1's `Interval<Cardinal>` instances on each connective; PR-J = no-op.
-- **Q6**: `Witness<C>` substrate stays as-is; rich structural validation failures encode into `Diagnostic.kind` extensions.
+- **Q6**: `Witness<C>` substrate stays as-is; rich structural validation failures encode into lens-local `Diagnostic.kind` declarations owned by each lens instance, not into the closed compiler-core diagnostic sum.
 - **Q7**: per-call validate yields one `OptionalDiagnostic`; fold accumulates into `DimensionFail.violations: List<Diagnostic>`.
 - **Q8**: cross-product validate is conjunctive (`Lens<C> × Lens<D>` runs both; conjunctive fold).
 

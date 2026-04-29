@@ -76,7 +76,7 @@ The 8-question design dialogue resolved into a cadence whose merge gates worker 
 **Consumes:**
 - **Substrate Manager — ValueBody-list/sum + std.unicode bootstrap carrier**: Coercion-Fold full pilot enumeration via symbolic walk of `rust_pilot_primitives: List<RustPrimitive>` is gated on this. Substrate Manager signals readiness via cross-manager queue; Grounding Manager dispatches Coercion-Fold consumer migration on receipt.
 - **Substrate Manager — PR-PreF Interval<D> consolidation**: required for Q1 BoundDeclaration consumer in Coercion-Fold lane.
-- **Substrate Manager — `Diagnostic.kind` extensibility (Q6 lock)**: Diagnostic lane coordinates with Substrate at `CompilerDiagnosticKind` extension time.
+- **Lens-local `Diagnostic.kind` extensibility (Q6 lock)**: lens structural-validation failures declare lens-local diagnostic kinds beside each lens instance; Grounding's compiler-core diagnostic work remains separate substrate territory.
 
 **Adjacent territory:** none (Grounding owns its program completely; cross-target meta-spec is fully internal).
 
