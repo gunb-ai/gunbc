@@ -10,7 +10,7 @@
 - R2 manager lane row + cadence row + acceptance gate: [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 35, 52 (PR-J → this lane), 68, 128 (`cross_target_meta_l6_load_completeness_landed`), 145.
 - Modeling problem 7 + L6 placement + cross-product shape: [`docs/design-emission-model.md`](../design-emission-model.md) — search **Cross-target uniformity**, **Modeling problem 7**, **L6**, **`l6_structural_form_coverage`**, **Shape A**, **connectives × behaviors × targets**, Q5 / cardinality-as-connectives (lines ~1243–1280, ~408–410, ~818–833, ~959).
 - **Not-a-lens authority:** [`docs/design-lens-framework.md`](../design-lens-framework.md) §**D3 / I6** — L6 is **not** a `Lens<C>` instance; input space is **per-(substrate form cell × Shape A target)**, not `Lens<C>.read: (Dag, Behavior) → Witness<C>`.
-- Q1 / PR-PreF consolidation: `Interval<D>` parent; cardinality on connectives as `Interval<Cardinal>` (`design-emission-model.md` ~1019–1024, ~1038, ~1265–1268).
+- Q1 / PR-PreF consolidation: `Interval<D>` parent; cardinality on connectives as `Interval<Cardinal>` (`design-emission-model.md` ~1019–1024, ~1038, ~1265–1268). **Connective partition authority:** `TypeConnective` in [`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag) (six variants — see §Scope).
 - Fail-closed surface: [`INVARIANTS.md`](../../INVARIANTS.md) **C-8** (P3) + substrate-fact introduction **§P1** for any new types.
 - Sibling brief shapes: [`t-ground-diagnostic.md`](t-ground-diagnostic.md), [`t-ground-languagespec.md`](t-ground-languagespec.md), [`t-ground-lifetime-analyzer.md`](t-ground-lifetime-analyzer.md).
 
@@ -41,7 +41,7 @@ Per [`docs/design-lens-framework.md`](../design-lens-framework.md) §D3 / I6 and
 
 Per [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 51–52, 91–92 and [`docs/design-emission-model.md`](../design-emission-model.md) Q5 (~1243–1280):
 
-- **Q5 recommendation (a) — locked:** **cardinality is the connectives axis** (`List<T>` → `Interval<Cardinal>::Unbounded`; fixed-arity products → exact cardinal intervals; etc.). There is **no separate L6 “cardinality variant” axis** to enumerate beyond what is already carried on each of the **six type connectives**.
+- **Q5 recommendation (a) — locked:** **cardinality is the connectives axis** (`design-emission-model.md` illustrates with shapes like `List<T>` → `Interval<Cardinal>::Unbounded`; fixed-arity products → exact cardinal intervals). There is **no separate L6 “cardinality variant” axis** beyond what is already carried on the substrate connectives — including the dedicated **`TypeConnective::Cardinality`** arm in `substrate.dag`.
 - **PR-PreF reinforcement:** with `Interval<D>` as shared parent, cardinality lands on connectives via **`Interval<Cardinal>`** instances on those connectives — the L6 cross-product is **`connectives × behaviors × Shape A targets`** (design doc: **90 cells** for 6 × 5 × 3), not `(… × cardinality_variants …)` as a free third axis.
 - **PR-J:** cadence PR for Q5 cardinality enumeration — **expected no-op** once PR-PreF + Q5 lock are merged and recorded. **Worker implementation dispatch** for this lane waits on **PR-J merge as the confirmation artifact** that Q5 did not re-open a separate cardinality enumeration — even when the substantive work is empty.
 
@@ -53,7 +53,7 @@ Per [`r2-grounding-manager.md`](r2-grounding-manager.md) lines 51–52, 91–92 
 
 After the Q5 collapse above, each **form cell** is one tuple in the **substrate-declared** cross-product:
 
-- **Type connectives** — the six connective families enumerated in Q5 discussion (`design-emission-model.md` ~1250–1251: e.g. `Singleton` / `Atomic` / `ListOf<T>` / `ConjOf<…>` / `DisjOf<…>` / `ArrowOf<…>` — exact v3 spelling is whatever the substrate + LanguageSpec schema fix at implementation time; **authority is the design doc + landed `algebra` / type-structure substrate**, not this brief).
+- **Type connectives** — the **six** variants of **`TypeConnective`** in [`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag) (reflected-substrate authority; at brief authoring: **`Atom`**, **`Conj`**, **`Disj`**, **`Arrow`**, **`Cardinality`**, **`Instantiation`**). **Single authority (P2):** the L6 form axis **must** enumerate this sum — not informal names from Q5 prose in [`docs/design-emission-model.md`](../design-emission-model.md) (~1250–1251) such as `Singleton` / `ListOf<T>` / `ArrowOf<…>`, which describe modeling intent but **do not** match the durable connective tag set and would let the grid miss real declarations. **`Cardinality`** carries `element` + `CardinalityBound`; PR-PreF **`Interval<Cardinal>`** refines cardinality facts without adding a seventh connective arm.
 - **L1 behaviors** — the five behavior primitives the emission model’s L6 fold names (`design-emission-model.md` ~408–409, ~959: **Bind / Branch / Loop** family + exclusivity / iteration semantics per locked L1 model — cite [`docs/design-lens-framework.md`](../design-lens-framework.md) §Lens operations for the behavior set if needed).
 
 **Worker lands** the precise enumeration tables as **substrate facts** (or generated tables) in the lane PR with **P1 receipts** — this brief does not restate every cell ID.
@@ -161,6 +161,7 @@ Escalate to manager (#1133) if:
 
 - Parent: [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane 9 of 11)
 - L6 + Modeling problem 7: [`docs/design-emission-model.md`](../design-emission-model.md)
+- **`TypeConnective` authority:** [`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag)
 - Lens vs L6: [`docs/design-lens-framework.md`](../design-lens-framework.md) §D3, I6
 - Shape A vs B thesis: [`docs/thesis/what-else-falls-out.md`](../thesis/what-else-falls-out.md)
 - R3 verification split: [`docs/r3-structure.md`](../r3-structure.md) (L6 removed from R3 surface)
