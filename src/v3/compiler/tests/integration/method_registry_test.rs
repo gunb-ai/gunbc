@@ -162,9 +162,7 @@ fn method_registry_covers_all_algebra_template_names() {
                 // ok
             }
             Some((_, FieldValue::Literal(LiteralBits::String(s)))) => {
-                errors.push(format!(
-                    "`{binding_name}.name` = {s:?}, expected {name:?}"
-                ));
+                errors.push(format!("`{binding_name}.name` = {s:?}, expected {name:?}"));
             }
             Some((_, other)) => {
                 errors.push(format!(
