@@ -1,3 +1,25 @@
+//! Integer literal magnitude vs declared integer types — **Q1 consumer**.
+//!
+//! Authoritative modeling: [`docs/design-emission-model.md`](../../../docs/design-emission-model.md)
+//! §Q1 — `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`, with asymmetric
+//! match (target `Unbounded` universal-accept; target `ExactInterval` exact `lo`/`hi` equality at
+//! the fold). This module implements only the **static** side needed for literal narrowing:
+//! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../dsl/extdeps/languages/rust/primitives.dag)
+//! on [`rust_pilot_primitives`](crate::dag::Dag::rust_pilot_primitives) supply
+//! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host `i128`
+//! comparison). [`IntervalInt::Unbounded`] exists so Q1’s interval algebra is representable when a
+//! target declares an unbounded value domain (pilot `IntegerPrimitive` rows are all exact today).
+//! [`PlatformDependent`] is out of scope for i64-bounded literal narrowing (deferred targets).
+//!
+//! ## Downstream consumers (range-facts + narrowing)
+//!
+//! | Location | Behavior |
+//! | --- | --- |
+//! | `infer::try_reconcile_int_literal_decision_set` | `let` / `data` pre-seed vs default `Int64` literal; in-range narrow; OOB → `MagnitudeOutOfRange`. |
+//! | `infer::decide_transform` (calls) | Parameter-narrow type vs default-`Int` argument literal; narrow or OOB. |
+//! | `infer::int_literal_implicit_bind_tolerated_for_expected` | Callable template binding when structural binding fails on int literal. |
+//! | `lower` scalar literal lowering | Early reject for OOB literals before inference reunion. |
+
 use std::collections::HashSet;
 
 use crate::dag::{
@@ -7,30 +29,73 @@ use crate::dag::{
 use crate::diagnostics::{Diagnostic, SourceSpan};
 use crate::types::TypeShape;
 
+/// Q1 `Interval<Int>` instance carried from String-decimal range facts (not `LiteralBits::Int`
+/// widening — producer brief).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct IntegerRange {
+pub(crate) enum IntervalInt {
+    /// Closed interval — substrate `range_*_inclusive` facts for a fixed-width target primitive.
+    ExactInterval {
+        target_name: String,
+        min_decimal: String,
+        max_decimal: String,
+        min: i128,
+        max: i128,
+    },
+    /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
+    /// i64-representable literal magnitude.
+    ///
+    /// **Dissolution trigger (when this variant is constructed from [`integer_range_for_decl`]):**
+    /// a `rust_pilot_primitives` `IntegerPrimitive` row (or successor multi-target table) is
+    /// authored for a target whose Q1 `BoundDeclaration` is `StaticBound(Unbounded)` at magnitude
+    /// check — e.g. Python `int` per [`docs/design-emission-model.md`](../../../docs/design-emission-model.md)
+    /// fold example (T-Ground cross-target / language `primitives.dag` work, not this consumer).
+    /// Until that producer exists, only [`IntervalInt::ExactInterval`] is returned from the pilot
+    /// list; [`Unbounded`] remains for `contains_i64` / Q1 algebra completeness and unit tests.
+    #[allow(dead_code)]
+    Unbounded,
+}
+
+/// Subset of an exact integer interval: everything [`Diagnostic::MagnitudeOutOfRange`] needs. This
+/// type is the only input to [`magnitude_out_of_range`], so an unbounded domain cannot be passed
+/// where a fixed range is required.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ExactIntIntervalFacts {
     pub(crate) target_name: String,
     pub(crate) min_decimal: String,
     pub(crate) max_decimal: String,
-    min: i128,
-    max: i128,
 }
 
-impl IntegerRange {
-    /// Current reconciliation receives only source literals that already
-    /// fit the existing `LiteralBits::Int(i64)` carrier. The declared
-    /// range facts remain full Rust target ranges (including u64's upper
-    /// half); literals above `i64::MAX` are rejected earlier by the
-    /// tokenizer until the deferred carrier-widening lane replaces the
-    /// source literal carrier.
+impl IntervalInt {
+    /// Reconciliation receives only literals that already fit [`LiteralBits::Int(i64)`]. Declared
+    /// range facts may exceed `i64` (e.g. `u64::MAX`); literals above `i64::MAX` are rejected at
+    /// tokenization until the deferred Int128 carrier lane lands.
     pub(crate) fn contains_i64(&self, value: i64) -> bool {
         let value = i128::from(value);
-        self.min <= value && value <= self.max
+        match self {
+            IntervalInt::Unbounded => true,
+            IntervalInt::ExactInterval { min, max, .. } => *min <= value && value <= *max,
+        }
+    }
+
+    pub(crate) fn exact_interval_facts(&self) -> Option<ExactIntIntervalFacts> {
+        match self {
+            IntervalInt::ExactInterval {
+                target_name,
+                min_decimal,
+                max_decimal,
+                ..
+            } => Some(ExactIntIntervalFacts {
+                target_name: target_name.clone(),
+                min_decimal: min_decimal.clone(),
+                max_decimal: max_decimal.clone(),
+            }),
+            IntervalInt::Unbounded => None,
+        }
     }
 }
 
 pub(crate) enum IntegerRangeLookup {
-    Found(IntegerRange),
+    Found(IntervalInt),
     Missing,
     Invalid(Diagnostic),
 }
@@ -126,7 +191,7 @@ pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerR
 }
 
 struct PilotIntegerMatch {
-    range: Option<IntegerRange>,
+    range: Option<IntervalInt>,
     span: SourceSpan,
 }
 
@@ -268,7 +333,7 @@ fn pilot_integer_row(
         if min > max {
             return None;
         }
-        Some(IntegerRange {
+        Some(IntervalInt::ExactInterval {
             target_name: literal_string(payload.first()?)?,
             min_decimal,
             max_decimal,
@@ -306,7 +371,7 @@ pub(crate) fn int_literal_fits_expected_type(
     expected: DeclarationId,
 ) -> Result<Option<bool>, Diagnostic> {
     match integer_range_for_decl(dag, expected) {
-        IntegerRangeLookup::Found(range) => Ok(Some(range.contains_i64(literal))),
+        IntegerRangeLookup::Found(bound) => Ok(Some(bound.contains_i64(literal))),
         IntegerRangeLookup::Missing => Ok(None),
         IntegerRangeLookup::Invalid(diag) => Err(diag),
     }
@@ -315,14 +380,25 @@ pub(crate) fn int_literal_fits_expected_type(
 pub(crate) fn magnitude_out_of_range(
     literal: i64,
     expected: TypeShape,
-    range: IntegerRange,
+    bound: IntervalInt,
     span: SourceSpan,
 ) -> Diagnostic {
+    let Some(ExactIntIntervalFacts {
+        target_name,
+        min_decimal,
+        max_decimal,
+    }) = bound.exact_interval_facts()
+    else {
+        unreachable!(
+            "magnitude_out_of_range is only for fixed-range targets (ExactInterval); \
+             Unbounded accepts every i64-representable literal"
+        );
+    };
     Diagnostic::MagnitudeOutOfRange {
         literal: literal.to_string(),
-        target: range.target_name.to_string(),
-        range_min_inclusive: range.min_decimal.to_string(),
-        range_max_inclusive: range.max_decimal.to_string(),
+        target: target_name,
+        range_min_inclusive: min_decimal,
+        range_max_inclusive: max_decimal,
         expected,
         span,
         fixes: Vec::new(),
@@ -593,6 +669,12 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interval_int_unbounded_accepts_all_i64_literals() {
+        assert!(IntervalInt::Unbounded.contains_i64(i64::MIN));
+        assert!(IntervalInt::Unbounded.contains_i64(i64::MAX));
+    }
 
     #[test]
     fn uint8_witness_matches_u8_pilot_row_constructors() {
