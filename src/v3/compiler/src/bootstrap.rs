@@ -88,9 +88,6 @@ const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 /// committed bootstrap snapshots initialize (`dag.rs` LazyLock).
 pub const EXTDEPS_BOOTSTRAP_PATH_KEYS: &[&str] = &[
     "dsl/extdeps/languages/rust/primitives.dag",
-    "dsl/extdeps/languages/rust/method_template_contracts.dag",
-    "dsl/extdeps/languages/python/method_template_contracts.dag",
-    "dsl/extdeps/languages/go/method_template_contracts.dag",
 ];
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
