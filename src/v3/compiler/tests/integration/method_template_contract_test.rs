@@ -171,3 +171,32 @@ const EXPECTED_PER_TARGET_LISTS: &[&str] = &[
     "python_method_template_contracts",
     "go_method_template_contracts",
 ];
+
+#[test]
+fn debug_go_method_row_surface() {
+    use std::fs;
+    use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
+    use v3_compiler::{parse_for_test, tokenize_for_test};
+    let path = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../std/go_method_template_contracts.dag"
+    );
+    let src = fs::read_to_string(path).unwrap();
+    let tokens = tokenize_for_test(&src, "go_method_template_contracts.dag").unwrap();
+    let module = parse_for_test(&tokens, "go_method_template_contracts.dag").unwrap();
+    let body = module
+        .items
+        .iter()
+        .find_map(|i| match i {
+            SurfaceItem::Data { name, body, .. } if name == "go_method_template_contracts" => {
+                body.as_ref()
+            }
+            _ => None,
+        })
+        .unwrap();
+    let SurfaceExpr::List { elements, .. } = body else {
+        panic!("expected list body, got {body:#?}");
+    };
+    let el0 = &elements[0];
+    eprintln!("go row0 surface = {el0:#?}");
+}
