@@ -49,6 +49,11 @@ const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
     "/../lenses/infer_helpers.dag"
 ));
 
+/// `.dag` path for [`TestPredicate::SubstrateResearchDeferredClaim`] (TC1 / R2 substrate research).
+/// The runner fail-closes unless the `TestClaim` is declared in this fixture file.
+const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
+    "src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -1523,6 +1528,9 @@ impl<'a> TestRunner<'a> {
                         "ReleaseDeferredClaim" => {
                             self.eval_release_deferred_claim_shape(claim, &payload)
                         }
+                        "SubstrateResearchDeferredClaim" => {
+                            self.eval_substrate_research_deferred_claim_shape(claim, &payload)
+                        }
                         "MockBackedInvariant" => {
                             if !claim.requires.is_empty() {
                                 if let Err(reason) = self.validate_resource_requirements(claim) {
@@ -2543,6 +2551,91 @@ impl<'a> TestRunner<'a> {
         }
 
         ClaimResult::Pass
+    }
+
+    fn eval_substrate_research_deferred_claim_shape(
+        &self,
+        claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        if claim.declaration_file != TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE {
+            return ClaimResult::Fail(format!(
+                "SubstrateResearchDeferredClaim is only valid in `{TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE}`, got `{}`",
+                claim.declaration_file
+            ));
+        }
+
+        let [deferred_gate, target_lane, authority_doc] = payload else {
+            return ClaimResult::Fail(format!(
+                "SubstrateResearchDeferredClaim payload should be exactly three DeclarationRef fields \
+                 (deferred_gate, target_lane, authority_doc); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+
+        for (field_label, value, role_name) in [
+            ("deferred_gate", deferred_gate, "Tc1ResearchGateMarker"),
+            (
+                "target_lane",
+                target_lane,
+                "SubstrateLensPrimitiveTargetLaneMarker",
+            ),
+            (
+                "authority_doc",
+                authority_doc,
+                "LambdaCalculusGroundingAuthorityDoc",
+            ),
+        ] {
+            let role_id = match self.substrate_research_fixture_local_role_id(role_name) {
+                Ok(id) => id,
+                Err(reason) => {
+                    return ClaimResult::Fail(format!("SubstrateResearchDeferredClaim: {reason}"));
+                }
+            };
+            let id = match self.resolve_declaration_ref_id(value, field_label) {
+                Ok(id) => id,
+                Err(reason) => {
+                    return ClaimResult::Fail(format!("SubstrateResearchDeferredClaim: {reason}"));
+                }
+            };
+            let decl = self.dag.declaration(id);
+            if decl.span.file != TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE {
+                return ClaimResult::Fail(format!(
+                    "SubstrateResearchDeferredClaim `{field_label}` must reference a marker declared in `{TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE}`, got `{}` from `{}`",
+                    decl_display_name(id, decl),
+                    decl.span.file
+                ));
+            }
+            if !Self::decl_inhabits_role_id(decl, role_id) {
+                return ClaimResult::Fail(format!(
+                    "SubstrateResearchDeferredClaim `{field_label}` must reference a declaration inhabiting fixture-local `{role_name}`, got `{}`",
+                    decl_display_name(id, decl)
+                ));
+            }
+        }
+
+        ClaimResult::Pass
+    }
+
+    fn substrate_research_fixture_local_role_id(
+        &self,
+        role_name: &str,
+    ) -> Result<DeclarationId, String> {
+        let mut matches = self.dag.declarations().iter().filter(|decl| {
+            decl.name.as_deref() == Some(role_name)
+                && decl.span.file == TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE
+        });
+        let Some(role) = matches.next() else {
+            return Err(format!(
+                "substrate TC1 fixture role `{role_name}` is missing from `{TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE}`"
+            ));
+        };
+        if matches.next().is_some() {
+            return Err(format!(
+                "substrate TC1 fixture role `{role_name}` is declared more than once in `{TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE}`"
+            ));
+        }
+        Ok(role.id)
     }
 
     fn release_fixture_local_role_id(&self, role_name: &str) -> Result<DeclarationId, String> {
