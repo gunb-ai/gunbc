@@ -302,7 +302,7 @@ typed `WorkflowRoot` carrier:
 type WorkflowRoot
   = SingleRoot(PortId)                               // exactly one eligible root; PortId is its result_port
   | NoRoot                                           // zero Binds in d.nodes; lens fold short-circuits to DimensionFail
-  | AmbiguousRoot { candidates: List<PortId> }       // 2+ eligible roots under the active α/γ rule; consumer must disambiguate (R2-Evaluator picks via entry-arg; fold_lens reports DimensionFail)
+  | AmbiguousRoot { candidates: List<PortId> }       // multi-entry programs (R2-Evaluator entry-name disambiguation case); reserved for the enumerate-all-eligible-entries rule, NOT producible under α/γ "last X Bind" rules over linear d.nodes
 ```
 
 Both consumers (`fold_lens<C>` and R2-Evaluator) handle the
@@ -433,10 +433,30 @@ without piggy-backing on 3b's `complexity_lens_via_framework_correct`:
 - `workflow_root_zero_bind_returns_no_root` — a fixture Dag
   containing only `Value` / `Transform` / `Branch` / `Loop`
   behaviors (no `Bind`) returns `NoRoot`.
-- `workflow_root_multi_bind_returns_ambiguous` — a fixture Dag
-  with 2+ `Bind` behaviors at the same topological "last" tier
-  returns `AmbiguousRoot { candidates }` enumerating every
-  eligible port.
+- `workflow_root_multi_bind_returns_ambiguous` — neither α
+  (last topological `Bind`) nor γ (last `UserCallable` `Bind`)
+  can produce ambiguity over a linear `Dag.nodes`: both rules
+  pick exactly one "last" element by definition. The
+  `AmbiguousRoot` arm is reserved for a separate
+  **enumerate-all-eligible-entries** rule, which the
+  R2-Evaluator runtime consumer needs (per the
+  `evaluate(program, entry, args)` shape from Items 4+5 / #1176
+  §3.2 — the runtime takes an entry-name arg precisely because
+  multi-entry programs need user-supplied disambiguation). That
+  rule returns the full list of UserCallable `Bind` result_ports
+  as `AmbiguousRoot { candidates }`; R2-Evaluator picks the one
+  whose owning bind name matches `entry`.
+
+  α / γ acceptance for this claim is therefore vacuous-but-wired:
+  any fixture exercises α / γ to `SingleRoot(last_*_bind.
+  result_port)`. The realizable `AmbiguousRoot` case lands when
+  the enumerate-all rule is wired (a separate consumer path
+  alongside α / γ behind the same accessor); its acceptance
+  pins (a) the `candidates` list contains every UserCallable
+  Bind's result_port; (b) R2-Evaluator's entry-name match
+  reduces a multi-candidate result to a single chosen Port;
+  (c) absence of `entry` against `AmbiguousRoot` fails closed
+  with a typed diagnostic.
 - `workflow_root_consumed_by_runtime_entry_point` (R2-Evaluator
   cross-consumer proof) — a smoke test driving R2-Evaluator's
   `evaluate(program, entry, args)` shape (or its substrate
