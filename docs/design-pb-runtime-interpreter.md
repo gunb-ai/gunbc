@@ -320,21 +320,25 @@ Fails if PB-Runtime produces a different `Value` than R2-Evaluator for the same 
 
 ### 7.2 BinShim equivalence fixture
 
-For each existing bin-shim (`regen_lens.rs` first), emit Rust from the `.dag` `BinShim` declaration; compare to the existing hand-Rust shim line-by-line modulo whitespace + comment differences.
+For each existing bin-shim (`regen_lens.rs` first), emit Rust from the `.dag` `BinShim` declaration; verify the emitted Rust is **behaviorally equivalent** to the existing hand-Rust shim — not byte-identical. Hand-authored Rust and `.dag`-emitted Rust will inevitably differ in formatting choices, comment shapes (the emitted form carries an `AUTO-GENERATED` header), and incidental whitespace; the dissolution discipline cares about behavioral equivalence, not character-level identity.
+
+The precise predicate shape is deferred to the worker authoring the fixture; the design lock fixes the *intent*, not the comparison mechanism. Three plausible mechanisms:
+
+- **Canonicalize-then-diff:** `rustfmt` both sides; strip `AUTO-GENERATED` header from emitted side; then `diff` with `expect_exit_code: 0`. Catches semantic differences while tolerating formatting drift.
+- **AST-equivalence:** parse both sides via `syn`; compare AST modulo span/comment metadata. Strictest semantic check; immune to formatting/comment differences by construction.
+- **Behavioral-equivalence:** run both shims on a fixed input set; compare exit codes + stdout + filesystem effects. Captures the actual contract (the shim's purpose) rather than its source-text shape.
 
 ```
 TestClaim {
-  name: "regen_lens_bin_shim_emits_equivalent_to_hand_rust"
-  predicate: ExecuteCommand {
-    command: "diff",
-    args: [emitted_path, hand_rust_path],
-    expect_exit_code: 0
-  }
+  name: "regen_lens_bin_shim_emits_behaviorally_equivalent_to_hand_rust"
+  // predicate: <one of the three mechanisms above; worker picks at fixture-authoring time>
   // ...
 }
 ```
 
-Fails if the emitted Rust diverges materially. Verifies §4.3 dissolution discipline.
+Fails if the emitted Rust shim does not produce the same runtime behavior as the hand-Rust shim (exit codes / stdout / filesystem effects on a fixed input set). Verifies §4.3 dissolution discipline.
+
+**Note on the original `diff`-with-`expect_exit_code: 0` shape:** an earlier draft used naive byte-`diff` which is in tension with "modulo whitespace + comment differences." That tension is resolved by deferring the precise predicate to the worker authoring the fixture — the design lock fixes the equivalence intent, not the comparison shape.
 
 ### 7.3 No-new-bin-shim-hand-Rust fixture
 
