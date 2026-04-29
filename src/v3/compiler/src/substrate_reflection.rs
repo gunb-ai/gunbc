@@ -7,8 +7,9 @@ use crate::dag::{
     BranchNode, BranchPattern, BreakingShape, ClusterId, CreateCause, Dag, DeclarationId,
     EffectShape, FieldValue, HttpMethodScalar, IdempotentShape, KeySource, LiteralBits, LoopBound,
     LoopNode, NodeId, NonSingletonList, OperationEffect, OperatorKind, Path, PayloadBinding,
-    PortId, SourceSpan, TransformNode, TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
+    PortId, TransformNode, TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
 };
+use crate::diagnostics::SourceSpan;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReflectError(pub &'static str);
@@ -145,7 +146,7 @@ fn reflect_optional_declaration_id(
     dag: &Dag,
     opt: Option<DeclarationId>,
 ) -> ReflectResult<FieldValue> {
-    reflect_optional_list_spine(dag, opt, |d, id| Ok(FieldValue::Reference(id)))
+    reflect_optional_list_spine(dag, opt, |_d, id| Ok(FieldValue::Reference(id)))
 }
 
 fn reflect_unit_variant(dag: &Dag, sum_name: &str, label: &str) -> ReflectResult<FieldValue> {
@@ -366,7 +367,7 @@ fn reflect_operation_effect_vec_spine(
     Ok(tail)
 }
 
-fn reflect_bool_port_ref(dag: &Dag, r: BoolPortRef) -> ReflectResult<FieldValue> {
+fn reflect_bool_port_ref(_dag: &Dag, r: BoolPortRef) -> ReflectResult<FieldValue> {
     Ok(FieldValue::Record(vec![(
         "port".to_string(),
         port_fv(r.port_id()),
@@ -586,7 +587,7 @@ fn reflect_optional_payload_binding(
     dag: &Dag,
     opt: Option<&PayloadBinding>,
 ) -> ReflectResult<FieldValue> {
-    reflect_optional_list_spine(dag, opt.cloned(), |d, b| {
+    reflect_optional_list_spine(dag, opt.cloned(), |_d, b| {
         Ok(FieldValue::Record(vec![
             (
                 "binding_name".to_string(),
@@ -741,7 +742,7 @@ fn reflect_loop(dag: &Dag, l: &LoopNode) -> ReflectResult<FieldValue> {
 fn reflect_bind(dag: &Dag, b: &BindNode) -> ReflectResult<FieldValue> {
     let id = behavior_variant_id(dag, "Bind")?;
     let params = reflect_port_id_list(dag, &b.params)?;
-    let lane2 = reflect_optional_workflow_effect(dag, b.lane2_workflow().map(|w| w))?;
+    let lane2 = reflect_optional_workflow_effect(dag, b.lane2_workflow())?;
     let emit = reflect_optional_bind_emit(dag, b.emit_participation())?;
     let payload = FieldValue::Record(vec![
         ("id".to_string(), node_fv(b.id)),
