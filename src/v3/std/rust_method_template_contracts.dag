@@ -3,11 +3,18 @@
 // substrate carrier in `src/v3/std/emit_model.dag`.
 //
 // SCOPE (T-Ground-LanguageSpec scope E.1, Phase 1): row population
-// only. The legacy parallel authorities
-// (`MethodTranslation` in `dsl/extdeps/languages/rust/runtime.dag` and
-// `SimpleMethodSpec` in `dsl/extdeps/languages/rust/emit.dag`) remain
-// the v2 emit-pipeline source-of-truth until Phase 2 retires them; the
-// row-list here is net-additive in Phase 1.
+// only. **Authority classification:** this file is the v3-side
+// single-authority for future emission. v2's emit pipeline still
+// consumes the legacy `rust_simple_method_specs` /
+// `rust_method_templates()` / `rust_method_wraps_result()` chain in
+// `dsl/extdeps/languages/rust/emit.dag` because v2 has no
+// bootstrap-Dag consumer infrastructure to read these rows. Full
+// retirement of those legacy authorities is **deferred to
+// Pure-Bootstrap-Zero / v2 retirement scope** (manager dispatch
+// #1133 inbox 4344956791). The row-list here is net-additive until
+// then. (Phase 2 retired the dead `MethodTranslation` declarations
+// in `runtime.dag` — zero v2 consumers — but emit-side authorities
+// continue serving v2.)
 //
 // HOME (post-#1187 audit lesson): this file lives under `src/v3/std/`
 // because v2's `collect_dag_sources` walks `dsl/` recursively (see
