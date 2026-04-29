@@ -787,11 +787,7 @@ mod reflection_tests {
     fn compile(src: &str, file: &str) -> Dag {
         match compile_to_dag(src, file) {
             Ok(d) => {
-                assert!(
-                    d.diagnostics().is_empty(),
-                    "{file}: {:?}",
-                    d.diagnostics()
-                );
+                assert!(d.diagnostics().is_empty(), "{file}: {:?}", d.diagnostics());
                 d
             }
             Err(e) => panic!("compile {file}: {e:?}"),
@@ -869,13 +865,7 @@ mod reflection_tests {
             .expect("Value node");
         let fv = reflect_behavior(&dag, &Behavior::Value(v.clone())).expect("reflect");
         let rec = behavior_inner_record(&fv);
-        for key in [
-            "id",
-            "payload",
-            "result_port",
-            "span",
-            "lane2_workflow",
-        ] {
+        for key in ["id", "payload", "result_port", "span", "lane2_workflow"] {
             let _ = record_get(rec, key);
         }
     }
@@ -895,13 +885,7 @@ mod reflection_tests {
             .expect("Transform node");
         let fv = reflect_behavior(&dag, &Behavior::Transform(t.clone())).expect("reflect");
         let rec = behavior_inner_record(&fv);
-        for key in [
-            "id",
-            "target",
-            "inputs",
-            "result_port",
-            "span",
-        ] {
+        for key in ["id", "target", "inputs", "result_port", "span"] {
             let _ = record_get(rec, key);
         }
     }
@@ -988,8 +972,7 @@ let _: Int = count(1)
         let rec_c = behavior_inner_record(&fv_c);
         let bound_c = record_get(rec_c, "bound");
         let FieldValue::Variant {
-            constructor: c_ty,
-            ..
+            constructor: c_ty, ..
         } = bound_c
         else {
             panic!("LoopBound variant");
@@ -1018,8 +1001,7 @@ fn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)
         let rec_d = behavior_inner_record(&fv_d);
         let bound_d = record_get(rec_d, "bound");
         let FieldValue::Variant {
-            constructor: d_ty,
-            ..
+            constructor: d_ty, ..
         } = bound_d
         else {
             panic!("LoopBound variant");
