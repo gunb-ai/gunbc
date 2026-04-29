@@ -28,20 +28,23 @@
 // so the compiler's own pipeline authority lives in the bootstrap Dag with
 // the intended stage-body shape.
 //
-// **B4.4 extdeps-bootstrap fixture set.** The structural carrier
-// `extdeps_bootstrap_fixture_authority` in
+// **B4.4 bootstrap fixture set.** The structural carrier
+// `bootstrap_fixture_authority` in
 // `src/v3/std/extdeps_bootstrap_fixtures.dag` is the substrate authority for
-// *which* extdeps files participate. The PB-1-e regen host filters
-// `build.rs`-emitted `EXTDEPS_FILES` through [`EXTDEPS_BOOTSTRAP_PATH_KEYS`]
-// (must stay in lockstep with that declaration's `virtual_path` fields).
-// Only extdeps authorities whose content is pure structural **data**
-// (target-primitive declarations consumed symbolically by the
-// target-grounding engine as `Declaration`-shaped values; see
-// `dsl/extdeps/languages/rust/primitives.dag`) are loaded. Arrow/realization
+// *which* `.dag` files participate. The PB-1-e regen host filters
+// `build.rs`-emitted `STAGED_FILES` (covering `src/v3/std/*.dag`) and
+// `EXTDEPS_FILES` (covering `dsl/extdeps/**/*.dag`) through
+// [`BOOTSTRAP_FIXTURE_PATH_KEYS`] (must stay in lockstep with that
+// declaration's `virtual_path` fields). The fixture set is mixed-tree as of
+// T-Ground-LanguageSpec scope E.1: per-target method-template-contract
+// lists live under `src/v3/std/` (avoiding the v2 walker's `dsl/` traversal
+// per the post-#1187 regression analysis), while target-primitive
+// declarations remain under `dsl/extdeps/languages/`. Only authorities
+// whose content is pure structural **data** are loaded. Arrow/realization
 // files (`rust/emit.dag`, `rust/types.dag`, etc.) are deliberately excluded
 // — their bodies stay per-target emitter-side, not in the bootstrap Dag.
-// Expansion adds a field to the carrier + a key in `EXTDEPS_BOOTSTRAP_PATH_KEYS`
-// once python/go primitives reach the same pilot stage.
+// Expansion adds a field to the carrier + a key in `BOOTSTRAP_FIXTURE_PATH_KEYS`
+// once new fixture authorities reach the same pilot stage.
 //
 // **Structural list load (Path 2 scoping).** The top-level
 // `rust_pilot_primitives: List<RustPrimitive> = [...]` data declaration now
@@ -80,13 +83,23 @@ use crate::pipeline_authority::{ordered_pipeline_stages, PIPELINE_AUTHORITY_FILE
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 const PIPELINE_REALIZATION_META: &str = "CompilerHostRealization";
 
-/// Virtual paths selecting extdeps `.dag` sources for PB-1-e bootstrap regen.
+/// Virtual paths selecting `.dag` sources for PB-1-e bootstrap regen.
+///
+/// Mixed-tree fixture set (per T-Ground-LanguageSpec scope E.1): paths
+/// resolve against `STAGED_FILES` (covering `src/v3/std/*.dag`) and
+/// `EXTDEPS_FILES` (covering `dsl/extdeps/**/*.dag`). The regen host
+/// (`bootstrap_regen_fresh`) walks both sets to locate each path.
 ///
 /// **Lockstep:** each entry must match a `virtual_path` on
-/// `extdeps_bootstrap_fixture_authority` in `src/v3/std/extdeps_bootstrap_fixtures.dag`.
-/// `Dag::extdeps_bootstrap_fixture_virtual_paths` is compared to this slice when the
+/// `bootstrap_fixture_authority` in `src/v3/std/extdeps_bootstrap_fixtures.dag`.
+/// `Dag::bootstrap_fixture_virtual_paths` is compared to this slice when the
 /// committed bootstrap snapshots initialize (`dag.rs` LazyLock).
-pub const EXTDEPS_BOOTSTRAP_PATH_KEYS: &[&str] = &["dsl/extdeps/languages/rust/primitives.dag"];
+pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
+    "dsl/extdeps/languages/rust/primitives.dag",
+    "src/v3/std/rust_method_template_contracts.dag",
+    "src/v3/std/python_method_template_contracts.dag",
+    "src/v3/std/go_method_template_contracts.dag",
+];
 
 /// v3-only inhabitance for kernel `Bool` (Class 5 / Lane 1e-2b Path A).
 ///
