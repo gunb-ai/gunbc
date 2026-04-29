@@ -318,8 +318,8 @@ depend on `fold_lens<C>` machinery — only on substrate-level
 `Dag.nodes` walk). Either:
 
 - **Sub-slice 3a:** declare `workflow_root_port(d: Dag) ->
-  PortId` in `src/v3/std/substrate.dag` (or sibling) with the
-  α implementation. R2-Evaluator and `fold_lens<C>` both
+  WorkflowRoot` in `src/v3/std/substrate.dag` (or sibling) with
+  the α implementation. R2-Evaluator and `fold_lens<C>` both
   consume.
 - **Sub-slice 3b:** author `fold_lens<C>` against the accessor
   from 3a.
