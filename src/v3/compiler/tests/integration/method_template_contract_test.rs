@@ -14,9 +14,7 @@
 //! - `method_template_contract_does_not_carry_cost_data`
 
 use std::collections::HashSet;
-use v3_compiler::dag::{
-    Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
-};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -40,11 +38,13 @@ fn conj_field_ty(dag: &Dag, name: &str, field: &str) -> DeclarationId {
         .declaration_by_name(name)
         .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
     match &decl.connective {
-        TypeConnective::Conj { children } => children
-            .iter()
-            .find(|f| f.label == field)
-            .unwrap_or_else(|| panic!("`{name}` missing `{field}` field"))
-            .ty,
+        TypeConnective::Conj { children } => {
+            children
+                .iter()
+                .find(|f| f.label == field)
+                .unwrap_or_else(|| panic!("`{name}` missing `{field}` field"))
+                .ty
+        }
         other => panic!("`{name}` is not a Conj: {other:?}"),
     }
 }
@@ -269,8 +269,7 @@ fn rust_higher_order_method_template_contracts_are_present() {
     let mut seen = HashSet::new();
 
     for (idx, row) in rows.iter().enumerate() {
-        let (decl_id, emit_template) =
-            method_ref_decl_from_row(row, &format!("rust row {idx}"));
+        let (decl_id, emit_template) = method_ref_decl_from_row(row, &format!("rust row {idx}"));
         let method_name = dag
             .declaration(*decl_id)
             .name
@@ -320,10 +319,15 @@ fn rust_higher_order_method_template_contracts_are_present() {
 
     assert_eq!(
         seen,
-        ["all_method", "any_method", "filter_method", "flat_map_method"]
-            .into_iter()
-            .map(String::from)
-            .collect(),
+        [
+            "all_method",
+            "any_method",
+            "filter_method",
+            "flat_map_method"
+        ]
+        .into_iter()
+        .map(String::from)
+        .collect(),
         "Rust MethodTemplateContract rows must include the four higher-order methods"
     );
 }
