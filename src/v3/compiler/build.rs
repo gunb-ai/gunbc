@@ -391,6 +391,13 @@ fn main() {
             "substrate_minimal.dag",
             "effects.dag",
             "substrate.dag",
+            // `emit_model.dag` / per-target `*_method_template_contracts.dag` rows
+            // reference `MethodRef` from `methods.dag`. Alphabetical staging would
+            // process `go_method_template_contracts.dag` before `methods.dag` (g < m),
+            // leaving `MethodRef` as an identifier stub during structural lowering of
+            // `dag_method: { decl: … }` — `walk_to_conj_decl` then fails closed. Rust and
+            // Python fixtures happen to load after `methods.dag` and were unaffected.
+            "methods.dag",
         ],
     );
     let spec_entries = collect_dag_entries(&spec_dir, &["v3_l1.dag"]);
