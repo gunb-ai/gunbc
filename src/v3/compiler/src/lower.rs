@@ -2779,8 +2779,16 @@ fn lower_data_item(
         Some(map_expr @ SurfaceExpr::Map { .. }) => {
             lower_map_to_structural(name, map_expr, ty_decl_id, symbols, dag)
         }
-        Some(SurfaceExpr::Call { target, args, .. }) if target == "repeat_string" => {
-            try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
+        Some(SurfaceExpr::Call { target, args, .. }) => {
+            match (
+                dsl_std_render_repeat_string_decl_id(dag),
+                symbols.get(target),
+            ) {
+                (Some(canonical), Some(&callee)) if callee == canonical => {
+                    try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
+                }
+                _ => None,
+            }
         }
         _ => None,
     };
@@ -2789,6 +2797,19 @@ fn lower_data_item(
         None if suppress_unparsed_scaffold => None,
         None => Some(crate::dag::ValueBody::Unparsed(body_span.clone())),
     };
+}
+
+/// Substrate fact for the R1C-B `repeat_string` data-body fold: only the declaration
+/// introduced from `dsl/std/render.dag` is eligible — not any other `repeat_string`
+/// name binding (user/local shadowing).
+fn dsl_std_render_repeat_string_decl_id(dag: &Dag) -> Option<DeclarationId> {
+    const RENDER_DAG_SUFFIX: &str = "dsl/std/render.dag";
+    dag.declarations()
+        .iter()
+        .find(|d| {
+            d.name.as_deref() == Some("repeat_string") && d.span.file.ends_with(RENDER_DAG_SUFFIX)
+        })
+        .map(|d| d.id)
 }
 
 /// R1C-B / T-P0: fold `data …: String = repeat_string(s: <lit>, n: <lit>)` to a
