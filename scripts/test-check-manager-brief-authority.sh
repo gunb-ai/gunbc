@@ -148,6 +148,23 @@ test_negative_q4_unreachable_pr() {
   return 0
 }
 
+# Per gpt-5-5-pro review on 91b5274f: live briefs use title-case
+# "Landed via #N" in addition to UPPERCASE/lowercase forms; verify the
+# case-insensitive Q4 regex catches it. Q4 is now grep -oEi.
+test_negative_q4_unreachable_pr_titlecase() {
+  write_clean_briefs "r2-evaluator-manager.md" \
+    "# Brief\n\nLanded via #88888887 (title-case, unreachable in tmp repo) — should fail Q4."
+
+  cd "$TMPDIR"
+  if bash "$TEST_CONSUMER" >/dev/null 2>&1; then
+    cd "$ROOT"
+    echo "FAIL [Q4/unreachable-pr-titlecase]: consumer passed on title-case 'Landed via #N' with unreachable PR"
+    return 1
+  fi
+  cd "$ROOT"
+  return 0
+}
+
 # ---------------------------------------------------------------------
 # Q5 — cross-brief projection mismatch negative test
 # ---------------------------------------------------------------------
@@ -272,6 +289,7 @@ for test_fn in \
   test_negative_q1_missing_file \
   test_negative_q2_missing_anchor \
   test_negative_q4_unreachable_pr \
+  test_negative_q4_unreachable_pr_titlecase \
   test_negative_q5_count_mismatch \
   test_negative_q5_divergent_from_canonical \
   test_negative_missing_brief_fails_closed; do
@@ -298,5 +316,5 @@ if [ "$failures" -gt 0 ]; then
 fi
 
 echo ""
-echo "Self-test PASSED: 7 contract assertions verified"
-echo "  (5 negative — Q1/Q2/Q4/Q5×2 + missing-brief; 1 positive — clean fixture)"
+echo "Self-test PASSED: 8 contract assertions verified"
+echo "  (6 negative — Q1/Q2/Q4×2/Q5×2 + missing-brief; 1 positive — clean fixture w/ landed-PR)"
