@@ -103,18 +103,18 @@ Dispatch sequence: **PR-PreF lands first** (foundational substrate; everything e
 
 ## Cross-program dependencies
 
-**Produces (5 carrier-readiness signals):**
+**Produces (6 carrier-readiness signals):**
 - Cardinality-for-int-lit → Modeling Manager (int-lit; via PR-PreF Interval<D>)
 - Nominal-opaque-for-Secret → Modeling Manager (Secret<T>)
 - Parametric-algebra-for-Dimensions → Modeling Manager (Dimensions; via existing `phantom_params`)
 - ValueBody-list/sum + std.unicode → Modeling Manager (charclass phase-2) + Grounding Manager (Coercion-Fold sub-lane)
+- **ValueBody::Map carrier read-path/API + arrow-body evaluation** → Pure Bootstrap Manager (`kernel_algebra_profile` mirror dissolution). Substrate landed via #1017 + tightened #1068; consumer plumbing is the remaining produced signal.
 - **Lens<C> primitive** → Evaluator Manager (implements `fold_lens<C>`); Substrate Manager R3 continuation (T-CostLens-Composition consumes)
 
 **Consumes:** none in R2 (Substrate is the substrate). R3 continuation consumes its own R2 output (Lens<C> primitive) plus Evaluator's `fold_lens<C>` runtime.
 
 **Adjacent territory:**
 - B4's §0.7 file-preference rank carrier touches Pure Bootstrap territory. Coordinate with Pure Bootstrap Manager.
-- `kernel_algebra_profile` mirror dissolution is map-shaped (not list/sum) — tracked as future T-Substrate sub-lane requiring `ValueBody::Map` substrate work; PB Manager consumes when it lands.
 - **Diagnostic-kind extensibility (Q6 lock)** — Evaluator Manager extends `Diagnostic.kind` for structural-validation failures. Substrate Manager owns the `CompilerDiagnosticKind` sum; cross-manager coordination at extension time. Known limitation: current substrate is closed sum, tracked under v2 follow-up.
 
 ## Locked design decisions consumed (per #1078 8-question dialogue)
@@ -147,7 +147,7 @@ Full disposition: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`docs/desi
 ## Reporting cadence
 
 - Sub-lane / Phase close → R2 Release Manager (closure ledger). Each sub-lane's structural acceptance gate (per the **structural-acceptance-per-lane-close discipline** in `r2-structure.md`) IS the demo.
-- Cross-program signals (5 carrier-readiness for 5 carriers) → cross-manager queue (consuming managers ack and dispatch consumer-migration work).
+- Cross-program signals (6 carrier-readiness for 6 carriers) → cross-manager queue (consuming managers ack and dispatch consumer-migration work).
 - Blockers + scope changes → Director.
 - **Weekly health surfacing to Director:** which sub-lanes within 1 step of unblocking, which workers fill vs. ready, which cadence PRs (PR-PreF/PR-I/PR-K) landed vs pending, R3 continuation readiness signal.
 
