@@ -83,8 +83,9 @@ type AtomPayload
 type Cardinal = Int
 type Ordinal = Int
 
-// 🟢 TERMINAL at reflected-substrate scope — `Interval<D>` coproduct (PR-PreF / Q1).
-// Dissolution ledger (4-pattern structural decompression):
+// 🟡 MIXED at reflected-substrate scope — `Interval<D>` coproduct (PR-PreF / Q1).
+// Coproduct dissolution + 4-pattern structural decompression (same receipt class as other
+// mixed carriers: terminal *algebra shape* with a named constructor-asymmetry ratchet):
 // - **Pattern 1 (fact placement):** fails — `ExactInterval` is one fact shape with
 //   two witness fields; `Unbounded` is a distinct terminal atom.
 // - **Pattern 2 (variant-is-data):** fails — record variant vs unit-like atom.
@@ -94,19 +95,23 @@ type Ordinal = Int
 //   unified numeric axis until instantiated (`Cardinal`, `Ordinal`, …).
 //
 // **Constructor-validation asymmetry (Track 9 debt, same class as `ParamRef`):**
-// `ExactInterval { lo, hi }` does not enforce `lo <= hi` at the substrate witness;
-// Rust-side `Interval::try_exact_interval` is the fail-closed constructor for alloc
-// paths. Self-hosted constructors should add the same authority in the Lane 3c cycle.
+// `ExactInterval { lo, hi }` stores independent `D` witnesses; **illegal ordered states**
+// (`lo > hi`) and non-`Ord` misuse are therefore representable at the raw witness — this is
+// intentional substrate honesty, not "illegal states unrepresentable" at the `.dag` layer.
+// **API-level enforcement:** Rust `Interval::try_exact_interval` / `is_ordered_closed` are
+// the fail-closed / audit surfaces for alloc paths; Lane 3c self-hosted constructors should
+// mirror the same ordering law.
 //
-// **Verdict:** terminal at PR-PreF scope. Half-open / single-sided intervals require a
-// substrate-extension audit (M1_DESIGN §8.10 C1-class stop signal).
+// **Verdict:** mixed at PR-PreF scope (algebra terminal + witness debt). Half-open /
+// single-sided intervals require a substrate-extension audit (M1_DESIGN §8.10 C1-class stop
+// signal).
 type Interval<D>
   = ExactInterval { lo: D, hi: D }
   | Unbounded
 
 // 🟢 TERMINAL at connective-bound naming scope. Preserves `Exact` / `AtMostOne` /
 // `Unbounded` as distinct spec-facing constructors; maps onto `Interval<Cardinal>`
-// additively via Rust `CardinalityBound::as_cardinal_interval` in `dag.rs` (PR-PreF).
+// additively via Rust `CardinalityBound::try_as_cardinal_interval` in `dag.rs` (PR-PreF).
 type CardinalityBound
   = Exact(Int)
   | AtMostOne
