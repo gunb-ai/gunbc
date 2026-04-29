@@ -1,0 +1,93 @@
+# R2 PB-Runtime ↔ R2-Evaluator Convergence Verification Matrix (audit, docs-only)
+
+**Status:** AUDIT artifact (docs-only). Authored 2026-04-29 by PB Manager continuation per dispatch on inbox #1149 — bounded pre-stage slice mapping the convergence verification obligations from [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §§2, 3.2, 5.4, 6, 7.1 onto the R2-Evaluator surfaces and the PB Manager brief.
+
+**Parent authorities:**
+- [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) — Items 4+5 design lock (LANDED via #1176).
+- [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) — R2-Evaluator manager brief (PR-A through PR-E lane structure).
+- [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) — PB Manager brief; this audit attaches as a referenced artifact, not as new lane authority.
+- [`docs/briefs/r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) — PR-A design slice (carrier-shape lock for `Value` / `EvalFrame` / `EvalStateStack`).
+- [`docs/briefs/r2-pr-a1-runtime-value-dependency-audit.md`](r2-pr-a1-runtime-value-dependency-audit.md) — PR-A.1 blocker on the `Value` flat-name collision.
+- [`docs/briefs/r2-pr-a-2-eval-frame-dependency-audit.md`](r2-pr-a-2-eval-frame-dependency-audit.md) — PR-A.2 dependency audit (gated on PR-A.1).
+
+This audit does NOT introduce authority. Every row cites an existing locked authority; nothing is invented here.
+
+## Purpose
+
+Items 4+5 of `design-pb-runtime-interpreter.md` are landed; #1231 (`feat(v3): rename v3_l1 Value marker to ValueBehavior`) is still open, so PR-A.1 (the runtime `Value` carrier landing) is gated. Both managers (PB + Evaluator) need a single shared map of: which surfaces must converge, which authority owns each surface, which test-claim shape exercises convergence at landing time, and which gates currently block authoring.
+
+This matrix is that map. It is read at dispatch authoring time so PB-Runtime workers (when Item 4 lands implementation) and Evaluator PR-A workers (when #1231 unblocks) cite consistent rows rather than re-deriving the convergence shape.
+
+## Convergence verification matrix
+
+| # | Convergence surface | PB-Runtime authority | R2-Evaluator authority | Verification obligation | Substrate predicate | Prerequisite gate |
+|---|---|---|---|---|---|---|
+| 1 | **Runtime-value model `Value` shape** — closed coproduct over the 5 substrate primitives' inhabitants. | [`design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3.2: `type Value = LiteralValue \| RecordValue \| VariantValue \| NodeRef \| CardinalityValue` | [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) §"Carrier shape" — `Value` MUST match §3.2 verbatim (anti-bridge invariant #6); `r2-evaluator-manager.md:27` "Runtime value model" cell. | Both presentations declare structurally identical coproducts; PR-A.1 carrier in `src/v3/std/runtime/value.dag` matches the `.dag` declaration shape consumed by PB-Runtime when it lands in R3. | Direct structural identity (no `TestPredicate` shape needed — by-construction). | `#1231` (`Value` marker rename to `ValueBehavior`) → unblocks PR-A.1 → carrier landing. Authoring gate per `r2-pr-a1-runtime-value-dependency-audit.md` §"PR-A.1 Resume Gate". |
+| 2 | **`EvalFrame` / `EvalStateStack` boundary** — evaluator-internal state carriers, NOT `Value` inhabitants. | [`design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3.3: `EvalFrame` (PortId → bound `Value`); `EvalStateStack` (stack of `EvalFrame`s); explicitly NOT `Value` variants. | [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) — Worker A's "closed-over environments" implementation = `EvalFrame` + `EvalStateStack`, **not** a Value inhabitant (per anti-bridge invariant #2 carve-out: evaluator-internal carriers are PR-A scope, do NOT trigger anti-bridge). | PR-A.2 declares `EvalFrame { bindings: Map<PortId, Value> }` + `EvalStateStack { frames: List<EvalFrame> }` in the runtime value module; PB-Runtime mirrors via `.dag` declaration sharing the same shape. Closures-with-captures stay unexpressible (see Row 6). | None at carrier-shape level (structural identity by construction). Behavioral gate is implicit in Row 4's equivalence corpus. | PR-A.1 land first (PR-A.2 imports PR-A.1's `Value`); see `r2-pr-a-2-eval-frame-dependency-audit.md` §"single remaining blocker". |
+| 3 | **5-primitive dispatch constraint** — `Node \| Conj \| Disj \| Cardinality \| Bit` is the only execution vocabulary. | [`design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3.1 + the §3.1 "Mapping note" disambiguating dispatch primitives (5) vs type connectives (6) vs L1 behaviors (5). | [`r2-evaluator-manager.md:27`](r2-evaluator-manager.md) cell explicitly cites the §3.1 mapping note: "5-primitive constraint per §3.1 (`Node \| Conj \| Disj \| Cardinality \| Bit` — DAG-processor execution vocabulary, distinct from the 5 L1 `Behavior` variants `Value \| Transform \| Branch \| Loop \| Bind` dispatched inside `Node`)". | Both presentations dispatch on exactly these 5 primitives; lenses (cost / termination / parallelism / effects) fold *over* outputs, never extending the dispatch surface. | None at runtime; lens producers are surfaced separately (T-LensProducer-Retirement sub-gates). The constraint is structural — no adding dispatch arms. | None additional beyond Row 1 (carriers must land). Anti-bridge invariant #5 ("PB-Runtime is `.dag`, not a separate language") closes the structural escape. |
+| 4 | **Behavioral equivalence on a corpus** — same `.dag` program → same `Value` from both runtimes. | [`design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3.2 `evaluate(program: Dag, entry: NodeId, args: List<Value>) -> Value` rules per `Behavior` variant. | [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) PR-A through PR-E land the Rust `evaluate(...)` entry point with bit-equivalent `Value` semantics. | TestClaim `pb_runtime_equivalent_to_evaluator_on_corpus` (locked name per §7.1). Corpus: arithmetic on `Int`; `List` map/fold; one `Lens<C>` instance application. | `DifferentialEquals { subject_ref, oracle_ref, input_ref }` — already live at `src/v3/std/verification.dag:177-181`. No new `TestPredicate` variant needed. | Forward-declared `DeclarationRef`s (`pb_runtime_evaluate`, `r2_evaluator_evaluate`, `corpus`) materialize at: R2-Evaluator PR-A landing (`r2_evaluator_evaluate`); R3 PB-Runtime `.dag` landing (`pb_runtime_evaluate`); worker dispatch (`corpus`). Authored as `ReleaseDeferredClaim` per `src/v3/std/verification.dag:218-235` until refs resolve. |
+| 5 | **Anti-bridge invariant #1** — no PB-Runtime divergence from R2-Evaluator semantics. | [`design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §6 #1 + §2 "convergence is non-optional; the two presentations stay structurally identical by construction." | [`r2-evaluator-manager.md:76`](r2-evaluator-manager.md) "PB-Runtime is dissolution-shaped, not parallel runtimes." | Same as Row 4 — the equivalence fixture IS the structural enforcement. If divergence is detected, the dissolution is broken; this is fail-closed by Row 4's TestClaim, not by a separate gate. | (covered by Row 4) | (covered by Row 4) |
+| 6 | **Anti-bridge invariant #2** — no new `Value` primitives without §P1 escalation. | [`design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §6 #2 + §3.3's explicit prohibition: "R2-Evaluator's PR-A worker MUST NOT add a closure/captured-environment value variant." | [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) lock: PR-A workers do NOT extend `Value` locally; closures-with-captures are explicitly out of v3 scope. `EvalFrame` / `EvalStateStack` carve-out per §3.3 paragraph 5. | The closed `Value` coproduct from Row 1 stays closed. New variants require §P1 substrate-fact-introduction event with Substrate Manager authoring. PB and Evaluator workers MUST NOT extend `Value` from their lanes. | Negative gate; enforced by absence — if a new `Value` variant lands without §P1 receipt, that's a structural error in the PR's lineage, not a verification predicate. | None — the prohibition is permanent until a deliberate language extension event (e.g., first-class closures-with-captures) triggers §P1 escalation. Per §3.3: "Until that happens, R2-Evaluator's PR-A worker MUST NOT add a closure/captured-environment value variant." |
+| 7 | **Anti-bridge invariant #6** — no fork between Item 4's `Value` and R2-Evaluator's runtime-value model. | [`design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §6 #6 — "they share a structural definition; if they fork, that's the structural error case anti-bridge invariant #1 names." | [`r2-evaluator-manager.md:27`](r2-evaluator-manager.md) "PR-A's `Value` coproduct shape MUST match §3.2"; PR-A.1 carrier landing IS the structural-identity event. | When PR-A.1 lands the `Value` carrier in `src/v3/std/runtime/value.dag` and PB-Runtime authors `dsl/std/runtime/value.dag` (or wherever PB Manager picks per their dispatch), the two declarations MUST be structurally identical. The `.dag` carrier IS the spec; the Rust evaluator imports the same carrier. | Direct structural identity (same coproduct declaration consumed by both runtime presentations). Row 1 covers this concretely; this row names the invariant that *enforces* row 1's shape match. | (subsumed by Row 1) — gates on `#1231` → PR-A.1. |
+
+## Prerequisite state for #1231 / PR-A.1 (and equivalent evaluator implementation)
+
+State on origin/main HEAD at audit time (verified via `git fetch origin main` + `gh pr view 1231` 2026-04-29):
+
+| Prerequisite | Authority | Status (as of audit) |
+|---|---|---|
+| Items 4+5 design lock | [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) | **LANDED** via #1176. |
+| `#1231` (`Value` marker rename to `ValueBehavior`) | open PR per `r2-pr-a1-runtime-value-dependency-audit.md` §"PR-A.1 Resume Gate" Option 1 | **OPEN** (not landed); PR-A.1 carrier landing blocked. |
+| PR-A.1 (`Value` coproduct carrier in `src/v3/std/runtime/`) | [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) | **BLOCKED** on #1231 per `r2-pr-a1-runtime-value-dependency-audit.md`. |
+| PR-A.2 (`EvalFrame` + `EvalStateStack` carriers) | [`r2-pr-a-2-eval-frame-dependency-audit.md`](r2-pr-a-2-eval-frame-dependency-audit.md) | **BLOCKED** transitively on PR-A.1 (single remaining blocker per audit §"single remaining blocker"). |
+| `Map<K, V>` carrier | `dsl/std/types.dag:213` (`Map<K, V> = PartialFunction<key, value>`) | **LIVE**. |
+| `DifferentialEquals` `TestPredicate` variant | `src/v3/std/verification.dag:177-181` | **LIVE** (existing variant; no new variant needed for Row 4). |
+| `ReleaseDeferredClaim` `TestPredicate` variant | `src/v3/std/verification.dag:218-235` (introduced via #1128) | **LIVE** (used to author Row 4's TestClaim while forward-declared `DeclarationRef`s remain unresolved). |
+| R2-Evaluator Rust crate (PR-A through PR-E) | [`r2-evaluator-manager.md`](r2-evaluator-manager.md) | **IN PROGRESS** — PR-A design slice authored; PR-A.1 carrier landing blocked per above. |
+| PB-Runtime `.dag` authoring | R3 phase per `design-pb-runtime-interpreter.md` §2 timing | **NOT YET AUTHORED** (R3-gated; awaits R2-Evaluator stabilization). PB Manager has the BinShim retirement planning brief authored at [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md) (PROPOSAL, dispatch-gated). |
+
+**Net dispatch order** the matrix implies (no implementation in this PR; just dependency surface):
+
+1. `#1231` lands (or an equivalent §P1 disposition resolves the flat-name collision).
+2. PR-A.1 lands the `Value` carrier in `src/v3/std/runtime/value.dag` (Row 1 substrate side).
+3. PR-A.2 lands `EvalFrame` + `EvalStateStack` carriers (Row 2 substrate side).
+4. R2-Evaluator's `evaluate(...)` Rust entry point lands per PR-A through PR-E.
+5. R3 PB Manager dispatches PB-Runtime authoring; `dsl/std/runtime/runtime.dag` declares `evaluate(...)` per §3.2.
+6. Worker authors the Row 4 TestClaim (`pb_runtime_equivalent_to_evaluator_on_corpus`) initially as `ReleaseDeferredClaim`; resolves to strict `DifferentialEquals` once both `subject_ref` and `oracle_ref` are addressable.
+7. Equivalence fixture goes green → anti-bridge invariants #1 + #6 are structurally enforced.
+
+## Non-goals
+
+This audit explicitly does NOT:
+
+- Edit substrate (no `Value` / `EvalFrame` / `EvalStateStack` carrier declarations).
+- Edit the `Value` carrier on `src/v3/spec/v3_l1.dag` (the L1 marker; `#1231`'s territory).
+- Author the R2-Evaluator Rust `evaluate(...)` entry point.
+- Author any PB-Runtime `.dag` declaration.
+- Invent a new `TestPredicate` variant.
+- Claim implementation progress on any of Rows 1-7.
+- Re-derive design from `design-pb-runtime-interpreter.md` — every row cites the existing lock; nothing here is new authority.
+
+If a future authoring step finds a row's authority is **insufficient** (e.g., Row 4's `DifferentialEquals` cannot express the equivalence corpus's structural-equality requirement), that's a substrate gap to escalate to Substrate Manager via `INVARIANTS.md:94` §"Procedure: substrate-fact introduction" — not a row to extend from this audit.
+
+## STOP / report-instead-of-invent
+
+Per dispatch directive: STOP if existing docs already fully cover this matrix or if a needed authority is missing/contradictory. Audit conclusions:
+
+- **Coverage:** Rows 1, 3, 4, 5, 6, 7 have complete locked authority. Row 2 has complete authority for `EvalFrame`/`EvalStateStack` carrier shape; the connection between PR-A.2's `Map<PortId, Value>` and PB-Runtime §3.3's narrative is consistent.
+- **No contradictions found.** The PB Manager brief's R3 row, the Evaluator Manager brief's PR-A cell, and the design lock §§2, 3.2, 3.3, 5.4, 6, 7.1 all converge on the same `Value` shape, the same `EvalFrame`/`EvalStateStack` boundary, and the same anti-bridge invariants.
+- **No missing authority.** Every row resolves to a cited live document. The matrix is reportable as-is; no invented authority needed.
+- **Forward-declared `DeclarationRef`s** in Row 4's TestClaim (`pb_runtime_evaluate`, `r2_evaluator_evaluate`, `corpus`) are not "missing authority" — they are explicit forward-declarations, gated on the prerequisite landings called out in the prerequisite-state table; `ReleaseDeferredClaim` is the live substrate path for staging such claims pre-resolution.
+
+## Cross-refs
+
+- Items 4+5 design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §§2, 3.1, 3.2, 3.3, 5.4, 6, 7.1.
+- R2-Evaluator manager brief: [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) ("Runtime value model" cell at line 27; cross-program coordination at line 81).
+- PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) (R3 continuation row "T-LensProducer-Retirement" at line 36; consumed §5.4 boundary at line 67).
+- PR-A design slice: [`docs/briefs/r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md).
+- PR-A.1 dependency audit: [`docs/briefs/r2-pr-a1-runtime-value-dependency-audit.md`](r2-pr-a1-runtime-value-dependency-audit.md).
+- PR-A.2 dependency audit: [`docs/briefs/r2-pr-a-2-eval-frame-dependency-audit.md`](r2-pr-a-2-eval-frame-dependency-audit.md).
+- BinShim retirement planning brief (sibling PB R3 lane): [`docs/briefs/r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md).
+- Substrate authorities: `src/v3/std/verification.dag:177-181` (`DifferentialEquals`); `src/v3/std/verification.dag:218-235` (`ReleaseDeferredClaim`); `dsl/std/types.dag:213` (`Map<K, V>`); `src/v3/std/substrate.dag` (`Behavior`, `TypeConnective`, `LoopBound`, `LiteralBits`).
+- Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94`.
+- Live #1231 status: `feat(v3): rename v3_l1 Value marker to ValueBehavior (PB-Runtime flat namespace)` — OPEN at audit time.
