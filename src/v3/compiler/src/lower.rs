@@ -2803,8 +2803,8 @@ fn lower_data_item(
 /// introduced from `dsl/std/render.dag` or the bootstrap stub `render_repeat_string_bootstrap.dag`
 /// is eligible — not any other `repeat_string` name binding (user/local shadowing).
 fn dsl_std_render_repeat_string_decl_id(dag: &Dag) -> Option<DeclarationId> {
-    /// Closed enum of substrate files that introduce the authoritative `repeat_string`
-    /// decl (`dsl/std/render.dag` when present in the bundle, else the minimal R1C-B stub).
+    // Closed enum of substrate files that introduce the authoritative `repeat_string`
+    // decl (`dsl/std/render.dag` when present in the bundle, else the minimal R1C-B stub).
     const REPEAT_STRING_AUTHORITY_SUFFIXES: &[&str] = &[
         "dsl/std/render.dag",
         "dsl/std/render_repeat_string_bootstrap.dag",
