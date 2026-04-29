@@ -50,7 +50,7 @@ Author the `LanguageSpec` schema as `.dag` substrate. Per Modeling problem 6 (`d
 - Operator dispatch (algebra → target operator).
 - External-realization shape (`Arrow.body` per E-9).
 - Per-primitive `RealizationCost` (B below; Q3 lock).
-- Consumer of Substrate-owned `MethodContract` (E below; rows attach to the LanguageSpec).
+- Consumer of Substrate-owned `MethodTemplateContract` (E below; rows attach to the LanguageSpec). Sibling to the existing cost/complexity `MethodContract` at `src/v3/std/algebra.dag:127` (independent authority; the two attach to method declarations as separate facts).
 
 **Parallel-authority dissolution:** `dsl/std/languages.dag:438`'s `LanguageSpec` declaration + its `rust_spec` / `go_spec` / `python_spec` data items (lines 1244 / 1268 / 1292) converge with `src/v3/std/emit_model.dag:302` under one authority. If the two shapes have already drifted, this lane resolves the drift explicitly (no silent reconciliation) and lands the dissolution receipt in the PR body. If the shapes are reconcilable, T-Ground-Dissolve retires the duplicate; if they are not (i.e., `dsl/std/languages.dag` carries a structural fact `emit_model.dag` cannot absorb), escalate to manager (#1133) — that is itself a substrate-modeling call.
 
@@ -82,9 +82,11 @@ The typed `EmissionDiagnostic` carrier (`UnderRefined` / `NoInhabitant`) lands w
 
 Per `r2-grounding-manager.md:32` and lane row line 65: `Dag::rust_pilot_primitives()` becomes the structural authority; the Rust-side `RUST_PILOT_PRIMITIVES` mirror retires. The grounding_pilot crate's deprecation note (deferred from `t-ground-engine-phase-1-typestructure.md` Phase E line 96-98) lands here once consumers walk LanguageSpec structurally. Scope boundary: pilot-crate **deletion** stays in T-Ground-Dissolve; this lane retires the *mirror*, not the crate.
 
-### E. `MethodContract` row population + parallel-rep × 3 retirement (Substrate-consumer; `design-emission-model.md:942`)
+### E. `MethodTemplateContract` row population + parallel-rep × 3 retirement (Substrate-consumer; `design-emission-model.md:942`)
 
-**Authority split (Director routing call 2026-04-29 — silent-ant-322 inbox #1133 msg ID 4340522342, posted to jolly-ram-908 [#1130](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4340522342)):** the `MethodContract` *type declaration* is **Substrate-owned** (jolly-ram-908). This lane consumes the type and owns the per-target row population + drift resolution + parallel-rep retirement. P1 Step 1+2 receipts for the type itself land on Substrate's PR; this lane's P1 receipts cover row-coordinate fields + `PlaceholderConvention` instances only.
+**Name + sibling shape (Director routing call 2026-04-29 — zesty-bear-812 → silent-ant-322 inbox #1133 msg ID 4340583712; jolly-ram-908 [#1130 comment 4340575810](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4340575810)):** the Substrate-owned render/template authority is named **`MethodTemplateContract`** — Option 1 (sibling type) over `MethodContract` to avoid collision with the existing cost/complexity authority at `src/v3/std/algebra.dag:127`. Option 2 (single combined type) rejected: cost-without-template / template-without-cost combinations are illegal-state per state-space-vs-behavioral-invariants. Option 3 (parent-child coupling) rejected: no structural reason to couple. `MethodTemplateContract` over `MethodRenderContract` because fields describe data carriers, not rendering acts. The two `*Contract` types are independent siblings attaching to method declarations.
+
+**Authority split (earlier Director routing call — silent-ant-322 inbox #1133 msg ID 4340522342, posted to jolly-ram-908 [#1130 comment 4340522342](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4340522342)):** the `MethodTemplateContract` *type declaration* is **Substrate-owned** (jolly-ram-908). This lane consumes the type and owns the per-target row population + drift resolution + parallel-rep retirement. P1 Step 1+2 receipts for the type itself land on Substrate's PR; this lane's P1 receipts cover row-coordinate fields + `PlaceholderConvention` instances only. Substrate's TestClaim proposals (3 shapes) land alongside on Substrate's PR — see [#1130](https://github.com/gunb-ai/gunbc/issues/1130) for the proposed shapes; this lane's TestClaim (test plan item 5) consumes the landed type.
 
 **Today's per-target authority landscape** (verified at HEAD):
 
@@ -94,12 +96,12 @@ Per `r2-grounding-manager.md:32` and lane row line 65: `Dag::rust_pilot_primitiv
 | Python | `dsl/extdeps/languages/python/runtime.dag:50` `MethodTranslation` (list) | `dsl/extdeps/languages/python/emit.dag:87` `python_method_templates: Map<String, String>` |
 | Go    | `dsl/extdeps/languages/go/runtime.dag:50` `MethodTranslation` (list) | `dsl/extdeps/languages/go/emit.dag:83` `go_method_templates: Map<String, String>` |
 
-Different schemas (record-list vs map vs record-list, with the Python/Go maps lacking any `wraps_result` field), drifted templates (Rust `count`: runtime `"{recv}.len()"` vs emit `"({recv}.len() as i64)"`; placeholder names `{arg0}` vs `{arg}`). Parallel-rep × 3 targets — but the per-target shapes are heterogeneous, so retirement must consolidate Rust's `SimpleMethodSpec` AND Python's `python_method_templates` map AND Go's `go_method_templates` map under the Substrate-owned `MethodContract` row, not just three copies of one shape.
+Different schemas (record-list vs map vs record-list, with the Python/Go maps lacking any `wraps_result` field), drifted templates (Rust `count`: runtime `"{recv}.len()"` vs emit `"({recv}.len() as i64)"`; placeholder names `{arg0}` vs `{arg}`). Parallel-rep × 3 targets — but the per-target shapes are heterogeneous, so retirement must consolidate Rust's `SimpleMethodSpec` AND Python's `python_method_templates` map AND Go's `go_method_templates` map under the Substrate-owned `MethodTemplateContract` row, not just three copies of one shape.
 
 **Type shape Substrate is asked to land** (informational; lives on jolly-ram-908's PR, not this one):
 
 ```dag
-type MethodContract {
+type MethodTemplateContract {
   dag_method:             MethodRef
   runtime_template:       Template
   emit_template:          Template
@@ -111,7 +113,7 @@ type MethodContract {
 **This lane's work** (Grounding-owned, gated on Substrate type-shape landing per the dependency table below):
 - Populate one row per `(target, dag_method)` consuming the Substrate-declared type.
 - Resolve the `count` (and other) drift between `runtime_template` and `emit_template` explicitly — no silent reconciliation.
-- Retire all three runtime authorities (`MethodTranslation` × 3) and all three emit authorities (Rust `SimpleMethodSpec`, Python `python_method_templates` map, Go `go_method_templates` map); migrate consumers to read `MethodContract` rows. Map-shaped emit authorities (Python/Go) require an explicit row-shape decision for the `wraps_result` field they don't carry today — worker resolves per Q4 four-property gate; if the absence is a real semantic ("Python/Go don't need result wrapping"), the row's `wraps_result` is structurally `false` for those targets, not silently inherited from Rust.
+- Retire all three runtime authorities (`MethodTranslation` × 3) and all three emit authorities (Rust `SimpleMethodSpec`, Python `python_method_templates` map, Go `go_method_templates` map); migrate consumers to read `MethodTemplateContract` rows. Map-shaped emit authorities (Python/Go) require an explicit row-shape decision for the `wraps_result` field they don't carry today — worker resolves per Q4 four-property gate; if the absence is a real semantic ("Python/Go don't need result wrapping"), the row's `wraps_result` is structurally `false` for those targets, not silently inherited from Rust.
 
 Single authority; both runtime and emit consume the same row. Method-translation IS substrate per Modeling problem 2 + the engine-retraction discipline; two parallel authorities for one fact violates THESIS:171 directly.
 
@@ -131,7 +133,7 @@ This is the load-bearing consequence of Q4's universal four-property gate (Faith
 Worker MUST run the 3-step procedure (`INVARIANTS.md:86-123`) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
 - **Step 1 (DAG-ancestor):** which existing parent does the new fact attach to? (Worked example: `LanguageSpec` itself — does an ancestor target-spec carrier exist already?)
 - **Step 2 (Coproduct-vs-coordinate):** for each new sum, do all variants ever co-inhabit (→ record) or alternate (→ sum)? (`RealizationCost` is correctly a record — Q3 lock receipt; `BoundDeclaration` is correctly a sum — Q1 lock receipt.)
-- **Step 3 (Primitive-vs-lens-extensible):** for new leaves introduced under *this* lane's scope (e.g., `PlaceholderConvention` instances populated against the Substrate-owned `MethodContract` type), are they substrate primitives or lens-extensible labels? (Type-shape Step 1+2 receipts for `MethodContract` itself land on Substrate's PR per E above.)
+- **Step 3 (Primitive-vs-lens-extensible):** for new leaves introduced under *this* lane's scope (e.g., `PlaceholderConvention` instances populated against the Substrate-owned `MethodTemplateContract` type), are they substrate primitives or lens-extensible labels? (Type-shape Step 1+2 receipts for `MethodTemplateContract` itself land on Substrate's PR per E above.)
 
 Per [`feedback_substrate_principle_audit.md`] and `r2-grounding-manager.md:106`, this is non-optional for LanguageSpec / Lifetime-Analyzer briefs.
 
@@ -148,7 +150,7 @@ Per [`feedback_substrate_principle_audit.md`] and `r2-grounding-manager.md:106`,
 - **Touching `src/v3/compiler/`** — SG-0 ratchet.
 - **Q5 cardinality enumeration work** — gated on PR-J (likely no-op); T-Ground-CrossTarget-Meta scope.
 - **Re-litigating Q1 / Q2 / Q3 / Q4 / Q6.5 locks.**
-- **Substrate `MethodContract` type declaration** — Substrate-owned (jolly-ram-908) per Director routing call 2026-04-29. This lane consumes the type; population + drift resolution + parallel-rep retirement stay in scope per E above.
+- **Substrate `MethodTemplateContract` type declaration** — Substrate-owned (jolly-ram-908) per Director routing call 2026-04-29 (Option 1 sibling type, name resolved from `MethodContract` to avoid collision with `src/v3/std/algebra.dag:127`). This lane consumes the type; population + drift resolution + parallel-rep retirement stay in scope per E above.
 
 ---
 
@@ -162,7 +164,7 @@ Per [`feedback_substrate_principle_audit.md`] and `r2-grounding-manager.md:106`,
 | **PR-H** (Q2 Go axes) | per `r2-grounding-manager.md:50` | Required for Go population (B, F) |
 | **PR-I** (Q3 `RealizationCost` + Q4 universal gate) | **dispatch gate** | Lands `Bits`/`CPUCycles` substrate primitives + `Cost<Unit>` alias + `RealizationCost` record schema; this lane populates per-inhabitance |
 | #1129 / #1156 / #1162 (Tier 1 locks) | LIVE on main | Consumed (Q1 / reflection-completeness / Q6.5) |
-| **Substrate `MethodContract` type-shape lands** (cross-manager request to jolly-ram-908 [#1130](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4340522342)) | in flight | Gates lane scope item E (row population + parallel-rep retirement); P1 Step 1+2 receipts for the *type* land on Substrate's PR |
+| **Substrate `MethodTemplateContract` type-shape lands** (cross-manager request to jolly-ram-908 [#1130](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4340522342); name + sibling-type shape resolved per Director routing [#1130 comment 4340575810](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4340575810)) | in flight | Gates lane scope item E (row population + parallel-rep retirement); P1 Step 1+2 receipts for the *type* + Substrate's TestClaim proposals (3 shapes, see [#1130](https://github.com/gunb-ai/gunbc/issues/1130)) land on Substrate's PR |
 
 **Cross-program signals:**
 - **Substrate Manager — `Diagnostic.kind` / Q6.5:** consumer-only (Layer 1); no handoff.
@@ -177,7 +179,7 @@ Per [`feedback_substrate_principle_audit.md`] and `r2-grounding-manager.md:106`,
 - `RealizationCost` per-target population (B): S × 3 targets ≈ M.
 - Slice-1 re-home (C): S — rename + crate relocation; no selection-logic retraction.
 - Reflective Pattern E retirement (D): S — consumer-migration, mirror delete.
-- `MethodContract` consolidation (E): S — schema unification + drift-resolution per target.
+- `MethodTemplateContract` row population + parallel-rep retirement (E): S — schema unification + drift-resolution per target.
 - Apparent-multi-inhabitance audit (F): S × 3 targets ≈ M.
 
 Bundle into one PR per `feedback_bundle_workstreams_per_pr.md` unless scope balloons; if (E) or (F) surfaces an unanticipated substrate gap, escalate to manager (#1133) before splitting.
@@ -194,7 +196,7 @@ Acceptance lifted to a `.dag` `TestClaim` (gate: `language_spec_realization_cost
 2. **Per-target population parity** — Rust / Python / Go specs each declare every primitive that previously appeared in `extdeps/languages/*/types.dag` plus the cost coordinates from B; no primitive lost.
 3. **`RealizationCost` sparseness fail-closed** — missing `AlgebraOp` in the `access` map produces `Witness.Violates`, not silent zero-cost (per `design-emission-model.md:1206`).
 4. **Mirror-consistency probe (re-homed)** — slice-1's `StructureMismatch` shape continues to fire on intentional drift between `Dag::rust_pilot_primitives()` and the (about-to-retire) Rust mirror, until D's mirror retirement lands. **Post-D end state:** structural LanguageSpec walk only; no Rust-side mirror; `StructureMismatch` retained as substrate-load-time integrity check (LanguageSpec internal consistency), not mirror parity.
-5. **MethodContract consolidation** — `runtime_template` and `emit_template` co-resolved per `(target, dag_method)`; the prior `count` drift (Rust `"{recv}.len()"` vs `"({recv}.len() as i64)"`) is resolved into one declared row that carries both templates with `wraps_result` made explicit (no silent reconciliation).
+5. **`MethodTemplateContract` row consolidation** — `runtime_template` and `emit_template` co-resolved per `(target, dag_method)`; the prior `count` drift (Rust `"{recv}.len()"` vs `"({recv}.len() as i64)"`) is resolved into one declared row that carries both templates with `wraps_result` made explicit (no silent reconciliation).
 6. **Apparent-multi-inhabitance audit receipts** — every retained candidate cites the meaningful axis it inhabits; every retracted candidate cites the cosmetic-equivalent it collapsed into. (Receipt-shaped test: `LanguageSpec` row carries the citation; missing citation = test failure.)
 7. **Q4 four-property gate** — every per-target inhabitance verifies against Faithful / Correct / Minimal / Performant (PR-I lock; consume the verifier landed there).
 
@@ -208,7 +210,7 @@ When this lane lands:
 
 - `dsl/std/coercion.dag` table-driven schema retires (consumed via `T-Ground-Dissolve`); the structural fold reads `LanguageSpec` directly. Specifically: `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` lose their last consumer (final Track-13 deletion happens in T-Ground-Dissolve, not here).
 - `RUST_PILOT_PRIMITIVES` Rust mirror retires (Reflective Pattern E closure).
-- Heterogeneous per-target method authorities collapse to single `MethodContract` row per `(target, dag_method)`: Rust `SimpleMethodSpec` (record-list) + Python `python_method_templates` (map) + Go `go_method_templates` (map) on the emit side; `MethodTranslation` × 3 on the runtime side. `wraps_result` semantics resolved explicitly per target (not inherited from Rust).
+- Heterogeneous per-target method authorities collapse to single `MethodTemplateContract` row per `(target, dag_method)`: Rust `SimpleMethodSpec` (record-list) + Python `python_method_templates` (map) + Go `go_method_templates` (map) on the emit side; `MethodTranslation` × 3 on the runtime side. `wraps_result` semantics resolved explicitly per target (not inherited from Rust).
 - Slice-1 mirror-consistency probe re-homes from `grounding_engine` to LanguageSpec's structural authority.
 - `extdeps/languages/{rust,python,go}/types.dag` table shape converges with `LanguageSpec` reflection (specifics depend on what schema authoring surfaces; if the table shape IS the LanguageSpec realization, the dissolution is in-place renaming + extension, not a separate file delete).
 - **Parallel `LanguageSpec` authority retires:** `dsl/std/languages.dag:438`'s `LanguageSpec` declaration + its `rust_spec` / `go_spec` / `python_spec` data items (lines 1244 / 1268 / 1292) converge under the `src/v3/std/emit_model.dag:302` authority. Drift between the two shapes is resolved explicitly in this lane's PR (no silent reconciliation); structural facts not absorbable by the v3 shape escalate to manager (#1133) before any new file or split lands.
@@ -223,7 +225,7 @@ Escalate to manager (post on #1133, do NOT absorb in lane) if:
 
 - The P1 DAG-ancestor check (Step 1) reveals a parent type whose extension would itself be a non-trivial substrate change (i.e., authoring `LanguageSpec` would require *first* extending an upstream parent).
 - An apparent-multi-inhabitance case in (F) cannot be classified cleanly as cosmetic or meaningful — the four-property gate from Q4 doesn't disambiguate it. (This is a Modeling problem 2 design call; manager → Director if needed.)
-- `MethodContract` consolidation surfaces a third schema or per-target divergence not captured at `design-emission-model.md:942` (e.g., a target whose template language is incompatible with the unified `placeholder_convention`).
+- `MethodTemplateContract` row population surfaces a target divergence not captured at `design-emission-model.md:942` (e.g., a target whose template language is incompatible with the unified `placeholder_convention`).
 - The slice-1 re-home requires modifying the `StructureMismatch` failure shape (it shouldn't — option (a) is rename + relocation only).
 - Any work would require touching `src/v3/compiler/` (SG-0 ratchet violation).
 - A referenced authority doc has drifted from the cited line numbers — STOP and post to manager. Don't paper over.
@@ -240,7 +242,7 @@ Lane closes under the `r2-grounding-manager.md:125` acceptance gate:
 
 Authored as a `.dag` `TestClaim`. Per the **structural-acceptance-per-lane-close discipline** (`r2-grounding-manager.md:11`), the gate IS the demo — no separate artifact.
 
-PR body covers: scope (A-G); per-target population status (Rust full / Python full / Go full); P1 receipts cited per new substrate type; Q4 four-property gate per inhabitance; dissolution receipts (specific `coercion.dag` declarations retired; per-target method authorities consolidated — Rust `SimpleMethodSpec`, Python `python_method_templates` map, Go `go_method_templates` map, plus `MethodTranslation` × 3 — into `MethodContract` rows; `RUST_PILOT_PRIMITIVES` mirror deletion).
+PR body covers: scope (A-G); per-target population status (Rust full / Python full / Go full); P1 receipts cited per new substrate type; Q4 four-property gate per inhabitance; dissolution receipts (specific `coercion.dag` declarations retired; per-target method authorities consolidated — Rust `SimpleMethodSpec`, Python `python_method_templates` map, Go `go_method_templates` map, plus `MethodTranslation` × 3 — into `MethodTemplateContract` rows; `RUST_PILOT_PRIMITIVES` mirror deletion).
 
 ---
 
@@ -257,7 +259,7 @@ PR body covers: scope (A-G); per-target population status (Rust full / Python fu
 ## Cross-refs
 
 - Parent: [`r2-grounding-manager.md`](r2-grounding-manager.md) (lane 6 of 11)
-- Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 6 + §"Affected lanes" + Q3 lock + line 942 MethodContract
+- Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 6 + §"Affected lanes" + Q3 lock + line 942 method-contract consolidation (renamed `MethodTemplateContract` post-2026-04-29 Director routing; cited line still uses doc's original wording)
 - Reflection completeness: [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md)
 - THESIS: `THESIS.md:171` (engine-retraction)
 - Substrate-fact-introduction: [`INVARIANTS.md`](../../INVARIANTS.md) §P1
