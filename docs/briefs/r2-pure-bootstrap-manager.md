@@ -56,7 +56,8 @@ Worker briefs MUST consume these without re-litigation:
 
 - **T-LensProducer-Retirement XL framing kept** (Director cascade Item 8 ratified 2026-04-28): lane stays as one program; 3 internal sub-gates report sub-progress to closure ledger but do NOT split into 3 independent lanes. Reduces lane fragmentation; preserves the "one program" coherence of lens-producer retirement.
 - **T-Bridge-Retirement distribution map** (Director cascade Item 4 ratified 2026-04-28): 5 named bridges; 3 retire under PB ownership (canonical lens-name dispatch / `include_str!` side channels / `patch_lower_helpers_*` residual); 2 retire under Substrate (`SourceSpan.file` + `mark_bootstrap_secret_nominal_opacity()`); Verification owns ledger gate only. **Distribute work, centralize ledger** discipline.
-- **Q6 (lens framework)**: `Witness<C>` substrate stays as-is; structural-validation failures encode into `Diagnostic.kind` extensions. Relevant for PB-Runtime interpreter-as-data work.
+- **Q6 + Q6.5 (LANDED via #1129)**: `Witness<C>` substrate stays as-is; two-layer diagnostic-kind authority per [`docs/design-lens-framework.md` §"Q6.5 — Two-layer authority for diagnostic kinds"](../design-lens-framework.md) — Layer 1 closed sum (Substrate); Layer 2 lens-instance kinds in lens's own `.dag` via structural inhabitance. Relevant for PB-Runtime interpreter-as-data work that runs lens-instance `validate` functions.
+- **Reflection completeness (LANDED via #1129)**: [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) names the cascade gates for R3-T-LensProducer-Retirement (§7.3) — load-bearing for `lens_apply.rs` retirement.
 
 Full disposition: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
 

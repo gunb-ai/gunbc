@@ -126,6 +126,31 @@ test_negative_q2_missing_anchor() {
   return 0
 }
 
+# Per gpt-5-5-pro review on b9f7a1c1: digit-leading prose section
+# citations (§4, §6a, §0.7) were silently skipped by the prior
+# Q2-prose regex which required [A-Za-z] after §. The regex was
+# extended to [A-Za-z0-9]; verify it now catches drift on a
+# discriminating digit-leading token (§99zzz — multi-char so
+# substring match doesn't trivially pass).
+test_negative_q2_missing_prose_numeric_section() {
+  # Use a digit-leading token unlikely to appear in any target file
+  # ("99zzz" — multi-char, low collision rate). Bare "§99" or "§4"
+  # resolve permissively because their text is too common; the
+  # regression we're testing is "regex extraction at all," not
+  # substring-match discrimination.
+  write_clean_briefs "r2-evaluator-manager.md" \
+    "# Brief\n\nReferences [r2-structure](../r2-structure.md) §99zzz (digit-leading; not present in target) — should fail Q2-prose."
+
+  cd "$TMPDIR"
+  if bash "$TEST_CONSUMER" >/dev/null 2>&1; then
+    cd "$ROOT"
+    echo "FAIL [Q2/missing-prose-numeric]: consumer passed on a fixture with a missing digit-leading prose §99zzz reference"
+    return 1
+  fi
+  cd "$ROOT"
+  return 0
+}
+
 # ---------------------------------------------------------------------
 # Q4 — LANDED-PR-not-in-history negative test
 # ---------------------------------------------------------------------
@@ -288,6 +313,7 @@ failures=0
 for test_fn in \
   test_negative_q1_missing_file \
   test_negative_q2_missing_anchor \
+  test_negative_q2_missing_prose_numeric_section \
   test_negative_q4_unreachable_pr \
   test_negative_q4_unreachable_pr_titlecase \
   test_negative_q5_count_mismatch \
@@ -316,5 +342,5 @@ if [ "$failures" -gt 0 ]; then
 fi
 
 echo ""
-echo "Self-test PASSED: 8 contract assertions verified"
-echo "  (6 negative — Q1/Q2/Q4×2/Q5×2 + missing-brief; 1 positive — clean fixture w/ landed-PR)"
+echo "Self-test PASSED: 9 contract assertions verified"
+echo "  (8 negative — Q1/Q2-md/Q2-prose-numeric/Q4×2/Q5×2 + missing-brief; 1 positive — clean fixture w/ landed-PR)"

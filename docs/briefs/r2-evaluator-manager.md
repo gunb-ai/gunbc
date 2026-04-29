@@ -26,7 +26,7 @@ R2's Goal 7 — **Runtime evaluator for `.dag` programs**. The Evaluator is the 
 |---|---|---|---|
 | **Runtime value model** | M | NOT YET AUTHORED — gated on PR-A design lock | Closed-over environments, lazy/eager evaluation strategy, memoization. Per #1078 design challenge #1: locked direction; specific design lands in PR-A. |
 | **Body evaluator** | L | NOT YET AUTHORED — gated on Runtime value model | Execute `.dag` function bodies structurally. Bounded forward execution per INVARIANTS P4. Termination by descent evidence (already in substrate per `dsl/std/termination.dag`). |
-| **Lens application** | M | NOT YET AUTHORED — gated on PR-C reflection-completeness spec | Extend `reflect_program_dag_nodes_in_file` from "shallow/lossy" to complete reflection (per Reflective Pattern B). Lens application = fold over reflected program DAG via `Lens<C>` framework (lands as R2-T-Substrate-Lens-Primitive sub-lane). |
+| **Lens application** | M | NOT YET AUTHORED — Reflection completeness spec LANDED via #1129 ([`docs/design-reflection-completeness.md`](../design-reflection-completeness.md)) | Extend `reflect_program_dag_nodes_in_file` from "shallow/lossy" to complete reflection per [`docs/design-reflection-completeness.md` §"Decision"](../design-reflection-completeness.md). Lens application = fold over reflected program DAG via `Lens<C>` framework (lands as R2-T-Substrate-Lens-Primitive sub-lane). |
 | **Witness construction** | M | NOT YET AUTHORED | Runtime materialization of proof artifacts (`Witness::Inhabits` / `Witness::Violates` per `src/v3/std/dimensions.dag`); algebraic-law witnesses (associativity, commutativity, identity). |
 | **Cross-target equivalence harness primitives** | S | NOT YET AUTHORED | For L5 verification in R3 (algebraic equivalence over a curated corpus, per #1078 design challenge #3 locked decision). Primitives only — corpus authoring is post-R2 (R3 lane T-Verification-L5-Corpus). |
 
@@ -52,7 +52,7 @@ Before worker dispatch begins on the implementation sub-lanes above, **5 design 
 |---|---|---|---|---|
 | **PR-A** | (foundational) | — | Runtime value model — closed-over environments, lazy/eager strategy, memoization | NOT YET AUTHORED |
 | **PR-B** | PR-A | PR-C, PR-D | Witness construction surface — concrete shape for runtime materialization | NOT YET AUTHORED |
-| **PR-C** | (foundational; substrate-reflection-shape) | PR-A, PR-B, PR-D | Reflection completeness spec — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`? | NOT YET AUTHORED (consumed by R3-T-LensProducer-Retirement) |
+| **PR-C** | (foundational; substrate-reflection-shape) | PR-A, PR-B, PR-D | Reflection completeness spec — what does "complete reflection" mean for `reflect_program_dag_nodes_in_file`? | **LANDED via #1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) (consumed by R3-T-LensProducer-Retirement per §"Cascade and gates") |
 | **PR-D** | (foundational; cross-target spec) | PR-A, PR-B, PR-C | L5 corpus type spec — algebraic equivalence over curated corpus (locked direction; specific design here) | NOT YET AUTHORED (consumed by R3-T-V-L5-Corpus) |
 | **PR-E** | All of PR-A through PR-D | (synthesis; serializes after) | Final integration design — synthesizes PR-A through PR-D into the implementation roadmap | NOT YET AUTHORED |
 
@@ -84,7 +84,7 @@ The Evaluator's substrate decisions inherit from #1078's locked design questions
 
 - **Q1**: `Interval<D>` shared parent in substrate; `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent` (asymmetric match rule)
 - **Q3**: `Cost<Unit> = Dimension<Unit, SymbolicExpr>`; `RealizationCost { storage: Cost<Bits>, access: Map<AlgebraOp, Cost<CPUCycles>> }`
-- **Q6**: `Witness<C>` stays as-is; rich structural validation failures encode into `Diagnostic.kind` extensions (subject to substrate diagnostic-kind dissolution per `src/v3/std/diagnostics.dag` SCAFFOLD note)
+- **Q6 + Q6.5 (LANDED via #1129)**: `Witness<C>` stays as-is; structural validation failures encode via two-layer diagnostic-kind authority per [`docs/design-lens-framework.md` §"Q6.5 — Two-layer authority for diagnostic kinds"](../design-lens-framework.md). Layer 1 = `CompilerDiagnosticKind` (Substrate-owned, untouched); Layer 2 = lens-instance kinds declared in lens's own `.dag` via structural inhabitance (Evaluator authors per-lens kinds without Substrate handoff). Anti-shadowing: Layer-2 names cannot reuse Layer-1 variants.
 - **Q7**: per-call validate yields one `OptionalDiagnostic`; fold accumulates into `DimensionFail.violations: List<Diagnostic>`
 - **Q8**: cross-product validate is conjunctive (`Lens<C> × Lens<D>` runs both; conjunctive fold)
 
@@ -99,7 +99,7 @@ Full disposition table: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`doc
 - **TestPredicate variants from R1C-D** (`CensusBoundCheck` / `CensusSubsetCount` / `RatchetZero` / `GeneratedFromDag` / `FixedPointConverges`) — reusable test-predicate pattern; relevant for Evaluator's `.dag` TestClaim acceptance gates (Acceptance section above).
 - **Concession-encoding pattern from `r1_release_acceptance.dag`** (in flight via still-seal-529) — structural-fact-cites-lane-authority shape. Reusable for R2 lane-close fixtures with similar evaluator-ready-vs-substrate-pending disposition.
 
-**Explicitly NOT from R1** (Director-confirmed 2026-04-28): reflection completeness lives in PR-C (Evaluator's design lock); witness construction is R2-Substrate authority (`Witness<C>` + `DimensionReport` already exist in `src/v3/std/dimensions.dag`); Evaluator constructs witnesses by evaluating `.dag` bodies through the lens framework. R1 doesn't produce substrate facts R2-Evaluator consumes directly.
+**Explicitly NOT from R1** (Director-confirmed 2026-04-28): reflection completeness now lives in [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) (LANDED via #1129; was PR-C placeholder); witness construction is R2-Substrate authority (`Witness<C>` + `DimensionReport` already exist in `src/v3/std/dimensions.dag`); Evaluator constructs witnesses by evaluating `.dag` bodies through the lens framework. R1 doesn't produce substrate facts R2-Evaluator consumes directly.
 
 ## Autonomous dispatch authority
 
@@ -123,7 +123,7 @@ Each sub-lane closes under a structural acceptance gate authored as a `.dag` `Te
 
 - `evaluator_runtime_value_model_landed` — runtime value type declared in substrate; closed-over environment representation correctly implemented
 - `evaluator_body_evaluator_correctly_executes_std_termination` — Body evaluator correctly executes `dsl/std/termination.dag` body programs (representative test)
-- `evaluator_lens_application_complete_reflection` — `reflect_program_dag_nodes_in_file` returns complete reflection (no shallow/lossy gaps) per the spec authored in PR-C
+- `evaluator_lens_application_complete_reflection` — `reflect_program_dag_nodes_in_file` returns complete reflection (no shallow/lossy gaps) per [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) §"Decision" (5.1-5.3 sub-questions resolved)
 - `evaluator_witness_construction_per_lens_correct` — runtime witness materialization correct for at least 3 lens instances (complexity / tenant-flow / IFC per design-lens-framework.md)
 - `evaluator_cross_target_equivalence_harness_primitives_landed` — primitives ready for R3-T-V-L5-Corpus consumer (no corpus authoring at R2; primitives only)
 
@@ -136,7 +136,7 @@ Each sub-lane closes under a structural acceptance gate authored as a `.dag` `Te
 **Pending (post-spawn manager authors autonomously):**
 - PR-A worker brief — Runtime value model design lock
 - PR-B worker brief — Witness construction surface design lock
-- PR-C worker brief — Reflection completeness spec
+- ~~PR-C worker brief — Reflection completeness spec~~ — **LANDED via #1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md)
 - PR-D worker brief — L5 corpus type spec
 - PR-E worker brief — Final integration design synthesis
 - Implementation worker briefs (one per sub-lane: runtime value model implementation, body evaluator implementation, lens application implementation, witness construction implementation, cross-target equivalence primitives)
