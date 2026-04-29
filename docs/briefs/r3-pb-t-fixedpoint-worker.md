@@ -126,6 +126,54 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - **Lane close:** PB Manager → R3 Release Manager (when authored) for R3 closure ledger; → Director for R3 thesis facet 2 closure announcement; updates `docs/thesis/r2-r3-thesis-mapping.md` row 136 status from ⏳ to ✅.
 - **No upstream production:** T-FixedPoint consumes; it does not produce carriers other managers consume.
 
+## TC3 — Strong-normalization TestClaim (author-now-fire-later, PB → R3 Verification transition)
+
+**Status:** PROPOSAL — author-now-fire-later. Folded into this brief per add-on dispatch from PB Manager (#1149, 2026-04-29) because TC3 is structurally adjacent to T-FixedPoint and shares Evaluator termination semantics. **Currently PB territory; transitions to R3 Verification Manager when spawned.**
+
+### Claim shape
+
+```dag
+test_claim every_typed_dag_program_terminates_in_bounded_steps {
+  // For any well-typed .dag program with declared LoopBound,
+  // evaluation terminates in O(loop_bound) reduction steps.
+}
+```
+
+This is the **strong-normalization theorem** for the typed `.dag` fragment — the formal correlate of the totality choice that P4 Decidability rests on (`INVARIANTS.md:236` §P4; "bounded forward execution" foundational premise). Sufficient proof obligation per the add-on dispatch: structural induction on `Behavior` × `LoopBound BoundedLattice`.
+
+### Dependencies (gates)
+
+TC3 fires only when **both** land:
+
+1. **B5 Loop construction-closure audit** — per [`docs/briefs/r2-release-b5-loop-construction-closure-audit-worker.md`](r2-release-b5-loop-construction-closure-audit-worker.md). The audit is load-bearing: strong-normalization quantifies over Loop constructions, so the closure of Loop's construction surface is a prerequisite.
+2. **T-Substrate-Lens-Primitive** — provides the `Lens<C>` shape that TC3's evaluation-step witness presumably consumes. Without it, the claim has no way to express "evaluation terminates" as a structural fold.
+
+(Source for the proof-obligation framing: PR #1178 `docs/design-substrate-lambda-calculus-grounding.md` §"Strong normalization for the typed fragment" — not on main at the time of authoring.)
+
+### Substrate gap (load-bearing — STOP condition)
+
+**The current `TestPredicate` substrate (`src/v3/std/verification.dag:108-235`) cannot encode TC3 without substrate introduction.** Every existing variant — `Compiles`, `OutputEquals`, `BehavioralObservation`, `AlgebraicLaw`, `FixedPointConverges`, `RatchetZero`, etc. — is **per-program**: it evaluates a property of the single `TestClaim.source` program. TC3 is a **meta-theorem over the entire well-typed fragment** — universally quantified across all programs the typing rules admit. No existing variant carries that quantifier shape.
+
+Per the add-on dispatch guardrails:
+
+- **Do not invent a new `TestPredicate` variant from this lane.** PB territory does not introduce verification substrate; that authority lives with Substrate Manager (per `INVARIANTS.md` §P1 substrate-fact-introduction procedure at line 86) or with the future R3 Verification Manager once spawned.
+- **Do not fabricate a runner path.** The claim text above is the *declarative shape*; the runner-side encoding (e.g., is this a structural-induction proof checked by the Evaluator? a corpus-driven termination harness? a `Lens<TerminationWitness>` instance?) depends on which substrate variant carries it, which is precisely the gap.
+- **Leave the declaration as a dispatch-gated proposal.** TC3 sits as text-form in this brief until B5 + T-Substrate-Lens-Primitive land and the R3 Verification Manager (spawned at R2 close) authors the substrate path.
+
+### Transition to R3 Verification
+
+When the R3 Verification Manager spawns (per `r3-structure.md` §"Manager structure" Item 2), TC3 ownership moves from PB to Verification. Verification then:
+
+1. Picks up the substrate-gap question — either composes from existing variants (if a path emerges from B5 + T-Substrate-Lens-Primitive landing) OR escalates substrate introduction to Substrate Manager per §P1.
+2. Authors the runner-side encoding once the substrate path is named.
+3. Cross-references this brief's TC3 section as the upstream PB-authored declarative shape; PB does not re-author after transition.
+
+### Non-goals
+
+- Not a replacement for T-FixedPoint's two-horizon scope (#1169 main subject); TC3 is adjacent.
+- Not in T-LensProducer-Retirement scope (Items 4+5 work; gated separately).
+- Not a runtime termination check on a single program — that's already covered by ordinary timeout / decidability machinery. TC3 is the *meta-theorem* about the fragment.
+
 ## Cross-refs
 
 - Parent manager: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) §"Owns (R3 continuation)" + §"Acceptance" `pb_self_compile_fixed_point_strong`
@@ -140,3 +188,12 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - R1 fixture (do not edit): `src/v3/compiler/tests/integration/r1_release_acceptance_test.rs:18`
 - Existing test scaffolding (reference, not the strong gate): `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs`, `src/v3/compiler/tests/integration/r1c_d_pb_census_gates_test.rs`
 - Sibling R3-PB lane brief (gating dependency): T-LensProducer-Retirement worker briefs (pending — see `r2-pure-bootstrap-manager.md` §"Sub-briefs … Pending")
+
+### TC3-specific cross-refs
+
+- B5 audit (TC3 dependency): [`docs/briefs/r2-release-b5-loop-construction-closure-audit-worker.md`](r2-release-b5-loop-construction-closure-audit-worker.md)
+- P4 Decidability (TC3 formal home): `INVARIANTS.md:236` §P4
+- Termination carrier: `dsl/std/termination.dag` (`DescentEvidence` / BoundedLattice)
+- Substrate-fact-introduction procedure (TC3 escalation path): `INVARIANTS.md:86` §"Procedure: substrate-fact introduction"
+- Strong-normalization theorem source (off-main at authoring): PR #1178 `docs/design-substrate-lambda-calculus-grounding.md` §"Strong normalization for the typed fragment"
+- TC3 transition target: R3 Verification Manager (per `docs/r3-structure.md` §"Manager structure" Item 2)
