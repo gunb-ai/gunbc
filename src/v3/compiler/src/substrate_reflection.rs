@@ -385,7 +385,9 @@ fn reflect_key_source(dag: &Dag, ks: &KeySource) -> ReflectResult<FieldValue> {
 
 fn reflect_idempotent_shape(dag: &Dag, s: &IdempotentShape) -> ReflectResult<FieldValue> {
     match s {
-        IdempotentShape::ReadEffect => sum_variant_payload(dag, "IdempotentShape", "ReadEffect", vec![]),
+        IdempotentShape::ReadEffect => {
+            sum_variant_payload(dag, "IdempotentShape", "ReadEffect", vec![])
+        }
         IdempotentShape::UpsertEffect { key_source } => sum_variant_payload(
             dag,
             "IdempotentShape",
@@ -409,7 +411,9 @@ fn reflect_breaking_shape(dag: &Dag, s: &BreakingShape) -> ReflectResult<FieldVa
             "CreateEffect",
             vec![reflect_create_cause(dag, cause)?],
         ),
-        BreakingShape::AppendEffect => sum_variant_payload(dag, "BreakingShape", "AppendEffect", vec![]),
+        BreakingShape::AppendEffect => {
+            sum_variant_payload(dag, "BreakingShape", "AppendEffect", vec![])
+        }
     }
 }
 
@@ -587,7 +591,9 @@ fn reflect_optional_branch_emit(
     opt: Option<BranchEmitParticipation>,
 ) -> ReflectResult<FieldValue> {
     reflect_optional_sum(dag, cardinality_decl_id, opt, |d, p| match p {
-        BranchEmitParticipation::UserMatch => reflect_unit_variant(d, "BranchEmitParticipation", "UserMatch"),
+        BranchEmitParticipation::UserMatch => {
+            reflect_unit_variant(d, "BranchEmitParticipation", "UserMatch")
+        }
     })
 }
 
@@ -616,8 +622,10 @@ fn reflect_transform_target(dag: &Dag, t: &TransformTarget) -> ReflectResult<Fie
             field_child,
         } => {
             let fp_conj = disj_variant_ty(dag, "TransformTarget", "FieldProject")?;
-            let field_child_card =
-                peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, fp_conj, "field_child")?)?;
+            let field_child_card = peel_to_optional_cardinality_decl(
+                dag,
+                conj_field_ty(dag, fp_conj, "field_child")?,
+            )?;
             sum_variant_payload(
                 dag,
                 "TransformTarget",
@@ -708,18 +716,12 @@ fn reflect_branch_paths(dag: &Dag, paths: &[Path]) -> ReflectResult<FieldValue> 
 
 fn reflect_loop_bound(dag: &Dag, b: &LoopBound) -> ReflectResult<FieldValue> {
     match b {
-        LoopBound::Cardinality { count } => sum_variant_payload(
-            dag,
-            "LoopBound",
-            "Cardinality",
-            vec![port_fv(*count)],
-        ),
-        LoopBound::Descent { cluster } => sum_variant_payload(
-            dag,
-            "LoopBound",
-            "Descent",
-            vec![cluster_fv(*cluster)],
-        ),
+        LoopBound::Cardinality { count } => {
+            sum_variant_payload(dag, "LoopBound", "Cardinality", vec![port_fv(*count)])
+        }
+        LoopBound::Descent { cluster } => {
+            sum_variant_payload(dag, "LoopBound", "Descent", vec![cluster_fv(*cluster)])
+        }
     }
 }
 
