@@ -119,6 +119,8 @@ mod m2_substrate_inhabitance_test;
 mod method_template_contract_test;
 #[path = "integration/p0_std_render_repeat_string_test.rs"]
 mod p0_std_render_repeat_string_test;
+#[path = "integration/patch_lower_helpers_bridge_zero_residual_test.rs"]
+mod patch_lower_helpers_bridge_zero_residual_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
 #[path = "integration/pipe_desugar.rs"]
