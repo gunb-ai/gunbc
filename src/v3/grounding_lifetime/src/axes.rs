@@ -23,4 +23,12 @@ impl LanguageSpecAxes {
             string_growability_axis_load_bearing: true,
         }
     }
+
+    /// Axes where growability is not load-bearing — exposes ownership proof gaps
+    /// that must not be papered over by `IndeterminateGrowability` alone.
+    pub fn string_family_growability_not_load_bearing() -> Self {
+        Self {
+            string_growability_axis_load_bearing: false,
+        }
+    }
 }

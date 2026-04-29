@@ -114,6 +114,12 @@ fn ownership_lifetime_growable_for(
                     axis: "growability".to_string(),
                 });
             }
+            let has_definite_transient = binding.uses.iter().any(|u| u.kind == UseKind::Transient);
+            if !owned_force && indeterminate && !has_definite_transient {
+                return Err(EmissionDiagnostic::UnderRefined {
+                    axis: "ownership".to_string(),
+                });
+            }
             let growable = if ownership == Ownership::Borrowed {
                 Growability::NotApplicable
             } else if axes.string_growability_axis_load_bearing {

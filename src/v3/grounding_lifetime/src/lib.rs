@@ -173,6 +173,77 @@ mod tests {
         }
     }
 
+    /// Opaque growability is not a transient proof: without `Transient`, do not
+    /// conclude `Borrowed` when the growability axis is not load-bearing (no
+    /// growability diagnostic to catch the gap).
+    #[test]
+    fn function_param_indeterminate_without_transient_fails_ownership_when_growability_optional() {
+        let mut bindings = BTreeMap::new();
+        bindings.insert(
+            BindingId(0),
+            BindingDef::r2_string_binding(
+                "n",
+                BindingRole::FunctionParameter {
+                    function: "greet".to_string(),
+                },
+                vec![UseSite {
+                    kind: UseKind::IndeterminateGrowability,
+                    site_label: "opaque.call".to_string(),
+                }],
+            ),
+        );
+        let program = LifetimeProgram {
+            bindings,
+            r3_markers: vec![],
+        };
+        let err = analyze_lifetime_program(
+            &program,
+            &LanguageSpecAxes::string_family_growability_not_load_bearing(),
+        )
+        .expect_err("ownership under-refined");
+        match err {
+            EmissionDiagnostic::UnderRefined { axis } => assert_eq!(axis, "ownership"),
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn function_param_transient_plus_indeterminate_ok_when_growability_optional() {
+        let mut bindings = BTreeMap::new();
+        bindings.insert(
+            BindingId(0),
+            BindingDef::r2_string_binding(
+                "n",
+                BindingRole::FunctionParameter {
+                    function: "greet".to_string(),
+                },
+                vec![
+                    UseSite {
+                        kind: UseKind::Transient,
+                        site_label: "greet.body.read".to_string(),
+                    },
+                    UseSite {
+                        kind: UseKind::IndeterminateGrowability,
+                        site_label: "opaque.call".to_string(),
+                    },
+                ],
+            ),
+        );
+        let program = LifetimeProgram {
+            bindings,
+            r3_markers: vec![],
+        };
+        let f = analyze_lifetime_program(
+            &program,
+            &LanguageSpecAxes::string_family_growability_not_load_bearing(),
+        )
+        .expect("analysis ok")
+        .remove(&BindingId(0))
+        .expect("n");
+        assert_eq!(f.ownership, Ownership::Borrowed);
+        assert_eq!(f.growable, Growability::NotApplicable);
+    }
+
     /// Test plan item 8 — R3 constructs rejected.
     #[test]
     fn r3_construct_out_of_scope() {

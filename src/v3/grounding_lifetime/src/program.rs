@@ -48,6 +48,10 @@ pub enum UseKind {
     BorrowExclusive,
     /// Use is visible but does not witness either growth or definite non-growth
     /// (dynamic dispatch / opaque callee — `design-emission-model.md` ~558).
+    ///
+    /// **Not** a substitute for a definite `Transient` use on function parameters:
+    /// Case-A `Borrowed` still requires at least one transient witness; opaque
+    /// growability alone must not bypass that proof.
     IndeterminateGrowability,
 }
 
