@@ -1,0 +1,22 @@
+// dsl/shims/v3_std_emit_model.dag — v2 `dag run` CI visibility for `module v3.std.emit_model`.
+//
+// The substrate authority remains `src/v3/std/emit_model.dag` (v3 compiler). v2's CI indexes
+// only `--source-root dsl`, so imports from `dsl/extdeps/languages/*/method_template_contracts.dag`
+// cannot see src/v3. This file repeats the **nominal** exports those stubs need so the v2
+// interpreter can validate the extdeps graph; keep field shapes aligned with the substrate type.
+
+module v3.std.emit_model
+
+type DeclarationRef {}
+
+type PlaceholderConvention
+  = IndexedArgs
+  | NamedArg
+
+type MethodTemplateContract {
+  dag_method: DeclarationRef
+  runtime_template: String
+  emit_template: String
+  wraps_result: Bool
+  placeholder_convention: PlaceholderConvention
+}
