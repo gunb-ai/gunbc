@@ -18,7 +18,7 @@
 //!   `MethodTemplateContract.dag_method` field type now points at
 //!   `MethodRef` rather than bare `DeclarationRef`.
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use v3_compiler::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
@@ -38,84 +38,88 @@ fn decl_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
         .id
 }
 
-/// Authoritative list of unique method names across all seven
-/// `dsl/std/algebra.dag` per-profile template lists, alphabetized.
-/// Drift-detection: when a new template entry is added in algebra.dag,
-/// either this list grows AND a `data <name>_method: MethodDeclaration`
-/// binding lands in `dsl/std/methods.dag`, or this test fails.
-const EXPECTED_METHOD_NAMES: &[&str] = &[
-    "add",
-    "all",
-    "any",
-    "append",
-    "bottom",
-    "chars",
-    "clamp",
-    "compare",
-    "complement",
-    "concat",
-    "contains",
-    "count",
-    "diff",
-    "empty",
-    "ends_with",
-    "enumerate",
-    "filter",
-    "first",
-    "flat_map",
-    "fold",
-    "get",
-    "has",
-    "intersect",
-    "join",
-    "keys",
-    "last",
-    "length",
-    "list_push",
-    "lookup",
-    "map",
-    "map_contains_key",
-    "map_get",
-    "map_has",
-    "map_insert",
-    "map_keys",
-    "map_merge",
-    "map_values",
-    "meet",
-    "member",
-    "mul",
-    "negate",
-    "one",
-    "quotient",
-    "reciprocal",
-    "remainder",
-    "replace",
-    "reverse",
-    "skip",
-    "sort_by",
-    "split",
-    "starts_with",
-    "substring",
-    "take",
-    "to_int",
-    "to_lower",
-    "to_string",
-    "to_upper",
-    "top",
-    "trim",
-    "union",
-    "values",
-    "with",
-    "zero",
-];
+/// Algebra-template source — the actual authority for which method
+/// names exist in the seven `dsl/std/algebra.dag` per-profile template
+/// lists. The drift-detection test extracts the unique `name: "..."`
+/// strings appearing inside those template-list bodies and asserts
+/// each has a matching `<name>_method: MethodDeclaration` registry
+/// binding. No hand-maintained mirror constant: if a new method name
+/// lands in algebra.dag without a corresponding registry binding,
+/// this test fails fail-closed at the same boundary the registry's
+/// own SCAFFOLD comment promises.
+const ALGEBRA_DAG_SOURCE: &str = include_str!("../../../../../dsl/std/algebra.dag");
+
+/// Extracts unique method names from the algebra-template source by
+/// scanning for the literal `name: "<id>"` pattern that appears inside
+/// the seven per-profile template-list returns. Identifier characters
+/// only (lowercase ASCII + underscore) so we don't accidentally match
+/// other `name:` strings used elsewhere as record-field labels at the
+/// type-definition layer (e.g., `NamedTemplate { name: "Int" }` —
+/// those are TypeShape-side names that look the same lexically).
+///
+/// Lexical matching is intentional: the alternative (running the
+/// per-profile fn bodies through the Dag's value-body walker) would
+/// require the bootstrap to have lowered the function returns to
+/// structural list values, which it doesn't yet. The source-file
+/// scan keeps `dsl/std/algebra.dag` as the canonical authority for
+/// the drift comparison without smuggling structural inhabitance
+/// through a partial-lowering bridge.
+fn algebra_template_method_names() -> BTreeSet<String> {
+    let mut names: BTreeSet<String> = BTreeSet::new();
+    let bytes = ALGEBRA_DAG_SOURCE.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        // Find the next `name:` substring; only count occurrences
+        // followed by a `"<id>"` literal to ignore type-shape names
+        // like `name: "Int"` (those satisfy the literal pattern but
+        // their values uppercase-start, so further filtering below
+        // catches them — algebra-template method names are all
+        // lowercase identifiers).
+        if &bytes[i..i + 5] == b"name:" {
+            let mut j = i + 5;
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'"' {
+                let start = j + 1;
+                let mut end = start;
+                while end < bytes.len() && bytes[end] != b'"' {
+                    end += 1;
+                }
+                if end < bytes.len() {
+                    let s = &ALGEBRA_DAG_SOURCE[start..end];
+                    if !s.is_empty()
+                        && s.chars()
+                            .all(|c| c.is_ascii_lowercase() || c == '_' || c.is_ascii_digit())
+                    {
+                        names.insert(s.to_string());
+                    }
+                    i = end + 1;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    names
+}
 
 #[test]
 fn method_registry_covers_all_algebra_template_names() {
     let dag = generated_full_bootstrap_dag();
     let method_decl_id = decl_id_by_name(&dag, "MethodDeclaration");
 
+    let template_names = algebra_template_method_names();
+    assert!(
+        !template_names.is_empty(),
+        "algebra_template_method_names() returned empty set — extraction \
+         pattern broke against `dsl/std/algebra.dag`. The drift detector \
+         is the authority over which method names need registry bindings; \
+         a zero-name extraction would silently pass the loop below."
+    );
+
     let mut errors: Vec<String> = Vec::new();
-    for name in EXPECTED_METHOD_NAMES {
+    for name in &template_names {
         let binding_name = format!("{name}_method");
         let Some(decl) = dag.declaration_by_name(&binding_name) else {
             errors.push(format!("missing binding `{binding_name}`"));
