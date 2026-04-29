@@ -79,6 +79,20 @@ type DiagnosticKindDecl {
 // is intentionally NOT carried through the substrate. Trigger:
 // dependent-field typing or substrate inhabitance witnesses lower
 // without hand-Rust scaffolding.
+//
+// Note on `kind_decl` typing: bare `DeclarationRef` admits any
+// declaration. The structural constraint (\"must resolve to a
+// `DiagnosticKindDecl` whose parent is the owning `Lens<C>`
+// inhabitance\") is checked fail-closed at the runtime resolution
+// boundary — same residual class as `PatternRealization` (`emit_model.dag`
+// lines 140–152, where `empty_variant`/`cons_variant` admit any
+// declaration but are validated as variants-of-target at parse time)
+// and `MethodTemplateContract.dag_method` (`emit_model.dag:371`).
+// Refining to `DeclarationRef<DiagnosticKindDecl>` is part of the
+// SAME dissolution trigger above — substrate-level
+// refinement-typing-on-DeclarationRef is the mechanism that closes
+// both the payload-typing gap and the kind-decl resolution gap in
+// one move.
 type LensInstanceKindWitness {
   kind_decl: DeclarationRef
 }
