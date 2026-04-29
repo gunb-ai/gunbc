@@ -5,12 +5,11 @@
 use crate::dag::{
     Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm, BranchEmitParticipation,
     BranchNode, BranchPattern, BreakingShape, ClusterId, CreateCause, Dag, DeclarationId,
-    EffectShape, ElementRef, FieldValue, HttpMethodScalar, IdempotentShape, KeySource,
-    LiteralBits, LoopBound, LoopNode, NonSingletonList, OperationEffect, OperatorKind, Path,
-    PortId, SourceSpan, TransformNode, TransformTarget, TypeConnective, ValueNode,
-    WorkflowEffect,
+    EffectShape, FieldValue, HttpMethodScalar, IdempotentShape, KeySource,
+    LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList, OperationEffect, OperatorKind,
+    Path, PayloadBinding, PortId, SourceSpan, TransformNode, TransformTarget, TypeConnective,
+    ValueNode, WorkflowEffect,
 };
-use crate::dag::{NodeId, TransformRef};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReflectError(pub &'static str);
@@ -242,7 +241,10 @@ fn reflect_create_cause(dag: &Dag, c: &CreateCause) -> ReflectResult<FieldValue>
             let id = disj_variant_ty(dag, "CreateCause", "KeylessFallback")?;
             Ok(FieldValue::Variant {
                 constructor: id,
-                payload: vec![reflect_http_method_scalar(dag, *method)?],
+                payload: vec![FieldValue::Record(vec![(
+                    "method".to_string(),
+                    reflect_http_method_scalar(dag, *method)?,
+                )])],
             })
         }
     }
@@ -338,18 +340,6 @@ fn reflect_effect_shape(dag: &Dag, s: &EffectShape) -> ReflectResult<FieldValue>
     }
 }
 
-fn reflect_element_ref_operation_effect(
-    dag: &Dag,
-    r: ElementRef<OperationEffect>,
-) -> ReflectResult<FieldValue> {
-    Ok(FieldValue::Record(vec![(
-        "index".to_string(),
-        FieldValue::Literal(LiteralBits::Int(i64::try_from(r.index_of()).map_err(|_| {
-            ReflectError("ElementRef index overflow")
-        })?)),
-    )]))
-}
-
 fn reflect_operation_effect(dag: &Dag, op: &OperationEffect) -> ReflectResult<FieldValue> {
     Ok(FieldValue::Record(vec![
         (
@@ -423,19 +413,26 @@ fn reflect_workflow_effect(dag: &Dag, wf: &WorkflowEffect) -> ReflectResult<Fiel
     }
 }
 
+fn reflect_branch_arm_vec_spine(dag: &Dag, arms: &[BranchArm]) -> ReflectResult<FieldValue> {
+    let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
+    let mut tail = FieldValue::Variant {
+        constructor: empty_id,
+        payload: vec![],
+    };
+    for arm in arms.iter().rev() {
+        tail = FieldValue::Variant {
+            constructor: cons_id,
+            payload: vec![reflect_branch_arm(dag, arm)?, tail],
+        };
+    }
+    Ok(tail)
+}
+
 fn reflect_non_singleton_branch_arms(
     dag: &Dag,
     arms: &NonSingletonList<BranchArm>,
 ) -> ReflectResult<FieldValue> {
-    let mut rest_spine = reflect_operation_effect_vec_spine(dag, &[])?;
-    let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
-    for arm in arms.rest.iter().rev() {
-        let b = reflect_branch_arm(dag, arm)?;
-        rest_spine = FieldValue::Variant {
-            constructor: cons_id,
-            payload: vec![b, rest_spine],
-        };
-    }
+    let rest_spine = reflect_branch_arm_vec_spine(dag, &arms.rest)?;
     Ok(FieldValue::Record(vec![
         ("first".to_string(), reflect_branch_arm(dag, &arms.first)?),
         ("second".to_string(), reflect_branch_arm(dag, &arms.second)?),
@@ -456,25 +453,29 @@ fn reflect_branch_arm(dag: &Dag, arm: &BranchArm) -> ReflectResult<FieldValue> {
     ]))
 }
 
+fn reflect_workflow_effect_vec_spine(
+    dag: &Dag,
+    items: &[Box<WorkflowEffect>],
+) -> ReflectResult<FieldValue> {
+    let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
+    let mut tail = FieldValue::Variant {
+        constructor: empty_id,
+        payload: vec![],
+    };
+    for item in items.iter().rev() {
+        tail = FieldValue::Variant {
+            constructor: cons_id,
+            payload: vec![reflect_workflow_effect(dag, item.as_ref())?, tail],
+        };
+    }
+    Ok(tail)
+}
+
 fn reflect_non_singleton_workflow_branches(
     dag: &Dag,
     branches: &NonSingletonList<Box<WorkflowEffect>>,
 ) -> ReflectResult<FieldValue> {
-    let mut rest_spine = {
-        let (empty_id, _cons_id) = v3_list_empty_cons_ids(dag)?;
-        FieldValue::Variant {
-            constructor: empty_id,
-            payload: vec![],
-        }
-    };
-    let (empty_id, cons_id) = v3_list_empty_cons_ids(dag)?;
-    for b in branches.rest.iter().rev() {
-        let head = reflect_workflow_effect(dag, b.as_ref())?;
-        rest_spine = FieldValue::Variant {
-            constructor: cons_id,
-            payload: vec![head, rest_spine],
-        };
-    }
+    let rest_spine = reflect_workflow_effect_vec_spine(dag, &branches.rest)?;
     Ok(FieldValue::Record(vec![
         (
             "first".to_string(),
@@ -492,7 +493,7 @@ fn reflect_optional_workflow_effect(
     dag: &Dag,
     opt: Option<&WorkflowEffect>,
 ) -> ReflectResult<FieldValue> {
-    reflect_optional_list_spine(dag, opt.map(|w| w.clone()), |d, w| reflect_workflow_effect(d, &w))
+    reflect_optional_list_spine(dag, opt.cloned(), |d, w| reflect_workflow_effect(d, &w))
 }
 
 fn reflect_optional_branch_emit(
@@ -587,7 +588,7 @@ fn reflect_branch_pattern(dag: &Dag, p: &BranchPattern) -> ReflectResult<FieldVa
 
 fn reflect_optional_payload_binding(
     dag: &Dag,
-    opt: Option<&crate::dag::PayloadBinding>,
+    opt: Option<&PayloadBinding>,
 ) -> ReflectResult<FieldValue> {
     reflect_optional_list_spine(dag, opt.cloned(), |d, b| {
         Ok(FieldValue::Record(vec![
@@ -669,7 +670,7 @@ pub fn reflect_behavior(dag: &Dag, behavior: &Behavior) -> ReflectResult<FieldVa
 
 fn reflect_value(dag: &Dag, v: &ValueNode) -> ReflectResult<FieldValue> {
     let id = behavior_variant_id(dag, "Value")?;
-    let lane2 = reflect_optional_workflow_effect(dag, v.lane2_workflow().map(|w| w))?;
+    let lane2 = reflect_optional_workflow_effect(dag, v.lane2_workflow())?;
     let payload = FieldValue::Record(vec![
         ("id".to_string(), node_fv(v.id)),
         ("payload".to_string(), FieldValue::Literal(v.data.clone())),
