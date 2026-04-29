@@ -463,6 +463,55 @@ Director's framing refinements:
 
 **Substrate change required: NONE.** Witness<C> stays at `dimensions.dag:35-37`. CompilerDiagnosticKind extensions per lens instance happen during PR-K's Lens<C> spec authoring + during T-Substrate-Lens-Primitive dispatch. Compiler-authored and user-authored lens kinds extend the same surface uniformly.
 
+### Q6.5 — Two-layer authority for diagnostic kinds (cross-manager protocol)
+
+**Status:** Director-authored 2026-04-29 to operationalize Q6's "extends Diagnostic.kind via lens-framework's structural inhabitance" framing. Refines Q6 by naming the cross-manager handoff explicitly.
+
+**Question Q6 left under-specified:** when an Evaluator lens-instance `validate` function needs a new diagnostic kind, who owns the addition? Substrate (closed sum at `src/v3/std/diagnostics.dag`)? Evaluator? Lens author? Q6's "lens-framework's structural inhabitance" phrase implies a mechanism but doesn't name the cross-manager surface.
+
+**Resolution: two-layer diagnostic-kind authority.** Per INVARIANTS.md §P1 substrate-fact-introduction procedure Step 3 (Primitive-vs-lens-extensible check), diagnostic kinds split into two layers:
+
+**Layer 1 — compiler-primitive diagnostic kinds.** Closed sum at `src/v3/std/diagnostics.dag` (`CompilerDiagnosticKind` + `DiagnosticKind` per `src/v3/std/verification.dag`). Owned by Substrate Manager. Variants: `TokenizerError`, `ParseError`, `TypeMismatch`, `UnitMismatch`, `ArityMismatch`, `ResolveError`, `NominalOpacityViolation` (current set). Adding a primitive kind = Substrate Manager edits the closed sum; rare, design-locked, requires SCAFFOLD-note acknowledgment of where the diagnostic surfaces.
+
+**Layer 2 — lens-instance diagnostic kinds.** Declared **per lens** in the lens's own `.dag` via the lens framework's structural inhabitance pattern. Namespace-scoped to the lens. Examples: `CapabilityViolation` lives in `Lens<TenantFlow>`'s `.dag`; `IFCDowngradeViolation` lives in `Lens<IFC>`'s `.dag`; cost-lens-specific kinds (e.g., `BoundOverflow`) live in `Lens<SymbolicCost>`'s `.dag`. **Not variants of `CompilerDiagnosticKind`** — separate authorities, lens-namespace-scoped.
+
+**Cross-manager handoff:**
+- **Adding a Layer-1 kind:** Substrate Manager authors via PR to `src/v3/std/diagnostics.dag`. Cross-program coordination only if the kind affects existing consumers (rare; primitive kinds are stable).
+- **Adding a Layer-2 kind:** lens author (Evaluator Manager for compiler-team lenses; arbitrary user for user-authored lenses) authors via PR to the lens's own `.dag`. **No Substrate Manager handoff required** — the kind is namespace-scoped to the lens.
+
+**Runtime resolution:** when running `Lens<C>.validate(dag, c) → OptionalDiagnostic`, the runtime looks up diagnostic-kind authority via: (1) primitive lookup against `CompilerDiagnosticKind` closed sum; (2) lens-namespace lookup against the lens instance's declared kinds. Union semantics: a `Diagnostic` can carry either a Layer-1 kind or a Layer-2 kind; consumers dispatch via lens-context.
+
+**Anti-bridge invariant:** lens authors MUST NOT extend `CompilerDiagnosticKind` for lens-instance kinds. Doing so would re-introduce the cross-manager handoff Q6.5 dissolves and would violate P2 single-authority (lens-instance kind authority lives in the lens, not in the substrate). The lens framework's structural inhabitance is the structural surface for Layer-2; modifying the closed sum is reserved for Layer-1 only.
+
+**Worked example: `Lens<TenantFlow>` declares `CapabilityViolation`:**
+
+```
+// dsl/std/lenses/tenant_flow.dag (or user-authored lens at any path)
+inhabits Lens<TenantFlow> {
+  diagnostic_kinds: [
+    CapabilityViolation { required: CapSet, granted: CapSet, missing: CapSet },
+    TenantBoundaryCrossed { from: TenantId, to: TenantId, declared_grants: CapSet }
+  ]
+  // ... read / sequential / branch / iterate / validate ...
+}
+```
+
+The runtime sees `Lens<TenantFlow>.validate` produce a `Diagnostic { kind: CapabilityViolation { ... }, span, ... }` — kind looks up via lens-namespace, NOT against `CompilerDiagnosticKind`. The substrate's closed sum stays untouched.
+
+**TestClaim shape (extends Q6's three claims):**
+- `lens_instance_diagnostic_kind_namespace_scoped` — verifies a lens instance's diagnostic kinds resolve via the lens's own `.dag`, NOT via `src/v3/std/diagnostics.dag` `CompilerDiagnosticKind`
+- `compiler_primitive_diagnostic_kind_closed_sum_unchanged_by_lens_instance_authoring` — verifies adding a Layer-2 kind doesn't touch `CompilerDiagnosticKind` (anti-bridge enforcement)
+- `runtime_resolves_diagnostic_kind_via_two_layer_lookup` — verifies runtime dispatch falls through Layer-1 then Layer-2 correctly when looking up a kind by name
+
+**DECISION (Director-authored 2026-04-29):** two-layer authority locked. Layer 1 = `CompilerDiagnosticKind` closed sum (Substrate-owned). Layer 2 = lens-instance kinds declared in the lens's own `.dag` via structural inhabitance (lens-author-owned, namespace-scoped). No cross-manager runtime handoff; no closed-sum churn for lens-instance authoring.
+
+**Substrate change required: NONE.** Layer 1 stays as authored. Layer 2 is operationalized via the lens framework's existing inhabitance pattern (per design-lens-framework.md §"The Lens<C> primitive"); no new substrate type.
+
+**Cascade:**
+- T-Substrate-Lens-Primitive dispatch consumes Q6.5: `Lens<C>` instance shape includes `diagnostic_kinds: List<DiagnosticKindDecl>` field via inhabitance.
+- R2-Evaluator's PR-A through PR-E consume Q6.5 unchanged: when authoring lens-instance `validate` functions, declare diagnostic kinds in the lens's `.dag`, not in Substrate's closed sum.
+- R3-T-CostLens-Composition consumes Q6.5: `Lens<SymbolicCost>` instance declares its own kinds (`BoundOverflow`, etc.) in `dsl/std/lenses/cost.dag`, namespace-scoped.
+
 ### Q7 — Error-recovery semantics for partial validate failure
 
 **Status:** REFERENCED in §"Open design questions" item 2. "Director's 'no silent fabrication' rule says report all" — but the spec doesn't actually state report-all semantics.
