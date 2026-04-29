@@ -1,0 +1,17 @@
+// std/render_repeat_string_bootstrap.dag — R1C-B bootstrap authority for `repeat_string`.
+//
+// `Dag::new()` loads only a subset of `dsl/std/*.dag` into the embedded snapshot
+// (`bootstrap_regen_fresh::std_fixtures`). Full `dsl/std/render.dag` is not in that
+// bundle; this file supplies the named `repeat_string` declaration so lowering can
+// fold literal `data …: String = repeat_string(s:, n:)` only when
+// `symbols.get("repeat_string")` resolves to this substrate decl (not a user shadow).
+//
+// Semantics of the **fold** remain aligned with `dsl/std/render.dag` `repeat_string`
+// (`lower::fold_repeat_string_semantics`); keep this declaration behaviorally in sync
+// with the full module when that lands in the bootstrap set.
+
+module std.render_repeat_string_bootstrap
+
+fn repeat_string(s: String, n: Int) -> String {
+  ""
+}
