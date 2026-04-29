@@ -278,6 +278,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    // R1 release acceptance fixture: strict PB gates 3/4 plus Director-approved
+    // R3 deferral markers for the four concession-encoded gates.
+    // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
+    // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
+    "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
     // R1C-D (PB census `.dag` `TestClaim` wrappers): runner-side receipt
     // for the six PB census gates in `tests/fixtures/r1_pb_census_gates.dag`.
     // Asserts `TestRunner` dispatches each PB census predicate to a wired
@@ -287,11 +292,6 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // shim until R1 close dissolves the wrappers (D.5 / cascade-promotion
     // 0-floor work in the Pure Bootstrap to Zero program).
     "src/v3/compiler/tests/integration/r1c_d_pb_census_gates_test.rs",
-    // R1 release acceptance fixture: strict PB gates 3/4 plus Director-approved
-    // R3 deferral markers for the four concession-encoded gates.
-    // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
-    // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
-    "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): integration-test driver
     // that splices `env!("CARGO_BIN_EXE_r1c_e_emit_gates")` into the
     // `tests/dag/r1c_e_emit_gates.template.dag` source and runs the suite

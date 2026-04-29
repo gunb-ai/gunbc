@@ -353,6 +353,7 @@ fn predicate_holds(
         "MockBackedInvariant" => runner_deferred_panic("MockBackedInvariant"),
         "LensOutputEquals" => runner_deferred_panic("LensOutputEquals"),
         "DifferentialEquals" => runner_deferred_panic("DifferentialEquals"),
+        "R3DeferredClaim" => runner_deferred_panic("R3DeferredClaim"),
         "AlgebraicLaw" => {
             let inner = match cached_compile_outcome(source, file_name) {
                 CachedCompileOutcome::Clean(dag) => dag,

@@ -216,6 +216,14 @@ fn bootstrap_loads_verification_authority_types() {
                 String::from("GeneratedFromDag"),
                 vec![String::from("authority"), String::from("generated_paths")],
             ),
+            (
+                String::from("R3DeferredClaim"),
+                vec![
+                    String::from("deferred_gate"),
+                    String::from("r3_lane"),
+                    String::from("authority_doc"),
+                ],
+            ),
         ]
     );
 }
@@ -236,6 +244,17 @@ let pred_cost_eq: TestPredicate = CostBounded("answer", Eq, 8)
 let pred_cost_above: TestPredicate = CostBounded("answer", Gt, 3)
 let pred_exec: TestPredicate = ExecuteCommand("true", empty(), 0)
 let pred_all_targets: TestPredicate = ForAllTargets("true", empty(), 0)
+type R1GateMarker {}
+type R3LaneMarker {}
+type ReleaseAuthorityDoc {}
+data deferred_gate_marker: R1GateMarker = {}
+data r3_lane_marker: R3LaneMarker = {}
+data release_authority_doc: ReleaseAuthorityDoc = {}
+let pred_r3_deferred: TestPredicate = R3DeferredClaim {
+  deferred_gate: deferred_gate_marker,
+  r3_lane: r3_lane_marker,
+  authority_doc: release_authority_doc
+}
 
 let claim_compiles: TestClaim = {
   name: "compiles",
@@ -287,6 +306,7 @@ let suite: TestSuite = {
         "pred_cost_above",
         "pred_exec",
         "pred_all_targets",
+        "pred_r3_deferred",
     ] {
         assert_eq!(bind_value_type_decl(&dag, bind), test_predicate);
     }

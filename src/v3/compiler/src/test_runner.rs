@@ -2492,13 +2492,25 @@ impl<'a> TestRunner<'a> {
             ));
         };
 
-        for (field_label, value) in [
-            ("deferred_gate", deferred_gate),
-            ("r3_lane", r3_lane),
-            ("authority_doc", authority_doc),
+        for (field_label, value, role_name) in [
+            ("deferred_gate", deferred_gate, "R1GateMarker"),
+            ("r3_lane", r3_lane, "R3LaneMarker"),
+            ("authority_doc", authority_doc, "ReleaseAuthorityDoc"),
         ] {
-            if let Err(reason) = self.resolve_declaration_ref_id(value, field_label) {
-                return ClaimResult::Fail(format!("R3DeferredClaim: {reason}"));
+            let id = match self.resolve_declaration_ref_id(value, field_label) {
+                Ok(id) => id,
+                Err(reason) => return ClaimResult::Fail(format!("R3DeferredClaim: {reason}")),
+            };
+            let decl = self.dag.declaration(id);
+            match self.decl_inhabits_named_role(decl, role_name) {
+                Ok(true) => {}
+                Ok(false) => {
+                    return ClaimResult::Fail(format!(
+                        "R3DeferredClaim `{field_label}` must reference a declaration inhabiting `{role_name}`, got `{}`",
+                        decl_display_name(id, decl)
+                    ));
+                }
+                Err(reason) => return ClaimResult::Fail(format!("R3DeferredClaim: {reason}")),
             }
         }
 
