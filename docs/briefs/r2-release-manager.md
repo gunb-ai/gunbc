@@ -23,7 +23,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 | Thesis-claim coverage mapping | `docs/r2-structure.md` Open call 1 + `docs/thesis/r2-r3-thesis-mapping.md` (LIVE post-#1078) | LANDED via #1078 — initial mapping complete; refresh as lanes close |
 | R2 closure ledger | `docs/r2-structure.md` Manager structure section 7 | LIVE on spawn (tracks lane-close green status across all 6 other managers; sub-gate progress for T-LensProducer-Retirement R3 continuation) |
 | v2 retirement coordination | `docs/r2-structure.md` Transition mechanics v2-retirement note | LIVE on spawn (post-R2 operational; tracked but not gated) |
-| **v2 release-doc-authority guardrail follow-up** *(NEW 2026-04-28)* | `docs/r2-structure.md` §v2-guardrail-requirement-3 + `scripts/check-release-doc-authority.sh` | **NOT YET AUTHORED** — narrow PR scoped to release-state.yaml + projection-checker per gpt-5-5-pro meta-review; tighten retraction-pattern foot-gun (currently exempts unrelated "retracted" prose) |
+| **v2 release-doc-authority guardrail follow-up** *(NEW 2026-04-28)* | `docs/r2-structure.md` §"v2 guardrail requirements" + `scripts/check-release-doc-authority.sh` | **NOT YET AUTHORED** — narrow PR scoped to release-state.yaml + projection-checker per gpt-5-5-pro meta-review; tighten retraction-pattern foot-gun (currently exempts unrelated "retracted" prose) |
 
 ## Owned deliverables (through R2 close)
 
@@ -68,7 +68,7 @@ Worker briefs MUST consume these without re-litigation:
 
 - **Structural-acceptance-per-lane-close discipline**: demo IS the structural gate; no separate demo authoring work. Release coordinates visibility, doesn't author gates.
 - **Manager count 7** (post-Evaluator-add): closure ledger spans 6 other managers (Substrate / Modeling / Grounding / Impossible-Bugs / Pure Bootstrap / Evaluator).
-- **R2 manager continuation pattern** (`r3-structure.md` §"R2 manager continuation"): Substrate continues with T-Int128 + T-Anthropic-Wire + T-CostLens-Composition; PB continues with T-LensProducer-Retirement + T-FixedPoint + T-Tier3-Dissolution + 3 distributed bridges; Modeling/Impossible-Bugs archive at R2 close. Closure ledger reports R3 continuation readiness.
+- **R2 manager continuation pattern** (`r3-structure.md` §"Manager structure"): Substrate continues with T-Int128 + T-Anthropic-Wire + T-CostLens-Composition; PB continues with T-LensProducer-Retirement + T-FixedPoint + T-Tier3-Dissolution + 3 distributed bridges; Modeling/Impossible-Bugs archive at R2 close. Closure ledger reports R3 continuation readiness.
 - **T-LensProducer-Retirement XL framing** (Director cascade Item 8): one program with 3 internal sub-gates; closure ledger reports sub-gate progress within the one-program lane.
 - **T-Bridge-Retirement distribution map** (Director cascade Item 4): retirement work distributed (3 PB + 2 Substrate); ledger gate centralized at Verification (R3). Closure ledger tracks distribution map progress.
 
@@ -147,6 +147,6 @@ Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 - Thesis-claim authority: `THESIS.md §"Thesis claims — complete list"` + `docs/thesis/r2-r3-thesis-mapping.md`
 - B-wave source: `docs/briefs/debt-paydown-synthesis-2026-04-25.md` §5 (B1-B7 dispatch ordering)
 - Release-doc authority guardrail: `scripts/check-release-doc-authority.sh` + `scripts/test-check-release-doc-authority.sh`
-- v2 guardrail requirements: `docs/r2-structure.md` §v2-guardrail-requirement-3
-- R2 manager continuation pattern: `docs/r3-structure.md` §"R2 manager continuation"
+- v2 guardrail requirements: `docs/r2-structure.md` §"v2 guardrail requirements"
+- R2 manager continuation pattern: `docs/r3-structure.md` §"Manager structure"
 - INVARIANTS substrate-fact-introduction procedure: `INVARIANTS.md` §P1

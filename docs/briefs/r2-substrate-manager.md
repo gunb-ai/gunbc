@@ -65,7 +65,7 @@ From [`docs/briefs/b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-s
 
 ### D. Post-R2 continuation: T-CostLens-Composition (R3 lane)
 
-**Per Director cascade Item 3 ratified 2026-04-28** ([`docs/r3-structure.md`](../r3-structure.md) §"R3 lane structure"). Substrate continues into R3 to complete the cost-algebra composition lens — the only Substrate work that survives R2 close.
+**Per Director cascade Item 3 ratified 2026-04-28** ([`docs/r3-structure.md`](../r3-structure.md) §"Lane structure"). Substrate continues into R3 to complete the cost-algebra composition lens — the only Substrate work that survives R2 close.
 
 Why Substrate-owned (not Verification-owned): T-CostLens-Composition is a **structural Lens<C> instance** producing `RealizationCost { storage: Cost<Bits>, access: Map<AlgebraOp, Cost<CPUCycles>> }` witnesses (per Q3 lock). The lens framework's structural inhabitance IS the namespacing mechanism; lens-instance authoring is substrate-completion work, not verification work. Verification Manager (R3) asserts the gate fires by construction; doesn't author the lens.
 

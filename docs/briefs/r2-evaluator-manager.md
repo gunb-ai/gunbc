@@ -5,7 +5,7 @@
 ## Orient before reading
 
 - **R2 structure authority:** [`docs/r2-structure.md`](../r2-structure.md). Names this manager one of **7** standing R2 managers (alongside Substrate, Modeling, Grounding, Impossible-Bugs, Pure Bootstrap, R2 Release; cross-program coordination via Director). Manager count rose from 6 to 7 with this lane added per #1078.
-- **Program scope source:** [`THESIS.md`](../../THESIS.md) §"Tier 3 — Verification from structure" (L4-L7 verification surface) + [`docs/r2-structure.md`](../r2-structure.md) §"Goal 7 — Evaluator XL".
+- **Program scope source:** [`THESIS.md`](../../THESIS.md) §"Tier 3 — Verification from structure" (L4-L7 verification surface) + [`docs/r2-structure.md`](../r2-structure.md) §"Evaluator Manager (added 2026-04-28 amendment)".
 - **Cross-program consumer:** **R2-Evaluator gates 7 of 10 R3 lanes** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition). The Evaluator IS the runtime that R3's consequence layer falls out from. Without it, R3 dispatchers spin.
 - **Demo coordination:** signal lane-close to R2 Release Manager (closure ledger; per the structural-acceptance-per-lane-close discipline locked in `r2-structure.md` — the demo IS the structural gate, not a separate artifact).
 - **Substrate-fact-introduction procedure** ([`INVARIANTS.md`](../../INVARIANTS.md) §P1): self-serve through the 3-step decision procedure (DAG-ancestor → coproduct-vs-coordinate → primitive-vs-lens-extensible) before escalating substrate-shape questions to Director.
@@ -147,7 +147,7 @@ Sub-lane status table refreshes here as work lands. Pre-spawn placeholder. Initi
 
 ## Cross-refs
 
-- Parent: `docs/r2-structure.md` §"Goal 7 — Evaluator XL" + §"Evaluator Manager (added 2026-04-28 as Goal 7)"
+- Parent: `docs/r2-structure.md` §"Evaluator Manager (added 2026-04-28 amendment)" (lane row in §"Manager structure" + §"Lane structure" table)
 - R3 dependent lanes: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" — 7 of 10 lanes Evaluator-gated
 - Lens framework consumer: [`docs/design-lens-framework.md`](../design-lens-framework.md) — `Lens<C>` primitive that Evaluator implements `fold_lens<C>` for
 - 8 design questions disposition: [`docs/r2-structure.md`](../r2-structure.md) §4 + [`docs/design-emission-model.md`](../design-emission-model.md) Q1-Q5 + [`docs/design-lens-framework.md`](../design-lens-framework.md) Q6-Q8

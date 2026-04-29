@@ -8,7 +8,7 @@
 - **Program scope source:** [`docs/r2-structure.md` §"Goals" item 4](../r2-structure.md) + [`THESIS.md §"Enumerable impossible-bug classes"`](../../THESIS.md) (R2+ tags authority).
 - **Cross-program coordination:** classes that surface substrate gaps escalate to Substrate Manager rather than expanding T-ImpossibleBugs scope.
 - **Demo coordination:** signal class-close to R2 Release Manager (closure ledger; per the **structural-acceptance-per-lane-close discipline** locked in `r2-structure.md` — the demo IS the structural gate, not a separate artifact).
-- **Lifecycle:** **Manager archives at R2 close** per Director cascade ratified 2026-04-28 (`r3-structure.md` §"R2 manager continuation"): "Modeling/Impossible-Bugs Managers archive at R2 close." No R3 continuation work; post-R2 emergent impossible-bug classes are absorbed by Substrate Manager continuation per closed-system principle (new classes = enumeration was wrong = substrate gap).
+- **Lifecycle:** **Manager archives at R2 close** per Director cascade ratified 2026-04-28 (`r3-structure.md` §"Manager structure"): "Modeling/Impossible-Bugs Managers archive at R2 close." No R3 continuation work; post-R2 emergent impossible-bug classes are absorbed by Substrate Manager continuation per closed-system principle (new classes = enumeration was wrong = substrate gap).
 - **Substrate-fact-introduction procedure** ([`INVARIANTS.md`](../../INVARIANTS.md) §P1): if implementation surfaces a substrate gap, self-serve through the 3-step decision procedure or signal Substrate Manager. Don't expand T-ImpossibleBugs scope to author substrate locally.
 
 ## Program scope (T-ImpossibleBugs)
@@ -89,7 +89,7 @@ Each class closes under a structural acceptance gate authored as a `.dag` `TestC
 **Design docs landed (closed in scope — next-step recommendations are authority for implementation worker briefs):**
 - `docs/briefs/t-impossiblebugs-nested-optional-flatten-design.md` (PR #798) — design + scoping closed; implementation path: substrate-constructor invariant per design doc §Director-actionable.
 - `docs/briefs/t-impossiblebugs-unhandled-diagnostic-paths-design.md` (PR #801) — design + scoping closed; implementation path: totality-by-omission per design doc §4 Director-actionable recommendation.
-- `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` (PR #808) — canonical authority; implementation path: closed-system structural derivation per design doc §Q1-Q3 + §Q6.
+- `docs/briefs/t-impossiblebugs-unenumerated-effects-design.md` (PR #808) — canonical authority; implementation path: closed-system structural derivation per design doc §Q1, §Q2, §Q3 + §Q6.
 
 **Implementation worker briefs landed on main via PR #836 merge — manager dispatches against these:**
 - [`docs/briefs/r2-impossible-bugs-nested-optional-flatten-worker.md`](r2-impossible-bugs-nested-optional-flatten-worker.md) — M; ungated per design doc (substrate-constructor invariant; cardinality bridge already past per Director audit).
@@ -125,5 +125,5 @@ Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 - Effects prereq: PR #805 (Fn→Arrow refactor)
 - Adjacent designs: PRs #798 (nested-optional), #801 (unhandled diagnostics)
 - INVARIANTS substrate-fact-introduction procedure: `INVARIANTS.md` §P1
-- R2-close archival authority: `docs/r3-structure.md` §"R2 manager continuation"
+- R2-close archival authority: `docs/r3-structure.md` §"Manager structure"
 - Thesis-claim disposition: `docs/thesis/r2-r3-thesis-mapping.md`

@@ -117,16 +117,23 @@ check_q1_file_existence() {
 }
 
 # ---------------------------------------------------------------------
-# Q2 — Cited section anchor existence (markdown form only)
+# Q2 — Cited section anchor existence (markdown links + prose §)
 # ---------------------------------------------------------------------
-# For `path#anchor` markdown links, verify the anchor matches a heading
+# Two forms covered (per gpt-5-5-pro review on 91b5274fc; deferring
+# prose form left load-bearing INVARIANTS/r2-structure/design
+# authority claims uncheckable):
+#
+# Form A — markdown `path#anchor`: verify the anchor matches a heading
 # in the target file (heading slugified to GitHub form: lowercase,
 # spaces→dashes, punctuation stripped).
 #
-# Out of scope for v1: `§"section name"` prose-form citations. They're
-# common in the briefs but parsing "what file does this prose §
-# reference" requires more context than a regex can give. v2 candidate;
-# tracked alongside Q3 status-vocabulary as the next narrowing.
+# Form B — prose `§"section name"` or `§AnchorToken`: identify the
+# cited file via the most recent markdown link / bare `.md` reference
+# on the same line, then grep -F for the section text in the target.
+# Permissive vs heading-only Form A — accepts the section text
+# appearing anywhere in the file (since prose citations may use
+# paraphrased section names) — but still catches the "section deleted"
+# class, which is the load-bearing failure mode.
 
 slugify() {
   echo "$1" \
@@ -203,6 +210,134 @@ check_q2_anchor_existence() {
       brief_violations=$((brief_violations + 1))
     fi
   done < <(grep -oE '\]\([^)#]+#[^)]+\)' "$brief" | sed -E 's/^\]\(//; s/\)$//')
+
+  return $brief_violations
+}
+
+# Resolve a bare filename like "INVARIANTS.md" or "r2-structure.md" to
+# a filesystem path by trying known authority-doc locations.
+# Returns empty string if unresolvable.
+resolve_authority_file() {
+  local name="$1"
+  local candidates=(
+    "$ROOT/$name"
+    "$ROOT/docs/$name"
+    "$ROOT/docs/thesis/$name"
+    "$ROOT/docs/briefs/$name"
+  )
+  for candidate in "${candidates[@]}"; do
+    if [ -f "$candidate" ]; then
+      echo "$candidate"
+      return
+    fi
+  done
+  echo ""
+}
+
+# Q2-prose: verify §"section" / §Anchor citations resolve in the
+# most-recently-cited file on the same line.
+check_q2_prose_section_existence() {
+  local brief="$1"
+  local brief_violations=0
+
+  # Read brief line-by-line so we can pair each § citation with the
+  # cited file from the same line.
+  while IFS= read -r line || [ -n "$line" ]; do
+    # Skip lines without § citations.
+    case "$line" in
+      *§*) ;;
+      *) continue ;;
+    esac
+
+    # Process § citations in order, advancing a running prefix so that
+    # the Nth citation's prefix is everything up to (but not including)
+    # the Nth §. Each citation pairs with the most recent markdown
+    # link or bare `.md` token in its OWN prefix, not the global
+    # before-first-§ prefix.
+    local remaining="$line"
+
+    # Find every §-citation in the line. Two forms:
+    #   §"quoted section text"
+    #   §AnchorToken (alphanumeric, hyphens, dots, no spaces — anchors,
+    #                 P1/P5/Q6 tokens, "v2-guardrail-requirement-3", etc.)
+    while IFS= read -r citation; do
+      [ -z "$citation" ] && continue
+
+      local section_text="$citation"
+      # Strip leading § and quotes.
+      section_text="${section_text#§}"
+      section_text="${section_text#\"}"
+      section_text="${section_text%\"}"
+
+      # Compute the prefix for THIS citation: everything in `remaining`
+      # before the next occurrence of this citation, then advance
+      # `remaining` past it for the next iteration.
+      local prefix="${remaining%%${citation}*}"
+      # Advance remaining past the citation.
+      remaining="${remaining#*${citation}}"
+
+      # Identify the cited file: scan the prefix backward for either:
+      #   1. A markdown link [text](path) — extract path.
+      #   2. A bare `<NAME>.md` token — try resolving via known
+      #      authority-doc locations.
+      local cited_file=""
+
+      # Try markdown link form: extract last [...](path).
+      local md_path
+      md_path="$(echo "$prefix" | grep -oE '\]\([^)]+\)' | tail -1 | sed -E 's/^\]\(//; s/\)$//')"
+      if [ -n "$md_path" ]; then
+        # Strip anchor portion if present.
+        md_path="${md_path%%#*}"
+        case "$md_path" in
+          http://*|https://*|mailto:*) md_path="" ;;
+        esac
+        if [ -n "$md_path" ]; then
+          local brief_dir
+          brief_dir="$(dirname "$brief")"
+          if [[ "$md_path" = /* ]]; then
+            cited_file="$ROOT$md_path"
+          else
+            cited_file="$brief_dir/$md_path"
+          fi
+          if command -v realpath >/dev/null 2>&1; then
+            cited_file="$(realpath -m "$cited_file" 2>/dev/null || echo "$cited_file")"
+          fi
+        fi
+      fi
+
+      # Fallback: bare `<NAME>.md` token. Look for the last
+      # whitespace-or-backtick-bounded `*.md` in the prefix.
+      if [ -z "$cited_file" ] || [ ! -f "$cited_file" ]; then
+        local bare_md
+        bare_md="$(echo "$prefix" | grep -oE '[A-Za-z][A-Za-z0-9_./-]*\.md' | tail -1)"
+        if [ -n "$bare_md" ]; then
+          # Strip leading directory if present (e.g., docs/r2-structure.md)
+          local resolved
+          resolved="$(resolve_authority_file "$(basename "$bare_md")")"
+          if [ -n "$resolved" ]; then
+            cited_file="$resolved"
+          fi
+        fi
+      fi
+
+      # If we couldn't pair the § citation with a cited file, skip
+      # silently — ambiguous prose; don't false-positive.
+      [ -z "$cited_file" ] && continue
+      [ ! -f "$cited_file" ] && continue
+
+      # Verify the section text appears in the cited file.
+      # Permissive match: grep -F (literal substring), not slug match.
+      # This catches the load-bearing class ("section deleted") while
+      # tolerating paraphrased prose citations.
+      if ! grep -F -q "$section_text" "$cited_file" 2>/dev/null; then
+        echo "VIOLATION [Q2 prose-section-existence]: $brief"
+        echo "  prose citation: §\"$section_text\""
+        echo "  resolved cited file: $cited_file"
+        echo "  section text not found in target file"
+        brief_violations=$((brief_violations + 1))
+      fi
+    done < <(echo "$line" | grep -oE '§"[^"]+"|§[A-Za-z][A-Za-z0-9._-]*[A-Za-z0-9]|§[A-Za-z]')
+  done < "$brief"
 
   return $brief_violations
 }
@@ -407,6 +542,10 @@ for brief in "${MANAGER_BRIEFS[@]}"; do
   violations=$((violations + rc))
 
   rc=0
+  check_q2_prose_section_existence "$brief" || rc=$?
+  violations=$((violations + rc))
+
+  rc=0
   check_q4_landed_pr_in_history "$brief" || rc=$?
   violations=$((violations + rc))
 done
@@ -436,6 +575,7 @@ fi
 
 echo "Manager-brief authority check passed: 7 briefs, no violations."
 echo "  Q1 (file existence): all cited paths resolve"
-echo "  Q2 (anchor existence): all path#anchor links match a heading"
+echo "  Q2 (markdown anchors): all path#anchor links match a heading"
+echo "  Q2 (prose §): all §\"section\" / §Anchor citations resolve in cited files"
 echo "  Q4 (LANDED via #N): all cited PRs reachable from branch"
 echo "  Q5 (cross-brief projection): manager/lane counts consistent"
