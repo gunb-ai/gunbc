@@ -9,8 +9,8 @@
 ## Scope (this PR-D program)
 
 1. **Harness contract (R2):** a stable, named structural gate `evaluator_cross_target_equivalence_harness_primitives_landed` so R3 Verification Manager can depend on a single fixture path without inventing parallel claim names.
-2. **Primitives, not corpus:** stub programs and `std.verification` predicates already in substrate (`Compiles`, later `DifferentialEquals` / `ForAllTargets` per existing scaffolds in `src/v3/std/verification.dag`). No curated L5 corpus rows at R2.
-3. **Algebraic equivalence framing:** L5 compares **computational results** across targets (per `r3-structure.md`), not byte identity. PR-D does not introduce new `TestPredicate` variants — substrate introduction is [`INVARIANTS.md`](../../INVARIANTS.md) §P1 / Grounding Manager if the existing envelope cannot express a needed fact.
+2. **Primitives, not corpus:** stub programs and `std.verification` `TestPredicate` variants **already declared** on substrate (`Compiles` for slice 0; **scaffold** variants `ForAllTargets` / `LensOutputEquals` / `DifferentialEquals` at `src/v3/std/verification.dag` ~L147–L181 — each marked 🟡 in-file with a dissolution comment). **Strict L5-shaped harness rows** (multi-target emit/eval parity, certification corpus) remain **ungated until §Dependencies** — this brief does not treat those receipts as grounded. No curated L5 corpus rows at R2.
+3. **Algebraic equivalence framing:** L5 compares **computational results** across targets (per `r3-structure.md`), not byte identity. PR-D does not introduce new `TestPredicate` variants — substrate introduction is [`INVARIANTS.md`](../../INVARIANTS.md) §P1 / Grounding Manager only if a **future** fact cannot be expressed even after the existing sum + runner wiring is exercised.
 
 ## Explicitly out of scope (Worker A / PR-A / PB-Runtime)
 
@@ -37,8 +37,8 @@ Until those land, **slice 0** is intentionally thin: the named `TestClaim` wires
 
 ## Next implementation slices (ordered)
 
-1. **Slice 1 — oracle stub pair:** second `TestClaim` in the same module using `DifferentialEquals` with subject/oracle both on trivial `.dag`-expressible functions (same as Lane-E pattern in `test_runner.rs`) — proves harness file is the home for differential receipts **without** multi-target emit.
-2. **Slice 2 — emit-scoped receipt:** once LanguageSpec + second Shape A target are ready, add a claim using `ForAllTargets` **only** if Director-approved for this fixture (same release-deferral discipline as other scaffold uses); otherwise keep deferral documented here and in manager brief.
+1. **Slice 1 — oracle stub pair:** second `TestClaim` in the same module using the **existing** `TestPredicate::DifferentialEquals` constructor (substrate sum at `verification.dag`; runner: Lane-E / `test_runner.rs`) with subject/oracle both on trivial `.dag`-expressible functions — proves this fixture file is the home for differential receipts **without** multi-target emit. **Does not** require new `TestPredicate` variants; blocked only if runner/regression gaps surface (then §P1), not because the constructor is absent.
+2. **Slice 2 — emit-scoped receipt:** once §Dependencies (LanguageSpec + Shape A targets) are ready, add a claim using the **existing** `TestPredicate::ForAllTargets` constructor **only** if Director-approved for this fixture (same release-deferral discipline as other scaffold uses); otherwise keep deferral documented here and in manager brief. **Does not** assert `ForAllTargets` is absent from substrate — only that **using** it for real cross-target evidence waits on emit infra + approval.
 3. **Slice 3 — R3 handoff doc:** one paragraph in Verification Manager spawn brief naming `r2_evaluator_cross_target_equivalence_harness_primitives.dag` as the structural import surface for `l5_cross_target_consistency` corpus wiring.
 
 ## Dissolution
