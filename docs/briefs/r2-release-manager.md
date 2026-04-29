@@ -22,7 +22,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 | Discipline framework central reporting | INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (c) + ROADMAP.md "Integration-reflection cadence" velocity-tripwire | LIVE on spawn (mechanism wired via PRs #810 + #812) |
 | Thesis-claim coverage mapping | `docs/r2-structure.md` Open call 1 + `docs/thesis/r2-r3-thesis-mapping.md` (LIVE post-#1078) | LANDED via #1078 — initial mapping complete; refresh as lanes close |
 | R2 closure ledger | `docs/r2-structure.md` Manager structure section 7 | LIVE on spawn (tracks lane-close green status across all 6 other managers; sub-gate progress for T-LensProducer-Retirement R3 continuation) |
-| v2 retirement coordination | `docs/r2-structure.md` Transition mechanics v2-retirement note | LIVE on spawn (post-R2 operational; tracked but not gated) |
+| v2 retirement coordination | `docs/r2-structure.md` Transition mechanics v2-retirement note | LIVE on spawn (**post-R3** operational per `docs/r2-structure.md` §"R2 Release Manager" — moved from post-R2 to post-R3 with the R3 structured-program reframe; tracked but not gated) |
 | **v2 release-doc-authority guardrail follow-up** *(NEW 2026-04-28)* | `docs/r2-structure.md` §"v2 guardrail requirements" + `scripts/check-release-doc-authority.sh` | **NOT YET AUTHORED** — narrow PR scoped to release-state.yaml + projection-checker per gpt-5-5-pro meta-review; tighten retraction-pattern foot-gun (currently exempts unrelated "retracted" prose) |
 
 ## Owned deliverables (through R2 close)
@@ -40,7 +40,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 
 7. **B1, B2, B3 Tier 0 through-merge** — coordinate worker iteration on the 3 fail-closed P3 leak fixes already in flight (#820, #817, #821). Surface STOP-AND-ESCALATE signals if workers bounce repeatedly.
 8. **R2 demo coordination** — surface "it runs" artifacts at each lane close per **structural-acceptance-per-lane-close discipline** (the demo IS the structural gate; no separate authoring).
-9. **Closure ledger** — track lane-close green status across all 6 other managers; surface unblocked work to idle workers; coordinate v2 retirement post-R2; track sub-gate progress for T-LensProducer-Retirement R3 continuation per Director directive.
+9. **Closure ledger** — track lane-close green status across all 6 other managers; surface unblocked work to idle workers; coordinate v2 retirement post-R3 (per `docs/r2-structure.md` §"R2 Release Manager" — v2 retirement moved from post-R2 to post-R3 with the R3 structured-program reframe); track sub-gate progress for T-LensProducer-Retirement R3 continuation per Director directive. **Live artifact: [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md)** — also carries the signal-receiver protocol (cross-manager queue channel; what counts as a receipt; cadence touchpoints with velocity-tripwire reporting).
 10. **Velocity-tripwire reporting** — each integration-reflection cadence pass, report introduction:dissolution PR ratio across all manager-authored work; surface ≥3:1 readings to Director per INVARIANTS.md §P5 (c). Manual sweep for dissolution-bearing feature PRs first per calibration caveat.
 11. **Substrate Manager bottleneck watch** — per `docs/r2-structure.md` watch condition: if Substrate becomes the new bottleneck (workers idle >7 days waiting for Substrate-authored briefs), surface to Director and recommend B4 split into dedicated B4 Identity-Carrier Manager.
 
@@ -96,7 +96,7 @@ Worker briefs MUST consume these without re-litigation:
 
 Release Manager doesn't author lane-level structural gates (those belong to lane-owning managers per the structural-acceptance-per-lane-close discipline). Release Manager's own acceptance:
 
-- `r2_closure_ledger_landed` — closure ledger document tracking all 6 other managers' green-status / sub-gate-progress (post-spawn standing artifact)
+- `r2_closure_ledger_landed` — closure ledger document tracking all 6 other managers' green-status / sub-gate-progress (post-spawn standing artifact). **Satisfied by [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md)** (LIVE; carries per-manager rows, T-LensProducer-Retirement 3-sub-gate decomposition, reserved R1-residual incoming surface, and the signal-receiver protocol).
 - `velocity_tripwire_reporting_landed` — introduction:dissolution PR ratio surfaced to Director on integration-reflection cadence; ≥3:1 fires alert
 - `thesis_claim_coverage_mapping_refresh_landed` — `docs/thesis/r2-r3-thesis-mapping.md` refreshed as lanes close; per-claim disposition tracked
 - `release_doc_authority_v2_guardrail_landed` — structured release-state.yaml + projection-checker; foot-gun pinned-limitation test flips to contract assertion
