@@ -36,6 +36,19 @@ The migration is **not** a re-pick. The carrier shape is locked; this is consume
 
    Each trigger references the upstream substrate work that lands the type-system fact (cardinality refinement; typed cost; HOC parameter shape). When all three trigger conditions fire, `MethodContract` retires. **Acceptance:** ROADMAP rows authored; dissolution triggers cite specific upstream lanes / proposals where named (or "post-R2 capability lane TBD" for the un-named).
 
+## Inventory receipt (HEAD `main` post-#1208; post-#1175 template vs `MethodContract` discipline)
+
+**Audit method:** Read `src/v3/lenses/cost.dag` + `src/v3/lenses/complexity.dag` end-to-end; search for `size_effect`, `cost_shape`, `callback_element_position`, `MethodContract`, and `*_templates(` / template-table access patterns named in requirement 1.
+
+| Consumer file | Reads of `size_effect` / `cost_shape` / `callback_element_position` from `*_templates()`-style lookup in `dsl/std/algebra.dag` | Notes |
+|---|---|---|
+| `src/v3/lenses/complexity.dag` | **None (0 sites).** | Structural integer-depth lens only; no `std.algebra` method-template metadata path. |
+| `src/v3/lenses/cost.dag` | **None (0 sites).** | §6a **demo** accessor only: `method_contract_cost_shape(contract: MethodContract) -> CostShape? = contract.cost_shape` — reads `cost_shape` off the **unified carrier** (`src/v3/std/algebra.dag` `MethodContract`), not off `dsl/std/algebra.dag` template tables. |
+
+**Implication for requirement 2:** There is **nothing to mechanically replace** in these two files today: no lens-local `*_templates()` reads of the three fields exist here. **Live call-site** `MethodContract` lookup through `Transform` / call-pattern lowering (when cost analysis needs per-method facts on real call edges) remains **future wiring**, not a table-to-carrier rename inside current `.dag` bodies.
+
+**Implication for requirement 3:** ROADMAP dissolution-trigger rows are still **required** by this brief (PR-3 / follow-up); they are **not** implied complete by an empty migration surface in the two lens files.
+
 ## Slice — inventory → migrate → track
 
 1. Read `cost.dag` + `complexity.dag` end-to-end; inventory consumption sites for the three carrier fields.
