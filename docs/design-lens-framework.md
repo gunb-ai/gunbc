@@ -481,7 +481,9 @@ Director's framing refinements:
 
 **Runtime resolution:** when running `Lens<C>.validate(dag, c) → OptionalDiagnostic`, the runtime looks up diagnostic-kind authority via: (1) primitive lookup against `CompilerDiagnosticKind` closed sum; (2) lens-namespace lookup against the lens instance's declared kinds. Union semantics: a `Diagnostic` can carry either a Layer-1 kind or a Layer-2 kind; consumers dispatch via lens-context.
 
-**Anti-bridge invariant:** lens authors MUST NOT extend `CompilerDiagnosticKind` for lens-instance kinds. Doing so would re-introduce the cross-manager handoff Q6.5 dissolves and would violate P2 single-authority (lens-instance kind authority lives in the lens, not in the substrate). The lens framework's structural inhabitance is the structural surface for Layer-2; modifying the closed sum is reserved for Layer-1 only.
+**Anti-bridge invariant:** lens authors MUST NOT extend `CompilerDiagnosticKind` for lens-instance kinds. Doing so would re-introduce the cross-manager handoff Q6.5 dissolves and would violate P2 single-authority (lens-instance kind authority lives in the lens, not in the substrate). The lens framework's structural inhabitance is the structural surface for Layer-2; modifying the closed sum is reserved for Layer-1 only. (Per `feedback_groundedness_gates_lenses.md`: language vocabulary is primitives + namespacing; the lens framework's inhabitance IS the namespacing for Layer-2.) Dynamic resolution by string interning is rejected per `feedback_opaque_strings_attract_heuristics.md`.
+
+**Name-collision protocol (anti-shadowing):** a Layer-2 lens-instance kind MUST NOT reuse a Layer-1 `CompilerDiagnosticKind` variant name. A lens declaring `TypeMismatch` (Layer-1 variant) is a **compile error**, not silent shadowing. Structural separation between layers requires distinct namespaces; reuse defeats the layer separation by allowing a lens-namespace lookup to mask a substrate-primitive concern. Lens authors are structurally constrained to non-overlapping names; collision detection lives at the lens-framework's substrate-fact-introduction step (per INVARIANTS.md §P1 Step 3 — name uniqueness across both layers is verifiable structurally).
 
 **Worked example: `Lens<TenantFlow>` declares `CapabilityViolation`:**
 
@@ -505,12 +507,40 @@ The runtime sees `Lens<TenantFlow>.validate` produce a `Diagnostic { kind: Capab
 
 **DECISION (Director-authored 2026-04-29):** two-layer authority locked. Layer 1 = `CompilerDiagnosticKind` closed sum (Substrate-owned). Layer 2 = lens-instance kinds declared in the lens's own `.dag` via structural inhabitance (lens-author-owned, namespace-scoped). No cross-manager runtime handoff; no closed-sum churn for lens-instance authoring.
 
-**Substrate change required: NONE.** Layer 1 stays as authored. Layer 2 is operationalized via the lens framework's existing inhabitance pattern (per design-lens-framework.md §"The Lens<C> primitive"); no new substrate type.
+**Substrate change required: minimal additive widening of `Diagnostic.kind` to accept the two-layer parent; `CompilerDiagnosticKind` (Layer 1) closed sum stays untouched.** Concretely, `src/v3/compiler/src/diagnostics.dag:Diagnostic.kind` is currently strictly typed `kind: CompilerDiagnosticKind` (closed sum, Layer 1 only). To carry Layer-2 lens-instance kinds in the same `Diagnostic` value (which is what `Lens<C>.validate → OptionalDiagnostic` produces per `dimensions.dag:41-43`), the field type widens additively:
+
+```
+type AnyDiagnosticKind
+  = CompilerKind(CompilerDiagnosticKind)              // Layer 1: substrate-owned closed sum (UNCHANGED)
+  | LensInstanceKind(LensRef, KindName, KindPayload)  // Layer 2: lens-namespace-scoped
+
+type Diagnostic {
+  kind: AnyDiagnosticKind   // widened from CompilerDiagnosticKind to AnyDiagnosticKind
+  span: SourceSpan
+  message: String
+  fixes: List<Correction>
+}
+```
+
+The widening is ~5-10 lines in `diagnostics.dag`; `CompilerDiagnosticKind`'s closed sum stays as-is (Layer 1 unchanged). The anti-bridge invariant is preserved because Layer-2 kinds enter via `LensInstanceKind` constructor with structural `LensRef` + `KindName` + `KindPayload`, not by extending `CompilerDiagnosticKind`. Rejected alternative: lens-instance validates returning a different carrier (breaks `OptionalDiagnostic` shape and lens framework spec).
+
+`DiagnosticKindDecl` (lens-instance kind declaration shape) is defined as:
+
+```
+// Layer 2 lens-instance kind declaration shape (declared via lens framework's structural inhabitance)
+type DiagnosticKindDecl {
+  name: KindName        // kind name; MUST NOT collide with Layer-1 CompilerDiagnosticKind variant names per anti-shadowing protocol above
+  payload: TypeShape    // payload type for this kind (e.g., `{ required: CapSet, granted: CapSet, missing: CapSet }`)
+  lens_instance: LensRef  // the Lens<C> instance that owns this kind
+}
+```
+
+**Note on existing SCAFFOLD:** `src/v3/std/verification.dag:49-62` has a 🟡 SCAFFOLD `DiagnosticKind` that mirrors `CompilerDiagnosticKind` for verification-runner consumption. That SCAFFOLD's dissolution trigger (per its own comment: "replace this mirror with typed references once substrate diagnostics are surfaced as declaration-shaped facts") is **separate** from Q6.5 — it tracks Layer-1 mirror retirement, not Layer-2 carrier authoring. Q6.5's `AnyDiagnosticKind` widening doesn't affect that SCAFFOLD's dissolution path.
 
 **Cascade:**
-- T-Substrate-Lens-Primitive dispatch consumes Q6.5: `Lens<C>` instance shape includes `diagnostic_kinds: List<DiagnosticKindDecl>` field via inhabitance.
-- R2-Evaluator's PR-A through PR-E consume Q6.5 unchanged: when authoring lens-instance `validate` functions, declare diagnostic kinds in the lens's `.dag`, not in Substrate's closed sum.
-- R3-T-CostLens-Composition consumes Q6.5: `Lens<SymbolicCost>` instance declares its own kinds (`BoundOverflow`, etc.) in `dsl/std/lenses/cost.dag`, namespace-scoped.
+- T-Substrate-Lens-Primitive dispatch consumes Q6.5: `Lens<C>` instance shape includes `diagnostic_kinds: List<DiagnosticKindDecl>` field via inhabitance + `Diagnostic.kind` widening lands as part of substrate authoring.
+- R2-Evaluator's PR-A through PR-E consume Q6.5 unchanged: when authoring lens-instance `validate` functions, declare diagnostic kinds in the lens's `.dag`, not in Substrate's closed sum. Validate result populates `LensInstanceKind` constructor, not `CompilerKind`.
+- R3-T-CostLens-Composition consumes Q6.5: `Lens<SymbolicCost>` instance declares its own kinds (`BoundOverflow`, etc.) in `dsl/std/lenses/cost.dag`, namespace-scoped via `DiagnosticKindDecl`.
 
 ### Q7 — Error-recovery semantics for partial validate failure
 
