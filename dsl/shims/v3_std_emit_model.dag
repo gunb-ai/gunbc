@@ -4,6 +4,12 @@
 // only `--source-root dsl`, so imports from `dsl/extdeps/languages/*/method_template_contracts.dag`
 // cannot see src/v3. This file repeats the **nominal** exports those stubs need so the v2
 // interpreter can validate the extdeps graph; keep field shapes aligned with the substrate type.
+//
+// **Dissolution trigger:** delete this shim when `run_ci_pipeline` (or equivalent v2 `dag run`
+// entry used in CI) passes `--source-root` such that `src/v3/std/emit_model.dag` is indexed and
+// `module v3.std.emit_model` resolves there **without** introducing a duplicate-module conflict in
+// v3 bootstrap — e.g. CI adds `src/v3/std` as a second root with v3 loader semantics unchanged, or
+// v2 gains first-class multi-root resolution for `v3.std.*` from `dsl/` alone.
 
 module v3.std.emit_model
 
