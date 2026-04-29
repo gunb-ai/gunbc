@@ -11,6 +11,18 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BindingId(pub u32);
 
+/// Structural classification of the binding’s type for encoding / algebra facts.
+///
+/// Extraction must set this from reflection; **no silent default** to UTF-8 when
+/// the algebra is unknown — the fold fails closed on the encoding axis instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProgramTypeFamily {
+    /// R2 Examples 3–4: `.dag` `String` / UTF-8 `FreeMonoid<Char>`.
+    FreeMonoidCharUtf8,
+    /// Lowering has not yet classified this binding’s algebra for encoding.
+    Unclassified,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BindingRole {
     /// (a) Top-level `data` binding at module scope — Example 3 `name`.
@@ -51,6 +63,19 @@ pub struct BindingDef {
     pub name: String,
     pub role: BindingRole,
     pub uses: Vec<UseSite>,
+    pub type_family: ProgramTypeFamily,
+}
+
+impl BindingDef {
+    /// Well-formed R2 string examples (`FreeMonoid<Char>` UTF-8 is structurally known).
+    pub fn r2_string_binding(name: impl Into<String>, role: BindingRole, uses: Vec<UseSite>) -> Self {
+        Self {
+            name: name.into(),
+            role,
+            uses,
+            type_family: ProgramTypeFamily::FreeMonoidCharUtf8,
+        }
+    }
 }
 
 /// R3 constructs rejected at the analyzer boundary (`design-emission-model.md:635`).
@@ -80,11 +105,7 @@ impl LifetimeProgram {
         let mut bindings = BTreeMap::new();
         bindings.insert(
             BindingId(0),
-            BindingDef {
-                name: "name".to_string(),
-                role: BindingRole::TopLevelData,
-                uses: vec![],
-            },
+            BindingDef::r2_string_binding("name", BindingRole::TopLevelData, vec![]),
         );
         Self {
             bindings,
@@ -97,16 +118,16 @@ impl LifetimeProgram {
         let mut bindings = BTreeMap::new();
         bindings.insert(
             BindingId(0),
-            BindingDef {
-                name: "n".to_string(),
-                role: BindingRole::FunctionParameter {
+            BindingDef::r2_string_binding(
+                "n",
+                BindingRole::FunctionParameter {
                     function: "greet".to_string(),
                 },
-                uses: vec![UseSite {
+                vec![UseSite {
                     kind: UseKind::Transient,
                     site_label: "greet.body.transient".to_string(),
                 }],
-            },
+            ),
         );
         Self {
             bindings,
@@ -119,16 +140,16 @@ impl LifetimeProgram {
         let mut bindings = BTreeMap::new();
         bindings.insert(
             BindingId(0),
-            BindingDef {
-                name: "n".to_string(),
-                role: BindingRole::FunctionParameter {
+            BindingDef::r2_string_binding(
+                "n",
+                BindingRole::FunctionParameter {
                     function: "greet".to_string(),
                 },
-                uses: vec![UseSite {
+                vec![UseSite {
                     kind: UseKind::StoreOrEscape,
                     site_label: "greet.body.store".to_string(),
                 }],
-            },
+            ),
         );
         Self {
             bindings,
@@ -140,13 +161,13 @@ impl LifetimeProgram {
         let mut bindings = BTreeMap::new();
         bindings.insert(
             BindingId(0),
-            BindingDef {
-                name: "ret".to_string(),
-                role: BindingRole::FunctionReturn {
+            BindingDef::r2_string_binding(
+                "ret",
+                BindingRole::FunctionReturn {
                     function: "greet".to_string(),
                 },
-                uses: vec![],
-            },
+                vec![],
+            ),
         );
         Self {
             bindings,
@@ -158,12 +179,12 @@ impl LifetimeProgram {
         let mut bindings = BTreeMap::new();
         bindings.insert(
             BindingId(0),
-            BindingDef {
-                name: "x".to_string(),
-                role: BindingRole::FunctionParameter {
+            BindingDef::r2_string_binding(
+                "x",
+                BindingRole::FunctionParameter {
                     function: "f".to_string(),
                 },
-                uses: vec![
+                vec![
                     UseSite {
                         kind: UseKind::BorrowExclusive,
                         site_label: "f.use.borrow".to_string(),
@@ -173,7 +194,7 @@ impl LifetimeProgram {
                         site_label: "f.use.escape".to_string(),
                     },
                 ],
-            },
+            ),
         );
         Self {
             bindings,
@@ -186,14 +207,14 @@ impl LifetimeProgram {
         let mut bindings = BTreeMap::new();
         bindings.insert(
             BindingId(0),
-            BindingDef {
-                name: "mystery".to_string(),
-                role: BindingRole::TopLevelData,
-                uses: vec![UseSite {
+            BindingDef::r2_string_binding(
+                "mystery",
+                BindingRole::TopLevelData,
+                vec![UseSite {
                     kind: UseKind::IndeterminateGrowability,
                     site_label: "opaque.call".to_string(),
                 }],
-            },
+            ),
         );
         Self {
             bindings,

@@ -5,11 +5,15 @@ use std::collections::BTreeMap;
 use crate::axes::LanguageSpecAxes;
 use crate::diagnostic::{EmissionDiagnostic, SiteRef};
 use crate::facts::{Encoding, Growability, LifetimeFacts, LifetimeScope, Ownership};
-use crate::program::{BindingDef, BindingId, BindingRole, LifetimeProgram, R3Construct, UseKind};
+use crate::program::{BindingDef, BindingId, BindingRole, LifetimeProgram, ProgramTypeFamily, R3Construct, UseKind};
 
-fn encoding_for_binding(_binding: &BindingDef) -> Encoding {
-    // R2 Examples 3–4: `.dag` String is UTF-8 `FreeMonoid<Char>`.
-    Encoding::Utf8FreeMonoidChar
+fn encoding_for_binding(binding: &BindingDef) -> Result<Encoding, EmissionDiagnostic> {
+    match binding.type_family {
+        crate::program::ProgramTypeFamily::FreeMonoidCharUtf8 => Ok(Encoding::Utf8FreeMonoidChar),
+        crate::program::ProgramTypeFamily::Unclassified => Err(EmissionDiagnostic::UnderRefined {
+            axis: "encoding".to_string(),
+        }),
+    }
 }
 
 fn ownership_lifetime_growable_for(
@@ -138,7 +142,7 @@ pub fn analyze_lifetime_program(
 
     let mut out = BTreeMap::new();
     for (&id, binding) in &program.bindings {
-        let encoding = encoding_for_binding(binding);
+        let encoding = encoding_for_binding(binding)?;
         let (ownership, lifetime, growable) = ownership_lifetime_growable_for(binding, axes)?;
         out.insert(
             id,

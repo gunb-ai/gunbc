@@ -15,8 +15,11 @@
 //! **Step 2 (Coproduct-vs-coordinate):** `LifetimeFacts` is a **record**
 //! (four axes are coordinates, all required per binding). Each axis field
 //! is a **sum** (`Ownership`, `LifetimeScope`, `Growability`, `Encoding`):
-//! one alternative at a time per axis — matches the design doc’s per-axis
-//! enumerations at `design-emission-model.md:534-546`.
+//! one alternative at a time per axis. The **target** substrate rows at
+//! `design-emission-model.md:534-546` name additional alternatives (`Conditional`,
+//! `Source`, …) on the inhabitance side; this **program** carrier only carries
+//! variants the R2 fold can emit today (`Owned` / `Borrowed`; `Self_` / `Caller`)
+//! so the sum stays aligned with production paths (CODING.md — no inert arms).
 //!
 //! **Step 3 (Primitive-vs-lens-extensible):** `Ownership`, `LifetimeScope`,
 //! and `Growability` are substrate-primitive axes (every Shape-A target
@@ -30,7 +33,6 @@
 pub enum Ownership {
     Owned,
     Borrowed,
-    Conditional,
 }
 
 /// Lexical / call structural lifetime scope for the value (R2).
@@ -40,9 +42,6 @@ pub enum LifetimeScope {
     Self_,
     /// Function parameter bounded by the caller’s frame.
     Caller,
-    /// Borrow tied to a source binding (R2 uses this for slice-like facts when needed).
-    Source,
-    Conditional,
 }
 
 /// Whether a growable container is required (R2 structural use scan).
