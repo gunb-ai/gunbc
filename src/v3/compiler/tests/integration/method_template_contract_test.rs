@@ -9,7 +9,8 @@
 //! Three claims per Director dispatch:
 //! - `method_template_contract_distinct_from_method_contract`
 //! - `method_template_contract_per_target_dag_method_unique`
-//!   (vacuous today over zero rows; load-bearing once Grounding populates)
+//!   (pending until Grounding lands target row-list authorities after the
+//!   Substrate method registry)
 //! - `method_template_contract_does_not_carry_cost_data`
 
 use std::collections::HashSet;
@@ -139,21 +140,17 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
 
 #[test]
 fn method_template_contract_per_target_dag_method_unique() {
-    // Phase 1 (T-Ground-LanguageSpec scope E): per-target list declarations
-    // landed as empty `List<MethodTemplateContract>` scaffolds via
-    // `dsl/extdeps/languages/{rust,python,go}/method_template_contracts.dag`,
-    // wired into the bootstrap fixture set. Row population is gated on
-    // Substrate's method-decl registry (per `emit_model.dag:362-364`); the
-    // uniqueness walk runs vacuously over zero rows today and becomes
-    // load-bearing once rows reference real method declarations.
+    // The uniqueness walker is intentionally present, but no target row-list
+    // authorities are loaded yet. Empty `dsl/extdeps/.../method_template_contracts.dag`
+    // scaffolds imported `v3.std.emit_model` from the shared extdeps tree and
+    // polluted the v2 loader; Grounding row-list authorities land after the
+    // Substrate method-declaration registry gives `dag_method` real targets.
+    // Until then this loop is a zero-authority placeholder, not a fake empty
+    // fixture.
     let dag = generated_full_bootstrap_dag();
     for list_name in EXPECTED_PER_TARGET_LISTS {
         assert_per_target_list_dag_method_unique(&dag, list_name);
     }
 }
 
-const EXPECTED_PER_TARGET_LISTS: &[&str] = &[
-    "rust_method_template_contracts",
-    "python_method_template_contracts",
-    "go_method_template_contracts",
-];
+const EXPECTED_PER_TARGET_LISTS: &[&str] = &[];
