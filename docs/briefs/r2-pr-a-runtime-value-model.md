@@ -57,6 +57,10 @@ type EvalStrategy
 
 type InputEvaluationOrder
   = LeftFirst
+
+type EvalStateKey {
+  state: EvalStateStack
+}
 ```
 
 `EvalThunk` is not required for an eager-only first evaluator, but the carrier is the right lazy boundary if the evaluator chooses normal-order evaluation for a call or branch edge. A thunk captures state because evaluating a delayed node must use the lexical environment at thunk creation, not the caller's later frame stack.
@@ -84,12 +88,12 @@ Memoization is evaluator-owned state, not an observable value. The safe key shap
 type EvalMemoKey {
   program: DeclarationId
   node: NodeId
-  state_fingerprint: String
+  state_key: EvalStateKey
   strategy: EvalStrategy
 }
 ```
 
-`strategy` is a closed carrier, not a string label. PR-A.3 may add variants only when it also defines their evaluation rule and TC2 comparison obligation. `state_fingerprint` is a structural digest of the reachable `EvalStateStack` values for the node. It must not be name-only; two calls to the same node with different bindings are distinct. Memo entries cache `Value` results only after the evaluation completes successfully. Diagnostics and partial results are not cached as values.
+`strategy` is a closed carrier, not a string label. PR-A.3 may add variants only when it also defines their evaluation rule and TC2 comparison obligation. `state_key` is the structural reachable `EvalStateStack` identity for the node, not a string digest or name-only proxy; two calls to the same node with different bindings are distinct. PR-A.3 may replace `EvalStateKey { state: EvalStateStack }` with a digest carrier only if that carrier's construction and equality are the single declared authority over reachable-state identity. Memo entries cache `Value` results only after the evaluation completes successfully. Diagnostics and partial results are not cached as values.
 
 ## Acceptance Gates
 

@@ -10,7 +10,7 @@ module std.tc2_evaluation_order_independence_deferred
 
 import std.verification { Compiles, TestClaim, TestSuite }
 
-// Gates on PB-Runtime spec landing (#1176 in review) + T-Substrate-Lens-Primitive landing (R2 Substrate cadence).
+// Gates on PB-Runtime spec landing (#1176 landed) + T-Substrate-Lens-Primitive landing (R2 Substrate cadence).
 // Evaluation-order strategies enumerated per docs/design-pb-runtime-interpreter.md §3.
 // TC2 — For any program + Lens<C>, two valid evaluation strategies
 // (applicative-order vs normal-order; left-first vs right-first
