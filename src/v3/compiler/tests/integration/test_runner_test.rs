@@ -862,3 +862,8 @@ fn test_runner_runs_sub_type_alias_where_lowers_gate() {
 fn test_runner_runs_p0_repeat_string_correct_gate() {
     crate::common::assert_p0_repeat_string_correct_gate_passes();
 }
+
+#[test]
+fn test_runner_runs_p0_host_sentinel_and_rest_gate() {
+    crate::common::assert_p0_host_sentinel_and_rest_gate_passes();
+}

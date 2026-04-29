@@ -24,8 +24,8 @@ def main() -> int:
     if "/issues/" not in chunk:
         print("CreateComment chunk missing /issues/ path segment", file=sys.stderr)
         return 1
-    if "{issue_number}" not in chunk:
-        print("CreateComment chunk missing {issue_number} path param", file=sys.stderr)
+    if "issue_number" not in chunk:
+        print("CreateComment chunk missing issue_number path param", file=sys.stderr)
         return 1
     return 0
 

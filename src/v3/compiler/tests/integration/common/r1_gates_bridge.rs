@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
 use v3_compiler::{compile_to_dag, CompileError};
 
-fn load_r1_gates_dag() -> v3_compiler::dag::Dag {
+fn load_r1_gates_dag() -> v3_compiler::Dag {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let gate_path = manifest_dir.join("tests/fixtures/r1_gates.dag");
     let gate_source = std::fs::read_to_string(&gate_path)
