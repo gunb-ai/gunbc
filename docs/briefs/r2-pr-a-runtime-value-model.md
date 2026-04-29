@@ -15,7 +15,7 @@ R2-Evaluator's runtime-value model has two layers:
    - `NodeRef(NodeId)`
    - `CardinalityValue(LoopBound)`
 2. **Evaluator-internal state:** structural carriers that guide evaluation but are not `Value` inhabitants:
-   - `EvalFrame` maps `PortId` to `Value` for one binding scope.
+   - `EvalFrame` is a finite partial function from `PortId` to `Value` for one binding scope.
    - `EvalStateStack` is a stack of `EvalFrame`s for nested calls, branch bindings, and loop iterations.
    - `EvalThunk` is the optional lazy boundary carrier: an unevaluated `NodeId` plus an `EvalStateStack` snapshot, memoized by evaluator-owned state.
 
@@ -26,25 +26,20 @@ Closed-over environments therefore live in evaluator state, not in observable `V
 The first implementation slice should add a runtime module under the v3 std/runtime surface once that directory is introduced by the Evaluator or PB-Runtime lane. Suggested `.dag` declarations:
 
 ```dag
-type NamedRuntimeField {
+type NamedField {
   label: String
   value: Value
 }
 
 type Value
   = LiteralValue(LiteralBits)
-  | RecordValue(List<NamedRuntimeField>)
+  | RecordValue(List<NamedField>)
   | VariantValue { tag: DeclarationId, payload: Value }
   | NodeRef(NodeId)
   | CardinalityValue(LoopBound)
 
-type EvalBinding {
-  port: PortId
-  value: Value
-}
-
 type EvalFrame {
-  bindings: List<EvalBinding>
+  bindings: Map<PortId, Value>
 }
 
 type EvalStateStack {
@@ -58,6 +53,8 @@ type EvalThunk {
 ```
 
 `EvalThunk` is not required for an eager-only first evaluator, but the carrier is the right lazy boundary if the evaluator chooses normal-order evaluation for a call or branch edge. A thunk captures state because evaluating a delayed node must use the lexical environment at thunk creation, not the caller's later frame stack.
+
+`NamedField` is the `RecordValue` field carrier named by `docs/design-pb-runtime-interpreter.md` §3.2. PR-A.1 must not introduce a second `NamedRuntimeField` authority unless it simultaneously amends the PB-Runtime design lock. `EvalFrame.bindings` uses `Map<PortId, Value>` because maps are finite partial functions: duplicate binding for one `PortId` is unrepresentable at the carrier boundary. If `Map<K, V>` is not yet available in the v3 runtime module when PR-A.2 lands, PR-A.2 must either port the existing `Map = PartialFunction` authority or add a fail-closed unique-binding carrier before mirroring evaluator state; it must not fall back to a duplicate-admitting `List<EvalBinding>`.
 
 No `ClosureValue` variant should be added in R2. The live substrate has `TransformTarget::Callable(DeclarationId)` and `ArrowBody::UserDefined(NodeId)`, so callable identity is declaration/node identity plus the active frame stack at call time. First-class closures with captured environments are not expressible today; adding them would be a new substrate fact and must go through `INVARIANTS.md` §P1 with the Substrate Manager.
 
@@ -110,8 +107,8 @@ Before body evaluation or reflection-projection consumes runtime values:
 
 PR-A.0 is design + structural gates only. It is not the runtime carrier implementation.
 
-- **PR-A.1:** declare the observable `Value` surface in the runtime module, matching `docs/design-pb-runtime-interpreter.md` §3.2 exactly.
-- **PR-A.2:** declare and mirror evaluator-internal `EvalFrame` / `EvalStateStack` carriers; wire closed-over environment lookup without adding `Value` variants.
+- **PR-A.1:** declare the observable `Value` surface in the runtime module, matching `docs/design-pb-runtime-interpreter.md` §3.2 exactly, including the `NamedField` record payload carrier.
+- **PR-A.2:** declare and mirror evaluator-internal `EvalFrame` / `EvalStateStack` carriers; wire closed-over environment lookup without adding `Value` variants and without duplicate-admitting frame bindings.
 - **PR-A.3:** lock the executable strategy and memoization boundary (`EvalThunk` if lazy boundaries are enabled; eager baseline first).
 - **PR-B / body evaluator:** implement body execution only after PR-A.1 through PR-A.3 provide the carrier substrate.
 
