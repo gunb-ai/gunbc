@@ -25,18 +25,21 @@
   / runtime-value substrate). PR-E cites those docs and leaves explicit
   dependencies.
 - [`src/v3/compiler/src/lens_apply.rs`](../../src/v3/compiler/src/lens_apply.rs)
-  — `reflect_program_dag_nodes_in_file`, `apply_lens_declaration`, stub
-  `fold_lens_over_reflected_program`.
+  — `reflect_program_dag_nodes_in_file`, `apply_lens_declaration`,
+  `fold_lens_over_reflected_program` (reflect + apply slice).
 - [`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag),
   [`src/v3/std/dimensions.dag`](../../src/v3/std/dimensions.dag) — reflected
   carriers and `DimensionReport` / `Witness` authority.
 
 ## Scope (this PR / slice)
 
-1. **Plumbing API (fail-closed):** `fold_lens_over_reflected_program` in
-   `lens_apply.rs` is the single seam for “lens over reflected program DAG”.
-   Until the fold is implemented, it returns **`LensApplyError::UnimplementedLensFold`**
-   (typed, no fabricated `DimensionReport`).
+1. **Plumbing API:** `fold_lens_over_reflected_program` in `lens_apply.rs` is the single seam for
+   “lens over reflected program DAG”. **Slice 1 (landed):** it runs
+   `reflect_program_dag_nodes_in_file` then [`apply_lens_declaration`], passing the reflected
+   carrier as the lens’s **first** argument (additional `inputs` follow). Arity must match
+   `1 + inputs.len()` lens formals. Fail-closed errors come from reflection / `apply_lens_declaration`
+   (no fabricated `DimensionReport`). [`LensApplyError::UnimplementedLensFold`] remains reserved
+   for future fold-driver paths not delegated here.
 2. **Documentation:** this brief + `r2-evaluator-manager.md` cross-refs so
    dispatch (#1131) and reviewers share one target.
 3. **No** new hand-authored `src/v3/compiler/src/*.rs` files (SG-0); extend
@@ -61,12 +64,12 @@ as reflection), **`id_space`** `Dag` for `List` / `Behavior` constructor ids
 
 1. `reflect_program_dag_nodes_in_file(program, source_file, id_space)?` →
    substrate-shaped `FieldValue` (today: `Record { nodes: List<Behavior> }`).
-2. Interpret / walk the lens arrow body over that carrier (eventually: same
-   authority as `apply_lens_declaration` but with program-shaped input, or a
-   shared walker once PB-Runtime owns the body).
-3. Emit `FieldValue` / structured diagnostics per `Lens<C>` / framework rules.
-
-Until step 2 exists, the public entry point **must** fail closed (current stub).
+2. Interpret / walk the lens arrow body over that carrier via
+   [`apply_lens_declaration`] (slice 1: reflected value is the first argument; same bounded
+   interpreter as manual `reflect` → `apply` tests). Later slices may introduce a dedicated fold
+   driver / `DimensionReport` path without changing the reflection contract.
+3. Emit `FieldValue` / structured diagnostics per `Lens<C>` / framework rules (today: whatever
+   `apply_lens_declaration` returns).
 
 ## Acceptance hook — `evaluator_lens_application_complete_reflection`
 
@@ -94,7 +97,7 @@ This PR only **names** that path so the gate is not orphaned in prose.
 
 ## Dissolution / debt
 
-When `fold_lens_over_reflected_program` is fully implemented and the `.dag`
-claim is green, remove the stub error variant or narrow it to truly unreachable
-internal states; update this brief status to **LANDED** and wire the gate into
-the closure ledger.
+When `fold_lens_over_reflected_program` carries a full `Lens<C>` / `DimensionReport` driver and
+the `.dag` claim is green, remove or narrow [`LensApplyError::UnimplementedLensFold`] to truly
+unreachable internal states; update this brief status to **LANDED** and wire the gate into the
+closure ledger.

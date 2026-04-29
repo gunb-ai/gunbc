@@ -142,7 +142,7 @@ Each sub-lane closes under a structural acceptance gate authored as a `.dag` `Te
 - PR-D worker brief — L5 corpus type spec
 - PR-E worker brief — Final integration design synthesis
 - Implementation worker briefs (one per sub-lane: runtime value model implementation, body evaluator implementation, lens application implementation, witness construction implementation, cross-target equivalence primitives)
-- **PR-E lens-application fold (opened)** — [`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md); stub `fold_lens_over_reflected_program` in `src/v3/compiler/src/lens_apply.rs` (`LensApplyError::UnimplementedLensFold`) until PB-Runtime / Worker A boundaries land
+- **PR-E lens-application fold (in flight)** — [`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md); `fold_lens_over_reflected_program` in `src/v3/compiler/src/lens_apply.rs` now runs **reflect → `apply_lens_declaration`** (reflected carrier as first lens arg). Deeper `Lens<C>` / `DimensionReport` / PB-Runtime + Worker A boundaries remain open per that brief.
 
 ## Working state (fill on spawn)
 
