@@ -276,6 +276,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/m2_lens_unused_parameters_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_lens_variant_payload_migration_test.rs",
     "src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs",
+    // T-Ground-LanguageSpec / R2-Substrate: Director-approved hand-Rust
+    // acceptance for `MethodTemplateContract` substrate carrier (PR #1175).
+    // Three structural claims over the regenerated bootstrap Dag —
+    // distinct-from-§6a-MethodContract, no-cost-data field set,
+    // per-target-list `dag_method` uniqueness (vacuous over zero rows
+    // today; load-bearing once Grounding's row-population PR lands).
+    // Dispatch explicitly accepted "focused Rust tests over the reflected
+    // substrate" rather than a parallel testgen harness; dissolves into
+    // .dag `TestClaim` form when the testgen path covers reflected-Dag
+    // structural assertions over std/ types.
+    "src/v3/compiler/tests/integration/method_template_contract_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
