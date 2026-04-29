@@ -815,6 +815,12 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             overrides={"D": "D"},
         ),
         render_sum(
+            "PositiveIntervalWidth",
+            sums["PositiveIntervalWidth"],
+            "#[derive(Debug, Clone, PartialEq, Eq)]",
+            output_name="PositiveIntervalWidth",
+        ),
+        render_sum(
             "IntervalWidth",
             sums["IntervalWidth"],
             "#[derive(Debug, Clone, PartialEq, Eq)]",

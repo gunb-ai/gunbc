@@ -4,7 +4,6 @@ import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.substrate_minimal {
   NodeId, PortId, DeclarationId, ClusterId, NonEmptyList, NonSingletonList
 }
-import std.termination { PositiveDescentAmount }
 import std.effects { WorkflowEffect }
 import v3.std.lookup { Lookup }
 
@@ -86,9 +85,13 @@ type AtomPayload
 // `BoundedInterval` stores a lower endpoint plus a nonnegative width, never
 // two independent endpoints. This makes inverted intervals unrepresentable:
 // an upper endpoint is derived by applying the width in the interval domain.
+type PositiveIntervalWidth
+  = OneUnit
+  | AdditionalUnit { previous: PositiveIntervalWidth }
+
 type IntervalWidth
   = ZeroWidth
-  | PositiveWidth(PositiveDescentAmount)
+  | PositiveWidth(PositiveIntervalWidth)
 
 // 🟢 TERMINAL. `Interval` is the durable shared bound parent. The bounded
 // variant is lower + nonnegative width; `Unbounded` is the target-side
