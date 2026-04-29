@@ -1,8 +1,9 @@
 # R2 PR-A.2 EvalFrame / EvalStateStack — Dependency Audit
 
-**Status:** AUDIT — produced while PR-A.2 is blocked on PR-A.1 (`Value` authority)
-and on a fail-closed unique-binding carrier for `Map<PortId, Value>`. Docs only;
-no carrier declarations land here.
+**Status:** AUDIT — produced while PR-A.2 is blocked on PR-A.1 (`Value`
+authority). The map-carrier blocker the original draft of this audit asserted
+has been retracted: `Map<K, V>` already exists as a single authority at
+`dsl/std/types.dag:213`. Docs only; no carrier declarations land here.
 
 **Parent authority:** [`docs/briefs/r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md)
 (merged in #1197). **PB-Runtime authority:**
@@ -10,16 +11,16 @@ no carrier declarations land here.
 
 ## Purpose
 
-Inventory the substrate PR-A.2 will consume so that, once PR-A.1 lands and a
-unique-binding carrier is available, PR-A.2 reduces to a small structural diff
-(carrier declarations + strengthened `TestClaim`) with zero parallel-authority
-debt. Per `feedback_enumerate_before_substrate`: list every consumer-side
-question before editing substrate.
+Inventory the substrate PR-A.2 will consume so that, once PR-A.1 lands,
+PR-A.2 reduces to a small structural diff (carrier declarations + strengthened
+`TestClaim`) with zero parallel-authority debt. Per
+`feedback_enumerate_before_substrate`: list every consumer-side question
+before editing substrate.
 
 ## Existing authorities PR-A.2 will import
 
-All atomic identity handles already exist; PR-A.2 imports them rather than
-redeclaring:
+All atomic identity handles and the keyed-collection carrier already exist;
+PR-A.2 imports them rather than redeclaring:
 
 | Concept             | Authority                                                   | Notes                                                  |
 |---------------------|-------------------------------------------------------------|--------------------------------------------------------|
@@ -29,15 +30,15 @@ redeclaring:
 | `LiteralBits`       | `src/v3/std/substrate.dag:30`                               | needed transitively via `LiteralValue`                 |
 | `LoopBound`         | `src/v3/std/substrate.dag:342`                              | needed transitively via `CardinalityValue`             |
 | `List<T>`           | `src/v3/std/list.dag:43`                                    | `EvalStateStack.frames: List<EvalFrame>` consumes this |
+| `Map<K, V>`         | `dsl/std/types.dag:213` (`= PartialFunction<key, value>`)    | `EvalFrame.bindings: Map<PortId, Value>`; importable from `std.types` (precedent: `src/v3/std/list.dag:33`, `lookup.dag:21`) |
 | `TestClaim` / `Compiles` / `TestSuite` | `std.verification`                            | already used by the slice-0 fixture                    |
 
-## Authorities PR-A.2 cannot import yet (the actual blockers)
-
-### 1. `Value` and `NamedField` — owned by PR-A.1
+## The single remaining blocker: PR-A.1 (`Value` and `NamedField`)
 
 No `Value`, `LiteralValue`, `RecordValue`, `VariantValue`, `NodeRef`,
-`CardinalityValue`, or `NamedField` declaration exists in `src/v3/std/`. Verified
-via `grep -rn "type Value\|RecordValue\|LiteralValue\|NamedField" src/v3/std/`
+`CardinalityValue`, or `NamedField` declaration exists in `src/v3/std/`.
+Verified via
+`grep -rn "type Value\|RecordValue\|LiteralValue\|NamedField" src/v3/std/`
 against `origin/main` at audit time (re-verified at `8d451d1a0`: 0 matches for
 the runtime `Value` carriers; the hits in `clean_emission.dag`,
 `emit_model.dag`, and `substrate.dag` are unrelated `ValueBody`,
@@ -45,33 +46,45 @@ the runtime `Value` carriers; the hits in `clean_emission.dag`,
 declarations from other layers). PR-A.1 must land first; PR-A.2 must not invent
 a duplicate per `feedback_parallel_representation_debt`.
 
-### 2. `Map<PortId, Value>` — no instantiable carrier exists
+The `Value` naming side has its own decided upstream path: per the Substrate
+Manager disposition (jolly-ram-908), the existing L1 behavior marker `Value`
+will be renamed (`Value` → `ValueBehavior`, full marker-set rename preferred)
+to free bare `Value` for PR-A.1's runtime declaration. PR-A.2 does not need to
+participate in that rename; it consumes whatever PR-A.1 lands.
 
-`PartialFunction` exists in v3 only as a *tag* in the kernel algebra profile
-(`PartialFunctionProfile` in `src/v3/std/computation.dag:18`,
-`kernel_algebra_profile` lookup at `:19`). It is metadata about an existing
-type's algebraic shape, not an instantiable generic container.
+## On `Map<K, V>` — single authority already exists
 
-`SurfaceMapEntry` (`src/v3/std/parse_surface.dag:96`) is parse-surface-only,
-carries `String` keys and surface expressions, and is bound to the surface
-parser. It is structurally wrong for runtime evaluator state (key type, value
-type, and authority layer all mismatch).
+An earlier draft of this audit incorrectly claimed no instantiable `Map<K, V>`
+existed and proposed a `UniqueBindings<K, V>` parallel carrier. That was a
+grep-scope error: the original search only covered `src/v3/std/`. `dsl/std/`
+is the L1 authority layer and already declares:
 
-No `type Map<K, V>` declaration exists anywhere under `src/v3/std/` or
-`src/v3/`. The merged PR-A.0 brief (§Substrate Targets) is explicit:
+```
+type Map<key, value> = PartialFunction<key, value>          // dsl/std/types.dag:213
+type List<element>   = FreeMonoid<element>                  // dsl/std/types.dag:211
+type Set<element>    = BooleanAlgebra<element>              // dsl/std/types.dag:212
+```
 
-> If `Map<K, V>` is not yet available in the v3 runtime module when PR-A.2
-> lands, PR-A.2 must either port the existing `Map = PartialFunction` authority
-> or add a fail-closed unique-binding carrier before mirroring evaluator state;
-> it must not fall back to a duplicate-admitting `List<EvalBinding>`.
+with the algebraic-inhabitation comment block immediately above explaining
+that `Map<K,V> = K → (1 + V)` is a keyed partial function and inherits
+`lookup`, `insert`, `delete`, `merge` from `PartialFunction<K, V>`. v3 modules
+already consume `std.types` (e.g., `src/v3/std/list.dag:33` imports `Int`,
+`Bool`; `src/v3/std/lookup.dag:21` imports `Int`; `src/v3/std/verification.dag:20`
+imports `FilePath`, `NonEmptyStr`), so `import std.types { Map }` is the
+existing-convention path.
 
-There is no "existing `Map = PartialFunction` authority" to port today; the
-`PartialFunctionProfile` tag does not constitute a carrier. So PR-A.2 (or a
-prerequisite slice) must declare a fail-closed unique-binding carrier as a
-genuine substrate addition. Routing question for the Substrate Manager: does
-this prerequisite live (a) inside PR-A.2's scope, (b) as a separate Substrate
-Manager workstream, or (c) bundled into PR-A.1? The merged brief permits (a),
-but does not require it.
+Introducing a separate `UniqueBindings<K, V>` would create a parallel
+keyed-collection authority alongside `Map = PartialFunction`, in violation of
+M9 (DFS the concept DAG before declaring a new type) and the single-authority
+rule. Retracted.
+
+The `PartialFunctionProfile` tag in `src/v3/std/computation.dag:18` is a
+*kernel-algebra profile tag* — metadata describing an existing type's
+algebraic shape — not the carrier itself; the carrier is the `Map = PartialFunction`
+declaration in `dsl/std/types.dag`. `SurfaceMapEntry` (`src/v3/std/parse_surface.dag:96`)
+is parse-surface-only with `String` keys and is structurally wrong for
+runtime evaluator state. Neither is a substitute for `Map<PortId, Value>`,
+but neither is needed: the canonical `Map` already exists.
 
 ## Candidate module path
 
@@ -93,19 +106,18 @@ establish that — PR-A.2 follows whatever PR-A.1 picks rather than relitigating
 
 ## Imports PR-A.2 will need (post-unblock)
 
-Assuming PR-A.1 lands `Value` and `NamedField` in `src/v3/std/runtime.dag` and
-a unique-binding carrier (call it `UniqueBindings<K, V>`, exact name TBD by the
-authority that lands it) is available, PR-A.2's runtime-module diff is:
+Assuming PR-A.1 lands `Value` and `NamedField` in `src/v3/std/runtime.dag`,
+PR-A.2's runtime-module diff is:
 
 ```dag
 module std.runtime  // already opened by PR-A.1
 
 import std.substrate_minimal { PortId }
 import std.list { List }
-// + whatever module declares the unique-binding carrier
+import std.types { Map }
 
 type EvalFrame {
-  bindings: UniqueBindings<PortId, Value>  // or Map<PortId, Value>
+  bindings: Map<PortId, Value>
 }
 
 type EvalStateStack {
@@ -125,17 +137,18 @@ declarations exist).
 Per dispatch and parent brief: no `Value` authority (PR-A.1), no `EvalThunk` /
 `EvalStrategy` / `EvalMemoKey` (PR-A.3), no body evaluator (PR-B), no
 `ClosureValue` (forbidden; would be a P1 substrate change). No Rust mirror in
-this audit; that is post-`.dag`-substrate work.
+this audit; that is post-`.dag`-substrate work. No new keyed-collection
+carrier (`Map = PartialFunction` is the single authority).
 
 ## Pre-merge checklist for PR-A.2 itself (when unblocked)
 
 1. Confirm PR-A.1 has landed and `Value` / `NamedField` are importable from
    `std.runtime`.
-2. Confirm a unique-binding carrier exists, OR include one in PR-A.2's scope
-   with Substrate Manager sign-off.
-3. Declare `EvalFrame` and `EvalStateStack` in `src/v3/std/runtime.dag`.
-4. Strengthen
+2. Declare `EvalFrame { bindings: Map<PortId, Value> }` and
+   `EvalStateStack { frames: List<EvalFrame> }` in `src/v3/std/runtime.dag`,
+   importing `Map` from `std.types`.
+3. Strengthen
    `src/v3/compiler/tests/fixtures/r2_evaluator_runtime_value_model.dag` past
    `Compiles` to a structural claim that names the new carriers.
-5. No `ClosureValue`. No `List<EvalBinding>`. No second runtime `Value`
-   authority.
+4. No `ClosureValue`. No `List<EvalBinding>`. No `UniqueBindings` parallel
+   keyed-collection authority. No second runtime `Value` authority.
