@@ -1,8 +1,8 @@
 //! **Layer:** integration
 //!
-//! R1 release acceptance — strict PB gates 3/4 remain live runner predicates,
-//! while Director-approved R3 deferrals are structural `DeclarationRef` edges
-//! through `R3DeferredClaim` markers.
+//! R1 release acceptance — strict PB gate 3 remains a live runner predicate,
+//! while Director-approved release deferrals cover the remaining PB gates through
+//! structural `DeclarationRef` edges on `ReleaseDeferredClaim` markers.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -66,25 +66,25 @@ fn r1_release_acceptance_suite_passes_at_head() {
 }
 
 #[test]
-fn r3_deferred_claim_rejects_untyped_marker_refs() {
+fn release_deferred_claim_rejects_untyped_marker_refs() {
     let source = r#"
-import std.verification { R3DeferredClaim, TestClaim, TestSuite }
+import std.verification { ReleaseDeferredClaim, TestClaim, TestSuite }
 
 type R1GateMarker {}
-type R3LaneMarker {}
+type TargetLaneMarker {}
 type ReleaseAuthorityDoc {}
 
 data arbitrary_gate: Int = 0
-data r3_lane_marker: R3LaneMarker = {}
+data target_lane_marker: TargetLaneMarker = {}
 data release_authority_doc: ReleaseAuthorityDoc = {}
 
 data bad_deferred_claim: TestClaim = {
   name: "bad_deferred",
   source: "let _: Int = 0",
   file_name: "bad_deferred.v3",
-  predicate: R3DeferredClaim {
+  predicate: ReleaseDeferredClaim {
     deferred_gate: arbitrary_gate,
-    r3_lane: r3_lane_marker,
+    target_lane: target_lane_marker,
     authority_doc: release_authority_doc
   },
   requires: []
@@ -95,7 +95,7 @@ data suite: TestSuite = {
   claims: [bad_deferred_claim]
 }
 "#;
-    let dag = compile_to_dag(source, "bad_r3_deferred_claim.dag")
+    let dag = compile_to_dag(source, "bad_release_deferred_claim.dag")
         .expect("malformed deferral fixture still compiles structurally");
     let results = TestRunner::new(&dag).run_suite("suite");
 
@@ -108,6 +108,6 @@ data suite: TestSuite = {
                     && reason.contains("R1GateMarker")
                     && reason.contains("arbitrary_gate")
         ),
-        "expected R3DeferredClaim to fail closed on untyped deferred_gate, got {results:?}"
+        "expected ReleaseDeferredClaim to fail closed on untyped deferred_gate, got {results:?}"
     );
 }

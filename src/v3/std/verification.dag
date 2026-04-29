@@ -219,13 +219,13 @@ type TestPredicate
   // fixtures with explicit Director sign-off; this is not a generic escape
   // hatch for arbitrary `TestSuite`s. The runner validates the three
   // `DeclarationRef` edges resolve to fixture-local role markers named
-  // `R1GateMarker`, `R3LaneMarker`, and `ReleaseAuthorityDoc`; only then does
+  // `R1GateMarker`, `TargetLaneMarker`, and `ReleaseAuthorityDoc`; only then does
   // it treat the well-formed deferral as a structural acceptance fact.
-  // R3-specific today; if this pattern generalizes to later release cycles,
-  // rename toward `ReleaseDeferredClaim`.
-  | R3DeferredClaim {
+  // Release-cycle deferral; target lanes may point at R2, R3, or later
+  // release-cycle authorities with explicit Director sign-off.
+  | ReleaseDeferredClaim {
       deferred_gate: DeclarationRef
-      r3_lane: DeclarationRef
+      target_lane: DeclarationRef
       authority_doc: DeclarationRef
     }
 

@@ -1519,7 +1519,9 @@ impl<'a> TestRunner<'a> {
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
-                        "R3DeferredClaim" => self.eval_r3_deferred_claim_shape(claim, &payload),
+                        "ReleaseDeferredClaim" => {
+                            self.eval_release_deferred_claim_shape(claim, &payload)
+                        }
                         "MockBackedInvariant" => {
                             if !claim.requires.is_empty() {
                                 if let Err(reason) = self.validate_resource_requirements(claim) {
@@ -2479,38 +2481,38 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    fn eval_r3_deferred_claim_shape(
+    fn eval_release_deferred_claim_shape(
         &self,
         _claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        let [deferred_gate, r3_lane, authority_doc] = payload else {
+        let [deferred_gate, target_lane, authority_doc] = payload else {
             return ClaimResult::Fail(format!(
-                "R3DeferredClaim payload should be exactly three DeclarationRef fields \
-                 (deferred_gate, r3_lane, authority_doc); got {} payload slot(s)",
+                "ReleaseDeferredClaim payload should be exactly three DeclarationRef fields \
+                 (deferred_gate, target_lane, authority_doc); got {} payload slot(s)",
                 payload.len()
             ));
         };
 
         for (field_label, value, role_name) in [
             ("deferred_gate", deferred_gate, "R1GateMarker"),
-            ("r3_lane", r3_lane, "R3LaneMarker"),
+            ("target_lane", target_lane, "TargetLaneMarker"),
             ("authority_doc", authority_doc, "ReleaseAuthorityDoc"),
         ] {
             let id = match self.resolve_declaration_ref_id(value, field_label) {
                 Ok(id) => id,
-                Err(reason) => return ClaimResult::Fail(format!("R3DeferredClaim: {reason}")),
+                Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
             };
             let decl = self.dag.declaration(id);
             match self.decl_inhabits_named_role(decl, role_name) {
                 Ok(true) => {}
                 Ok(false) => {
                     return ClaimResult::Fail(format!(
-                        "R3DeferredClaim `{field_label}` must reference a declaration inhabiting `{role_name}`, got `{}`",
+                        "ReleaseDeferredClaim `{field_label}` must reference a declaration inhabiting `{role_name}`, got `{}`",
                         decl_display_name(id, decl)
                     ));
                 }
-                Err(reason) => return ClaimResult::Fail(format!("R3DeferredClaim: {reason}")),
+                Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
             }
         }
 
