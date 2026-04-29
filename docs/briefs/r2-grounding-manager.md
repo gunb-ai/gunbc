@@ -31,7 +31,7 @@ The one true critical path in R2: `Pilot → Rust → LanguageSpec → Coercion-
 5. **T-Ground-Coercion-Fold** S — Refinement composition as a structural fold over substrate facts. Replaces the prior single-engine Phase 2 with a fold over ValueBody-list/sum substrate. Includes mirror-consistency probe footprint (PR #989, currently merged on main; post-merge realignment per `design-emission-model.md` §"Affected lanes" option (c) — hold further engine-framed slices, queue cleanup wave once LanguageSpec lands).
 6. **T-Ground-LanguageSpec** M — Structured language-spec substrate declaration. Absorbs target primitive/range duplication retirement (Reflective Pattern E) — `Dag::rust_pilot_primitives()` consumed structurally; `RUST_PILOT_PRIMITIVES` Rust mirror retired. Per Q3 lock: each per-target primitive carries `RealizationCost { storage: Cost<Bits>, access: Map<AlgebraOp, Cost<CPUCycles>> }`.
 7. **T-Ground-Lifetime-Analyzer** M — Derives ownership/lifetime structurally from program use. **No annotation surface** — replaces the retracted "Annotation" lane per Modeling problem 3 corrected. Lifetime is structural fact emerging from program shape, not user-authored markup.
-8. **T-Ground-Diagnostic** S — Declared structural ordering for diagnostic enumeration; fail-closed diagnostic surface. Coordinate with Substrate Manager re: `Diagnostic.kind` extensibility (Q6 lock).
+8. **T-Ground-Diagnostic** S — Declared structural ordering for diagnostic enumeration; fail-closed diagnostic surface. Q6.5 two-layer authority LANDED via #1129 ([`docs/design-lens-framework.md` §"Q6.5 — Two-layer authority for diagnostic kinds"](../design-lens-framework.md)) — Layer 1 `CompilerDiagnosticKind` is Substrate-owned (this lane consumes; doesn't extend); cross-target diagnostic-ordering work doesn't introduce lens-instance kinds.
 9. **T-Ground-CrossTarget-Meta** S — Cross-target uniformity meta-spec. Owns L6 per-(form × target) substrate-load completeness check (different input space from Lens<C> instances; not a structural lens — runtime check). Q5 lock confirmed cardinality-as-connectives axis collapses with PR-PreF Interval<Cardinal>; PR-J likely no-op.
 
 **Closure:**
@@ -76,7 +76,7 @@ The 8-question design dialogue resolved into a cadence whose merge gates worker 
 **Consumes:**
 - **Substrate Manager — ValueBody-list/sum + std.unicode bootstrap carrier**: Coercion-Fold full pilot enumeration via symbolic walk of `rust_pilot_primitives: List<RustPrimitive>` is gated on this. Substrate Manager signals readiness via cross-manager queue; Grounding Manager dispatches Coercion-Fold consumer migration on receipt.
 - **Substrate Manager — PR-PreF Interval<D> consolidation**: required for Q1 BoundDeclaration consumer in Coercion-Fold lane.
-- **Substrate Manager — `Diagnostic.kind` extensibility (Q6 lock)**: Diagnostic lane coordinates with Substrate at `CompilerDiagnosticKind` extension time.
+- **Substrate Manager — `Diagnostic.kind` extensibility (Q6.5 lock LANDED via #1129)**: Diagnostic lane consumes Layer 1 `CompilerDiagnosticKind` (Substrate-owned closed sum). Lane is a Layer-1 consumer, not a Layer-2 lens-instance author — no cross-manager handoff needed.
 
 **Adjacent territory:** none (Grounding owns its program completely; cross-target meta-spec is fully internal).
 
