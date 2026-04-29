@@ -55,21 +55,38 @@ fn strip_comments(src: &str) -> String {
             }
             continue;
         }
-        // Char literal: minimal handling; copy through to closing quote.
-        if b == b'\'' && i + 1 < n {
-            out.push('\'');
-            i += 1;
-            while i < n {
-                let c = bytes[i];
-                out.push(c as char);
-                i += 1;
-                if c == b'\\' && i < n {
-                    out.push(bytes[i] as char);
-                    i += 1;
-                } else if c == b'\'' {
+        // Char literal vs lifetime: `'a` / `'static` are lifetimes (no
+        // closing quote); `'a'` / `'\n'` are char literals. Look ahead to
+        // distinguish — if a closing `'` appears within 4 bytes (max char
+        // literal payload: `'\xNN'`), treat as a char literal and skip
+        // through it. Otherwise treat the `'` as ordinary punctuation
+        // (lifetime tick) and copy a single byte. This keeps comments
+        // after `&'a str`-style annotations visible to the strippers.
+        if b == b'\'' {
+            let lookahead_start = i + 1;
+            let lookahead_end = (i + 5).min(n);
+            let mut closing: Option<usize> = None;
+            let mut j = lookahead_start;
+            while j < lookahead_end {
+                if bytes[j] == b'\\' && j + 1 < n {
+                    j += 2;
+                    continue;
+                }
+                if bytes[j] == b'\'' {
+                    closing = Some(j);
                     break;
                 }
+                j += 1;
             }
+            if let Some(close) = closing {
+                // Real char literal — copy through.
+                out.push_str(&src[i..=close]);
+                i = close + 1;
+                continue;
+            }
+            // Lifetime / unmatched apostrophe — copy single byte.
+            out.push('\'');
+            i += 1;
             continue;
         }
         // Line comment.
@@ -224,6 +241,36 @@ fn strip_comments_removes_line_and_block_comments_but_preserves_strings() {
     assert!(!stripped.contains("ghost"));
     assert!(stripped.contains("// not a comment // still in string"));
     assert!(stripped.contains("pub const REAL"));
+}
+
+#[test]
+fn strip_comments_distinguishes_lifetimes_from_char_literals() {
+    // Lifetimes (`'a`, `'static`, `'_`) must NOT be treated as opening a
+    // char literal — otherwise comments after them are masked from the
+    // ratchet (cursor BLOCKING on PR #1183).
+    let src = r#"
+        fn f<'a>(x: &'a str) {} // marker_after_lifetime
+        fn g(x: &'static str) {} // marker_after_static
+        let c = 'x'; // marker_after_char_literal
+        let escaped = '\n'; // marker_after_escape
+    "#;
+    let stripped = strip_comments(src);
+    // All four trailing comments must be stripped. None of the markers
+    // should survive in the stripped output.
+    assert!(
+        !stripped.contains("marker_after_lifetime"),
+        "lifetime `'a` masked the line comment that follows it: {stripped}"
+    );
+    assert!(
+        !stripped.contains("marker_after_static"),
+        "lifetime `'static` masked the line comment that follows it: {stripped}"
+    );
+    assert!(!stripped.contains("marker_after_char_literal"));
+    assert!(!stripped.contains("marker_after_escape"));
+    // Live syntax preserved.
+    assert!(stripped.contains("&'a str"));
+    assert!(stripped.contains("&'static str"));
+    assert!(stripped.contains("'x'"));
 }
 
 #[test]
