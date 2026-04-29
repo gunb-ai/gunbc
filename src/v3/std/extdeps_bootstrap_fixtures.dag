@@ -21,10 +21,22 @@ type ExtdepsBootstrapFixture {
 // targets; cost of change stays this file + the parallel `const` filter).
 type ExtdepsBootstrapFixtureSet {
   rust_pilot_primitives: ExtdepsBootstrapFixture
+  rust_method_template_contracts: ExtdepsBootstrapFixture
+  python_method_template_contracts: ExtdepsBootstrapFixture
+  go_method_template_contracts: ExtdepsBootstrapFixture
 }
 
 data extdeps_bootstrap_fixture_authority: ExtdepsBootstrapFixtureSet = {
   rust_pilot_primitives: {
     virtual_path: "dsl/extdeps/languages/rust/primitives.dag"
+  },
+  rust_method_template_contracts: {
+    virtual_path: "dsl/extdeps/languages/rust/method_template_contracts.dag"
+  },
+  python_method_template_contracts: {
+    virtual_path: "dsl/extdeps/languages/python/method_template_contracts.dag"
+  },
+  go_method_template_contracts: {
+    virtual_path: "dsl/extdeps/languages/go/method_template_contracts.dag"
   }
 }
