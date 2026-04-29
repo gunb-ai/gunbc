@@ -200,10 +200,13 @@ A downstream stage reads a lower layer not through its declared accessors but by
 
 ### Reflection evidence is not structural proof
 
-`reflect_program_dag_nodes_in_file` in `lens_apply.rs` currently emits a **shallow behavior spine** (`result_port` plus limited tags) and intentionally drops structural fields (`target`, `inputs`, `input`, `paths`, `source`, `init`, `body`, `bound`, etc.). Consumers that rely on this view — in practice `LensOutputEquals` and `AlgebraicLaw` runners in `test_runner.rs` — therefore only gain **regression evidence** from the current reflection path, not structural self-inspection parity with
-`src/v3/std/substrate.dag`.
+`reflect_program_dag_nodes_in_file` (via `lens_apply::substrate_reflection::reflect_behavior_list`) projects **complete** substrate-shaped `Behavior` nodes into `FieldValue` per [`docs/design-reflection-completeness.md`](docs/design-reflection-completeness.md) (LOCKED 2026-04-29): every declared field on each `Behavior` variant and nested carriers such as `WorkflowEffect` / `LoopBound` / `BranchPath` is reflected structurally, with no execution semantics and no per-consumer narrowing.
 
-**Confidence tag for these gates:** treat these paths as `StructuralEvidence::Shallow` until full substrate reflection is landed. PRs using them should state that status explicitly in their acceptance notes and route dissolution via the dedicated lossy-reflection closure row (`ROADMAP.md`), not by claiming by-construction proof.
+Reflection is **authored against** `src/v3/std/substrate.dag` and uses the same **positional variant-payload** contract as bounded lens projection (`sum_variant_payload` ↔ `variant_payload_for_binding` in `lens_apply.rs`). **That is not yet a closed mechanical theorem** over the whole nested `FieldValue` tree: conformance is enforced where sums are built, and integration tests ratchet **record field order vs. named substrate `Conj`** for selected carriers (`ValueNode`, `TransformNode`, `BindNode`). Extend those tests (or add a walker) as new reflected shapes land—do not treat “no lossy mirror” as automatic proof against every `TypeConnective` row.
+
+**Confidence tag for these gates:** `LensOutputEquals` / `AlgebraicLaw` runners that consume `reflect_program_dag_nodes_in_file` should treat the spine as **intended substrate alignment** (bounded by what the lens algebra proves), not as a substitute for a future full DAG-vs-`FieldValue` conformance gate.
+
+**Witness note:** `Witness<Carrier>` (see `src/v3/std/dimensions.dag`) is not yet exercised by this reflection entry point because it does not appear on the five `Behavior` variants; when lens bodies need witness-shaped facts through the same `FieldValue` carrier, extend the `substrate_reflection` submodule in `lens_apply.rs` with the same substrate-shape rule rather than ad hoc mirrors.
 
 ---
 
