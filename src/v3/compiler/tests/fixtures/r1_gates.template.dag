@@ -68,9 +68,11 @@ data sub_type_alias_where_lowers_gate: TestSuite = {
   claims: [sub_type_alias_where_lowers]
 }
 
-// R1C-B / T-P0 — structural `p0_repeat_string_correct`. Literal-arg `repeat_string` on `data`
-// bodies folds at lower time (`lower::try_lower_repeat_string_string_data`) so `OutputEquals`
-// compares the folded scalar witness (interim `p0_repeat_string_v2_oracle_rust_bridge` retired).
+// R1C-B / T-P0 — `p0_repeat_string_correct`: literal `repeat_string(...)` on `data` bodies
+// **constant-folds** at lower time (`lower::try_lower_repeat_string_string_data`). `OutputEquals`
+// compares the **lowered** `ValueBody::Scalar` witness — not an interpreter execution of the std
+// `repeat_string` arrow (ROADMAP: dissolution when in-runner evaluation supersedes this fold).
+// Interim `p0_repeat_string_v2_oracle_rust_bridge` retired.
 data p0_repeat_string_correct: TestClaim = {
   name: "p0_repeat_string_correct",
   source: "data repeat_string_returns_n_copies: String = repeat_string(s: \"x\", n: 3)\n",
@@ -86,6 +88,9 @@ data p0_repeat_string_correct_gate: TestSuite = {
 
 // R1C-B / T-P0 — `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned` (Worker B): DB-15
 // `ExecuteCommand` host receipts; scripts under `scripts/` mirror v2 integration authority.
+// **Constraint:** paths use `git rev-parse --show-toplevel` — requires a **git** checkout (CI OK);
+// bare tarballs / non-git trees cannot resolve script paths (known; document-only).
+
 data p0_no_fabrication_sentinel: TestClaim = {
   name: "p0_no_fabrication_sentinel",
   source: "module p0_no_fabrication_sentinel_host\n",
