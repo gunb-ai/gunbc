@@ -65,66 +65,67 @@ partial close").
 
 No prerequisite work needed for this field.
 
-### 2. `read: complexity_read` — declaration-reference field value
+### 2. `read: complexity_read` — declaration-reference field value (Arrow-typed)
 
-**Status:** ⏸ **DEFERRED** — class-5 gap #3, port-carried field
-values branch.
+**Status:** ⏸ **PARTIALLY OPEN** — narrower than the original
+class-5 gap #3 framing. **Per BLOCKING review on PR #1207
+sha `d34ca4a1`:** `lower_record_to_structural` at
+`src/v3/compiler/src/lower.rs:3273` already lowers nested
+`Record` / `List` / `Map` field values; `lower_structural_field_value`
+at `:3369` already resolves `SurfaceExpr::Var` and
+`SurfaceExpr::Path` to `FieldValue::Reference(DeclarationId)`
+(line 3399 / 3409) when the field's `expected_type` walks to a
+`DeclarationRef` marker or the resolved decl's `meta_tag` matches.
 
-Per `src/v3/DOWNSTREAM_REQUIREMENTS.md` §"Class 5 gap 3" closing
-paragraph:
-> The remaining gap is **port-carried field values** (a record
-> field whose value is another declaration reference, a nested
-> record, a list literal, or a `Var` of an outer binding). When
-> the next consumer needs one of those, `ValueBody::Structural`
-> upgrades from `Vec<(String, LiteralBits)>` to
-> `Vec<(String, PortId)>` (or similar), and the literal-bits
-> inline form becomes a special case — not a separate variant.
-
-Substrate already grew `FieldValue::Reference(DeclarationId)` per
-the `FieldValue` enum at `src/v3/compiler/src/dag.rs:443`. Lens
-instances and the parallel `Dimension<SymbolicCost>` deferral at
-`src/v3/lenses/cost.dag:268-298` are exactly "the next consumer
-that needs one of those" — the upgrade is named but not authored.
+The actual residual gap is **inhabitance checking for
+function-typed (Arrow) fields**: `Lens<C>.read: fn(Dag, Behavior)
+-> Witness<C>` is an Arrow type, not a `DeclarationRef` and not
+matched via `meta_tag`. The current
+`lower_structural_field_value` paths cover decl-ref and meta-tag
+shapes; assigning a `fn complexity_read(d: Dag, b: Behavior) ->
+Witness<Int>` decl to a field of declared Arrow type goes through
+`declaration_ref_types_equivalent`, which checks marker-type
+equivalence, not Arrow-signature equivalence.
 
 **Required unblock:**
-- Lower `SurfaceExpr::Var` (and `SurfaceExpr::Path` for
-  module-qualified refs) inside record-literal field positions to
-  `FieldValue::Reference(DeclarationId)` resolved via
-  `lower_record_to_structural`.
-- Inhabitance check: `FieldValue::Reference(id)` must inhabit the
-  declared field type (resolves to a declaration whose
-  `connective` matches the field's annotated type).
-- Same path covers field references for `sequential.op`,
-  `branch`, `iterate`, `validate`.
+- Arrow-signature inhabitance: when an `expected_type` resolves
+  to an `Arrow { inputs, output }` type, allow
+  `FieldValue::Reference(decl_id)` if the resolved decl is itself
+  an Arrow (a `fn`) whose input/output declarations match
+  structurally.
+- Verify that `FieldValue::Record` / `FieldValue::List` /
+  `FieldValue::Map` paths (already lowered) interact correctly
+  with Arrow-typed fields nested inside `Lens<C>` (e.g.,
+  `sequential: Monoid<C>` is a Conj whose inner `op` field is
+  Arrow-typed; the recursive lowering needs Arrow-inhabitance at
+  the inner step).
 
-This is the single largest unblock; closing it dissolves both the
-deferred `Dimension<SymbolicCost>` instance (cost.dag) and any
-`Lens<C>` instance simultaneously.
+Closing this dissolves both the deferred
+`Dimension<SymbolicCost>` instance (cost.dag) and any `Lens<C>`
+instance simultaneously, but the change set is smaller than the
+original "port-carried field values" framing — the substrate-
+level lowering paths already exist; only Arrow-inhabitance is
+missing.
 
 ### 3. `sequential: { op: int_add, identity: 0 }` — nested record literal
 
-**Status:** ⏸ **DEFERRED** — class-5 gap #3, nested record branch.
+**Status:** ✅ **closed** for the record-literal lowering itself.
+`FieldValue::Record` at `dag.rs:446` and the recursive
+`lower_structural_field_value` walk at `lower.rs:3543-3562`
+already emit nested record values with recursive inhabitance
+against Conj-typed fields.
 
-Same closing paragraph in DOWNSTREAM_REQUIREMENTS:
-> a record field whose value is **another nested record** [...]
+The remaining gap is the same Arrow-inhabitance issue from §2 —
+`Monoid<C>.op: fn(C, C) -> C` is an Arrow-typed field inside
+the nested record. Once §2's Arrow-inhabitance lands, the nested
+`Monoid<Int>` literal `{ op: int_add, identity: 0 }` lowers
+end-to-end (the `int_add` resolution against the `op` field's
+Arrow type, plus the trivial `0` literal against `identity: Int`).
 
-Field shape is `Monoid<Int>` (a Conj from
-`dsl/std/algebra.dag:110`) — must lower as a nested
-`FieldValue::Record(Vec<(String, FieldValue)>)`.
+### 4. `iterate: complexity_iterate` and `validate: complexity_validate` — same as §2
 
-**Required unblock:** same as #2 (port-carried field values),
-plus:
-- Recursive inhabitance: `FieldValue::Record(fields)` against a
-  Conj-typed field must check each inner `(label, value)` pair
-  against the corresponding inner field's type.
-
-`FieldValue::Record` already exists at `dag.rs:446`. The lowerer
-needs to emit it from nested record-literal surface forms.
-
-### 4. `iterate: complexity_iterate` and `validate: complexity_validate` — same as #2
-
-Same construct as `read`. Once #2 closes, all four declaration-
-reference fields lower.
+Same Arrow-inhabitance gap as `read`. Once §2 closes, all four
+Arrow-typed `Lens<C>` fields lower.
 
 ### 5. `complexity_read` body — `fn` block expression
 
@@ -334,30 +335,49 @@ The audit produces one **substrate prerequisite lane** with three
 sub-slices. Each is a separate PR; each closes when its named
 test lands.
 
-### Prereq-1: port-carried field values in `data` record bodies
+### Prereq-1: Arrow-signature inhabitance for fn-typed `data` record fields
 
-**Scope:** `lower_record_to_structural` accepts
-`SurfaceExpr::Var` / `SurfaceExpr::Path` (declaration references)
-and nested `SurfaceExpr::Record` / `SurfaceExpr::List` /
-`SurfaceExpr::Map` as field values. Inhabitance check upgrades to
-recursive structural typing.
+**Scope:** narrower than the original framing (per BLOCKING
+review). The substrate-level field-value variants
+(`FieldValue::Reference`, `FieldValue::Record`,
+`FieldValue::List`, `FieldValue::Map`) already exist;
+`lower_record_to_structural` and `lower_structural_field_value`
+already lower nested record/list/map literals AND resolve
+`SurfaceExpr::Var` / `SurfaceExpr::Path` to
+`FieldValue::Reference(DeclarationId)` for `DeclarationRef`-typed
+and meta-tag-matching fields. The residual gap is
+**Arrow-signature inhabitance** for fields whose `expected_type`
+resolves to an Arrow (`fn(...) -> ...`):
+
+- Extend `lower_structural_field_value`'s
+  `declaration_ref_types_equivalent` path (or add a sibling
+  `arrow_inhabitance` check) so that when `expected_type` is an
+  Arrow `{ inputs, output }` and `expr` resolves to a top-level
+  `fn` declaration, the resolved fn's input/output declarations
+  are structurally compared and accepted as
+  `FieldValue::Reference(fn_decl_id)`.
+- Cover the recursive case: `Monoid<C>.op: fn(C, C) -> C` is
+  Arrow-typed nested inside a `FieldValue::Record` lowering;
+  the existing recursive walk reaches it but bails on
+  Arrow-inhabitance before §2's gap closes.
 
 **Acceptance:** a fixture
-`data foo: SomeConj = { fn_field: some_fn, nested: { ... } }`
-lowers to `ValueBody::Structural { fields: Vec<(String,
-FieldValue)> }` with `FieldValue::Reference(_)` /
-`FieldValue::Record(_)` populated, and the bootstrap snapshot
-preserves it byte-stably across regen.
+`data foo_lens: Lens<Int> = { name: "foo", read: foo_read,
+sequential: { op: int_add, identity: 0 }, branch: int_max,
+iterate: foo_iterate, validate: foo_validate }` lowers to
+`ValueBody::Structural { fields }` where every Arrow-typed field
+is a `FieldValue::Reference(fn_decl_id)` resolved against the
+corresponding top-level `fn` declaration's signature. Bootstrap
+snapshot preserves byte-stably across regen.
 
 **Closes:** §§2, 3, 4 above. Unblocks `data complexity_lens:
-Lens<Int> = { ... }` field assignments that reference top-level
-`fn` declarations.
+Lens<Int> = { ... }` field assignments — except for the bodies
+of `complexity_read` / `complexity_iterate` / `complexity_validate`
+themselves, which §5 / Prereq-2 covers.
 
-**Sizing estimate:** ~3-5 days. The substrate variants
-(`FieldValue::Reference`, `FieldValue::Record`,
-`FieldValue::List`, `FieldValue::Map`) already exist; the
-authoring is in the lowerer's record-literal walker and the
-inhabitance check.
+**Sizing estimate:** ~1-3 days. Smaller than the original
+framing because most of the lowering pipeline is already in
+place; the change is a narrower inhabitance refinement.
 
 ### Prereq-2: `fn` block-body lowering with variant-constructor expressions
 
@@ -422,9 +442,12 @@ equivalence test.
 
 ### Total
 
-~11-17 days at gunbc velocity, partially parallelizable per the
-Director-locked disposition above:
-- Prereq-1 (~3-5 days) and Prereq-3a (~1-2 days) are
+~9-15 days at gunbc velocity (revised down ~2 days after the
+PR #1207 BLOCKING review correctly narrowed Prereq-1 from
+"port-carried field values" to "Arrow-signature inhabitance" —
+the substrate already has the broader lowering paths). Partially
+parallelizable per the Director-locked disposition above:
+- Prereq-1 (~1-3 days) and Prereq-3a (~1-2 days) are
   independent — both can start immediately. Prereq-3a unblocks
   R2-Evaluator's runtime entry-point identification ahead of
   the lens migration.
