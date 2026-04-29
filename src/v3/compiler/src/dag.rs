@@ -3951,15 +3951,24 @@ mod tests {
         let mut dag = Dag::new();
         dag.populate_primitive_cache();
         let int_decl = dag.int_shape().expect("bootstrap Int").declaration;
-        let exact_two = push_test_declaration(
-            &mut dag,
-            None,
-            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+        let exact_two = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: exact_two,
+            name: None,
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 int_decl,
                 CardinalityBound::Exact(2),
             )),
-            Vec::new(),
-        );
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("cardinality_exact_spoof_test", 0, 0),
+        });
 
         assert_eq!(
             cardinality_idempotent_target(&dag, exact_two, CardinalityBound::AtMostOne),
