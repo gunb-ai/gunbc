@@ -134,7 +134,6 @@ fn try_reconcile_int_literal_decision_set(
 }
 
 pub fn infer(dag: &mut Dag) {
-    ensure_all_optional_match_disjs(dag);
     // Fixpoint loop. Runs decide for every node, then pattern
     // resolution + exhaustiveness + uniqueness for every Branch.
     // Pattern resolution is folded into the loop (not run after it)
@@ -146,6 +145,7 @@ pub fn infer(dag: &mut Dag) {
     // after the main loop would leave downstream types stale and
     // violate FAIL-CLOSED.
     loop {
+        ensure_all_optional_match_disjs(dag);
         let mut changed = false;
         let node_count = dag.nodes().len();
         for i in 0..node_count {
