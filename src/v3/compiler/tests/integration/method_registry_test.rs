@@ -19,7 +19,7 @@
 //!   `MethodRef` rather than bare `DeclarationRef`.
 
 use std::collections::HashSet;
-use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -112,19 +112,77 @@ const EXPECTED_METHOD_NAMES: &[&str] = &[
 #[test]
 fn method_registry_covers_all_algebra_template_names() {
     let dag = generated_full_bootstrap_dag();
-    let mut missing: Vec<String> = Vec::new();
+    let method_decl_id = decl_id_by_name(&dag, "MethodDeclaration");
+
+    let mut errors: Vec<String> = Vec::new();
     for name in EXPECTED_METHOD_NAMES {
         let binding_name = format!("{name}_method");
-        if dag.declaration_by_name(&binding_name).is_none() {
-            missing.push(binding_name);
+        let Some(decl) = dag.declaration_by_name(&binding_name) else {
+            errors.push(format!("missing binding `{binding_name}`"));
+            continue;
+        };
+
+        // (1) The binding's connective must instantiate `MethodDeclaration`.
+        let template = match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => *template,
+            other => {
+                errors.push(format!(
+                    "`{binding_name}` has non-Instantiation connective: {other:?}"
+                ));
+                continue;
+            }
+        };
+        if template != method_decl_id {
+            errors.push(format!(
+                "`{binding_name}` instantiates DeclarationId({:?}), expected MethodDeclaration ({:?})",
+                template, method_decl_id
+            ));
+            continue;
+        }
+
+        // (2) The data body must be a Structural record with `name` =
+        // String literal matching the expected method name.
+        let fields = match &decl.value_body {
+            Some(ValueBody::Structural { fields }) => fields,
+            Some(other) => {
+                errors.push(format!(
+                    "`{binding_name}` value_body is not Structural: {other:?}"
+                ));
+                continue;
+            }
+            None => {
+                errors.push(format!("`{binding_name}` has no value_body"));
+                continue;
+            }
+        };
+
+        let name_field = fields.iter().find(|(label, _)| label == "name");
+        match name_field {
+            Some((_, FieldValue::Literal(LiteralBits::String(s)))) if s == name => {
+                // ok
+            }
+            Some((_, FieldValue::Literal(LiteralBits::String(s)))) => {
+                errors.push(format!(
+                    "`{binding_name}.name` = {s:?}, expected {name:?}"
+                ));
+            }
+            Some((_, other)) => {
+                errors.push(format!(
+                    "`{binding_name}.name` is not a String literal: {other:?}"
+                ));
+            }
+            None => {
+                errors.push(format!("`{binding_name}` missing `name` field"));
+            }
         }
     }
+
     assert!(
-        missing.is_empty(),
-        "method-name registry drift: `dsl/std/methods.dag` is missing \
-         `data <name>_method: MethodDeclaration` bindings for: {missing:?}. \
-         Either land the bindings or update EXPECTED_METHOD_NAMES if a name \
-         actually retired from `dsl/std/algebra.dag` template lists."
+        errors.is_empty(),
+        "method-name registry drift: `dsl/std/methods.dag` failed registry \
+         authority checks. Each `<name>_method` must (a) instantiate \
+         `MethodDeclaration` and (b) carry a `name: \"<name>\"` field \
+         literal. Errors: {errors:#?}"
     );
 }
 
