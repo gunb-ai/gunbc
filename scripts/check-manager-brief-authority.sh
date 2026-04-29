@@ -187,13 +187,38 @@ check_q4_landed_pr_in_history() {
   while IFS= read -r pr_num; do
     [ -z "$pr_num" ] && continue
 
-    # Match merge commit subject "(#N)" or "(...#N)" patterns.
-    if ! git log --all --oneline --grep="(#${pr_num})" 2>/dev/null | grep -q .; then
-      echo "VIOLATION [Q4 landed-pr-in-history]: $brief"
-      echo "  cited claim: 'LANDED via #${pr_num}'"
-      echo "  but no commit in branch history matches '(#${pr_num})'"
-      brief_violations=$((brief_violations + 1))
+    # Two-stage check (squash-merges drop the "(#N)" subject suffix on
+    # some PRs — see d9bade38f for #900 — so a pure git-log grep gives
+    # false negatives). Capture explicitly to avoid SIGPIPE under
+    # pipefail (grep -q exits early, kills upstream git-log).
+    #
+    # Stage 1: fast pure-git grep for the common "(#N)" merge subject.
+    local matches
+    matches="$(git log --all --oneline --grep="(#${pr_num})" 2>/dev/null || true)"
+    if [ -n "$matches" ]; then
+      continue
     fi
+
+    # Stage 2: fall back to gh API (handles squash-merges with no
+    # subject suffix). Resolves the merge commit SHA, then verifies
+    # the SHA is reachable from HEAD.
+    if command -v gh >/dev/null 2>&1; then
+      local merge_sha
+      merge_sha="$(gh pr view "$pr_num" --json mergeCommit --jq '.mergeCommit.oid' 2>/dev/null || true)"
+      if [ -n "$merge_sha" ] && [ "$merge_sha" != "null" ]; then
+        if git cat-file -e "$merge_sha" 2>/dev/null && \
+           git merge-base --is-ancestor "$merge_sha" HEAD 2>/dev/null; then
+          continue
+        fi
+      fi
+    fi
+
+    echo "VIOLATION [Q4 landed-pr-in-history]: $brief"
+    echo "  cited claim: 'LANDED via #${pr_num}'"
+    echo "  PR is not reachable from HEAD via either:"
+    echo "    - merge subject containing '(#${pr_num})'"
+    echo "    - gh pr view #${pr_num}'s merge commit being an ancestor of HEAD"
+    brief_violations=$((brief_violations + 1))
   done < <(grep -oE '(LANDED|landed) via #[0-9]+' "$brief" | grep -oE '#[0-9]+' | tr -d '#' | sort -u)
 
   return $brief_violations
@@ -210,24 +235,26 @@ check_q4_landed_pr_in_history() {
 check_q5_cross_brief_projections() {
   local brief_violations=0
 
-  # Pattern set: (label, regex extracting the count, expected canonical value).
+  # Pattern set: (label, canonical value, POSIX-extended regex).
+  # Encoding is "label||canonical||regex" using "||" as field separator
+  # to avoid colliding with the regex's own characters.
   # Canonical values match docs/r2-structure.md (manager count) and
   # docs/r3-structure.md (lane counts) authority docs.
+  # Regex must use POSIX-extended (bash grep -E): [0-9]+, not \d+.
   declare -a patterns=(
-    'standing R2 managers|7|(\d+) standing R2 managers|standing R2 managers'
-    'standing managers|7|(\d+) standing managers|standing managers'
-    'other managers|6|(\d+) other managers|other managers'
-    'R2 managers continuing into R3|2|(\d+)\s*R2 managers? continu|R2 managers continuing into R3'
-    'R3 lanes|10|(\d+) R3 lanes|R3 lanes'
-    'R3-Evaluator-gated lanes|7|(\d+) of 10 R3 lanes|R3-Evaluator-gated lanes'
+    'standing R2 managers||7||[0-9]+ standing R2 managers'
+    'standing managers||7||[0-9]+ standing managers'
+    'other managers||6||[0-9]+ other managers'
+    'R3 lanes||10||[0-9]+ R3 lanes'
+    'R3-Evaluator-gated lanes||7||[0-9]+ of 10 R3 lanes'
   )
 
   for entry in "${patterns[@]}"; do
-    local label="${entry%%|*}"
-    local rest="${entry#*|}"
-    local canonical="${rest%%|*}"
-    rest="${rest#*|}"
-    local pattern="${rest%%|*}"
+    # Field separator is "||" (double-pipe) so single | in regex is safe.
+    local label="${entry%%||*}"
+    local rest="${entry#*||}"
+    local canonical="${rest%%||*}"
+    local pattern="${rest#*||}"
 
     declare -A counts_seen=()
     local mismatch=0
