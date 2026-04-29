@@ -1,10 +1,10 @@
 //! Integer literal magnitude vs declared integer types — **Q1 consumer**.
 //!
-//! Authoritative modeling: [`docs/design-emission-model.md`](../../../docs/design-emission-model.md)
+//! Authoritative modeling: [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
 //! §Q1 — `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`, with asymmetric
 //! match (target `Unbounded` universal-accept; target `ExactInterval` exact `lo`/`hi` equality at
 //! the fold). This module implements only the **static** side needed for literal narrowing:
-//! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../dsl/extdeps/languages/rust/primitives.dag)
+//! substrate range facts [`range_min_inclusive` / `range_max_inclusive`](../../../../dsl/extdeps/languages/rust/primitives.dag)
 //! on [`rust_pilot_primitives`](crate::dag::Dag::rust_pilot_primitives) supply
 //! `StaticBound(Interval<Int>)` as [`IntervalInt::ExactInterval`] (decimal endpoints + host `i128`
 //! comparison). [`IntervalInt::Unbounded`] exists so Q1’s interval algebra is representable when a
@@ -47,7 +47,7 @@ pub(crate) enum IntervalInt {
     /// **Dissolution trigger (when this variant is constructed from [`integer_range_for_decl`]):**
     /// a `rust_pilot_primitives` `IntegerPrimitive` row (or successor multi-target table) is
     /// authored for a target whose Q1 `BoundDeclaration` is `StaticBound(Unbounded)` at magnitude
-    /// check — e.g. Python `int` per [`docs/design-emission-model.md`](../../../docs/design-emission-model.md)
+    /// check — e.g. Python `int` per [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
     /// fold example (T-Ground cross-target / language `primitives.dag` work, not this consumer).
     /// Until that producer exists, only [`IntervalInt::ExactInterval`] is returned from the pilot
     /// list; [`Unbounded`] remains for `contains_i64` / Q1 algebra completeness and unit tests.
@@ -55,9 +55,12 @@ pub(crate) enum IntervalInt {
     Unbounded,
 }
 
-/// Subset of an exact integer interval: everything [`Diagnostic::MagnitudeOutOfRange`] needs. This
-/// type is the only input to [`magnitude_out_of_range`], so an unbounded domain cannot be passed
-/// where a fixed range is required.
+/// Decimal endpoints for a **fixed** integer target — the payload of [`MagnitudeOutOfRange`].
+///
+/// **API split:** only [`magnitude_out_of_range`] takes this type. When you have a full
+/// [`IntervalInt`] from [`integer_range_for_decl`], call [`magnitude_out_of_range_for_interval`]
+/// (it uses [`IntervalInt::exact_interval_facts`] and never passes an unbounded domain into the
+/// magnitude diagnostic).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ExactIntIntervalFacts {
     pub(crate) target_name: String,
@@ -77,6 +80,8 @@ impl IntervalInt {
         }
     }
 
+    /// Fixed-width pilot rows: `Some` for [`IntervalInt::ExactInterval`]; `None` for
+    /// [`IntervalInt::Unbounded`] (no decimal range to quote in `MagnitudeOutOfRange`).
     pub(crate) fn exact_interval_facts(&self) -> Option<ExactIntIntervalFacts> {
         match self {
             IntervalInt::ExactInterval {
@@ -377,31 +382,44 @@ pub(crate) fn int_literal_fits_expected_type(
     }
 }
 
+/// Build [`Diagnostic::MagnitudeOutOfRange`] from **exact** decimal range facts only.
+///
+/// For a bound that may be [`IntervalInt::Unbounded`], use [`magnitude_out_of_range_for_interval`]
+/// instead — this function does not accept [`IntervalInt`].
 pub(crate) fn magnitude_out_of_range(
+    literal: i64,
+    expected: TypeShape,
+    facts: ExactIntIntervalFacts,
+    span: SourceSpan,
+) -> Diagnostic {
+    Diagnostic::MagnitudeOutOfRange {
+        literal: literal.to_string(),
+        target: facts.target_name,
+        range_min_inclusive: facts.min_decimal,
+        range_max_inclusive: facts.max_decimal,
+        expected,
+        span,
+        fixes: Vec::new(),
+    }
+}
+
+/// OOB diagnostic when the only available model is [`IntervalInt`] (e.g. from
+/// [`integer_range_for_decl`]). Unbounded domains never produce `MagnitudeOutOfRange` for
+/// i64-bounded literals; if that combination appears, fail closed without `unreachable!`.
+pub(crate) fn magnitude_out_of_range_for_interval(
     literal: i64,
     expected: TypeShape,
     bound: IntervalInt,
     span: SourceSpan,
 ) -> Diagnostic {
-    let Some(ExactIntIntervalFacts {
-        target_name,
-        min_decimal,
-        max_decimal,
-    }) = bound.exact_interval_facts()
-    else {
-        unreachable!(
-            "magnitude_out_of_range is only for fixed-range targets (ExactInterval); \
-             Unbounded accepts every i64-representable literal"
-        );
-    };
-    Diagnostic::MagnitudeOutOfRange {
-        literal: literal.to_string(),
-        target: target_name,
-        range_min_inclusive: min_decimal,
-        range_max_inclusive: max_decimal,
-        expected,
-        span,
-        fixes: Vec::new(),
+    match bound.exact_interval_facts() {
+        Some(facts) => magnitude_out_of_range(literal, expected, facts, span),
+        None => Diagnostic::ResolveError {
+            name: "internal: integer literal failed range check but target has no exact interval facts"
+                .to_string(),
+            span,
+            fixes: Vec::new(),
+        },
     }
 }
 
@@ -669,6 +687,50 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TypeShape;
+
+    #[test]
+    fn magnitude_out_of_range_accepts_only_exact_int_interval_facts() {
+        let dag = Dag::new();
+        let u8_decl = dag.declaration_by_name("UInt8").expect("UInt8").id;
+        let d = magnitude_out_of_range(
+            256,
+            TypeShape::new(u8_decl),
+            ExactIntIntervalFacts {
+                target_name: "u8".to_string(),
+                min_decimal: "0".to_string(),
+                max_decimal: "255".to_string(),
+            },
+            SourceSpan::new("t.v3", 0, 0),
+        );
+        assert!(
+            matches!(
+                d,
+                Diagnostic::MagnitudeOutOfRange {
+                    ref literal,
+                    ref target,
+                    ..
+                } if literal == "256" && target == "u8"
+            ),
+            "expected MagnitudeOutOfRange, got {d:?}"
+        );
+    }
+
+    #[test]
+    fn magnitude_out_of_range_unbounded_target_fails_closed_with_resolve_error() {
+        let dag = Dag::new();
+        let int_decl = dag.declaration_by_name("Int").expect("Int in bootstrap").id;
+        let d = magnitude_out_of_range_for_interval(
+            0,
+            TypeShape::new(int_decl),
+            IntervalInt::Unbounded,
+            SourceSpan::new("t.v3", 0, 0),
+        );
+        assert!(
+            matches!(d, Diagnostic::ResolveError { .. }),
+            "expected fail-closed ResolveError, got {d:?}"
+        );
+    }
 
     #[test]
     fn interval_int_unbounded_accepts_all_i64_literals() {
