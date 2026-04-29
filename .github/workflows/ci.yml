@@ -13,6 +13,11 @@ on:
 
 permissions:
   contents: read
+  # Manager-brief authority check uses `gh pr view --json state` to
+  # verify "LANDED via #N" claims map to MERGED PRs. Default
+  # GITHUB_TOKEN scopes don't include pull-request read; without this
+  # the check fails with "Resource not accessible by integration".
+  pull-requests: read
 
 # Cancel in-flight runs on new pushes to the same PR. Keyed on the PR
 # number (not `head_ref`) so two fork PRs that happen to share a branch
