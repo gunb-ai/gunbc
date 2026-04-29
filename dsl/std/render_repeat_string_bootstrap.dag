@@ -3,15 +3,27 @@
 // `Dag::new()` loads only a subset of `dsl/std/*.dag` into the embedded snapshot
 // (`bootstrap_regen_fresh::std_fixtures`). Full `dsl/std/render.dag` is not in that
 // bundle; this file supplies the named `repeat_string` declaration so lowering can
-// fold literal `data …: String = repeat_string(s:, n:)` only when
-// `symbols.get("repeat_string")` resolves to this substrate decl (not a user shadow).
+// resolve `symbols.get("repeat_string")` to a substrate `DeclarationId` (not a user
+// shadow) for the literal `data`-body fold (see `lower::dsl_std_render_repeat_string_decl_id`).
 //
-// Semantics of the **fold** remain aligned with `dsl/std/render.dag` `repeat_string`
-// (`lower::fold_repeat_string_semantics`); keep this declaration behaviorally in sync
-// with the full module when that lands in the bootstrap set.
+// **Single semantic authority:** the two functions below are **verbatim** the
+// `repeat_string_loop` / `repeat_string` definitions from `dsl/std/render.dag`
+// (same file-relative behavior). The compile-time fold (`lower::fold_repeat_string_semantics`)
+// is an optimization for **literal-only** `data` bodies; it must stay consistent with
+// these definitions (unit-tested). Do not replace this body with a stub literal — that
+// would split substrate truth from declared behavior.
 
 module std.render_repeat_string_bootstrap
 
+// Copy-paste authority: `dsl/std/render.dag` — Repeat a string N times (bounded loop).
+fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
+  if remaining <= 0 {
+    acc
+  } else {
+    repeat_string_loop(concat(acc, s), s: s, remaining: remaining - 1)
+  }
+}
+
 fn repeat_string(s: String, n: Int) -> String {
-  ""
+  repeat_string_loop(acc: "", s: s, remaining: n)
 }
