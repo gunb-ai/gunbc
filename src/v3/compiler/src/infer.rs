@@ -875,11 +875,13 @@ fn int_literal_magnitude_narrow_merge(
                 magnitude_out_of_range_for_interval(lit, to.clone(), bound, span),
             ),
             IntegerRangeLookup::Invalid(diag) => IntLiteralNarrowMerge::Reject(diag),
-            IntegerRangeLookup::Missing => IntLiteralNarrowMerge::Reject(Diagnostic::ResolveError {
-                name: "(internal: integer literal out of range but no range fact)".to_string(),
-                span,
-                fixes: Vec::new(),
-            }),
+            IntegerRangeLookup::Missing => {
+                IntLiteralNarrowMerge::Reject(Diagnostic::ResolveError {
+                    name: "(internal: integer literal out of range but no range fact)".to_string(),
+                    span,
+                    fixes: Vec::new(),
+                })
+            }
         },
         Err(diag) => IntLiteralNarrowMerge::Reject(diag),
         Ok(None) => IntLiteralNarrowMerge::NotApplicable,
