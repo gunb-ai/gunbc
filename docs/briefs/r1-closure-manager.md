@@ -52,8 +52,8 @@ brief no longer treats older landing SHA `5f405cc8e` as HEAD.
 | Item | Disposition |
 |---|---|
 | `p0_repeat_string_correct` | Remains as structural T-P0 debt. The #1127 bridge dissolves when modeled v3 evaluation can witness `repeat_string` directly. |
-| `p0_no_fabrication_sentinel` | Remains `[ext]` T-P0 debt per ROADMAP / scaffold authority. |
-| `p0_rest_ops_aligned` | Remains `[ext]` T-P0 debt per ROADMAP / scaffold authority. |
+| `p0_no_fabrication_sentinel` | Remains `[ext]` T-P0 debt in [`ROADMAP.md §"Lane acceptance — .dag gates"`](../../ROADMAP.md) and the R1C-B worker brief. Successor lane: R1C-B Worker B / closure follow-up. Dissolves when a `.dag` `TestClaim` is authored, runner-dispatched, and evaluates `Pass` for the no-fabrication sentinel behavior. |
+| `p0_rest_ops_aligned` | Remains `[ext]` T-P0 debt in [`ROADMAP.md §"Lane acceptance — .dag gates"`](../../ROADMAP.md) and the R1C-B worker brief. Successor lane: R1C-B Worker B / closure follow-up. Dissolves when a `.dag` `TestClaim` is authored, runner-dispatched, and evaluates `Pass` for REST operation alignment. |
 | PB census RED rows | No longer R1 program blockers after #1128. Their live counts belong to SG-0 census authority and downstream R2/R3 ledger rows named by `ReleaseDeferredClaim`. |
 
 ## Dissolution / Reporting
