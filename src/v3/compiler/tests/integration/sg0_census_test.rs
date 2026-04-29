@@ -278,6 +278,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    // R1 release acceptance fixture: strict PB gate 3 plus Director-approved
+    // release deferral markers for the five concession-encoded gates.
+    // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
+    // T-PB-B bulk-migration lanes and this R1-only acceptance wrapper retires.
+    "src/v3/compiler/tests/integration/r1_release_acceptance_test.rs",
     // R1C-D (PB census `.dag` `TestClaim` wrappers): runner-side receipt
     // for the six PB census gates in `tests/fixtures/r1_pb_census_gates.dag`.
     // Asserts `TestRunner` dispatches each PB census predicate to a wired
