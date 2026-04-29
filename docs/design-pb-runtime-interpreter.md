@@ -97,18 +97,38 @@ The implementation of `evaluate` is itself a `.dag` program — a fold over `Beh
 - `Behavior::Transform(t)` → recursive evaluate of inputs; apply `t.target` (callable / field-project / operator) to result
 - `Behavior::Branch(b)` → evaluate `b.input`; pattern-match against `b.paths`; recursive evaluate selected `path.body` with `path.binding` bound
 - `Behavior::Loop(l)` → fold over `l.bound` (cardinality bounded iteration or descent-bounded recursion); evaluate `l.body` per iteration with accumulator
-- `Behavior::Bind(b)` → bind `b.params`; evaluate body in extended environment; close over for downstream use
+- `Behavior::Bind(b)` → bind `b.params` to provided argument values in a fresh evaluation frame (see §3.3 below); evaluate `b.body` in that frame; the frame goes out of scope when the call returns.
 
 These five rules ARE the runtime. The `.dag` declaration of `evaluate`'s body IS the spec.
 
-### 3.3 What this is NOT
+### 3.3 What is NOT a `Value` (runtime evaluator state vs observable result)
+
+`Value` (§3.2) is the **observable-result domain** — what `evaluate(...)` returns and what flows through computation as data. The evaluator additionally carries **internal evaluation-state carriers** that are NOT `Value` variants:
+
+- **`EvalFrame`** — a stack-discipline carrier mapping `PortId` → bound `Value` for the duration of a `Bind` body's evaluation (or a `Loop` iteration's body evaluation). Owned by R2-Evaluator's PR-A; declared in PB-Runtime's `.dag` form alongside `evaluate` but lives in evaluator-state space, not `Value` space.
+- **`EvalStateStack`** — the stack of `EvalFrame`s representing nested binding scopes during evaluation. Same scope-shape: evaluator-internal, not a `Value` inhabitant.
+
+These exist because the Evaluator brief's "closed-over environments + binding scopes for `Loop` / `Bind`" language IS load-bearing — but the load it bears is at the evaluator's runtime-state layer, not at the `Value` layer that flows between callers. The `EvalFrame`/`EvalStateStack` carriers ARE structural (declarable in `.dag`, consumed by PB-Runtime); they're just NOT inhabitants of `Value`.
+
+**Why closures-with-captures are NOT first-class `Value` variants in v3:** the substrate doesn't admit them by construction. `TransformTarget = Callable(DeclarationId) | FieldProject | Operator(OperatorKind)` — `Callable` resolves to a *top-level declaration*, not a captured-state-bearing closure. `Behavior::Bind.params: List<PortId>` is parameter-binding at call time, with no provision for capturing local state at definition time. A `Value` carrying a `NodeRef(NodeId)` to a Bind node is *identity*, not a closure — call sites bind params at call time; there's no captured-state slot.
+
+Concretely:
+- A function returned from another function (`f(x) → λy. y + x`) is NOT expressible in v3 today. Functions are top-level (`Callable(DeclarationId)`); the only "function value" is a structural reference.
+- `EvalFrame` data does NOT escape its `Bind` evaluation: when a `Bind` returns, its frame pops; nothing in `Value` carries a reference to it.
+- "Closed-over environment" in the Evaluator brief = "the active frame stack during evaluation provides binding lookups." It does not mean "values in transit can carry environments."
+
+**If v3 evolves to need first-class closures-with-captures** (e.g., higher-order programming as a deliberate language extension), that's a substrate-fact-introduction event: a new `EvaluatorClosure { node_ref: NodeId, captured_frame: EvalFrame }` carrier under §P1 escalation to Substrate Manager (per anti-bridge invariant #2 below). The carrier could be a new `Value` variant *or* a separate observable-result type — the disposition is downstream of the actual feature ask. **Until that happens, R2-Evaluator's PR-A worker MUST NOT add a closure/captured-environment value variant.** Worker A's "closed-over environments" implementation = `EvalFrame` + `EvalStateStack` (evaluator-internal); NOT a Value inhabitant.
+
+This resolves the apparent "implement closures vs do not add closure/runtime-env value" ambiguity: implement the evaluator's frame-stack discipline as `EvalFrame`/`EvalStateStack` carriers, not as Value variants. The Value coproduct stays closed at the 5 primitives' observable inhabitants; the evaluator's runtime state lives in parallel, structurally typed.
+
+### 3.4 What this is NOT
 
 - **Not** a separate language. PB-Runtime is `.dag` — same surface as everything else.
 - **Not** a parallel value system. `Value` reuses substrate carriers (`LiteralBits`, `LoopBound`); only the runtime-value coproduct is new.
 - **Not** "an interpreter in `.dag` to bootstrap an interpreter in Rust." That's circular. The dissolution path runs the OTHER direction: R2-Evaluator (Rust) is the bootstrap; PB-Runtime (`.dag`) is the terminal form.
 - **Not** the same as `Lens<C>.read`. Lenses fold over already-evaluated programs (or fold structurally without execution per `docs/design-reflection-completeness.md`); PB-Runtime is the layer that turns a `.dag` program into a runtime value.
 
-### 3.4 Reflection vs evaluation distinction (cross-reference)
+### 3.5 Reflection vs evaluation distinction (cross-reference)
 
 Per `docs/design-reflection-completeness.md` §3 + §6: reflection is *static structural projection*; evaluation is *running the reflected program*. PB-Runtime is the evaluation half:
 
@@ -270,7 +290,7 @@ PB-Runtime + bin-shim retirement workers MUST hold the following while landing t
 
 1. **No PB-Runtime divergence from R2-Evaluator semantics.** The `.dag` declaration of PB-Runtime IS the spec the Rust crate's tests verify against. If they diverge, the dissolution is broken; convergence is non-optional.
 
-2. **No new value primitives.** `Value` (per §3.2) is closed over the 5 substrate primitives' inhabitants. Adding a new primitive (e.g., `ClosureValue`, `EffectValue`, etc.) is a substrate-fact-introduction event requiring P1 procedure escalation to Substrate Manager. PB-Runtime workers MUST NOT extend `Value` locally.
+2. **No new `Value` primitives.** `Value` (per §3.2) is closed over the 5 substrate primitives' inhabitants. Adding a new primitive (e.g., `ClosureValue`, `EffectValue`, etc.) is a substrate-fact-introduction event requiring P1 procedure escalation to Substrate Manager. PB-Runtime workers MUST NOT extend `Value` locally. **Note**: `EvalFrame` / `EvalStateStack` (per §3.3) are NOT `Value` extensions — they're evaluator-internal state carriers in parallel substrate-typed space. Adding evaluator-internal carriers is the Evaluator Manager's PR-A scope and does NOT trigger this anti-bridge; only adding `Value` variants does.
 
 3. **No bin-shim hand-Rust additions.** Once Item 5 lands, NEW bin-shims author as `BinShim` declarations + emitted Rust, not as hand-Rust. Hand-Rust under `src/v3/compiler/src/bin/` becomes a closed set with named retirement targets; it does not grow.
 
