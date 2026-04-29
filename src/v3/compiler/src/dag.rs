@@ -484,13 +484,32 @@ impl<D: Copy + PartialEq + Eq + Ord> Interval<D> {
     }
 }
 
-/// PR-PreF additive constructors on [`CardinalityBound`] (`Interval<Cardinal>`).
+/// PR-PreF: legacy connective constructors on [`CardinalityBound`]; algebraic shape lives on
+/// [`Interval<Cardinal>`] via [`Self::as_cardinal_interval`].
 impl CardinalityBound {
-    pub const AT_MOST_ONE: Self = Self::ExactInterval { lo: 0, hi: 1 };
+    pub const AT_MOST_ONE: Self = Self::AtMostOne;
+
     pub const fn exact(n: Cardinal) -> Self {
-        Self::ExactInterval { lo: n, hi: n }
+        Self::Exact(n as i64)
     }
+
     pub const UNBOUNDED: Self = Self::Unbounded;
+
+    /// Maps the named connective carrier onto the shared `Interval<Cardinal>` parent
+    /// (`AtMostOne` ≡ `0..=1` inclusive).
+    pub fn as_cardinal_interval(self) -> Interval<Cardinal> {
+        match self {
+            Self::AtMostOne => Interval::try_exact_interval(0, 1)
+                .expect("AtMostOne maps to the fixed well-formed interval 0..=1"),
+            Self::Unbounded => Interval::Unbounded,
+            Self::Exact(n) => {
+                let Ok(c) = Cardinal::try_from(n) else {
+                    return Interval::Unbounded;
+                };
+                Interval::try_exact_interval(c, c).unwrap_or(Interval::Unbounded)
+            }
+        }
+    }
 }
 
 mod cardinality_payload;
@@ -1564,11 +1583,11 @@ pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
 /// carries a definite iteration count (`PR-PreF`). Label-shaped bounds return `None`.
 pub fn size_bound_cardinal_interval(bound: &SizeBound) -> Option<Interval<Cardinal>> {
     match bound {
-        SizeBound::ExplicitCountZero => Some(Interval::ExactInterval { lo: 0, hi: 0 }),
+        SizeBound::ExplicitCountZero => Interval::try_exact_interval(0, 0),
         SizeBound::ExplicitCountPositive { steps } => {
             let hi = positive_descent_count(steps);
             let hi = u32::try_from(hi).ok()?;
-            Some(Interval::ExactInterval { lo: 1, hi })
+            Interval::try_exact_interval(1, hi)
         }
         SizeBound::Forever => Some(Interval::Unbounded),
         _ => None,
@@ -1829,19 +1848,9 @@ impl LoopBound {
         }
     }
 
-    pub fn cardinality_iteration_interval(&self) -> Option<Interval<Ordinal>> {
-        match self {
-            Self::Cardinality { iteration, .. } => Some(*iteration),
-            Self::Descent { .. } => None,
-        }
-    }
-
-    /// `LoopBound::Cardinality` with unknown iteration range (lowering default / PR-PreF).
+    /// `LoopBound::Cardinality` witness: runtime count port only (iteration algebra is downstream).
     pub fn cardinality_bounded_count(count: PortId) -> Self {
-        Self::Cardinality {
-            count,
-            iteration: Interval::Unbounded,
-        }
+        Self::Cardinality { count }
     }
 }
 

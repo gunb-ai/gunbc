@@ -571,8 +571,7 @@ def parse_types(path: Path) -> tuple[dict[str, RecordDef], dict[str, list[Varian
             i += 1
             continue
 
-        # Single-line substrate aliases (`type Cardinal = Int`,
-        # `type CardinalityBound = Interval<Cardinal>`) — no runtime sum of their own.
+        # Single-line substrate aliases (`type Cardinal = Int`, …) — no runtime sum.
         if "=" in line and "|" not in line.split("=", 1)[1]:
             rhs = line.split("=", 1)[1].strip()
             if not rhs.startswith("{") and not rhs.startswith("("):
@@ -839,6 +838,7 @@ def render_dag_scalar_module(records: dict[str, RecordDef], sums: dict[str, list
             sums["CardinalityBound"],
             "#[derive(Debug, Clone, Copy, PartialEq, Eq)]",
             output_name="CardinalityBound",
+            overrides={"Int": "u32"},
         ),
         render_record(
             records["TemplateArgument"],

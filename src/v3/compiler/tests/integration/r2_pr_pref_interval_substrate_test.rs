@@ -13,15 +13,22 @@ use v3_compiler::dag::{
 fn interval_d_shared_parent_consolidation_landed() {
     assert!(matches!(
         CardinalityBound::AT_MOST_ONE,
-        CardinalityBound::ExactInterval { lo: 0, hi: 1 }
+        CardinalityBound::AtMostOne
     ));
+    assert_eq!(
+        CardinalityBound::AT_MOST_ONE.as_cardinal_interval(),
+        Interval::try_exact_interval(0, 1).expect("0..=1")
+    );
     let dag = compile_to_dag("data probe: Int = 0\n", "pr_pref_substrate_bootstrap.v3")
         .expect("trivial program compiles");
-    let _ = dag; // receipt: substrate loads with Interval + LoopBound iteration field
+    let _ = dag;
 
     let zero = size_bound_cardinal_interval(&SizeBound::ExplicitCountZero)
         .expect("ExplicitCountZero maps to interval");
-    assert_eq!(zero, Interval::ExactInterval { lo: 0, hi: 0 });
+    assert_eq!(
+        zero,
+        Interval::try_exact_interval(0, 0).expect("singleton zero")
+    );
 
     let steps = PositiveDescentAmount::OneStep;
     let pos = size_bound_cardinal_interval(&SizeBound::ExplicitCountPositive { steps })

@@ -21,7 +21,6 @@ pub struct Cluster {
 pub enum LoopBound {
     Cardinality {
         count: PortId,
-        iteration: Interval<Ordinal>,
     },
     Descent {
         cluster: ClusterId,

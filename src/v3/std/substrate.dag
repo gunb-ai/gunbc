@@ -83,8 +83,8 @@ type AtomPayload
 type Cardinal = Int
 type Ordinal = Int
 
-// 🟡 SCAFFOLD — parametric closed interval on a totally ordered domain (inclusive
-// bounds). **Dissolution / terminal classification (4-pattern):**
+// 🟢 TERMINAL at reflected-substrate scope — `Interval<D>` coproduct (PR-PreF / Q1).
+// Dissolution ledger (4-pattern structural decompression):
 // - **Pattern 1 (fact placement):** fails — `ExactInterval` is one fact shape with
 //   two witness fields; `Unbounded` is a distinct terminal atom.
 // - **Pattern 2 (variant-is-data):** fails — record variant vs unit-like atom.
@@ -97,13 +97,16 @@ type Ordinal = Int
 // `ExactInterval { lo, hi }` does not enforce `lo <= hi` at the substrate witness;
 // Rust-side `Interval::try_exact_interval` is the fail-closed constructor for alloc
 // paths. Self-hosted constructors should add the same authority in the Lane 3c cycle.
+//
+// **Verdict:** terminal at PR-PreF scope. Half-open / single-sided intervals require a
+// substrate-extension audit (M1_DESIGN §8.10 C1-class stop signal).
 type Interval<D>
   = ExactInterval { lo: D, hi: D }
   | Unbounded
 
 // 🟢 TERMINAL at connective-bound naming scope. Preserves `Exact` / `AtMostOne` /
 // `Unbounded` as distinct spec-facing constructors; maps onto `Interval<Cardinal>`
-// additively via Rust `CardinalityBound::as_cardinal_interval` (PR-PreF).
+// additively via Rust `CardinalityBound::as_cardinal_interval` in `dag.rs` (PR-PreF).
 type CardinalityBound
   = Exact(Int)
   | AtMostOne

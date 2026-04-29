@@ -24,6 +24,10 @@ pub type Cardinal = u32;
 pub type Ordinal = u32;
 
 
+// For ordered `D`, well-formed `ExactInterval` (`lo <= hi`): use
+// `Interval::try_exact_interval` in `dag.rs` (substrate cannot express the constraint).
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Interval<D: Copy + PartialEq + Eq> {
     ExactInterval {
@@ -33,9 +37,12 @@ pub enum Interval<D: Copy + PartialEq + Eq> {
     Unbounded,
 }
 
-
-pub type CardinalityBound = Interval<Cardinal>;
-
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CardinalityBound {
+    Exact(i64),
+    AtMostOne,
+    Unbounded,
+}
 
 #[derive(Debug, Clone)]
 pub struct TemplateArgument {

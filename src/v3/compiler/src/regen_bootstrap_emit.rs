@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use crate::dag::{
     ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
     BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, ClusterId,
-    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue, Interval,
+    ComparisonOp, Dag, Declaration, DeclarationId, Field, FieldMap, FieldValue,
     IntraClusterCall, LiteralBits, LogicalOp, LoopBound, LoopNode, MemberDescent, NodeId,
     NominalOpacity, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding,
     PhantomParameter, PortId, PortState, TemplateArgument, TransformNode, TransformTarget,
