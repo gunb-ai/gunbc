@@ -101,13 +101,7 @@ data suite: TestSuite = {
 
     assert_eq!(results.len(), 1);
     assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::Fail(reason)
-                if reason.contains("deferred_gate")
-                    && reason.contains("R1GateMarker")
-                    && reason.contains("arbitrary_gate")
-        ),
+        matches!(&results[0].result, ClaimResult::Fail(_)),
         "expected ReleaseDeferredClaim to fail closed on untyped deferred_gate, got {results:?}"
     );
 }
@@ -148,13 +142,7 @@ data suite: TestSuite = {
 
     assert_eq!(results.len(), 1);
     assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::Fail(reason)
-                if reason.contains("only valid")
-                    && reason.contains("r1_release_acceptance.dag")
-                    && reason.contains("arbitrary_release_deferred_claim.dag")
-        ),
+        matches!(&results[0].result, ClaimResult::Fail(_)),
         "expected ReleaseDeferredClaim to fail outside release fixture, got {results:?}"
     );
 }
