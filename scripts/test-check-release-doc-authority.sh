@@ -163,11 +163,14 @@ EOF
     echo "  Expected: consumer should fail-closed and name the missing doc"
     return 1
   fi
-  if ! echo "$output" | grep -q "MISSING: docs/r3-structure.md"; then
+  # Avoid `echo "$output" | grep -q` under `pipefail`: `grep -q` exits after the
+  # first match and closes the pipe; `echo` can then hit SIGPIPE (exit 141),
+  # making the pipeline status non-zero and falsely tripping `if ! ...`.
+  if [[ "$output" != *"MISSING: docs/r3-structure.md"* ]]; then
     echo "FAIL [missing-doc]: consumer failed but didn't name the missing doc"
     echo "  Expected output to contain: 'MISSING: docs/r3-structure.md'"
     echo "  Actual output:"
-    echo "$output" | sed 's/^/    /'
+    printf '%s\n' "$output" | sed 's/^/    /'
     return 1
   fi
   return 0

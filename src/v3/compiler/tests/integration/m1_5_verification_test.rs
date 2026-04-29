@@ -325,9 +325,9 @@ let suite: TestSuite = {
     );
 }
 
-/// PR-D (Evaluator Manager): cross-target equivalence harness — named structural gate
-/// `evaluator_cross_target_equivalence_harness_primitives_landed` compiles and passes `Compiles`
-/// under `TestRunner` (see `docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`).
+/// PR-D (Evaluator Manager): cross-target equivalence harness — slice 0 `Compiles` claim plus
+/// slice 1 `DifferentialEquals` scaffold both compile and pass under `TestRunner` (see
+/// `docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`).
 const R2_PR_D_HARNESS_FIXTURE: &str =
     include_str!("../fixtures/r2_evaluator_cross_target_equivalence_harness_primitives.dag");
 const R2_PR_D_HARNESS_FIXTURE_PATH: &str =
@@ -353,12 +353,17 @@ fn r2_pr_d_cross_target_equivalence_harness_primitives_suite_passes() {
 
     let results = TestRunner::new(&dag)
         .run_suite("r2_evaluator_cross_target_equivalence_harness_primitives_suite");
-    assert_eq!(results.len(), 1);
+    assert_eq!(results.len(), 2);
     assert_eq!(
         results[0].claim_name,
         "evaluator_cross_target_equivalence_harness_primitives_landed"
     );
     assert_eq!(results[0].result, ClaimResult::Pass);
+    assert_eq!(
+        results[1].claim_name,
+        "evaluator_cross_target_equivalence_harness_primitives_differential_scaffold"
+    );
+    assert_eq!(results[1].result, ClaimResult::Pass);
 }
 
 /// PR-A (Evaluator Manager): runtime-value model — named structural gate
