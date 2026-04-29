@@ -49,8 +49,8 @@ use crate::infer_helpers::{
     TemplateArgumentBinding, TemplateArgumentsMatch,
 };
 use crate::int_literal_ranges::{
-    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at, magnitude_out_of_range,
-    IntegerRangeLookup,
+    int_literal_fits_expected_type, integer_range_for_decl, literal_int_at,
+    magnitude_out_of_range_for_interval, IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
 use crate::operators::{LogicalOp, OperatorKind};
