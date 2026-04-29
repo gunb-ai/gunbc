@@ -2779,11 +2779,7 @@ fn lower_data_item(
         Some(map_expr @ SurfaceExpr::Map { .. }) => {
             lower_map_to_structural(name, map_expr, ty_decl_id, symbols, dag)
         }
-        Some(SurfaceExpr::Call {
-            target,
-            args,
-            ..
-        }) if target == "repeat_string" => {
+        Some(SurfaceExpr::Call { target, args, .. }) if target == "repeat_string" => {
             try_lower_repeat_string_string_data(args.as_slice(), ty_decl_id, dag)
         }
         _ => None,
