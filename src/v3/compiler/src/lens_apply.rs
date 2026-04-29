@@ -2451,6 +2451,7 @@ mod substrate_reflection {
             assert_eq!(br.paths.len(), 3);
             let fv = reflect_behavior(&dag, &Behavior::Branch(br.clone())).expect("reflect");
             let rec = behavior_inner_record(&fv);
+            assert_record_matches_named_substrate_conj(&dag, rec, "BranchNode");
             let paths = record_get(rec, "paths");
             assert_eq!(list_spine_len(&dag, paths), 3);
             let FieldValue::Variant { payload, .. } = paths else {
@@ -2484,6 +2485,7 @@ mod substrate_reflection {
             assert!(matches!(lp_c.bound, LoopBound::Cardinality { .. }));
             let fv_c = reflect_behavior(&dag_c, &Behavior::Loop(lp_c.clone())).expect("reflect");
             let rec_c = behavior_inner_record(&fv_c);
+            assert_record_matches_named_substrate_conj(&dag_c, rec_c, "LoopNode");
             let bound_c = record_get(rec_c, "bound");
             let FieldValue::Variant {
                 constructor: c_ty, ..
@@ -2514,6 +2516,7 @@ mod substrate_reflection {
                 .expect("descent loop");
             let fv_d = reflect_behavior(&dag_d, &Behavior::Loop(lp_d.clone())).expect("reflect");
             let rec_d = behavior_inner_record(&fv_d);
+            assert_record_matches_named_substrate_conj(&dag_d, rec_d, "LoopNode");
             let bound_d = record_get(rec_d, "bound");
             let FieldValue::Variant {
                 constructor: d_ty, ..
