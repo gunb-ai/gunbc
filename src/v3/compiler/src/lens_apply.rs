@@ -1274,11 +1274,11 @@ mod substrate_reflection {
 
     use crate::dag::{
         AtomPayload, Behavior, BindEmitParticipation, BindNode, BoolPortRef, BranchArm,
-        BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound, ClusterId,
-        CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar, IdempotentShape,
-        KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList, OperationEffect,
-        OperatorKind, Path, PayloadBinding, PortId, TransformNode, TransformTarget, TypeConnective,
-        ValueNode, WorkflowEffect,
+        BranchEmitParticipation, BranchNode, BranchPattern, BreakingShape, CardinalityBound,
+        ClusterId, CreateCause, Dag, DeclarationId, EffectShape, FieldValue, HttpMethodScalar,
+        IdempotentShape, KeySource, LiteralBits, LoopBound, LoopNode, NodeId, NonSingletonList,
+        OperationEffect, OperatorKind, Path, PayloadBinding, PortId, TransformNode,
+        TransformTarget, TypeConnective, ValueNode, WorkflowEffect,
     };
     use crate::diagnostics::SourceSpan;
 
@@ -1291,7 +1291,11 @@ mod substrate_reflection {
         Err(ReflectError(msg))
     }
 
-    fn disj_variant_ty(dag: &Dag, sum_name: &str, variant_label: &str) -> ReflectResult<DeclarationId> {
+    fn disj_variant_ty(
+        dag: &Dag,
+        sum_name: &str,
+        variant_label: &str,
+    ) -> ReflectResult<DeclarationId> {
         let mut decl_id = dag
             .declaration_by_name(sum_name)
             .ok_or(ReflectError("missing sum type"))?
@@ -1620,7 +1624,9 @@ mod substrate_reflection {
 
     fn reflect_create_cause(dag: &Dag, c: &CreateCause) -> ReflectResult<FieldValue> {
         match c {
-            CreateCause::PostAlways => sum_variant_payload(dag, "CreateCause", "PostAlways", vec![]),
+            CreateCause::PostAlways => {
+                sum_variant_payload(dag, "CreateCause", "PostAlways", vec![])
+            }
             CreateCause::KeylessFallback { method } => sum_variant_payload(
                 dag,
                 "CreateCause",
@@ -2215,7 +2221,9 @@ mod substrate_reflection {
                         .map(|v| v.label.clone()),
                     _ => None,
                 })
-                .unwrap_or_else(|| panic!("constructor {constructor:?} not a sum variant payload ty"))
+                .unwrap_or_else(|| {
+                    panic!("constructor {constructor:?} not a sum variant payload ty")
+                })
         }
 
         #[test]
@@ -2243,7 +2251,9 @@ mod substrate_reflection {
                 .nodes()
                 .iter()
                 .find_map(|beh| match beh {
-                    Behavior::Bind(b) if b.span.file == file_bind && !b.params.is_empty() => Some(b),
+                    Behavior::Bind(b) if b.span.file == file_bind && !b.params.is_empty() => {
+                        Some(b)
+                    }
                     _ => None,
                 })
                 .expect("Bind node");
@@ -2393,7 +2403,8 @@ mod substrate_reflection {
                 .iter()
                 .find_map(|b| match b {
                     Behavior::Loop(l)
-                        if l.span.file == file_d && matches!(l.bound, LoopBound::Descent { .. }) =>
+                        if l.span.file == file_d
+                            && matches!(l.bound, LoopBound::Descent { .. }) =>
                     {
                         Some(l)
                     }
