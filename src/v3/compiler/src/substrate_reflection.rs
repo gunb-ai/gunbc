@@ -928,7 +928,7 @@ pub fn reflect_behavior_list(dag: &Dag, nodes: &[Behavior]) -> ReflectResult<Fie
 mod reflection_tests {
     use super::*;
     use crate::compile_to_dag;
-    use crate::dag::{Behavior, FieldValue, LoopBound};
+    use crate::dag::{Behavior, FieldValue, LoopBound, TypeConnective};
 
     fn compile(src: &str, file: &str) -> Dag {
         match compile_to_dag(src, file) {
@@ -994,6 +994,57 @@ mod reflection_tests {
             .unwrap_or_else(|| {
                 panic!("constructor {variant_constructor_ty:?} not a LoopBound variant");
             })
+    }
+
+    fn optional_carrier_variant_label(dag: &Dag, fv: &FieldValue) -> String {
+        let FieldValue::Variant { constructor, .. } = fv else {
+            panic!("expected optional carrier variant, got {fv:?}");
+        };
+        dag.declarations()
+            .iter()
+            .find_map(|decl| match &decl.connective {
+                TypeConnective::Disj { variants } => variants
+                    .iter()
+                    .find(|v| v.ty == *constructor)
+                    .map(|v| v.label.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("constructor {constructor:?} not a sum variant payload ty"))
+    }
+
+    #[test]
+    fn reflection_optional_fields_use_some_none_not_list() {
+        let src = "let x: Int = 7\n";
+        let file = "reflect_optional_carrier_value.v3";
+        let dag = compile(src, file);
+        let v = dag
+            .nodes()
+            .iter()
+            .find_map(|b| match b {
+                Behavior::Value(v) if v.span.file == file => Some(v),
+                _ => None,
+            })
+            .expect("Value node");
+        let fv = reflect_behavior(&dag, &Behavior::Value(v.clone())).expect("reflect");
+        let rec = behavior_inner_record(&fv);
+        let lane2 = record_get(rec, "lane2_workflow");
+        assert_eq!(optional_carrier_variant_label(&dag, lane2), "None");
+
+        let src_bind = "fn g(x: Int) -> Int = x + 1\n";
+        let file_bind = "reflect_optional_carrier_bind.v3";
+        let dag_b = compile(src_bind, file_bind);
+        let b = dag_b
+            .nodes()
+            .iter()
+            .find_map(|beh| match beh {
+                Behavior::Bind(b) if b.span.file == file_bind && !b.params.is_empty() => Some(b),
+                _ => None,
+            })
+            .expect("Bind node");
+        let fv_b = reflect_behavior(&dag_b, &Behavior::Bind(b.clone())).expect("reflect bind");
+        let rec_b = behavior_inner_record(&fv_b);
+        let emit = record_get(rec_b, "emit_participation");
+        assert_eq!(optional_carrier_variant_label(&dag_b, emit), "Some");
     }
 
     #[test]
