@@ -24,7 +24,7 @@ R2's Goal 7 — **Runtime evaluator for `.dag` programs**. The Evaluator is the 
 
 | Sub-lane | Size | Status (at brief authoring) | Description |
 |---|---|---|---|
-| **Runtime value model** | M | NOT YET AUTHORED — gated on PR-A design lock | Closed-over environments, lazy/eager evaluation strategy, memoization. Per #1078 design challenge #1: locked direction; specific design lands in PR-A. |
+| **Runtime value model** | M | NOT YET AUTHORED — gated on PR-A design lock. **Cross-program convergence target:** PB-Runtime ([`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §2 LANDED via #1176) — load-bearing distinction: PB-Runtime ≡ R2-Evaluator's runtime model expressed as `.dag` (dissolution-shaped, not parallel). PR-A's Value coproduct shape MUST match §3.2; the 5-primitive constraint per §3.1 (`Value | Apply | Bind | Branch | Loop`) constrains PR-A's design space. | Closed-over environments, lazy/eager evaluation strategy, memoization. Per #1078 design challenge #1: locked direction; specific design lands in PR-A. |
 | **Body evaluator** | L | NOT YET AUTHORED — gated on Runtime value model | Execute `.dag` function bodies structurally. Bounded forward execution per INVARIANTS P4. Termination by descent evidence (already in substrate per `dsl/std/termination.dag`). |
 | **Lens application** | M | NOT YET AUTHORED — Reflection completeness spec LANDED via #1129 ([`docs/design-reflection-completeness.md`](../design-reflection-completeness.md)) | Extend `reflect_program_dag_nodes_in_file` from "shallow/lossy" to complete reflection per [`docs/design-reflection-completeness.md` §"Decision"](../design-reflection-completeness.md). Lens application = fold over reflected program DAG via `Lens<C>` framework (lands as R2-T-Substrate-Lens-Primitive sub-lane). |
 | **Witness construction** | M | NOT YET AUTHORED | Runtime materialization of proof artifacts (`Witness::Inhabits` / `Witness::Violates` per `src/v3/std/dimensions.dag`); algebraic-law witnesses (associativity, commutativity, identity). |
@@ -73,10 +73,12 @@ Rationale: artificially delaying PR-A through PR-D wouldn't preserve any real ha
 **Produces:**
 - **R3 lane gates** — 7 of 10 R3 lanes block on R2-Evaluator landing. The Evaluator's `Witness` runtime (per `src/v3/std/dimensions.dag`) is what R3-T-Tier3-Dissolution / R3-T-LensProducer-Retirement / R3-T-V-L4-L7-Direct / etc. consume.
 - **`Lens<C>` runtime** — R2-T-Substrate-Lens-Primitive's generic `fold_lens<C>: Lens<C> → Dag → DimensionReport<C>` is implemented by the Evaluator. T-CostLens-Composition (R3, under Substrate continuation per #1078 lock) consumes this.
+- **Runtime value model that PB-Runtime mirrors** — per [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §2 (LANDED via #1176): PB-Runtime ≡ R2-Evaluator's runtime model expressed as `.dag`. Evaluator's PR-A Value coproduct shape IS what PB-Runtime mirrors. Convergence is dissolution-shaped (not parallel runtimes); PB Manager's R3 T-LensProducer-Retirement consumes Evaluator's runtime-value design directly via the §3.2 `Value` shape match.
 
 **Consumes:**
 - **Substrate Manager** — additional carriers needed by runtime values (e.g., closed-over environment representation). Design-pass at lane spin-up identifies the dependency.
 - **Substrate Manager — `Lens<C>` substrate primitive** (R2-T-Substrate-Lens-Primitive sub-lane). Evaluator implements `fold_lens<C>`; substrate declares the type.
+- **PB Manager — PB-Runtime convergence path** (cross-program coordination per [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §5.4). PB Manager owns BinShim substrate carrier authoring + bin-shim emit pattern; Evaluator owns runtime-value model. Cross-coordination at PR-A authoring time so the Value shape lock matches PB-Runtime's mirror requirement.
 
 ## Locked design decisions consumed (per #1078 8-question dialogue)
 
