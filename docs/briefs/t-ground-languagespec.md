@@ -17,7 +17,7 @@
 
 ## Framing question this lane answers
 
-What is the *substrate shape* of a language spec, and does populating it for Rust + Python + Go retire the parallel-representation debt that the table-driven `coercion.dag` + `extdeps/languages/*/types.dag` + per-runtime `MethodTranslation` / per-emit `SimpleMethodSpec` schemas accumulated under the prior engine framing?
+What is the *substrate shape* of a language spec, and does populating it for Rust + Python + Go retire the parallel-representation debt that the table-driven `coercion.dag` + `extdeps/languages/*/types.dag` + per-target emit-side method-authority shapes (Rust `SimpleMethodSpec` record-list / Python `python_method_templates` map / Go `go_method_templates` map) plus per-runtime `MethodTranslation` accumulated under the prior engine framing?
 
 A "yes" lands the substrate Coercion-Fold consumes for refinement composition; cleans up the slice-1 mirror-consistency probe footprint (PR #989) by re-homing it under structural LanguageSpec authority; and dissolves Reflective Pattern E (`RUST_PILOT_PRIMITIVES` Rust mirror).
 
@@ -86,7 +86,15 @@ Per `r2-grounding-manager.md:32` and lane row line 65: `Dag::rust_pilot_primitiv
 
 **Authority split (Director routing call 2026-04-29 — silent-ant-322 inbox #1133 msg ID 4340522342, posted to jolly-ram-908 [#1130](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4340522342)):** the `MethodContract` *type declaration* is **Substrate-owned** (jolly-ram-908). This lane consumes the type and owns the per-target row population + drift resolution + parallel-rep retirement. P1 Step 1+2 receipts for the type itself land on Substrate's PR; this lane's P1 receipts cover row-coordinate fields + `PlaceholderConvention` instances only.
 
-Today `dsl/extdeps/languages/{rust,python,go}/runtime.dag` declares `MethodTranslation { dag_method, rust_template }` AND `dsl/extdeps/languages/{rust,python,go}/emit.dag` declares `SimpleMethodSpec { method_name, template, wraps_result }` — different schemas, drifted templates (Rust `count`: runtime `"{recv}.len()"` vs emit `"({recv}.len() as i64)"`; placeholder names `{arg0}` vs `{arg}`), parallel-rep × 3 targets.
+**Today's per-target authority landscape** (verified at HEAD):
+
+| Target | Runtime authority | Emit authority |
+|---|---|---|
+| Rust  | `dsl/extdeps/languages/rust/runtime.dag:62` `MethodTranslation` (list) | `dsl/extdeps/languages/rust/emit.dag:47` `SimpleMethodSpec { method_name, template, wraps_result }` (list) |
+| Python | `dsl/extdeps/languages/python/runtime.dag:50` `MethodTranslation` (list) | `dsl/extdeps/languages/python/emit.dag:87` `python_method_templates: Map<String, String>` |
+| Go    | `dsl/extdeps/languages/go/runtime.dag:50` `MethodTranslation` (list) | `dsl/extdeps/languages/go/emit.dag:83` `go_method_templates: Map<String, String>` |
+
+Different schemas (record-list vs map vs record-list, with the Python/Go maps lacking any `wraps_result` field), drifted templates (Rust `count`: runtime `"{recv}.len()"` vs emit `"({recv}.len() as i64)"`; placeholder names `{arg0}` vs `{arg}`). Parallel-rep × 3 targets — but the per-target shapes are heterogeneous, so retirement must consolidate Rust's `SimpleMethodSpec` AND Python's `python_method_templates` map AND Go's `go_method_templates` map under the Substrate-owned `MethodContract` row, not just three copies of one shape.
 
 **Type shape Substrate is asked to land** (informational; lives on jolly-ram-908's PR, not this one):
 
@@ -103,7 +111,7 @@ type MethodContract {
 **This lane's work** (Grounding-owned, gated on Substrate type-shape landing per the dependency table below):
 - Populate one row per `(target, dag_method)` consuming the Substrate-declared type.
 - Resolve the `count` (and other) drift between `runtime_template` and `emit_template` explicitly — no silent reconciliation.
-- Retire `MethodTranslation` (runtime.dag) and `SimpleMethodSpec` (emit.dag) declarations across all three target sub-trees; migrate consumers to read `MethodContract` rows.
+- Retire all three runtime authorities (`MethodTranslation` × 3) and all three emit authorities (Rust `SimpleMethodSpec`, Python `python_method_templates` map, Go `go_method_templates` map); migrate consumers to read `MethodContract` rows. Map-shaped emit authorities (Python/Go) require an explicit row-shape decision for the `wraps_result` field they don't carry today — worker resolves per Q4 four-property gate; if the absence is a real semantic ("Python/Go don't need result wrapping"), the row's `wraps_result` is structurally `false` for those targets, not silently inherited from Rust.
 
 Single authority; both runtime and emit consume the same row. Method-translation IS substrate per Modeling problem 2 + the engine-retraction discipline; two parallel authorities for one fact violates THESIS:171 directly.
 
@@ -200,7 +208,7 @@ When this lane lands:
 
 - `dsl/std/coercion.dag` table-driven schema retires (consumed via `T-Ground-Dissolve`); the structural fold reads `LanguageSpec` directly. Specifically: `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` lose their last consumer (final Track-13 deletion happens in T-Ground-Dissolve, not here).
 - `RUST_PILOT_PRIMITIVES` Rust mirror retires (Reflective Pattern E closure).
-- Parallel `MethodTranslation` (runtime.dag) ⊕ `SimpleMethodSpec` (emit.dag) × 3 targets collapses to single `MethodContract` row per `(target, dag_method)`.
+- Heterogeneous per-target method authorities collapse to single `MethodContract` row per `(target, dag_method)`: Rust `SimpleMethodSpec` (record-list) + Python `python_method_templates` (map) + Go `go_method_templates` (map) on the emit side; `MethodTranslation` × 3 on the runtime side. `wraps_result` semantics resolved explicitly per target (not inherited from Rust).
 - Slice-1 mirror-consistency probe re-homes from `grounding_engine` to LanguageSpec's structural authority.
 - `extdeps/languages/{rust,python,go}/types.dag` table shape converges with `LanguageSpec` reflection (specifics depend on what schema authoring surfaces; if the table shape IS the LanguageSpec realization, the dissolution is in-place renaming + extension, not a separate file delete).
 - **Parallel `LanguageSpec` authority retires:** `dsl/std/languages.dag:438`'s `LanguageSpec` declaration + its `rust_spec` / `go_spec` / `python_spec` data items (lines 1244 / 1268 / 1292) converge under the `src/v3/std/emit_model.dag:302` authority. Drift between the two shapes is resolved explicitly in this lane's PR (no silent reconciliation); structural facts not absorbable by the v3 shape escalate to manager (#1133) before any new file or split lands.
@@ -232,7 +240,7 @@ Lane closes under the `r2-grounding-manager.md:125` acceptance gate:
 
 Authored as a `.dag` `TestClaim`. Per the **structural-acceptance-per-lane-close discipline** (`r2-grounding-manager.md:11`), the gate IS the demo — no separate artifact.
 
-PR body covers: scope (A-G); per-target population status (Rust full / Python full / Go full); P1 receipts cited per new substrate type; Q4 four-property gate per inhabitance; dissolution receipts (specific `coercion.dag` declarations retired, `MethodTranslation` ⊕ `SimpleMethodSpec` rows consolidated, `RUST_PILOT_PRIMITIVES` mirror deletion).
+PR body covers: scope (A-G); per-target population status (Rust full / Python full / Go full); P1 receipts cited per new substrate type; Q4 four-property gate per inhabitance; dissolution receipts (specific `coercion.dag` declarations retired; per-target method authorities consolidated — Rust `SimpleMethodSpec`, Python `python_method_templates` map, Go `go_method_templates` map, plus `MethodTranslation` × 3 — into `MethodContract` rows; `RUST_PILOT_PRIMITIVES` mirror deletion).
 
 ---
 
