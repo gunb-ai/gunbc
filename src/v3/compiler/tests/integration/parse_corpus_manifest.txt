@@ -39,5 +39,5 @@ src/v3/std/substrate.dag	54	119114	3be2c9b164c6687c
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
-src/v3/std/verification.dag	29	59011	d51d85cd43685a9d
+src/v3/std/verification.dag	29	61099	4e98d0d0e2cd79ce
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
