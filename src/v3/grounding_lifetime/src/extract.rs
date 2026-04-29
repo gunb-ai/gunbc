@@ -8,6 +8,16 @@
 //! Any **`data` or `fn` declaration** rooted in a **non-authority** source file (user
 //! or test modules) is treated as load-bearing program surface we cannot project yet:
 //! fail-closed per C-8 instead of returning `Ok(empty)` and dropping facts.
+//!
+//! ## Transitional authority gate
+//!
+//! **Path-prefix authority detection is intentional staging.** It will migrate to a
+//! substrate-declared post-bootstrap boundary on [`Dag`] (so consumers can distinguish
+//! fixture-loaded declarations from runtime-appended ones without trusting
+//! caller-controlled `span.file`), once Substrate lands that metadata; see cross-manager
+//! request on issue #1130. Until then, `span.file` under an authority prefix is trusted
+//! only for the embedded corpus shape (same transitional-debt pattern as the lane-local
+//! `EmissionDiagnostic` mirror noted in #1216).
 
 use v3_compiler::dag::{Dag, TypeConnective};
 
