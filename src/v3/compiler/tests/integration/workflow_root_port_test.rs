@@ -52,10 +52,7 @@ fn workflow_root_multi_bind_returns_single_under_alpha() {
     // Bind), the second Bind's result_port is the workflow root.
     // AmbiguousRoot is intentionally NOT emitted — it's reserved for
     // the future enumerate-all-eligible-entries rule.
-    let dag = cached_compile_to_dag(
-        "let x = 1\nlet y = x + 2",
-        "workflow_root_multi.v3",
-    );
+    let dag = cached_compile_to_dag("let x = 1\nlet y = x + 2", "workflow_root_multi.v3");
     let expected = last_bind_result_port(&dag);
     let root = dag.workflow_root_port();
     assert_eq!(
