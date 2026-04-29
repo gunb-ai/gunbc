@@ -489,7 +489,7 @@ impl CardinalityBound {
     pub const AT_MOST_ONE: Self = Self::AtMostOne;
 
     pub const fn exact(n: Cardinal) -> Self {
-        Self::Exact(n)
+        Self::Exact(n as i64)
     }
 
     pub const UNBOUNDED: Self = Self::Unbounded;
@@ -501,7 +501,12 @@ impl CardinalityBound {
             Self::AtMostOne => Interval::try_exact_interval(0, 1)
                 .expect("AtMostOne maps to the fixed well-formed interval 0..=1"),
             Self::Unbounded => Interval::Unbounded,
-            Self::Exact(n) => Interval::try_exact_interval(n, n).unwrap_or(Interval::Unbounded),
+            Self::Exact(n) => {
+                let Ok(c) = Cardinal::try_from(n) else {
+                    return Interval::Unbounded;
+                };
+                Interval::try_exact_interval(c, c).unwrap_or(Interval::Unbounded)
+            }
         }
     }
 }
