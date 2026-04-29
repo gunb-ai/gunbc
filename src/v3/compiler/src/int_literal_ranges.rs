@@ -42,6 +42,7 @@ pub(crate) enum IntervalInt {
         max: i128,
     },
     /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
+<<<<<<< HEAD
     /// i64-representable literal magnitude.
     ///
     /// **Dissolution trigger (when this variant is constructed from [`integer_range_for_decl`]):**
@@ -51,6 +52,9 @@ pub(crate) enum IntervalInt {
     /// fold example (T-Ground cross-target / language `primitives.dag` work, not this consumer).
     /// Until that producer exists, only [`IntervalInt::ExactInterval`] is returned from the pilot
     /// list; [`Unbounded`] remains for `contains_i64` / Q1 algebra completeness and unit tests.
+=======
+    /// i64-representable literal magnitude. Not yet produced from Rust `IntegerPrimitive` rows.
+>>>>>>> 72550d77d (WIP: quiet-raven-835)
     #[allow(dead_code)]
     Unbounded,
 }
