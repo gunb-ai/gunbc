@@ -703,26 +703,19 @@ impl AtomPayload {
 ///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
 ///   inference — so `Unparsed` does not persist for those stages in a
 ///   bootstrapped DAG. **`fn compile` (case 2c)** has no `PipelineStageBinding`:
-///   **`Unparsed` persists** on its Arrow body. Pipeline ordering authority is
-///   the declaration order of the `PipelineStageBinding` records in the Dag —
-///   `ordered_pipeline_stages` reads that structural order directly at runtime.
-///   The `compile` body is retained as a second surface-level expression of
-///   the same ordering and `ordered_pipeline_stages` fail-closes on any drift
-///   between the two (`reconcile_with_compile_body`) so the bindings remain
-///   the single runtime authority without silently diverging from the
-///   orchestrator surface. The `compile` body is the human-readable pipeline
-///   contract that the binding records satisfy — a reader sees the pipeline
-///   in one glance as `{ parse; lower; infer; ... }` rather than
-///   reconstructing it from a binding table. The bindings are the runtime
-///   authority; the body is the surface the bindings commit to; the
-///   fail-closed reconcile keeps that contract honest (P3) without letting
-///   the body become a second runtime source (P2). This is **bridge shape**,
-///   not terminal: two authored carriers kept consistent by reconcile. PR #637
-///   narrowed the prior body-span-as-authority shape; the bridge itself
-///   remains scheduled debt (see `docs/history/roadmap-scheduled-deletions.md`
-///   case 2c) until derivation collapses the two carriers to a single
-///   authored source — e.g., regen emits the `compile` body from binding
-///   declaration order. The signature still flows forward through the
+///   **`Unparsed` persists** on its Arrow body. Pipeline **runtime** ordering
+///   authority is the declaration order of the `PipelineStageBinding` records
+///   in the Dag — `ordered_pipeline_stages` reads that structural order only.
+///   The human-readable `compile` body remains a second **authored** surface;
+///   fail-closed drift detection between it and the bindings is **suspended**
+///   (PR #1171 disposition, 2026-04-29): the lowered Dag does not carry an
+///   ordered stage list inside `compile`, and neither compile-time embed nor
+///   runtime source-file read satisfies R3 `bridge_include_str_side_channels_retired`
+///   for that check — see `pipeline_authority::ordered_pipeline_stages`. Until
+///   derivation, review/regen discipline keeps the two carriers aligned. PR #637
+///   narrowed the prior body-span-as-authority shape; scheduled debt remains
+///   (see `docs/history/roadmap-scheduled-deletions.md` case 2c). The signature
+///   still flows forward through the
 ///   declaration table so callers can type-check against it, and the body
 ///   source span is preserved so M2+ parser extensions can reach in for case 1.
 ///   **User-range boundary:** `reject_user_unparsed_scaffolds` in
@@ -740,9 +733,9 @@ impl AtomPayload {
 /// named dissolution (M3 / M2 grammar). **`Unparsed` on `pipeline.dag`'s
 /// `compile` (DB-16 case 2c)** is different — a **bootstrap-range carrier
 /// in bridge shape**: body span is no longer the ordering authority
-/// (structural binding order is), but two authored carriers still require
-/// `reconcile_with_compile_body` to stay consistent, so 2c remains scheduled
-/// debt with its own dissolution trigger (derivation, not the M2 parser
+/// (structural binding order is), but two authored carriers still exist until
+/// derivation; runtime reconcile is suspended pending a structural witness, so
+/// 2c remains scheduled debt with its own dissolution trigger (derivation, not the M2 parser
 /// milestone). User-range
 /// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
