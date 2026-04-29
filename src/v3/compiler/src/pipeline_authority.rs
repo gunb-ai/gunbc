@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use crate::dag::{ArrowBody, Dag, Declaration, DeclarationId, FieldValue, TypeConnective, ValueBody};
+use crate::dag::{
+    ArrowBody, Dag, Declaration, DeclarationId, FieldValue, TypeConnective, ValueBody,
+};
 
 pub(crate) const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 
@@ -343,7 +345,9 @@ mod tests {
 
     #[test]
     fn pipeline_authority_does_not_use_include_str_for_pipeline_dag() {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("src").join("pipeline_authority.rs");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("src")
+            .join("pipeline_authority.rs");
         let source = fs::read_to_string(&path).unwrap_or_else(|err| {
             panic!("read {} for include_str ratchet: {err}", path.display());
         });
