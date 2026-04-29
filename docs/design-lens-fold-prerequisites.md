@@ -503,8 +503,14 @@ implicitly assumed but were never separately scheduled.
   Director rejected this in option (B).
 - Does not modify the existing per-port complexity fold —
   preserved as the equivalence oracle.
-- Does not commit to an interpretation of "workflow root"
-  beyond raising the question and naming three options.
+- ~~Does not commit to an interpretation of "workflow root"
+  beyond raising the question and naming three options.~~
+  **Updated 2026-04-29:** Director-locked α (last topological
+  `Bind`) behind a `workflow_root_port(d: Dag) -> WorkflowRoot`
+  accessor — see §"Director disposition" above. This bullet
+  is preserved as a strikethrough so the audit history shows
+  the question-raising stance the doc shipped with before
+  Director answered.
 
 ---
 
