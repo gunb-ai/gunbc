@@ -352,7 +352,10 @@ mod tests {
             .join("src")
             .join("pipeline_authority.rs");
         let source = fs::read_to_string(&path).unwrap_or_else(|err| {
-            panic!("read {} for pipeline.dag embed ratchet: {err}", path.display());
+            panic!(
+                "read {} for pipeline.dag embed ratchet: {err}",
+                path.display()
+            );
         });
         assert!(
             !source.contains(FORBIDDEN),
