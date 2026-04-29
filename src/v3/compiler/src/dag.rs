@@ -1574,16 +1574,21 @@ pub fn constant_bound_value(bound: &SizeBound) -> Option<i64> {
 }
 
 /// Ordered-numeric facet of [`SizeBound`] as `Interval<Cardinal>` when the variant
-/// carries a definite iteration count (`PR-PreF`). Label-shaped bounds return `None`.
+/// denotes a **closed cardinal segment** (`PR-PreF`). Label-shaped bounds return [`None`].
+///
+/// [`SizeBound::Forever`] is intentionally excluded: lowering carries a **finite** iterate
+/// witness via [`constant_bound_value`] / [`forever_iteration_bound`] (`i64::MAX`). This
+/// bridge is only for definite cardinal **segments**; it must not erase that witness as
+/// [`Interval::Unbounded`].
 pub fn size_bound_cardinal_interval(bound: &SizeBound) -> Option<Interval<Cardinal>> {
     match bound {
         SizeBound::ExplicitCountZero => Interval::try_exact_interval(0, 0),
         SizeBound::ExplicitCountPositive { steps } => {
-            let hi = positive_descent_count(steps);
-            let hi = u32::try_from(hi).ok()?;
-            Interval::try_exact_interval(1, hi)
+            let n = positive_descent_count(steps);
+            let n = Cardinal::try_from(n).ok()?;
+            Interval::try_exact_interval(n, n)
         }
-        SizeBound::Forever => Some(Interval::Unbounded),
+        SizeBound::Forever => None,
         _ => None,
     }
 }

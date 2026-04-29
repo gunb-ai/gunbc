@@ -32,18 +32,20 @@ fn interval_d_shared_parent_consolidation_landed() {
         Interval::try_exact_interval(0, 0).expect("singleton zero")
     );
 
-    let steps = PositiveDescentAmount::OneStep;
+    let steps = PositiveDescentAmount::AdditionalStep {
+        previous: Box::new(PositiveDescentAmount::OneStep),
+    };
     let pos = size_bound_cardinal_interval(&SizeBound::ExplicitCountPositive { steps })
         .expect("ExplicitCountPositive maps");
     assert_eq!(
         pos,
-        Interval::try_exact_interval(1, 1).expect("singleton one")
+        Interval::try_exact_interval(2, 2).expect("exactly two steps")
     );
 
-    assert!(matches!(
-        size_bound_cardinal_interval(&SizeBound::Forever),
-        Some(Interval::Unbounded)
-    ));
+    assert!(
+        size_bound_cardinal_interval(&SizeBound::Forever).is_none(),
+        "Forever uses constant_bound_value / forever_iteration_bound, not Interval projection"
+    );
     assert!(size_bound_cardinal_interval(&SizeBound::TreeSize {
         param: "x".to_string()
     })
