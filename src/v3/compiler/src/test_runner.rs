@@ -1404,6 +1404,7 @@ fn evaluate_execute_command_exit_code_with_wall_time(
 #[derive(Debug, Clone)]
 pub struct TestClaimValue {
     pub claim_name: String,
+    pub declaration_file: String,
     pub source: String,
     pub file_name: String,
     pub predicate: FieldValue,
@@ -2483,9 +2484,18 @@ impl<'a> TestRunner<'a> {
 
     fn eval_release_deferred_claim_shape(
         &self,
-        _claim: &TestClaimValue,
+        claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
+        const RELEASE_ACCEPTANCE_FIXTURE: &str =
+            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
+        if claim.declaration_file != RELEASE_ACCEPTANCE_FIXTURE {
+            return ClaimResult::Fail(format!(
+                "ReleaseDeferredClaim is only valid in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}`",
+                claim.declaration_file
+            ));
+        }
+
         let [deferred_gate, target_lane, authority_doc] = payload else {
             return ClaimResult::Fail(format!(
                 "ReleaseDeferredClaim payload should be exactly three DeclarationRef fields \
@@ -2802,6 +2812,7 @@ impl TestClaimValue {
         };
         Ok(Self {
             claim_name,
+            declaration_file: decl.span.file.clone(),
             source,
             file_name,
             predicate,

@@ -67,7 +67,7 @@ fn r1_release_acceptance_suite_passes_at_head() {
 
 #[test]
 fn release_deferred_claim_rejects_untyped_marker_refs() {
-    let source = r#"
+    let source = r##"
 import std.verification { ReleaseDeferredClaim, TestClaim, TestSuite }
 
 type R1GateMarker {}
@@ -94,8 +94,8 @@ data suite: TestSuite = {
   name: "bad_deferred_suite",
   claims: [bad_deferred_claim]
 }
-"#;
-    let dag = compile_to_dag(source, "bad_release_deferred_claim.dag")
+"##;
+    let dag = compile_to_dag(source, FIXTURE_PATH)
         .expect("malformed deferral fixture still compiles structurally");
     let results = TestRunner::new(&dag).run_suite("suite");
 
@@ -109,5 +109,52 @@ data suite: TestSuite = {
                     && reason.contains("arbitrary_gate")
         ),
         "expected ReleaseDeferredClaim to fail closed on untyped deferred_gate, got {results:?}"
+    );
+}
+
+#[test]
+fn release_deferred_claim_rejects_well_typed_refs_outside_release_fixture() {
+    let source = r##"
+import std.verification { ReleaseDeferredClaim, TestClaim, TestSuite }
+
+type R1GateMarker {}
+type TargetLaneMarker {}
+type ReleaseAuthorityDoc {}
+
+data gate_marker: R1GateMarker = {}
+data target_lane_marker: TargetLaneMarker = {}
+data release_authority_doc: ReleaseAuthorityDoc = {}
+
+data bad_deferred_claim: TestClaim = {
+  name: "bad_deferred",
+  source: "let _: Int = 0",
+  file_name: "bad_deferred.v3",
+  predicate: ReleaseDeferredClaim {
+    deferred_gate: gate_marker,
+    target_lane: target_lane_marker,
+    authority_doc: release_authority_doc
+  },
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "bad_deferred_suite",
+  claims: [bad_deferred_claim]
+}
+"##;
+    let dag = compile_to_dag(source, "arbitrary_release_deferred_claim.dag")
+        .expect("well-typed deferral fixture compiles structurally");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::Fail(reason)
+                if reason.contains("only valid")
+                    && reason.contains("r1_release_acceptance.dag")
+                    && reason.contains("arbitrary_release_deferred_claim.dag")
+        ),
+        "expected ReleaseDeferredClaim to fail outside release fixture, got {results:?}"
     );
 }
