@@ -17,7 +17,7 @@
 // the rustc boundary receipt, so the named T-Sub gate has one program witness.
 //
 // merge-conflicts: union with `origin/main` — keep every `data` gate from main
-// (`sub_match_*`, `sub_type_alias_where_*`, `manual_*`, `testgen_structural_coverage*`) plus this file's
+// (`sub_match_*`, `sub_type_alias_where_*`, `p0_*`, `manual_*`, `testgen_structural_coverage*`) plus this file's
 // `user_authored_lens_compiles_gate`; do not resolve conflicts by keeping only the lens gate.
 
 module std.r1_gates
@@ -31,6 +31,7 @@ import std.verification {
   DeclarationHasRefinement,
   DifferentialEquals,
   LensOutputEquals,
+  OutputEquals,
   ProgramInput,
   ProgramOutputBind,
   TestClaim,
@@ -65,6 +66,28 @@ data sub_type_alias_where_lowers: TestClaim = {
 data sub_type_alias_where_lowers_gate: TestSuite = {
   name: "sub_type_alias_where_lowers_gate",
   claims: [sub_type_alias_where_lowers]
+}
+
+// R1C-B / T-P0 — **interim** `p0_repeat_string_v2_oracle_rust_bridge` (not the ROADMAP structural
+// `p0_repeat_string_correct` receipt). The v3 `TestClaim` only compares a lowered `data` literal
+// via `OutputEquals`; it does not evaluate `repeat_string` from `dsl/std/render.dag` inside v3.
+// **Dissolution:** delete this claim + suite when `p0_repeat_string_correct` is authored as a
+// structural `.dag` gate that evaluates modeled repeat_string behavior (or an equivalent v3
+// witness) per ROADMAP T-P0 strict reading. Until then, `p0_std_render_repeat_string_test` + this
+// suite couple the literal witness to the v2 interpreter oracle (`p0_std_render_repeat_string_test`
+// `std_render_repeat_string_and_indent_text_match_interpreter`; this module avoids duplicating that
+// cold path in the bridge runner test under CI per-test timing budgets).
+data p0_repeat_string_v2_oracle_rust_bridge: TestClaim = {
+  name: "p0_repeat_string_v2_oracle_rust_bridge",
+  source: "data repeat_string_returns_n_copies: String = \"xxx\"\n",
+  file_name: "r1_p0_repeat_string_v2_oracle_rust_bridge.v3",
+  predicate: OutputEquals("\"xxx\""),
+  requires: []
+}
+
+data p0_repeat_string_v2_oracle_rust_bridge_gate: TestSuite = {
+  name: "p0_repeat_string_v2_oracle_rust_bridge_gate",
+  claims: [p0_repeat_string_v2_oracle_rust_bridge]
 }
 
 // Naming stub for `DeclarationRef` resolution on `AlgebraicLaw(Associativity, lens_composition_op)`.
