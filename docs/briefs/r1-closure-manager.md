@@ -65,6 +65,10 @@ remaining work. The R1 Closure Manager role ends here; future updates should
 land against the successor manager brief or the ROADMAP ledger row that owns the
 remaining work.
 
+| Lane | Gates (strict `.dag` receipts) | Status |
+| --- | --- | --- |
+| R1C-C | `sub_type_alias_where_lowers` (`DeclarationHasRefinement("PositiveInt")` on the DB-11 witness; `sub_type_alias_where_lowers_gate` in `r1_gates.template.dag` + `test_runner_runs_sub_type_alias_where_lowers_gate`) | **Closed — PR #879 merged** (`adda0eac`; all CI green before squash merge) |
+
 ## Cross-refs
 
 - Parent authority: [`ROADMAP.md §"Release R1 Program"`](../../ROADMAP.md).
