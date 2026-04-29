@@ -216,6 +216,14 @@ fn bootstrap_loads_verification_authority_types() {
                 String::from("GeneratedFromDag"),
                 vec![String::from("authority"), String::from("generated_paths")],
             ),
+            (
+                String::from("ReleaseDeferredClaim"),
+                vec![
+                    String::from("deferred_gate"),
+                    String::from("target_lane"),
+                    String::from("authority_doc"),
+                ],
+            ),
         ]
     );
 }
