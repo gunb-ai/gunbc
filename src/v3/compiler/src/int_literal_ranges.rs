@@ -690,6 +690,33 @@ mod tests {
     use crate::types::TypeShape;
 
     #[test]
+    fn magnitude_out_of_range_accepts_only_exact_int_interval_facts() {
+        let dag = Dag::new();
+        let u8_decl = dag.declaration_by_name("UInt8").expect("UInt8").id;
+        let d = magnitude_out_of_range(
+            256,
+            TypeShape::new(u8_decl),
+            ExactIntIntervalFacts {
+                target_name: "u8".to_string(),
+                min_decimal: "0".to_string(),
+                max_decimal: "255".to_string(),
+            },
+            SourceSpan::new("t.v3", 0, 0),
+        );
+        assert!(
+            matches!(
+                d,
+                Diagnostic::MagnitudeOutOfRange {
+                    ref literal,
+                    ref target,
+                    ..
+                } if literal == "256" && target == "u8"
+            ),
+            "expected MagnitudeOutOfRange, got {d:?}"
+        );
+    }
+
+    #[test]
     fn magnitude_out_of_range_unbounded_target_fails_closed_with_resolve_error() {
         let dag = Dag::new();
         let int_decl = dag.declaration_by_name("Int").expect("Int in bootstrap").id;
