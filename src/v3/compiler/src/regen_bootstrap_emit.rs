@@ -96,6 +96,12 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
         &render_optional_match_disjs(dag),
         2,
     );
+    push_field(
+        &mut out,
+        "declaration_append_begin_after_bootstrap",
+        &dag.declarations().len().to_string(),
+        2,
+    );
     out.push_str("    }\n");
     out.push_str("}\n");
     out
