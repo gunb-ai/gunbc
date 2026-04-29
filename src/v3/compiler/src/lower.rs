@@ -2874,7 +2874,10 @@ const REPEAT_STRING_FOLD_MAX_COUNT: i64 = 1_048_576;
 /// Upper bound on produced UTF-8 bytes for the same fold (defense in depth with [`REPEAT_STRING_FOLD_MAX_COUNT`]).
 const REPEAT_STRING_FOLD_MAX_OUTPUT_BYTES: usize = 64 * 1024 * 1024;
 
-/// Semantics aligned with `dsl/std/render.dag` `repeat_string` for the gate witness (`n` ≥ 0).
+/// Semantics aligned with `dsl/std/render.dag` `repeat_string` / `repeat_string_loop`:
+/// `remaining <= 0` returns the accumulator immediately (`""` for `repeat_string`), so **both**
+/// `n == 0` and **`n < 0`** fold to an empty string — matches the bounded-loop story in
+/// `dsl/std/render.dag` (not a separate partial semantics for negative `n`).
 ///
 /// Fail-closed on excessive `n` or output size so lowering does not materialize unbounded strings
 /// for hostile literals (see R1C-B T-P0 gate — bounded compile-time fold).
@@ -7685,5 +7688,22 @@ mod tests {
         };
         assert_eq!(variants.len(), 1);
         assert_eq!(variants[0].ty, int_id);
+    }
+
+    /// `dsl/std/render.dag` `repeat_string_loop` returns on `remaining <= 0` — empty for n∈{0,−}.
+    #[test]
+    fn fold_repeat_string_semantics_non_positive_n_empty() {
+        assert_eq!(fold_repeat_string_semantics("hi", 0).as_deref(), Some(""));
+        assert_eq!(fold_repeat_string_semantics("hi", -1).as_deref(), Some(""));
+    }
+
+    #[test]
+    fn fold_repeat_string_semantics_gate_witness() {
+        assert_eq!(fold_repeat_string_semantics("x", 3).as_deref(), Some("xxx"));
+    }
+
+    #[test]
+    fn fold_repeat_string_semantics_excess_n_fail_closed() {
+        assert!(fold_repeat_string_semantics("x", super::REPEAT_STRING_FOLD_MAX_COUNT + 1).is_none());
     }
 }
