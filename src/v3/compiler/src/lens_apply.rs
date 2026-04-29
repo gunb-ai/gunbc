@@ -326,11 +326,13 @@ pub fn reflect_program_dag_nodes_in_file(
 /// PR-E (Evaluator): apply a lens declaration over
 /// [`reflect_program_dag_nodes_in_file`] output (substrate-shaped `FieldValue` program spine).
 ///
-/// **Slice 1 (current):** reflects `program` nodes in `source_file`, then delegates to
+/// **Slice 1 (current):** reflects `program` nodes in `source_file` using **`lens_program` as the
+/// declaration-ID authority** (same `Dag` passed to [`apply_lens_declaration`]), so reflected
+/// `List` / `Behavior` constructor ids always match the interpreter — then delegates to
 /// [`apply_lens_declaration`] with the reflected carrier as the **first** lens argument, followed
 /// by any caller-supplied `inputs` (left-to-right). The lens arrow must therefore declare
 /// `1 + inputs.len()` parameters, with the first formal receiving the reflected `Record { nodes:
-/// … }` carrier (same shape as manual `reflect` → `apply` tests).
+/// … }` carrier (same shape as manual `reflect` → `apply` tests when both use `lens_program`).
 ///
 /// Deeper `Lens<C>` / `DimensionReport` aggregation, PB-Runtime lens-instance bodies over
 /// richer carriers, and runtime `Value` / environment semantics remain out of scope — see
@@ -341,12 +343,11 @@ pub fn reflect_program_dag_nodes_in_file(
 pub fn fold_lens_over_reflected_program(
     program: &Dag,
     source_file: &str,
-    id_space: &Dag,
     lens_program: &Dag,
     lens_decl: DeclarationId,
     inputs: &[FieldValue],
 ) -> Result<FieldValue, LensApplyError> {
-    let reflected = reflect_program_dag_nodes_in_file(program, source_file, id_space)?;
+    let reflected = reflect_program_dag_nodes_in_file(program, source_file, lens_program)?;
     let decl = lens_program.declaration(lens_decl);
     let TypeConnective::Arrow {
         inputs: param_tys, ..
@@ -1038,7 +1039,7 @@ mod tests {
         let prog = compile_to_dag("let x: Int = 1", "fold_lens_prog.v3").expect("prog compiles");
         let bogus = prog.declarations()[0].id;
         let err =
-            fold_lens_over_reflected_program(&prog, "fold_lens_prog.v3", &prog, &prog, bogus, &[])
+            fold_lens_over_reflected_program(&prog, "fold_lens_prog.v3", &prog, bogus, &[])
                 .expect_err("non-arrow lens decl");
         assert!(matches!(err, LensApplyError::NotAnArrow), "{err:?}");
     }
@@ -1060,7 +1061,6 @@ mod tests {
         let folded = fold_lens_over_reflected_program(
             &prog,
             "fold_lens_equiv.v3",
-            &lens_dag,
             &lens_dag,
             lens_id,
             &[],
