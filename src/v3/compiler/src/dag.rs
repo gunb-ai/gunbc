@@ -2358,6 +2358,13 @@ pub struct Dag {
     /// inference needs stable `Some` / `None` variant identities without
     /// promoting optionals into named top-level declarations.
     optional_match_disjs: HashMap<DeclarationId, DeclarationId>,
+    /// Exclusive lower bound on [`DeclarationId::raw`] for declarations
+    /// appended **after** embedded bootstrap fixture construction for this
+    /// `Dag`. Bootstrap rows use `raw() <` this value; runtime / user-phase
+    /// allocations use `raw() >=` this value (structural; do not infer from
+    /// `span.file`). `0` for [`Dag::empty`]; stamped when serving
+    /// [`Dag::new`] and sibling bootstrap snapshots.
+    declaration_append_begin_after_bootstrap: u32,
 }
 
 static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
@@ -2366,6 +2373,7 @@ static BOOTSTRAPPED_DAG: LazyLock<Dag> = LazyLock::new(|| {
     assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
+    dag.stamp_declaration_append_begin_after_bootstrap();
     dag
 });
 
@@ -2376,6 +2384,7 @@ static BOOTSTRAPPED_STD_FIXTURE_DAG: LazyLock<Dag> = LazyLock::new(|| {
     let mut dag = bootstrap_std_generated::bootstrapped_std_fixture_dag();
     dag.mark_bootstrap_secret_nominal_opacity();
     dag.populate_primitive_cache();
+    dag.stamp_declaration_append_begin_after_bootstrap();
     dag
 });
 
@@ -2386,6 +2395,7 @@ static BOOTSTRAPPED_DAG_WITHOUT_PARSE_SURFACE_FIXTURE: LazyLock<Dag> = LazyLock:
     assert_bootstrap_fixture_paths_match_regen_keys(&dag);
     dag.populate_primitive_cache();
     crate::int_literal_ranges::validate_rust_pilot_integer_primitives(&mut dag);
+    dag.stamp_declaration_append_begin_after_bootstrap();
     dag
 });
 
@@ -2417,11 +2427,30 @@ impl Dag {
             callable_strategy_variants: CallableStrategyVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
+            declaration_append_begin_after_bootstrap: 0,
         }
     }
 
     pub fn new() -> Self {
         (*BOOTSTRAPPED_DAG).clone()
+    }
+
+    /// First [`DeclarationId::raw`] reserved for declarations appended after
+    /// embedded bootstrap construction. Values strictly below this bound index
+    /// bootstrap fixture rows; values at or above were allocated afterward
+    /// (user compile / lowering), without consulting `span.file`.
+    pub fn post_bootstrap_declaration_append_begin(&self) -> u32 {
+        self.declaration_append_begin_after_bootstrap
+    }
+
+    /// `true` when `id` was allocated after bootstrap for this `Dag` (same
+    /// predicate as `id.raw() >= self.post_bootstrap_declaration_append_begin()`).
+    pub fn is_runtime_appended_declaration(&self, id: DeclarationId) -> bool {
+        id.raw() >= self.declaration_append_begin_after_bootstrap
+    }
+
+    fn stamp_declaration_append_begin_after_bootstrap(&mut self) {
+        self.declaration_append_begin_after_bootstrap = self.next_declaration_id;
     }
 
     fn mark_bootstrap_secret_nominal_opacity(&mut self) {
@@ -3732,6 +3761,64 @@ mod tests {
     /// [`EmitAnchorCache`] role on the bootstrapped std/spec surface. If a
     /// substrate name moves or a fixture omits a declaration, accessors
     /// flip to `None` and emit paths lose typed anchors (ROADMAP P3).
+    #[test]
+    fn post_bootstrap_declaration_append_begin_is_zero_on_empty() {
+        let dag = Dag::empty();
+        assert_eq!(dag.post_bootstrap_declaration_append_begin(), 0);
+    }
+
+    #[test]
+    fn dag_new_bootstrap_declaration_ids_are_below_append_begin() {
+        let dag = Dag::new();
+        let begin = dag.post_bootstrap_declaration_append_begin();
+        assert_eq!(begin as usize, dag.declarations().len());
+        for d in dag.declarations() {
+            assert!(
+                d.id.raw() < begin,
+                "expected bootstrap id {:?} < {}",
+                d.id,
+                begin
+            );
+            assert!(
+                !dag.is_runtime_appended_declaration(d.id),
+                "bootstrap decl {:?} must not classify as runtime-appended",
+                d.id
+            );
+        }
+    }
+
+    #[test]
+    fn runtime_appended_declaration_is_detected() {
+        let mut dag = Dag::new();
+        let begin = dag.post_bootstrap_declaration_append_begin();
+        let binding_meta = dag
+            .declaration_by_name("TargetCleanEmissionBinding")
+            .expect("binding meta")
+            .id;
+        let rust_language = dag.rust_language_spec().expect("rust language");
+        let new_id = dag.alloc_declaration_id();
+        assert_eq!(new_id.raw(), begin);
+        dag.push_declaration(Declaration {
+            id: new_id,
+            name: Some("append_boundary_probe_decl".to_string()),
+            connective: TypeConnective::Atom(AtomPayload::ResolvedByStructure(binding_meta)),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: Some(binding_meta),
+            specialization_parent: None,
+            inhabits: None,
+            value_body: Some(binding_fields(
+                rust_language,
+                dag.go_clean_emission_spec().expect("go clean emission"),
+            )),
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("append_boundary_probe.v3", 0, 1),
+        });
+        assert!(new_id.raw() >= begin);
+        assert!(dag.is_runtime_appended_declaration(new_id));
+    }
+
     #[test]
     fn emit_anchor_cache_populated_after_bootstrap() {
         let dag = Dag::new();

@@ -183,6 +183,17 @@ pub fn first_difference(lhs: &Dag, rhs: &Dag) -> Option<DagDifference> {
         }
     }
 
+    if lhs.post_bootstrap_declaration_append_begin() != rhs.post_bootstrap_declaration_append_begin()
+    {
+        return Some(DagDifference {
+            detail: format!(
+                "declaration append begin mismatch: pass1={}, pass2={}",
+                lhs.post_bootstrap_declaration_append_begin(),
+                rhs.post_bootstrap_declaration_append_begin(),
+            ),
+        });
+    }
+
     None
 }
 
