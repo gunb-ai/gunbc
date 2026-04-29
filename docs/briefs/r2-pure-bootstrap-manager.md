@@ -108,11 +108,11 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 Authored:
 - Pre-R1 PB program briefs (in `pure-bootstrap-zero-manager.md`, archives on R2 promotion); content migration here covers post-R1 deliverables only.
 - [`r2-pb-tier3-mirror-dissolution-workers.md`](r2-pb-tier3-mirror-dissolution-workers.md) — termination, computation, induction, and effect-carrier mirror dissolution worker pack.
+- [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) — T-FixedPoint planning artifact (PROPOSAL; dispatch-gated on R2-Evaluator + SG-0=0 from T-LensProducer-Retirement).
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map` consumer plumbing)
 - **R3 T-LensProducer-Retirement** worker briefs (gated on R2-Evaluator close + PB-Runtime interpreter-as-data design + PB-1 bin-shim emit pattern; 3 internal sub-gates)
-- **R3 T-FixedPoint** worker brief (gated on SG-0 zero from T-LensProducer-Retirement)
 - **R3 T-Tier3-Dissolution** worker brief (may share with Tier 3 Manager continuing post-R2)
 - **R3 distributed bridge retirements** — 3 worker briefs (canonical lens-name dispatch / include_str! / patch_lower_helpers_* residual)
 
