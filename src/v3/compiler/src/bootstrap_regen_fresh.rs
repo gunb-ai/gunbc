@@ -30,6 +30,8 @@ const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
 const UNICODE_DAG: &str = include_str!("../../../../dsl/std/unicode.dag");
+const RENDER_REPEAT_STRING_BOOTSTRAP_DAG: &str =
+    include_str!("../../../../dsl/std/render_repeat_string_bootstrap.dag");
 
 // Same `OUT_DIR` fixture arrays `build.rs` emits for staged/spec/compiler/extdeps sources;
 // this module is their only remaining fresh-parse consumer.
@@ -125,6 +127,10 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
         ("dsl/std/unicode.dag", UNICODE_DAG),
+        (
+            "dsl/std/render_repeat_string_bootstrap.dag",
+            RENDER_REPEAT_STRING_BOOTSTRAP_DAG,
+        ),
     ]
 }
 
