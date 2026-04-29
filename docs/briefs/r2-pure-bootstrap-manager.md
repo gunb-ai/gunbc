@@ -121,12 +121,7 @@ Authored:
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map` consumer plumbing)
-<<<<<<< HEAD
-- **R3 T-LensProducer-Retirement** worker briefs (gated on R2-Evaluator close + PB-Runtime interpreter-as-data design + PB-1 bin-shim emit pattern; 3 internal sub-gates)
-=======
 - **R3 T-LensProducer-Retirement** worker briefs (gated on R2-Evaluator close; PB-Runtime interpreter-as-data + PB-1 bin-shim emit pattern design LANDED via #1176; 3 internal sub-gates per §5.1 of the lock)
-- **R3 T-FixedPoint** worker brief (gated on SG-0 zero from T-LensProducer-Retirement)
->>>>>>> 39ff19cec (docs(briefs): consume Tier 1 design locks 4+5 (PB-Runtime + bin-shim) from #1176)
 - **R3 T-Tier3-Dissolution** worker brief (may share with Tier 3 Manager continuing post-R2)
 - **R3 distributed bridge retirements** — 3 worker briefs (canonical lens-name dispatch / include_str! / patch_lower_helpers_* residual)
 
