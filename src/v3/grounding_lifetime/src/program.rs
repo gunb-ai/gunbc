@@ -4,6 +4,11 @@
 //! today: empty program when lowering does not yet surface R2 bind graphs).
 //! Worked examples 3–4 are encoded as explicit `LifetimeProgram` values in
 //! unit tests until extraction is complete.
+//!
+//! ## Practice 4 (`docs/modeling-discipline.md` §4)
+//!
+//! Multi-variant `pub enum` types in this module carry 🟢/🟡 checkpoints on the
+//! type (ledger or named dissolution trigger).
 
 use std::collections::BTreeMap;
 
@@ -11,6 +16,10 @@ use std::collections::BTreeMap;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BindingId(pub u32);
 
+/// **Practice 4 — 🟡 YELLOW.** Named trigger: `extract_lifetime_program` + typed
+/// binding resolution classify `Unclassified` away; LanguageSpec lane 6 grows
+/// the encoding vocabulary this family keys into.
+///
 /// Structural classification of the binding’s type for encoding / algebra facts.
 ///
 /// Extraction must set this from reflection; **no silent default** to UTF-8 when
@@ -23,6 +32,11 @@ pub enum ProgramTypeFamily {
     Unclassified,
 }
 
+/// **Practice 4 — 🟡 YELLOW.** Named trigger: lowered `Dag` / declaration surface
+/// supplies structural roles (ids + spans), replacing string `function` labels and
+/// collapsing this sum toward reflected substrate facts.
+///
+/// (a) Top-level `data`, (b) function parameter, (c) return position — brief R2 scope.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum BindingRole {
     /// (a) Top-level `data` binding at module scope — Example 3 `name`.
@@ -33,6 +47,11 @@ pub enum BindingRole {
     FunctionReturn { function: String },
 }
 
+/// **Practice 4 — 🟡 YELLOW.** Named trigger: lowering walks real store/call/return
+/// sites into reflected use witnesses; test-only discriminators (`BorrowExclusive`,
+/// `IndeterminateGrowability`) dissolve per modeling-discipline §4 patterns once
+/// extract is authoritative (not `// scaffold:` — tracked in lane PR / brief).
+///
 /// Structural classification of a single use site (`t-ground-lifetime-analyzer.md` §D).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UseKind {
@@ -86,6 +105,10 @@ impl BindingDef {
     }
 }
 
+/// **Practice 4 — 🟢 GREEN (R2 boundary list).** Labels mirror the director-locked
+/// R3 deferral at `design-emission-model.md:635`; each variant names one refused
+/// construct — no richer field decomposition at this analyzer boundary.
+///
 /// R3 constructs rejected at the analyzer boundary (`design-emission-model.md:635`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum R3Construct {
