@@ -144,6 +144,34 @@ fn conj_field_ty(
         .ok_or(ReflectError("missing Conj field"))
 }
 
+/// [`FieldValue::Variant::payload`] is **positional**: one entry per field of the
+/// variant payload [`TypeConnective::Conj`], in `children` order — same contract as
+/// [`crate::lens_apply::variant_payload_for_binding`].
+fn sum_variant_payload(
+    dag: &Dag,
+    sum_name: &str,
+    variant_label: &str,
+    payload: Vec<FieldValue>,
+) -> ReflectResult<FieldValue> {
+    let ctor_ty = disj_variant_ty(dag, sum_name, variant_label)?;
+    match &dag.declaration(ctor_ty).connective {
+        TypeConnective::Conj { children } => {
+            if children.len() != payload.len() {
+                return err("sum variant payload arity mismatch");
+            }
+        }
+        _ => {
+            if payload.len() > 1 {
+                return err("sum variant payload arity mismatch");
+            }
+        }
+    }
+    Ok(FieldValue::Variant {
+        constructor: ctor_ty,
+        payload,
+    })
+}
+
 fn peel_to_optional_cardinality_decl(
     dag: &Dag,
     mut ty: DeclarationId,
@@ -248,11 +276,7 @@ fn reflect_optional_declaration_id(
 }
 
 fn reflect_unit_variant(dag: &Dag, sum_name: &str, label: &str) -> ReflectResult<FieldValue> {
-    let id = disj_variant_ty(dag, sum_name, label)?;
-    Ok(FieldValue::Variant {
-        constructor: id,
-        payload: vec![],
-    })
+    sum_variant_payload(dag, sum_name, label, vec![])
 }
 
 fn reflect_arithmetic_op(dag: &Dag, op: crate::dag::ArithmeticOp) -> ReflectResult<FieldValue> {
@@ -326,128 +350,83 @@ fn reflect_http_method_scalar(dag: &Dag, m: HttpMethodScalar) -> ReflectResult<F
 
 fn reflect_create_cause(dag: &Dag, c: &CreateCause) -> ReflectResult<FieldValue> {
     match c {
-        CreateCause::PostAlways => {
-            let id = disj_variant_ty(dag, "CreateCause", "PostAlways")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![],
-            })
-        }
-        CreateCause::KeylessFallback { method } => {
-            let id = disj_variant_ty(dag, "CreateCause", "KeylessFallback")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "method".to_string(),
-                    reflect_http_method_scalar(dag, *method)?,
-                )])],
-            })
-        }
+        CreateCause::PostAlways => sum_variant_payload(dag, "CreateCause", "PostAlways", vec![]),
+        CreateCause::KeylessFallback { method } => sum_variant_payload(
+            dag,
+            "CreateCause",
+            "KeylessFallback",
+            vec![reflect_http_method_scalar(dag, *method)?],
+        ),
     }
 }
 
 fn reflect_key_source(dag: &Dag, ks: &KeySource) -> ReflectResult<FieldValue> {
     match ks {
-        KeySource::PathParam { param } => {
-            let id = disj_variant_ty(dag, "KeySource", "PathParam")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "param".to_string(),
-                    FieldValue::Literal(LiteralBits::String(param.clone())),
-                )])],
-            })
-        }
-        KeySource::InputField { field } => {
-            let id = disj_variant_ty(dag, "KeySource", "InputField")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "field".to_string(),
-                    FieldValue::Literal(LiteralBits::String(field.clone())),
-                )])],
-            })
-        }
-        KeySource::CompositeKey { fields } => {
-            let id = disj_variant_ty(dag, "KeySource", "CompositeKey")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![reflect_string_list_spine(dag, fields)?],
-            })
-        }
+        KeySource::PathParam { param } => sum_variant_payload(
+            dag,
+            "KeySource",
+            "PathParam",
+            vec![FieldValue::Literal(LiteralBits::String(param.clone()))],
+        ),
+        KeySource::InputField { field } => sum_variant_payload(
+            dag,
+            "KeySource",
+            "InputField",
+            vec![FieldValue::Literal(LiteralBits::String(field.clone()))],
+        ),
+        KeySource::CompositeKey { fields } => sum_variant_payload(
+            dag,
+            "KeySource",
+            "CompositeKey",
+            vec![reflect_string_list_spine(dag, fields)?],
+        ),
     }
 }
 
 fn reflect_idempotent_shape(dag: &Dag, s: &IdempotentShape) -> ReflectResult<FieldValue> {
     match s {
-        IdempotentShape::ReadEffect => {
-            let id = disj_variant_ty(dag, "IdempotentShape", "ReadEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![],
-            })
-        }
-        IdempotentShape::UpsertEffect { key_source } => {
-            let id = disj_variant_ty(dag, "IdempotentShape", "UpsertEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "key_source".to_string(),
-                    reflect_key_source(dag, key_source)?,
-                )])],
-            })
-        }
-        IdempotentShape::DeleteEffect { key_source } => {
-            let id = disj_variant_ty(dag, "IdempotentShape", "DeleteEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "key_source".to_string(),
-                    reflect_key_source(dag, key_source)?,
-                )])],
-            })
-        }
+        IdempotentShape::ReadEffect => sum_variant_payload(dag, "IdempotentShape", "ReadEffect", vec![]),
+        IdempotentShape::UpsertEffect { key_source } => sum_variant_payload(
+            dag,
+            "IdempotentShape",
+            "UpsertEffect",
+            vec![reflect_key_source(dag, key_source)?],
+        ),
+        IdempotentShape::DeleteEffect { key_source } => sum_variant_payload(
+            dag,
+            "IdempotentShape",
+            "DeleteEffect",
+            vec![reflect_key_source(dag, key_source)?],
+        ),
     }
 }
 
 fn reflect_breaking_shape(dag: &Dag, s: &BreakingShape) -> ReflectResult<FieldValue> {
     match s {
-        BreakingShape::CreateEffect { cause } => {
-            let id = disj_variant_ty(dag, "BreakingShape", "CreateEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![(
-                    "cause".to_string(),
-                    reflect_create_cause(dag, cause)?,
-                )])],
-            })
-        }
-        BreakingShape::AppendEffect => {
-            let id = disj_variant_ty(dag, "BreakingShape", "AppendEffect")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![],
-            })
-        }
+        BreakingShape::CreateEffect { cause } => sum_variant_payload(
+            dag,
+            "BreakingShape",
+            "CreateEffect",
+            vec![reflect_create_cause(dag, cause)?],
+        ),
+        BreakingShape::AppendEffect => sum_variant_payload(dag, "BreakingShape", "AppendEffect", vec![]),
     }
 }
 
 fn reflect_effect_shape(dag: &Dag, s: &EffectShape) -> ReflectResult<FieldValue> {
     match s {
-        EffectShape::IsIdempotent(inner) => {
-            let id = disj_variant_ty(dag, "EffectShape", "IsIdempotent")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![reflect_idempotent_shape(dag, inner)?],
-            })
-        }
-        EffectShape::IsBreaking(inner) => {
-            let id = disj_variant_ty(dag, "EffectShape", "IsBreaking")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![reflect_breaking_shape(dag, inner)?],
-            })
-        }
+        EffectShape::IsIdempotent(inner) => sum_variant_payload(
+            dag,
+            "EffectShape",
+            "IsIdempotent",
+            vec![reflect_idempotent_shape(dag, inner)?],
+        ),
+        EffectShape::IsBreaking(inner) => sum_variant_payload(
+            dag,
+            "EffectShape",
+            "IsBreaking",
+            vec![reflect_breaking_shape(dag, inner)?],
+        ),
     }
 }
 
@@ -652,66 +631,55 @@ fn reflect_optional_bind_emit(
 
 fn reflect_transform_target(dag: &Dag, t: &TransformTarget) -> ReflectResult<FieldValue> {
     match t {
-        TransformTarget::Callable(callee) => {
-            let id = disj_variant_ty(dag, "TransformTarget", "Callable")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Reference(*callee)],
-            })
-        }
+        TransformTarget::Callable(callee) => sum_variant_payload(
+            dag,
+            "TransformTarget",
+            "Callable",
+            vec![FieldValue::Reference(*callee)],
+        ),
         TransformTarget::FieldProject {
             field_label,
             field_child,
         } => {
-            let id = disj_variant_ty(dag, "TransformTarget", "FieldProject")?;
+            let fp_conj = disj_variant_ty(dag, "TransformTarget", "FieldProject")?;
             let field_child_card =
-                peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, id, "field_child")?)?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![
-                    (
-                        "field_label".to_string(),
-                        FieldValue::Literal(LiteralBits::String(field_label.clone())),
-                    ),
-                    (
-                        "field_child".to_string(),
-                        reflect_optional_declaration_id(dag, field_child_card, *field_child)?,
-                    ),
-                ])],
-            })
+                peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, fp_conj, "field_child")?)?;
+            sum_variant_payload(
+                dag,
+                "TransformTarget",
+                "FieldProject",
+                vec![
+                    FieldValue::Literal(LiteralBits::String(field_label.clone())),
+                    reflect_optional_declaration_id(dag, field_child_card, *field_child)?,
+                ],
+            )
         }
-        TransformTarget::Operator(op) => {
-            let id = disj_variant_ty(dag, "TransformTarget", "Operator")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![reflect_operator_kind(dag, op)?],
-            })
-        }
+        TransformTarget::Operator(op) => sum_variant_payload(
+            dag,
+            "TransformTarget",
+            "Operator",
+            vec![reflect_operator_kind(dag, op)?],
+        ),
     }
 }
 
 fn reflect_branch_pattern(dag: &Dag, p: &BranchPattern) -> ReflectResult<FieldValue> {
     match p {
-        BranchPattern::UnresolvedVariant { name, span } => {
-            let id = disj_variant_ty(dag, "BranchPattern", "UnresolvedVariant")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Record(vec![
-                    (
-                        "name".to_string(),
-                        FieldValue::Literal(LiteralBits::String(name.clone())),
-                    ),
-                    ("span".to_string(), reflect_source_span(span)),
-                ])],
-            })
-        }
-        BranchPattern::ResolvedVariant(decl) => {
-            let id = disj_variant_ty(dag, "BranchPattern", "ResolvedVariant")?;
-            Ok(FieldValue::Variant {
-                constructor: id,
-                payload: vec![FieldValue::Reference(*decl)],
-            })
-        }
+        BranchPattern::UnresolvedVariant { name, span } => sum_variant_payload(
+            dag,
+            "BranchPattern",
+            "UnresolvedVariant",
+            vec![
+                FieldValue::Literal(LiteralBits::String(name.clone())),
+                reflect_source_span(span),
+            ],
+        ),
+        BranchPattern::ResolvedVariant(decl) => sum_variant_payload(
+            dag,
+            "BranchPattern",
+            "ResolvedVariant",
+            vec![FieldValue::Reference(*decl)],
+        ),
     }
 }
 
