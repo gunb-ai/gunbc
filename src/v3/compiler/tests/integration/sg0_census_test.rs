@@ -370,6 +370,17 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
+    // R2-Substrate Prereq-3a (`workflow_root_port` accessor + `WorkflowRoot`
+    // sum) per merged audit `docs/design-lens-fold-prerequisites.md`.
+    // Director-locked α: last topological `Bind`. Three integration
+    // claims exercise the `SingleRoot` single/multi cases and the
+    // unreachable-under-α ambiguous drift trigger; the zero-Bind
+    // `NoRoot` case lives as a unit test in `dag.rs` (crate-private
+    // `Dag::empty` constructor). Dispatch (#1130) accepted hand-Rust
+    // acceptance over real `compile_to_dag` fixtures; dissolves into
+    // `.dag` `TestClaim` form when testgen covers compile-and-fold
+    // structural assertions.
+    "src/v3/compiler/tests/integration/workflow_root_port_test.rs",
 ];
 
 // Non-`.rs` scaffold fragments under `src/v3/compiler/` that are

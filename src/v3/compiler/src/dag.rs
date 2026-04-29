@@ -2991,7 +2991,7 @@ impl Dag {
     pub fn workflow_root_port(&self) -> WorkflowRoot {
         for behavior in self.nodes.iter().rev() {
             if let Behavior::Bind(b) = behavior {
-                return WorkflowRoot::SingleRoot(b.result_port);
+                return WorkflowRoot::SingleRoot(b.result_port());
             }
         }
         WorkflowRoot::NoRoot
@@ -3812,6 +3812,22 @@ fn duplicate_target_clean_emission_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workflow_root_zero_bind_returns_no_root() {
+        // V3 surface syntax always lowers each top-level decl to a
+        // Bind, so the zero-Bind case is structurally unreachable from
+        // `compile_to_dag` fixtures. The α path's `NoRoot` arm is
+        // defensive-only at the substrate boundary; this unit test
+        // exercises it via the crate-private `Dag::empty()` constructor.
+        let dag = Dag::empty();
+        let root = dag.workflow_root_port();
+        assert_eq!(
+            root,
+            WorkflowRoot::NoRoot,
+            "Dag with no Bind behaviors must fail closed with NoRoot"
+        );
+    }
 
     fn binding_fields(language: DeclarationId, clean_emission: DeclarationId) -> ValueBody {
         ValueBody::Structural {
