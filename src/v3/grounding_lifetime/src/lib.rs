@@ -165,6 +165,21 @@ mod tests {
         }
     }
 
+    /// `span.file` is caller-controlled; authority-looking paths must not bypass C-8.
+    #[test]
+    fn extract_fail_closed_when_user_code_uses_authority_looking_span_path() {
+        let source = "module spoof\n\nfn f() -> Int = 0\n";
+        let file = "dsl/std/user_spoof_under_extractor_test.dag";
+        let dag = v3_compiler::compile_to_dag(source, file).expect("compile");
+        let err = extract_lifetime_program(&dag).expect_err("must not Ok(empty) on spoof path");
+        match err {
+            EmissionDiagnostic::LifetimeProgramExtractionPending { detail } => {
+                assert!(detail.contains('f'), "unexpected detail: {detail}");
+            }
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
+    }
+
     #[test]
     fn function_param_indeterminate_growability_fails_closed_even_when_borrowed() {
         let mut bindings = BTreeMap::new();

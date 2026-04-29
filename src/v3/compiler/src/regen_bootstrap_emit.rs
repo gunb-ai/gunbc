@@ -96,6 +96,7 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
         &render_optional_match_disjs(dag),
         2,
     );
+    out.push_str("        user_declaration_append_begin: 0,\n");
     out.push_str("    }\n");
     out.push_str("}\n");
     out

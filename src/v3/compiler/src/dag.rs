@@ -2478,6 +2478,16 @@ impl Dag {
         self.primitives.string
     }
 
+    /// Raw [`DeclarationId`] boundary between embedded bootstrap fixture rows and any
+    /// declarations minted afterward (`lower_into`, tests, etc.).
+    ///
+    /// Lifetime extraction and similar consumers must **not** classify post-boundary rows as
+    /// “fixture authority” based on [`Declaration::span`] alone — callers can supply an
+    /// authority-*looking* `span.file` string without being part of the checked-in corpus.
+    pub fn declaration_append_boundary(&self) -> u32 {
+        self.user_declaration_append_begin
+    }
+
     /// The std **scalar** `TypeShape` roots used to prune algebra / ring
     /// `TypeConnective::Arrow` from the first-class-`fn` *data* walk in
     /// `emit::rust_target` (`decl_includes_first_class_arrow_data` and related).

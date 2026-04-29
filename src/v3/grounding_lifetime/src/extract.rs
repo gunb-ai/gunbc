@@ -5,9 +5,11 @@
 //! so extraction returns an **empty** program (the structural fold is validated via
 //! [`LifetimeProgram`] fixtures).
 //!
-//! Any **`data` or `fn` declaration** rooted in a **non-authority** source file (user
-//! or test modules) is treated as load-bearing program surface we cannot project yet:
-//! fail-closed per C-8 instead of returning `Ok(empty)` and dropping facts.
+//! Any **`data` or `fn` declaration** minted **after** the embedded fixture snapshot
+//! ([`Dag::declaration_append_boundary`]) is treated as load-bearing program surface we
+//! cannot project yet — **even if** `span.file` looks like an authority path (callers
+//! control the compile-time file string). Fail-closed per C-8 instead of returning
+//! `Ok(empty)` and dropping facts.
 
 use v3_compiler::dag::{Dag, TypeConnective};
 
@@ -20,6 +22,9 @@ use crate::program::{BindingId, LifetimeProgram};
 use std::collections::BTreeMap;
 
 /// Span roots that appear on [`Dag::new()`] bootstrap fixtures (regenerated snapshots).
+///
+/// Used only as **defense in depth** for rows with `DeclarationId::raw` **below**
+/// [`Dag::declaration_append_boundary`]: those rows are expected to be corpus-only.
 ///
 /// Keep aligned with `bootstrap_generated.rs` / `bootstrap_generated_without_parse_surface.rs`
 /// when new fixture corpora land; otherwise user/test modules may be misclassified.
@@ -42,11 +47,9 @@ fn is_bootstrap_fixture_authority_source_file(file: &str) -> bool {
     )
 }
 
-fn first_non_authority_lifetime_surface_declaration(dag: &Dag) -> Option<(String, String)> {
+fn first_unextracted_lifetime_surface_declaration(dag: &Dag) -> Option<(String, String)> {
+    let boundary = dag.declaration_append_boundary();
     for decl in dag.declarations() {
-        if is_bootstrap_fixture_authority_source_file(&decl.span.file) {
-            continue;
-        }
         let surface =
             decl.value_body.is_some() || matches!(&decl.connective, TypeConnective::Arrow { .. });
         if !surface {
@@ -56,7 +59,14 @@ fn first_non_authority_lifetime_surface_declaration(dag: &Dag) -> Option<(String
             .name
             .clone()
             .unwrap_or_else(|| format!("declaration#{}", decl.id.raw()));
-        return Some((name, decl.span.file.clone()));
+        let post_fixture = decl.id.raw() >= boundary;
+        if post_fixture {
+            return Some((name, decl.span.file.clone()));
+        }
+        if !is_bootstrap_fixture_authority_source_file(&decl.span.file) {
+            // Fixture-id range but not stamped like the embedded corpus — do not trust.
+            return Some((name, decl.span.file.clone()));
+        }
     }
     None
 }
@@ -65,7 +75,7 @@ fn first_non_authority_lifetime_surface_declaration(dag: &Dag) -> Option<(String
 ///
 /// Fail-closed on constructs the R2 analyzer does not model (once lowering surfaces them).
 pub fn extract_lifetime_program(dag: &Dag) -> Result<LifetimeProgram, EmissionDiagnostic> {
-    if let Some((name, file)) = first_non_authority_lifetime_surface_declaration(dag) {
+    if let Some((name, file)) = first_unextracted_lifetime_surface_declaration(dag) {
         return Err(EmissionDiagnostic::LifetimeProgramExtractionPending {
             detail: format!("{name} ({file})"),
         });
