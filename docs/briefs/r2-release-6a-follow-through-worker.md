@@ -36,6 +36,28 @@ The migration is **not** a re-pick. The carrier shape is locked; this is consume
 
    Each trigger references the upstream substrate work that lands the type-system fact (cardinality refinement; typed cost; HOC parameter shape). When all three trigger conditions fire, `MethodContract` retires. **Acceptance:** ROADMAP rows authored; dissolution triggers cite specific upstream lanes / proposals where named (or "post-R2 capability lane TBD" for the un-named).
 
+## Inventory receipt (HEAD `main` post-#1208; post-#1175 template vs `MethodContract` discipline)
+
+**Audit method:** Read `src/v3/lenses/cost.dag` + `src/v3/lenses/complexity.dag` end-to-end; search for `size_effect`, `cost_shape`, `callback_element_position`, `MethodContract`, and `*_templates(` / template-table access patterns named in requirement 1.
+
+**Checked-in substrate anchors (this receipt is tied to on-disk sources, not a forward-only shape sketch):**
+
+- **`MethodContract` carrier:** declared in **`src/v3/std/algebra.dag`** as `type MethodContract { algebra_id, method_id, size_effect, cost_shape, callback_element_position }` at **lines 127–133** (`module v3.std.algebra`). There is **no** `MethodContract` symbol in **`dsl/std/algebra.dag`** (v2 template tables live there under `module std.algebra`; the Option-3 carrier is **v3-std** substrate).
+- **§6a demo accessor in scoped lens:** **`src/v3/lenses/cost.dag`** — `import std.algebra { MethodContract, … }` (**L35–45**); `fn method_contract_cost_shape(contract: MethodContract) -> CostShape? = contract.cost_shape` (**L59–60**). Lowered Rust mirror: **`src/v3/compiler/src/lens_cost_symbolic_generated.rs`** `method_contract_cost_shape` (regen from the same `.dag`).
+- **Non-claim:** `method_contract_cost_shape` has **no** call sites inside `cost.dag`'s `compute_symbolic_costs` / `entry_for` fold — the symbolic-cost walk remains **free of** `dsl/std/algebra.dag` `*_templates()` pulls **and** does not yet thread `MethodContract` through behavior variants. The accessor is the **checked-in §6a live-receipt API** (design doc §6a:173); it is **not** a statement that every cost path consumes `MethodContract` today.
+- **Stale-review guard (substrate is on `main`, not in this PR’s diff):** Receipt anchors live in files **outside** the `#1215` patch. Re-verify from repo root on **`main`**: `rg -n '^type MethodContract {' src/v3/std/algebra.dag` → **L127**; `rg -n 'fn method_contract_cost_shape' src/v3/lenses/cost.dag` → **L59**; `rg MethodContract dsl/std/algebra.dag` → **no matches** (carrier is **v3-std**, not `dsl`).
+
+| Consumer file | Reads of `size_effect` / `cost_shape` / `callback_element_position` from `*_templates()`-style lookup in `dsl/std/algebra.dag` | Notes |
+|---|---|---|
+| `src/v3/lenses/complexity.dag` | **None (0 sites).** | Structural integer-depth lens only; no method-template metadata consumption path. |
+| `src/v3/lenses/cost.dag` | **None (0 sites).** | Template-table pulls: **absent** (requirement-1 conclusion). Separately, **L59–60** defines the §6a accessor that projects `cost_shape` from a `MethodContract` **argument** — carrier type lives in **`src/v3/std/algebra.dag`** per anchors above, not in `dsl/std/algebra.dag`. |
+
+**Implication for requirement 2:** There is **nothing to mechanically replace** in these two files today: no lens-local `*_templates()` reads of the three fields exist here. **Live call-site** `MethodContract` lookup through `Transform` / call-pattern lowering (when cost analysis needs per-method facts on real call edges) remains **future wiring**, not a table-to-carrier rename inside current `.dag` bodies.
+
+**Implication for requirement 3:** ROADMAP dissolution-trigger rows are still **required** by this brief (PR-3 / follow-up); they are **not** implied complete by an empty migration surface in the two lens files.
+
+**Scope boundary (widen-later, RM review):** Broader §6a migration narratives elsewhere name additional lenses (e.g. `idempotency.dag`, `parallelism.dag`). **This receipt covers requirement 1's two named consumer files only** — it is **not** a repo-wide "no `*_templates()` migration surface" claim. Before widening bulk migration, **extend inventory** to any newly in-scope `.dag` modules and tabulate those sites explicitly.
+
 ## Slice — inventory → migrate → track
 
 1. Read `cost.dag` + `complexity.dag` end-to-end; inventory consumption sites for the three carrier fields.
