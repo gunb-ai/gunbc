@@ -236,9 +236,16 @@ one of them requires a substrate extension:
   /// `FieldProject`, or `Indirect` directly — the only path is
   /// the Dag builder that validates against the target signature.
   /// Read access is through accessor methods on the payload structs.
+  /// Field projection (pure value access, no call) and field
+  /// invocation (project-then-call) are *different state families*
+  /// — keep them as separate variants. A `FieldProject` payload
+  /// has no `args` because there is no call; a `FieldCall` payload
+  /// always has args (zero-arg calls still carry an empty list,
+  /// but the *call vs. project* axis is structural).
   pub enum TransformDispatch {
       Callable     (CallableDispatch),
-      FieldProject (FieldProjectDispatch),
+      FieldProject (FieldProjectDispatch),  // pure projection — current TransformTarget::FieldProject shape, preserved
+      FieldCall    (FieldCallDispatch),     // project-then-call — new for X1
       Operator     (OperatorCall),
       Indirect     (IndirectDispatch),
   }
@@ -248,7 +255,19 @@ one of them requires a substrate extension:
       /* private */ args:   Vec<PortId>,
   }
 
+  /// Pure field projection. No args — projecting a field of a
+  /// carrier value is a value-access fact, not a dispatch.
+  /// Preserves the current `TransformTarget::FieldProject` shape.
   pub struct FieldProjectDispatch {
+      /* private */ field_label: String,
+      /* private */ field_child: Option<DeclarationId>,
+      /* private */ carrier:     PortId,
+  }
+
+  /// Field invocation: project an Arrow-typed field, then call it.
+  /// Distinct from `FieldProject` because the carrier→field→call
+  /// composition is a different state family than plain projection.
+  pub struct FieldCallDispatch {
       /* private */ field_label: String,
       /* private */ field_child: Option<DeclarationId>,
       /* private */ carrier:     PortId,
@@ -264,7 +283,7 @@ one of them requires a substrate extension:
       pub fn callee(&self) -> DeclarationId { self.callee }
       pub fn args(&self)   -> &[PortId]     { &self.args }
   }
-  // (analogous accessors for FieldProjectDispatch / IndirectDispatch)
+  // (analogous accessors for FieldProjectDispatch / FieldCallDispatch / IndirectDispatch)
 
   /// Operators have fixed arity per op-kind; encode it in the sum.
   /// Unary/Binary cannot accidentally swap arities. `OperatorCall`
@@ -307,6 +326,11 @@ one of them requires a substrate extension:
   ///
   ///     pub fn push_field_project_transform(
   ///         &mut self, field_label: String, field_child: Option<DeclarationId>,
+  ///         carrier_port: PortId, ...,
+  ///     ) -> Result<NodeId, CallShapeError> { ... }
+  ///
+  ///     pub fn push_field_call_transform(
+  ///         &mut self, field_label: String, field_child: Option<DeclarationId>,
   ///         carrier_port: PortId, raw_ports: Vec<PortId>, ...,
   ///     ) -> Result<NodeId, CallShapeError> { ... }
   /// }
@@ -347,7 +371,7 @@ one of them requires a substrate extension:
   **Arity enforcement.** `Operator` arity is fixed by op-kind and
   encoded directly in `OperatorCall`'s variants — a `Unary` cannot
   carry two operands, a `Binary` cannot carry one, by type. The
-  call-shapes (`Callable` / `FieldProject` / `Indirect`) have
+  call-shapes (`Callable` / `FieldCall` / `Indirect`) have
   signature-dependent arity that only the lowerer knows. For those,
   the args proof is bound to the target by **atomic dispatch
   construction**: variant fields are module-private to `dag` (no
@@ -370,7 +394,7 @@ one of them requires a substrate extension:
     Reflected consumers (lenses, schedulers, dataflow analyses)
     walk this iterator without knowing which variant they have.
   - **Illegal states unrepresentable at the type level:**
-    - `Callable` / `FieldProject` / `Operator` cannot accidentally
+    - `Callable` / `FieldProject` / `FieldCall` / `Operator` cannot accidentally
       carry a runtime callee port (no `callee` field of any kind).
     - `Indirect` cannot omit its callee (single field, not a
       `Vec`; not `Option`).
@@ -421,7 +445,14 @@ one of them requires a substrate extension:
     = Decl(...) }` shape as the rest of the call-shapes, and the
     🟡 set above absorbs it.
 
-  - 🟡 **`Callable` / `FieldProject` / `Indirect`** — future
+  - 🟢 **`FieldProject`** — keep. Pure value-access fact
+    preserved from the current `TransformTarget::FieldProject`
+    shape; no dispatch (no args). Distinct state family from
+    `FieldCall` — collapsing them would conceal the
+    projection-vs-invocation axis behind args-emptiness, which
+    is the conflation the reviewer flagged.
+
+  - 🟡 **`Callable` / `FieldCall` / `Indirect`** — future
     dissolution to a single `Call { callee: CalleeRef, args }`
     variant where `CalleeRef = Decl(DeclarationId) | Field {
     label, child: Option<DeclarationId>, carrier: PortId } |
