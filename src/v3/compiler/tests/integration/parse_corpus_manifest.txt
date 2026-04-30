@@ -25,7 +25,7 @@ src/v3/std/algebra.dag	42	303630	8be5b86cc9520bc3
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
 src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	8	20682	cdd44a074743988b
-src/v3/std/bridge_ledger.dag	5	26353	0fbf3a93bd2b3dc0
+src/v3/std/bridge_ledger.dag	7	27441	999ef2f4e169cf3b
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
@@ -50,5 +50,5 @@ src/v3/std/substrate.dag	59	128989	46e2b8316f0d8ae9
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
-src/v3/std/verification.dag	29	64164	8ed97cde03f0dbae
+src/v3/std/verification.dag	30	64542	454663832a069582
 src/v3/std/workflows.dag	4	3135	bb6f9b042a02e8d6
