@@ -95,8 +95,10 @@ fn assert_v2_block_contains(type_name: &str, needle: &str) {
 fn assert_lockstep_record(type_name: &str, expected_field_labels: &[&str]) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: HashSet<String> = conj_field_labels(&dag, type_name).into_iter().collect();
-    let expected_labels: HashSet<String> =
-        expected_field_labels.iter().map(|s| s.to_string()).collect();
+    let expected_labels: HashSet<String> = expected_field_labels
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         v3_labels, expected_labels,
         "{type_name} v3 field set diverged from expected"
@@ -111,8 +113,10 @@ fn assert_lockstep_record(type_name: &str, expected_field_labels: &[&str]) {
 fn assert_lockstep_disj(type_name: &str, expected_variant_labels: &[&str]) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: HashSet<String> = disj_variant_labels(&dag, type_name).into_iter().collect();
-    let expected_labels: HashSet<String> =
-        expected_variant_labels.iter().map(|s| s.to_string()).collect();
+    let expected_labels: HashSet<String> = expected_variant_labels
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     assert_eq!(
         v3_labels, expected_labels,
         "{type_name} v3 variant set diverged from expected"
