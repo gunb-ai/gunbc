@@ -41,7 +41,7 @@ src/v3/std/python_method_template_contracts.dag	5	120438	17c36841b44234d2
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	6	7993	0e703b02069526f6
 src/v3/std/rust_method_template_contracts.dag	5	61868	1e4c73f0fe7f03c6
-src/v3/std/services.dag	6	4742	cb118464a12d406b
+src/v3/std/services.dag	6	4720	c4098cd0581d0cc5
 src/v3/std/substrate.dag	59	128739	82987951254e7b4d
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
