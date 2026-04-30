@@ -3,8 +3,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId, PortState,
-    TypeConnective, ValueBody,
+    AtomPayload, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId,
+    PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::generated_files::GENERATED_FILES;
@@ -1996,12 +1996,65 @@ impl<'a> TestRunner<'a> {
         };
         let left_name = decl_display_name(left_id, self.dag.declaration(left_id));
         let right_name = decl_display_name(right_id, self.dag.declaration(right_id));
+        if let Err(reason) = self.validate_dimension_report_ref(left_id, "left_report_ref") {
+            return ClaimResult::Fail(reason);
+        }
+        if let Err(reason) = self.validate_dimension_report_ref(right_id, "right_report_ref") {
+            return ClaimResult::Fail(reason);
+        }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
              `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
              production/evaluation substrate; serialized report comparison is intentionally \
              unsupported"
         ))
+    }
+
+    fn validate_dimension_report_ref(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<(), String> {
+        let decl = self.dag.declaration(decl_id);
+        let candidate_type = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.type_is_dimension_report(candidate_type) {
+            Ok(())
+        } else {
+            Err(format!(
+                "BinaryDimensionReportEquals `{field_label}` must reference a declaration that \
+                 produces or inhabits DimensionReport<C>; `{}` does not",
+                decl_display_name(decl_id, decl)
+            ))
+        }
+    }
+
+    fn type_is_dimension_report(&self, mut current: DeclarationId) -> bool {
+        let Some(report_id) = self
+            .dag
+            .declaration_by_name("DimensionReport")
+            .map(|decl| decl.id)
+        else {
+            return false;
+        };
+        for _ in 0..32 {
+            match &self.dag.declaration(current).connective {
+                TypeConnective::Instantiation { template, .. } if *template == report_id => {
+                    return true;
+                }
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => current = *template,
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => current = *next,
+                _ => return false,
+            }
+        }
+        false
     }
 
     fn resolve_declaration_ref_id(

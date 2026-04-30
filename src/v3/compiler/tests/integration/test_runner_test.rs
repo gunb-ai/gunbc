@@ -661,6 +661,46 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn binary_dimension_report_equals_rejects_non_report_refs() {
+    let source = r#"
+module test.binary_dimension_report_equals_non_report
+
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+fn left_report() -> Int = 0
+fn right_report() -> Int = 0
+
+data claim: TestClaim = {
+  name: "non-report refs fail closed",
+  source: "let _: Int = 0",
+  file_name: "binary_dimension_report_non_report.v3",
+  predicate: BinaryDimensionReportEquals(left_report, right_report),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(source, "binary_dimension_report_non_report_harness.v3");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::Fail(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("DimensionReport<C>")
+                    && reason.contains("left_report")
+        ),
+        "expected non-report refs to fail closed, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
 fn lens_output_equals_malformed_claim_source_fails_closed_with_literal_input() {
     // INVARIANTS P3 / TESTING: tokenize/parse failure for `TestClaim.source` must surface as
     // `Fail`, not fall back to the fixture lens (which could still `Pass` on a stub).
