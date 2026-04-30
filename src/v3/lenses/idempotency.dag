@@ -12,14 +12,151 @@
 //
 // CI exercises lens emission in `m2_lens_idempotency_emit_test` (Rust/Go/Python
 // emit smoke) and rustc round-trip in `m2_lens_idempotency_migration_test`.
+//
+// Phase 1.5 migration: this file also declares an idempotency-shaped
+// `Lens<WorkflowIdempotencyReport>` instance. The instance is not the execution
+// authority yet: `analyze_workflow` remains the compatibility API until the
+// generic `fold_lens<C>` / DB-3 `analyze(d, workflow, dim)` core can run an
+// equivalence ratchet against the current workflow-root semantics. The lens
+// carrier uses `WorkflowIdempotencyReport` rather than a lossy binary verdict so
+// unsupported branch/loop/parallel workflow shapes stay explicit.
 
 module lenses.idempotency
 
-import v3.std.substrate { Dag, NodeId, lane2_workflow_at }
+import std.algebra { Monoid }
+import v3.std.dimensions {
+  Witness,
+  OptionalDiagnostic,
+  Inhabits,
+  Violates,
+  NoDiagnostic
+}
+import v3.std.lens { Lens }
+import v3.std.substrate { Dag, Behavior, LoopBound, NodeId, lane2_workflow_at }
 import std.effects {
+  CompositionVerdict,
   WorkflowIdempotencyReport,
+  IdempotencyUnsupportedDetail,
+  IdempotentComposition,
+  BrokenBy,
+  WorkflowCompositionVerdict,
+  IdempotencyUnsupported,
   lane2_workflow_idempotency_report,
   report_unsupported_workflow_variant
+}
+
+fn idempotency_report_identity() -> WorkflowIdempotencyReport =
+  WorkflowCompositionVerdict(IdempotentComposition)
+
+fn compose_composition_verdicts(
+  left: CompositionVerdict,
+  right: CompositionVerdict
+) -> CompositionVerdict =
+  match left {
+    BrokenBy { first_breaker: first_breaker } => BrokenBy { first_breaker: first_breaker }
+    IdempotentComposition => right
+  }
+
+fn compose_idempotency_reports(
+  left: WorkflowIdempotencyReport,
+  right: WorkflowIdempotencyReport
+) -> WorkflowIdempotencyReport =
+  match left {
+    IdempotencyUnsupported(detail) => IdempotencyUnsupported(detail)
+    WorkflowCompositionVerdict(left_verdict) =>
+      match right {
+        IdempotencyUnsupported(detail) => IdempotencyUnsupported(detail)
+        WorkflowCompositionVerdict(right_verdict) =>
+          WorkflowCompositionVerdict(
+            compose_composition_verdicts(left_verdict, right_verdict)
+          )
+      }
+  }
+
+fn idempotency_report_monoid_op(
+  left: WorkflowIdempotencyReport,
+  right: WorkflowIdempotencyReport
+) -> WorkflowIdempotencyReport =
+  compose_idempotency_reports(left, right)
+
+fn idempotency_branch_report(
+  left: WorkflowIdempotencyReport,
+  right: WorkflowIdempotencyReport
+) -> WorkflowIdempotencyReport =
+  compose_idempotency_reports(left, right)
+
+fn idempotency_iterate_report(
+  body: WorkflowIdempotencyReport,
+  bound: LoopBound
+) -> WorkflowIdempotencyReport =
+  match body {
+    IdempotencyUnsupported(detail) => IdempotencyUnsupported(detail)
+    WorkflowCompositionVerdict(verdict) => WorkflowCompositionVerdict(verdict)
+  }
+
+fn idempotency_unsupported_reason(detail: IdempotencyUnsupportedDetail) -> String =
+  detail.reason
+
+fn idempotency_report_witness(
+  report: WorkflowIdempotencyReport,
+  behavior: Behavior
+) -> Witness<WorkflowIdempotencyReport> =
+  match report {
+    IdempotencyUnsupported(detail) =>
+      Violates {
+        reason: idempotency_unsupported_reason(detail),
+        at: behavior
+      }
+    WorkflowCompositionVerdict(verdict) =>
+      Inhabits(WorkflowCompositionVerdict(verdict))
+  }
+
+fn idempotency_neutral_witness() -> Witness<WorkflowIdempotencyReport> =
+  Inhabits(idempotency_report_identity())
+
+fn read_idempotency_node(
+  d: Dag,
+  id: NodeId,
+  behavior: Behavior
+) -> Witness<WorkflowIdempotencyReport> =
+  match lane2_workflow_at(d, id) {
+    None => idempotency_neutral_witness()
+    Some(wf) => idempotency_report_witness(
+      lane2_workflow_idempotency_report(wf),
+      behavior
+    )
+  }
+
+fn read_idempotency_behavior(
+  d: Dag,
+  behavior: Behavior
+) -> Witness<WorkflowIdempotencyReport> =
+  match behavior {
+    Value(v) => read_idempotency_node(d, v.id, Value(v))
+    Transform(t) => idempotency_neutral_witness()
+    Branch(b) => idempotency_neutral_witness()
+    Loop(l) => idempotency_neutral_witness()
+    Bind(bind) => read_idempotency_node(d, bind.id, Bind(bind))
+  }
+
+fn validate_idempotency_report(
+  d: Dag,
+  report: WorkflowIdempotencyReport
+) -> OptionalDiagnostic =
+  NoDiagnostic
+
+data idempotency_report_monoid: Monoid<WorkflowIdempotencyReport> = {
+  op: idempotency_report_monoid_op,
+  identity: WorkflowCompositionVerdict(IdempotentComposition)
+}
+
+data idempotency_workflow_lens: Lens<WorkflowIdempotencyReport> = {
+  name: "lane2_stage2b_idempotency",
+  read: read_idempotency_behavior,
+  sequential: idempotency_report_monoid,
+  branch: idempotency_branch_report,
+  iterate: idempotency_iterate_report,
+  validate: validate_idempotency_report
 }
 
 fn analyze_workflow(d: Dag, workflow_root: NodeId) -> WorkflowIdempotencyReport =
