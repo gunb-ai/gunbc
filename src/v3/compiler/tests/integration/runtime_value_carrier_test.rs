@@ -50,6 +50,10 @@ fn conj_field_by_id(dag: &Dag, id: DeclarationId, field_name: &str) -> Declarati
     }
 }
 
+fn positional_payload(dag: &Dag, id: DeclarationId) -> DeclarationId {
+    conj_field_by_id(dag, id, "_0")
+}
+
 fn assert_instantiation(dag: &Dag, actual: DeclarationId, template: &str, argument: &str) {
     let expected_template = decl_id(dag, template);
     let expected_argument = decl_id(dag, argument);
@@ -102,18 +106,21 @@ fn runtime_value_has_locked_pb_runtime_coproduct_shape() {
     );
 
     assert_eq!(
-        variant_payload(&dag, "LiteralValue"),
+        positional_payload(&dag, variant_payload(&dag, "LiteralValue")),
         decl_id(&dag, "LiteralBits")
     );
     assert_instantiation(
         &dag,
-        variant_payload(&dag, "RecordValue"),
+        positional_payload(&dag, variant_payload(&dag, "RecordValue")),
         "List",
         "NamedField",
     );
-    assert_eq!(variant_payload(&dag, "NodeRef"), decl_id(&dag, "NodeId"));
     assert_eq!(
-        variant_payload(&dag, "CardinalityValue"),
+        positional_payload(&dag, variant_payload(&dag, "NodeRef")),
+        decl_id(&dag, "NodeId")
+    );
+    assert_eq!(
+        positional_payload(&dag, variant_payload(&dag, "CardinalityValue")),
         decl_id(&dag, "LoopBound")
     );
 
