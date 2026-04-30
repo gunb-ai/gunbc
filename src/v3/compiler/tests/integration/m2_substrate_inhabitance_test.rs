@@ -2380,3 +2380,55 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
         "EvalFrame / EvalStateStack are evaluator state, never Value variants"
     );
 }
+
+#[test]
+fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let strategy = dag
+        .declaration_by_name("EvalStrategy")
+        .expect("PR-A.3 EvalStrategy missing from full bootstrap");
+    assert_eq!(
+        strategy.span.file, "src/v3/std/runtime.dag",
+        "EvalStrategy must live in the single runtime authority module"
+    );
+    let strategy_variants = match &strategy.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("EvalStrategy must lower as a one-variant Disj, got {other:?}"),
+    };
+    assert_eq!(
+        strategy_variants.len(),
+        1,
+        "PR-A.3 eager baseline must not introduce fake strategy variants"
+    );
+    assert_eq!(strategy_variants[0].label, "ApplicativeOrder");
+    assert_eq!(
+        conj_field_by_id(&dag, strategy_variants[0].ty, "input_order"),
+        find_named(&dag, "InputEvaluationOrder")
+    );
+
+    let input_order = dag
+        .declaration_by_name("InputEvaluationOrder")
+        .expect("PR-A.3 InputEvaluationOrder missing from full bootstrap");
+    assert_eq!(
+        input_order.span.file, "src/v3/std/runtime.dag",
+        "InputEvaluationOrder must live in the single runtime authority module"
+    );
+    let input_order_variants = match &input_order.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("InputEvaluationOrder must lower as a one-variant Disj, got {other:?}"),
+    };
+    assert_eq!(
+        input_order_variants.len(),
+        1,
+        "PR-A.3 eager baseline must not introduce fake input-order variants"
+    );
+    assert_eq!(input_order_variants[0].label, "LeftFirst");
+    match &dag.declaration(input_order_variants[0].ty).connective {
+        TypeConnective::Conj { children } => assert!(
+            children.is_empty(),
+            "LeftFirst is a bare nullary variant and must carry no payload fields"
+        ),
+        other => panic!("LeftFirst payload must lower as empty Conj, got {other:?}"),
+    }
+}
