@@ -62,7 +62,7 @@ fn bootstrap_inventory_stays_typed_and_cached() {
         dag.branch_marker().expect("Branch marker"),
         dag.loop_marker().expect("Loop marker"),
         dag.transform_marker().expect("Transform marker"),
-        dag.value_marker().expect("Value marker"),
+        dag.value_marker().expect("ValueBehavior marker"),
         dag.main_marker().expect("Main marker"),
         dag.declaration_ref_marker().expect("DeclarationRef marker"),
         dag.type_realization_meta().expect("TypeRealization meta"),
