@@ -675,9 +675,9 @@ mod stratum_a_tests {
         let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
             panic!("unexpected diagnostic: {err:?}");
         };
-        assert!(
-            detail.contains("extra") || detail.contains("mismatch"),
-            "expected field-set mismatch detail, got {detail}"
+        assert_eq!(
+            detail,
+            "MethodTemplateContract: field set mismatch — missing [], extra [\"surprise\"] (expected exactly [\"dag_method\", \"emit_template\", \"placeholder_convention\", \"runtime_template\", \"wraps_result\"])"
         );
     }
 
