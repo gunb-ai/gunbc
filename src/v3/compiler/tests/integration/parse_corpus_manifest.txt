@@ -45,7 +45,7 @@ src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	9	10990	e4dc8f7383ff7660
 src/v3/std/rust_method_template_contracts.dag	5	109753	7b10fcd0d9079900
 src/v3/std/services.dag	8	5791	840c901943fce7bf
-src/v3/std/substrate.dag	59	128739	82987951254e7b4d
+src/v3/std/substrate.dag	59	128989	46e2b8316f0d8ae9
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
 src/v3/std/tokenize.dag	8	38819	2e158a74f33c18cc
