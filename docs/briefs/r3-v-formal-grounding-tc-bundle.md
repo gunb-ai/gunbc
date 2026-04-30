@@ -4,9 +4,9 @@
 
 **Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — §"Absorbed cross-cutting responsibility — TC1/TC2/TC3 bundle".
 
-## Scope (this lane)
+## Scope (this bundle)
 
-Manage the three formal-grounding `TestClaim` author-now-fire-later commitments through their strict-fire activation. Each TC has a different unblock condition; this lane coordinates across them and authors the substrate path for TC3 when its prerequisites land.
+Manage the three formal-grounding `TestClaim` author-now-fire-later commitments through their strict-fire activation. Each TC has a different unblock condition; this bundle coordinates across them and authors the substrate path for TC3 when its prerequisites land.
 
 | TC | Claim | Status (2026-04-30 audit) | Strict-fire gate |
 |---|---|---|---|
@@ -34,18 +34,18 @@ These resolve when TC3 dispatch fires. Listed here for handoff continuity:
 |---|---|---|
 | TC1 | T-Substrate-Lens-Primitive + lens producer retirement | Substrate Manager + PB Manager continuations |
 | TC2 | Second executable evaluation strategy | R3 Evaluator residual (post-R2-Evaluator close) |
-| TC3 | B5 audit + T-Substrate-Lens-Primitive + substrate-fact-introduction | PB Manager (B5) + Substrate Manager + this lane (introduction authorship) |
+| TC3 | B5 audit + T-Substrate-Lens-Primitive + substrate-fact-introduction | PB Manager (B5) + Substrate Manager + this bundle (introduction authorship) |
 
 ## Cadence
 
 - **No active worker dispatch** until at least one TC's strict-fire prerequisites land.
 - **Audit cadence** — bundled with bridge-ledger audit; refresh status table at each manager-brief PR.
-- **TC3 dispatch trigger** — when both B5 and T-Substrate-Lens-Primitive are green, this lane authors a TC3 substrate-introduction worker brief (~3-5 days research-tier per PM Tier C estimate).
+- **TC3 dispatch trigger** — when both B5 and T-Substrate-Lens-Primitive are green, this bundle authors a TC3 substrate-introduction worker brief (~3-5 days research-tier per PM Tier C estimate).
 
 ## Explicitly out of scope
 
-- **TC1 substrate-research authoring** — Substrate Manager continuation owns T-Substrate-Lens-Primitive; this lane only consumes the strengthening signal.
-- **TC2 second-strategy implementation** — R3 Evaluator residual (per [`r2-closure-ledger.md`](../r2-closure-ledger.md) Evaluator row); this lane only consumes the strengthening signal.
+- **TC1 substrate-research authoring** — Substrate Manager continuation owns T-Substrate-Lens-Primitive; this bundle only consumes the strengthening signal.
+- **TC2 second-strategy implementation** — R3 Evaluator residual (per [`r2-closure-ledger.md`](../r2-closure-ledger.md) Evaluator row); this bundle only consumes the strengthening signal.
 - **TC3 declaration content** — already authored in [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L145-215 (PB-authored declarative shape). This lane authors the substrate path + fixture, NOT the declaration text per L181-185 ownership-transition contract.
 - **L4 / L5 / L7 verification claims** — Lanes 1 + 2 of this manager.
 
