@@ -570,19 +570,6 @@ type WorkflowIdempotencyReport
   = WorkflowCompositionVerdict(CompositionVerdict)
   | IdempotencyUnsupported(IdempotencyUnsupportedDetail)
 
-fn idempotent_workflow_report() -> WorkflowIdempotencyReport =
-  WorkflowCompositionVerdict(IdempotentComposition)
-
-fn composition_verdict_report(
-  verdict: CompositionVerdict
-) -> WorkflowIdempotencyReport =
-  WorkflowCompositionVerdict(verdict)
-
-fn unsupported_idempotency_report(
-  detail: IdempotencyUnsupportedDetail
-) -> WorkflowIdempotencyReport =
-  IdempotencyUnsupported(detail)
-
 fn report_unsupported_workflow_variant(
   variant_name: String,
   downstream_stage: String,
