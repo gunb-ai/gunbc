@@ -39,6 +39,10 @@ data python_item_forms: List<ItemForm> = [
 
 // Python operator precedence (emission-relevant subset).
 // Python uses word operators for boolean (and, or) and // for integer div.
+// The // binding is retained only for the v2 AlgQuotient compatibility bridge
+// consumed by src/v2 language emission tests. It is not v3 algebra authority;
+// delete it with AlgQuotient when v2 Div dispatch is retired or moved behind a
+// v2-local syntax authority.
 // Ref: Python Reference §6.17 "Operator precedence"
 
 data python_operators: List<OperatorSpec> = [
@@ -53,8 +57,8 @@ data python_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
   OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
   OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
-  // Div is algebra-aware: Float (Field) → true division "/",
-  // Int (OrderedRing) → integer division "//".
+  // Div is algebra-aware for total reciprocal-shaped Field division and the
+  // v2-only AlgQuotient compatibility selector.
   // Ref: Python Reference §6.7 "Binary arithmetic operations"
   OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgReciprocal } },
   OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgQuotient } },
