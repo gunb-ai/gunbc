@@ -889,7 +889,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         "TestPredicate",
         "LensOutputEquals",
         vec![
-            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "ValueBehavior"),
             declaration_ref_field(&dag, "Transform"),
             declaration_ref_field(&dag, "Bind"),
         ],
@@ -901,7 +901,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         "TestPredicate",
         "DifferentialEquals",
         vec![
-            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "ValueBehavior"),
             declaration_ref_field(&dag, "Transform"),
             declaration_ref_field(&dag, "Bind"),
         ],
@@ -913,7 +913,7 @@ fn extension_predicates_reach_interpreter_boundary() {
     // is the typed contract shared with the DB-15 `TestRunner` lane (`NotYetImplemented`).
     let algebraic_law_payload = vec![
         sum_variant(&dag, "AlgebraicLawKind", "Commutativity", Vec::new()),
-        declaration_ref_field(&dag, "Value"),
+        declaration_ref_field(&dag, "ValueBehavior"),
     ];
     let inner = match cached_compile_outcome(positive_source, file) {
         CachedCompileOutcome::Clean(program_dag) => program_dag,
@@ -946,7 +946,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         "TestPredicate",
         "BehavioralObservation",
         vec![
-            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "ValueBehavior"),
             declaration_ref_field(&dag, "Transform"),
             declaration_ref_field(&dag, "Bind"),
         ],
@@ -964,7 +964,7 @@ fn extension_predicates_reach_interpreter_boundary() {
         "TestPredicate",
         "MockBackedInvariant",
         vec![
-            declaration_ref_field(&dag, "Value"),
+            declaration_ref_field(&dag, "ValueBehavior"),
             declaration_ref_field(&dag, "Transform"),
         ],
     );
