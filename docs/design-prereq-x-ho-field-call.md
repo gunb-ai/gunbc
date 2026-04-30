@@ -228,7 +228,10 @@ one of them requires a substrate extension:
   }
 
   /// Sum is public so consumers can match; per-variant payloads
-  /// are tuple-wrapped structs with crate-private fields. Outside
+  /// are tuple-wrapped structs with module-private fields (no
+  /// visibility modifier — private to the dag module only, not
+  /// `pub(crate)` which would still allow in-crate construction).
+  /// Outside
   /// the dag module no caller can construct `Callable`,
   /// `FieldProject`, or `Indirect` directly — the only path is
   /// the Dag builder that validates against the target signature.
@@ -241,20 +244,20 @@ one of them requires a substrate extension:
   }
 
   pub struct CallableDispatch {
-      pub(crate) callee: DeclarationId,
-      pub(crate) args:   Vec<PortId>,
+      /* private */ callee: DeclarationId,
+      /* private */ args:   Vec<PortId>,
   }
 
   pub struct FieldProjectDispatch {
-      pub(crate) field_label: String,
-      pub(crate) field_child: Option<DeclarationId>,
-      pub(crate) carrier:     PortId,
-      pub(crate) args:        Vec<PortId>,
+      /* private */ field_label: String,
+      /* private */ field_child: Option<DeclarationId>,
+      /* private */ carrier:     PortId,
+      /* private */ args:        Vec<PortId>,
   }
 
   pub struct IndirectDispatch {
-      pub(crate) callee: ArrowPortRef,
-      pub(crate) args:   Vec<PortId>,
+      /* private */ callee: ArrowPortRef,
+      /* private */ args:   Vec<PortId>,
   }
 
   impl CallableDispatch {
@@ -277,7 +280,7 @@ one of them requires a substrate extension:
   /// **Atomic dispatch construction binds the args proof to the
   /// target.** The payload structs (`CallableDispatch`,
   /// `FieldProjectDispatch`, `IndirectDispatch`) have
-  /// `pub(crate)` fields, so outside the dag module they cannot
+  /// `/* private */` fields, so outside the dag module they cannot
   /// be constructed directly — the type system, not convention,
   /// blocks `CallableDispatch { callee, args }` literal
   /// construction. The only public path that yields a
@@ -347,7 +350,8 @@ one of them requires a substrate extension:
   call-shapes (`Callable` / `FieldProject` / `Indirect`) have
   signature-dependent arity that only the lowerer knows. For those,
   the args proof is bound to the target by **atomic dispatch
-  construction**: variant fields are crate-private, and the only
+  construction**: variant fields are module-private to `dag` (no
+  visibility modifier; not `pub(crate)`), and the only
   public surface that yields a `Callable` / `FieldProject` /
   `Indirect` is a Dag builder (`push_callable_transform`,
   `push_field_project_transform`, `push_indirect_transform`) that
