@@ -322,3 +322,59 @@ data suite: TestSuite = {
         );
     }
 }
+
+#[test]
+fn bridge_ledger_zero_runner_fails_closed_on_wrong_ledger_type() {
+    // Fail-closed type check at the claim boundary: a claim that points
+    // `BridgeLedgerZero { ledger: ... }` at any list-shaped declaration
+    // other than `List<BridgeLedgerRow>` must be rejected before row
+    // scanning. Without this guard, any list whose records happen to
+    // carry `name`/`status` would be silently accepted as a ledger; the
+    // predicate consumes the substrate carrier type, not look-alikes.
+    let source = r#"
+type FakeStatus = Yes | No
+
+type FakeLedgerRow {
+  name: String
+  status: FakeStatus
+}
+
+data fake_ledger: List<FakeLedgerRow> = [
+  {
+    name: "fake",
+    status: Yes
+  }
+]
+
+data wrong_type_claim: TestClaim = {
+  name: "wrong_ledger_type",
+  source: "let x: Int = 1",
+  file_name: "bridge_ledger_zero_wrong_type.v3",
+  predicate: BridgeLedgerZero { ledger: fake_ledger },
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "bridge_ledger_zero_wrong_type_suite",
+  claims: [wrong_type_claim]
+}
+"#;
+    let dag = compile_clean(source, "bridge_ledger_zero_wrong_type.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+    assert_eq!(results.len(), 1);
+    let reason = match &results[0].result {
+        ClaimResult::Fail(reason) => reason.clone(),
+        other => panic!("expected `Fail` for wrong-typed ledger; got {other:?}"),
+    };
+    // Failure must call out the type mismatch — not silently scan
+    // FakeLedgerRow as if it were BridgeLedgerRow.
+    assert!(
+        reason.contains("BridgeLedgerRow"),
+        "BridgeLedgerZero failure for wrong ledger type must name the expected \
+         element type `BridgeLedgerRow`; got: {reason}"
+    );
+    assert!(
+        reason.contains("FakeLedgerRow") || reason.contains("List<"),
+        "failure should reference the wrong type; got: {reason}"
+    );
+}

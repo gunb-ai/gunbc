@@ -2482,6 +2482,51 @@ impl<'a> TestRunner<'a> {
             }
         };
         let decl = self.dag.declaration(ledger_id);
+        // Fail-closed type check: the ledger declaration must be exactly
+        // `List<BridgeLedgerRow>`, not any structurally similar list.
+        // The carrier ratchet (`bridge_ledger_carrier_test`) protects
+        // `bridge_ledger`'s shape; this guard protects against a claim
+        // pointing `ledger` at any other list whose row records happen
+        // to carry `name`/`status`. The predicate consumes the substrate
+        // carrier type, not look-alikes.
+        match &decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                let template_name = self.dag.declaration(*template).name.clone();
+                if template_name.as_deref() != Some("List") {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero `ledger`: declaration `{}` is not a `List<...>` \
+                         instantiation (template is `{}`)",
+                        decl_display_name(decl.id, decl),
+                        template_name.as_deref().unwrap_or("<anon>")
+                    ));
+                }
+                let [arg] = arguments.as_slice() else {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero `ledger`: `List<...>` instantiation must carry \
+                         exactly one type argument, got {}",
+                        arguments.len()
+                    ));
+                };
+                let element_name = self.dag.declaration(arg.value).name.clone();
+                if element_name.as_deref() != Some("BridgeLedgerRow") {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero `ledger`: expected `List<BridgeLedgerRow>` \
+                         element type, got `List<{}>`",
+                        element_name.as_deref().unwrap_or("<anon>")
+                    ));
+                }
+            }
+            other => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger`: declaration `{}` is not a `List<...>` \
+                     instantiation; connective is {other:?}",
+                    decl_display_name(decl.id, decl)
+                ));
+            }
+        }
         let rows = match &decl.value_body {
             Some(ValueBody::List(rows)) => rows,
             Some(other) => {
@@ -2511,6 +2556,8 @@ impl<'a> TestRunner<'a> {
                 "BridgeLedgerZero: `BridgeStatus` must be a Disj coproduct".to_string(),
             );
         };
+        let allowed_constructors: std::collections::HashSet<DeclarationId> =
+            variants.iter().map(|v| v.ty).collect();
         let Some(retired_ty) = variants.iter().find(|v| v.label == "Retired").map(|v| v.ty) else {
             return ClaimResult::Fail(
                 "BridgeLedgerZero: `BridgeStatus::Retired` variant missing".to_string(),
@@ -2541,6 +2588,16 @@ impl<'a> TestRunner<'a> {
                     ));
                 }
             };
+            // Defensive: a row carrying a constructor outside `BridgeStatus`'s
+            // declared variants is malformed at the claim boundary, even
+            // though the carrier ratchet guards the substrate side.
+            if !allowed_constructors.contains(&status) {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero: row `{name}` `status` constructor (DeclarationId {:?}) \
+                     is not one of `BridgeStatus`'s declared variants",
+                    status
+                ));
+            }
             if status != retired_ty {
                 open_rows.push(name);
             }
