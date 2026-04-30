@@ -17,12 +17,12 @@ authored: 2026-04-30 (PM deep-wolf-155 per PR #1319 Director ratification)
 
 ## Scope
 
-Author `ProviderTypedWire<P>` substrate carrier per Director ratification 2026-04-30 (PR #1319 amendment to [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire"). The carrier replaces parallel-authority provider mirrors (OpenAI #1028 + Anthropic #1276 cadence) with a single parametric substrate primitive consumed by per-provider parameter rows.
+Author `ProviderTypedWire<P>` substrate primitives per Director ratification 2026-04-30 (PR #1319 amendment to [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire"). The primitives replace parallel-authority provider mirrors (OpenAI #1028 + Anthropic #1276 cadence) with **operation-indexed** parametric substrate consumed by per-provider parameter rows. Implementation splits provider-level shared facts (`ProviderConfig<P>`) from per-operation typing (`ProviderOperationWire<P>`) — see §"Carrier shape" for the design rationale (codex BLOCKING review on PR #1331 sha `1870104a` flagged single provider-level envelopes as losing per-operation type information).
 
 Resolves R3 design challenge #8 ("R3 Anthropic vs R2 OpenAI") per [`docs/r3-structure.md`](../r3-structure.md) §"Design challenges" by committing to **path (a) — extract shared carrier** instead of the prior post-R3 dissolution-trigger framing. Drops the prior "6-month elapsed-time check" entirely per user directive 2026-04-30 *"nothing can be deferred past R3."*
 
 The lane delivers:
-1. `ProviderTypedWire<P>` parametric substrate carrier declaration in `src/v3/std/`.
+1. `ProviderOperationWire<P>` + `ProviderConfig<P>` parametric substrate carrier declarations in `src/v3/std/provider_typed_wire.dag` (the conceptual `ProviderTypedWire<P>` per PR #1319 = these two carriers acting together; operation-indexed key per codex BLOCKING).
 2. Per-provider parameter rows in `dsl/extdeps/providers/*/` (NEW directory; absorbs `dsl/extdeps/llm/openai.dag` + `anthropic.dag` shape into uniform structure).
 3. OpenAI refactor to consume the carrier (currently at `dsl/extdeps/llm/openai.dag`).
 4. Anthropic consumes the carrier from day one (matches the existing `anthropic_wire_typed_serde_alignment` gate per [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire").
@@ -36,49 +36,80 @@ The lane delivers:
 
 ## Carrier shape (design sketch)
 
-Parametric substrate carrier in the shape of `Lens<C>` (per [`docs/design-lens-framework.md`](../design-lens-framework.md)) — generic primitive + per-instance population:
+**Operation-indexed, not provider-level** (codex BLOCKING review on PR #1331 sha `1870104a` flagged that a single provider-level envelope loses per-operation typing — `dsl/extdeps/llm/anthropic.dag:168-200` declares `service llm.Anthropic { operation Messages { transport rest { ... } } }`; providers carry MULTIPLE operations each with own request/response/error envelopes). Carrier key is `(provider, operation)`, not `(provider)`. Two carriers split provider-level shared facts from per-operation typing:
 
 ```dag
-type ProviderTypedWire<P> {
-  provider_identity: P                  // type-tag (OpenAI | Anthropic | ...)
-  models: List<ModelSpec>               // shared model-spec shape
-  wire_contract: VariantEncoding        // shared encoding (currently both providers use llm_snake_wire_contract)
-  request_envelope: TypeRef             // request body type
+// Per-operation wire envelope — one row per (provider, operation) pair.
+type ProviderOperationWire<P> {
+  provider_identity: P                  // type-tag (OpenAi | Anthropic | ...)
+  operation_name: String                // e.g., "messages", "chat_completions", "embeddings"
+  request_envelope: TypeRef             // request body type for this operation
   response_envelope: TypeRef            // success body type
-  error_envelope: TypeRef               // error body type (TerminalProviderError sum)
-  auth: AuthScheme                      // shared auth shape
-  base_url: String                      // per-provider URL
+  error_envelope: TypeRef               // error body type
+  wire_contract: VariantEncoding        // typically shared per-provider; per-op override possible
+  transport: RestTransport              // method, path, status mapping for this operation
 }
 
-data openai_provider_wire: ProviderTypedWire<OpenAi> = { ... }
-data anthropic_provider_wire: ProviderTypedWire<Anthropic> = { ... }
+// Provider-level shared facts — one row per provider.
+type ProviderConfig<P> {
+  provider_identity: P
+  base_url: String
+  auth: AuthScheme
+  models: List<ModelSpec>
+}
+
+data anthropic_messages_wire: ProviderOperationWire<Anthropic> = { ... }
+data openai_chat_completions_wire: ProviderOperationWire<OpenAi> = { ... }
+data openai_embeddings_wire: ProviderOperationWire<OpenAi> = { ... }
+
+data anthropic_config: ProviderConfig<Anthropic> = { ... }
+data openai_config: ProviderConfig<OpenAi> = { ... }
 ```
 
-The `P` parameter is a phantom-style type-tag that namespaces per-provider declarations without forcing nominal unification at the wire-shape level. Aligns with `feedback_naming_is_aliasing` (named types are namespaces) + `feedback_compositional_not_templating` (compositional substrate, not template duplication).
+The `P` parameter is a phantom-style type-tag that namespaces declarations without forcing nominal unification at the wire-shape level. Aligns with `feedback_naming_is_aliasing` (named types are namespaces) + `feedback_compositional_not_templating` (compositional substrate, not template duplication).
 
-**Design call deferred to dispatch time:** whether `ModelSpec` should itself be parametric (`ModelSpec<P>` for per-provider model-id format) or uniform (single `ModelSpec` shape; per-provider lookup via `provider_identity`). Substrate Mgr decides at brief-finalization based on what the OpenAI + Anthropic existing types share structurally vs diverge on. The brief assumes uniform `ModelSpec`; if dispatch reveals divergence, escalate back to Director.
+**Multi-operation coverage required.** R3 acceptance scope covers Anthropic Messages + OpenAI Chat Completions at minimum (the two operations currently in `dsl/extdeps/llm/`); Anthropic Tool Use + OpenAI Embeddings + future operations land as additional rows under the same carrier without schema change.
+
+**Design call deferred to dispatch time:** whether `ModelSpec` should itself be parametric (`ModelSpec<P>` for per-provider model-id format) or uniform. Substrate Mgr decides at brief-finalization based on what the OpenAI + Anthropic existing types share structurally vs diverge on. The brief assumes uniform `ModelSpec`; if dispatch reveals divergence, escalate back to Director.
 
 ## Acceptance gates (`.dag`)
 
-Four gates compose the lane closure:
+Five gates compose the lane closure:
 
 | Gate | Acceptance |
 |---|---|
-| `provider_typed_wire_carrier_landed` | `ProviderTypedWire<P>` declared in `src/v3/std/`; `BOOTSTRAP_FIXTURE_PATH_KEYS` includes the file; structural test confirms carrier is consumable from `.dag` programs |
-| `openai_consumes_provider_typed_wire` | OpenAI module declares `data openai_provider_wire: ProviderTypedWire<OpenAi> = { ... }`; OpenAI ratchet test (`canonical_lens_bridge_ratchet_test` if applicable, OR new lockstep test) covers the migration |
-| `anthropic_consumes_provider_typed_wire` | Anthropic module declares `data anthropic_provider_wire: ProviderTypedWire<Anthropic> = { ... }`; subsumes / replaces `src/v3/std/anthropic_schema.dag` as canonical authority; satisfies existing `anthropic_wire_typed_serde_alignment` gate per [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire" |
-| `provider_wire_no_per_provider_duplication` | No parallel mirror authority for fields that ProviderTypedWire<P> covers; SG-0 census reflects net deletion of the `anthropic_schema.dag` mirror once provider_wire is canonical |
+| `provider_operation_wire_carrier_landed` | Both `ProviderOperationWire<P>` and `ProviderConfig<P>` declared in `src/v3/std/provider_typed_wire.dag`; `BOOTSTRAP_FIXTURE_PATH_KEYS` includes the file; structural test confirms carriers are consumable from `.dag` programs |
+| `openai_consumes_provider_operation_wire` | OpenAI module declares `data openai_chat_completions_wire: ProviderOperationWire<OpenAi> = { ... }` + `data openai_config: ProviderConfig<OpenAi> = { ... }`; covers the migration via OpenAI ratchet test (new lockstep or extension of existing) |
+| `anthropic_consumes_provider_operation_wire` | Anthropic module declares `data anthropic_messages_wire: ProviderOperationWire<Anthropic> = { ... }` + `data anthropic_config: ProviderConfig<Anthropic> = { ... }`; subsumes/replaces `src/v3/std/anthropic_schema.dag` as canonical authority; satisfies the existing `anthropic_wire_typed_serde_alignment` gate per [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire" |
+| `provider_wire_old_authority_dissolved` | **Old per-provider files (`dsl/extdeps/llm/openai.dag`, `dsl/extdeps/llm/anthropic.dag`, `src/v3/std/anthropic_schema.dag`) are EITHER deleted OR exist as one-way generated projections from the new carriers** — NEVER as parallel hand-maintained authorities. See §"Migration discipline" below. SG-0 census reflects the dissolution. |
+| `provider_wire_no_per_provider_duplication` | No parallel mirror authority for fields that the carriers cover; future provider integrations land as new `data ...: ProviderOperationWire<P>` rows, not new mirror files |
 
-**Composition.** The lane closes when `Conj` over all four gates fires. Per `feedback_compiler_is_dag_processor`: no new substrate variant; structural composition over existing `BehavioralObservation`-shaped TestPredicates.
+**Composition.** The lane closes when `Conj` over all five gates fires. Per `feedback_compiler_is_dag_processor`: no new substrate variant; structural composition over existing `BehavioralObservation`-shaped TestPredicates.
+
+## Migration discipline — no parallel-authority window
+
+Codex BLOCKING review on PR #1331 sha `1870104a` flagged the prior framing ("either retired or kept as v2-parsed legacy until v2 retirement") as exactly the parallel-authority anti-pattern (`feedback_parallel_representation_debt`). **The migration commits to ONE of two paths in the same PR — not deferred to T-V2-Retirement, not "kept as legacy":**
+
+**Path (a) — preferred: deletion.** Old per-provider files (`dsl/extdeps/llm/openai.dag`, `dsl/extdeps/llm/anthropic.dag`, `src/v3/std/anthropic_schema.dag`) are deleted in the migration PR. Any v2 parser tests that referenced the old shape either get removed (if v2 retirement is concurrent) or get migrated to read from the new carriers via a thin adapter. **No file with hand-authored content survives the migration if a new-carrier equivalent exists.**
+
+**Path (b) — fallback: one-way generated projection.** If v2 parser cannot read `ProviderOperationWire<P>` and v2 retirement (T-V2-Retirement, sibling R3 lane) is not yet ready, old files are regenerated from the new carriers via `regen_lens` or equivalent. The new carriers are the ONLY hand-authored authority; old files become build artifacts (per `feedback_no_generated_code_on_disk` discipline — they live as `OUT_DIR` outputs OR carry a generation header making them un-editable). **Bidirectional / hand-maintained-on-both-sides is rejected.**
+
+**Decision criterion at dispatch time:** Substrate Mgr verifies whether v2 parser can be retired in the same wave (path a) or needs the old file shape during the dissolution window (path b). If path b: the projection script lands in the same PR; the projected file's first line is a generation marker; CI rejects manual edits to projected files.
+
+**No third option.** "Kept as legacy until v2 retirement" is rejected — that's the deferral pattern user directive 2026-04-30 explicitly targets.
 
 ## Deliverables
 
-1. **Carrier declaration** in `src/v3/std/provider_typed_wire.dag` (NEW file). Imports from `std.serialization`, `std.types`, `std.errors`. Exports `ProviderTypedWire<P>` + supporting types (`ModelSpec`, etc. — depending on scope decision).
-2. **OpenAI parameter row** at `dsl/extdeps/providers/openai/wire.dag` (NEW file under NEW directory). Migrates `dsl/extdeps/llm/openai.dag` content into the new shape; original file either retired or kept as v2-parsed legacy until v2 retirement (T-V2-Retirement, sibling R3 lane).
-3. **Anthropic parameter row** at `dsl/extdeps/providers/anthropic/wire.dag` (NEW). Same migration shape; replaces `src/v3/std/anthropic_schema.dag` as canonical authority.
-4. **Lockstep tests retired or migrated** — `anthropic_schema_lockstep_test` (per `src/v3/compiler/tests/integration/`) either becomes redundant (carrier is single authority, no mirror to lockstep against) or migrates to test the carrier's structural shape against `dsl/extdeps/providers/anthropic/wire.dag`. Substrate Mgr decides at brief-finalization.
-5. **`.dag` `TestClaim` suite** authored at `src/v3/std/verification.dag` (or sibling) — 4 claims per gate table above; composed into `provider_typed_wire_lane_closed` (lane-level structural acceptance; not a 5th gate, just the conjunction).
-6. **Migration receipt PR** — single PR landing all four files together (per `feedback_bundle_workstreams_per_pr` — bundling beats parallel-authority window).
+1. **Carrier declarations** in `src/v3/std/provider_typed_wire.dag` (NEW file). Imports from `std.serialization`, `std.types`, `std.errors`. Exports `ProviderOperationWire<P>` + `ProviderConfig<P>` + supporting types (`ModelSpec`, `RestTransport`, etc.).
+2. **OpenAI rows** at `dsl/extdeps/providers/openai/operations.dag` + `dsl/extdeps/providers/openai/config.dag` (NEW files under NEW directory). One `ProviderOperationWire<OpenAi>` row per OpenAI operation currently in `dsl/extdeps/llm/openai.dag` (Chat Completions at minimum; Embeddings if reach demands).
+3. **Anthropic rows** at `dsl/extdeps/providers/anthropic/operations.dag` + `dsl/extdeps/providers/anthropic/config.dag` (NEW). One `ProviderOperationWire<Anthropic>` row for Messages (current scope of `src/v3/std/anthropic_schema.dag`); future rows for Tool Use etc. land under same shape.
+4. **Old-authority dissolution** per §"Migration discipline" — path (a) deletion preferred; path (b) one-way generated projection acceptable IF v2 parser blocker forces it. Decision lands in same PR, not deferred. Files in scope:
+   - `dsl/extdeps/llm/openai.dag` (delete or project)
+   - `dsl/extdeps/llm/anthropic.dag` (delete or project)
+   - `src/v3/std/anthropic_schema.dag` (delete; v3 has no v2-parser blocker since it's already a v3-side file)
+5. **Lockstep tests retired or migrated** — `anthropic_schema_lockstep_test` (`src/v3/compiler/tests/integration/`) either dies (single-authority carrier; nothing to lockstep) or transforms into "carrier-row matches expected operation structure" assertion. Substrate Mgr decides at brief-finalization.
+6. **`.dag` `TestClaim` suite** authored at `src/v3/std/verification.dag` (or sibling) — 5 claims per gate table above; composed into `provider_typed_wire_lane_closed` (lane-level structural acceptance; not a 6th gate, just the conjunction).
+7. **Migration receipt PR** — single PR landing carriers + per-operation rows + old-authority dissolution together (per `feedback_bundle_workstreams_per_pr` — bundling closes the parallel-authority window in one merge, not over multiple PRs).
 
 ## Dependencies
 

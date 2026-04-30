@@ -67,7 +67,12 @@ Both thresholds must hold per-mirror; gate fails if any single mirror exceeds ei
 1. **Cargo bench fixtures** at `src/v3/compiler/benches/tier3_mirror_perf.rs` (new file) — uses `criterion` (existing dev-dep). Per-mirror bench groups; statistically-sound sample sizes (`criterion` default = 100).
 2. **Stable benchmark inputs** — representative `DescentEvidence` / `SizeBound` / `SubValueRelation` / `EffectShape` fixtures committed under `src/v3/compiler/benches/tier3_fixtures/`. Inputs must be deterministic + version-pinned to avoid noise from corpus drift across PRs.
 3. **`.dag` `TestClaim`** authored at `src/v3/std/verification.dag` (or sibling) — single suite + four sub-claims; compose via existing `Conj` over `BehavioralObservation` per `feedback_compiler_is_dag_processor` (no new substrate variant).
-4. **CI wiring** — bench runs on PRs touching `src/v3/compiler/src/dag.rs`, `dag/effects.rs`, `workflow_idempotency.rs`, or `src/v3/std/{termination,computation,induction,effects}.dag`; gate fails with explicit per-mirror diagnostic if budget breached.
+4. **`criterion` dev-dep added.** Codex BLOCKING review on PR #1331 sha `1870104a` flagged that no `criterion` dependency currently exists in any `Cargo.toml`. Adding `criterion` as `[dev-dependencies]` in `src/v3/compiler/Cargo.toml` is part of THIS lane's deliverables, not a precondition. The worker's first commit adds the dep; bench fixtures + harness follow.
+5. **CI wiring** — bench runs on PRs touching the canonical std authorities AND the Rust mirror sites being measured:
+   - **`.dag` authorities** (canonical): `dsl/std/{termination,computation,induction,effects}.dag` (root authority for these std blocks)
+   - **`src/v3/std/` substrate twins** (currently exist as v3-side files for these four blocks; verified live 2026-04-30): `src/v3/std/{termination,computation,induction,effects}.dag`
+   - **Rust mirror sites being retired**: `src/v3/compiler/src/dag.rs` (mirror line ranges per `r2-pure-bootstrap-manager.md:24-26`), `src/v3/compiler/src/dag/effects.rs`, `src/v3/compiler/src/workflow_idempotency.rs`
+   - Gate fails with explicit per-mirror diagnostic naming which budget bracket (median ≤2× / p99 ≤5×) was breached.
 
 ## Dependencies
 
@@ -75,7 +80,7 @@ Per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" + §"Depende
 
 1. **T-Tier3-Dissolution mirror dissolution landing.** The four mirrors must actually be dissolved before perf measurement makes sense (you can't measure overhead vs nothing). Per [`r2-pb-tier3-mirror-dissolution-workers.md`](r2-pb-tier3-mirror-dissolution-workers.md): per-mirror dissolution PRs (worker pack already authored).
 2. **R2-Evaluator landed.** Perf measurement requires running `.dag` bodies via Evaluator. T-Evaluator close is the upstream gate.
-3. **`criterion` dev-dep present.** Already in `Cargo.toml`; no new tooling.
+3. **No precondition on `criterion`** — adding the dev-dep is part of deliverable #4 above; not assumed as already-present.
 
 ## Dispatch preconditions
 
