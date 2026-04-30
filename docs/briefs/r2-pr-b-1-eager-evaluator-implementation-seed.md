@@ -119,17 +119,21 @@ in order; merge cannot proceed if any row's fail-closed boundary is missing.
 ### B.1.5 — `Bind`
 
 - **Input:** `BindNode` with `name`, `params: List<PortId>`, `result_port`.
-- **Rule:** register the binding in the current `EvalFrame`:
-  `frame.bindings = map_insert(frame.bindings, port, value)` for the
-  parameter / result port being bound. **No body execution at the Bind
-  site** — the body that uses this binding lives at downstream
-  `Transform(Callable(...))` or `Bind` references per
-  `docs/design-pb-runtime-interpreter.md` §3.2 / §3.3.
-- **Fail-closed boundary:** if `frame.bindings` already contains the
-  `PortId` (duplicate binding for one port in the same frame) — that
-  state is unrepresentable per `Map<PortId, Value>`, so detection is
-  upstream of PR-B.1; if PR-B.1 ever observes it, it is a substrate
-  invariant violation and emits a `Diagnostic`.
+- **Rule:** register the binding in the current (top-of-stack) `EvalFrame`:
+  1. Check `map_get(frame.bindings, port)` first.
+  2. If `Some { .. }` — fail-closed `Diagnostic` (duplicate binding for
+     one port in the same frame). PR-B.1 must not call `map_insert` over
+     an existing key, because `map_insert` semantics overwrite silently;
+     the unique-binding invariant is enforced by PR-B.1's pre-insert
+     check, not by `Map<K, V>`'s carrier shape.
+  3. If `None` — `frame.bindings = map_insert(frame.bindings, port, value)`.
+  **No body execution at the Bind site** — the body that uses this
+  binding lives at downstream `Transform(Callable(...))` or `Bind`
+  references per `docs/design-pb-runtime-interpreter.md` §3.2 / §3.3.
+- **Fail-closed boundary:** duplicate `PortId` already bound in the
+  current frame at insert time — `Diagnostic` (substrate / resolution
+  invariant violation; PR-B.1 detects it explicitly per the pre-insert
+  check above).
 
 ### B.1.6 — `ArrowBody` dispatch (called from §B.1.2 `Callable`)
 
@@ -195,11 +199,13 @@ read/write surface in PR-B.1. The discipline:
   site).
 - **Update.** PR-B.1 only writes to the **innermost** (top-of-stack)
   frame's `bindings`. Outer frames are immutable from PR-B.1's
-  perspective. Updates use the `Map<K, V>` insert primitive and replace
-  the top frame in-place. (This is structural per
-  `feedback_state_space_vs_behavioral_invariants` — the type already
-  guarantees per-`PortId` uniqueness inside one frame; PR-B.1 enforces
-  per-stack scoping rather than carrier-level uniqueness.)
+  perspective. Updates pre-check `map_get` and only call `map_insert`
+  when the key is absent (per §B.1.5). `Map<K, V>` does **not**
+  structurally prevent duplicate-key insert attempts — `map_insert`
+  semantics overwrite silently — so PR-B.1's pre-insert check is the
+  enforcement point, not the carrier shape. Writing in-place to the
+  same key as a binding extension within one frame is **forbidden**;
+  binding extension happens by pushing a fresh frame.
 - **No cross-frame writes.** PR-B.1 must not write to a non-top frame.
   Doing so would conflate "binding extension" with "outer-scope
   mutation," which the substrate does not admit.
