@@ -201,7 +201,9 @@ fn parse_v2_brace_body_fields(body: &str) -> Vec<(String, bool)> {
 /// content: String, is_error: Bool? }`). Handles both inline
 /// (`type X = A | B | C`) and multi-line (`type X\n  = Foo { … }\n  | Bar { … }`)
 /// shapes.
-fn v2_disj_variants(name: &str) -> Vec<(String, Option<Vec<(String, bool)>>)> {
+type V2VariantPayload = Option<Vec<(String, bool)>>;
+
+fn v2_disj_variants(name: &str) -> Vec<(String, V2VariantPayload)> {
     let block = v2_type_block(name);
     let eq = block.find('=').unwrap_or_else(|| {
         panic!("v2 `type {name}` is not a disj block (no `=` in extracted text)")
@@ -443,54 +445,6 @@ fn anthropic_messages_200_usage_lockstep() {
 #[test]
 fn anthropic_messages_200_body_lockstep() {
     assert_record_lockstep("AnthropicMessages200Body");
-}
-
-#[test]
-fn anthropic_user_content_block_user_tool_result_block_optionality_lockstep() {
-    // `UserToolResultBlock` is a variant payload, so the v2-record
-    // extraction above does not reach it. Probe the v2 block textually
-    // for `is_error: Bool?` and additionally walk the v3 variant payload
-    // to confirm `is_error` lowers optionally on the variant declaration.
-    let v2_block = v2_type_block("AnthropicUserContentBlock");
-    assert!(
-        v2_block.contains("is_error: Bool?"),
-        "v2 source dropped `is_error: Bool?` from \
-         `AnthropicUserContentBlock::UserToolResultBlock`."
-    );
-    let dag = generated_full_bootstrap_dag();
-    // The variant payload is itself a Conj declaration in the lowered
-    // bootstrap; look it up by the variant's anonymous span. Concretely
-    // the variant points at a Conj; we can locate it via the parent
-    // disj's variant target id.
-    let parent = dag
-        .declaration_by_name("AnthropicUserContentBlock")
-        .expect("AnthropicUserContentBlock missing from bootstrap");
-    let TypeConnective::Disj { variants } = &parent.connective else {
-        panic!("AnthropicUserContentBlock is not a Disj");
-    };
-    let variant_target = variants
-        .iter()
-        .find(|v| v.label == "UserToolResultBlock")
-        .expect("UserToolResultBlock variant missing")
-        .ty;
-    let payload = dag.declaration(variant_target);
-    let TypeConnective::Conj { children } = &payload.connective else {
-        panic!("UserToolResultBlock payload is not a Conj");
-    };
-    let is_error = children
-        .iter()
-        .find(|f| f.label == "is_error")
-        .expect("UserToolResultBlock.is_error field missing");
-    let is_error_decl = dag.declaration(is_error.ty);
-    let optional = matches!(
-        &is_error_decl.connective,
-        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne
-    );
-    assert!(
-        optional,
-        "v3 mirror `AnthropicUserContentBlock::UserToolResultBlock.is_error` \
-         must lower as `Cardinality(AtMostOne, Bool)` to mirror v2 `Bool?`."
-    );
 }
 
 #[test]
