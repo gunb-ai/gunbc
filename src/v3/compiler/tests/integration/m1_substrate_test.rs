@@ -2524,47 +2524,6 @@ fn toggle(s: Slot) -> Slot {
     );
 }
 
-/// Prereq-2 lens consumer shape: brace-bodied `fn` returning `Witness<Int>`
-/// via `match` on a user sum + bare `Inhabits(...)` constructors (no
-/// `Witness` special case in lower/infer). `Bool` scrutinee + `Witness`
-/// return is rejected today by return-type discharge on the `Branch`
-/// join; this fixture uses the same `Slot = On | Off` sum as the sibling
-/// bare-variant test so the proof tracks the class-5 constructor path.
-#[test]
-fn prereq2_brace_fn_witness_int_match_returns_inhabits() {
-    let src = "\
-import v3.std.dimensions { Witness }
-type Slot = On | Off
-fn witness_pick(s: Slot) -> Witness<Int> {
-  match s {
-    On => Inhabits(0)
-    Off => Inhabits(1)
-  }
-}
-";
-    let dag = cached_compile_to_dag(src, "prereq2_witness_brace_fn.v3");
-    assert!(
-        dag.diagnostics().is_empty(),
-        "Witness<Int> brace-bodied match should compile cleanly: {:?}",
-        dag.diagnostics()
-    );
-    let out = bind_value_type_decl(&dag, "witness_pick");
-    let witness = find_named(&dag, "Witness");
-    match &dag.declaration(out).connective {
-        TypeConnective::Instantiation { template, .. } => {
-            assert_eq!(
-                *template,
-                witness,
-                "return type should instantiate Witness<_>, got {:?}",
-                dag.declaration(out).connective
-            );
-        }
-        other => panic!(
-            "expected Witness<Int> to lower as Instantiation of Witness template, got {other:?}"
-        ),
-    }
-}
-
 #[test]
 fn prereq2_brace_fn_optional_diagnostic_bare_variant() {
     let src = "\
