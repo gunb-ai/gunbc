@@ -1652,3 +1652,51 @@ mod tokenize_ascii_parity_tests {
         }
     }
 }
+
+/// PB-Runtime / flat-namespace: L1 behavior marker `ValueBehavior` frees bare
+/// `Value` for runtime union carriers (`type Value = …` in user or evaluator DAG).
+#[cfg(test)]
+mod value_behavior_marker_tests {
+    use crate::dag::Dag;
+    use crate::{infer, lower, parse, tokenize};
+
+    #[test]
+    fn runtime_value_decl_coexists_with_value_behavior_marker() {
+        let mut dag = Dag::new();
+        let marker_id = dag.value_marker().expect("ValueBehavior marker cached");
+        let marker_decl = dag
+            .declaration_by_name("ValueBehavior")
+            .expect("ValueBehavior declaration present");
+        assert_eq!(marker_id, marker_decl.id);
+        assert!(
+            dag.declaration_by_name("Value").is_none(),
+            "bootstrap must not declare bare `Value` as the L1 marker"
+        );
+
+        let source = "module test.pb_runtime_value_name_smoke\n\ntype Value {}\n";
+        let file = "pb_runtime_value_name_smoke.v3";
+        let tokens = tokenize::tokenize(source, file).expect("tokenize");
+        let surface = parse::parse(&tokens, file).expect("parse");
+        let user_start = dag.declarations().len();
+        lower::lower_into(&mut dag, &surface);
+        lower::finalize_strict_user_lower_range(&mut dag, user_start);
+        infer::infer(&mut dag);
+        assert!(
+            dag.diagnostics().is_empty(),
+            "user bare `Value` type should compile onto bootstrap; diagnostics: {:?}",
+            dag.diagnostics()
+        );
+        let runtime_value = dag
+            .declaration_by_name("Value")
+            .expect("runtime Value stub");
+        assert_ne!(
+            runtime_value.id, marker_id,
+            "runtime Value must not alias ValueBehavior marker"
+        );
+        assert_eq!(
+            dag.value_marker(),
+            Some(marker_id),
+            "marker cache must still resolve ValueBehavior after user Value lands"
+        );
+    }
+}

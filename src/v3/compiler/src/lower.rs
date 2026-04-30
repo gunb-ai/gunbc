@@ -4107,7 +4107,7 @@ fn realization_category_for_meta(
 ///     shape every algebra field has.
 ///   - `BehaviorRealization.target` — must be one of the v3_l1
 ///     substrate behavior markers (Bind / Branch / Loop /
-///     Transform / Value / Main).
+///     Transform / ValueBehavior / Main).
 ///   - `CallableRealization.target` — must walk to an Arrow
 ///     declaration (a callable target).
 ///   - `TypeInstantiationRealization.target` — must be a named
@@ -4134,7 +4134,7 @@ fn validate_realization_field_target(
     };
     let is_behavior_marker = |id: DeclarationId| {
         let markers = [
-            dag.declaration_by_name("Value"),
+            dag.declaration_by_name("ValueBehavior"),
             dag.declaration_by_name("Transform"),
             dag.declaration_by_name("Branch"),
             dag.declaration_by_name("Loop"),
@@ -4205,7 +4205,7 @@ fn validate_realization_field_target(
                 Ok(())
             } else {
                 Err(format!(
-                    "BehaviorRealization.target must reference one of the v3_l1 behavior markers (Bind/Branch/Loop/Transform/Value/Main); got declaration {target:?}"
+                    "BehaviorRealization.target must reference one of the v3_l1 behavior markers (Bind/Branch/Loop/Transform/ValueBehavior/Main); got declaration {target:?}"
                 ))
             }
         }
