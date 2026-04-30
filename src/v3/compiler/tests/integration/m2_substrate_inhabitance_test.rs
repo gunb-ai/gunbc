@@ -1688,11 +1688,12 @@ fn parse_bare_rhs_alias_reference_stays_type_alias() {
         "type Forward = Later\n",
         "type Later = Only\n",
         "type Id<T> = T\n",
+        "type Bad = T\n",
     );
     let tokens = tokenize_for_test(source, "pr_a3_alias_preservation.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "pr_a3_alias_preservation.v3").expect("parse");
     let mirrored: &parse_surface::SurfaceModule = &parsed;
-    assert_eq!(mirrored.items.len(), 5);
+    assert_eq!(mirrored.items.len(), 6);
     match &mirrored.items[1] {
         parse_surface::SurfaceItem::TypeAlias { name, .. } => {
             assert_eq!(name, "LocalString");
@@ -1728,6 +1729,14 @@ fn parse_bare_rhs_alias_reference_stays_type_alias() {
             ));
         }
         other => panic!("expected type-param bare RHS to stay TypeAlias, got {other:?}"),
+    }
+    match &mirrored.items[5] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "Bad");
+            assert_eq!(variants.len(), 1);
+            assert_eq!(variants[0].name, "T");
+        }
+        other => panic!("expected out-of-scope type param RHS to parse as TypeSum, got {other:?}"),
     }
 }
 

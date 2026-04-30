@@ -96,9 +96,9 @@ const PRELUDE_BARE_RHS_ALIAS_IDENTS: &[&str] = &[
 
 /// Build the identifier set for which a bare `type T = U` RHS must classify
 /// as [`SurfaceItem::TypeAlias`]: prelude spellings, explicit `import … { … }`
-/// names, every `type` / `data` LHS in the module (declaration order does not
-/// matter — forward aliases to sibling types stay aliases), and local generic
-/// binders from type declarations so `type Id<T> = T` remains an alias.
+/// names, and every `type` / `data` LHS in the module (declaration order does
+/// not matter — forward aliases to sibling types stay aliases). Local generic
+/// binders are declaration-scoped and are added only at the RHS lookahead site.
 fn collect_bare_rhs_alias_reference_idents(items: &[SurfaceItem]) -> HashSet<String> {
     let mut out = HashSet::new();
     for name in PRELUDE_BARE_RHS_ALIAS_IDENTS {
@@ -111,22 +111,11 @@ fn collect_bare_rhs_alias_reference_idents(items: &[SurfaceItem]) -> HashSet<Str
                     out.insert(n.clone());
                 }
             }
-            SurfaceItem::TypeRecord {
-                name, type_params, ..
-            }
-            | SurfaceItem::TypeSum {
-                name, type_params, ..
-            }
-            | SurfaceItem::TypeAlias {
-                name, type_params, ..
-            }
-            | SurfaceItem::TypeAtom {
-                name, type_params, ..
-            } => {
+            SurfaceItem::TypeRecord { name, .. }
+            | SurfaceItem::TypeSum { name, .. }
+            | SurfaceItem::TypeAlias { name, .. }
+            | SurfaceItem::TypeAtom { name, .. } => {
                 out.insert(name.clone());
-                for param in type_params {
-                    out.insert(param.clone());
-                }
             }
             SurfaceItem::Data { name, .. } => {
                 out.insert(name.clone());
@@ -984,7 +973,7 @@ impl<'a> Parser<'a> {
         nominal_opaque: bool,
         nominal_opaque_clause_span: Option<SourceSpan>,
     ) -> Result<SurfaceItem, Diagnostic> {
-        if !self.rhs_is_sum() {
+        if !self.rhs_is_sum(&type_params) {
             if inhabits.is_some() {
                 return Err(Diagnostic::ParseError {
                     message: String::from(
@@ -1106,8 +1095,8 @@ impl<'a> Parser<'a> {
     /// not tokenized, so distinguish `type | …` (variant label) from
     /// `type Name =` / `type Name<` / `type Name inhabits` (next decl) via a
     /// two-token lookahead when depth is zero.
-    fn rhs_is_sum(&self) -> bool {
-        if self.rhs_opens_single_variant_sum_shape() {
+    fn rhs_is_sum(&self, local_alias_reference_idents: &[String]) -> bool {
+        if self.rhs_opens_single_variant_sum_shape(local_alias_reference_idents) {
             return true;
         }
         let mut i = self.pos;
@@ -1164,7 +1153,7 @@ impl<'a> Parser<'a> {
     /// `Variant` when the spelling is not a known alias target. False for
     /// `Variant<Args>` — that begins a parameterized **alias** RHS
     /// (`parse_type_expr`), not a variant payload.
-    fn rhs_opens_single_variant_sum_shape(&self) -> bool {
+    fn rhs_opens_single_variant_sum_shape(&self, local_alias_reference_idents: &[String]) -> bool {
         let i = self.pos;
         let Some(t0) = self.tokens.get(i) else {
             return false;
@@ -1185,7 +1174,11 @@ impl<'a> Parser<'a> {
         let Some(refs) = &self.bare_rhs_alias_reference_idents else {
             return false;
         };
-        if refs.contains(label) {
+        if refs.contains(label)
+            || local_alias_reference_idents
+                .iter()
+                .any(|name| name == label)
+        {
             return false;
         }
         matches!(
