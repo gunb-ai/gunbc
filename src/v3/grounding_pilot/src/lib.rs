@@ -3,7 +3,9 @@
 // PROBE SCOPE (T-Ground-Pilot worker brief):
 //   Validate that algebra-homomorphism inhabitance search reproduces
 //   today's name-keyed table-lookup routing for the Rust target on a
-//   bounded primitive set: {i8, i16, i32, i64, u8, u16, u32, u64, bool, ()}.
+//   bounded primitive set: {i8, i16, i32, i64, i128, u8, u16, u32, u64, bool, ()}.
+//   (T-Int128 Slice B1 added i128; u128 deferred to B2 pending interval
+//   representation widening — see int_literal_ranges.rs.)
 //
 // FRAMING QUESTION:
 //   Does inhabitance-search routing — consuming structural target-primitive
@@ -89,6 +91,7 @@ pub enum TargetCarrier {
     Word16,
     Word32,
     Word64,
+    Word128,
     Terminal,
 }
 
@@ -209,6 +212,16 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
         carrier: TargetCarrier::Word64,
         range_min_inclusive: "-9223372036854775808",
         range_max_inclusive: "9223372036854775807",
+        is_copy: true,
+        overflow: IntegerOverflow::TwoComplementWrap,
+    },
+    // T-Int128 Slice B1: signed 128-bit. u128 deferred to B2.
+    RustPrimitive::IntegerPrimitive {
+        target_name: "i128",
+        algebra: IntegerAlgebra::OrderedRing,
+        carrier: TargetCarrier::Word128,
+        range_min_inclusive: "-170141183460469231731687303715884105728",
+        range_max_inclusive: "170141183460469231731687303715884105727",
         is_copy: true,
         overflow: IntegerOverflow::TwoComplementWrap,
     },

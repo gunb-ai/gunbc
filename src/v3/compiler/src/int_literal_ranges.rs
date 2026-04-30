@@ -284,6 +284,7 @@ fn std_word_carrier_to_target_carrier_variant_ty(
     let word16 = dag.declaration_by_name("Word16")?.id;
     let word32 = dag.declaration_by_name("Word32")?.id;
     let word64 = dag.declaration_by_name("Word64")?.id;
+    let word128 = dag.declaration_by_name("Word128")?.id;
     let label = if carrier_decl == byte {
         "ByteCarrier"
     } else if carrier_decl == word16 {
@@ -292,6 +293,8 @@ fn std_word_carrier_to_target_carrier_variant_ty(
         "Word32Carrier"
     } else if carrier_decl == word64 {
         "Word64Carrier"
+    } else if carrier_decl == word128 {
+        "Word128Carrier"
     } else {
         return None;
     };
@@ -452,7 +455,10 @@ fn malformed_integer_range_fact(message: String, span: SourceSpan) -> Diagnostic
 /// so drift or corruption in the pilot list surfaces at `Dag::new()`,
 /// not only when a particular std type is queried.
 pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
-    const EXPECTED_INTEGER_ROWS: usize = 8;
+    // T-Int128 Slice B1: pilot extended to 9 IntegerPrimitive rows (i8..i64,
+    // i128, u8..u64). u128 lands in Slice B2 once `IntervalInt::ExactInterval`
+    // widens past host i128.
+    const EXPECTED_INTEGER_ROWS: usize = 9;
     const INTEGER_PRIMITIVE_FIELD_COUNT: usize = 7;
 
     enum PilotListSnapshot {
@@ -533,6 +539,7 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
         "Word16Carrier",
         "Word32Carrier",
         "Word64Carrier",
+        "Word128Carrier",
     ] {
         if let Some(c) = disj_variant_payload_ty(dag, "TargetCarrier", label) {
             allowed_carriers.insert(c);
@@ -609,7 +616,7 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
         };
         if !allowed_carriers.contains(carrier_ctor) {
             dag.attach_diagnostic(malformed_integer_range_fact(
-                "rust_pilot_primitives IntegerPrimitive `carrier` must be a word TargetCarrier (Byte/Word16/Word32/Word64) variant payload type id".to_string(),
+                "rust_pilot_primitives IntegerPrimitive `carrier` must be a word TargetCarrier (Byte/Word16/Word32/Word64/Word128) variant payload type id".to_string(),
                 default_span.clone(),
             ));
             continue;
@@ -748,6 +755,73 @@ mod tests {
     fn interval_int_unbounded_accepts_all_i64_literals() {
         assert!(IntervalInt::Unbounded.contains_i64(i64::MIN));
         assert!(IntervalInt::Unbounded.contains_i64(i64::MAX));
+    }
+
+    #[test]
+    fn int128_witness_matches_i128_pilot_row_constructors() {
+        // T-Int128 Slice B1: signed Int128 -> i128 pilot row via Word128Carrier.
+        let dag = Dag::new();
+        assert!(
+            dag.diagnostics().is_empty(),
+            "bootstrap diagnostics: {:?}",
+            dag.diagnostics()
+        );
+        let int128 = dag
+            .declaration_by_name("Int128")
+            .expect("Int128 in bootstrap")
+            .id;
+        let witness = integer_routing_witness_for_decl(&dag, int128).expect("Int128 witness");
+        let pilot = dag.rust_pilot_primitives().expect("pilot");
+        let ValueBody::List(elements) = pilot.value_body.as_ref().expect("list body") else {
+            panic!("expected list");
+        };
+        let integer_primitive_ctor = rust_primitive_integer_variant_ty(&dag).expect("ctor");
+        let mut matched = 0usize;
+        for element in elements {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = element
+            else {
+                continue;
+            };
+            if *constructor != integer_primitive_ctor {
+                continue;
+            }
+            let FieldValue::Variant { constructor: a, .. } = &payload[1] else {
+                continue;
+            };
+            let FieldValue::Variant { constructor: c, .. } = &payload[2] else {
+                continue;
+            };
+            if *a == witness.algebra_variant_ty && *c == witness.carrier_variant_ty {
+                matched += 1;
+            }
+        }
+        assert_eq!(
+            matched, 1,
+            "exactly one pilot IntegerPrimitive row for Int128 witness"
+        );
+    }
+
+    #[test]
+    fn int128_range_lookup_accepts_all_i64_literals() {
+        // i128 row's range covers all i64 magnitudes; reconciliation passes
+        // any i64 literal through `contains_i64`.
+        let dag = Dag::new();
+        let int128 = dag
+            .declaration_by_name("Int128")
+            .expect("Int128 in bootstrap")
+            .id;
+        match integer_range_for_decl(&dag, int128) {
+            IntegerRangeLookup::Found(bound) => {
+                assert!(bound.contains_i64(i64::MIN));
+                assert!(bound.contains_i64(0));
+                assert!(bound.contains_i64(i64::MAX));
+            }
+            IntegerRangeLookup::Missing => panic!("expected Found range for Int128, got Missing"),
+            IntegerRangeLookup::Invalid(d) => panic!("expected Found range for Int128, got Invalid: {d:?}"),
+        }
     }
 
     #[test]
