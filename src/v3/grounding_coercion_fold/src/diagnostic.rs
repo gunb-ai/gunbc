@@ -16,6 +16,10 @@
 //! with `unspecified_axis: "bound"` only (axis matches the worked example).
 
 /// Rust mirror of substrate `EmissionDiagnostic` (subset; grows with substrate).
+///
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — hand-maintained mirror until this
+/// lane consumes reflected substrate types (`.dag` → Rust enum codegen); dissolution aligns with
+/// #1216 / #1133 (no second authority for the same diagnostic facts — lockstep only).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EmissionDiagnostic {
     /// Program intent or structural axis under-specified (substrate `UnderRefined`).
