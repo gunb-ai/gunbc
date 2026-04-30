@@ -100,8 +100,17 @@ Scope is bounded by construction:
      selected path body in a fresh frame containing the path binding.
    - `Loop` → eager-evaluate the init once, then each bounded iteration body
      in a fresh frame containing the accumulator binding for that iteration.
-     `LoopBound` is the cardinality argument; iteration is finite by
-     construction.
+     `LoopBound` is `Cardinality { count: PortId } | Descent { cluster: ClusterId }`
+     per `src/v3/std/substrate.dag` and
+     [`docs/design-mutual-recursion-lowering.md`](../design-mutual-recursion-lowering.md).
+     PR-B.1 dispatches on both variants by construction: `Cardinality` reads
+     the `count` port for the iteration count; `Descent` consults the
+     `ClusterId`'s descent evidence in `std.termination`
+     (`DescentEvidence`) to bound iteration via the proved well-founded
+     descent cluster. Dropping `Descent` would erase the mutual-recursion
+     proof carrier (Facts-Flow-Forward); both variants are non-optional
+     PR-B.1 dispatch arms. A `Descent` cluster whose `DescentEvidence` is
+     `DescentUnknown` is a fail-closed `Diagnostic`, not a hang.
    - `Bind` → register the binding in the current frame; no body execution at
      the Bind site (function-form bodies enter from `Transform(Callable(...))`).
 3. **Strategy.** PR-B.1 reads
