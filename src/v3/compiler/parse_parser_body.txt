@@ -559,11 +559,12 @@ impl<'a> Parser<'a> {
                 // `{ label: expr, ... }`), parse `SurfaceExpr::Record` so
                 // `{ x: 1 }` returns remain expressible.
                 //
-                // Otherwise treat `{ ... }` as a single-expression block:
-                // `match`, `if`, calls, bare variant constructors, etc.
-                // Multi-statement blocks (`let` sequences) are still out of
-                // scope — they fail at parse time rather than lowering to
-                // `FnExternalBody` / `ArrowBody::Unparsed`.
+                // Otherwise try a single complete `SurfaceExpr` through the
+                // closing `}`. If parsing fails or the expression does not
+                // exhaust the brace (e.g. `let`-sequence std bodies such as
+                // `effects.dag` `parse_path_template`), fall back to
+                // `FnExternalBody` + brace-skip so signatures and body spans
+                // still flow forward (Facts Flow Forward / staged std).
                 if self.looks_like_record_literal() {
                     let body_expr = self.parse_record_literal()?;
                     let end = expr_span(&body_expr).byte_end;
@@ -576,18 +577,51 @@ impl<'a> Parser<'a> {
                         span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
                     })
                 } else {
+                    let checkpoint = self.pos;
                     self.expect_kind(TokenKind::LBrace)?;
-                    let body_expr = self.parse_expr()?;
-                    let close = self.expect_kind(TokenKind::RBrace)?;
-                    let end = close.span.byte_end;
-                    Ok(SurfaceItem::Fn {
-                        name,
-                        type_params,
-                        params,
-                        return_type,
-                        body: body_expr,
-                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
-                    })
+                    match self.parse_expr() {
+                        Ok(body_expr) => {
+                            if matches!(self.peek().kind, TokenKind::RBrace) {
+                                let close = self.expect_kind(TokenKind::RBrace)?;
+                                let end = close.span.byte_end;
+                                Ok(SurfaceItem::Fn {
+                                    name,
+                                    type_params,
+                                    params,
+                                    return_type,
+                                    body: body_expr,
+                                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                                })
+                            } else {
+                                self.pos = checkpoint;
+                                let open = self.peek().span.clone();
+                                let end = self.skip_brace_balanced()?;
+                                let body_span = SourceSpan::new(self.file, open.byte_start, end);
+                                Ok(SurfaceItem::FnExternalBody {
+                                    name,
+                                    type_params,
+                                    params,
+                                    return_type,
+                                    body_span,
+                                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                                })
+                            }
+                        }
+                        Err(_) => {
+                            self.pos = checkpoint;
+                            let open = self.peek().span.clone();
+                            let end = self.skip_brace_balanced()?;
+                            let body_span = SourceSpan::new(self.file, open.byte_start, end);
+                            Ok(SurfaceItem::FnExternalBody {
+                                name,
+                                type_params,
+                                params,
+                                return_type,
+                                body_span,
+                                span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                            })
+                        }
+                    }
                 }
             }
             other => Err(Diagnostic::ParseError {
