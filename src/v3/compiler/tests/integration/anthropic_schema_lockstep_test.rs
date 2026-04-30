@@ -77,6 +77,79 @@ fn v3_field_is_optional(dag: &Dag, owner: &str, field: &str) -> bool {
     }
 }
 
+/// Reconstruct a canonical v3 type-expression string for a declaration:
+/// - `Cardinality(AtMostOne, T)` → `"T?"`
+/// - `Instantiation { template, args }` → `"<TemplateName><A, B, …>"`
+///   (or just `<TemplateName>` if no args)
+/// - Named (any other connective with a `name`) → the declaration name
+/// - Anonymous fallback → `"<anon>"` (should not appear in v3 mirror)
+fn v3_canonical_ty(dag: &Dag, ty: DeclarationId) -> String {
+    let decl = dag.declaration(ty);
+    match &decl.connective {
+        TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+            format!("{}?", v3_canonical_ty(dag, p.element()))
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let template_name = dag
+                .declaration(*template)
+                .name
+                .clone()
+                .unwrap_or_else(|| "<anon>".to_string());
+            if arguments.is_empty() {
+                template_name
+            } else {
+                let args: Vec<String> = arguments
+                    .iter()
+                    .map(|a| v3_canonical_ty(dag, a.value))
+                    .collect();
+                format!("{}<{}>", template_name, args.join(", "))
+            }
+        }
+        _ => decl
+            .name
+            .clone()
+            .unwrap_or_else(|| "<anon>".to_string()),
+    }
+}
+
+/// Normalize a v2 type-expression text (`List< X >` → `List<X>`,
+/// trimmed) for direct string comparison against `v3_canonical_ty`.
+fn normalize_ty_text(raw: &str) -> String {
+    // Drop the trailing `?` (optionality is asserted separately).
+    let mut s = raw.trim().to_string();
+    if let Some(stripped) = s.strip_suffix('?') {
+        s = stripped.trim_end().to_string();
+    }
+    // Compress whitespace inside the type expression. The v3 canonical
+    // form uses no spaces around `<` / `>` and a single space after `,`.
+    let mut out = String::with_capacity(s.len());
+    let mut prev_space = false;
+    for c in s.chars() {
+        if c.is_whitespace() {
+            if !prev_space {
+                out.push(' ');
+                prev_space = true;
+            }
+        } else {
+            prev_space = false;
+            out.push(c);
+        }
+    }
+    // Strip spaces adjacent to `<`, `>`, `,`.
+    let trimmed = out
+        .replace(" <", "<")
+        .replace("< ", "<")
+        .replace(" >", ">")
+        .replace(" ,", ",")
+        // Then ensure exactly one space after each `,`.
+        .replace(',', ", ")
+        .replace(",  ", ", ");
+    trimmed.trim().to_string()
+}
+
 // ── v2 source-text extractors ─────────────────────────────────────────
 
 /// Extract the source text of the `type <name>` block from the v2 file.
@@ -116,7 +189,10 @@ fn v2_type_block(name: &str) -> &'static str {
 /// before `:` as the label, and checks whether the type expression
 /// (between `:` and the next `,` / line-end / `}`) ends in `?` (after
 /// trimming whitespace).
-fn v2_record_fields(name: &str) -> Vec<(String, bool)> {
+/// `(field_label, normalized_ty_text, is_optional)` for v2 record fields.
+type V2Field = (String, String, bool);
+
+fn v2_record_fields(name: &str) -> Vec<V2Field> {
     let block = v2_type_block(name);
     let body_start = block.find('{').unwrap_or_else(|| {
         panic!("v2 `type {name}` is not a record block (no `{{` in extracted text)")
@@ -155,16 +231,17 @@ fn v2_record_fields(name: &str) -> Vec<(String, bool)> {
         };
         // Optionality = type expression ends with `?`.
         let is_optional = ty_text.ends_with('?');
-        out.push((label, is_optional));
+        out.push((label, normalize_ty_text(ty_text), is_optional));
     }
     out
 }
 
 /// Parse a v2 variant payload body (`{ foo: T, bar: U? }`) and return
-/// `(field_label, is_optional)` tuples, mirroring `v2_record_fields`'s
-/// extraction logic. Used by the disj lockstep to compare per-variant
-/// payload field sets and optionality.
-fn parse_v2_brace_body_fields(body: &str) -> Vec<(String, bool)> {
+/// `(field_label, normalized_ty_text, is_optional)` tuples, mirroring
+/// `v2_record_fields`'s extraction logic. Used by the disj lockstep to
+/// compare per-variant payload field sets, type expressions, and
+/// optionality.
+fn parse_v2_brace_body_fields(body: &str) -> Vec<V2Field> {
     let mut out = Vec::new();
     for piece in body.split(['\n', ',']) {
         let trimmed = piece.trim();
