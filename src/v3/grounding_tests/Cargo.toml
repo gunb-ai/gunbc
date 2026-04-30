@@ -11,4 +11,6 @@ license.workspace = true
 
 [dependencies]
 v3-compiler = { path = "../compiler" }
+
+[dev-dependencies]
 v3-grounding-lifetime = { path = "../grounding_lifetime" }
