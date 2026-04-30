@@ -10,7 +10,7 @@
 //! (which resolves under `src/v3/grounding_tests/std/`, not `src/v3/std/`). The compiler’s embedded
 //! snapshot is the single structural authority for these rows.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use v3_compiler::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 
@@ -19,6 +19,19 @@ use crate::diagnostic::GroundingTestsDiagnostic;
 const RUST_LIST: &str = "rust_method_template_contracts";
 const PYTHON_LIST: &str = "python_method_template_contracts";
 const GO_LIST: &str = "go_method_template_contracts";
+
+/// Closed schema for `MethodTemplateContract` rows (`emit_model.dag`) — Stratum A must reject
+/// duplicate labels, missing keys, and unconsumed extra fields.
+const METHOD_TEMPLATE_CONTRACT_FIELDS: &[&str] = &[
+    "dag_method",
+    "emit_template",
+    "placeholder_convention",
+    "runtime_template",
+    "wraps_result",
+];
+
+/// `MethodRef` (`methods.dag`) — single `decl` field, no silent ignores.
+const METHOD_REF_FIELDS: &[&str] = &["decl"];
 
 /// Director-locked Phase 1 row counts (`t-ground-tests.md`; bump when `*_method_template_contracts.dag` grows).
 pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
@@ -101,8 +114,35 @@ fn placeholder_variant_label(
         })
 }
 
+fn method_declaration_template_id(dag: &Dag) -> Result<DeclarationId, String> {
+    dag.declaration_by_name("MethodDeclaration")
+        .map(|d| d.id)
+        .ok_or_else(|| "MethodDeclaration missing from Dag".to_string())
+}
+
+/// Resolve a `MethodRef.decl` target to the method's registry `name` literal.
+///
+/// Fail-closed: the referenced declaration must **instantiate** `MethodDeclaration`
+/// (same structural gate as `method_registry_covers_all_algebra_template_names`), not merely
+/// carry a string `name` field on an arbitrary record.
 fn method_registry_name(dag: &Dag, method_decl_id: DeclarationId) -> Result<String, String> {
+    let method_decl_template = method_declaration_template_id(dag)?;
     let decl = dag.declaration(method_decl_id);
+    let template = match &decl.connective {
+        TypeConnective::Instantiation { template, .. } => *template,
+        other => {
+            return Err(format!(
+                "declaration {:?}: expected MethodDeclaration instantiation (Instantiation connective), got {other:?}",
+                decl.name
+            ));
+        }
+    };
+    if template != method_decl_template {
+        return Err(format!(
+            "declaration {:?}: instantiates template {template:?}, expected MethodDeclaration ({method_decl_template:?})",
+            decl.name
+        ));
+    }
     let vb = decl
         .value_body
         .as_ref()
@@ -123,6 +163,43 @@ fn method_registry_name(dag: &Dag, method_decl_id: DeclarationId) -> Result<Stri
             "declaration {:?}: `name` not a string literal: {other:?}",
             decl.name
         )),
+    }
+}
+
+/// Phase-1 `PlaceholderConvention` (`emit_model.dag`): nullary variants only; payload must be
+/// empty so digest/fingerprint cannot collapse distinct malformed shapes.
+fn placeholder_convention_canonical(
+    dag: &Dag,
+    ph: &FieldValue,
+) -> Result<String, GroundingTestsDiagnostic> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = ph
+    else {
+        return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
+            step: "placeholder_convention_canonical.shape",
+            detail: format!("placeholder_convention not a variant: {ph:?}"),
+        });
+    };
+    let label = placeholder_variant_label(dag, *constructor)?;
+    match label.as_str() {
+        "IndexedArgs" | "NamedArg" => {
+            if !payload.is_empty() {
+                return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                    step: "placeholder_convention_canonical.arity",
+                    detail: format!(
+                        "variant `{label}` is nullary in Phase 1; got {} payload field(s): {payload:?}",
+                        payload.len()
+                    ),
+                });
+            }
+            Ok(label)
+        }
+        _ => Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
+            step: "placeholder_convention_canonical.variant",
+            detail: format!("unknown PlaceholderConvention variant `{label}`"),
+        }),
     }
 }
 
@@ -226,23 +303,63 @@ fn row_record<'a>(
     Ok(fields.as_slice())
 }
 
+/// Fail-closed record shape: no duplicate labels, no unknown fields — every substrate key in
+/// `allowed` appears exactly once (order-independent).
+fn enforce_closed_record_schema(
+    fields: &[(String, FieldValue)],
+    list_name: &str,
+    row_index: usize,
+    record_kind: &'static str,
+    allowed: &[&str],
+) -> Result<(), GroundingTestsDiagnostic> {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (label, _) in fields {
+        if !seen.insert(label.as_str()) {
+            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: format!("{record_kind}: duplicate field `{label}`"),
+            });
+        }
+    }
+    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+    if seen != expected {
+        let missing: Vec<&str> = expected.difference(&seen).copied().collect();
+        let extra: Vec<&str> = seen.difference(&expected).copied().collect();
+        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: format!(
+                "{record_kind}: field set mismatch — missing {missing:?}, extra {extra:?} (expected exactly {:?})",
+                expected.iter().collect::<Vec<_>>()
+            ),
+        });
+    }
+    Ok(())
+}
+
 fn row_field<'a>(
     fields: &'a [(String, FieldValue)],
     list_name: &str,
     row_index: usize,
     label: &'static str,
 ) -> Result<&'a FieldValue, GroundingTestsDiagnostic> {
-    fields
-        .iter()
-        .find(|(l, _)| l == label)
-        .map(|(_, v)| v)
-        .ok_or_else(
-            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: list_name.to_string(),
-                row_index,
-                detail: format!("missing `{label}`"),
-            },
-        )
+    let mut matches = fields.iter().filter(|(l, _)| l == label);
+    let (_, v) = matches.next().ok_or_else(|| {
+        GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: format!("missing `{label}`"),
+        }
+    })?;
+    if matches.next().is_some() {
+        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: format!("duplicate field `{label}`"),
+        });
+    }
+    Ok(v)
 }
 
 fn method_name_from_dag_method(
@@ -258,6 +375,13 @@ fn method_name_from_dag_method(
             detail: format!("`dag_method` not MethodRef record: {dag_method:?}"),
         });
     };
+    enforce_closed_record_schema(
+        method_ref_fields,
+        list_name,
+        row_index,
+        "MethodRef",
+        METHOD_REF_FIELDS,
+    )?;
     let decl_field = row_field(method_ref_fields, list_name, row_index, "decl")?;
     let FieldValue::Reference(method_decl_id) = decl_field else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
@@ -282,6 +406,13 @@ fn row_fingerprint(
     row: &FieldValue,
 ) -> Result<RowFingerprint, GroundingTestsDiagnostic> {
     let fields = row_record(row, list_name, row_index)?;
+    enforce_closed_record_schema(
+        fields,
+        list_name,
+        row_index,
+        "MethodTemplateContract",
+        METHOD_TEMPLATE_CONTRACT_FIELDS,
+    )?;
     let dag_method = row_field(fields, list_name, row_index, "dag_method")?;
     let method_name = method_name_from_dag_method(dag, dag_method, list_name, row_index)?;
 
@@ -313,23 +444,15 @@ fn row_fingerprint(
     };
 
     let ph_field = row_field(fields, list_name, row_index, "placeholder_convention")?;
-    let FieldValue::Variant {
-        constructor: ph_ctor,
-        ..
-    } = ph_field
-    else {
-        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: format!("placeholder_convention not variant: {ph_field:?}"),
-        });
-    };
-    let placeholder = placeholder_variant_label(dag, *ph_ctor).map_err(|e| {
-        GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: e.to_string(),
+    let placeholder = placeholder_convention_canonical(dag, ph_field).map_err(|e| match e {
+        GroundingTestsDiagnostic::StratumADagProjectionFailed { step, detail } => {
+            GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: format!("{step}: {detail}"),
+            }
         }
+        other => other,
     })?;
 
     Ok(RowFingerprint {
