@@ -432,51 +432,24 @@ fn m17_multi_statement_brace_fn_parse_surface_stays_fn_external_body() {
 }
 
 #[test]
-fn m17_malformed_brace_expr_probe_err_maps_to_fn_external_body() {
-    // `parse_expr` fails inside `{ … }` (incomplete additive). Recovery uses the same
-    // `Err(_)` arm as multi-statement bodies: we **cannot** propagate `parse_expr`
-    // diagnostics from this probe without rejecting `.v3` sources where the first
-    // inner token is `let` — `parse_expr` also fails there (see
-    // `m17_multi_statement_brace_fn_parse_surface_stays_fn_external_body`).
-    // Contract: `FnExternalBody` (opaque parse surface), not a fabricated
-    // `SurfaceItem::Fn` / `UserDefined` tree; lowering records `ArrowBody::Unparsed`,
-    // and R14 rejects that shape at the `compile_to_dag` boundary (see below).
+fn m17_malformed_brace_expr_probe_returns_parse_error() {
+    // Incomplete `{ x + }` is a malformed single-expression probe: `parse_expr`
+    // fails after consuming a prefix, and the parser **propagates** that
+    // diagnostic. Only brace bodies whose first inner token is `let` use
+    // `FnExternalBody` on `parse_expr` `Err` (multi-statement scaffold); see
+    // `fn_brace_body_expr_err_falls_back_to_external` in `parse_parser_body.txt`.
     let src = "fn broken(x: Int) -> Int { x + }";
     let tokens = v3_compiler::tokenize_for_test(src, "malformed_brace_probe.v3").expect("tokenize");
-    let module = v3_compiler::parse_for_test(&tokens, "malformed_brace_probe.v3").expect("parse");
-    let item = module
-        .items
-        .iter()
-        .find(|i| match i {
-            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { name, .. }
-            | v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } => name == "broken",
-            _ => false,
-        })
-        .expect("broken fn item");
+    let err = v3_compiler::parse_for_test(&tokens, "malformed_brace_probe.v3")
+        .expect_err("malformed brace-body expr must fail parse");
     assert!(
-        matches!(
-            item,
-            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { .. }
-        ),
-        "malformed single-expr probe must fall back to FnExternalBody, got {item:?}"
+        matches!(err, Diagnostic::ParseError { .. }),
+        "expected ParseError for malformed probe, got {err:?}"
     );
     let result = compile_to_dag(src, "malformed_brace_lower.v3");
     assert!(
-        result.is_err(),
-        "user-range opaque fn body must fail compile_to_dag (R14), not compile cleanly"
-    );
-    let dag = match result {
-        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
-        other => panic!("expected CompileError::Semantic, got {other:?}"),
-    };
-    let id = find_named(&dag, "broken");
-    let body = match &dag.declaration(id).connective {
-        TypeConnective::Arrow { body, .. } => body.clone(),
-        other => panic!("expected Arrow, got {other:?}"),
-    };
-    assert!(
-        matches!(body, ArrowBody::Unparsed(_)),
-        "malformed brace-body fallback should lower to ArrowBody::Unparsed, got {body:?}"
+        matches!(result, Err(v3_compiler::CompileError::Parse(_))),
+        "malformed brace fn must fail compile_to_dag at parse boundary, got {result:?}"
     );
 }
 
