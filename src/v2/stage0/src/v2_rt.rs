@@ -11,52 +11,84 @@ pub trait V2Concat {
 }
 
 impl V2Concat for String {
-    fn v2_concat(mut self, other: String) -> String { self.push_str(&other); self }
+    fn v2_concat(mut self, other: String) -> String {
+        self.push_str(&other);
+        self
+    }
 }
 
 impl<T> V2Concat for Vec<T> {
-    fn v2_concat(mut self, other: Vec<T>) -> Vec<T> { self.extend(other); self }
+    fn v2_concat(mut self, other: Vec<T>) -> Vec<T> {
+        self.extend(other);
+        self
+    }
 }
 
-pub fn concat<T: V2Concat>(a: T, b: T) -> T { a.v2_concat(b) }
+pub fn concat<T: V2Concat>(a: T, b: T) -> T {
+    a.v2_concat(b)
+}
 
 pub fn char_at(s: &str, pos: i64) -> String {
     let pos = pos.max(0) as usize;
     if s.is_ascii() {
         let bytes = s.as_bytes();
-        if pos >= bytes.len() { return String::new(); }
+        if pos >= bytes.len() {
+            return String::new();
+        }
         return String::from(bytes[pos] as char);
     }
-    s.chars().nth(pos).map(|ch| ch.to_string()).unwrap_or_default()
+    s.chars()
+        .nth(pos)
+        .map(|ch| ch.to_string())
+        .unwrap_or_default()
 }
 
 pub fn string_length(s: &str) -> i64 {
-    if s.is_ascii() { s.len() as i64 } else { s.chars().count() as i64 }
+    if s.is_ascii() {
+        s.len() as i64
+    } else {
+        s.chars().count() as i64
+    }
 }
 
 pub fn substring(s: &str, start: i64, end: i64) -> String {
     let start = start.max(0) as usize;
     let end = end.max(0) as usize;
-    if end <= start { return String::new(); }
+    if end <= start {
+        return String::new();
+    }
     if s.is_ascii() {
         let len = s.len();
-        if start >= len { return String::new(); }
+        if start >= len {
+            return String::new();
+        }
         return s[start..end.min(len)].to_string();
     }
-    s.chars().skip(start).take(end.saturating_sub(start)).collect()
+    s.chars()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .collect()
 }
 
 pub fn string_contains(s: &str, sub: String) -> bool {
     s.contains(&*sub)
 }
 
-pub fn contains(s: String, sub: String) -> bool { string_contains(&s, sub) }
+pub fn contains(s: String, sub: String) -> bool {
+    string_contains(&s, sub)
+}
 
-pub fn count<T>(items: Rc<Vec<T>>) -> i64 { items.len() as i64 }
+pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
+    items.len() as i64
+}
 
-pub fn str_eq(a: String, b: String) -> bool { a == b }
+pub fn str_eq(a: String, b: String) -> bool {
+    a == b
+}
 
-pub fn to_string(value: i64) -> String { value.to_string() }
+pub fn to_string(value: i64) -> String {
+    value.to_string()
+}
 
 pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
     val.clamp(min_val, max_val)
@@ -68,31 +100,58 @@ pub fn lookup<V: Clone>(table: &HashMap<String, V>, key: String) -> Option<V> {
 
 pub fn index_by<V: Clone, F: Fn(&V) -> String>(list: Vec<V>, key_fn: F) -> HashMap<String, V> {
     let mut map = HashMap::new();
-    for item in list { let key = key_fn(&item); map.insert(key, item); }
+    for item in list {
+        let key = key_fn(&item);
+        map.insert(key, item);
+    }
     map
 }
 
-pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> HashMap<K, V> { HashMap::new() }
-
-pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(mut map: HashMap<K, V>, key: K, value: V) -> HashMap<K, V> {
-    map.insert(key, value); map
+pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> HashMap<K, V> {
+    HashMap::new()
 }
 
-pub fn map_merge<K: std::cmp::Eq + std::hash::Hash, V>(mut base: HashMap<K, V>, overlay: HashMap<K, V>) -> HashMap<K, V> {
-    base.extend(overlay); base
+pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
+    mut map: HashMap<K, V>,
+    key: K,
+    value: V,
+) -> HashMap<K, V> {
+    map.insert(key, value);
+    map
 }
 
-pub fn map_get<K: std::cmp::Eq + std::hash::Hash, V: Clone>(m: &HashMap<K, V>, key: K) -> Option<V> {
+pub fn map_merge<K: std::cmp::Eq + std::hash::Hash, V>(
+    mut base: HashMap<K, V>,
+    overlay: HashMap<K, V>,
+) -> HashMap<K, V> {
+    base.extend(overlay);
+    base
+}
+
+pub fn map_get<K: std::cmp::Eq + std::hash::Hash, V: Clone>(
+    m: &HashMap<K, V>,
+    key: K,
+) -> Option<V> {
     m.get(&key).cloned()
 }
 
-pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> { m.keys().cloned().collect() }
+pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+    m.keys().cloned().collect()
+}
 
-pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> { m.values().cloned().collect() }
+pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
+    m.values().cloned().collect()
+}
 
-pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> { a.extend(b); a }
+pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
+    a.extend(b);
+    a
+}
 
-pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> { list.push(item); list }
+pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> {
+    list.push(item);
+    list
+}
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
     let mut v = (*list).clone();
@@ -110,7 +169,9 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
         .collect()
 }
 
-pub fn parse_int(s: String) -> Option<i64> { s.parse::<i64>().ok() }
+pub fn parse_int(s: String) -> Option<i64> {
+    s.parse::<i64>().ok()
+}
 
 pub fn map_contains_key<K: std::cmp::Eq + std::hash::Hash, V>(m: &HashMap<K, V>, key: K) -> bool {
     m.contains_key(&key)
@@ -121,7 +182,9 @@ pub fn map_has<K: std::cmp::Eq + std::hash::Hash, V>(m: &HashMap<K, V>, key: K) 
 }
 
 pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut v = (*list).clone(); v.reverse(); Rc::new(v)
+    let mut v = (*list).clone();
+    v.reverse();
+    Rc::new(v)
 }
 
 pub fn replace(s: String, from: String, to: String) -> String {
@@ -146,13 +209,20 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
-pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(map: Rc<HashMap<K, V>>, key: K, value: V) -> Rc<HashMap<K, V>> {
+pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
+    map: Rc<HashMap<K, V>>,
+    key: K,
+    value: V,
+) -> Rc<HashMap<K, V>> {
     let mut m = map;
     Rc::make_mut(&mut m).insert(key, value);
     m
 }
 
-pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(base: Rc<HashMap<K, V>>, overlay: Rc<HashMap<K, V>>) -> Rc<HashMap<K, V>> {
+pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
+    base: Rc<HashMap<K, V>>,
+    overlay: Rc<HashMap<K, V>>,
+) -> Rc<HashMap<K, V>> {
     let mut result = base;
     let inner = Rc::make_mut(&mut result);
     for (k, v) in overlay.iter() {
@@ -161,14 +231,21 @@ pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(base: R
     result
 }
 
-pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(list: Rc<Vec<V>>, key_fn: F) -> Rc<HashMap<String, V>> {
+pub fn rc_index_by<V: Clone, F: Fn(&V) -> String>(
+    list: Rc<Vec<V>>,
+    key_fn: F,
+) -> Rc<HashMap<String, V>> {
     Rc::new(list.iter().map(|v| (key_fn(v), v.clone())).collect())
 }
 
-pub fn rc_empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> { Rc::new(HashMap::new()) }
+pub fn rc_empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> Rc<HashMap<K, V>> {
+    Rc::new(HashMap::new())
+}
 
 impl<T: Clone> V2Concat for Rc<Vec<T>> {
-    fn v2_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> { rc_list_concat(self, other) }
+    fn v2_concat(self, other: Rc<Vec<T>>) -> Rc<Vec<T>> {
+        rc_list_concat(self, other)
+    }
 }
 
 pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
@@ -176,14 +253,20 @@ pub fn scan_while(s: &str, start: i64, pred: impl Fn(String) -> bool) -> i64 {
     if s.is_ascii() {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
-        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) { pos += 1; }
+        while pos < bytes.len() && pred(String::from(bytes[pos] as char)) {
+            pos += 1;
+        }
         return pos as i64;
     }
     let char_len = s.chars().count();
     let start = start.min(char_len);
     let mut pos = start;
     for ch in s.chars().skip(start) {
-        if pred(ch.to_string()) { pos += 1; } else { break; }
+        if pred(ch.to_string()) {
+            pos += 1;
+        } else {
+            break;
+        }
     }
     pos as i64
 }
@@ -193,14 +276,20 @@ pub fn skip_horizontal_ws(s: &str, start: i64) -> i64 {
     if s.is_ascii() {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
-        while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') { pos += 1; }
+        while pos < bytes.len() && (bytes[pos] == b' ' || bytes[pos] == b'\t') {
+            pos += 1;
+        }
         return pos as i64;
     }
     let char_len = s.chars().count();
     let start = start.min(char_len);
     let mut pos = start;
     for ch in s.chars().skip(start) {
-        if ch == ' ' || ch == '\t' { pos += 1; } else { break; }
+        if ch == ' ' || ch == '\t' {
+            pos += 1;
+        } else {
+            break;
+        }
     }
     pos as i64
 }
@@ -210,14 +299,20 @@ pub fn scan_to_eol(s: &str, start: i64) -> i64 {
     if s.is_ascii() {
         let bytes = s.as_bytes();
         let start = start.min(bytes.len());
-        for i in start..bytes.len() { if bytes[i] == b'\n' { return i as i64; } }
+        for i in start..bytes.len() {
+            if bytes[i] == b'\n' {
+                return i as i64;
+            }
+        }
         return bytes.len() as i64;
     }
     let char_len = s.chars().count();
     let start = start.min(char_len);
     let mut pos = start;
     for ch in s.chars().skip(start) {
-        if ch == '\n' { return pos as i64; }
+        if ch == '\n' {
+            return pos as i64;
+        }
         pos += 1;
     }
     pos as i64
@@ -229,9 +324,13 @@ pub fn scan_string_end(s: &str, start: i64) -> i64 {
         let bytes = s.as_bytes();
         let mut pos = start.min(bytes.len());
         while pos < bytes.len() {
-            if bytes[pos] == b'\\' { pos += 2; }
-            else if bytes[pos] == b'\"' { return (pos + 1) as i64; }
-            else { pos += 1; }
+            if bytes[pos] == b'\\' {
+                pos += 2;
+            } else if bytes[pos] == b'\"' {
+                return (pos + 1) as i64;
+            } else {
+                pos += 1;
+            }
         }
         return bytes.len() as i64;
     }
@@ -260,7 +359,9 @@ pub fn code_point(c: String) -> i64 {
 }
 
 pub fn from_code_point(cp: i64) -> String {
-    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()
+    char::from_u32(cp as u32)
+        .map(|c| c.to_string())
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone)]
@@ -269,7 +370,7 @@ pub struct FilesystemReadResult {
 }
 
 pub fn filesystem_read(path: String) -> FilesystemReadResult {
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
+    let content =
+        std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
 }
