@@ -149,7 +149,7 @@ Each deliverable owned by an R2 manager belongs to exactly one of categories 1-5
 |---|---|---|
 | The manager brief itself | 5 (placeholder) | Graduates on R2 spawn |
 | Tier 3 mirror dissolutions (termination/computation/induction/effect-carrier) | 1 (worker brief; 4+ sub-briefs) | Authored in `docs/briefs/r2-pb-tier3-mirror-dissolution-workers.md`; mirror-by-mirror dispatch |
-| Tier 2 patch_lower_helpers_* retirement | 1 (worker brief) | Pending; if survives R1; B7 priority hint received |
+| Tier 2 patch_lower_helpers_* retirement | 1 (worker brief) | **Closed / green (PB lower-helper slice only):** #1014 (native `refinement` in generated `lower_helpers`); **#1192** ratchet `bridge_lower_helpers_patch_zero_residual_test.rs` — zero contiguous `patch_lower`+`_helpers` in `src/v3/compiler` `.rs` + `build.rs` per SG-0 + closure ledger. **Not** umbrella exact-string patching retirement — other classes keep their own triggers (`docs/r3-structure.md`, `docs/r2-closure-ledger.md`). |
 | `kernel_algebra_profile` mirror dissolution | 1 (worker brief) | Pending; gated on `ValueBody::Map` substrate |
 | Post-R1 emergent dissolutions | 1 (worker brief; ad-hoc) | Pending; emerge during R2 |
 | Lane-close signals → R2 Release Manager | 3 (signal) | Cross-manager queue |
