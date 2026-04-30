@@ -376,8 +376,21 @@ fn m17_multi_statement_brace_fn_in_v3_falls_back_to_unparsed_arrow() {
     // Multi-statement / unparseable-as-single-expr brace bodies in `.v3`
     // hit `parse_expr` failure or non-exhausting-`}` recovery →
     // `FnExternalBody` → `ArrowBody::Unparsed` (opaque scaffold ratchet).
+    //
+    // M1(2.8) R14: user-range `ArrowBody::Unparsed` must still fail the
+    // `compile_to_dag` boundary (`Err(Semantic)` with diagnostics) — do not
+    // use `compile_any` here, which collapses clean vs semantic outcomes.
+    // See `m18_r14_user_block_bodied_fn_is_rejected`.
     let src = "fn staged(x: Int) -> Int {\n  let y = x + 1\n  y + 1\n}";
-    let dag = compile_any(src, "multi_stmt_fn.v3");
+    let result = compile_to_dag(src, "multi_stmt_fn.v3");
+    assert!(
+        result.is_err(),
+        "user-range opaque fn body must fail compile_to_dag (R14), not compile cleanly"
+    );
+    let dag = match result {
+        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
     let foo_id = find_named(&dag, "staged");
     let body = match &dag.declaration(foo_id).connective {
         TypeConnective::Arrow { body, .. } => body.clone(),
@@ -426,7 +439,8 @@ fn m17_malformed_brace_expr_probe_err_maps_to_fn_external_body() {
     // inner token is `let` — `parse_expr` also fails there (see
     // `m17_multi_statement_brace_fn_parse_surface_stays_fn_external_body`).
     // Contract: `FnExternalBody` (opaque parse surface), not a fabricated
-    // `SurfaceItem::Fn` / `UserDefined` tree; lowering stays `ArrowBody::Unparsed`.
+    // `SurfaceItem::Fn` / `UserDefined` tree; lowering records `ArrowBody::Unparsed`,
+    // and R14 rejects that shape at the `compile_to_dag` boundary (see below).
     let src = "fn broken(x: Int) -> Int { x + }";
     let tokens = v3_compiler::tokenize_for_test(src, "malformed_brace_probe.v3").expect("tokenize");
     let module = v3_compiler::parse_for_test(&tokens, "malformed_brace_probe.v3").expect("parse");
@@ -446,7 +460,15 @@ fn m17_malformed_brace_expr_probe_err_maps_to_fn_external_body() {
         ),
         "malformed single-expr probe must fall back to FnExternalBody, got {item:?}"
     );
-    let dag = compile_any(src, "malformed_brace_lower.v3");
+    let result = compile_to_dag(src, "malformed_brace_lower.v3");
+    assert!(
+        result.is_err(),
+        "user-range opaque fn body must fail compile_to_dag (R14), not compile cleanly"
+    );
+    let dag = match result {
+        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
     let id = find_named(&dag, "broken");
     let body = match &dag.declaration(id).connective {
         TypeConnective::Arrow { body, .. } => body.clone(),
