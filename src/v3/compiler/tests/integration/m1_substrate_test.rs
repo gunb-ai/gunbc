@@ -390,6 +390,35 @@ fn m17_multi_statement_brace_fn_in_v3_falls_back_to_unparsed_arrow() {
 }
 
 #[test]
+fn m17_multi_statement_brace_fn_parse_surface_stays_fn_external_body() {
+    // Parse-phase receipt: multi-stmt / non-single-expr `.v3` brace bodies must
+    // surface as `FnExternalBody` (brace-skip), not `ParseError` — scheduled
+    // review claim "parser rejects instead of preserving" is false for this
+    // path (`parse_fn_item` `Err` / partial-expr branches).
+    let src = "fn staged(x: Int) -> Int {\n  let y = x + 1\n  y + 1\n}";
+    let tokens =
+        v3_compiler::tokenize_for_test(src, "multi_stmt_parse_surface.v3").expect("tokenize");
+    let module =
+        v3_compiler::parse_for_test(&tokens, "multi_stmt_parse_surface.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| match i {
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { name, .. }
+            | v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } => name == "staged",
+            _ => false,
+        })
+        .expect("staged fn item");
+    assert!(
+        matches!(
+            item,
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { .. }
+        ),
+        "multi-line brace fn body must parse as FnExternalBody (fallback), got {item:?}"
+    );
+}
+
+#[test]
 fn m17_data_declaration_produces_typed_declaration() {
     // Class 3 (QW2): `data foo: Int = { body }` parses as
     // `SurfaceItem::Data` and lowers to a declaration whose
