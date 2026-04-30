@@ -572,6 +572,17 @@ impl<'a> Parser<'a> {
         self.file.ends_with(".v3")
     }
 
+    /// After `{`, `parse_expr` fails immediately on `KwLet` (statements are not
+    /// expressions). Only that shape uses `FnExternalBody` + brace-skip on
+    /// `parse_expr` `Err` — other failures are malformed single-expression probes
+    /// and must surface the parser diagnostic (fail-closed at parse time).
+    fn fn_brace_body_expr_err_falls_back_to_external(&self, first_inner_token_pos: usize) -> bool {
+        matches!(
+            self.tokens.get(first_inner_token_pos).map(|t| &t.kind),
+            Some(TokenKind::KwLet)
+        )
+    }
+
     fn parse_fn_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         let fn_kw = self.expect_kind(TokenKind::KwFn)?;
         let name = self.parse_ident()?;
@@ -640,6 +651,7 @@ impl<'a> Parser<'a> {
                 } else {
                     let checkpoint = self.pos;
                     self.expect_kind(TokenKind::LBrace)?;
+                    let first_inner_token_pos = self.pos;
                     match self.parse_expr() {
                         Ok(body_expr) => {
                             if matches!(self.peek().kind, TokenKind::RBrace) {
@@ -668,19 +680,26 @@ impl<'a> Parser<'a> {
                                 })
                             }
                         }
-                        Err(_) => {
-                            self.pos = checkpoint;
-                            let open = self.peek().span.clone();
-                            let end = self.skip_brace_balanced()?;
-                            let body_span = SourceSpan::new(self.file, open.byte_start, end);
-                            Ok(SurfaceItem::FnExternalBody {
-                                name,
-                                type_params,
-                                params,
-                                return_type,
-                                body_span,
-                                span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
-                            })
+                        Err(diag) => {
+                            if self.fn_brace_body_expr_err_falls_back_to_external(
+                                first_inner_token_pos,
+                            ) {
+                                self.pos = checkpoint;
+                                let open = self.peek().span.clone();
+                                let end = self.skip_brace_balanced()?;
+                                let body_span = SourceSpan::new(self.file, open.byte_start, end);
+                                Ok(SurfaceItem::FnExternalBody {
+                                    name,
+                                    type_params,
+                                    params,
+                                    return_type,
+                                    body_span,
+                                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                                })
+                            } else {
+                                self.pos = checkpoint;
+                                Err(diag)
+                            }
                         }
                     }
                 }
