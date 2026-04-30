@@ -1,6 +1,6 @@
 # R2 — Evaluator: `test_runner.rs` test-predicate authority audit & ratchet
 
-**Status:** AUDIT (docs-only). **Scope:** inventory the bespoke Rust predicate/producer surfaces in `src/v3/compiler/src/test_runner.rs` without changing code. **Does not** duplicate Worker C’s PR-B.2/3/4 runner-extension bundle brief — treat [GitHub issue #1315](https://github.com/gunb-ai/gunbc/issues/1315) and its landed brief (when present on `main`) as the **consumer** of this inventory; this document names **why** parallel Rust authority exists and **where** it should dissolve.
+**Status:** AUDIT (docs-only). **Scope:** inventory the bespoke Rust predicate/producer surfaces in `src/v3/compiler/src/test_runner.rs` without changing code. **Does not** duplicate Worker C’s PR-B.2/3/4 runner-extension bundle brief — treat [PR #1315](https://github.com/gunb-ai/gunbc/pull/1315) and [`docs/briefs/r2-pr-b-2-runner-extension-bundle.md`](r2-pr-b-2-runner-extension-bundle.md) (authoritative copy on that PR branch until merged; may not exist in every checkout of `main` yet) as the **consumer** of this inventory; this document names **why** parallel Rust authority exists and **where** it should dissolve.
 
 **Primary code anchor:** `TestRunner::run_claim` dispatches `TestPredicate` variant labels to Rust evaluators (`Compiles` through `MockBackedInvariant`); unknown labels return `NotYetImplemented` (`src/v3/compiler/src/test_runner.rs`).
 
@@ -48,7 +48,7 @@ Below, **Rust authority surface** means what the runner does in-process that a p
 | --- | --- |
 | **Rust authority surface** | Same shape as release deferrals but fixture locked to `tc1_substrate_lens_eta_equivalence_deferred.dag`; roles: `Tc1ResearchGateMarker`, `SubstrateLensPrimitiveTargetLaneMarker`, `LambdaCalculusGroundingAuthorityDoc`. |
 | **Why it exists** | TC1 / R2 substrate research lane: fail-closed proof that deferred claims are declared in the **one** authorized TC1 fixture (constants at top of `test_runner.rs`). |
-| **Dissolution target** | **T-Substrate** research closure + **Evaluator** readyness when TC1 content promotes; **PR-B.2/3/4 bundle** may fold TC-shaped deferrals into the same dissolution hooks as other runner extensions (see #1315). |
+| **Dissolution target** | **T-Substrate** research closure + **Evaluator** readyness when TC1 content promotes; **PR-B.2/3/4 bundle** may fold TC-shaped deferrals into the same dissolution hooks as other runner extensions (see [PR #1315](https://github.com/gunb-ai/gunbc/pull/1315)). |
 | **Retirement** | No runner hard-coded path list; deferral validity is structural (role + graph) or evaluated by substrate-carried witness. |
 
 ### 2.4 PB census resolution — `CensusBoundCheck`, `CensusSubsetCount`, `RatchetZero`, and census-backed pieces of `GeneratedFromDag`
@@ -106,10 +106,10 @@ These are **still** implemented only in Rust today; they are “Day-1” predica
 
 ## 3. Ratchet recommendation
 
-1. **Freeze** new `match` arms in `run_claim` unless the PR **names** a dissolution hook (adjacent ROADMAP / manager brief row / #1315 bundle item) — same discipline as `docs/r2-structure.md` P5 for hand-Rust under `src/v3/`.
+1. **Freeze** new `match` arms in `run_claim` unless the PR **names** a dissolution hook (adjacent ROADMAP / manager brief row / [PR #1315](https://github.com/gunb-ai/gunbc/pull/1315) bundle item) — same discipline as `docs/r2-structure.md` P5 for hand-Rust under `src/v3/`.
 2. **Prefer count- and path-pinned ratchets only with an explicit “decreasing” story:** census / generated-file / positive-set checks should transition from **pinned integers** to **monotone decrease** (or zero-only) when the **next substrate or evaluator carrier** lands — never silent increases.
 3. **PB-runtime / Evaluator split:** host-only policy (`ExecuteCommand`) stays explicitly **PB-Runtime debt**; graph semantics (`Compiles`, lens apply, cost lineage) tracks **PR-B / PR-E** — avoid solving both in one ad-hoc arm.
-4. **When #1315’s bundle brief is in-tree:** add a one-line cross-reference from that brief back to **this inventory** as the authoritative categorization; do not fork the tables here.
+4. **When [`r2-pr-b-2-runner-extension-bundle.md`](r2-pr-b-2-runner-extension-bundle.md) is on `main`:** add a one-line cross-reference from that brief back to **this inventory** as the authoritative categorization; do not fork the tables here.
 
 ---
 
@@ -129,4 +129,4 @@ Until then, **stop** at the smallest of A/B/C rather than growing new runner bra
 
 - [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md)
 - [`ROADMAP.md`](../ROADMAP.md) — Scheduled cleanups (LensOutputEquals / PR #764), Post-merge debt 2026-04-25 (`test_runner` / B4 rows)
-- GitHub [#1315](https://github.com/gunb-ai/gunbc/issues/1315) — PR-B.2/3/4 runner-extension bundle (input consumer; brief path may vary by branch)
+- [PR #1315](https://github.com/gunb-ai/gunbc/pull/1315) — PR-B.2/3/4 runner-extension bundle; consumer brief [`docs/briefs/r2-pr-b-2-runner-extension-bundle.md`](r2-pr-b-2-runner-extension-bundle.md) (merge with PR; may be absent on `main` until that PR lands)
