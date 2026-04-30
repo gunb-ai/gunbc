@@ -155,6 +155,3 @@ pub fn complexity_branch(p0: i64, p1: i64) -> i64 {
         p1
     }
 }
-pub fn complexity_iterate(p0: i64, p1: &LoopBound) -> i64 {
-    p0
-}

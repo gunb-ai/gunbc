@@ -145,11 +145,14 @@ fn complexity_lens_helpers_resolve_without_data_instance() {
         dag.declaration_by_name("complexity_lens").is_none(),
         "`data complexity_lens` must not ship until Witness/read + class-5 `data` validation are honest"
     );
+    assert!(
+        dag.declaration_by_name("complexity_iterate").is_none(),
+        "`Lens<Int>.iterate` must not ship as `complexity_iterate` until fold_lens owns loop-bound semantics (no LoopBound-ignoring stub)"
+    );
     for name in [
         "complexity_behavior_result_port",
         "complexity_sequential_op",
         "complexity_branch",
-        "complexity_iterate",
     ] {
         assert!(
             dag.declaration_by_name(name).is_some(),
