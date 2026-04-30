@@ -121,9 +121,9 @@ fn v2_record_fields(name: &str) -> Vec<(String, bool)> {
     let body_start = block.find('{').unwrap_or_else(|| {
         panic!("v2 `type {name}` is not a record block (no `{{` in extracted text)")
     }) + 1;
-    let body_end = block.rfind('}').unwrap_or_else(|| {
-        panic!("v2 `type {name}` record block has no closing `}}`")
-    });
+    let body_end = block
+        .rfind('}')
+        .unwrap_or_else(|| panic!("v2 `type {name}` record block has no closing `}}`"));
     let body = &block[body_start..body_end];
 
     let mut out = Vec::new();
@@ -139,7 +139,12 @@ fn v2_record_fields(name: &str) -> Vec<(String, bool)> {
             continue;
         };
         let label = trimmed[..colon].trim().to_string();
-        if label.is_empty() || !label.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_') {
+        if label.is_empty()
+            || !label
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+        {
             continue;
         }
         let ty_text_raw = trimmed[colon + 1..].trim();
@@ -195,10 +200,7 @@ fn v2_disj_variants(name: &str) -> Vec<String> {
         if !(first.is_alphabetic() || first == '_') {
             continue;
         }
-        if !label
-            .chars()
-            .all(|c| c.is_alphanumeric() || c == '_')
-        {
+        if !label.chars().all(|c| c.is_alphanumeric() || c == '_') {
             panic!(
                 "v2 `type {name}` variant fragment `{label}` is not a bare identifier — \
                  lockstep parser needs an update for new v2 syntax"
@@ -217,7 +219,8 @@ fn assert_record_lockstep(type_name: &str) {
     let v2_fields = v2_record_fields(type_name);
     let v2_labels: BTreeSet<String> = v2_fields.iter().map(|(l, _)| l.clone()).collect();
     assert_eq!(
-        v3_labels, v2_labels,
+        v3_labels,
+        v2_labels,
         "lockstep drift on `type {type_name}` field set: v3 mirror \
          (`src/v3/std/anthropic_schema.dag`) and v2 source \
          (`dsl/extdeps/llm/anthropic.dag`) disagree. \
@@ -254,7 +257,8 @@ fn assert_disj_lockstep(type_name: &str) {
     let v3_labels: BTreeSet<String> = disj_variant_labels(&dag, type_name).into_iter().collect();
     let v2_labels: BTreeSet<String> = v2_disj_variants(type_name).into_iter().collect();
     assert_eq!(
-        v3_labels, v2_labels,
+        v3_labels,
+        v2_labels,
         "lockstep drift on `type {type_name}` variant set: v3 mirror and \
          v2 source disagree. v3-only: {:?}; v2-only: {:?}",
         v3_labels.difference(&v2_labels).collect::<Vec<_>>(),
