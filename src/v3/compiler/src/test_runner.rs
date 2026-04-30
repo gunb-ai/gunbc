@@ -2489,10 +2489,7 @@ impl<'a> TestRunner<'a> {
         // second list that happens to share the row type cannot be
         // accepted as a parallel ledger authority and pass the gate
         // independently of the canonical carrier.
-        let canonical_ledger_id = self
-            .dag
-            .declaration_by_name("bridge_ledger")
-            .map(|d| d.id);
+        let canonical_ledger_id = self.dag.declaration_by_name("bridge_ledger").map(|d| d.id);
         match canonical_ledger_id {
             Some(canonical) if canonical == ledger_id => {}
             Some(_) => {

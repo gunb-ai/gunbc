@@ -352,9 +352,7 @@ data suite: TestSuite = {
     assert_eq!(results.len(), 1);
     let reason = match &results[0].result {
         ClaimResult::Fail(reason) => reason.clone(),
-        other => panic!(
-            "expected `Fail` for sibling List<BridgeLedgerRow>; got {other:?}"
-        ),
+        other => panic!("expected `Fail` for sibling List<BridgeLedgerRow>; got {other:?}"),
     };
     // Diagnostic must call out the canonical-identity check, not just
     // type compatibility — `sibling_ledger` has the right element
