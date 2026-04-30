@@ -194,27 +194,37 @@ representations of the same dispatch path.
 
 ### Prereq-X3 — block expressions with let inside `=` bodies
 
-**Scope:** `fn name(...) -> T = { let v = ...; <expr> }` where `{ ... }`
-is a **block expression** (sequence of let-bindings followed by a
-final expression) rather than a record literal. The parser
-disambiguation today sees `{` after `=` and commits to record
-literal; X3 needs to introduce block-expression-vs-record-literal
-disambiguation, likely by:
+**Scope:** `fn name(...) -> T = do { let v = ...; <expr> }` (or
+similar explicit block marker) where the marked block is a
+**block expression** (sequence of let-bindings followed by a
+final expression) distinct from `{ ... }` record literals.
 
-- **(a)** Looking ahead to the first non-whitespace token after
-  `{`: if `let` (or a future `return` / non-record keyword), parse
-  block expression; else parse record literal.
-- **(b)** Requiring an explicit block syntax (e.g., `do { ... }`)
-  to distinguish blocks from record literals.
+**Disambiguation strategy (Director-locked 2026-04-30, parent
+inbox #1130):** **explicit block syntax.** Reasons:
 
-(a) is the smaller surface change but adds parser look-ahead
-complexity. (b) is more verbose for users but unambiguous. Director
-should pick.
+1. `{ ... }` already has live record literal AND map literal
+   meanings in v3 surface; #1248 (Prereq-2) tightened the
+   fallback contract around exactly this ambiguity. Adding a
+   third "block expression" interpretation behind a heuristic
+   first-token lookahead would re-introduce the same parser-
+   disambiguation surface area #1248 just stabilized.
+2. Heuristic lookahead (parse as block iff first non-whitespace
+   token is `let` or another keyword) makes the parse rule
+   non-local — adding a future record-literal field syntax that
+   starts with a keyword would silently break previously-record
+   programs.
+3. An explicit marker (e.g., `do { ... }`) is verbose but
+   unambiguous and cost-of-change-zero for the parser when new
+   block-internal forms land.
+
+Concrete proposal: `do { ... }` keyword. Implementation worker
+may pick a different keyword if Director surfaces one — the audit
+locks the **explicit-marker discipline**, not the specific token.
 
 **Test matrix:**
-- `T3.1` — `fn r(x: Int) -> Int = { let g = double; g(x) }`. Parses as block, lowers, evaluates correctly.
+- `T3.1` — `fn r(x: Int) -> Int = do { let g = double; g(x) }`. Parses as block, lowers, evaluates correctly.
 - `T3.2` — `data v: SomeRecord = { f: ... }`. Continues to parse as record literal (no regression).
-- `T3.3` — disambiguation diagnostic when ambiguous (if (a) chosen): `fn r() -> Int = { let: ... }`. Should parse as block (recovers `let` as keyword) or fail-closed with a clear "block-vs-record" diagnostic.
+- `T3.3` — `fn r(x: Int) -> Int = { let g = double; g(x) }` (without `do`). Fails fail-closed with a parser diagnostic naming the explicit-block requirement; suggests `do { ... }` as the fix surface.
 
 X3 **may not be required** if X1 + X2 land in a way that allows
 inlining everything (e.g., `fn r(x: Int) -> Int = double(x)` directly,
@@ -267,8 +277,10 @@ landed) and the Lens<C> carrier (#1186, landed) are unaffected.
 - Does not author Lens instances or migrate the four PROXY/STUB
   lenses (independent of Prereq-X — see audit
   `docs/design-lens-fold-prerequisites.md` Prereq-1 + Prereq-2).
-- Does not commit to (a) vs (b) for X3 disambiguation — flagged for
-  Director.
+- ~~Does not commit to (a) vs (b) for X3 disambiguation — flagged for
+  Director.~~ **Updated 2026-04-30:** Director-locked explicit
+  block syntax (proposed `do { ... }` keyword); see Prereq-X3
+  scope above for rationale.
 - Does not size X1 / X2 / X3 implementation effort beyond a rough
   "similar shape to Prereq-2 / #1248." The implementation worker
   scopes precisely.
