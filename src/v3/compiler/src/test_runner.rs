@@ -2041,13 +2041,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn dimension_report_carrier(&self, mut current: DeclarationId) -> Option<DeclarationId> {
-        let Some(report_id) = self
+        let report_id = self
             .dag
             .declaration_by_name("DimensionReport")
-            .map(|decl| decl.id)
-        else {
-            return None;
-        };
+            .map(|decl| decl.id)?;
         // Bounded alias walk: this is a fail-closed cycle/depth guard, not a
         // semantic limit on valid DimensionReport<C> producer shapes.
         for _ in 0..32 {
