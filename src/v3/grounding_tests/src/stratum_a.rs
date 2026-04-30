@@ -202,30 +202,46 @@ impl RowFingerprint {
     }
 }
 
-fn row_fingerprint(
-    dag: &Dag,
+fn row_record<'a>(
+    row: &'a FieldValue,
     list_name: &str,
     row_index: usize,
-    row: &FieldValue,
-) -> Result<RowFingerprint, GroundingTestsDiagnostic> {
-    let list = list_name.to_string();
+) -> Result<&'a [(String, FieldValue)], GroundingTestsDiagnostic> {
     let FieldValue::Record(fields) = row else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list,
+            list_name: list_name.to_string(),
             row_index,
             detail: format!("row is not a record: {row:?}"),
         });
     };
-    let (_, dag_method) = fields
+    Ok(fields.as_slice())
+}
+
+fn row_field<'a>(
+    fields: &'a [(String, FieldValue)],
+    list_name: &str,
+    row_index: usize,
+    label: &'static str,
+) -> Result<&'a FieldValue, GroundingTestsDiagnostic> {
+    fields
         .iter()
-        .find(|(label, _)| label == "dag_method")
+        .find(|(l, _)| l == label)
+        .map(|(_, v)| v)
         .ok_or_else(
             || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
                 list_name: list_name.to_string(),
                 row_index,
-                detail: "missing `dag_method`".to_string(),
+                detail: format!("missing `{label}`"),
             },
-        )?;
+        )
+}
+
+fn method_name_from_dag_method(
+    dag: &Dag,
+    dag_method: &FieldValue,
+    list_name: &str,
+    row_index: usize,
+) -> Result<String, GroundingTestsDiagnostic> {
     let FieldValue::Record(method_ref_fields) = dag_method else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
@@ -233,16 +249,7 @@ fn row_fingerprint(
             detail: format!("`dag_method` not MethodRef record: {dag_method:?}"),
         });
     };
-    let (_, decl_field) = method_ref_fields
-        .iter()
-        .find(|(label, _)| label == "decl")
-        .ok_or_else(
-            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: list_name.to_string(),
-                row_index,
-                detail: "MethodRef missing `decl`".to_string(),
-            },
-        )?;
+    let decl_field = row_field(method_ref_fields, list_name, row_index, "decl")?;
     let FieldValue::Reference(method_decl_id) = decl_field else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
@@ -250,24 +257,26 @@ fn row_fingerprint(
             detail: format!("MethodRef.decl not a reference: {decl_field:?}"),
         });
     };
-    let method_name = method_registry_name(dag, *method_decl_id).map_err(|e| {
+    method_registry_name(dag, *method_decl_id).map_err(|e| {
         GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
             row_index,
             detail: e,
         }
-    })?;
+    })
+}
 
-    let (_, runtime_field) = fields
-        .iter()
-        .find(|(label, _)| label == "runtime_template")
-        .ok_or_else(
-            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: list_name.to_string(),
-                row_index,
-                detail: "missing `runtime_template`".to_string(),
-            },
-        )?;
+fn row_fingerprint(
+    dag: &Dag,
+    list_name: &str,
+    row_index: usize,
+    row: &FieldValue,
+) -> Result<RowFingerprint, GroundingTestsDiagnostic> {
+    let fields = row_record(row, list_name, row_index)?;
+    let dag_method = row_field(fields, list_name, row_index, "dag_method")?;
+    let method_name = method_name_from_dag_method(dag, dag_method, list_name, row_index)?;
+
+    let runtime_field = row_field(fields, list_name, row_index, "runtime_template")?;
     let runtime_template = match runtime_field {
         FieldValue::Literal(LiteralBits::String(s)) => s.clone(),
         other => {
@@ -279,28 +288,10 @@ fn row_fingerprint(
         }
     };
 
-    let (_, emit_field) = fields
-        .iter()
-        .find(|(label, _)| label == "emit_template")
-        .ok_or_else(
-            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: list_name.to_string(),
-                row_index,
-                detail: "missing `emit_template`".to_string(),
-            },
-        )?;
+    let emit_field = row_field(fields, list_name, row_index, "emit_template")?;
     let emit_canonical = emit_template_canonical(dag, emit_field)?;
 
-    let (_, wraps_field) = fields
-        .iter()
-        .find(|(label, _)| label == "wraps_result")
-        .ok_or_else(
-            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: list_name.to_string(),
-                row_index,
-                detail: "missing `wraps_result`".to_string(),
-            },
-        )?;
+    let wraps_field = row_field(fields, list_name, row_index, "wraps_result")?;
     let wraps_result = match wraps_field {
         FieldValue::Literal(LiteralBits::Bool(b)) => *b,
         other => {
@@ -312,16 +303,7 @@ fn row_fingerprint(
         }
     };
 
-    let (_, ph_field) = fields
-        .iter()
-        .find(|(label, _)| label == "placeholder_convention")
-        .ok_or_else(
-            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: list_name.to_string(),
-                row_index,
-                detail: "missing `placeholder_convention`".to_string(),
-            },
-        )?;
+    let ph_field = row_field(fields, list_name, row_index, "placeholder_convention")?;
     let FieldValue::Variant {
         constructor: ph_ctor,
         ..
