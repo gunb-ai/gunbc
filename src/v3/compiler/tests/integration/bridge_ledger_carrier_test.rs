@@ -239,9 +239,7 @@ fn bridge_ledger_zero_predicate_carries_only_ledger_declaration_ref() {
     let payload = dag.declaration(bridge_variant.ty);
     let labels: HashSet<String> = match &payload.connective {
         TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
-        other => panic!(
-            "BridgeLedgerZero payload must be a Conj record; got {other:?}"
-        ),
+        other => panic!("BridgeLedgerZero payload must be a Conj record; got {other:?}"),
     };
     let expected: HashSet<String> = ["ledger"].iter().map(|s| s.to_string()).collect();
     assert_eq!(
@@ -293,9 +291,7 @@ data suite: TestSuite = {
     assert_eq!(results.len(), 1);
     let reason = match &results[0].result {
         ClaimResult::Fail(reason) => reason.clone(),
-        other => panic!(
-            "expected `Fail` (open rows present at HEAD); got {other:?}"
-        ),
+        other => panic!("expected `Fail` (open rows present at HEAD); got {other:?}"),
     };
     // Diagnostic must name every currently-Open row so Verification
     // surfaces the residual debt. Source-of-truth status verdicts are

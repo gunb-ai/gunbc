@@ -2511,11 +2511,7 @@ impl<'a> TestRunner<'a> {
                 "BridgeLedgerZero: `BridgeStatus` must be a Disj coproduct".to_string(),
             );
         };
-        let Some(retired_ty) = variants
-            .iter()
-            .find(|v| v.label == "Retired")
-            .map(|v| v.ty)
-        else {
+        let Some(retired_ty) = variants.iter().find(|v| v.label == "Retired").map(|v| v.ty) else {
             return ClaimResult::Fail(
                 "BridgeLedgerZero: `BridgeStatus::Retired` variant missing".to_string(),
             );
