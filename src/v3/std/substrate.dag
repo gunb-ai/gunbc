@@ -536,21 +536,20 @@ type WorkflowRoot
 // identification for the equivalence target) and R2-Evaluator
 // (runtime entry-point identification) are the planned consumers.
 //
-// 🟡 BOUNDED STAGING SCAFFOLD on the realization side. The
-// declaration + Rust impl + Rust-side consumer tests land here
-// (Prereq-3a); the per-target `SubstrateAccessorBinding` (e.g.,
-// `rust_workflow_root_port_accessor` in `src/v3/spec/rust.dag`,
-// same shape as `rust_lane2_workflow_accessor`) is intentionally
-// NOT in this PR. Trigger: when the first generated `.dag`
-// consumer references `workflow_root_port` (Prereq-3b
-// `fold_lens<C>` is the planned first consumer), the binding
-// lands atomically with that consumer — same staging discipline as
-// `lane2_workflow_at` (carrier + accessor + Rust impl landed first;
-// `rust_lane2_workflow_accessor` binding landed when emitter
-// consumed it). Until then `Dag::workflow_root_port` is callable
-// from hand-written Rust (the four acceptance tests), and the
-// emitter path fails closed with a clear error if a `.dag`
-// consumer references the accessor without a binding.
+// 🟡 BOUNDED STAGING on the realization side. The declaration +
+// Rust impl + Rust binding (`rust_workflow_root_port_accessor` +
+// `workflow_root_port_binding_rust` in `src/v3/spec/rust.dag`) land
+// in Prereq-3a (this PR), which puts the accessor in
+// `substrate_accessor_universe` so any `.dag` consumer that
+// references it lowers to the Rust template. Per-target
+// Python/Go bindings are NOT in this PR. Trigger: when a Python
+// or Go emitter first consumes `workflow_root_port`, the
+// corresponding `SubstrateAccessorBinding` lands atomically with
+// that consumer — same staging discipline as `lane2_workflow_at`
+// (Rust binding landed first because the lens runtime needs it;
+// other targets land when they emit a consumer). Today's path
+// fails closed at emit time for the unbound targets via
+// `EmitError::MissingSubstrateAccessorRealization`.
 fn workflow_root_port(d: Dag) -> WorkflowRoot {
   host workflow_root_port
 }
