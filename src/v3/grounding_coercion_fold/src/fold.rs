@@ -32,6 +32,9 @@ fn fold_design_doc_example_2_semiring_u32() -> Result<TargetInhabitance, Emissio
 ///   [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 /// - [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples): runs
 ///   design-doc Examples 1–2 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`.
+///   **Checkpoint:** ignores `_dag` and `_lifetime_facts` by design; do not widen this arm to
+///   multiple bindings or real program facts without landing the declared projection / dissolution
+///   path first (#1133 / #1286).
 pub fn fold_program_to_target(
     _dag: &Dag,
     _lifetime_facts: &LifetimeAnalysisReport,
