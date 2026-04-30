@@ -132,131 +132,86 @@ fn assert_lockstep_disj(type_name: &str, expected_variant_labels: &[&str]) {
 
 #[test]
 fn anthropic_chat_message_variants_match_v2_source() {
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = disj_variant_labels(&dag, "AnthropicChatMessage")
-        .into_iter()
-        .collect();
-    let expected: HashSet<String> = ["UserMessage", "AssistantMessage"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(
-        labels, expected,
-        "AnthropicChatMessage variants must mirror v2 source exactly."
-    );
-    assert_v2_declares_type("AnthropicChatMessage");
+    assert_lockstep_disj("AnthropicChatMessage", &["UserMessage", "AssistantMessage"]);
 }
 
 #[test]
 fn anthropic_user_content_block_variants_match_v2_source() {
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = disj_variant_labels(&dag, "AnthropicUserContentBlock")
-        .into_iter()
-        .collect();
-    let expected: HashSet<String> = ["UserTextBlock", "UserToolResultBlock"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(
-        labels, expected,
-        "AnthropicUserContentBlock variants must mirror v2 source exactly."
+    assert_lockstep_disj(
+        "AnthropicUserContentBlock",
+        &["UserTextBlock", "UserToolResultBlock"],
     );
-    assert_v2_declares_type("AnthropicUserContentBlock");
 }
 
 #[test]
 fn anthropic_assistant_content_block_variants_match_v2_source() {
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = disj_variant_labels(&dag, "AnthropicAssistantContentBlock")
-        .into_iter()
-        .collect();
-    let expected: HashSet<String> = ["AssistantTextBlock", "AssistantToolUseBlock"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(
-        labels, expected,
-        "AnthropicAssistantContentBlock variants must mirror v2 source exactly."
+    assert_lockstep_disj(
+        "AnthropicAssistantContentBlock",
+        &["AssistantTextBlock", "AssistantToolUseBlock"],
     );
-    assert_v2_declares_type("AnthropicAssistantContentBlock");
 }
 
 #[test]
 fn anthropic_stop_reason_variants_match_v2_source() {
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = disj_variant_labels(&dag, "AnthropicStopReason")
-        .into_iter()
-        .collect();
-    let expected: HashSet<String> = [
-        "EndTurn",
-        "MaxTokens",
-        "StopSequence",
-        "ToolUse",
-        "PauseTurn",
-        "Refusal",
-        "ModelContextWindowExceeded",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    assert_eq!(
-        labels, expected,
-        "AnthropicStopReason variants must mirror Anthropic's closed \
-         API enum byte-for-byte against the v2 source."
+    assert_lockstep_disj(
+        "AnthropicStopReason",
+        &[
+            "EndTurn",
+            "MaxTokens",
+            "StopSequence",
+            "ToolUse",
+            "PauseTurn",
+            "Refusal",
+            "ModelContextWindowExceeded",
+        ],
     );
-    assert_v2_declares_type("AnthropicStopReason");
 }
 
 #[test]
 fn anthropic_messages_200_text_block_fields_match_v2_source() {
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = conj_field_labels(&dag, "AnthropicMessages200TextBlock")
-        .into_iter()
-        .collect();
-    let expected: HashSet<String> = ["type", "text"].iter().map(|s| s.to_string()).collect();
-    assert_eq!(labels, expected);
-    assert_v2_declares_type("AnthropicMessages200TextBlock");
+    assert_lockstep_record("AnthropicMessages200TextBlock", &["type", "text"]);
 }
 
 #[test]
 fn anthropic_messages_200_usage_fields_match_v2_source() {
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = conj_field_labels(&dag, "AnthropicMessages200Usage")
-        .into_iter()
-        .collect();
-    let expected: HashSet<String> = ["input_tokens", "output_tokens"]
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
-    assert_eq!(labels, expected);
-    assert_v2_declares_type("AnthropicMessages200Usage");
+    assert_lockstep_record(
+        "AnthropicMessages200Usage",
+        &["input_tokens", "output_tokens"],
+    );
 }
 
 #[test]
 fn anthropic_messages_200_body_fields_match_v2_source() {
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = conj_field_labels(&dag, "AnthropicMessages200Body")
-        .into_iter()
-        .collect();
-    let expected: HashSet<String> = [
-        "id",
-        "type",
-        "role",
-        "content",
-        "model",
-        "stop_reason",
-        "stop_sequence",
-        "usage",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
-    assert_eq!(
-        labels, expected,
-        "AnthropicMessages200Body field set must mirror v2 source \
-         (`AnthropicMessages200Body` in `dsl/extdeps/llm/anthropic.dag`)."
+    assert_lockstep_record(
+        "AnthropicMessages200Body",
+        &[
+            "id",
+            "type",
+            "role",
+            "content",
+            "model",
+            "stop_reason",
+            "stop_sequence",
+            "usage",
+        ],
     );
-    assert_v2_declares_type("AnthropicMessages200Body");
+}
+
+#[test]
+fn anthropic_optional_fields_remain_optional_in_v2_source() {
+    // Text-lockstep on the `?` suffix in the v2 source. Structural
+    // inspection of v3 optional `Cardinality(AtMostOne, T)` payload via
+    // `TypeConnective` is possible but adds traversal helpers this
+    // prerequisite slice does not need yet — the `?` syntax in the v2
+    // source is the load-bearing fact (it carries optionality intent
+    // into the operation row), and asserting it textually is sufficient
+    // for the lockstep ratchet. Richer structural assertions land with
+    // the operation-row precursor that consumes these types.
+    //
+    // `is_error: Bool?` lives on `AnthropicUserContentBlock::UserToolResultBlock`.
+    assert_v2_block_contains("AnthropicUserContentBlock", "is_error: Bool?");
+    // `stop_sequence: String?` lives on `AnthropicMessages200Body`.
+    assert_v2_block_contains("AnthropicMessages200Body", "stop_sequence: String?");
 }
 
 #[test]
