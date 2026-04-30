@@ -10,6 +10,8 @@
 - [`ROADMAP.md`](../ROADMAP.md) — §"Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" (PR #764 checklist); §"Post-merge debt (2026-04-25 reflective + exploratory analyses)" → **Filename / sentinel bridges in `test_runner.rs`** and **B4 bridge-retirement queue** (identity-carrier sequencing).
 - **Not found at authoring time:** `ROADMAP.md` has no subsection titled `### Post-merge debt (2026-04-30 analyses)` — use the 2026-04-25 post-merge block above for the closest ledger alignment on `test_runner` bridges.
 
+**In-tree scope (merge readiness):** The inventory of Rust predicate/producer behavior is grounded only in **`src/v3/compiler/src/test_runner.rs`** as present on `main`. **`docs/briefs/r2-evaluator-manager.md`** and **`ROADMAP.md`** are in-tree cross-reads (headings quoted above resolve under those paths). **[PR #1315](https://github.com/gunb-ai/gunbc/pull/1315)** and **`docs/briefs/r2-pr-b-2-runner-extension-bundle.md`** name the **bundle consumer** for forward dissolution coordination; that brief may be absent on `main` until PR #1315 merges — it is **not** evidence this audit depends on out-of-tree artifacts for its factual claims about the current runner.
+
 ---
 
 ## 1. Problem statement (Director discipline)
