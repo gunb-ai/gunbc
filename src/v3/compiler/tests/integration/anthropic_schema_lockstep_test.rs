@@ -129,7 +129,7 @@ fn v2_record_fields(name: &str) -> Vec<(String, bool)> {
     let mut out = Vec::new();
     // Split on either newline or comma; each piece is one field (or
     // empty/whitespace).
-    for piece in body.split(|c: char| c == '\n' || c == ',') {
+    for piece in body.split(['\n', ',']) {
         let trimmed = piece.trim();
         if trimmed.is_empty() || trimmed.starts_with("//") {
             continue;
