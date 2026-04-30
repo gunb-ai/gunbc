@@ -50,7 +50,14 @@ fn dag_shape_lens_data_instance_lowers_structurally() {
     let labels: Vec<&str> = fields.iter().map(|(label, _)| label.as_str()).collect();
     assert_eq!(
         labels,
-        ["name", "read", "sequential", "branch", "iterate", "validate"]
+        [
+            "name",
+            "read",
+            "sequential",
+            "branch",
+            "iterate",
+            "validate"
+        ]
     );
 
     for expected in [

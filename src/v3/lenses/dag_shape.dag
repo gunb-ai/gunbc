@@ -38,54 +38,47 @@ type DagShapeReport {
 }
 
 data empty_dag_shape_report: DagShapeReport = {
-  declarations: empty()
-  nodes: empty()
-  ports: empty()
-  clusters: empty()
+  declarations: []
+  nodes: []
+  ports: []
+  clusters: []
 }
 
-fn dag_shape_report(d: Dag) -> DagShapeReport {
+fn dag_shape_report(d: Dag) -> DagShapeReport =
   {
     declarations: d.declarations
     nodes: d.nodes
     ports: d.ports
     clusters: d.clusters
   }
-}
 
-fn dag_shape_node_report(b: Behavior) -> DagShapeReport {
+fn dag_shape_node_report(b: Behavior) -> DagShapeReport =
   {
     declarations: empty()
     nodes: cons(b, empty())
     ports: empty()
     clusters: empty()
   }
-}
 
-fn combine_dag_shape_reports(left: DagShapeReport, right: DagShapeReport) -> DagShapeReport {
+fn combine_dag_shape_reports(left: DagShapeReport, right: DagShapeReport) -> DagShapeReport =
   {
     declarations: concat(left.declarations, right.declarations)
     nodes: concat(left.nodes, right.nodes)
     ports: concat(left.ports, right.ports)
     clusters: concat(left.clusters, right.clusters)
   }
-}
 
-fn dag_shape_read(_d: Dag, b: Behavior) -> Witness<DagShapeReport> {
+fn dag_shape_read(_d: Dag, b: Behavior) -> Witness<DagShapeReport> =
   Inhabits(dag_shape_node_report(b))
-}
 
-fn dag_shape_branch(left: DagShapeReport, right: DagShapeReport) -> DagShapeReport {
+fn dag_shape_branch(left: DagShapeReport, right: DagShapeReport) -> DagShapeReport =
   combine_dag_shape_reports(left, right)
-}
 
-fn dag_shape_iterate(body: DagShapeReport, _bound: LoopBound) -> DagShapeReport {
+fn dag_shape_iterate(body: DagShapeReport, _bound: LoopBound) -> DagShapeReport =
   body
-}
 
-fn dag_shape_validate(_d: Dag, _report: DagShapeReport) -> OptionalDiagnostic {
+fn dag_shape_validate(_d: Dag, _report: DagShapeReport) -> OptionalDiagnostic =
   NoDiagnostic
-}
 
 data dag_shape_report_monoid: Monoid<DagShapeReport> = {
   op: combine_dag_shape_reports
