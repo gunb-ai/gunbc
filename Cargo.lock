@@ -681,6 +681,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "v3-grounding-coercion-fold"
+version = "0.1.0"
+dependencies = [
+ "v3-compiler",
+ "v3-grounding-lifetime",
+]
+
+[[package]]
 name = "v3-grounding-engine"
 version = "0.1.0"
 dependencies = [
