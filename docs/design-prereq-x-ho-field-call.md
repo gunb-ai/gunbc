@@ -352,7 +352,7 @@ one of them requires a substrate extension:
   No builder + debug-assert ratchet; cardinality and target/callee
   compatibility are both expressed in `TransformDispatch`'s shape.
   The constructor APIs (`Dag::push_callable_transform(...)`,
-  `Dag::push_indirect_call_transform(...)`, etc.) become
+  `Dag::push_indirect_transform(...)`, etc.) become
   ergonomic helpers, not invariant-defenders — the type rejects
   malformed combinations at construction by definition.
 
