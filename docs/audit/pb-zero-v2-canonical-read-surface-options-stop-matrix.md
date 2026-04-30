@@ -16,7 +16,17 @@ This document compares **candidate read surfaces** only; it does **not** select 
 
 ## Routing: substrate vs PB territory
 
-Substrate-owned **snapshot format**, **carrier shape**, or **first-hook** placement for facts that must not fork between Grounding, emit retirement, and PB bootstrap work is **not** something PB documentation may invent here. Route those decisions through **[`INVARIANTS.md`](../../INVARIANTS.md)** using **grep-stable anchors** on the **repository-root** home-of-record (the **P1–P5 principles live here as `## P1` … `## P5` headings**; per-file rule IDs such as `INVARIANTS.md#c-8` and long-form split-outs under [`docs/invariants/`](../invariants/) are **separate** navigation surfaces). **## P1: Modeling Faithfulness** (section heading ~L23; subsections *Problem shape: Unnamed substrate target* ~L86 and *Procedure: substrate-fact introduction* ~L94 appear **under** that **P1** section, not adjacent to the heading line) and, when single-consumer / no-duplicate-authority is at issue, **## P2: Boundary Discipline** (section heading ~L144; *Problem shape: Parallel authority* ~L152 under **P2**). **[`docs/modeling-discipline.md`](../modeling-discipline.md)** maps modeling practices to those **P1**/**P2** headings for checklist-style review. **R2 Substrate Manager** / Grounding briefs are the owning intake; see **[`docs/briefs/r2-substrate-manager.md`](../briefs/r2-substrate-manager.md)**.
+Substrate-owned **snapshot format**, **carrier shape**, or **first-hook** placement for facts that must not fork between Grounding, emit retirement, and PB bootstrap work is **not** something PB documentation may invent here. Route those decisions through **[`INVARIANTS.md`](../../INVARIANTS.md)** (repository root — **P1–P5** are the top-level `##` sections there; per-rule IDs such as `INVARIANTS.md#c-8` and long-form split-outs under [`docs/invariants/`](../invariants/) are **separate** navigation surfaces).
+
+Use these **verbatim markdown heading lines** from `INVARIANTS.md` as `rg` anchors (approximate line numbers on `main` at authoring time):
+
+- `## P1: Modeling Faithfulness` (~L23)
+- `### Problem shape: Unnamed substrate target` (~L86)
+- `### Procedure: substrate-fact introduction (decision procedure for new modeling)` (~L94)
+- `## P2: Boundary Discipline` (~L144)
+- `### Problem shape: Parallel authority` (~L152)
+
+[`docs/modeling-discipline.md`](../modeling-discipline.md) maps modeling practices to those **P1**/**P2** headings for checklist-style review. **R2 Substrate Manager** / Grounding briefs are the owning intake; see **[`docs/briefs/r2-substrate-manager.md`](../briefs/r2-substrate-manager.md)**.
 
 PB-Zero / **(γ)** program context remains [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) (bootstrap-as-data; build-step break of chicken-and-egg).
 
