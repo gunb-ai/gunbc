@@ -119,6 +119,7 @@ Authored:
 - [`r2-pb-tier3-mirror-dissolution-workers.md`](r2-pb-tier3-mirror-dissolution-workers.md) — termination, computation, induction, and effect-carrier mirror dissolution worker pack.
 - [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) — T-FixedPoint planning artifact (PROPOSAL; dispatch-gated on R2-Evaluator + SG-0=0 from T-LensProducer-Retirement).
 - [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md) — BinShim instances + emit pattern + retirement dispatch planning artifact (PROPOSAL; dispatch-gated on R2-Evaluator + Item 4 PB-Runtime + Substrate-owned `BinShim` carrier + §7.3 `CensusListConstant`/filter disposition).
+- [`r2-pb-runtime-evaluator-convergence-matrix.md`](r2-pb-runtime-evaluator-convergence-matrix.md) — PB-Runtime ↔ R2-Evaluator convergence verification matrix (audit; docs-only) mapping `design-pb-runtime-interpreter.md` §§2, 3.2, 5.4, 6, 7.1 obligations onto R2-Evaluator surfaces + prerequisite state for #1231 / PR-A.1.
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map` consumer plumbing)
