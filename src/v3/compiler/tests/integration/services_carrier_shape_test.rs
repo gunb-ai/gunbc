@@ -104,27 +104,55 @@ fn operation_carries_only_callable_inputs_endpoint() {
 }
 
 #[test]
-fn operation_callable_field_is_declaration_ref() {
+fn operation_callable_field_is_callable_ref_wrapper() {
     // Operation-to-callable identity must be carried structurally as
-    // `DeclarationRef` from `v3.spec.v3_l1`, mirroring the `MethodRef`
-    // discipline in `v3.std.methods` and `MethodTemplateContract.dag_method`
-    // in `v3.std.emit_model`. A `name: String` field here would re-introduce
-    // the parallel-representation drift the dispatch's "typed operation
+    // `CallableRef` (typed wrapper around `DeclarationRef`), mirroring the
+    // `MethodRef` discipline in `v3.std.methods` and `MethodTemplateContract.
+    // dag_method` in `v3.std.emit_model`. A bare `DeclarationRef` field
+    // would admit any declaration at the type level — same residual the
+    // wrapper bounds. A `name: String` field would re-introduce the
+    // parallel-representation drift the dispatch's "typed operation
     // identity witness" requirement explicitly forbids.
     let dag = generated_full_bootstrap_dag();
     let callable_ty = conj_field_ty(&dag, "Operation", "callable");
     let callable_decl = dag.declaration(callable_ty);
     assert_eq!(
         callable_decl.name.as_deref(),
-        Some("DeclarationRef"),
-        "`Operation.callable` must point at `DeclarationRef`; got {:?}",
+        Some("CallableRef"),
+        "`Operation.callable` must point at `CallableRef`; got {:?}",
         callable_decl.name
     );
     assert_eq!(
-        callable_decl.span.file, "src/v3/spec/v3_l1.dag",
-        "`Operation.callable` must point at the `DeclarationRef` authority \
-         in `src/v3/spec/v3_l1.dag`. Found in: {}.",
+        callable_decl.span.file, "src/v3/std/services.dag",
+        "`Operation.callable` must point at the `CallableRef` wrapper \
+         declared in `src/v3/std/services.dag`. Found in: {}.",
         callable_decl.span.file
+    );
+    // `CallableRef` itself wraps a single `decl: DeclarationRef` field —
+    // mirror of `MethodRef` in `v3.std.methods`.
+    let labels: HashSet<String> = conj_field_labels(&dag, "CallableRef")
+        .into_iter()
+        .collect();
+    let expected: HashSet<String> = ["decl"].iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        labels, expected,
+        "`CallableRef` must wrap a single `decl: DeclarationRef` field, \
+         mirroring `MethodRef`."
+    );
+    let decl_field_ty = conj_field_ty(&dag, "CallableRef", "decl");
+    let decl_field_decl = dag.declaration(decl_field_ty);
+    assert_eq!(
+        decl_field_decl.name.as_deref(),
+        Some("DeclarationRef"),
+        "`CallableRef.decl` must be `DeclarationRef` from `v3.spec.v3_l1`; \
+         got {:?}",
+        decl_field_decl.name
+    );
+    assert_eq!(
+        decl_field_decl.span.file, "src/v3/spec/v3_l1.dag",
+        "`CallableRef.decl` must point at `DeclarationRef` in \
+         `src/v3/spec/v3_l1.dag`. Found in: {}.",
+        decl_field_decl.span.file
     );
 }
 
