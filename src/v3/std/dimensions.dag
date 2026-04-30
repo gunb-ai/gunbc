@@ -42,6 +42,18 @@ type OptionalDiagnostic
   = NoDiagnostic
   | SomeDiagnostic { value: Diagnostic }
 
+fn witness_inhabits<Carrier>(carrier: Carrier) -> Witness<Carrier> =
+  Inhabits(carrier)
+
+fn witness_violates<Carrier>(
+  reason: String,
+  at: Behavior
+) -> Witness<Carrier> =
+  Violates { reason: reason, at: at }
+
+fn no_diagnostic() -> OptionalDiagnostic =
+  NoDiagnostic
+
 // 🟢 TERMINAL. Aggregate result from `analyze` (DB-3 §Dimension evaluation).
 //
 // Pass/fail partition: a successful proof carries `composed`; a failed
