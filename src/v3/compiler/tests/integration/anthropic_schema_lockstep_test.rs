@@ -263,7 +263,7 @@ fn parse_v2_brace_body_fields(body: &str) -> Vec<V2Field> {
             None => ty_text_raw,
         };
         let is_optional = ty_text.ends_with('?');
-        out.push((label, is_optional));
+        out.push((label, normalize_ty_text(ty_text), is_optional));
     }
     out
 }
@@ -275,7 +275,7 @@ fn parse_v2_brace_body_fields(body: &str) -> Vec<V2Field> {
 /// content: String, is_error: Bool? }`). Handles both inline
 /// (`type X = A | B | C`) and multi-line (`type X\n  = Foo { … }\n  | Bar { … }`)
 /// shapes.
-type V2VariantPayload = Option<Vec<(String, bool)>>;
+type V2VariantPayload = Option<Vec<V2Field>>;
 
 fn v2_disj_variants(name: &str) -> Vec<(String, V2VariantPayload)> {
     let block = v2_type_block(name);
@@ -342,14 +342,17 @@ fn v2_disj_variants(name: &str) -> Vec<(String, V2VariantPayload)> {
     out
 }
 
+/// `(field_label, canonical_ty, is_optional)` for a v3 variant payload field.
+type V3PayloadField = (String, String, bool);
+
 /// Walk the v3 variant payload's Conj declaration and return its
-/// `(field_label, is_optional)` set. Returns `None` if the variant has
-/// no record payload (`Atom`/empty Conj).
+/// `(field_label, canonical_ty, is_optional)` set. Returns `None` if
+/// the variant has no record payload (`Atom`/empty Conj).
 fn v3_variant_payload_fields(
     dag: &Dag,
     parent_name: &str,
     variant_label: &str,
-) -> Option<Vec<(String, bool)>> {
+) -> Option<Vec<V3PayloadField>> {
     let parent = dag
         .declaration_by_name(parent_name)
         .unwrap_or_else(|| panic!("`{parent_name}` missing from full bootstrap"));
@@ -373,7 +376,8 @@ fn v3_variant_payload_fields(
                         TypeConnective::Cardinality(p)
                             if p.bound() == CardinalityBound::AtMostOne
                     );
-                    (f.label.clone(), optional)
+                    let ty_canonical = v3_canonical_ty(dag, f.ty);
+                    (f.label.clone(), ty_canonical, optional)
                 })
                 .collect(),
         ),
@@ -387,7 +391,7 @@ fn assert_record_lockstep(type_name: &str) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: BTreeSet<String> = conj_field_labels(&dag, type_name).into_iter().collect();
     let v2_fields = v2_record_fields(type_name);
-    let v2_labels: BTreeSet<String> = v2_fields.iter().map(|(l, _)| l.clone()).collect();
+    let v2_labels: BTreeSet<String> = v2_fields.iter().map(|(l, _, _)| l.clone()).collect();
     assert_eq!(
         v3_labels,
         v2_labels,
@@ -398,10 +402,10 @@ fn assert_record_lockstep(type_name: &str) {
         v3_labels.difference(&v2_labels).collect::<Vec<_>>(),
         v2_labels.difference(&v3_labels).collect::<Vec<_>>()
     );
-    // Structural optionality: each v2-`T?` field must lower as
-    // `Cardinality(AtMostOne, _)` on the v3 mirror, and each v2-`T`
-    // field must NOT.
-    for (label, v2_optional) in &v2_fields {
+    for (label, v2_ty, v2_optional) in &v2_fields {
+        // Structural optionality: each v2-`T?` field must lower as
+        // `Cardinality(AtMostOne, _)` on the v3 mirror, and each v2-`T`
+        // field must NOT.
         let v3_optional = v3_field_is_optional(&dag, type_name, label);
         assert_eq!(
             v3_optional,
@@ -418,6 +422,16 @@ fn assert_record_lockstep(type_name: &str) {
             } else {
                 "non-optional"
             }
+        );
+        // Type-expression equality: canonicalized v3 carrier type must
+        // match the v2 source's normalized type text, including
+        // generic args (`List<X>`) and optionality marker (`X?`).
+        let v3_ty = v3_canonical_ty(&dag, conj_field_ty(&dag, type_name, label));
+        assert_eq!(
+            &v3_ty, v2_ty,
+            "lockstep type-expression drift on `type {type_name}.{label}`: \
+             v2 source declares `{v2_ty}` but v3 mirror canonicalizes as \
+             `{v3_ty}`."
         );
     }
 }
@@ -444,8 +458,10 @@ fn assert_disj_lockstep(type_name: &str) {
         match (v2_payload, v3_payload) {
             (None, None) => {}
             (Some(v2_fields), Some(v3_fields)) => {
-                let v2_set: BTreeSet<String> = v2_fields.iter().map(|(l, _)| l.clone()).collect();
-                let v3_set: BTreeSet<String> = v3_fields.iter().map(|(l, _)| l.clone()).collect();
+                let v2_set: BTreeSet<String> =
+                    v2_fields.iter().map(|(l, _, _)| l.clone()).collect();
+                let v3_set: BTreeSet<String> =
+                    v3_fields.iter().map(|(l, _, _)| l.clone()).collect();
                 assert_eq!(
                     v3_set,
                     v2_set,
@@ -455,14 +471,14 @@ fn assert_disj_lockstep(type_name: &str) {
                     v3_set.difference(&v2_set).collect::<Vec<_>>(),
                     v2_set.difference(&v3_set).collect::<Vec<_>>()
                 );
-                for (label, v2_optional) in v2_fields {
-                    let v3_optional = v3_fields
+                for (label, v2_ty, v2_optional) in v2_fields {
+                    let v3_field = v3_fields
                         .iter()
-                        .find(|(l, _)| l == label)
-                        .map(|(_, o)| *o)
-                        .unwrap_or(false);
+                        .find(|(l, _, _)| l == label)
+                        .expect("set equality above guarantees presence");
+                    let (_, v3_ty, v3_optional) = v3_field;
                     assert_eq!(
-                        v3_optional,
+                        *v3_optional,
                         *v2_optional,
                         "lockstep optionality drift on \
                          `type {type_name}::{variant_label}.{label}`: v2 marks it {} \
@@ -472,11 +488,17 @@ fn assert_disj_lockstep(type_name: &str) {
                         } else {
                             "required (`T`)"
                         },
-                        if v3_optional {
+                        if *v3_optional {
                             "Cardinality(AtMostOne, _)"
                         } else {
                             "non-optional"
                         }
+                    );
+                    assert_eq!(
+                        v3_ty, v2_ty,
+                        "lockstep type-expression drift on \
+                         `type {type_name}::{variant_label}.{label}`: \
+                         v2 declares `{v2_ty}` but v3 canonicalizes as `{v3_ty}`."
                     );
                 }
             }
