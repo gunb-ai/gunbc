@@ -351,10 +351,8 @@ fn m17_dag_corpus_brace_fn_stays_fn_external_body_at_parse_time() {
     // stability and `ArrowBody::Unparsed` contracts for std/ remain
     // unchanged until an explicit corpus opt-in regen.
     let src = "fn staged(x: Int) -> Int {\n  match x { A => 1 }\n}";
-    let tokens =
-        v3_compiler::tokenize_for_test(src, "src/v3/std/corpus.dag").expect("tokenize");
-    let module =
-        v3_compiler::parse_for_test(&tokens, "src/v3/std/corpus.dag").expect("parse");
+    let tokens = v3_compiler::tokenize_for_test(src, "src/v3/std/corpus.dag").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "src/v3/std/corpus.dag").expect("parse");
     let item = module
         .items
         .iter()
@@ -2551,7 +2549,8 @@ fn witness_pick(b: Bool) -> Witness<Int> {
     match &dag.declaration(out).connective {
         TypeConnective::Instantiation { template, .. } => {
             assert_eq!(
-                *template, witness,
+                *template,
+                witness,
                 "return type should instantiate Witness<_>, got {:?}",
                 dag.declaration(out).connective
             );
@@ -2582,9 +2581,7 @@ fn no_diag() -> OptionalDiagnostic {
         TypeConnective::Instantiation { template, .. } => {
             assert_eq!(*template, opt);
         }
-        other => panic!(
-            "expected OptionalDiagnostic<_> instantiation, got {other:?}"
-        ),
+        other => panic!("expected OptionalDiagnostic<_> instantiation, got {other:?}"),
     }
 }
 
