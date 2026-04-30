@@ -124,3 +124,97 @@ type Diagnostic {
   message: String
   fixes: List<Correction>
 }
+
+// T-Ground-Diagnostic — substrate `EmissionDiagnostic` carrier
+// (per `docs/briefs/t-ground-diagnostic.md` + #1216 + #1133 dispatch
+// 4355793511). Closed sum of fold/emission failures the structural
+// emission lane (Coercion-Fold + Lifetime-Analyzer + Cross-Target-Meta
+// + downstream test crates) returns when emission cannot proceed.
+//
+// **Anti-bridge (Q6.5):** this is a SEPARATE carrier from
+// `CompilerDiagnosticKind` and `AnyDiagnosticKind`. Fold failures do
+// NOT extend `CompilerDiagnosticKind` (would violate Q6.5 + P2 single
+// authority). Mapping `EmissionDiagnostic` → runtime
+// `Diagnostic { kind: AnyDiagnosticKind, ... }` is a downstream
+// consumer concern (Coercion-Fold + emit pipeline), not authored here.
+//
+// **P1 receipts** (per `INVARIANTS.md:94-129`):
+//   - Step 1 (DAG-ancestor): home is `src/v3/std/diagnostics.dag` —
+//     existing diagnostic-types module hosts the sibling Layer-1
+//     `CompilerDiagnosticKind`, Layer-2 `LensInstanceKindWitness`, and
+//     two-layer `AnyDiagnosticKind` parent. `EmissionDiagnostic` is a
+//     fourth sibling sum: closed substrate-primitive carrier for
+//     emission-pipeline failures, parallel to but disjoint from the
+//     two-layer kind authority.
+//   - Step 2 (coproduct-vs-coordinate): variants are alternatives —
+//     one failure mode per fold-call. Resolution-hint payloads
+//     (e.g. `unspecified_axis: String`) are coordinates of the
+//     individual variant's record, not new arms.
+//   - Step 3 (primitive-vs-lens-extensible): substrate-primitive
+//     closed sum (compiler-internal fold/emission failures). NOT
+//     lens-extensible — extending requires substrate-amendment
+//     dispatch, parallel to `CompilerDiagnosticKind`.
+//
+// **Lane-local mirror migration receipts** (in flight per dispatch
+// 4355793511; substrate-side carrier lands here, downstream PRs
+// migrate the Rust mirrors):
+//   - `v3-grounding-lifetime` lane-local `EmissionDiagnostic` (#1206)
+//     — variants: `ContradictoryUse`, `UnderRefined`, `OutOfR2Scope`,
+//     `LifetimeProgramExtractionPending`. Migrates here.
+//   - `v3-grounding-coercion-fold` lane-local `EmissionDiagnostic`
+//     (#1241) — variant: `FoldNotImplemented`. Migrates here.
+//   - `v3-grounding-cross-target-meta` lane-local `EmissionDiagnostic`
+//     (#1271) — variant: `MissingEmissionPath`. Migrates here.
+//   - `v3-grounding-tests` lane-local `GroundingTestsDiagnostic`
+//     (#1274/#1289) — Stratum-A test-side variants kept lane-local
+//     for now (test-side outcomes carry test-specific shape; review
+//     for migration in a follow-up dispatch).
+type EmissionDiagnostic
+  // Program intent or structural axis under-specified; consumer
+  // authors a resolution hint via `unspecified_axis`. Covers
+  // worked Examples 1 (`unspecified_axis: "bound"` for unrefined
+  // `Int`) and 5 (`unspecified_axis: "algebra"` for algebra
+  // ambiguity) per `design-emission-model.md` ~417-464 / ~639-680.
+  // Lifetime-Analyzer also uses this for its axis-level
+  // under-determination (`growability` / `ownership` / `encoding`).
+  = UnderRefined { unspecified_axis: String }
+  // Substrate declares no candidate covering the program's stated
+  // refinement (Example 6 pattern; `design-emission-model.md`
+  // ~684-731). Distinct from `UnderRefined` which is "program is
+  // under-specified"; this is "substrate has no inhabitant for the
+  // specified refinement."
+  | NoInhabitant
+  // Lifetime-Analyzer: a binding's use sites contradict each other
+  // structurally (some require Owned, some require Borrowed, etc.).
+  // Names the binding + the conflicting sites for the resolution
+  // hint surface.
+  | ContradictoryUse { binding: String, sites: List<String> }
+  // Lifetime-Analyzer: program contains a construct outside R2
+  // structural-ownership scope (closures / async / Pin / etc.).
+  // Locked at `design-emission-model.md:635` to T-LensProducer-Retirement
+  // (R3 fold-in). The construct name surfaces so the user/test sees
+  // why the analyzer declined.
+  | OutOfR2Scope { construct: String }
+  // 🟡 TRANSITIONAL — Lifetime-Analyzer: `Dag` → `LifetimeProgram`
+  // extraction wiring gap. Returning `Ok(empty)` would silently drop
+  // load-bearing program shape (C-8). Detail string captures the
+  // wiring stage. **Retires when Dag-extraction lands** (per #1218 /
+  // #1247) — this variant is named here so the lane-local mirror
+  // can remove it from its sum at the same time.
+  | LifetimeProgramExtractionPending { detail: String }
+  // 🟡 TRANSITIONAL — Coercion-Fold: full structural fold not yet
+  // implemented; returning `Ok` would fabricate target choices
+  // (C-8 / engine-retraction discipline). **Retires when Coercion-Fold
+  // body lands** (per nimble-pike-489's Examples 1-7 dispatch) —
+  // variant is a stub-failure surface for the in-flight fold.
+  | FoldNotImplemented
+  // CrossTarget-Meta L6: `(connective × behavior × target)` cell has
+  // no LanguageSpec emission-path declaration. Each axis carries a
+  // string label (substrate-anchored discriminant; resolved against
+  // `TypeConnective` per #1229 anchor + `Behavior` per L1 model +
+  // Shape A targets per `r2-grounding-manager.md` portability set).
+  | MissingEmissionPath {
+      connective: String,
+      behavior: String,
+      target: String
+    }
