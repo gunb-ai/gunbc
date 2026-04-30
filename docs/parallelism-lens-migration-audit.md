@@ -2,7 +2,12 @@
 
 **Dispatch:** inbox #1130 / #4344943395 (parallelism.dag lens migration audit slice).  
 **Status:** PRE-IMPLEMENTATION — no `.dag` instance, no hand-Rust `Lens<C>` scaffolding.  
-**Shared blocker (confirmed):** real `data <lens>: Lens<C> = { ... }` requires **class-5 data-body / function-value lowering** plus **`fold_lens<C>`** (see `src/v3/std/lens.dag`, `src/v3/std/dimensions.dag`, ROADMAP / tidy-wolf-507). Do not fake the instance.
+**Current blocker (confirmed from HEAD 2026-04-30):** a real
+`data <lens>: Lens<C> = { ... }` still requires the **full
+`Lens<C>` / `DimensionReport<C>` fold** plus a settled workflow-scoped
+entry shape for Stage 2e. Function-valued record fields have a narrower
+path now, but that does **not** make `parallelism_lens` honest by itself.
+Do not fake the instance.
 
 ---
 
@@ -15,6 +20,7 @@
 | `src/v3/compiler/src/workflow_parallelism.rs` | **Authoritative Stage 2e analysis** (`analyze_parallelism(d, workflow_root)`). |
 | `src/v3/std/effects.dag` | Carriers: `WorkflowParallelismReport`, `ParallelismUnsupportedKind`, `CompositionVerdict`, `WorkflowEffect::ParallelEffect`. |
 | `docs/design-lens-framework.md` **§M4** | Acceptance: TestClaim `parallelism_lens_via_framework_correct`; retire placeholder after migration. |
+| `src/v3/compiler/src/lens_apply.rs` | `fold_lens_over_reflected_program` exists, but explicitly remains a reflect-then-apply seam; it does **not** perform generic `Lens<C>` / `DimensionReport<C>` aggregation. |
 
 ---
 
@@ -61,9 +67,21 @@ So: **branch-arm coverage is required** for the current algorithm, but **fine-gr
 
 ## 5. Blockers
 
-### 5.1 Shared prerequisite (blocking everyone)
+### 5.1 Shared prerequisite (blocking everyone, narrowed on HEAD)
 
-- **Class-5 lowering** for `data … Lens<…> = { … }` bodies + **`fold_lens<C>`** end-to-end. No workaround with hand-Rust lens instances or callable-form fakery.
+- **Function-valued record-field lowering is no longer the deepest
+  blocker in the non-generic case.** `lower_structural_field_value`
+  accepts value-level Arrow declarations when
+  `declaration_ref_types_equivalent` proves the expected Arrow
+  signature; `m2_feature_parity_test::test_3a2_lensish_int_carrier_lowers_branch_and_monoid_fn_refs`
+  pins the simple `branch` / nested `sequential.op` shape.
+- **Generic `Lens<C>` / `Monoid<C>` instance bodies remain blocked.**
+  `idempotency_lens_instance_blocker_test::generic_lens_monoid_function_field_refs_are_current_lowerer_gap`
+  still records the unresolved generic data-body path.
+- **The real fold is still absent.** `fold_lens_over_reflected_program`
+  reflects a program and applies a named Arrow lens, but its own API
+  comment keeps `Lens<C>` / `DimensionReport` aggregation out of scope.
+  No workaround with hand-Rust lens instances or callable-form fakery.
 
 ### 5.2 Additional substrate / design gap (beyond 5.1)
 
@@ -88,6 +106,43 @@ So: **branch-arm coverage is required** for the current algorithm, but **fine-gr
 
 **Explicit statement for acceptance:** there **is** an **extra design blocker** — **read-channel / entry-point mismatch** between **`Lens.read`** and **workflow-rooted `ParallelEffect` analysis** — **in addition to** the shared class-5 + `fold_lens<C>` prerequisite.
 
+### 5.3 Deepest gap after HEAD audit
+
+The deepest current gap is **not** the `.dag` stub body. It is the
+missing substrate shape that lets a `Lens<C>` fold consume **workflow-
+rooted, cross-branch evidence** without pretending that evidence is a
+per-`Behavior` fact.
+
+Current Stage 2e authority has these obligations:
+
+- Entry is `analyze_parallelism(d, workflow_root: NodeId)`, not a
+  rootless `fold_lens<C>(lens, d)` and not `read(d, behavior)` for every
+  behavior.
+- Evidence is a `WorkflowEffect::ParallelEffect` attached via
+  `lane2_workflow_at` to a `Value` / `Bind` root.
+- Branch evidence is cross-product shaped: every operation in branch A
+  must commute with every operation in branch B. A per-arm summary may be
+  possible, but it has not been proven as a `Monoid<C>` + `branch(C,C)`
+  algebra.
+- `NonLinearParallelBranch`, `PairwiseNonCommute`, and `BrokenBy` are
+  semantic outcomes, not missing-data defaults.
+
+Therefore the next honest substrate slice is one of these, chosen before
+implementation:
+
+1. **Workflow-scoped lens fold:** extend/name the fold target so a lens
+   instance can receive the workflow-root authority explicitly and call
+   `lane2_workflow_at(d, root)` without encoding the root as a magic
+   `Behavior`.
+2. **Parallelism summary carrier proof:** define a carrier whose `read`,
+   `sequential`, and `branch` operations genuinely factor the current
+   pairwise cross-branch algorithm. Acceptance requires showing that the
+   carrier reproduces all existing `lane2_stage_2e_parallelism_test`
+   cases without hidden global state.
+
+Until one of those lands, the only correct `.dag` behavior is the current
+`LensSurfacePending` fail-closed stub.
+
 ---
 
 ## 6. M4 implementation checklist (post-prerequisites)
@@ -102,6 +157,26 @@ Use after class-5 + `fold_lens<C>` land; order is suggestive, not a commitment.
 6. **Add** TestClaim **`parallelism_lens_via_framework_correct`** per **M4**; extend `lane2_stage_2e_parallelism_test.rs` to compare against **frozen** oracle vectors (same discipline as other lens migrations).
 7. **Retire** placeholder `LensSurfacePending` path for the migrated entrypoint once `.dag` path is green.
 8. **SG-0 / manifest** if new hand-authored files appear; **regen_bootstrap** if `effects.dag` / `lens.dag` shapes change.
+
+### 6.1 Acceptance criteria for the next substrate slice
+
+- `parallelism.dag` stops returning `LensSurfacePending` only in the same
+  PR that adds an executable `.dag` path for the Stage 2e cases.
+- The executable path reads `WorkflowEffect` through `lane2_workflow_at`
+  or a named workflow-root fold authority. No `SourceSpan.file`, stringly
+  root selection, or fabricated per-Behavior witness stands in for root
+  identity.
+- Existing Rust oracle vectors in
+  `lane2_stage_2e_parallelism_test.rs` are mirrored by a
+  `parallelism_lens_via_framework_correct` claim/test before
+  `workflow_parallelism.rs` can be retired or demoted.
+- Upsert x Upsert remains fail-closed until a merge/value witness exists
+  on the operation/resource substrate; the lens must not infer
+  commutativity from operation-name equality or matching `KeySource`
+  alone.
+- Nested `BranchEffect` / `LoopEffect` inside a `ParallelEffect` branch
+  remains explicit `NonLinearParallelBranch` unless the same PR adds the
+  operation-effect/resource-threading carrier needed to analyze it.
 
 ---
 
