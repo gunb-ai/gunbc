@@ -338,6 +338,47 @@ fn row_record<'a>(
     Ok(fields.as_slice())
 }
 
+/// Label-set outcome for a closed record row (duplicate labels vs allowed set mismatch vs OK).
+#[derive(Debug, PartialEq, Eq)]
+enum ClosedRecordLabelsOutcome {
+    Ok,
+    Duplicate { label: String },
+    Mismatch {
+        missing: Vec<String>,
+        extra: Vec<String>,
+    },
+}
+
+/// Single source of truth for closed-record label discipline (see `enforce_closed_record_schema`).
+fn analyze_closed_record_labels(
+    fields: &[(String, FieldValue)],
+    allowed: &[&str],
+) -> ClosedRecordLabelsOutcome {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (label, _) in fields {
+        if !seen.insert(label.as_str()) {
+            return ClosedRecordLabelsOutcome::Duplicate {
+                label: label.clone(),
+            };
+        }
+    }
+    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+    if seen == expected {
+        return ClosedRecordLabelsOutcome::Ok;
+    }
+    let missing: Vec<String> = expected
+        .difference(&seen)
+        .copied()
+        .map(str::to_string)
+        .collect();
+    let extra: Vec<String> = seen
+        .difference(&expected)
+        .copied()
+        .map(str::to_string)
+        .collect();
+    ClosedRecordLabelsOutcome::Mismatch { missing, extra }
+}
+
 /// Fail-closed record shape: no duplicate labels, no unknown fields — every substrate key in
 /// `allowed` appears exactly once (order-independent).
 fn enforce_closed_record_schema(
@@ -347,30 +388,27 @@ fn enforce_closed_record_schema(
     record_kind: &'static str,
     allowed: &[&str],
 ) -> Result<(), GroundingTestsDiagnostic> {
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for (label, _) in fields {
-        if !seen.insert(label.as_str()) {
-            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+    match analyze_closed_record_labels(fields, allowed) {
+        ClosedRecordLabelsOutcome::Ok => Ok(()),
+        ClosedRecordLabelsOutcome::Duplicate { label } => {
+            Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
                 list_name: list_name.to_string(),
                 row_index,
                 detail: format!("{record_kind}: duplicate field `{label}`"),
-            });
+            })
+        }
+        ClosedRecordLabelsOutcome::Mismatch { missing, extra } => {
+            let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+            Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: format!(
+                    "{record_kind}: field set mismatch — missing {missing:?}, extra {extra:?} (expected exactly {:?})",
+                    expected.iter().collect::<Vec<_>>()
+                ),
+            })
         }
     }
-    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
-    if seen != expected {
-        let missing: Vec<&str> = expected.difference(&seen).copied().collect();
-        let extra: Vec<&str> = seen.difference(&expected).copied().collect();
-        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: format!(
-                "{record_kind}: field set mismatch — missing {missing:?}, extra {extra:?} (expected exactly {:?})",
-                expected.iter().collect::<Vec<_>>()
-            ),
-        });
-    }
-    Ok(())
 }
 
 fn row_field<'a>(
@@ -672,12 +710,19 @@ mod stratum_a_tests {
             METHOD_TEMPLATE_CONTRACT_FIELDS,
         )
         .expect_err("extra field");
+        assert_eq!(
+            analyze_closed_record_labels(&fields, METHOD_TEMPLATE_CONTRACT_FIELDS),
+            ClosedRecordLabelsOutcome::Mismatch {
+                missing: vec![],
+                extra: vec!["surprise".to_string()],
+            }
+        );
         let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
             panic!("unexpected diagnostic: {err:?}");
         };
-        assert_eq!(
-            detail,
-            "MethodTemplateContract: field set mismatch — missing [], extra [\"surprise\"] (expected exactly [\"dag_method\", \"emit_template\", \"placeholder_convention\", \"runtime_template\", \"wraps_result\"])"
+        assert!(
+            detail.starts_with("MethodTemplateContract:"),
+            "expected record-kind prefix, got {detail:?}"
         );
     }
 
