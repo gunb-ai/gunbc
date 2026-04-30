@@ -342,6 +342,25 @@ fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
 }
 
 #[test]
+fn test_3a2_record_data_rejects_type_alias_as_function_ref_value() {
+    let src = "\
+        type Callback = fn(Int) -> Int\n\
+        type MiniLensShape {
+          read: fn(Int) -> Int
+        }\n\
+        data bad_lens_like: MiniLensShape = { read: Callback }";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("type-level function alias must not lower as a value-level function reference");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic error for type alias used as value, got {err:?}");
+    };
+    assert!(
+        dag.declaration_by_name("bad_lens_like").is_some(),
+        "semantic error should preserve the rejected data declaration for diagnostics"
+    );
+}
+
+#[test]
 fn test_3a2_data_field_access_resolves_statically() {
     // Acceptance (DB-10, lowering-time inlining): `cfg.host` inside
     // a fn body must resolve to the record-literal field's value at

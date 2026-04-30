@@ -3402,7 +3402,9 @@ fn lower_structural_field_value(
 
     if let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) {
         let referenced = dag.declaration(decl_id);
-        if declaration_ref_types_equivalent(dag, decl_id, expected_type, 0) {
+        if is_executable_arrow_declaration(referenced)
+            && declaration_ref_types_equivalent(dag, decl_id, expected_type, 0)
+        {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
         if referenced
@@ -3765,6 +3767,16 @@ fn lower_structural_field_value(
         },
     );
     None
+}
+
+fn is_executable_arrow_declaration(decl: &crate::dag::Declaration) -> bool {
+    matches!(
+        &decl.connective,
+        TypeConnective::Arrow {
+            body: ArrowBody::UserDefined(_) | ArrowBody::ExternalRealization(_),
+            ..
+        }
+    )
 }
 
 /// 🟢 TERMINAL — file-local lowering outcome coproduct.
