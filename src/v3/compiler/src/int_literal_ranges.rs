@@ -19,6 +19,18 @@
 //! | `infer::decide_transform` (calls) | Parameter-narrow type vs default-`Int` argument literal; narrow or OOB. |
 //! | `infer::int_literal_implicit_bind_tolerated_for_expected` | Callable template binding when structural binding fails on int literal. |
 //! | `lower` scalar literal lowering | Early reject for OOB literals before inference reunion. |
+//!
+//! ### R2 downstream audit ([`docs/briefs/r2-modeling-int-lit-magnitude-worker.md`](../../../../docs/briefs/r2-modeling-int-lit-magnitude-worker.md) §Slice 2)
+//!
+//! Post–[#1227](https://github.com/gunb-ai/gunbc/pull/1227) (**MethodEmitTemplate** Phase 1.5): no shared symbols with `emit_model.dag` method-template row lists
+//! or `*_method_template_contracts` — those paths do **not** consult `rust_pilot_primitives` / this module.
+//!
+//! | Consumer | Range-facts / Q1 magnitude |
+//! | --- | --- |
+//! | `infer` (`try_reconcile_int_literal_decision_set`, `decide_transform`, `int_literal_implicit_bind_tolerated_for_expected`, transform/`PortUnion` narrow paths) | **Yes** — `integer_range_for_decl` + `magnitude_out_of_range_for_interval`. |
+//! | `lower` (`lower_scalar_literal` / scalar literal outcome) | **Yes** — same facts for early OOB. |
+//! | `emit::*` (e.g. `rust_target`) | **Indirect** — emits **resolved** shapes after inference; no parallel range-fact walk. |
+//! | Method-template / emit-model carriers (**#1227**) | **N/A** — template contracts; unrelated to int-literal narrowing. |
 
 use std::collections::HashSet;
 
