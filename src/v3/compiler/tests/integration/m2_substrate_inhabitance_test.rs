@@ -2242,7 +2242,7 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
     assert_runtime_value_instantiation(
         &dag,
         conj_field_by_id(&dag, stack.id, "frames"),
-        "Stack",
+        "List",
         "EvalFrame",
     );
 
