@@ -160,10 +160,48 @@ fn v2_record_fields(name: &str) -> Vec<(String, bool)> {
     out
 }
 
-/// Parse a v2 disj block and return variant label names in declaration
-/// order. Handles both inline (`type X = A | B | C`) and multi-line
-/// (`type X\n  = Foo { ... }\n  | Bar { ... }`) forms.
-fn v2_disj_variants(name: &str) -> Vec<String> {
+/// Parse a v2 variant payload body (`{ foo: T, bar: U? }`) and return
+/// `(field_label, is_optional)` tuples, mirroring `v2_record_fields`'s
+/// extraction logic. Used by the disj lockstep to compare per-variant
+/// payload field sets and optionality.
+fn parse_v2_brace_body_fields(body: &str) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    for piece in body.split(['\n', ',']) {
+        let trimmed = piece.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        let Some(colon) = trimmed.find(':') else {
+            continue;
+        };
+        let label = trimmed[..colon].trim().to_string();
+        if label.is_empty()
+            || !label
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_alphabetic() || c == '_')
+        {
+            continue;
+        }
+        let ty_text_raw = trimmed[colon + 1..].trim();
+        let ty_text = match ty_text_raw.find("//") {
+            Some(idx) => ty_text_raw[..idx].trim(),
+            None => ty_text_raw,
+        };
+        let is_optional = ty_text.ends_with('?');
+        out.push((label, is_optional));
+    }
+    out
+}
+
+/// Parse a v2 disj block and return per-variant `(name, payload_fields)`
+/// tuples in declaration order. `payload_fields` is `None` for bare
+/// variants (`EndTurn`) and `Some([(label, is_optional), ...])` for
+/// record-payload variants (`UserToolResultBlock { tool_use_id: String,
+/// content: String, is_error: Bool? }`). Handles both inline
+/// (`type X = A | B | C`) and multi-line (`type X\n  = Foo { … }\n  | Bar { … }`)
+/// shapes.
+fn v2_disj_variants(name: &str) -> Vec<(String, Option<Vec<(String, bool)>>)> {
     let block = v2_type_block(name);
     let eq = block.find('=').unwrap_or_else(|| {
         panic!("v2 `type {name}` is not a disj block (no `=` in extracted text)")
@@ -182,18 +220,35 @@ fn v2_disj_variants(name: &str) -> Vec<String> {
     }
     let mut out = Vec::new();
     for piece in cleaned.split('|') {
-        let mut chunk = piece.trim().to_string();
-        // Drop optional `{ … }` payload on the variant.
-        if let Some(brace) = chunk.find('{') {
-            chunk.truncate(brace);
+        let chunk = piece.trim();
+        if chunk.is_empty() {
+            continue;
         }
-        let label = chunk.trim().to_string();
+        // Split into label-prefix vs payload `{ … }` (if any).
+        let (label_part, payload) = match chunk.find('{') {
+            Some(brace) => {
+                // Find the matching `}` (variants are flat — no nested
+                // braces in the v2 anthropic.dag — so a forward search
+                // suffices; if a future variant nests we'll need a
+                // bracket counter).
+                let body_end = chunk[brace + 1..].find('}').unwrap_or_else(|| {
+                    panic!(
+                        "v2 `type {name}` variant fragment has unmatched `{{` — \
+                         lockstep parser needs an update for new v2 syntax: `{chunk}`"
+                    )
+                });
+                let body = &chunk[brace + 1..brace + 1 + body_end];
+                (
+                    chunk[..brace].trim().to_string(),
+                    Some(parse_v2_brace_body_fields(body)),
+                )
+            }
+            None => (chunk.to_string(), None),
+        };
+        let label = label_part.trim().to_string();
         if label.is_empty() {
             continue;
         }
-        // The label must be a bare identifier — anything with `=`,
-        // whitespace inside, etc. is malformed and we error out so a
-        // future v2 syntax change doesn't silently mask drift.
         let Some(first) = label.chars().next() else {
             continue;
         };
@@ -206,9 +261,48 @@ fn v2_disj_variants(name: &str) -> Vec<String> {
                  lockstep parser needs an update for new v2 syntax"
             );
         }
-        out.push(label);
+        out.push((label, payload));
     }
     out
+}
+
+/// Walk the v3 variant payload's Conj declaration and return its
+/// `(field_label, is_optional)` set. Returns `None` if the variant has
+/// no record payload (`Atom`/empty Conj).
+fn v3_variant_payload_fields(
+    dag: &Dag,
+    parent_name: &str,
+    variant_label: &str,
+) -> Option<Vec<(String, bool)>> {
+    let parent = dag
+        .declaration_by_name(parent_name)
+        .unwrap_or_else(|| panic!("`{parent_name}` missing from full bootstrap"));
+    let variants = match &parent.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("`{parent_name}` is not a Disj: {other:?}"),
+    };
+    let target = variants
+        .iter()
+        .find(|v| v.label == variant_label)
+        .unwrap_or_else(|| panic!("`{parent_name}::{variant_label}` variant missing"))
+        .ty;
+    let payload = dag.declaration(target);
+    match &payload.connective {
+        TypeConnective::Conj { children } if !children.is_empty() => Some(
+            children
+                .iter()
+                .map(|f| {
+                    let optional = matches!(
+                        &dag.declaration(f.ty).connective,
+                        TypeConnective::Cardinality(p)
+                            if p.bound() == CardinalityBound::AtMostOne
+                    );
+                    (f.label.clone(), optional)
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
 }
 
 // ── Lockstep assertions ───────────────────────────────────────────────
@@ -255,15 +349,63 @@ fn assert_record_lockstep(type_name: &str) {
 fn assert_disj_lockstep(type_name: &str) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: BTreeSet<String> = disj_variant_labels(&dag, type_name).into_iter().collect();
-    let v2_labels: BTreeSet<String> = v2_disj_variants(type_name).into_iter().collect();
+    let v2_variants = v2_disj_variants(type_name);
+    let v2_labels: BTreeSet<String> =
+        v2_variants.iter().map(|(name, _)| name.clone()).collect();
     assert_eq!(
-        v3_labels,
-        v2_labels,
+        v3_labels, v2_labels,
         "lockstep drift on `type {type_name}` variant set: v3 mirror and \
          v2 source disagree. v3-only: {:?}; v2-only: {:?}",
         v3_labels.difference(&v2_labels).collect::<Vec<_>>(),
         v2_labels.difference(&v3_labels).collect::<Vec<_>>()
     );
+    // Per-variant payload lockstep: each variant's record-payload field
+    // set + optionality must agree between v2 source and v3 mirror.
+    // Bare variants on both sides → no payload check; mismatched shapes
+    // (one side bare, the other record-payload) fail closed.
+    for (variant_label, v2_payload) in &v2_variants {
+        let v3_payload = v3_variant_payload_fields(&dag, type_name, variant_label);
+        match (v2_payload, v3_payload) {
+            (None, None) => {}
+            (Some(v2_fields), Some(v3_fields)) => {
+                let v2_set: BTreeSet<String> =
+                    v2_fields.iter().map(|(l, _)| l.clone()).collect();
+                let v3_set: BTreeSet<String> =
+                    v3_fields.iter().map(|(l, _)| l.clone()).collect();
+                assert_eq!(
+                    v3_set, v2_set,
+                    "lockstep drift on payload of \
+                     `type {type_name}::{variant_label}`: \
+                     v3-only fields: {:?}; v2-only fields: {:?}",
+                    v3_set.difference(&v2_set).collect::<Vec<_>>(),
+                    v2_set.difference(&v3_set).collect::<Vec<_>>()
+                );
+                for (label, v2_optional) in v2_fields {
+                    let v3_optional = v3_fields
+                        .iter()
+                        .find(|(l, _)| l == label)
+                        .map(|(_, o)| *o)
+                        .unwrap_or(false);
+                    assert_eq!(
+                        v3_optional, *v2_optional,
+                        "lockstep optionality drift on \
+                         `type {type_name}::{variant_label}.{label}`: v2 marks it {} \
+                         but v3 lowers as {}.",
+                        if *v2_optional { "optional (`T?`)" } else { "required (`T`)" },
+                        if v3_optional { "Cardinality(AtMostOne, _)" } else { "non-optional" }
+                    );
+                }
+            }
+            (Some(_), None) => panic!(
+                "lockstep drift: v2 `type {type_name}::{variant_label}` carries a \
+                 record payload but v3 mirror has none."
+            ),
+            (None, Some(_)) => panic!(
+                "lockstep drift: v3 mirror `type {type_name}::{variant_label}` \
+                 carries a record payload but v2 source declares the variant bare."
+            ),
+        }
+    }
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
