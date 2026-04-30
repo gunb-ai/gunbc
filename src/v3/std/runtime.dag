@@ -73,3 +73,15 @@ type EvalFrame {
 type EvalStateStack {
   frames: List<EvalFrame>
 }
+
+// 🟢 TERMINAL at PR-A.3 eager-baseline scope. The evaluator's first executable
+// strategy is applicative/eager evaluation, and this carrier intentionally has
+// exactly one inhabitant until a later slice lands another executable strategy
+// with its evaluation rule, memo-key inclusion, and TC2 obligation. Do not add
+// `NormalOrder`, `RightFirst`, or parallel evaluation variants as placeholders.
+type EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }
+
+// 🟢 TERMINAL at PR-A.3 eager-baseline scope. `LeftFirst` is the only input
+// order consumed by the initial evaluator strategy. Additional order variants
+// are semantic expansions and must land with executable evaluator behavior.
+type InputEvaluationOrder = LeftFirst
