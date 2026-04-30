@@ -2044,6 +2044,9 @@ fn retained_template_arguments_for_target(
         .iter()
         .copied()
         .collect();
+    if let Some(enclosing_disj) = enclosing_disj_for_variant(dag, template) {
+        allowed.extend(dag.declaration(enclosing_disj).type_params.iter().copied());
+    }
     if let Some(raw_arrow) = resolve_arrow_decl_walk(dag, template, &mut SubstStack::new(), 0) {
         for input in raw_arrow.inputs {
             if declaration_is_callable(dag, input, 0) {
@@ -2176,6 +2179,12 @@ fn port_type_context(dag: &Dag, port: PortId) -> Option<PortTypeContext> {
                 let mut subst = SubstStack::new();
                 subst.push(arguments);
                 let Some(arrow) = resolve_arrow_decl_walk(dag, template, &mut subst, 0) else {
+                    if let Some(enclosing_disj) = enclosing_disj_for_variant(dag, template) {
+                        return Some(PortTypeContext {
+                            decl: enclosing_disj,
+                            subst,
+                        });
+                    }
                     return Some(PortTypeContext {
                         decl: resolved_decl,
                         subst: SubstStack::new(),
@@ -2403,7 +2412,31 @@ fn bind_expected_decl_to_actual_context(
                 arguments: actual_args,
             } = &dag.declaration(actual_decl).connective
             else {
-                return false;
+                if actual_decl != *template {
+                    return false;
+                }
+                let template_params = dag.declaration(*template).type_params.clone();
+                if template_params.len() != expected_args.len() {
+                    return false;
+                }
+                for (expected_arg, param_id) in expected_args.iter().zip(template_params) {
+                    let Some(actual_value) = actual.subst.lookup(param_id) else {
+                        return false;
+                    };
+                    if !bind_expected_decl_to_actual_context(
+                        dag,
+                        expected_arg.value,
+                        &PortTypeContext {
+                            decl: actual_value,
+                            subst: actual.subst.clone(),
+                        },
+                        arguments,
+                        depth + 1,
+                    ) {
+                        return false;
+                    }
+                }
+                return true;
             };
             if *actual_template == expected && expected_args.len() == actual_args.len() {
                 for (expected_arg, actual_arg) in expected_args.iter().zip(actual_args.iter()) {
@@ -2822,7 +2855,11 @@ fn resolve_direct_target_signature(
         .collect::<Option<Vec<_>>>()?;
     Some(ResolvedArrow {
         inputs,
-        output: TypeShape::new(enclosing_disj_for_variant(dag, template).unwrap_or(target)),
+        output: TypeShape::new(
+            instantiated_enclosing_disj_for_variant(dag, template, arguments)
+                .or_else(|| enclosing_disj_for_variant(dag, template))
+                .unwrap_or(target),
+        ),
         // Variant constructor synthesis: `Variant(payload)` is direct
         // construction, not a function call with an executable body.
         // `NoBody` rather than `Pending` so the synthesized signature
@@ -2831,6 +2868,28 @@ fn resolve_direct_target_signature(
         // inference state (never stored in `Dag.declarations`).
         body: ArrowBody::NoBody,
     })
+}
+
+fn instantiated_enclosing_disj_for_variant(
+    dag: &Dag,
+    variant_decl_id: DeclarationId,
+    arguments: &[TemplateArgument],
+) -> Option<DeclarationId> {
+    let enclosing_disj = enclosing_disj_for_variant(dag, variant_decl_id)?;
+    let params = &dag.declaration(enclosing_disj).type_params;
+    if params.is_empty() {
+        return Some(enclosing_disj);
+    }
+    let disj_arguments = params
+        .iter()
+        .map(|parameter| {
+            arguments
+                .iter()
+                .find(|argument| argument.parameter == *parameter)
+                .cloned()
+        })
+        .collect::<Option<Vec<_>>>()?;
+    find_equivalent_anonymous_instantiation(dag, enclosing_disj, &disj_arguments, None)
 }
 
 fn resolve_callable_targets(dag: &mut Dag) -> bool {
