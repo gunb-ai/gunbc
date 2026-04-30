@@ -1516,6 +1516,9 @@ impl<'a> TestRunner<'a> {
                         "CostBounded" => self.eval_cost_bounded(claim, &payload),
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
+                        "BinaryDimensionReportEquals" => {
+                            self.eval_binary_dimension_report_equals_shape(claim, &payload)
+                        }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -1969,6 +1972,36 @@ impl<'a> TestRunner<'a> {
                 render_field_value(self.dag, &computed),
             ))
         }
+    }
+
+    fn eval_binary_dimension_report_equals_shape(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [left_fv, right_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals payload should be exactly two DeclarationRef fields \
+                 (left_report_ref, right_report_ref); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let left_id = match self.resolve_declaration_ref_id(left_fv, "left_report_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let right_id = match self.resolve_declaration_ref_id(right_fv, "right_report_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let left_name = decl_display_name(left_id, self.dag.declaration(left_id));
+        let right_name = decl_display_name(right_id, self.dag.declaration(right_id));
+        ClaimResult::NotYetImplemented(format!(
+            "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
+             `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
+             production/evaluation substrate; serialized report comparison is intentionally \
+             unsupported"
+        ))
     }
 
     fn resolve_declaration_ref_id(

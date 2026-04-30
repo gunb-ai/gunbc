@@ -186,6 +186,13 @@ fn bootstrap_loads_verification_authority_types() {
                 ],
             ),
             (
+                String::from("BinaryDimensionReportEquals"),
+                vec![
+                    String::from("left_report_ref"),
+                    String::from("right_report_ref"),
+                ],
+            ),
+            (
                 String::from("AlgebraicLaw"),
                 vec![String::from("law"), String::from("lens_ref")],
             ),
@@ -253,6 +260,9 @@ let pred_cost_eq: TestPredicate = CostBounded("answer", Eq, 8)
 let pred_cost_above: TestPredicate = CostBounded("answer", Gt, 3)
 let pred_exec: TestPredicate = ExecuteCommand("true", empty(), 0)
 let pred_all_targets: TestPredicate = ForAllTargets("true", empty(), 0)
+fn left_report() -> Int = 0
+fn right_report() -> Int = 0
+let pred_binary_dimension_report_equals: TestPredicate = BinaryDimensionReportEquals(left_report, right_report)
 
 let claim_compiles: TestClaim = {
   name: "compiles",
@@ -304,6 +314,7 @@ let suite: TestSuite = {
         "pred_cost_above",
         "pred_exec",
         "pred_all_targets",
+        "pred_binary_dimension_report_equals",
     ] {
         assert_eq!(bind_value_type_decl(&dag, bind), test_predicate);
     }
