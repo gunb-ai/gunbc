@@ -21,6 +21,8 @@ members = [
     "src/v3/grounding_coercion_fold",
     # T-Ground-CrossTarget-Meta — L6 cross-product walker (TypeConnective × Behavior × Shape A target).
     "src/v3/grounding_cross_target_meta",
+    # T-Ground-Tests — L4 routing-stability Stratum A (name-keyed parity) vs LanguageSpec rows.
+    "src/v3/grounding_tests",
     # Linux ExecuteCommand unshare bootstrap — fd3 sentinel + FD_CLOEXEC before execvp
     "src/v3/execute_command_bootstrap",
     # v1 compiler — ARCHIVED. No longer in the build or generation path.

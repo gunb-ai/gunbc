@@ -715,6 +715,14 @@ name = "v3-grounding-pilot"
 version = "0.1.0"
 
 [[package]]
+name = "v3-grounding-tests"
+version = "0.1.0"
+dependencies = [
+ "v3-compiler",
+ "v3-grounding-lifetime",
+]
+
+[[package]]
 name = "wasi"
 version = "0.11.1+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
