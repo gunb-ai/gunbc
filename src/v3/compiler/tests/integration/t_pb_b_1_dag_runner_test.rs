@@ -139,6 +139,19 @@ fn t_impossiblebugs_nested_optional_flatten_suite_passes_through_runner() {
     );
 }
 
+#[test]
+fn t_impossiblebugs_force_unwrap_regression_verify_suite_passes_through_runner() {
+    let dag = lower(
+        include_str!("../dag/t_impossiblebugs_force_unwrap_regression_verify.dag"),
+        "src/v3/compiler/tests/dag/t_impossiblebugs_force_unwrap_regression_verify.dag",
+    );
+    run_suite_all_pass_with_expected_claim_names(
+        &dag,
+        "suite_force_unwrap_regression_verify",
+        &["force_unwrap_absent_resolve_error"],
+    );
+}
+
 /// R1 gate suites from `tests/fixtures/r1_gates.dag` — same `TestClaim` authority and
 /// exact `claim_name` receipt as the retired
 /// `r1_manual_claim_gate_test` / `testgen_structural_coverage_gate_test` shims.
