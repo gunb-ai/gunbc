@@ -2714,6 +2714,50 @@ fn ok() -> Witness<Int> {
 }
 
 #[test]
+fn class5_expected_sum_constructor_with_resolved_arg_does_not_nest_target_instantiation() {
+    let src = "\
+import v3.std.dimensions { Witness }
+fn ok(x: Int) -> Witness<Int> {
+  Inhabits(x)
+}
+";
+    let dag = cached_compile_to_dag(src, "class5_witness_inhabits_resolved_arg.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "expected-type constructor with resolved argument should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    let out = bind_value_type_decl(&dag, "ok");
+    let witness = find_named(&dag, "Witness");
+    match &dag.declaration(out).connective {
+        TypeConnective::Instantiation { template, .. } => assert_eq!(*template, witness),
+        other => panic!("expected Witness<Int> instantiation, got {other:?}"),
+    }
+
+    let bind = bind_named(&dag, "ok");
+    let transform = match dag.node(
+        dag.port(bind.value)
+            .produced_by
+            .expect("Bind value has a producer"),
+    ) {
+        Behavior::Transform(t) => t,
+        other => panic!("expected constructor Transform at function body, got {other:?}"),
+    };
+    let TransformTarget::Callable(target) = transform.target else {
+        panic!("expected callable constructor target");
+    };
+    if let TypeConnective::Instantiation { template, .. } = &dag.declaration(target).connective {
+        assert!(
+            !matches!(
+                dag.declaration(*template).connective,
+                TypeConnective::Instantiation { .. }
+            ),
+            "constructor target must not nest an instantiated variant target"
+        );
+    }
+}
+
+#[test]
 fn class5_expected_generic_sum_record_constructor_in_brace_body() {
     let src = "\
 type Boxed<T> = Packed { value: T } | Empty

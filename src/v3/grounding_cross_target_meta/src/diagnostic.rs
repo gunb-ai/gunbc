@@ -1,10 +1,16 @@
-//! Lane-local `EmissionDiagnostic` mirror — same convergence pattern as
-//! `T-Ground-Coercion-Fold` / `T-Ground-Lifetime-Analyzer` lane-local
-//! mirrors. Substrate-side `EmissionDiagnostic` carrier (per
-//! `docs/briefs/t-ground-diagnostic.md` / #1216) replaces this enum
-//! when it lands; until then this lane carries its own typed channel
-//! per the C-8 fail-closed discipline (every detectable problem is a
-//! typed diagnostic).
+//! Lane-local Rust mirror of the substrate `EmissionDiagnostic` carrier.
+//!
+//! Substrate authority **LANDED** at `src/v3/std/diagnostics.dag`
+//! (T-Ground-Diagnostic; #1216 brief + #1133 dispatch 4355793511). The
+//! substrate carrier declares `MissingEmissionPath { connective, behavior, target }`
+//! among its variants. This Rust mirror persists because
+//! `v3-grounding-cross-target-meta` cannot consume reflected substrate
+//! types today (no `.dag` → Rust enum codegen path); when reflection-
+//! driven generation lands, the mirror retires.
+//!
+//! **Lockstep discipline:** any new variant added to substrate
+//! `EmissionDiagnostic` MUST land here (or in the analogous mirror in
+//! the consuming crate) as a parallel Rust mirror update.
 
 use crate::cells::{BehaviorAxis, Cell, FormAxis, ShapeATarget};
 
