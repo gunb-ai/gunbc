@@ -6,6 +6,10 @@
 //! implemented for the [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples)
 //! checkpoint path only; other examples and `Undeclared` remain
 //! [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
+//!
+//! **Call-site (ScratchIntExamples):** While the scratch body ignores `dag` / lifetime inputs and
+//! fixes [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`, production wiring must not treat
+//! returned map keys as evidence of real program bindings (#1133 / #1286).
 
 use std::collections::BTreeMap;
 
