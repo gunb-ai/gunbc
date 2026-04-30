@@ -344,6 +344,54 @@ fn m17_brace_bodied_fn_parses_single_expr_to_user_defined_arrow_body() {
 }
 
 #[test]
+fn m17_dag_corpus_brace_fn_stays_fn_external_body_at_parse_time() {
+    // Parser gate (`fn_brace_body_parse_as_expression`): staged `.dag`
+    // sources keep the legacy `FnExternalBody` surface even when the
+    // brace contents are a single expressible `match` — bootstrap byte
+    // stability and `ArrowBody::Unparsed` contracts for std/ remain
+    // unchanged until an explicit corpus opt-in regen.
+    let src = "fn staged(x: Int) -> Int {\n  match x { A => 1 }\n}";
+    let tokens =
+        v3_compiler::tokenize_for_test(src, "src/v3/std/corpus.dag").expect("tokenize");
+    let module =
+        v3_compiler::parse_for_test(&tokens, "src/v3/std/corpus.dag").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| match i {
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { name, .. }
+            | v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } => name == "staged",
+            _ => false,
+        })
+        .expect("staged fn");
+    assert!(
+        matches!(
+            item,
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { .. }
+        ),
+        "authority .dag sources must keep brace-bodied fn on FnExternalBody at parse time, got {item:?}"
+    );
+}
+
+#[test]
+fn m17_multi_statement_brace_fn_in_v3_falls_back_to_unparsed_arrow() {
+    // Multi-statement / unparseable-as-single-expr brace bodies in `.v3`
+    // hit `parse_expr` failure or non-exhausting-`}` recovery →
+    // `FnExternalBody` → `ArrowBody::Unparsed` (opaque scaffold ratchet).
+    let src = "fn staged(x: Int) -> Int {\n  let y = x + 1\n  y + 1\n}";
+    let dag = compile_any(src, "multi_stmt_fn.v3");
+    let foo_id = find_named(&dag, "staged");
+    let body = match &dag.declaration(foo_id).connective {
+        TypeConnective::Arrow { body, .. } => body.clone(),
+        other => panic!("expected Arrow, got {other:?}"),
+    };
+    assert!(
+        matches!(body, ArrowBody::Unparsed(_)),
+        "multi-statement brace body in .v3 should lower to ArrowBody::Unparsed, got {body:?}"
+    );
+}
+
+#[test]
 fn m17_data_declaration_produces_typed_declaration() {
     // Class 3 (QW2): `data foo: Int = { body }` parses as
     // `SurfaceItem::Data` and lowers to a declaration whose
@@ -2476,6 +2524,68 @@ fn toggle(s: Slot) -> Slot {
         bind_value_type_decl(&dag, "toggle"),
         find_named(&dag, "Slot")
     );
+}
+
+/// Prereq-2 lens consumer shape: brace-bodied `fn` returning `Witness<Int>`
+/// via `match` + bare `Inhabits(...)` constructors (no `Witness` special
+/// case in lower/infer).
+#[test]
+fn prereq2_brace_fn_witness_int_match_returns_inhabits() {
+    let src = "\
+import v3.std.dimensions { Witness }
+fn witness_pick(b: Bool) -> Witness<Int> {
+  match b {
+    True => Inhabits(0)
+    False => Inhabits(1)
+  }
+}
+";
+    let dag = cached_compile_to_dag(src, "prereq2_witness_brace_fn.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "Witness<Int> brace-bodied match should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    let out = bind_value_type_decl(&dag, "witness_pick");
+    let witness = find_named(&dag, "Witness");
+    match &dag.declaration(out).connective {
+        TypeConnective::Instantiation { template, .. } => {
+            assert_eq!(
+                *template, witness,
+                "return type should instantiate Witness<_>, got {:?}",
+                dag.declaration(out).connective
+            );
+        }
+        other => panic!(
+            "expected Witness<Int> to lower as Instantiation of Witness template, got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn prereq2_brace_fn_optional_diagnostic_bare_variant() {
+    let src = "\
+import v3.std.dimensions { OptionalDiagnostic }
+fn no_diag() -> OptionalDiagnostic {
+  NoDiagnostic
+}
+";
+    let dag = cached_compile_to_dag(src, "prereq2_optional_diag_brace_fn.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "OptionalDiagnostic brace-bodied bare variant should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    let out = bind_value_type_decl(&dag, "no_diag");
+    let opt = find_named(&dag, "OptionalDiagnostic");
+    match &dag.declaration(out).connective {
+        TypeConnective::Instantiation { template, .. } => {
+            assert_eq!(*template, opt);
+        }
+        other => panic!(
+            "expected OptionalDiagnostic<_> instantiation, got {other:?}"
+        ),
+    }
 }
 
 #[test]
