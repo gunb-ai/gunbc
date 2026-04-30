@@ -67,8 +67,9 @@ const PRELUDE_BARE_RHS_ALIAS_IDENTS: &[&str] = &[
 
 /// Build the identifier set for which a bare `type T = U` RHS must classify
 /// as [`SurfaceItem::TypeAlias`]: prelude spellings, explicit `import … { … }`
-/// names, and every `type` / `data` LHS in the module (declaration order does
-/// not matter — forward aliases to sibling types stay aliases).
+/// names, every `type` / `data` LHS in the module (declaration order does not
+/// matter — forward aliases to sibling types stay aliases), and local generic
+/// binders from type declarations so `type Id<T> = T` remains an alias.
 fn collect_bare_rhs_alias_reference_idents(items: &[SurfaceItem]) -> HashSet<String> {
     let mut out = HashSet::new();
     for name in PRELUDE_BARE_RHS_ALIAS_IDENTS {
@@ -81,11 +82,22 @@ fn collect_bare_rhs_alias_reference_idents(items: &[SurfaceItem]) -> HashSet<Str
                     out.insert(n.clone());
                 }
             }
-            SurfaceItem::TypeRecord { name, .. }
-            | SurfaceItem::TypeSum { name, .. }
-            | SurfaceItem::TypeAlias { name, .. }
-            | SurfaceItem::TypeAtom { name, .. } => {
+            SurfaceItem::TypeRecord {
+                name, type_params, ..
+            }
+            | SurfaceItem::TypeSum {
+                name, type_params, ..
+            }
+            | SurfaceItem::TypeAlias {
+                name, type_params, ..
+            }
+            | SurfaceItem::TypeAtom {
+                name, type_params, ..
+            } => {
                 out.insert(name.clone());
+                for param in type_params {
+                    out.insert(param.clone());
+                }
             }
             SurfaceItem::Data { name, .. } => {
                 out.insert(name.clone());

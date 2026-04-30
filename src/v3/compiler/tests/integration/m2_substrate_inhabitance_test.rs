@@ -1687,11 +1687,12 @@ fn parse_bare_rhs_alias_reference_stays_type_alias() {
         "type LocalString = String\n",
         "type Forward = Later\n",
         "type Later = Only\n",
+        "type Id<T> = T\n",
     );
     let tokens = tokenize_for_test(source, "pr_a3_alias_preservation.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "pr_a3_alias_preservation.v3").expect("parse");
     let mirrored: &parse_surface::SurfaceModule = &parsed;
-    assert_eq!(mirrored.items.len(), 4);
+    assert_eq!(mirrored.items.len(), 5);
     match &mirrored.items[1] {
         parse_surface::SurfaceItem::TypeAlias { name, .. } => {
             assert_eq!(name, "LocalString");
@@ -1711,6 +1712,22 @@ fn parse_bare_rhs_alias_reference_stays_type_alias() {
             assert_eq!(variants[0].name, "Only");
         }
         other => panic!("expected unresolved bare RHS to parse as TypeSum, got {other:?}"),
+    }
+    match &mirrored.items[4] {
+        parse_surface::SurfaceItem::TypeAlias {
+            name,
+            type_params,
+            target,
+            ..
+        } => {
+            assert_eq!(name, "Id");
+            assert_eq!(type_params, &[String::from("T")]);
+            assert!(matches!(
+                target,
+                parse_surface::SurfaceType::Named { name, .. } if name == "T"
+            ));
+        }
+        other => panic!("expected type-param bare RHS to stay TypeAlias, got {other:?}"),
     }
 }
 
