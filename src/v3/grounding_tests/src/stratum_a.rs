@@ -694,15 +694,25 @@ mod stratum_a_tests {
                 FieldValue::Literal(LiteralBits::Bool(true)),
             ),
         ];
+        assert_eq!(
+            analyze_closed_record_labels(&fields, METHOD_REF_FIELDS),
+            ClosedRecordLabelsOutcome::Duplicate {
+                label: "decl".to_string(),
+            }
+        );
         let err =
             enforce_closed_record_schema(&fields, RUST_LIST, 0, "MethodRef", METHOD_REF_FIELDS)
                 .expect_err("duplicate decl");
-        let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
-            panic!("unexpected diagnostic: {err:?}");
-        };
         assert!(
-            detail.contains("duplicate"),
-            "expected duplicate-field detail, got {detail}"
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name,
+                    row_index,
+                    ..
+                } if list_name == RUST_LIST && *row_index == 0
+            ),
+            "unexpected diagnostic: {err:?}"
         );
     }
 
@@ -770,14 +780,29 @@ mod stratum_a_tests {
     fn method_registry_name_rejects_non_method_declaration_instantiation() {
         let dag = generated_full_bootstrap_dag();
         let decl = dag.declaration_by_name("Int").expect("Int");
+        let method_decl_template =
+            method_declaration_template_id(&dag).expect("MethodDeclaration template");
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => {
+                assert_ne!(
+                    *template, method_decl_template,
+                    "regression witness: Int must not instantiate MethodDeclaration"
+                );
+            }
+            _ => {}
+        }
         let err = method_registry_name(&dag, decl.id, RUST_LIST, 0)
             .expect_err("Int is not MethodDeclaration");
-        let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
-            panic!("unexpected diagnostic: {err:?}");
-        };
         assert!(
-            detail.contains("MethodDeclaration") || detail.contains("Instantiation"),
-            "expected registry gate detail, got {detail}"
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name,
+                    row_index,
+                    ..
+                } if list_name == RUST_LIST && *row_index == 0
+            ),
+            "unexpected diagnostic: {err:?}"
         );
     }
 

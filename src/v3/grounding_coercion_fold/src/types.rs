@@ -2,6 +2,10 @@
 
 /// How the fold obtains LanguageSpec / target-primitive substrate facts.
 ///
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — `Undeclared` awaits a declared
+/// LanguageSpec projection; `ScratchIntExamples` is an interim checkpoint. Named dissolution:
+/// #1133 / #1286 (declared projection replaces this carrier).
+///
 /// **`Undeclared`** — production entry stays fail-closed until a real projection lands
 /// (substrate / #1286 / manager #1133).
 ///
@@ -16,6 +20,9 @@ pub enum LanguageSpecProjection {
 }
 
 /// Scratch selector aligned to design-emission-model §Worked examples (Int only).
+///
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — bounded to Examples 1–2 only;
+/// superseded when a declared projection generalizes Int examples (#1133 / #1286).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IntScratchExample {
     /// Example 1 — `data x: Int = 0` → `EmissionDiagnostic::UnderRefined`.
@@ -25,6 +32,9 @@ pub enum IntScratchExample {
 }
 
 /// Unique target inhabitance for a binding (Examples 1–2 surface only).
+///
+/// Practice 4 (`docs/modeling-discipline.md`): single-variant placeholder — N \< 2, so no 🟢/🟡/🔴
+/// coproduct checkpoint until a second inhabitant is introduced.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TargetInhabitance {
     RustU32,
