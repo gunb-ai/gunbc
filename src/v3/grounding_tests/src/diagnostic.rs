@@ -21,12 +21,14 @@ pub enum GroundingTestsDiagnostic {
         row_index: usize,
         detail: String,
     },
-    /// Bootstrap Dag vs standalone `compile_to_dag` authority disagreed on a row.
+    /// Two structural witnesses disagreed (e.g. digest mismatch across bootstrap constructions).
     StratumALockstepMismatch {
         list_name: String,
         method_name: String,
         detail: String,
     },
+    /// Expected Substrate declaration or connective shape was absent or non-conforming.
+    StratumADagProjectionFailed { step: &'static str, detail: String },
 }
 
 impl fmt::Display for GroundingTestsDiagnostic {
@@ -56,6 +58,9 @@ impl fmt::Display for GroundingTestsDiagnostic {
                 f,
                 "Stratum A lockstep mismatch for `{list_name}` method `{method_name}`: {detail}"
             ),
+            GroundingTestsDiagnostic::StratumADagProjectionFailed { step, detail } => {
+                write!(f, "Stratum A Dag projection failed at `{step}`: {detail}")
+            }
         }
     }
 }
