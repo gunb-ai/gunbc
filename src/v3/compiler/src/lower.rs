@@ -169,7 +169,9 @@ pub(crate) fn finalize_strict_user_lower_range(dag: &mut Dag, strict_from: usize
     // `ArrowBody::Unparsed` and `Data` / `ValueBody::Unparsed`
     // are load-bearing scaffolds for the std/bootstrap files
     // whose bodies the M1(2.8) parser cannot yet lower
-    // (match / record literals / lambdas / etc.).
+    // (match / record literals / lambdas / etc.), and for staged `.dag`
+    // brace `fn` bodies that intentionally stay on the `FnExternalBody`
+    // parse path (see `Parser::fn_brace_body_parse_as_expression`).
     // User-range declarations that rely on the scaffold are
     // fail-closed: ordinary user code has no business shipping
     // an opaque body the compiler cannot validate. Without this
