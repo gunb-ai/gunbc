@@ -1,0 +1,117 @@
+module v3.std.bridge_ledger
+
+import std.list { List }
+
+// T-Verification-BridgeLedger — substrate ledger for bridge-retirement
+// rows that the `BridgeLedgerZero` `.dag` `TestClaim` (Verification-owned)
+// folds. Single substrate authority for these facts; no parallel Rust
+// `Vec` or test-side table.
+//
+// Source of truth for row content + status disposition:
+// `docs/r3-structure.md` §"T-Bridge-Retirement" (lines 78-84). This file
+// mirrors lines 79-83 — the five canonical named-identity bridge rows.
+// The meta row `bridge_retirement_ledger_zero` (line 84) is the
+// Verification-side fold's verdict, not a row in the ledger; it reads
+// THIS list and reports zero-residual against the `Open` predicate.
+//
+// **Status discipline.** `BridgeStatus` is a closed coproduct, not a
+// stringly enum: every row's status is `Retired` or `Open` by
+// construction, so the Verification fold is a structural partition, not
+// a name-matching parser. New retirement states (e.g. partial /
+// in-progress) require an explicit substrate amendment that lands here
+// before the fold can read them — same modeling-discipline shape as
+// other closed-coproduct status surfaces in `std`.
+//
+// **Per-row status rationale (current state @ HEAD):**
+//   - `bridge_source_span_file_participation_retired` — Open. Per
+//     `r3-structure.md:79`: "the gate is not satisfied; partial
+//     string-check retirement was rejected because parallel
+//     participation rules would remain." Concrete prerequisites cited
+//     (module/compilation-unit identity for lens reflection; typed
+//     authority/emit-scope carriers for lower/emit; lens-fold file-path
+//     semantics in ROADMAP).
+//   - `bridge_mark_bootstrap_secret_nominal_opacity_retired` — Retired.
+//     Per `r3-structure.md:80`: "name-keyed bootstrap bridge from #937
+//     deleted; nominal-opacity authority lives in source-level
+//     declaration (PR A landed in R2)."
+//   - `bridge_canonical_lens_name_dispatch_retired` — Retired. Lens
+//     dispatch routes via `DeclarationRef`/typed identity; ratcheted by
+//     `bridge_lower_helpers_patch_zero_residual_test` siblings in v3.
+//   - `bridge_include_str_side_channels_retired` — Open. Per
+//     `r3-structure.md:82`: "Open disposition (`pipeline_authority`,
+//     PR #1171, 2026-04-29): `compile` remains `ArrowBody::Unparsed`,
+//     so compile-body stage order is not yet a structural Dag fact;
+//     full gate for this site awaits derivation / lowered compile
+//     witness."
+//   - `bridge_exact_string_patching_residual_retired` — Open. Per
+//     `r3-structure.md:83`: PB lower-helper slice (Tier-2 / #1014
+//     lineage) is pinned at zero, BUT "Other exact-string patching
+//     classes (outside this retired lower-helper post-process bridge)
+//     remain out of scope for this receipt and keep their own
+//     dissolution triggers" — the umbrella row stays Open until those
+//     other classes land their own retirement receipts.
+
+// 🟢 TERMINAL. Closed retirement-state coproduct for ledger rows. Two
+// states are sufficient at this scope: a bridge has either landed its
+// retirement receipt (`Retired`) or it has not (`Open`). Partial /
+// in-progress states are deliberately not modeled here — the doc
+// authority's "open with prerequisites" framing collapses to `Open`
+// because the predicate the Verification fold cares about ("is this
+// bridge fully retired?") is the binary condition, and richer state
+// would invite drift between row-level and predicate-level semantics.
+// Adding states later requires an explicit substrate amendment.
+type BridgeStatus
+  = Retired
+  | Open
+
+// 🟢 TERMINAL at PR-α scope. Single ledger row. Field set matches the
+// dispatch contract `{ name, owner, status, authority }`:
+//   - `name`: stable identifier matching `r3-structure.md`'s row name.
+//   - `owner`: the lane/manager responsible for the row's retirement
+//     (e.g. `R3`, `R2-Substrate`, `pipeline_authority`).
+//   - `status`: the closed `BridgeStatus` coproduct above.
+//   - `authority`: pointer at the canonical record of the row's status
+//     (typically a `docs/r3-structure.md` heading anchor or PR
+//     reference); the Verification fold treats this as opaque
+//     provenance metadata, not a parseable URL.
+type BridgeLedgerRow {
+  name:      String
+  owner:     String
+  status:    BridgeStatus
+  authority: String
+}
+
+// Five canonical bridge-retirement rows mirroring
+// `docs/r3-structure.md:79-83`. Authoring order matches the doc.
+data bridge_ledger: List<BridgeLedgerRow> = [
+  {
+    name:      "bridge_source_span_file_participation_retired",
+    owner:     "R3",
+    status:    Open,
+    authority: "docs/r3-structure.md#T-Bridge-Retirement"
+  },
+  {
+    name:      "bridge_mark_bootstrap_secret_nominal_opacity_retired",
+    owner:     "R2-Substrate",
+    status:    Retired,
+    authority: "docs/r3-structure.md#T-Bridge-Retirement"
+  },
+  {
+    name:      "bridge_canonical_lens_name_dispatch_retired",
+    owner:     "R2-Substrate",
+    status:    Retired,
+    authority: "docs/r3-structure.md#T-Bridge-Retirement"
+  },
+  {
+    name:      "bridge_include_str_side_channels_retired",
+    owner:     "pipeline_authority",
+    status:    Open,
+    authority: "docs/r3-structure.md#T-Bridge-Retirement"
+  },
+  {
+    name:      "bridge_exact_string_patching_residual_retired",
+    owner:     "PB-Tier-2",
+    status:    Open,
+    authority: "docs/r3-structure.md#T-Bridge-Retirement"
+  }
+]
