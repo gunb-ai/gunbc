@@ -165,6 +165,30 @@ mod tests {
         }
     }
 
+    /// User-range `data` must be gated by structural declaration identity (`Dag` append
+    /// boundary), not by `span.file` prefixes: an authority-looking path must not exempt
+    /// runtime-appended surface from fail-closed extraction.
+    #[test]
+    fn extract_fail_closed_user_data_with_authority_looking_span_file() {
+        let source = "data spoofed_authority_span_bait: Int = 0";
+        let file = "dsl/std/bootstrap_fake.dag";
+        let dag = v3_compiler::compile_to_dag(source, file).expect("minimal compile");
+        let err = extract_lifetime_program(&dag).expect_err("extraction must fail closed");
+        match err {
+            EmissionDiagnostic::LifetimeProgramExtractionPending { detail } => {
+                assert!(
+                    detail.contains("spoofed_authority_span_bait"),
+                    "unexpected detail: {detail}"
+                );
+                assert!(
+                    detail.contains(file),
+                    "detail should include the spoof span path for debugging: {detail}"
+                );
+            }
+            other => panic!("unexpected diagnostic: {other:?}"),
+        }
+    }
+
     #[test]
     fn function_param_indeterminate_growability_fails_closed_even_when_borrowed() {
         let mut bindings = BTreeMap::new();
