@@ -553,24 +553,42 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::LBrace => {
-                // Block-body scaffold form: `fn f(x) -> T { body }`.
-                // The body is brace-skipped and preserved as a span;
-                // the declaration it lowers to carries
-                // `ArrowBody::Unparsed(body_span)` so its signature
-                // flows forward and callers can type-check against
-                // it, but the body stays scaffolded until the M2+
-                // surface grammar covers match/pipe/lambda/etc.
-                let open = self.peek().span.clone();
-                let end = self.skip_brace_balanced()?;
-                let body_span = SourceSpan::new(self.file, open.byte_start, end);
-                Ok(SurfaceItem::FnExternalBody {
-                    name,
-                    type_params,
-                    params,
-                    return_type,
-                    body_span,
-                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
-                })
+                // Brace-bodied `fn f(x) -> T { body }`.
+                //
+                // When `{` begins an unambiguous record literal (`{}` or
+                // `{ label: expr, ... }`), parse `SurfaceExpr::Record` so
+                // `{ x: 1 }` returns remain expressible.
+                //
+                // Otherwise treat `{ ... }` as a single-expression block:
+                // `match`, `if`, calls, bare variant constructors, etc.
+                // Multi-statement blocks (`let` sequences) are still out of
+                // scope — they fail at parse time rather than lowering to
+                // `FnExternalBody` / `ArrowBody::Unparsed`.
+                if self.looks_like_record_literal() {
+                    let body_expr = self.parse_record_literal()?;
+                    let end = expr_span(&body_expr).byte_end;
+                    Ok(SurfaceItem::Fn {
+                        name,
+                        type_params,
+                        params,
+                        return_type,
+                        body: body_expr,
+                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                    })
+                } else {
+                    self.expect_kind(TokenKind::LBrace)?;
+                    let body_expr = self.parse_expr()?;
+                    let close = self.expect_kind(TokenKind::RBrace)?;
+                    let end = close.span.byte_end;
+                    Ok(SurfaceItem::Fn {
+                        name,
+                        type_params,
+                        params,
+                        return_type,
+                        body: body_expr,
+                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                    })
+                }
             }
             other => Err(Diagnostic::ParseError {
                 message: format!("expected `=` or `{{` after fn return type, got {other:?}"),

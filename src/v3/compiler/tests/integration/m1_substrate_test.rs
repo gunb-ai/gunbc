@@ -298,20 +298,13 @@ fn m17_user_function_call_lowers_to_callable_target() {
 }
 
 #[test]
-fn m17_block_bodied_fn_produces_unparsed_scaffold_declaration() {
-    // Class 3 (QW1): `fn foo(x: Int) -> Int { body }` in a module
-    // context is parsed as `FnExternalBody`. Lowering produces a
-    // declaration whose connective is an `Arrow` carrying
-    // `ArrowBody::Unparsed(body_span)`. The signature flows forward
-    // through the declaration table — callers can type-check
-    // against it — and the body source span is preserved for M2+
-    // parser extensions.
-    //
-    // Note: at M1(2.7) the parser's opaque body consumer handles
-    // arbitrary token contents, so the body text below doesn't need
-    // to be real v3 — it just needs matching braces.
-    let src = "fn foo(x: Int) -> Int { some unparseable body }";
-    let dag = compile_any(src, "scaffold.v3");
+fn m17_brace_bodied_fn_parses_single_expr_to_user_defined_arrow_body() {
+    // Prereq-2 slice: `fn foo(x: Int) -> Int { x + 1 }` parses as
+    // `SurfaceItem::Fn` with a real `SurfaceExpr` body and lowers to
+    // `ArrowBody::UserDefined` (Bind), not `FnExternalBody` /
+    // `ArrowBody::Unparsed`.
+    let src = "fn foo(x: Int) -> Int { x + 1 }";
+    let dag = compile_any(src, "brace_fn_user_defined.v3");
 
     // The `foo` declaration exists and carries the right Arrow
     // signature.
@@ -326,8 +319,8 @@ fn m17_block_bodied_fn_produces_unparsed_scaffold_declaration() {
     };
     assert_eq!(inputs.len(), 1);
     assert!(
-        matches!(body, ArrowBody::Unparsed(_)),
-        "block-bodied fn must carry ArrowBody::Unparsed, got {body:?}"
+        matches!(body, ArrowBody::UserDefined(_)),
+        "brace-bodied fn with a single expression body must carry ArrowBody::UserDefined, got {body:?}"
     );
 
     // The signature types resolve to the cached primitives.
@@ -2455,6 +2448,34 @@ fn wrap(point: Point) -> Wrapped = Wrap { inner: point }
     assert_eq!(
         bind_value_type_decl(&dag, "wrap"),
         find_named(&dag, "Wrapped")
+    );
+}
+
+/// Prereq-2 (lens-fold): brace-bodied `fn` lowers a `match` whose arms
+/// return bare variant constructors against the declared return sum —
+/// the same class-5 path as expression-bodied `fn`, without
+/// `Witness`/`OptionalDiagnostic` special cases.
+#[test]
+fn prereq2_brace_fn_match_returns_bare_variant_constructors() {
+    let src = "\
+type Cell { n: Int }
+type Slot = Cell | Vacant
+fn toggle(s: Slot) -> Slot {
+  match s {
+    Cell(payload) => Vacant
+    Vacant => Cell { n: 1 }
+  }
+}
+";
+    let dag = cached_compile_to_dag(src, "prereq2_brace_fn_variants.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "brace-bodied fn with bare variant match arms should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "toggle"),
+        find_named(&dag, "Slot")
     );
 }
 
