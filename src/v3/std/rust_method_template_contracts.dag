@@ -33,10 +33,11 @@
 // PHASE 1.5 HIGHER-ORDER ROWS:
 //   - `all` / `any` / `filter` / `flat_map` now use
 //     `MethodEmitTemplate.HigherOrderTemplates`, preserving the legacy
-//     `rust_higher_order_methods` inline/fn-ref template split and
-//     `wraps_in_sharing` bit from `dsl/extdeps/languages/rust/emit.dag`.
-//     This file is the v3-side row authority; the legacy table remains
-//     for v2 until Grounding retires it.
+//     `rust_higher_order_methods` inline/fn-ref template split. The
+//     legacy `wraps_in_sharing` bit is represented by the existing
+//     row-level `wraps_result` field so wrapping remains a single
+//     authority. This file is the v3-side row authority; the legacy table
+//     remains for v2 until Grounding retires it.
 //
 // DRIFT RECEIPTS (resolved in this row set; old authorities retain
 // their pre-consolidation shapes until Phase 2):
@@ -134,8 +135,7 @@ data rust_method_template_contracts: List<MethodTemplateContract> = [
     runtime_template: "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }",
     emit_template: HigherOrderTemplates {
       inline_template: "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }",
-      fn_ref_template: "{iter}.filter({arg}).collect::<Vec<_>>()",
-      wraps_in_sharing: true
+      fn_ref_template: "{iter}.filter({arg}).collect::<Vec<_>>()"
     },
     wraps_result: true,
     placeholder_convention: NamedArg
@@ -145,8 +145,7 @@ data rust_method_template_contracts: List<MethodTemplateContract> = [
     runtime_template: "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }",
     emit_template: HigherOrderTemplates {
       inline_template: "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }",
-      fn_ref_template: "{iter}.any({arg})",
-      wraps_in_sharing: false
+      fn_ref_template: "{iter}.any({arg})"
     },
     wraps_result: false,
     placeholder_convention: NamedArg
@@ -156,8 +155,7 @@ data rust_method_template_contracts: List<MethodTemplateContract> = [
     runtime_template: "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }",
     emit_template: HigherOrderTemplates {
       inline_template: "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }",
-      fn_ref_template: "{iter}.all({arg})",
-      wraps_in_sharing: false
+      fn_ref_template: "{iter}.all({arg})"
     },
     wraps_result: false,
     placeholder_convention: NamedArg
@@ -167,8 +165,7 @@ data rust_method_template_contracts: List<MethodTemplateContract> = [
     runtime_template: "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }",
     emit_template: HigherOrderTemplates {
       inline_template: "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }",
-      fn_ref_template: "{iter}.flat_map({arg}).collect::<Vec<_>>()",
-      wraps_in_sharing: true
+      fn_ref_template: "{iter}.flat_map({arg}).collect::<Vec<_>>()"
     },
     wraps_result: true,
     placeholder_convention: NamedArg

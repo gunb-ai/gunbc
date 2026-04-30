@@ -349,22 +349,23 @@ type PlaceholderConvention
 // templates split structurally between ordinary single-expression
 // renderings and higher-order method renderings that must preserve two
 // target-specific templates: an inline-lambda body template and a
-// function-reference adapter template. Pattern 1 (merge into optional
-// fields on `MethodTemplateContract`) fails because the two-template
-// shape is a closed semantic case, not sparse data on every row. Pattern
-// 2 (sibling carrier) fails because it would split the single per-method
-// emit-template authority across parallel row lists. Pattern 3
-// (collapse into one string) would lose the inline-vs-fn-ref distinction
-// carried by Rust's legacy `HigherOrderMethodSpec`. No dissolution
-// trigger: later targets can attach to one of these durable cases, and
-// any richer typed template-segment substrate refines inside the variant
-// payloads rather than replacing the coproduct.
+// function-reference adapter template. The row-level `wraps_result`
+// remains the single wrapping authority for both cases; the higher-order
+// variant intentionally does not carry a second wrapping bit. Pattern 1
+// (merge into optional fields on `MethodTemplateContract`) fails because
+// the two-template shape is a closed semantic case, not sparse data on
+// every row. Pattern 2 (sibling carrier) fails because it would split the
+// single per-method emit-template authority across parallel row lists.
+// Pattern 3 (collapse into one string) would lose the inline-vs-fn-ref
+// distinction carried by Rust's legacy `HigherOrderMethodSpec`. No
+// dissolution trigger: later targets can attach to one of these durable
+// cases, and any richer typed template-segment substrate refines inside
+// the variant payloads rather than replacing the coproduct.
 type MethodEmitTemplate
   = SingleTemplate { template: String }
   | HigherOrderTemplates {
       inline_template: String
       fn_ref_template: String
-      wraps_in_sharing: Bool
     }
 
 // Per-target, per-method template contract. Sibling carrier to §6a

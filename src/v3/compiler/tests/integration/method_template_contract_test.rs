@@ -13,7 +13,7 @@
 //!   Substrate method registry)
 //! - `method_template_contract_does_not_carry_cost_data`
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use v3_compiler::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
@@ -211,7 +211,7 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
 fn method_ref_decl_from_row<'a>(
     row: &'a FieldValue,
     row_context: &str,
-) -> (&'a DeclarationId, &'a FieldValue) {
+) -> (&'a DeclarationId, &'a FieldValue, &'a FieldValue) {
     let FieldValue::Record(fields) = row else {
         panic!("{row_context}: row is not a FieldValue::Record");
     };
@@ -233,7 +233,11 @@ fn method_ref_decl_from_row<'a>(
         .iter()
         .find(|(label, _)| label == "emit_template")
         .unwrap_or_else(|| panic!("{row_context}: missing `emit_template` field"));
-    (decl_id, emit_template)
+    let (_, wraps_result) = fields
+        .iter()
+        .find(|(label, _)| label == "wraps_result")
+        .unwrap_or_else(|| panic!("{row_context}: missing `wraps_result` field"));
+    (decl_id, emit_template, wraps_result)
 }
 
 fn method_emit_template_variant_label(dag: &Dag, constructor: DeclarationId) -> &str {
@@ -267,9 +271,18 @@ fn rust_higher_order_method_template_contracts_are_present() {
     let dag = generated_full_bootstrap_dag();
     let rows = rust_method_template_rows(&dag);
     let mut seen = HashSet::new();
+    let expected_wraps: HashMap<&str, bool> = [
+        ("filter_method", true),
+        ("any_method", false),
+        ("all_method", false),
+        ("flat_map_method", true),
+    ]
+    .into_iter()
+    .collect();
 
     for (idx, row) in rows.iter().enumerate() {
-        let (decl_id, emit_template) = method_ref_decl_from_row(row, &format!("rust row {idx}"));
+        let (decl_id, emit_template, wraps_result) =
+            method_ref_decl_from_row(row, &format!("rust row {idx}"));
         let method_name = dag
             .declaration(*decl_id)
             .name
@@ -300,8 +313,8 @@ fn rust_higher_order_method_template_contracts_are_present() {
         );
         assert_eq!(
             payload.len(),
-            3,
-            "{method_name}: HigherOrderTemplates must carry inline, fn-ref, wraps flag"
+            2,
+            "{method_name}: HigherOrderTemplates must carry inline and fn-ref templates only"
         );
         assert!(
             matches!(&payload[0], FieldValue::Literal(LiteralBits::String(s)) if s.contains("{param}") && s.contains("{iter}")),
@@ -311,9 +324,12 @@ fn rust_higher_order_method_template_contracts_are_present() {
             matches!(&payload[1], FieldValue::Literal(LiteralBits::String(s)) if s.contains("{arg}")),
             "{method_name}: fn_ref_template should preserve legacy fn-ref placeholder"
         );
+        let FieldValue::Literal(LiteralBits::Bool(row_wraps)) = wraps_result else {
+            panic!("{method_name}: wraps_result must be the row-level Bool wrapping authority");
+        };
         assert!(
-            matches!(&payload[2], FieldValue::Literal(LiteralBits::Bool(_))),
-            "{method_name}: wraps_in_sharing must be a Bool payload"
+            *row_wraps == expected_wraps[method_name],
+            "{method_name}: wraps_result must preserve legacy higher-order wrapping bit"
         );
     }
 
