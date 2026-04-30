@@ -247,6 +247,19 @@ type TestPredicate
       target_lane: DeclarationRef
       authority_doc: DeclarationRef
     }
+  // 🟢 TERMINAL at PR-α scope. Bridge-retirement ledger zero-residual
+  // gate. Points at a `bridge_ledger` declaration of type
+  // `List<BridgeLedgerRow>` (`v3.std.bridge_ledger`); the runner reads
+  // every row's `status` field and `Pass`es iff every row's status
+  // resolves to the `Retired` constructor of `BridgeStatus`. Open rows
+  // produce `Fail` with the offending names so the diagnostic surfaces
+  // the residual debt directly. Single payload field — `ledger:
+  // DeclarationRef` — preserves the typed-edge discipline of the
+  // census-style predicates above; the carrier authority lives in
+  // `bridge_ledger.dag`, not here.
+  | BridgeLedgerZero {
+      ledger: DeclarationRef
+    }
 
 // Structural runner input role for predicates whose input is the compiled
 // `TestClaim.source` program.

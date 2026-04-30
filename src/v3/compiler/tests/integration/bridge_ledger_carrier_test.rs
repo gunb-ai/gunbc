@@ -16,6 +16,8 @@
 use std::collections::{BTreeSet, HashSet};
 use v3_compiler::dag::{Dag, FieldValue, LiteralBits, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::{compile_to_dag, CompileError};
 
 const BRIDGE_LEDGER: &str = "bridge_ledger";
 
@@ -199,6 +201,128 @@ fn bridge_ledger_status_resolves_to_bridge_status_constructor() {
              `BridgeStatus`'s declared variants. Drift here means a row landed \
              with a status outside the closed coproduct.",
             constructor
+        );
+    }
+}
+
+// ── TestPredicate::BridgeLedgerZero shape + runner ratchets ─────────
+
+fn compile_clean(source: &str, file: &str) -> Dag {
+    match compile_to_dag(source, file) {
+        Ok(dag) => dag,
+        Err(CompileError::Semantic(dag)) => panic!(
+            "{file} should compile cleanly, got {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(err) => panic!("{file} should compile cleanly, got {err:?}"),
+    }
+}
+
+#[test]
+fn bridge_ledger_zero_predicate_carries_only_ledger_declaration_ref() {
+    // Verification's BridgeLedgerZero predicate contract: a single
+    // structural payload field `ledger: DeclarationRef`. Adding fields
+    // (e.g. an `expected_status: BridgeStatus` filter) requires an
+    // explicit substrate amendment so the runner branch can't silently
+    // diverge from the carrier's authority.
+    let dag = generated_full_bootstrap_dag();
+    let predicate = dag
+        .declaration_by_name("TestPredicate")
+        .expect("TestPredicate missing from bootstrap");
+    let TypeConnective::Disj { variants } = &predicate.connective else {
+        panic!("TestPredicate is not a Disj");
+    };
+    let bridge_variant = variants
+        .iter()
+        .find(|v| v.label == "BridgeLedgerZero")
+        .expect("TestPredicate::BridgeLedgerZero variant missing");
+    let payload = dag.declaration(bridge_variant.ty);
+    let labels: HashSet<String> = match &payload.connective {
+        TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
+        other => panic!(
+            "BridgeLedgerZero payload must be a Conj record; got {other:?}"
+        ),
+    };
+    let expected: HashSet<String> = ["ledger"].iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        labels, expected,
+        "BridgeLedgerZero must carry exactly `{{ ledger: DeclarationRef }}` per \
+         the Verification dispatch contract."
+    );
+    let ledger_field = match &payload.connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .find(|f| f.label == "ledger")
+            .expect("ledger field missing"),
+        _ => unreachable!(),
+    };
+    let ledger_decl = dag.declaration(ledger_field.ty);
+    assert_eq!(
+        ledger_decl.name.as_deref(),
+        Some("DeclarationRef"),
+        "BridgeLedgerZero.ledger must be `DeclarationRef`; got {:?}",
+        ledger_decl.name
+    );
+}
+
+#[test]
+fn bridge_ledger_zero_runner_fails_with_named_open_rows_at_head() {
+    // At HEAD the canonical ledger has three Open rows
+    // (source_span_file_participation, include_str_side_channels,
+    // exact_string_patching_residual). The runner must `Fail` and name
+    // every Open row in the diagnostic; do NOT pretend ledger-zero is
+    // already true. Once an `Open` row flips to `Retired` upstream the
+    // diagnostic narrows to the remaining open names; once all five are
+    // `Retired` this test re-arms as a `Pass` ratchet.
+    let source = r#"
+data ledger_zero_claim: TestClaim = {
+  name: "bridge_ledger_zero_at_head",
+  source: "let x: Int = 1",
+  file_name: "bridge_ledger_zero_runner.v3",
+  predicate: BridgeLedgerZero { ledger: bridge_ledger },
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "bridge_ledger_zero_runner_suite",
+  claims: [ledger_zero_claim]
+}
+"#;
+    let dag = compile_clean(source, "bridge_ledger_zero_runner.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+    assert_eq!(results.len(), 1);
+    let reason = match &results[0].result {
+        ClaimResult::Fail(reason) => reason.clone(),
+        other => panic!(
+            "expected `Fail` (open rows present at HEAD); got {other:?}"
+        ),
+    };
+    // Diagnostic must name every currently-Open row so Verification
+    // surfaces the residual debt. Source-of-truth status verdicts are
+    // documented in `src/v3/std/bridge_ledger.dag` per-row rationale
+    // and `docs/r3-structure.md:79-83`. If a row flips to `Retired`
+    // upstream, drop it from this expected set in the same PR that
+    // updates the carrier so the gate stays honest.
+    let expected_open_rows = [
+        "bridge_source_span_file_participation_retired",
+        "bridge_include_str_side_channels_retired",
+        "bridge_exact_string_patching_residual_retired",
+    ];
+    for row in expected_open_rows {
+        assert!(
+            reason.contains(row),
+            "BridgeLedgerZero failure message must name `{row}`; got: {reason}"
+        );
+    }
+    // And the two Retired rows must not appear in the failure list.
+    let expected_retired_rows = [
+        "bridge_mark_bootstrap_secret_nominal_opacity_retired",
+        "bridge_canonical_lens_name_dispatch_retired",
+    ];
+    for row in expected_retired_rows {
+        assert!(
+            !reason.contains(row),
+            "BridgeLedgerZero failure must NOT name retired row `{row}`; got: {reason}"
         );
     }
 }

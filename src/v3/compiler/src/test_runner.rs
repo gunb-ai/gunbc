@@ -1524,6 +1524,7 @@ impl<'a> TestRunner<'a> {
                             self.eval_fixed_point_converges_shape(claim, &payload)
                         }
                         "RatchetZero" => self.eval_ratchet_zero_shape(claim, &payload),
+                        "BridgeLedgerZero" => self.eval_bridge_ledger_zero(claim, &payload),
                         "GeneratedFromDag" => self.eval_generated_from_dag_shape(claim, &payload),
                         "ReleaseDeferredClaim" => {
                             self.eval_release_deferred_claim_shape(claim, &payload)
@@ -2452,6 +2453,110 @@ impl<'a> TestRunner<'a> {
         } else {
             ClaimResult::Fail(format!(
                 "RatchetZero `compiler_std_positive_set_ratchet` observed {count}"
+            ))
+        }
+    }
+
+    /// `TestPredicate::BridgeLedgerZero { ledger: DeclarationRef }`. Resolves
+    /// `ledger` to a `List<BridgeLedgerRow>` declaration (`bridge_ledger.dag`),
+    /// walks the rows, and `Pass`es iff every row's `status` field resolves
+    /// to the `Retired` constructor of `BridgeStatus`. Open rows surface
+    /// in the failure message by name so Verification points directly at
+    /// the residual debt.
+    fn eval_bridge_ledger_zero(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [ledger] = payload else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero payload should be (DeclarationRef)".to_string(),
+            );
+        };
+        let ledger_id = match ledger {
+            FieldValue::Reference(id) => *id,
+            other => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger`: expected FieldValue::Reference(DeclarationId), got {other:?}"
+                ));
+            }
+        };
+        let decl = self.dag.declaration(ledger_id);
+        let rows = match &decl.value_body {
+            Some(ValueBody::List(rows)) => rows,
+            Some(other) => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger` must point at a `data X: List<BridgeLedgerRow>` \
+                     declaration; `{}` value_body is {other:?}",
+                    decl_display_name(decl.id, decl)
+                ));
+            }
+            None => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger` declaration `{}` has no value_body",
+                    decl_display_name(decl.id, decl)
+                ));
+            }
+        };
+
+        let Some(bridge_status) = self.dag.declaration_by_name("BridgeStatus") else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero: `BridgeStatus` is not declared in the bootstrap; \
+                 cannot resolve the `Retired` / `Open` constructors structurally"
+                    .to_string(),
+            );
+        };
+        let TypeConnective::Disj { variants } = &bridge_status.connective else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero: `BridgeStatus` must be a Disj coproduct".to_string(),
+            );
+        };
+        let Some(retired_ty) = variants
+            .iter()
+            .find(|v| v.label == "Retired")
+            .map(|v| v.ty)
+        else {
+            return ClaimResult::Fail(
+                "BridgeLedgerZero: `BridgeStatus::Retired` variant missing".to_string(),
+            );
+        };
+
+        let mut open_rows: Vec<String> = Vec::new();
+        for (idx, row) in rows.iter().enumerate() {
+            let FieldValue::Record(fields) = row else {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero: row {idx} is not a record literal: {row:?}"
+                ));
+            };
+            let name = match fields.iter().find(|(l, _)| l == "name").map(|(_, v)| v) {
+                Some(FieldValue::Literal(LiteralBits::String(s))) => s.clone(),
+                _ => format!("<row {idx} missing `name`>"),
+            };
+            let status = match fields.iter().find(|(l, _)| l == "status").map(|(_, v)| v) {
+                Some(FieldValue::Variant { constructor, .. }) => *constructor,
+                Some(other) => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row `{name}` `status` must be a Variant, got {other:?}"
+                    ));
+                }
+                None => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row `{name}` missing `status` field"
+                    ));
+                }
+            };
+            if status != retired_ty {
+                open_rows.push(name);
+            }
+        }
+
+        if open_rows.is_empty() {
+            ClaimResult::Pass
+        } else {
+            ClaimResult::Fail(format!(
+                "BridgeLedgerZero: {} bridge row(s) not yet `Retired`: [{}]",
+                open_rows.len(),
+                open_rows.join(", ")
             ))
         }
     }
