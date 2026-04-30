@@ -20,7 +20,7 @@ For the **body evaluator**, “strategy” must be a **closed substrate inhabita
 
 2. **Second strategy = `NormalOrder` / call-by-need** — **EvalThunk + captured `EvalStateStack`** ([`r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md) L82–92); **R3 residual** relative to PR-B.1 ([`r2-pr-b-body-evaluator-eager-baseline.md`](r2-pr-b-body-evaluator-eager-baseline.md) L146–148).
 
-`EvalFrame` / `EvalStateStack` ([`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag) L51–75) support multi-strategy work once PR-A.3 keys memo by strategy ([`r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md) L101–111).
+`EvalFrame` / `EvalStateStack` ([`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag) L60–75) support multi-strategy work once PR-A.3 keys memo by strategy ([`r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md) L101–111).
 
 **TC2 coverage requirement for the unified predicate:** the **strategy-order modifier** must be able to name **≥2 executable strategies** through the same evaluator boundary and require **pairwise `DimensionReport<C>` equality** (see §2) for the same program + lens fold — not merely “left vs right” as documentation prose.
 
@@ -54,7 +54,7 @@ Rough **partial order** before the deferred claim graduates from `Compiles`:
 
 | # | Precondition | Concrete anchor on `main` |
 |---|----------------|---------------------------|
-| P1 | PR-A.2 evaluator state carriers | [`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag) L51–75 |
+| P1 | PR-A.2 evaluator state carriers | [`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag) L60–75 (`EvalFrame`, `EvalStateStack`) |
 | P2 | PR-A.3 strategy + memo carriers **implemented** | [`r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md) L126–134, L156–164 |
 | P3 | PR-B.1 eager body evaluator | [`r2-pr-b-body-evaluator-eager-baseline.md`](r2-pr-b-body-evaluator-eager-baseline.md) L142–154 |
 | P4 | **Second** executable strategy (or input order) | R3 residual ([`r2-pr-b-body-evaluator-eager-baseline.md`](r2-pr-b-body-evaluator-eager-baseline.md) L146–154) |
