@@ -1,15 +1,24 @@
 //! Fail-closed diagnostic surface for the lifetime fold.
 //!
-//! ## Practice 4 (`docs/modeling-discipline.md` §4)
+//! ## Practice 4 — substrate authority LANDED (per #1133 dispatch 4355793511)
 //!
-//! The multi-variant diagnostic sum below is **lane-local** until substrate
-//! authoring lands; see enum doc for 🟡 trigger.
+//! The substrate `EmissionDiagnostic` carrier is now declared at
+//! `src/v3/std/diagnostics.dag` (T-Ground-Diagnostic; #1216 brief). This
+//! crate's Rust mirror below carries the same variant set; the lane-local
+//! mirror persists because `v3-grounding-lifetime` cannot consume
+//! reflected substrate types today (no `.dag` → Rust enum codegen path).
 //!
-//! **T-Ground-Diagnostic** owns extending `CompilerDiagnosticKind` in `dsl/`.
-//! This crate does **not** add Layer-1 variants; it carries a **lane-local**
-//! mirror shape so callers and tests lock the emission payload before the
-//! substrate `EmissionDiagnostic` carrier lands. Mapping to
-//! `Diagnostic` / `CompilerDiagnosticKind` stays Coercion-Fold / Diagnostic-lane work.
+//! **Lockstep discipline:** any new variant added to substrate
+//! `EmissionDiagnostic` MUST land here as a parallel Rust mirror update.
+//! Variant-name parity is enforced socially until reflection-driven
+//! Rust generation lands. The `axis: String` field below corresponds to
+//! the substrate carrier's `unspecified_axis: String` — naming will
+//! reconcile when the reflection codegen retires this mirror.
+//!
+//! **Q6.5 anti-bridge preserved:** `EmissionDiagnostic` is a SEPARATE
+//! substrate carrier from `CompilerDiagnosticKind`. Mapping to
+//! `Diagnostic` / `AnyDiagnosticKind` is Coercion-Fold / emit-pipeline
+//! consumer work, not authored here.
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SiteRef {
