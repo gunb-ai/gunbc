@@ -1996,11 +1996,21 @@ impl<'a> TestRunner<'a> {
         };
         let left_name = decl_display_name(left_id, self.dag.declaration(left_id));
         let right_name = decl_display_name(right_id, self.dag.declaration(right_id));
-        if let Err(reason) = self.validate_dimension_report_ref(left_id, "left_report_ref") {
-            return ClaimResult::Fail(reason);
-        }
-        if let Err(reason) = self.validate_dimension_report_ref(right_id, "right_report_ref") {
-            return ClaimResult::Fail(reason);
+        let left_carrier = match self.validate_dimension_report_ref(left_id, "left_report_ref") {
+            Ok(carrier) => carrier,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let right_carrier = match self.validate_dimension_report_ref(right_id, "right_report_ref") {
+            Ok(carrier) => carrier,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if left_carrier != right_carrier {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals requires both refs to produce DimensionReport<C> \
+                 for the same carrier C; `{left_name}` uses `{}` but `{right_name}` uses `{}`",
+                decl_display_name(left_carrier, self.dag.declaration(left_carrier)),
+                decl_display_name(right_carrier, self.dag.declaration(right_carrier))
+            ));
         }
         ClaimResult::NotYetImplemented(format!(
             "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
@@ -2014,36 +2024,41 @@ impl<'a> TestRunner<'a> {
         &self,
         decl_id: DeclarationId,
         field_label: &str,
-    ) -> Result<(), String> {
+    ) -> Result<DeclarationId, String> {
         let decl = self.dag.declaration(decl_id);
         let candidate_type = match &decl.connective {
             TypeConnective::Arrow { output, .. } => *output,
             _ => decl_id,
         };
-        if self.type_is_dimension_report(candidate_type) {
-            Ok(())
-        } else {
-            Err(format!(
-                "BinaryDimensionReportEquals `{field_label}` must reference a declaration that \
-                 produces or inhabits DimensionReport<C>; `{}` does not",
-                decl_display_name(decl_id, decl)
-            ))
-        }
+        self.dimension_report_carrier(candidate_type)
+            .ok_or_else(|| {
+                format!(
+                    "BinaryDimensionReportEquals `{field_label}` must reference a declaration \
+                     that produces or inhabits DimensionReport<C>; `{}` does not",
+                    decl_display_name(decl_id, decl)
+                )
+            })
     }
 
-    fn type_is_dimension_report(&self, mut current: DeclarationId) -> bool {
+    fn dimension_report_carrier(&self, mut current: DeclarationId) -> Option<DeclarationId> {
         let Some(report_id) = self
             .dag
             .declaration_by_name("DimensionReport")
             .map(|decl| decl.id)
         else {
-            return false;
+            return None;
         };
+        // Bounded alias walk: this is a fail-closed cycle/depth guard, not a
+        // semantic limit on valid DimensionReport<C> producer shapes.
         for _ in 0..32 {
             match &self.dag.declaration(current).connective {
-                TypeConnective::Instantiation { template, .. } if *template == report_id => {
-                    return true;
-                }
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if *template == report_id => match arguments.as_slice() {
+                    [carrier] => return Some(self.normalize_transparent_type(carrier.value)),
+                    _ => return None,
+                },
                 TypeConnective::Instantiation {
                     template,
                     arguments,
@@ -2051,10 +2066,26 @@ impl<'a> TestRunner<'a> {
                 TypeConnective::Atom(
                     AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
                 ) => current = *next,
-                _ => return false,
+                _ => return None,
             }
         }
-        false
+        None
+    }
+
+    fn normalize_transparent_type(&self, mut current: DeclarationId) -> DeclarationId {
+        for _ in 0..32 {
+            match &self.dag.declaration(current).connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => current = *template,
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => current = *next,
+                _ => return current,
+            }
+        }
+        current
     }
 
     fn resolve_declaration_ref_id(
