@@ -2,7 +2,7 @@
 
 **Status:** AUDIT (docs-only). **Scope:** inventory the bespoke Rust predicate/producer surfaces in `src/v3/compiler/src/test_runner.rs` without changing code. **Does not** duplicate Worker C’s PR-B.2/3/4 runner-extension bundle brief — treat [PR #1315](https://github.com/gunb-ai/gunbc/pull/1315) and [`docs/briefs/r2-pr-b-2-runner-extension-bundle.md`](r2-pr-b-2-runner-extension-bundle.md) (authoritative copy on that PR branch until merged; may not exist in every checkout of `main` yet) as the **consumer** of this inventory; this document names **why** parallel Rust authority exists and **where** it should dissolve.
 
-**Primary code anchor:** `TestRunner::run_claim` dispatches `TestPredicate` variant labels to Rust evaluators (`Compiles` through `MockBackedInvariant`); unknown labels return `NotYetImplemented` (`src/v3/compiler/src/test_runner.rs`).
+**Primary code anchor:** This PR is **docs-only** — it does not modify Rust. The audited implementation lives on the merge target (**`main`**): `TestRunner::run_claim` in `src/v3/compiler/src/test_runner.rs` (e.g. ~1497+) dispatches `TestPredicate` variant labels to Rust evaluators (`Compiles` through `MockBackedInvariant`); unknown labels return `NotYetImplemented`.
 
 **Cross-reads (required by dispatch):**
 
