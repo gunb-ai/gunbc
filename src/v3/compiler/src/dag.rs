@@ -1906,6 +1906,41 @@ pub enum Behavior {
     Bind(BindNode),
 }
 
+/// Workflow-root identification — Rust mirror of
+/// [`crate::dag::WorkflowRoot`]'s declaration in
+/// `src/v3/std/substrate.dag`.
+///
+/// 🟡 SCAFFOLD coproduct (mirroring the .dag receipt). The three arms
+/// partition every legitimate `Dag` exactly once:
+///
+///   - `SingleRoot(p)` — α (last topological `Bind`) selected `p`.
+///     Emitted whenever the Dag contains at least one `Bind`; multiple
+///     Binds are NOT ambiguous under α — linear `d.nodes` picks
+///     exactly one last element by definition.
+///   - `NoRoot` — zero `Bind` behaviors in `d.nodes`. Lens fold short-
+///     circuits to `DimensionFail`; runtime evaluation rejects.
+///   - `AmbiguousRoot { candidates }` — reserved for the future
+///     enumerate-all-eligible-entries rule that R2-Evaluator's
+///     `evaluate(program, entry, args)` consumes for multi-entry
+///     programs (per Items 4+5 / #1176 §3.2). The α / γ "last X Bind"
+///     rules cannot populate this arm; today's α implementation never
+///     emits it. Carried as `NonSingletonList<PortId>` to make the
+///     pre-disambiguation 1-candidate case structurally
+///     unrepresentable — `AmbiguousRoot` requires ≥2 candidates by
+///     construction.
+///
+/// Dissolution: γ refinement and the enumerate-all rule both reuse
+/// this same partition behind the `workflow_root_port` accessor; no
+/// carrier change required when those rules wire.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowRoot {
+    SingleRoot(PortId),
+    NoRoot,
+    AmbiguousRoot {
+        candidates: NonSingletonList<PortId>,
+    },
+}
+
 impl Behavior {
     pub fn id(&self) -> NodeId {
         match self {
@@ -2962,6 +2997,29 @@ impl Dag {
         }
     }
 
+    /// Workflow-root accessor (Director-locked α implementation per
+    /// `docs/design-lens-fold-prerequisites.md` §"Prereq-3a"). Walks
+    /// `d.nodes` (which is topologically ordered) backwards and returns:
+    ///
+    /// - `WorkflowRoot::SingleRoot(p)` for the last `Behavior::Bind`'s
+    ///   `result_port`, when at least one `Bind` exists.
+    /// - `WorkflowRoot::NoRoot` when zero `Bind` behaviors are present
+    ///   (lens fold short-circuits to `DimensionFail`; runtime evaluation
+    ///   rejects).
+    /// - `WorkflowRoot::AmbiguousRoot { .. }` is intentionally never
+    ///   emitted by this α implementation — the linear `d.nodes` order
+    ///   cannot tie. The variant is reserved at the type level for the
+    ///   future enumerate-all-eligible-entries rule that R2-Evaluator's
+    ///   `evaluate(program, entry, args)` consumes.
+    pub fn workflow_root_port(&self) -> WorkflowRoot {
+        for behavior in self.nodes.iter().rev() {
+            if let Behavior::Bind(b) = behavior {
+                return WorkflowRoot::SingleRoot(b.result_port());
+            }
+        }
+        WorkflowRoot::NoRoot
+    }
+
     pub fn optional_match_disj(&self, cardinality_decl_id: DeclarationId) -> Option<DeclarationId> {
         self.optional_match_disjs.get(&cardinality_decl_id).copied()
     }
@@ -3777,6 +3835,22 @@ fn duplicate_target_clean_emission_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn workflow_root_zero_bind_returns_no_root() {
+        // V3 surface syntax always lowers each top-level decl to a
+        // Bind, so the zero-Bind case is structurally unreachable from
+        // `compile_to_dag` fixtures. The α path's `NoRoot` arm is
+        // defensive-only at the substrate boundary; this unit test
+        // exercises it via the crate-private `Dag::empty()` constructor.
+        let dag = Dag::empty();
+        let root = dag.workflow_root_port();
+        assert_eq!(
+            root,
+            WorkflowRoot::NoRoot,
+            "Dag with no Bind behaviors must fail closed with NoRoot"
+        );
+    }
 
     fn binding_fields(language: DeclarationId, clean_emission: DeclarationId) -> ValueBody {
         ValueBody::Structural {
