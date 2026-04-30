@@ -820,10 +820,13 @@ impl<'a> Parser<'a> {
     }
 
     /// After `type Name<T> =`, decide between TypeSum (one-or-more variants
-    /// separated by `|`) and TypeAlias (a single type expression). A variant
-    /// looks like `Ident` or `Ident(payload)`. A type expression can start
-    /// with `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare
-    /// `Ident` that happens not to be followed by `|`.
+    /// separated by `|`, or a **single** variant without a top-level `|` when
+    /// it opens as `Variant { ... }` / `Variant(...)` — PR-A.3 EvalStrategy
+    /// carrier) and TypeAlias (a single type expression). A variant looks like
+    /// `Ident`, `Ident(...)`, or `Ident { ... }`. A type expression can start
+    /// with `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare `Ident`
+    /// at RHS end (alias to another type — **not** a nullary sum; use
+    /// `Variant()` for a single nullary sum variant without `|`).
     ///
     /// Optional alias-RHS `where` (DB-11): `where <expr> [, <expr>]*` parses
     /// to `SurfaceExpr` (comma-separated parts fold as left-associated `&&`).
@@ -944,9 +947,12 @@ impl<'a> Parser<'a> {
         Ok((Some(combined), end))
     }
 
-    /// Lookahead: after `=`, is the RHS a sum (contains `|` at top level before
-    /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
-    /// payload list doesn't confuse the scan.
+    /// Lookahead: after `=`, is the RHS a sum? True when (a) a top-level `|`
+    /// exists before the next item boundary, or (b) the RHS opens as
+    /// `Variant {` / `Variant(` at depth zero (single-variant sum without `|`).
+    /// Tracks paren/brace depth so a `|` inside a payload list doesn't confuse
+    /// the scan. [`Self::parse_sum_variants`] skips a **leading** run of `|`
+    /// tokens so `| A | B` and `A | B` both parse.
     ///
     /// Do **not** treat [`TokenKind::Ident`] `inhabits` as an item boundary: it
     /// can spell a sum variant / record field (see [`Self::parse_field_label`],
@@ -958,6 +964,9 @@ impl<'a> Parser<'a> {
     /// `type Name =` / `type Name<` / `type Name inhabits` (next decl) via a
     /// two-token lookahead when depth is zero.
     fn rhs_is_sum(&self) -> bool {
+        if self.rhs_opens_single_variant_sum_shape() {
+            return true;
+        }
         let mut i = self.pos;
         let mut depth: i32 = 0;
         while i < self.tokens.len() {
@@ -1005,7 +1014,30 @@ impl<'a> Parser<'a> {
         false
     }
 
+    /// After `=`, does the RHS open as a single sum variant without a top-level
+    /// `|`? True for `Variant { ... }` and `Variant(...)` / `Variant()` at
+    /// depth zero. False for `Variant<Args>` — that begins a parameterized
+    /// **alias** RHS (`parse_type_expr`), not a variant payload.
+    fn rhs_opens_single_variant_sum_shape(&self) -> bool {
+        let i = self.pos;
+        let Some(t0) = self.tokens.get(i) else {
+            return false;
+        };
+        let label_ok = matches!(t0.kind, TokenKind::Ident(_))
+            || soft_keyword_ident_spelling(&t0.kind).is_some();
+        if !label_ok {
+            return false;
+        }
+        match self.tokens.get(i + 1).map(|t| &t.kind) {
+            Some(TokenKind::LBrace) | Some(TokenKind::LParen) => true,
+            _ => false,
+        }
+    }
+
     fn parse_sum_variants(&mut self) -> Result<Vec<SurfaceVariant>, Diagnostic> {
+        while matches!(self.peek().kind, TokenKind::Pipe) {
+            self.bump();
+        }
         let mut variants = vec![self.parse_variant()?];
         while matches!(self.peek().kind, TokenKind::Pipe) {
             self.bump();
