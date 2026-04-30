@@ -78,7 +78,8 @@ PR-A.3 implementation may resume after one of these lands:
 
 1. Parser support for single-variant sums, including record-payload variants
    such as `ApplicativeOrder { input_order: InputEvaluationOrder }`, with a
-   regression test covering this exact shape.
+   regression test covering this exact shape and a second regression covering
+   the bare single-variant atom shape `InputEvaluationOrder = LeftFirst`.
 2. An approved product/alias carrier amendment that preserves the
    one-inhabitant closed strategy semantics and is explicitly accepted by the
    PR-A.3 / PB-Runtime authorities.
