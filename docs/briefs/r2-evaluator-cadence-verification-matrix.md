@@ -1,0 +1,36 @@
+# R2 Evaluator — Cadence / convergence verification matrix (Evaluator-side)
+
+**Status:** PROPOSAL — **docs-only** coordination surface. Does **not** introduce substrate facts, `.dag` fixtures, or PB-Runtime design authority. Complements cross-program PB-Runtime convergence tracking (see [PR #1235](https://github.com/gunb-ai/gunbc/pull/1235)); PB Manager + `docs/design-pb-runtime-interpreter.md` remain the PB authority.
+
+**Parent:** [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) — Evaluator Manager program scope + pre-dispatch cadence.
+
+**Read first:** [`docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) (PR-D dependencies + slice ordering), [`docs/briefs/r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) (PR-A.0–A.3 split + `Map<PortId, Value>` discipline), [`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md) (PR-E slice 1 vs deeper fold).
+
+## Purpose
+
+Make **Evaluator-side** gate status, **next allowed** work shape, and **forbidden widening** explicit so dispatch does not start downstream slices (body evaluator, strict TC2, PR-D slice 2 `ForAllTargets`-class receipts, full `Lens<C>` fold) before their **live** dependencies land. This matrix is for **fleet accounting and review**; it does not replace INVARIANTS P1 for substrate introduction.
+
+## Cross-program anchor (PB-Runtime)
+
+- **PB-Runtime convergence audit:** [PR #1235](https://github.com/gunb-ai/gunbc/pull/1235) — Evaluator authors may cite it for alignment; **do not** edit PB-owned docs from this lane unless a separate cross-manager agreement says otherwise.
+- **Evaluator / PB convergence design lock:** [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §2–§3 (`Value` vocabulary, closed-over environments internal to evaluator state).
+
+## Verification matrix (Evaluator lanes)
+
+| Lane / slice | Owner | Current gate status | Live dependencies | Next allowed PR shape | Forbidden widening |
+|---|---|---|---|---|---|
+| **PR-A.1 — runtime `Value` + `NamedField`** | Evaluator Manager + **Worker A** (substrate/runtime module) | **Active** — landing observable `Value` / `NamedField` in `src/v3/std/runtime.dag` per [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) PR-A.1 + PB §3.2; bootstrap / naming-collision work (see [PR #1243](https://github.com/gunb-ai/gunbc/pull/1243), [`r2-pr-a1-runtime-value-dependency-audit.md`](r2-pr-a1-runtime-value-dependency-audit.md)). | Flat declaration namespace vs L1 `Value` marker resolution; PB-Runtime shape match. | **Docs + substrate declarations** that mirror the locked coproduct only; strengthen `evaluator_runtime_value_model_landed` when substrate shape is real. | No `EvalFrame` / `EvalStateStack` here; no `ClosureValue`; no second PB `Value` shape; no body execution. |
+| **PR-A.2 — `EvalFrame` / `EvalStateStack`** | Evaluator + Worker A | **Blocked** until PR-A.1 lands. | PR-A.1 carriers; **unique-binding** `Map<PortId, Value>` disposition (see [issue #1222](https://github.com/gunb-ai/gunbc/issues/1222) and PR-A brief: fail-closed map, not duplicate-admitting lists). | Declare evaluator-internal frames/stacks; mirror in Rust **without** new observable `Value` variants. | No `Value` inhabitants for closures; no skipping unique-binding carrier discipline. |
+| **PR-A.3 — strategy / memoization** | Evaluator + Worker A | **Blocked** until PR-A.1 + PR-A.2. | `EvalStrategy`, `EvalMemoKey` / `EvalStateKey` from PR-A.0 sketch in [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md). | Lock eager baseline first; add `EvalThunk` / lazy only with TC2 obligations understood. | No memoization that caches partial diagnostics as `Value`; no orphan strategy labels outside closed carriers. |
+| **PR-B — body evaluator** | Evaluator (worker brief pending) | **Not authored / not started** — [`r2-evaluator-manager.md`](r2-evaluator-manager.md) table. | **PR-A.1 through PR-A.3** for runtime/evaluator state; **worker dispatch** on implementation sub-lanes still joint-gated on **PR-E + R1 close** per manager option (c). | Author PR-B **design** brief after PR-A substrate is real; **no** implementation until PR-A chain + manager dispatch gates clear. | No structural body execution before frames + strategy boundary exist. |
+| **PR-D — cross-target harness** | Evaluator Manager | **Slice 0 + slice 1 landed** — `Compiles` + `DifferentialEquals` scaffold per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md). | **Slice 2** gated: R2-T-Ground-**LanguageSpec**, **all Shape A targets grounded**, **T-Verification-L4-L7-Direct corpus** (that brief Dependencies table). | **Next:** docs-only updates, or Director-approved **existing** `ForAllTargets` claim wiring **only** when those deps are live and cited; otherwise keep deferral. | **No** L5 corpus execution at R2; **no** concrete target enumeration without live deps; **no** new `TestPredicate` variants (INVARIANTS P1). |
+| **PR-E — lens on reflected DAG** | Evaluator + Worker A (`lens_apply.rs`) | **Slice 1 landed** — `fold_lens_over_reflected_program` reflect → apply per [`r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md). | Executable runtime **`Value`**; full **`Lens<C>` / `DimensionReport`** fold; PB-Runtime interpreter dissolution. | Extend **`lens_apply.rs` only** within that brief’s SG-0 rules; deepen fold driver when deps land. | No new observable `Value` variants in PR-E; no replacing PB-Runtime interpreter authority. |
+| **TC2 — evaluation-order independence** | Evaluator (structural claim) | **Author-now fixture landed** — `evaluation_order_independent_lens_results` deferred claim per manager Acceptance + PR-A brief. | PB-Runtime spec + T-Substrate-Lens-Primitive + **executable evaluator strategies** (eager/lazy through same boundary). | Fixture / brief text tightening **only** when Director-approved; predicate strengthening **blocked** until strategies exist. | No claiming Church-Rosser / order independence is **proven** while claim remains deferred placeholder. |
+
+## PR-C note (non-Evaluator blocker list)
+
+**PR-C (reflection completeness)** is **LANDED** via **#1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md). It **unblocks reflection consumers** (including PR-E slice 1) but does **not** unblock PR-A runtime carriers or PR-D slice 2 emit harness by itself.
+
+## Dissolution
+
+When Evaluator Manager’s “Working state” table in [`r2-evaluator-manager.md`](r2-evaluator-manager.md) is continuously maintained from live PRs/issues, **fold this matrix into that table** and retire this file in one docs PR (update `MANAGER_BRIEFS` / cross-refs only if a new canonical path replaces this filename).
