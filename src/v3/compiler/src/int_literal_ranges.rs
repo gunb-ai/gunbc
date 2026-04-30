@@ -820,7 +820,9 @@ mod tests {
                 assert!(bound.contains_i64(i64::MAX));
             }
             IntegerRangeLookup::Missing => panic!("expected Found range for Int128, got Missing"),
-            IntegerRangeLookup::Invalid(d) => panic!("expected Found range for Int128, got Invalid: {d:?}"),
+            IntegerRangeLookup::Invalid(d) => {
+                panic!("expected Found range for Int128, got Invalid: {d:?}")
+            }
         }
     }
 
