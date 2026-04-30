@@ -138,20 +138,43 @@ fn anthropic_operations_messages_pilot_present() {
     };
     let token_texts: Vec<String> = token_list
         .iter()
-        .map(|token| match token {
-            FieldValue::Variant { payload, .. } if payload.len() == 1 => {
-                // LiteralToken { text: String } — payload[0] is the text record/field.
-                // The variant payload encoding may vary; accept either a direct String
-                // literal or a single-field Record { text: <String> }.
-                match &payload[0] {
-                    FieldValue::Literal(_) => string_literal(&payload[0]).to_string(),
-                    FieldValue::Record(inner) => {
-                        string_literal(record_field(inner, "text")).to_string()
-                    }
-                    other => panic!("unexpected LiteralToken payload shape: {other:?}"),
+        .map(|token| {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = token
+            else {
+                panic!("expected UrlPathToken variant; got {token:?}");
+            };
+            // Assert the constructor IS LiteralToken before extracting text.
+            // Without this, a ParamToken { name: "v1" } would satisfy the
+            // text assertion below and silently mis-pass the path check.
+            let variant_name = dag
+                .declaration(*constructor)
+                .name
+                .as_deref()
+                .expect("UrlPathToken variant must have a name");
+            assert_eq!(
+                variant_name, "LiteralToken",
+                "Messages endpoint path must contain only LiteralToken \
+                 variants (per anthropic.dag:198 `/v1/messages` literal segments); \
+                 got `{variant_name}` token"
+            );
+            assert_eq!(
+                payload.len(),
+                1,
+                "LiteralToken payload must carry one field; got {payload:?}"
+            );
+            // LiteralToken { text: String } — payload[0] is the text record/field.
+            // The variant payload encoding may vary; accept either a direct String
+            // literal or a single-field Record { text: <String> }.
+            match &payload[0] {
+                FieldValue::Literal(_) => string_literal(&payload[0]).to_string(),
+                FieldValue::Record(inner) => {
+                    string_literal(record_field(inner, "text")).to_string()
                 }
+                other => panic!("unexpected LiteralToken payload shape: {other:?}"),
             }
-            other => panic!("expected LiteralToken variant; got {other:?}"),
         })
         .collect();
     assert_eq!(
