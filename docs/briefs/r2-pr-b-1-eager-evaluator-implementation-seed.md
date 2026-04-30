@@ -65,22 +65,32 @@ in order; merge cannot proceed if any row's fail-closed boundary is missing.
 
 ### B.1.3 — `Branch`
 
-- **Input:** branch node with a scrutinee port and a list of paths (path
-  pattern + body `NodeId`).
+- **Input:** `BranchNode { paths: List<BranchPath> }` where
+  `BranchPath { body: NodeId, result_port: PortId, pattern: BranchPattern,
+  binding: PayloadBinding? }` and
+  `BranchPattern = UnresolvedVariant { name, span } | ResolvedVariant(DeclarationId)`
+  (`src/v3/std/substrate.dag:268,277,367`). **No wildcard / catch-all
+  variant exists in the substrate** — exhaustive Disj coverage is enforced
+  upstream by inference, so PR-B.1 dispatches against `ResolvedVariant`
+  declarations only.
 - **Rule:**
-  1. Eager-evaluate the scrutinee (`Value`).
-  2. Select the path whose pattern matches the scrutinee per the
-     pattern-match rule. Patterns are exhaustive over the scrutinee's
-     `Value` shape by construction; the wildcard / catch-all path is the
-     `Disj` total fallback.
-  3. Push a fresh `EvalFrame` containing the path-binding (the matched
-     payload bound to the path's parameter `PortId`).
-  4. Evaluate the selected path's body in that frame.
+  1. Eager-evaluate the scrutinee. The result must be a
+     `Value::VariantValue { tag, payload }` (the only `Value` shape a
+     `Branch` scrutinee admits by construction).
+  2. Select the path whose `pattern: ResolvedVariant(decl)` has
+     `decl == tag`. Exhaustive coverage means exactly one path matches.
+  3. Push a fresh `EvalFrame`. If the path carries a
+     `PayloadBinding { binding_name, payload_port }`, bind
+     `payload_port → payload` in the new frame; if `binding: None`, push
+     an empty frame.
+  4. Evaluate the path's `body` in that frame.
   5. Pop the frame; return the body's result.
 - **Fail-closed boundary:**
-  - Scrutinee whose shape no path can match (substrate guarantees totality,
-    so this is a structural invariant violation, not a runtime case) —
-    `Diagnostic`.
+  - `pattern: UnresolvedVariant` reaching PR-B.1 — resolution gap, never
+    valid at evaluation time — `Diagnostic`.
+  - Scrutinee `Value` whose shape is not `VariantValue`, or whose `tag`
+    no `ResolvedVariant` path matches — substrate / inference invariant
+    violation — `Diagnostic`.
 
 ### B.1.4 — `Loop`
 
