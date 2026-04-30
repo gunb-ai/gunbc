@@ -21,10 +21,44 @@
 //!    construction without test rewrite.
 
 use std::collections::HashSet;
-use v3_compiler::dag::{Dag, FieldValue, ValueBody};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 const ANTHROPIC_OPERATIONS: &str = "anthropic_operations";
+
+/// Resolve a `Variant.constructor` DeclarationId to the variant's
+/// **structural** label by consulting the parent sum's `Disj.variants`
+/// list — NOT by reading `Declaration.name` on the constructor decl
+/// (which is a bolted-on convenience that may drift from the
+/// declared-variant authority). The Disj's variants list IS the
+/// single-authority for variant-label-to-constructor mapping.
+///
+/// Returns the variant label if `constructor` is one of `parent`'s
+/// declared variant constructors; panics otherwise (the constructor
+/// MUST inhabit the expected parent's variant set).
+fn variant_label_in_parent(dag: &Dag, parent_name: &str, constructor: DeclarationId) -> String {
+    let parent = dag
+        .declaration_by_name(parent_name)
+        .unwrap_or_else(|| panic!("expected parent sum `{parent_name}` missing from bootstrap"));
+    let TypeConnective::Disj { variants } = &parent.connective else {
+        panic!(
+            "`{parent_name}` is not a Disj sum; cannot resolve variant labels: {:?}",
+            parent.connective
+        );
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == constructor)
+        .map(|v| v.label.clone())
+        .unwrap_or_else(|| {
+            panic!(
+                "constructor `DeclarationId({})` is not a variant of `{parent_name}`; \
+                 declared variants: {:?}",
+                constructor.raw(),
+                variants.iter().map(|v| &v.label).collect::<Vec<_>>()
+            )
+        })
+}
 
 fn list_value_body<'a>(dag: &'a Dag, name: &str) -> &'a Vec<FieldValue> {
     let decl = dag
@@ -118,14 +152,10 @@ fn anthropic_operations_messages_pilot_present() {
     let FieldValue::Variant { constructor, .. } = method else {
         panic!("`endpoint.method` must be a `HttpMethod` variant; got {method:?}");
     };
-    let method_name = dag
-        .declaration(*constructor)
-        .name
-        .as_deref()
-        .expect("HttpMethod variant should have a name");
+    let method_label = variant_label_in_parent(&dag, "HttpMethod", *constructor);
     assert_eq!(
-        method_name, "POST",
-        "Messages endpoint method must be POST (per anthropic.dag:197); got `{method_name}`"
+        method_label, "POST",
+        "Messages endpoint method must be POST (per anthropic.dag:197); got `{method_label}`"
     );
 
     let path = record_field(endpoint_fields, "path");
@@ -149,16 +179,16 @@ fn anthropic_operations_messages_pilot_present() {
             // Assert the constructor IS LiteralToken before extracting text.
             // Without this, a ParamToken { name: "v1" } would satisfy the
             // text assertion below and silently mis-pass the path check.
-            let variant_name = dag
-                .declaration(*constructor)
-                .name
-                .as_deref()
-                .expect("UrlPathToken variant must have a name");
+            // Resolution goes through the parent `UrlPathToken` Disj's
+            // `variants` list — the structural authority — not via
+            // `Declaration.name` on the constructor decl (would be
+            // bolted-on convenience that may drift).
+            let variant_label = variant_label_in_parent(&dag, "UrlPathToken", *constructor);
             assert_eq!(
-                variant_name, "LiteralToken",
+                variant_label, "LiteralToken",
                 "Messages endpoint path must contain only LiteralToken \
                  variants (per anthropic.dag:198 `/v1/messages` literal segments); \
-                 got `{variant_name}` token"
+                 got `{variant_label}` token"
             );
             assert_eq!(
                 payload.len(),
@@ -262,12 +292,8 @@ fn anthropic_operations_param_tokens_resolve_to_input_keys() {
             else {
                 panic!("path token {tidx} must be a UrlPathToken variant; got {token:?}");
             };
-            let variant_name = dag
-                .declaration(*constructor)
-                .name
-                .as_deref()
-                .expect("UrlPathToken variant should have a name");
-            if variant_name == "ParamToken" {
+            let variant_label = variant_label_in_parent(&dag, "UrlPathToken", *constructor);
+            if variant_label == "ParamToken" {
                 // ParamToken { name: String } — payload[0] is the name.
                 let name = match payload.first() {
                     Some(FieldValue::Literal(_)) => string_literal(&payload[0]).to_string(),
