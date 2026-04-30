@@ -454,7 +454,7 @@ fn expected_mirror_shape() -> RustPrimitiveTypeShape {
                 "Word16Carrier",
                 "Word32Carrier",
                 "Word64Carrier",
-            "Word128Carrier",
+                "Word128Carrier",
                 "TerminalCarrier",
             ],
         ),
