@@ -31,7 +31,7 @@ Make **Evaluator-side** gate status, **next allowed** work shape, and **forbidde
 
 ## PR-C note (non-Evaluator blocker list)
 
-**PR-C (reflection completeness)** is **LANDED** via **#1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md). It **unblocks reflection consumers** (including PR-E slice 1) but does **not** unblock PR-A runtime carriers or PR-D slice 2 emit harness by itself.
+**PR-C (reflection completeness)** is **LANDED** via **#1129** at [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md), with complete reflection implementation landed via [PR #1170](https://github.com/gunb-ai/gunbc/pull/1170). It **unblocks reflection consumers** (including PR-E slice 1) but does **not** unblock PR-A runtime carriers or PR-D slice 2 emit harness by itself. Structural-gate / R2.5-R3 dissolution guidance lives in [`r2-pr-c-reflection-dissolution-gates.md`](r2-pr-c-reflection-dissolution-gates.md).
 
 ## Dissolution
 
