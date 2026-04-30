@@ -356,6 +356,46 @@ one of them requires a substrate extension:
   ergonomic helpers, not invariant-defenders — the type rejects
   malformed combinations at construction by definition.
 
+  **Dissolution ledger.** Per modeling-discipline coproduct
+  classification, each variant is tagged with its dissolution
+  status (🟢 keep / 🟡 future-dissolve / 🔴 dissolve-now):
+
+  - 🟢 **`Operator { op: OperatorCall }`** — keep. Built-in
+    operator dispatch is a true user-input-boundary distinction:
+    no `DeclarationId` exists for `+` / `-` / unary-`!`; the
+    callee identity is a fixed enum of language primitives, not
+    a name resolvable through the program. Coordinate-collapsing
+    `Operator` into the call-shapes would require synthesizing
+    fictional `DeclarationId`s for primitives, which is the
+    dissolution anti-pattern (encoding a primitive as a
+    pseudo-declaration).
+
+  - 🟡 **`Callable` / `FieldProject` / `Indirect`** — future
+    dissolution to a single `Call { callee: CalleeRef, args }`
+    variant where `CalleeRef = Decl(DeclarationId) | Field {
+    label, child: Option<DeclarationId>, carrier: PortId } |
+    Port(ArrowPortRef)`. The three variants share the same
+    dispatch shape (target + args validated against target's
+    Arrow signature); they differ only in callee-identity source.
+    Held as separate today because (a) emitter rendering
+    currently dispatches on callee-source, and (b) the args proof
+    is bound per-variant by the atomic builders described above —
+    collapsing requires `CalleeRef` itself to carry the same
+    co-construction guarantee. **Tracking gate:** dissolved when
+    the emitter splits callee-rendering from the dispatch match
+    (same shape as `lens_*_emitter_split` work). Not a blocker
+    for X1; a follow-up modeling slice.
+
+  - 🔴 **None** — no variant is in dissolve-now state because
+    nothing in `TransformDispatch` admits a malformed-state shape
+    that a downstream lens would have to defend against; the
+    invariants (Facts Flow Forward, illegal-states-unrepresentable,
+    args-bound-to-target) all hold under the 🟢/🟡 set above.
+
+  No variant is added speculatively: each axis (built-in op vs
+  user-defined call vs runtime-port callee) has a present
+  consumer in the lens framework's expected dispatch surface.
+
   **Migration cost.** The collapse is a substantial refactor of
   `TransformNode` and every consumer that walks `target` /
   `inputs` separately (`emit_*_target.rs`, lens reads, lowerer
