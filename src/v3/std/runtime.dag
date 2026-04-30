@@ -13,6 +13,7 @@ module v3.std.runtime
 
 import std.list { List }
 import std.types { Map }
+import std.stack { Stack }
 import v3.std.substrate { LiteralBits, LoopBound }
 import v3.std.substrate_minimal { NodeId, PortId, DeclarationId }
 
@@ -61,11 +62,16 @@ type EvalFrame {
   bindings: Map<PortId, Value>
 }
 
-// 🟢 TERMINAL at PR-A.2 evaluator-state scope. Stack of `EvalFrame`s for
-// nested calls, branch path bindings, and bounded loop iterations. Frame
-// push/pop is evaluator-internal; the stack is not observable as a `Value`.
-// PR-A.3 owns `EvalThunk` / `EvalStrategy` / `EvalMemoKey`; they are not
-// added here.
+// 🟢 TERMINAL at PR-A.2 evaluator-state scope. LIFO stack of `EvalFrame`s
+// for nested calls, branch path bindings, and bounded loop iterations.
+// Uses `Stack<EvalFrame>` (= cons list, `dsl/std/stack.dag:37`) rather
+// than `List<EvalFrame>`: per M9, the concept-DAG ground for an evaluator
+// frame stack is `Stack<T>`, whose `push`/`pop`/`peek` are O(1); the
+// `List<EvalFrame>` shape sketched in the PR-A.0 brief draft would lose
+// that orientation and force every push/pop through O(n) prepend. Frame
+// push/pop is evaluator-internal; the stack is not observable as a
+// `Value`. PR-A.3 owns `EvalThunk` / `EvalStrategy` / `EvalMemoKey`;
+// they are not added here.
 type EvalStateStack {
-  frames: List<EvalFrame>
+  frames: Stack<EvalFrame>
 }
