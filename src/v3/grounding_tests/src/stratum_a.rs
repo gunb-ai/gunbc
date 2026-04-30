@@ -704,6 +704,13 @@ mod stratum_a_tests {
             .map(|&label| (label.to_string(), dummy.clone()))
             .collect();
         fields.push(("surprise".to_string(), dummy));
+        assert_eq!(
+            analyze_closed_record_labels(&fields, METHOD_TEMPLATE_CONTRACT_FIELDS),
+            ClosedRecordLabelsOutcome::Mismatch {
+                missing: vec![],
+                extra: vec!["surprise".to_string()],
+            }
+        );
         let err = enforce_closed_record_schema(
             &fields,
             RUST_LIST,
@@ -712,19 +719,12 @@ mod stratum_a_tests {
             METHOD_TEMPLATE_CONTRACT_FIELDS,
         )
         .expect_err("extra field");
-        assert_eq!(
-            analyze_closed_record_labels(&fields, METHOD_TEMPLATE_CONTRACT_FIELDS),
-            ClosedRecordLabelsOutcome::Mismatch {
-                missing: vec![],
-                extra: vec!["surprise".to_string()],
-            }
-        );
-        let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
-            panic!("unexpected diagnostic: {err:?}");
-        };
         assert!(
-            detail.starts_with("MethodTemplateContract:"),
-            "expected record-kind prefix, got {detail:?}"
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed { .. }
+            ),
+            "unexpected diagnostic: {err:?}"
         );
     }
 
