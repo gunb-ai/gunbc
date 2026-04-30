@@ -190,20 +190,59 @@ one of them requires a substrate extension:
   (not for invoking Arrow values), `Operator` is for built-in
   primitives.
 
-  The substrate extension is a **discriminator-only**
-  `TransformTarget::IndirectCall` variant (no payload). The callee
-  port is carried as **`TransformNode.inputs[0]`** by convention,
-  with `inputs[1..]` carrying the call arguments. This preserves
-  the **Facts Flow Forward / Every Dependency Is A Substrate Fact**
-  invariant: reflected consumers that walk `TransformNode.inputs`
-  to derive dependencies (lenses, schedulers, dataflow analyses)
-  see the callee dependency by construction — no separate field to
-  remember. The variant is a tag only; arity arithmetic is
-  `arity = inputs.len() - 1` for `IndirectCall` (vs `arity =
-  inputs.len()` for `Callable`).
+  The substrate extension is `TransformTarget::IndirectCall` with
+  the callee port carried in `TransformNode.inputs`, alongside the
+  argument ports. Two competing constraints shape the encoding:
 
-  Type-checking enforces that `inputs[0]`'s port has an Arrow type,
-  and that the Arrow's input arity matches `inputs.len() - 1`.
+  - **Facts Flow Forward / Every Dependency Is A Substrate Fact:**
+    reflected consumers walk `TransformNode.inputs` to derive
+    dependencies. A separate-field callee outside `inputs` would
+    be invisible to that walk.
+  - **Illegal states unrepresentable:** a positional convention
+    (`inputs[0]` = callee, `inputs[1..]` = args) admits malformed
+    states like `IndirectCall` with empty `inputs` or non-Arrow
+    `inputs[0]`. Pushing enforcement to later type-checking
+    violates modeling-discipline §"API-level enforcement."
+
+  **Resolution: structurally-tagged input element type.** Refine
+  `TransformNode.inputs` from `Vec<PortId>` to
+  `Vec<TransformInput>` where:
+
+  ```rust
+  pub enum TransformInput {
+      Arg(PortId),       // ordinary argument port; existing semantics
+      Callee(PortId),    // Arrow-typed dispatch source; valid only inside IndirectCall transforms
+  }
+  ```
+
+  This preserves both invariants: `inputs.iter()` still walks every
+  dependency port (Facts Flow Forward), and the `Callee`/`Arg`
+  distinction is structural rather than positional (illegal states
+  unrepresentable at the variant level). For `Callable`,
+  `FieldProject`, `Operator` transforms, every element is
+  `TransformInput::Arg(_)`. For `IndirectCall`, exactly one
+  element is `TransformInput::Callee(_)`; the rest are `Arg`.
+
+  **Constructor-API enforcement (Track 9 named-typed-handle):** a
+  dedicated builder `Dag::push_indirect_call_transform(callee:
+  PortId, args: Vec<PortId>) -> NodeId` is the only way to
+  construct an `IndirectCall` transform. The builder validates at
+  construction time that `callee`'s port has an Arrow type and
+  that `args.len()` matches the Arrow's declared arity, then emits
+  `inputs = [Callee(callee), Arg(args[0]), Arg(args[1]), ...]`.
+  Direct field construction (e.g., `TransformNode { target:
+  IndirectCall, inputs: vec![Arg(...), Arg(...)] }` with no
+  `Callee`) is impossible without bypassing the builder; reviewers
+  enforce builder usage in code review the same way `push_node`
+  call discipline is enforced today.
+
+  **Cardinality discipline:** the variant requires exactly one
+  `Callee` element and zero-or-more `Arg` elements. Without a
+  refinement primitive in v3 today, the cardinality is enforced by
+  the builder + a debug assertion in the constructor. Future
+  refinement: when v3 supports refined enum payload (`{ inputs:
+  Vec<TransformInput> | inputs has exactly one Callee }`), the
+  cardinality dissolves into the type. For now: builder + assert.
 
   Emitters render the variant as the target language's first-class
   function-call surface (Rust closure call, Python `()` on a
