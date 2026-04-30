@@ -52,5 +52,11 @@ mod tests {
             detail: "detail".to_string(),
         };
         assert!(!e2.to_string().is_empty());
+
+        let e3 = GroundingTestsDiagnostic::StratumALockstepListDigestMismatch {
+            list_name: "rust_method_template_contracts".to_string(),
+            detail: "detail".to_string(),
+        };
+        assert!(!e3.to_string().is_empty());
     }
 }
