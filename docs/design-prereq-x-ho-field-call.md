@@ -57,7 +57,7 @@ Result: parser failure.
 ```
 Parse(ParseError {
   message: "expected primary expression, got LParen",
-  span: ho_param.v3 [<at the leading `(` of the parenthesized callee>]
+  span: ho_param.v3 [106, 107]
 })
 ```
 
