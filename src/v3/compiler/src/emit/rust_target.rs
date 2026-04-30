@@ -146,7 +146,7 @@ pub enum EmitError {
     /// No `BehaviorRealization` was declared in rust.dag for the
     /// given substrate marker (Bind / Branch / Main).
     MissingBehaviorRealization { marker: DeclarationId },
-    /// A required substrate marker is absent from `dsl/std/v3_l1.dag`
+    /// A required substrate marker is absent from `src/v3/spec/v3_l1.dag`
     /// — bootstrap couldn't populate the typed handle and the
     /// emitter has nothing to dispatch on. The variant identifies
     /// which marker by enum tag (not by string), keeping the error
@@ -545,7 +545,7 @@ struct RealizationIndexes {
     /// `behavior_marker_decl → carrier`. Built from `data rust_*:
     /// BehaviorRealization` items in rust.dag. Used when emitting
     /// the substrate behaviors (let / if-else / main wrapper). The
-    /// key declaration ids come from `dsl/std/v3_l1.dag` markers
+    /// key declaration ids come from `src/v3/spec/v3_l1.dag` markers
     /// cached in `Dag::substrate_markers` — every dispatch site
     /// reads those typed handles instead of looking up by name.
     behaviors: HashMap<DeclarationId, String>,
@@ -2659,7 +2659,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
 
     // Resolve the substrate markers we need ONCE up front. Each
     // marker is a typed `DeclarationId` cached at bootstrap end
-    // from `dsl/std/v3_l1.dag`; if any is missing, the file
+    // from `src/v3/spec/v3_l1.dag`; if any is missing, the file
     // failed to load and emit can't proceed. Rendering downstream
     // uses the bound handles, never a name string.
     let main_marker = dag
