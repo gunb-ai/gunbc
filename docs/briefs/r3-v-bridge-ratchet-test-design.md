@@ -43,8 +43,8 @@ import std.bridge_ledger { bridge_retirement_ledger }
 
 data bridge_retirement_ledger_zero: TestClaim = {
   name: "bridge_retirement_ledger_zero",
-  source: "// BridgeLedgerZero folds the BridgeLedger carrier; no program eval.\nlet _: Int = 0\n",
-  file_name: "r3_bridge_retirement_ledger_zero.v3",
+  source: "",
+  file_name: "src/v3/std/bridge_ledger.dag",
   predicate: BridgeLedgerZero {
     ledger: bridge_retirement_ledger
   },
@@ -57,7 +57,7 @@ data r3_bridge_retirement_ledger_zero_suite: TestSuite = {
 }
 ```
 
-`BridgeLedgerZero` is a substrate-fact-introduction candidate, not an autonomously authored predicate here. The existing `RatchetZero` variant does not fit today: runner evaluation is hard-coded to `compiler_std_positive_set_ratchet`, not a generic structural fold over rows.
+`BridgeLedgerZero` is a substrate-fact-introduction candidate, not an autonomously authored predicate here. The `TestClaim.source` field is intentionally empty in this standby shape because the subject is the structural `ledger` declaration, not an executable source program. If the eventual runner requires a non-empty source string, that is a sign the predicate shape is wrong for this carrier and should be redesigned rather than filled with a dummy program. The existing `RatchetZero` variant does not fit today: runner evaluation is hard-coded to `compiler_std_positive_set_ratchet`, not a generic structural fold over rows.
 
 ## Required Fold Semantics
 
