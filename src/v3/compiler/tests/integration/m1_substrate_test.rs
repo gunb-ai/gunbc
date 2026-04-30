@@ -2498,17 +2498,18 @@ fn wrap(point: Point) -> Wrapped = Wrap { inner: point }
 }
 
 /// Prereq-2 (lens-fold): brace-bodied `fn` lowers a `match` whose arms
-/// return bare variant constructors against the declared return sum —
-/// the same class-5 path as expression-bodied `fn`, without
-/// `Witness`/`OptionalDiagnostic` special cases.
+/// mix bare and record-shaped variant constructors against a sum whose
+/// variant carries a Conj payload (`Cell { n: Int }`), matching the
+/// class-5 payload path toward `Witness`-style constructors — without
+/// `Witness` / `OptionalDiagnostic` special cases.
 #[test]
 fn prereq2_brace_fn_match_returns_bare_variant_constructors() {
     let src = "\
-type Slot = On | Off
+type Slot = Cell { n: Int } | Vacant
 fn toggle(s: Slot) -> Slot {
   match s {
-    On => Off
-    Off => On
+    Cell { n: k } => Vacant
+    Vacant => Cell { n: 1 }
   }
 }
 ";
