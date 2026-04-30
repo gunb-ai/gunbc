@@ -10,7 +10,9 @@
 //! - `InputField` is the empty record reserved for PR-β extension; the
 //!   canonical name is the enclosing map key, never duplicated as a field.
 //! - `RestEndpointBinding` carries `method` + `path` only.
-//! - `Operation` carries `name`, `inputs`, `endpoint` only.
+//! - `Operation` carries `callable`, `inputs`, `endpoint` only — typed
+//!   `DeclarationRef` callable identity instead of a free-form `name: String`,
+//!   so the operation row is keyed by the actual callable it mirrors.
 //! - `Operation.inputs` is `Map<String, InputField>` — by-construction
 //!   uniqueness on input-field names; `ParamToken.name` resolves into the
 //!   key set in PR-β.
@@ -85,17 +87,44 @@ fn rest_endpoint_binding_carries_only_method_and_path() {
 }
 
 #[test]
-fn operation_carries_only_name_inputs_endpoint() {
+fn operation_carries_only_callable_inputs_endpoint() {
     let dag = generated_full_bootstrap_dag();
     let labels: HashSet<String> = conj_field_labels(&dag, "Operation").into_iter().collect();
-    let expected: HashSet<String> = ["name", "inputs", "endpoint"]
+    let expected: HashSet<String> = ["callable", "inputs", "endpoint"]
         .iter()
         .map(|s| s.to_string())
         .collect();
     assert_eq!(
         labels, expected,
-        "Operation is the minimal PR-α product: name + inputs + endpoint. \
+        "Operation is the minimal PR-α product: callable + inputs + endpoint. \
+         `callable: DeclarationRef` is the typed operation-to-callable edge — \
+         display names derive from it, no parallel `name: String` field. \
          Adding outputs / body / response shape here is PR-β..ω scope, not PR-α."
+    );
+}
+
+#[test]
+fn operation_callable_field_is_declaration_ref() {
+    // Operation-to-callable identity must be carried structurally as
+    // `DeclarationRef` from `v3.spec.v3_l1`, mirroring the `MethodRef`
+    // discipline in `v3.std.methods` and `MethodTemplateContract.dag_method`
+    // in `v3.std.emit_model`. A `name: String` field here would re-introduce
+    // the parallel-representation drift the dispatch's "typed operation
+    // identity witness" requirement explicitly forbids.
+    let dag = generated_full_bootstrap_dag();
+    let callable_ty = conj_field_ty(&dag, "Operation", "callable");
+    let callable_decl = dag.declaration(callable_ty);
+    assert_eq!(
+        callable_decl.name.as_deref(),
+        Some("DeclarationRef"),
+        "`Operation.callable` must point at `DeclarationRef`; got {:?}",
+        callable_decl.name
+    );
+    assert_eq!(
+        callable_decl.span.file, "src/v3/spec/v3_l1.dag",
+        "`Operation.callable` must point at the `DeclarationRef` authority \
+         in `src/v3/spec/v3_l1.dag`. Found in: {}.",
+        callable_decl.span.file
     );
 }
 
