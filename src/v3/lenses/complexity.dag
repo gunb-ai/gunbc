@@ -181,3 +181,13 @@ fn max_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
         Hit(y) => hit_int_lookup(if x > y then x else y)
       }
   }
+
+// `Lens<Int>` migration — **documentation / STOP receipt only** (inbox #1130 / #1139).
+// No `data complexity_lens` and no production `fn` helpers that emit to
+// `lens_cost_generated.rs`: L-8 forbids `pub fn … -> i64` (and siblings) on the
+// migrated lens Rust surface — that pattern reads as collapsing the typed
+// `Lookup<Int>` / `CostLookup` story to bare primitives. A real instance still
+// needs Prereq-2 (`Witness<Int>`, `OptionalDiagnostic`), class-5 structural `data`,
+// and `fold_lens<C>` for honest iterate. Prereq-1 fn-ref lowering for monoid /
+// branch fields is ratcheted in `m2_feature_parity_test` (#1256), not duplicated
+// here as emitted Rust.
