@@ -87,11 +87,7 @@ pub enum ShapeATarget {
 
 impl ShapeATarget {
     /// All three Shape A targets.
-    pub const ALL: [ShapeATarget; 3] = [
-        ShapeATarget::Rust,
-        ShapeATarget::Python,
-        ShapeATarget::Go,
-    ];
+    pub const ALL: [ShapeATarget; 3] = [ShapeATarget::Rust, ShapeATarget::Python, ShapeATarget::Go];
 
     pub fn label(self) -> &'static str {
         match self {

@@ -65,7 +65,7 @@ mod walker;
 
 pub use cells::{Cell, FormAxis, ShapeATarget};
 pub use diagnostic::EmissionDiagnostic;
-pub use walker::{CrossProductReport, walk_cross_product};
+pub use walker::{walk_cross_product, CrossProductReport};
 
 /// Public entry: walk the (TypeConnective × Behavior × Shape A target)
 /// cross product against the bootstrap Dag's LanguageSpec coverage and
