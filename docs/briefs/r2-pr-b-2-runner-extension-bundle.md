@@ -1,13 +1,20 @@
-# R2 PR-B.2 Runner-Extension Bundle — Scope Brief
+# R2 PR-B.2 Runner-Extension Bundle — Docs Scoping for PR-B.2 / PR-B.3 / PR-B.4
 
-**Status:** PROPOSAL — docs-only scoping for the PR-B follow-on
-runner-extension bundle. This brief carves three workstreams that extend
-`src/v3/compiler/src/test_runner.rs::run_claim` (and its producer dispatch /
-value normalization helpers) to evaluate `TestPredicate` variants the
-runner currently returns `ClaimResult::NotYetImplemented` for, plus a
-per-target producer dispatch path for `ForAllTargets`. **No Rust, no
-fixtures, no substrate enum edits, no new `TestPredicate` variants** in
-this slice.
+**Status:** PROPOSAL — **single docs-only scoping bundle** for the PR-B
+follow-on runner-extension implementation slices. This brief carves three
+workstreams that extend `src/v3/compiler/src/test_runner.rs::run_claim`
+(and its producer dispatch / value normalization helpers) to evaluate
+`TestPredicate` variants the runner currently returns
+`ClaimResult::NotYetImplemented` for, plus a per-target producer dispatch
+path for `ForAllTargets`. **No Rust, no fixtures, no substrate enum
+edits, no new `TestPredicate` variants** in this slice.
+
+**Implementation split (per parent clarification):** the three workstreams
+below ship as **separate implementation PRs** if size / review pressure
+warrants — provisional naming `PR-B.2` (W1 L4 `DifferentialEquals`),
+`PR-B.3` (W2 L7 `AlgebraicLaw`), `PR-B.4` (W3 L5 `ForAllTargets`). The
+*docs scoping* (this brief) is the single bundle; the implementation may
+or may not be one PR. All three remain fully Evaluator-owned.
 
 **Parent designs:**
 - [`r2-pr-b-body-evaluator-eager-baseline.md`](r2-pr-b-body-evaluator-eager-baseline.md)
@@ -17,9 +24,9 @@ this slice.
 - [`r2-evaluator-manager.md`](r2-evaluator-manager.md) PR-B row + Witness
   construction sub-lane.
 **Discovery inputs (NOT authority):** R3 Verification findings #1299 and
-#1307. PR-B.2 reads them as evidence that the runner-side gaps below
-matter, but the authority for what PR-B.2 must do lives in the briefs and
-substrate cited above; R3 findings cannot extend PR-B.2 scope.
+#1307. This bundle reads them as evidence that the runner-side gaps below
+matter, but the authority for what the bundle must do lives in the briefs and
+substrate cited above; R3 findings cannot extend bundle scope.
 
 ## Bundle (three workstreams)
 
@@ -33,7 +40,7 @@ The runner currently `NotYetImplemented`s the path because no producer
 binds emitted-Rust output or interpreter-evaluated `.dag` output to a
 `ProgramOutputBind` carrier.
 
-**PR-B.2 scope (W1):** add two **producer roles** the runner can dispatch
+**Bundle scope — W1 (provisional impl PR-B.2):** add two **producer roles** the runner can dispatch
 on at `run_claim` time, both reachable through the existing
 `ProgramOutputBind` binding surface (no new `TestPredicate` variant, no
 new `ProgramInputRole` substrate variant unless explicitly routed):
@@ -70,7 +77,7 @@ evaluates `AlgebraicLaw { law, lens_ref }` for `Associativity` only via
 the `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES` sample table; other
 `AlgebraicLawKind` variants are `NotYetImplemented` (`test_runner.rs:2189`).
 
-**PR-B.2 scope (W2):** extend the runner to evaluate the two existing
+**Bundle scope — W2 (provisional impl PR-B.3):** extend the runner to evaluate the two existing
 `AlgebraicLawKind` inhabitants the substrate already declares but the
 runner does not yet handle:
 
@@ -79,7 +86,7 @@ runner does not yet handle:
   `ASSOCIATIVITY_WITNESS_TRIPLES`, assert `lens(a, b) == lens(b, a)`
   pointwise via the value-domain comparison from W3. Sample table
   identity / size lives in `lens_apply` alongside the associativity one;
-  PR-B.2 does not add new `TestPredicate` variants and does not propose
+  W2 does not add new `TestPredicate` variants and does not propose
   a generator strategy.
 - **`Identity`** — runner-side check: pick the lens's identity element
   (declared on the lens's algebra inhabitance, not local guesswork) and
@@ -91,7 +98,7 @@ runner does not yet handle:
 **`Distributivity` — explicit routing, NOT W2 scope:**
 `AlgebraicLawKind = Associativity | Commutativity | Identity` per
 `src/v3/std/verification.dag:103`. There is no `Distributivity` variant.
-Adding one is a **substrate enum change** that PR-B.2 must NOT make
+Adding one is a **substrate enum change** that the bundle must NOT make
 locally and must NOT silently work around (e.g. by overloading another
 variant or by encoding distributivity through `LensOutputEquals` against a
 hand-rolled distributivity oracle).
@@ -100,13 +107,13 @@ hand-rolled distributivity oracle).
 must open a substrate-fact-introduction proposal per `INVARIANTS.md` §P1
 (3-step decision procedure: DAG-ancestor → coproduct-vs-coordinate →
 primitive-vs-lens-extensible) before any worker writes runner code for
-it. PR-B.2 names this routing explicitly so consumers do not mistake the
+it. This bundle names the routing explicitly so consumers do not mistake the
 omission for an oversight.
 
 **Out of W2:** any change to `AlgebraicLawKind`; structural drift away
 from sample tables to first-class substrate law witnesses (that is the
 declared dissolution trigger on the `AlgebraicLaw` predicate's scaffold
-comment, which is post-PR-B.2 work — once lens-algebra facts are
+comment, which is post-bundle work — once lens-algebra facts are
 first-class declarations consumable from `std.verification`).
 
 **Hard prerequisites:** lens identity-element edge declared on the
@@ -126,7 +133,7 @@ direction: collapse with `ExecuteCommand`, lift target-specific emission
 the predicate to declarative edges. The current per-target observation
 is exit-code only.
 
-**PR-B.2 scope (W3):** add a runner-side **per-target producer dispatch**
+**Bundle scope — W3 (provisional impl PR-B.4):** add a runner-side **per-target producer dispatch**
 that observes the **structural value domain** of each target's emitted
 program output, not the raw exit code. The runner reads target identity
 from the existing target spec layer, picks a per-target producer (akin
@@ -158,7 +165,7 @@ first.
 - List-shaped outputs; needs a per-target list-rendering rule.
 
 **Out of W3:** `ExecuteCommand` collapse (substrate-side dissolution
-trigger; not PR-B.2 scope); a `ForAllTargets` variant change; any
+trigger; not in this bundle); a `ForAllTargets` variant change; any
 addition to `TestPredicate`.
 
 **Hard prerequisites:** target spec layer exposes per-target emit
@@ -178,8 +185,8 @@ prerequisite).
 | `Identity` runner check                                                   | W2        | After lens identity-element edge declared on algebra inhabitance |
 | `RecordValue` value-domain observation                                    | W3        | After scalar value-domain coverage  |
 | `ForAllTargets` per-target dispatch beyond Rust                           | W3        | After Rust-only scalar coverage; Python and Go parallelizable per target |
-| `Distributivity` runner support                                           | (out)     | **GATED on substrate enum addition via P1 procedure** — not in PR-B.2 |
-| Variant / List / String value-domain observation                          | (out)     | Parallelizable later; not in PR-B.2 |
+| `Distributivity` runner support                                           | (out)     | **GATED on substrate enum addition via P1 procedure** — not in this bundle |
+| Variant / List / String value-domain observation                          | (out)     | Parallelizable later; not in this bundle |
 
 ## Constraints (re-stated for reviewer audit)
 
@@ -207,19 +214,19 @@ This brief does **not** propose:
 - A new `Value` variant.
 - A new substrate-side observation-channel carrier.
 
-If during PR-B.2 implementation any reviewer or worker concludes that
+If during PR-B.2 / PR-B.3 / PR-B.4 implementation any reviewer or worker concludes that
 one of the above is required to ship a workstream, **STOP and escalate
 to the Director / Substrate Manager** before drafting code or amending
 this brief. Silent variant-creation is forbidden.
 
 ## Acceptance gates (this brief)
 
-- ✅ Three workstreams scoped with today's runner state, PR-B.2 work, hard
+- ✅ Three workstreams scoped with today's runner state, bundle work, hard
   prerequisites, and explicit out-of-scope items.
 - ✅ `Distributivity` routed to P1 substrate-fact-introduction with
   rationale.
 - ✅ Sequencing table separates sequential dependencies from
   parallelizable steps.
-- ✅ STOP+PING boundary names every shape change PR-B.2 must not make
+- ✅ STOP+PING boundary names every shape change the bundle must not make
   silently.
 - ✅ Docs-only PR.
