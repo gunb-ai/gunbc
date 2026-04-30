@@ -133,6 +133,31 @@ fn complexity_dag_compiles_cleanly() {
     );
 }
 
+/// Inbox #1130 / #1139 — `Lens<Int>` instance is still blocked on Prereq-2;
+/// this ratchet only pins that the lens-shaped **helpers** resolve in the
+/// same `compile_to_dag` surface as `cost_of` (no `data complexity_lens`,
+/// no Rust fake instance).
+#[test]
+fn complexity_lens_helpers_resolve_without_data_instance() {
+    let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
+        .expect("complexity.dag should compile cleanly");
+    assert!(
+        dag.declaration_by_name("complexity_lens").is_none(),
+        "`data complexity_lens` must not ship until Witness/read + class-5 `data` validation are honest"
+    );
+    for name in [
+        "complexity_behavior_result_port",
+        "complexity_sequential_op",
+        "complexity_branch",
+        "complexity_iterate",
+    ] {
+        assert!(
+            dag.declaration_by_name(name).is_some(),
+            "expected `{name}` declaration in lenses.complexity"
+        );
+    }
+}
+
 #[test]
 fn complexity_generated_module_matches_checked_in_snapshot() {
     let fresh = emit_lens_module();

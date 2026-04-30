@@ -44,12 +44,9 @@
 
 module lenses.complexity
 
-import std.algebra { Monoid }
 import std.list { List, empty, fold, cons, concat }
 import std.substrate { Dag, DagPort, Behavior, BranchPath, LoopBound, NodeId, PortId }
 import std.types { Int }
-import v3.std.dimensions { OptionalDiagnostic, Witness }
-import v3.std.lens { Lens }
 import v3.std.lookup { Lookup, hit_int_lookup, miss_int_lookup }
 
 type CostEntry {
@@ -185,12 +182,14 @@ fn max_cost(a: Lookup<Int>, b: Lookup<Int>) -> Lookup<Int> =
       }
   }
 
-// --- `Lens<Int>` instance surface (inbox #1130 / #1139) ---
-// `read` / `branch` / `sequential.op` align with the structural-depth
-// algebra above (`compute_costs` + `lookup_cost`, join on `Int`, monoid +).
-// `iterate` is a typed placeholder until `fold_lens<C>` wires loop-bound
-// fuel into the carrier compositionally. `validate` is aggregate-clean for
-// this dimension (no extra side conditions yet).
+// `Lens<Int>` instance (`data complexity_lens: …`) remains blocked: user
+// `fn` bodies cannot yet lower `Witness<Int>` / `OptionalDiagnostic`
+// variant constructors for `Lens<C>.read` / `.validate`, and class-5 gap
+// #3 rejects opaque `data` bodies until every field structurally validates
+// (inbox #1130 / #1139 STOP+PING). Helpers below match non-witness
+// `Lens<Int>` field shapes; `iterate` is a typed placeholder until
+// `fold_lens<C>` wires loop-bound fuel. `validate` is not authored here yet:
+// `emit_rust_module` has no Rust surface for `OptionalDiagnostic`.
 
 fn complexity_behavior_result_port(b: Behavior) -> PortId =
   match b {
@@ -201,21 +200,8 @@ fn complexity_behavior_result_port(b: Behavior) -> PortId =
     Bind(bind) => bind.result_port
   }
 
-fn complexity_read(d: Dag, b: Behavior) -> Witness<Int> = Inhabits(0)
-
 fn complexity_sequential_op(a: Int, b: Int) -> Int = a + b
 
 fn complexity_branch(a: Int, b: Int) -> Int = if a > b then a else b
 
 fn complexity_iterate(c: Int, bound: LoopBound) -> Int = c
-
-fn complexity_validate(d: Dag, c: Int) -> OptionalDiagnostic = NoDiagnostic
-
-data complexity_lens: Lens<Int> = {
-  name: "complexity",
-  read: complexity_read,
-  sequential: { op: complexity_sequential_op, identity: 0 },
-  branch: complexity_branch,
-  iterate: complexity_iterate,
-  validate: complexity_validate
-}
