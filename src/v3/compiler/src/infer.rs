@@ -4494,15 +4494,18 @@ fn resolve_operator_arrow(
     // on `&&` / `||` must surface a type mismatch, not propagate
     // through the operand slots the way Arithmetic / Comparison do.
     //
-    // Fail-closed for non-algebra LHS: if the walk never encountered
-    // an algebra Conj at all, the LHS has no operator-rule carrier.
-    // The pre-fix fallback fabricated `(T,T)->T` / `(T,T)->Bool` /
-    // `(Bool,Bool)->Bool` / `(T,T)->Result<T,DivError>` for any such
-    // LHS — inventing an arrow contract for a type that declares
-    // none. Refuse synthesis for every operator kind so the caller
-    // surfaces a typed unsupported-operator diagnostic. The class-5
-    // gap path (Conj-with-missing-field, `saw_algebra_conj == true`)
-    // keeps its existing scaffold until the gap closes.
+    // Fail-closed for LHS that the walk never reached any Conj for:
+    // every loop exit saw a terminal connective with no `inhabits`,
+    // an Arrow / Disj / Cardinality with no `inhabits`, or depth
+    // exhaustion. The pre-fix fallback fabricated `(T,T)->T` /
+    // `(T,T)->Bool` / `(Bool,Bool)->Bool` / `(T,T)->Result<T,DivError>`
+    // for any such LHS — inventing an arrow contract for a type that
+    // declares none. Refuse synthesis here so the caller surfaces a
+    // typed unsupported-operator diagnostic. The Conj-reached-but-
+    // missing-field path (`saw_algebra_conj == true`) keeps its
+    // existing scaffold; tightening that further (distinguishing
+    // algebra carriers from arbitrary product structs) requires a
+    // structural signal beyond "is a Conj" — see PR #1329 STOP+PING.
     if !saw_algebra_conj {
         return None;
     }
