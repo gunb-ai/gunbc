@@ -204,6 +204,42 @@ addition to `TestPredicate`.
 3. PR-B.1 eager evaluator landed (so the `dag_eval_output` oracle from
    W1 is available as the comparison authority).
 
+## Runner authority discipline
+
+`src/v3/compiler/src/test_runner.rs` is **not** a parallel Rust
+test-predicate authority. The thesis direction is `TestClaim` data +
+generated target-language tests; bespoke runner arms are transitional
+scaffolds, not durable evaluation surface. This bundle (W1/W2/W3) is
+permitted only because each new arm has a **named evaluator / PB-Runtime
+dissolution target**. New runner-arm or producer-path growth that lacks
+a concrete dissolution target is **frozen**.
+
+Per-workstream dissolution targets:
+
+| Workstream | Transitional arm / path                              | Dissolution target                                                                                       |
+|-----------|------------------------------------------------------|----------------------------------------------------------------------------------------------------------|
+| W1        | `rust_emit_output` producer                          | PB-Runtime-generated target-language tests (`TestClaim` data → emitted Rust test) replace bespoke producer dispatch. |
+| W1        | `dag_eval_output` producer                           | PR-B eager body evaluator (PR-B.1) + witness construction (PR-B witness half) become the canonical oracle; producer collapses into evaluator-call + witness emission. |
+| W2        | `Commutativity` / `Identity` runner checks           | First-class lens-algebra law witnesses + reflected substrate facts (per `AlgebraicLaw` scaffold dissolution comment in `verification.dag`); T-LensProducer-Retirement consumes them. |
+| W3        | `ForAllTargets` per-target producer dispatch         | `ExecuteCommand` / `ForAllTargets` substrate collapse to typed capability + scope (per `verification.dag` scaffold comments) + PB-Runtime-generated per-target tests; T-FixedPoint receipts replace exit-code-only verification. |
+| W3        | Structural observation carrier (P1)                  | Once landed, becomes the substrate fact; runner reads it, not a Rust-side convention. |
+
+**Discipline rules (binding on PR-B.2 / PR-B.3 / PR-B.4 implementation):**
+
+- No new `TestPredicate` arm in `test_runner.rs` may land without a
+  named dissolution target in the table above (or an amendment to this
+  section in a follow-on PR).
+- Runner arms MUST be marked transitional (e.g. comment + scaffold tag
+  pointing at this section) at the implementation site.
+- "Convention-only" runner observation (regex over stdout, ad-hoc
+  parsing, environment-variable signaling, etc.) is **forbidden** — if
+  a fact is observed, the substrate must name it. W3's
+  `ProgramOutputObservation` P1 routing is the canonical example.
+- This bundle must not become a second test-predicate language in
+  Rust. Each W1/W2/W3 step is a runner-side scaffold over an existing
+  declarative `TestPredicate` variant; no Rust-side predicate
+  invention.
+
 ## Sequencing — sequential-now vs parallelizable-later
 
 | Step                                                                      | Workstream | Sequence                      |
