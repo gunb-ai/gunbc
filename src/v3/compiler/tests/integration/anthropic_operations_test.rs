@@ -14,9 +14,11 @@
 //!    endpoint shape (POST /v1/messages) — lockstep with the v2 source
 //!    of truth at `dsl/extdeps/llm/anthropic.dag:182-198`.
 //! 4. Every `ParamToken.name` from the path template resolves into the
-//!    operation's input-field map (vacuous for `/v1/messages` since
-//!    there are no `ParamToken`s, but the boundary check is wired so
-//!    rows added later inherit the discipline).
+//!    operation's input-field map. The walk + assertion are wired
+//!    structurally; vacuous for `/v1/messages` (zero `ParamToken`s)
+//!    but rows added later (path-template variables like
+//!    `/v1/secrets/{secret_name}`) inherit the discipline by
+//!    construction without test rewrite.
 
 use std::collections::HashSet;
 use v3_compiler::dag::{Dag, FieldValue, ValueBody};
@@ -183,4 +185,81 @@ fn anthropic_operations_messages_pilot_present() {
         actual_refs, expected_inputs,
         "Messages input-field keys must match anthropic.dag:183-189 input block"
     );
+}
+
+/// Boundary check: every `ParamToken.name` token in every operation's
+/// path template MUST resolve to a key in that operation's
+/// `inputs: Map<String, InputField>`. Vacuous on the Phase 1 pilot
+/// (`Messages` has zero `ParamToken`s — `/v1/messages` is pure
+/// literal segments), but the walk + assertion are wired so any
+/// future row carrying path-template variables inherits the
+/// discipline without test rewrite. This is the structural
+/// `ParamToken.name` resolution check named in
+/// `src/v3/std/services.dag` PR-α header (boundary check at fixture
+/// load alongside the first row).
+#[test]
+fn anthropic_operations_param_tokens_resolve_to_input_keys() {
+    let dag = generated_full_bootstrap_dag();
+    let rows = list_value_body(&dag, ANTHROPIC_OPERATIONS);
+
+    for (idx, row) in rows.iter().enumerate() {
+        let FieldValue::Record(fields) = row else {
+            panic!("row {idx} not a record");
+        };
+        let op_name = string_literal(record_field(fields, "name")).to_string();
+
+        let inputs = record_field(fields, "inputs");
+        let FieldValue::Map(input_map) = inputs else {
+            panic!("`inputs` must be a Map; got {inputs:?}");
+        };
+        let input_keys: HashSet<&str> = input_map
+            .entries()
+            .iter()
+            .map(|(k, _)| k.as_str())
+            .collect();
+
+        let endpoint = record_field(fields, "endpoint");
+        let FieldValue::Record(endpoint_fields) = endpoint else {
+            panic!("`endpoint` must be a record");
+        };
+        let path = record_field(endpoint_fields, "path");
+        let FieldValue::Record(path_fields) = path else {
+            panic!("`path` must be a PathTemplate record");
+        };
+        let tokens = record_field(path_fields, "tokens");
+        let FieldValue::List(token_list) = tokens else {
+            panic!("`path.tokens` must be a List");
+        };
+
+        for (tidx, token) in token_list.iter().enumerate() {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = token
+            else {
+                panic!("path token {tidx} must be a UrlPathToken variant; got {token:?}");
+            };
+            let variant_name = dag
+                .declaration(*constructor)
+                .name
+                .as_deref()
+                .expect("UrlPathToken variant should have a name");
+            if variant_name == "ParamToken" {
+                // ParamToken { name: String } — payload[0] is the name.
+                let name = match payload.first() {
+                    Some(FieldValue::Literal(_)) => string_literal(&payload[0]).to_string(),
+                    Some(FieldValue::Record(inner)) => {
+                        string_literal(record_field(inner, "name")).to_string()
+                    }
+                    other => panic!("unexpected ParamToken payload: {other:?}"),
+                };
+                assert!(
+                    input_keys.contains(name.as_str()),
+                    "operation `{op_name}` path token {tidx} `ParamToken({name})` does \
+                     not resolve to an input field key; have {input_keys:?}"
+                );
+            }
+            // LiteralToken variants are unconditionally accepted; no resolution check.
+        }
+    }
 }
