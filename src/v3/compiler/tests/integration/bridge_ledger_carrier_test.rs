@@ -21,14 +21,6 @@ use v3_compiler::{compile_to_dag, CompileError};
 
 const BRIDGE_LEDGER: &str = "bridge_ledger";
 
-const CANONICAL_BRIDGES: &[&str] = &[
-    "bridge_source_span_file_participation_retired",
-    "bridge_mark_bootstrap_secret_nominal_opacity_retired",
-    "bridge_canonical_lens_name_dispatch_retired",
-    "bridge_include_str_side_channels_retired",
-    "bridge_exact_string_patching_residual_retired",
-];
-
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
     let decl = dag
         .declaration_by_name(name)
@@ -111,39 +103,28 @@ fn bridge_status_is_closed_two_variant_coproduct() {
 }
 
 #[test]
-fn bridge_ledger_lowers_as_list_of_bridge_ledger_row() {
+fn bridge_ledger_lowers_as_list_with_at_least_one_row() {
+    // The carrier file in `bridge_ledger.dag` is the row-count and
+    // row-content authority — no parallel Rust constant. This test
+    // pins the structural shape: lowers as `ValueBody::List`, every
+    // entry is a `FieldValue::Record`, list is non-empty (a future
+    // empty ledger would mean the BridgeLedgerZero gate is vacuously
+    // green; if that's intended, this assertion gets re-armed
+    // explicitly).
     let dag = generated_full_bootstrap_dag();
     let rows = list_value_body(&dag, BRIDGE_LEDGER);
-    assert_eq!(
-        rows.len(),
-        CANONICAL_BRIDGES.len(),
-        "`{BRIDGE_LEDGER}` must carry exactly the {} canonical bridge rows from \
-         `docs/r3-structure.md:79-83`. Got {} rows.",
-        CANONICAL_BRIDGES.len(),
-        rows.len()
+    assert!(
+        !rows.is_empty(),
+        "`{BRIDGE_LEDGER}` must carry at least one row; an empty ledger \
+         vacuously passes BridgeLedgerZero and is a substrate-shape change \
+         that must land deliberately."
     );
-}
-
-#[test]
-fn bridge_ledger_carries_canonical_five_names_in_doc_order() {
-    let dag = generated_full_bootstrap_dag();
-    let rows = list_value_body(&dag, BRIDGE_LEDGER);
-    let actual: Vec<String> = rows
-        .iter()
-        .enumerate()
-        .map(|(idx, row)| {
-            let FieldValue::Record(fields) = row else {
-                panic!("row {idx} in `{BRIDGE_LEDGER}` is not a record literal: {row:?}");
-            };
-            string_literal(record_field(fields, "name")).to_string()
-        })
-        .collect();
-    let expected: Vec<String> = CANONICAL_BRIDGES.iter().map(|s| s.to_string()).collect();
-    assert_eq!(
-        actual, expected,
-        "`{BRIDGE_LEDGER}` row names must match `docs/r3-structure.md:79-83` \
-         (in document order). Authoring drift on either side fails closed here."
-    );
+    for (idx, row) in rows.iter().enumerate() {
+        assert!(
+            matches!(row, FieldValue::Record(_)),
+            "row {idx} in `{BRIDGE_LEDGER}` is not a record literal: {row:?}"
+        );
+    }
 }
 
 #[test]
@@ -306,29 +287,56 @@ data suite: TestSuite = {
         ClaimResult::Fail(reason) => reason.clone(),
         other => panic!("expected `Fail` (open rows present at HEAD); got {other:?}"),
     };
-    // Diagnostic must name every currently-Open row so Verification
-    // surfaces the residual debt. Source-of-truth status verdicts are
-    // documented in `src/v3/std/bridge_ledger.dag` per-row rationale
-    // and `docs/r3-structure.md:79-83`. If a row flips to `Retired`
-    // upstream, drop it from this expected set in the same PR that
-    // updates the carrier so the gate stays honest.
-    let expected_open_rows = [
-        "bridge_source_span_file_participation_retired",
-        "bridge_include_str_side_channels_retired",
-        "bridge_exact_string_patching_residual_retired",
-    ];
-    for row in expected_open_rows {
+    // Single-authority discipline: do NOT hardcode the open/retired
+    // partition here — that would create a parallel Rust table that
+    // the carrier file in `bridge_ledger.dag` explicitly rules out.
+    // Derive both sets structurally from the same live ledger the
+    // runner read, then assert: every `Open` row's name appears in the
+    // failure diagnostic, every `Retired` row's name does not.
+    let bootstrap_dag = generated_full_bootstrap_dag();
+    let bridge_status = bootstrap_dag
+        .declaration_by_name("BridgeStatus")
+        .expect("BridgeStatus missing from full bootstrap");
+    let TypeConnective::Disj { variants } = &bridge_status.connective else {
+        panic!("BridgeStatus is not a Disj");
+    };
+    let retired_constructor = variants
+        .iter()
+        .find(|v| v.label == "Retired")
+        .expect("Retired variant missing")
+        .ty;
+    let rows = list_value_body(&bootstrap_dag, BRIDGE_LEDGER);
+    let mut open_rows: Vec<String> = Vec::new();
+    let mut retired_rows: Vec<String> = Vec::new();
+    for row in rows {
+        let FieldValue::Record(fields) = row else {
+            panic!("non-record row");
+        };
+        let name = string_literal(record_field(fields, "name")).to_string();
+        let constructor = match record_field(fields, "status") {
+            FieldValue::Variant { constructor, .. } => *constructor,
+            other => panic!("status not a Variant: {other:?}"),
+        };
+        if constructor == retired_constructor {
+            retired_rows.push(name);
+        } else {
+            open_rows.push(name);
+        }
+    }
+    assert!(
+        !open_rows.is_empty(),
+        "this test asserts behavior under at-least-one-Open; if every \
+         row flipped to `Retired` the runner now `Pass`es and this test \
+         re-arms as a Pass ratchet — invert the assertion in the same \
+         PR that flips the last row."
+    );
+    for row in &open_rows {
         assert!(
             reason.contains(row),
-            "BridgeLedgerZero failure message must name `{row}`; got: {reason}"
+            "BridgeLedgerZero failure message must name Open row `{row}`; got: {reason}"
         );
     }
-    // And the two Retired rows must not appear in the failure list.
-    let expected_retired_rows = [
-        "bridge_mark_bootstrap_secret_nominal_opacity_retired",
-        "bridge_canonical_lens_name_dispatch_retired",
-    ];
-    for row in expected_retired_rows {
+    for row in &retired_rows {
         assert!(
             !reason.contains(row),
             "BridgeLedgerZero failure must NOT name retired row `{row}`; got: {reason}"
