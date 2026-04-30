@@ -1,0 +1,13 @@
+[package]
+name = "v3-grounding-coercion-fold"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# T-Ground-Coercion-Fold — structural fold scaffold (program intent × substrate
+# → target inhabitance OR fail-closed diagnostic). Sibling to grounding_pilot /
+# grounding_engine / grounding_lifetime; does not touch `src/v3/compiler/` SG-0.
+
+[dependencies]
+v3-compiler = { path = "../compiler" }
+v3-grounding-lifetime = { path = "../grounding_lifetime" }

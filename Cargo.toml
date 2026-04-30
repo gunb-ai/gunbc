@@ -17,6 +17,8 @@ members = [
     "src/v3/grounding_engine",
     # T-Ground-Lifetime-Analyzer — R2 structural ownership / lifetime / growability fold.
     "src/v3/grounding_lifetime",
+    # T-Ground-Coercion-Fold — structural emission fold scaffold (stub until LanguageSpec + boundary gates).
+    "src/v3/grounding_coercion_fold",
     # Linux ExecuteCommand unshare bootstrap — fd3 sentinel + FD_CLOEXEC before execvp
     "src/v3/execute_command_bootstrap",
     # v1 compiler — ARCHIVED. No longer in the build or generation path.
