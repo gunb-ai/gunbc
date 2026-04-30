@@ -637,6 +637,16 @@ mod stratum_a_tests {
 
     use super::*;
 
+    fn method_template_contract_row_fields_with_extra_surprise() -> Vec<(String, FieldValue)> {
+        let dummy = FieldValue::Literal(LiteralBits::Bool(false));
+        let mut fields: Vec<(String, FieldValue)> = METHOD_TEMPLATE_CONTRACT_FIELDS
+            .iter()
+            .map(|&label| (label.to_string(), dummy.clone()))
+            .collect();
+        fields.push(("surprise".to_string(), dummy));
+        fields
+    }
+
     #[test]
     fn determinism_forward_vs_reverse_row_walk_before_btree_keying() {
         let dag = generated_full_bootstrap_dag();
@@ -697,13 +707,8 @@ mod stratum_a_tests {
     }
 
     #[test]
-    fn enforce_closed_record_schema_rejects_extra_method_template_contract_field() {
-        let dummy = FieldValue::Literal(LiteralBits::Bool(false));
-        let mut fields: Vec<(String, FieldValue)> = METHOD_TEMPLATE_CONTRACT_FIELDS
-            .iter()
-            .map(|&label| (label.to_string(), dummy.clone()))
-            .collect();
-        fields.push(("surprise".to_string(), dummy));
+    fn analyze_closed_record_labels_flags_extra_surprise_with_empty_missing() {
+        let fields = method_template_contract_row_fields_with_extra_surprise();
         assert_eq!(
             analyze_closed_record_labels(&fields, METHOD_TEMPLATE_CONTRACT_FIELDS),
             ClosedRecordLabelsOutcome::Mismatch {
@@ -711,6 +716,11 @@ mod stratum_a_tests {
                 extra: vec!["surprise".to_string()],
             }
         );
+    }
+
+    #[test]
+    fn enforce_closed_record_schema_rejects_extra_method_template_contract_field() {
+        let fields = method_template_contract_row_fields_with_extra_surprise();
         let err = enforce_closed_record_schema(
             &fields,
             RUST_LIST,
