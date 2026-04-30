@@ -133,6 +133,33 @@ fn complexity_dag_compiles_cleanly() {
     );
 }
 
+/// Inbox #1130 / #1139 — STOP ratchet: production `complexity.dag` must not ship
+/// `data complexity_lens` or iterate-shaped names; no L-8-violating emitted
+/// primitive helpers (see file header comment on `Lens<Int>` migration receipt).
+#[test]
+fn complexity_lens_migration_stop_surface_ratchet() {
+    let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
+        .expect("complexity.dag should compile cleanly");
+    assert!(
+        dag.declaration_by_name("complexity_lens").is_none(),
+        "`data complexity_lens` must not ship until Witness/read + class-5 `data` validation are honest"
+    );
+    assert!(
+        dag.declaration_by_name("complexity_iterate").is_none(),
+        "`Lens<Int>.iterate` must not ship as `complexity_iterate` until fold_lens owns loop-bound semantics (no LoopBound-ignoring stub)"
+    );
+    for name in [
+        "complexity_behavior_result_port",
+        "complexity_sequential_op",
+        "complexity_branch",
+    ] {
+        assert!(
+            dag.declaration_by_name(name).is_none(),
+            "production `{name}` must not emit primitive-returning Rust on the migrated lens surface (L-8); see STOP comment in complexity.dag"
+        );
+    }
+}
+
 #[test]
 fn complexity_generated_module_matches_checked_in_snapshot() {
     let fresh = emit_lens_module();
