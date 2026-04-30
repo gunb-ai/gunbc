@@ -297,12 +297,7 @@ jobs:
             echo "L-8: no lens wrapper files to scan"
             exit 0
           fi
-          # `emit_rust_module` output (`lens_*_generated.rs`) legitimately uses `i64`
-          # as the Rust projection of v3 `Int` (monoid / branch helpers on migrated
-          # lenses). L-8 targets *hand-written* `lens_*.rs` collapsing typed carriers
-          # (e.g. `CostLookup` / `Lookup<i64>`) to bare `usize`/`bool`/`i64` at the
-          # public surface — not generated `Int` plumbing.
-          matches=$(grep -nE "pub fn .*-> (usize|bool|i64)" $wrappers 2>/dev/null | grep -v '_generated.rs:' || true)
+          matches=$(grep -nE "pub fn .*-> (usize|bool|i64)" $wrappers 2>/dev/null || true)
           if [ -n "$matches" ]; then
             echo "::error::L-8 violation: lens wrapper collapses typed carrier to a primitive"
             echo "$matches"

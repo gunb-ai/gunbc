@@ -133,12 +133,11 @@ fn complexity_dag_compiles_cleanly() {
     );
 }
 
-/// Inbox #1130 / #1139 — `Lens<Int>` instance is still blocked on Prereq-2;
-/// this ratchet only pins that the lens-shaped **helpers** resolve in the
-/// same `compile_to_dag` surface as `cost_of` (no `data complexity_lens`,
-/// no Rust fake instance).
+/// Inbox #1130 / #1139 — STOP ratchet: production `complexity.dag` must not ship
+/// `data complexity_lens` or iterate-shaped names; no L-8-violating emitted
+/// primitive helpers (see file header comment on `Lens<Int>` migration receipt).
 #[test]
-fn complexity_lens_helpers_resolve_without_data_instance() {
+fn complexity_lens_migration_stop_surface_ratchet() {
     let dag = compile_to_dag(&lens_source(), lens_path().to_string_lossy().as_ref())
         .expect("complexity.dag should compile cleanly");
     assert!(
@@ -155,8 +154,8 @@ fn complexity_lens_helpers_resolve_without_data_instance() {
         "complexity_branch",
     ] {
         assert!(
-            dag.declaration_by_name(name).is_some(),
-            "expected `{name}` declaration in lenses.complexity"
+            dag.declaration_by_name(name).is_none(),
+            "production `{name}` must not emit primitive-returning Rust on the migrated lens surface (L-8); see STOP comment in complexity.dag"
         );
     }
 }

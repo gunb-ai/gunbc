@@ -136,22 +136,3 @@ pub fn max_cost(p0: &Lookup<i64>, p1: &Lookup<i64>) -> Lookup<i64> {
         },
     }
 }
-pub fn complexity_behavior_result_port(p0: &Behavior) -> PortId {
-    match p0 {
-        Behavior::Value(v) => (v).result_port(),
-        Behavior::Transform(t) => (t).result_port(),
-        Behavior::Branch(br) => (br).result_port(),
-        Behavior::Loop(l) => (l).result_port(),
-        Behavior::Bind(bind) => (bind).result_port(),
-    }
-}
-pub fn complexity_sequential_op(p0: &i64, p1: &i64) -> i64 {
-    ((*(p0)) + (*(p1)))
-}
-pub fn complexity_branch(p0: i64, p1: i64) -> i64 {
-    if (p0 > p1) {
-        p0
-    } else {
-        p1
-    }
-}
