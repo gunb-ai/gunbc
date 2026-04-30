@@ -24,12 +24,9 @@ pub enum GroundingTestsDiagnostic {
         row_index: usize,
         detail: String,
     },
-    /// Two structural witnesses disagreed (e.g. digest mismatch across bootstrap constructions).
-    StratumALockstepMismatch {
-        list_name: String,
-        method_name: String,
-        detail: String,
-    },
+    /// Two `generated_full_bootstrap_dag()` runs produced different Stratum-A **list** digests for
+    /// the same `list_name` (list-scoped witness; not a single `dag_method` row).
+    StratumALockstepListDigestMismatch { list_name: String, detail: String },
     /// Expected Substrate declaration or connective shape was absent or non-conforming.
     StratumADagProjectionFailed { step: &'static str, detail: String },
 }
@@ -53,14 +50,12 @@ impl fmt::Display for GroundingTestsDiagnostic {
                 f,
                 "Stratum A registry resolution failed for `{list_name}` row {row_index}: {detail}"
             ),
-            GroundingTestsDiagnostic::StratumALockstepMismatch {
-                list_name,
-                method_name,
-                detail,
-            } => write!(
-                f,
-                "Stratum A lockstep mismatch for `{list_name}` method `{method_name}`: {detail}"
-            ),
+            GroundingTestsDiagnostic::StratumALockstepListDigestMismatch { list_name, detail } => {
+                write!(
+                    f,
+                    "Stratum A lockstep list-digest mismatch for `{list_name}`: {detail}"
+                )
+            }
             GroundingTestsDiagnostic::StratumADagProjectionFailed { step, detail } => {
                 write!(f, "Stratum A Dag projection failed at `{step}`: {detail}")
             }
