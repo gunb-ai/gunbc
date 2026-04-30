@@ -23,8 +23,9 @@ use v3_compiler::{parse_for_test, tokenize_for_test};
 fn control_arrow_typed_field_decl_parses() {
     let src = "type Wrapper { f: fn(Int) -> Int }\n";
     let tokens = tokenize_for_test(src, "control.v3").expect("tokenize");
-    parse_for_test(&tokens, "control.v3")
-        .expect("Arrow-typed field declaration must parse cleanly so X1/X3 isolate the call-site gap.");
+    parse_for_test(&tokens, "control.v3").expect(
+        "Arrow-typed field declaration must parse cleanly so X1/X3 isolate the call-site gap.",
+    );
 }
 
 /// X1: direct call-on-field-access in fn body. The `lens.read(d, b)`
