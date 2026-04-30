@@ -4387,10 +4387,12 @@ fn resolve_operator_arrow(
     // discarded — see the receiver substitution rule in the doc
     // comment.
     let mut current = source_id;
+    let mut saw_algebra_conj = false;
     for _ in 0..WALK_DEPTH_LIMIT {
         let decl = dag.declaration(current).clone();
         match &decl.connective {
             TypeConnective::Conj { children } => {
+                saw_algebra_conj = true;
                 // Found the algebra. Look up the operator's field by
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
@@ -4432,6 +4434,21 @@ fn resolve_operator_arrow(
     // output are always Bool, independent of `lhs_type`. An Int lhs
     // on `&&` / `||` must surface a type mismatch, not propagate
     // through the operand slots the way Arithmetic / Comparison do.
+    //
+    // Fail-closed for non-algebra LHS: if the walk never encountered
+    // an algebra Conj at all, the LHS has no operator-rule carrier.
+    // The pre-fix fallback fabricated `(T,T)->T` / `(T,T)->Bool` for
+    // any such LHS, inventing an arrow contract for a type that
+    // declares none. Refuse synthesis here so the caller surfaces a
+    // typed unsupported-operator diagnostic. The class-5 gap path
+    // (Conj-with-missing-field, `saw_algebra_conj == true`) keeps
+    // its existing scaffold until the gap closes.
+    if !saw_algebra_conj {
+        match op_kind {
+            OperatorKind::Arithmetic(ArithmeticOp::Div) | OperatorKind::Logical(_) => {}
+            OperatorKind::Arithmetic(_) | OperatorKind::Comparison(_) => return None,
+        }
+    }
     let (inputs, output) = match op_kind {
         // Division leaves the class-5 scaffold: total shape matches algebra `div`.
         OperatorKind::Arithmetic(ArithmeticOp::Div) => (
