@@ -108,10 +108,7 @@ fn v3_canonical_ty(dag: &Dag, ty: DeclarationId) -> String {
                 format!("{}<{}>", template_name, args.join(", "))
             }
         }
-        _ => decl
-            .name
-            .clone()
-            .unwrap_or_else(|| "<anon>".to_string()),
+        _ => decl.name.clone().unwrap_or_else(|| "<anon>".to_string()),
     }
 }
 
