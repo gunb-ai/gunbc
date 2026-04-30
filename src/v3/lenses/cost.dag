@@ -120,8 +120,12 @@ fn entry_for(
 // `loop_cost` composes iteration: bound × body.
 //
 // - Bound: `LinearCost(size_var_of(l.source))` — the runtime value
-//   the Loop descends upon (same carrier for `Cardinality { count }`
-//   and `Descent { cluster }` via `LoopNode.source`).
+//   the Loop descends upon. This is the live DB-3 / DB-7 analysis path:
+//   `AnalysisDimension.witness_of(d, behavior)` receives the whole
+//   `Behavior`, so a Loop witness can read both `LoopNode.source` and
+//   `LoopNode.bound`. Do not use this comment as an argument that a
+//   future generic `Lens<C>.iterate` may drop or rederive the source;
+//   the current authority stays at the Behavior / LoopNode boundary.
 // - Body: the already-lowered cost of `l.body`'s result port. The
 //   forward-fold contract guarantees the body's `entry_for` ran
 //   earlier in the walk (producers precede consumers in
@@ -299,3 +303,52 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 //
 // See `docs/design-symbolic-cost-algebra.md` §"Dimension<SymbolicCost>
 // wiring" for the target shape.
+
+// ── Cost dimension data declaration / forward Lens boundary ─
+//
+// Live target today is DB-3 / DB-7's analysis-dimension path:
+//
+//   data symbolic_cost_dimension: AnalysisDimension<SymbolicCost> = {
+//     name: "symbolic_cost",
+//     witness_of: symbolic_cost_witness_of,
+//     compose: sequential,
+//     identity: ConstantCost(0),
+//     break_diagnostic: symbolic_cost_break_diagnostic
+//   }
+//
+// Do NOT author that data value until class-5 data-body lowering can
+// express the record honestly: function-valued field references,
+// nested structural values, and the `Witness<SymbolicCost>` /
+// `OptionalDiagnostic` constructors needed by `witness_of` and
+// `break_diagnostic`. The current Rust entrypoint
+// `v3_compiler::analyze_symbolic_cost_dimension` remains the execution
+// authority over the same `DimensionReport<SymbolicCost>` carrier.
+//
+// This DB-3 path keeps symbolic-cost analysis at the Behavior /
+// LoopNode boundary. A Loop witness may read `l.source`, `l.bound`, and
+// the loop body through the Dag, so `LoopBound::Descent` is not by
+// itself a blocker for the live `AnalysisDimension<SymbolicCost>`
+// declaration. The existing `loop_cost(d, acc, l)` implementation keeps
+// using `linear_at(l.source)` for both Cardinality and Descent loops
+// until a richer, authoritative cluster-measure fact is introduced.
+//
+// Forward Lens<SymbolicCost> note: current cost semantics do not need a
+// Descent-specific cost projection because `LoopNode.source` is the
+// runtime descent carrier for both bound variants. If a later R3 lens
+// framework migrates cost onto a source-less `Lens<C>.iterate:
+// fn(C, LoopBound) -> C`, that framework must preserve this source
+// carrier or make an explicit replacement decision. Current mapping:
+//
+//   - `Cardinality { count }` -> `LinearCost({ source_port: count })`
+//   - `Descent { cluster }` -> `LinearCost({ source_port: l.source })`
+//     through the enclosing `LoopNode`; the cluster sidecar carries the
+//     termination witness topology, not a replacement cost carrier.
+//
+// Do not choose `UnknownCost("mutual recursion descent cluster")` as a
+// local migration convenience. `UnknownCost` is an algebra top, not a
+// failure channel; if a future lens fold wants a different Descent cost
+// policy, that must be named as the authoritative substrate decision.
+// Until the class-5 data declaration and any future Lens-specific
+// source-carrier handling are honest, preserve `compute_symbolic_costs`
+// / `symbolic_cost_of` as the primary API and do not author
+// `data cost_lens`.
