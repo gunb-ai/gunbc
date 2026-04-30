@@ -1640,6 +1640,123 @@ fn parse_sum_type_first_variant_may_be_named_type_keyword() {
     }
 }
 
+/// PR-A.3: single-variant sum with record payload — no top-level `|` before `{`.
+#[test]
+fn parse_single_variant_sum_record_payload_without_pipe() {
+    let source = concat!(
+        "type EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }\n",
+        "type InputEvaluationOrder = LeftFirst\n",
+    );
+    let tokens = tokenize_for_test(source, "pr_a3_eval_strategy.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "pr_a3_eval_strategy.v3").expect("parse");
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
+    assert_eq!(mirrored.items.len(), 2);
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "EvalStrategy");
+            assert_eq!(variants.len(), 1);
+            assert_eq!(variants[0].name, "ApplicativeOrder");
+            assert!(matches!(
+                &variants[0].payload,
+                parse_surface::VariantPayload::Record(fields)
+                    if fields.len() == 1 && fields[0].name == "input_order"
+            ));
+        }
+        other => panic!("expected TypeSum EvalStrategy, got {other:?}"),
+    }
+    match &mirrored.items[1] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "InputEvaluationOrder");
+            assert_eq!(variants.len(), 1);
+            assert_eq!(variants[0].name, "LeftFirst");
+            assert!(matches!(
+                &variants[0].payload,
+                parse_surface::VariantPayload::Positional(ps) if ps.is_empty()
+            ));
+        }
+        other => panic!("expected TypeSum InputEvaluationOrder, got {other:?}"),
+    }
+}
+
+/// PR-A.3 alias preservation: bare RHS names that resolve to imports or sibling
+/// declarations remain aliases rather than being reclassified as nullary sums.
+#[test]
+fn parse_bare_rhs_alias_reference_stays_type_alias() {
+    let source = concat!(
+        "import std.types { String }\n",
+        "type LocalString = String\n",
+        "type Forward = Later\n",
+        "type Later = Only\n",
+        "type Id<T> = T\n",
+        "type Bad = T\n",
+    );
+    let tokens = tokenize_for_test(source, "pr_a3_alias_preservation.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "pr_a3_alias_preservation.v3").expect("parse");
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
+    assert_eq!(mirrored.items.len(), 6);
+    match &mirrored.items[1] {
+        parse_surface::SurfaceItem::TypeAlias { name, .. } => {
+            assert_eq!(name, "LocalString");
+        }
+        other => panic!("expected imported bare RHS to stay TypeAlias, got {other:?}"),
+    }
+    match &mirrored.items[2] {
+        parse_surface::SurfaceItem::TypeAlias { name, .. } => {
+            assert_eq!(name, "Forward");
+        }
+        other => panic!("expected sibling bare RHS to stay TypeAlias, got {other:?}"),
+    }
+    match &mirrored.items[3] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "Later");
+            assert_eq!(variants.len(), 1);
+            assert_eq!(variants[0].name, "Only");
+        }
+        other => panic!("expected unresolved bare RHS to parse as TypeSum, got {other:?}"),
+    }
+    match &mirrored.items[4] {
+        parse_surface::SurfaceItem::TypeAlias {
+            name,
+            type_params,
+            target,
+            ..
+        } => {
+            assert_eq!(name, "Id");
+            assert_eq!(type_params, &[String::from("T")]);
+            assert!(matches!(
+                target,
+                parse_surface::SurfaceType::Named { name, .. } if name == "T"
+            ));
+        }
+        other => panic!("expected type-param bare RHS to stay TypeAlias, got {other:?}"),
+    }
+    match &mirrored.items[5] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "Bad");
+            assert_eq!(variants.len(), 1);
+            assert_eq!(variants[0].name, "T");
+        }
+        other => panic!("expected out-of-scope type param RHS to parse as TypeSum, got {other:?}"),
+    }
+}
+
+/// Optional leading `|` before the first variant (same sum path as `A | B`).
+#[test]
+fn parse_sum_type_optional_leading_pipe_before_first_variant() {
+    let source = "type T = | Only\n";
+    let tokens = tokenize_for_test(source, "leading_pipe_sum.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "leading_pipe_sum.v3").expect("parse");
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
+    match &mirrored.items[0] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "T");
+            assert_eq!(variants.len(), 1);
+            assert_eq!(variants[0].name, "Only");
+        }
+        other => panic!("expected TypeSum, got {other:?}"),
+    }
+}
+
 /// Regression: `type … inhabits … =` is v3 surface-only (std `types.dag` stays
 /// v2-shaped); this pins the parser + `rhs_is_sum` lookahead for the clause.
 #[test]
