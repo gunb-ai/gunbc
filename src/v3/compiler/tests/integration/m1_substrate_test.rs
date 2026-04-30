@@ -2692,6 +2692,50 @@ fn no_diag() -> OptionalDiagnostic {
 }
 
 #[test]
+fn class5_imported_expected_sum_positional_constructor_in_brace_body() {
+    let src = "\
+import v3.std.dimensions { Witness }
+fn ok() -> Witness<Int> {
+  Inhabits(1)
+}
+";
+    let dag = cached_compile_to_dag(src, "class5_witness_inhabits_brace_fn.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "imported expected-type variant constructor should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    let out = bind_value_type_decl(&dag, "ok");
+    let witness = find_named(&dag, "Witness");
+    match &dag.declaration(out).connective {
+        TypeConnective::Instantiation { template, .. } => assert_eq!(*template, witness),
+        other => panic!("expected Witness<Int> instantiation, got {other:?}"),
+    }
+}
+
+#[test]
+fn class5_expected_generic_sum_record_constructor_in_brace_body() {
+    let src = "\
+type Boxed<T> = Packed { value: T } | Empty
+fn packed() -> Boxed<Int> {
+  Packed { value: 1 }
+}
+";
+    let dag = cached_compile_to_dag(src, "class5_generic_record_constructor_brace_fn.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "expected-type generic record constructor should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    let out = bind_value_type_decl(&dag, "packed");
+    let boxed = find_named(&dag, "Boxed");
+    match &dag.declaration(out).connective {
+        TypeConnective::Instantiation { template, .. } => assert_eq!(*template, boxed),
+        other => panic!("expected Boxed<Int> instantiation, got {other:?}"),
+    }
+}
+
+#[test]
 fn prereq2_named_payload_pattern_binds_field_projection_ports() {
     let src = "\
 type Point { x: Int }

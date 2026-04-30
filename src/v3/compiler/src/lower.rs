@@ -5100,6 +5100,9 @@ fn retained_template_arguments_for_target(
         .iter()
         .copied()
         .collect();
+    if let Some(enclosing_disj) = enclosing_disj_for_variant_lower(dag, template) {
+        allowed.extend(dag.declaration(enclosing_disj).type_params.iter().copied());
+    }
     if let Some(inputs) = direct_invocation_input_decls(dag, template, 0) {
         for input in inputs {
             if declaration_is_callable(dag, input, 0) {
@@ -5127,6 +5130,21 @@ fn retained_template_arguments_for_target(
         });
     }
     retained
+}
+
+fn enclosing_disj_for_variant_lower(
+    dag: &Dag,
+    variant_decl_id: DeclarationId,
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            return None;
+        };
+        variants
+            .iter()
+            .find(|variant| variant.ty == variant_decl_id)
+            .map(|_| decl.id)
+    })
 }
 
 fn callable_binding_conflict_diagnostic(
