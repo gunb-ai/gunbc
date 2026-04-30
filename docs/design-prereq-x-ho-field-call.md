@@ -371,7 +371,7 @@ one of them requires a substrate extension:
    if and only if `complexity_lens` is a `data` binding (which it
    is — Lens instances are top-level data).
 2. (L1.b) runtime-sourced case lands SECOND with the
-   `TransformDispatch::Indirect { callee: ArrowPortRef, args: Vec<PortId> }`
+   `TransformDispatch::Indirect { callee: ArrowPortRef, args: ArityCheckedArgs }`
    variant + the `TransformNode.target/inputs` collapse described
    above.
    Required for `fn invoke(lens: Lens<Int>, ...) -> ... = lens.read(...)`
