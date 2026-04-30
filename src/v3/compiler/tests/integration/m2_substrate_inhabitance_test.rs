@@ -2232,6 +2232,32 @@ fn nested_record_body_duplicate_fields_fail_closed() {
 }
 
 #[test]
+fn data_body_named_variant_duplicate_payload_fields_fail_closed() {
+    let dag = semantic_dag_for(
+        "type Status = Ready { code: Int, retry: Bool } | Blocked\n\
+         type Job { status: Status }\n\
+         data duplicate_variant_payload_fields: Job = { status: Ready { code: 1, code: 2, retry: false } }\n",
+        "data_body_named_variant_duplicate_payload_fields.v3",
+    );
+    let decl = dag
+        .declaration_by_name("duplicate_variant_payload_fields")
+        .expect(
+        "duplicate_variant_payload_fields declaration should be allocated before lowering fails",
+    );
+
+    assert!(
+        has_resolve_error(&dag),
+        "expected named-variant duplicate payload field lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Structural { .. })),
+        "duplicate named-variant payload must not construct ValueBody::Structural, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
 fn map_body_on_non_map_type_fails_closed() {
     let dag = semantic_dag_for(
         "data not_a_map: Bool = {\n  \"x\": true\n}\n",

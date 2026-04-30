@@ -3836,6 +3836,20 @@ fn lower_structural_field_value(
                 )?);
             }
         } else if let Some(fields) = named_fields {
+            if let Some(field) = duplicate_record_field(fields) {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` constructor `{variant_name}` repeats payload field `{}`",
+                            field.name
+                        ),
+                        span: field.span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                return None;
+            }
             for field in fields {
                 if !payload_fields.iter().any(|(label, _)| label == &field.name) {
                     report_declaration_error(
