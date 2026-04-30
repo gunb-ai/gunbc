@@ -13,7 +13,6 @@
 module lenses.dag_shape
 
 import std.list { List, empty, cons, concat }
-import std.algebra { Monoid }
 import std.substrate {
   Dag,
   Behavior,
@@ -23,7 +22,6 @@ import std.substrate {
   LoopBound
 }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
-import v3.std.lens { Lens }
 
 // Raw reflected-Dag shape carrier. This is intentionally a projection of the
 // existing reflected substrate authority, not a parallel hand-coded
@@ -80,16 +78,18 @@ fn dag_shape_iterate(body: DagShapeReport, _bound: LoopBound) -> DagShapeReport 
 fn dag_shape_validate(_d: Dag, _report: DagShapeReport) -> OptionalDiagnostic =
   NoDiagnostic
 
-data dag_shape_report_monoid: Monoid<DagShapeReport> = {
-  op: combine_dag_shape_reports
-  identity: empty_dag_shape_report
-}
-
-data dag_shape_lens: Lens<DagShapeReport> = {
-  name: "dag_shape"
-  read: dag_shape_read
-  sequential: dag_shape_report_monoid
-  branch: dag_shape_branch
-  iterate: dag_shape_iterate
-  validate: dag_shape_validate
-}
+// Lens<DagShapeReport> instance deferral.
+//
+// The helper declarations above have the exact Lens-shaped field signatures:
+// `dag_shape_read`, `combine_dag_shape_reports` / `empty_dag_shape_report`,
+// `dag_shape_branch`, `dag_shape_iterate`, and `dag_shape_validate`.
+// The actual
+//
+//   data dag_shape_lens: Lens<DagShapeReport> = { ... }
+//
+// value is intentionally not authored in this slice. Current structural
+// data-body validation still rejects the generic `Monoid<DagShapeReport>.op`
+// and `Lens<DagShapeReport>.read` function references as mismatched even
+// though the declarations are shaped correctly. That is the remaining
+// Lens<C> generic function-field validation prerequisite; landing a fake data
+// instance or hand-Rust fold would create a parallel producer authority.
