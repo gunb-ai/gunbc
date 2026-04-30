@@ -219,6 +219,152 @@ fn fold_lens<C>(lens: Lens<C>, d: Dag) -> DimensionReport<C> {
 value lowering unblocks (§§1-5 above). Without those, you can't
 even author lens instances to fold over.
 
+### Prereq-3b implementation plan (2026-04-30)
+
+**Status:** PLAN ONLY until both implementation gates clear:
+
+- **Gate 1:** PR #1232 (`workflow_root_port`) merges. `fold_lens<C>`
+  consumes that accessor as the only workflow-root authority; it must not
+  re-derive root selection from `Dag.nodes` directly.
+- **Gate 2:** PR #1248 (brace-bodied `fn` / variant-constructor lowering)
+  merges, or explicitly narrows to a shape that still lets real
+  `Lens<C>` helpers author `Witness<C>` / `OptionalDiagnostic` /
+  `DimensionReport<C>` constructors in `.dag`.
+
+**Target signature and carrier authority:**
+
+```dag
+fn fold_lens<C>(lens: Lens<C>, d: Dag) -> DimensionReport<C> = ...
+```
+
+The result carrier is exactly `DimensionReport<C>` from
+`src/v3/std/dimensions.dag`; `fold_lens<C>` does not introduce a
+parallel `LensReport` or a lens-local failure carrier. `DimensionOk`
+contains `dimension_name: lens.name`, the root-composed `C`, and the full
+`List<Witness<C>>`. `DimensionFail` contains `dimension_name: lens.name`,
+`violations: List<Diagnostic>`, and the same witness list; it never
+fabricates a `composed` value when a root or witness failure occurs.
+
+**Files to touch once the gates clear:**
+
+- `src/v3/std/lens.dag` — author `fold_lens<C>` plus any small private
+  helpers needed to fold `Behavior` and convert `WorkflowRoot` /
+  `Witness<C>` / `OptionalDiagnostic` failures into `DimensionReport<C>`.
+- `src/v3/std/substrate.dag` — import/use only the
+  `workflow_root_port(d: Dag) -> WorkflowRoot` accessor from #1232. 3b
+  should not add another root carrier; if #1232 does not expose
+  `NoRoot` / `AmbiguousRoot` in the shape above, STOP+PING instead of
+  inventing a second partition.
+- `src/v3/std/dimensions.dag` — no shape changes expected; only import
+  `DimensionReport`, `Witness`, and `OptionalDiagnostic`.
+- `src/v3/std/diagnostics.dag` — only if #1232 does not already provide
+  reusable diagnostics for `NoRoot` / `AmbiguousRoot`. Prefer reusing
+  existing `Diagnostic` constructors; STOP+PING before adding a new
+  diagnostic substrate carrier.
+- `src/v3/lenses/complexity.dag` — first real instance/equivalence
+  consumer after 3b lands; keep current `cost_of` / `compute_costs` fold
+  as the migration oracle until `complexity_lens_via_framework_correct`
+  passes.
+- `src/v3/lenses/cost.dag` — second consumer; map its current
+  `SymbolicCost` combinators and `Lookup<SymbolicCost>` failure behavior
+  onto a `Lens<SymbolicCost>` instance after the framework fold exists.
+- `src/v3/lenses/idempotency.dag` and `src/v3/lenses/parallelism.dag` —
+  readiness probes only in the first 3b PR unless their prerequisite
+  carriers are already live. Do not pretend the hard stub in
+  `parallelism.dag` is a completed lens instance.
+- `src/v3/compiler/src/bootstrap_std_generated.rs` /
+  `src/v3/compiler/src/bootstrap_generated.rs` — regenerated only through
+  the existing bootstrap flow if `.dag` edits require it.
+
+**Workflow-root consumption and fail-closed behavior:**
+
+1. `fold_lens<C>` calls `workflow_root_port(d)` before it attempts to
+   report a root-composed value.
+2. `SingleRoot(root_port)` selects the report target. The fold composes
+   per-Behavior witnesses across the DAG structure and reports the value
+   associated with `root_port` as `DimensionOk.composed`.
+3. `NoRoot` returns `DimensionFail { dimension_name: lens.name,
+   violations: [Diagnostic(... no workflow root ...)], witnesses }`.
+   The fold must not use `lens.sequential.identity` as a fabricated whole
+   program result for an empty / rootless DAG.
+4. `AmbiguousRoot { candidates }` returns `DimensionFail` with a
+   diagnostic naming the candidate root ports. The fold must not choose
+   first, last, or "best" candidate; entry disambiguation belongs to the
+   evaluator consumer, not to the generic lens fold.
+
+**Generic fold mechanics:**
+
+- `read`: call `lens.read(d, behavior)` for each `Behavior`, preserving
+  every `Witness<C>` in order for the report.
+- `sequential`: compose `Bind` / topological sequence values with
+  `lens.sequential.op`, using `lens.sequential.identity` only as the fold
+  unit for legitimate empty substructures, never as a failure fallback.
+- `branch`: compose exclusive `BranchNode` arms with `lens.branch`.
+- `iterate`: compose `LoopNode` bodies with `lens.iterate(body_c,
+  loop.bound)`.
+- `validate`: after a successful root composition, call
+  `lens.validate(d, composed)`. `SomeDiagnostic` converts to
+  `DimensionFail`; `NoDiagnostic` produces `DimensionOk`.
+- Failure partition: any `Witness::Violates` or root/validation
+  diagnostic produces `DimensionFail`. The first implementation may
+  either accumulate all diagnostics or preserve a deterministic prefix,
+  but it must not drop witness evidence or synthesize a carrier.
+
+**Substrate vs lens-instance-specific boundary:**
+
+- Substrate/framework (`src/v3/std/lens.dag`) owns only traversal,
+  structural composition dispatch, root handling, witness retention, and
+  final `DimensionReport<C>` partitioning.
+- Lens instances own `read`, `sequential`, `branch`, `iterate`, and
+  `validate`. Cost/complexity/idempotency/parallelism must not add
+  special cases to `fold_lens<C>`.
+- `workflow_root_port` remains shared substrate authority between the
+  lens framework and R2-Evaluator. `fold_lens<C>` is a consumer, not a
+  second root-selection authority.
+
+**Minimal first implementation tests:**
+
+- `lens_fold_no_root_fails_closed` — a fixture DAG with no eligible root
+  returns `DimensionFail`, not `DimensionOk` with a monoid identity.
+- `lens_fold_ambiguous_root_fails_closed` — a fixture using the
+  `AmbiguousRoot` path from #1232 returns `DimensionFail` with candidate
+  evidence and no chosen `composed`.
+- `complexity_lens_via_framework_correct` — a `Lens<Int>` fixture reports
+  the same root value as `src/v3/lenses/complexity.dag::cost_of(d,
+  root_port)`. This is the first full fold correctness test.
+- `cost_lens_framework_symbolic_root_matches_current_lookup` — a
+  `Lens<SymbolicCost>` fixture reports the same root `SymbolicCost` as
+  `src/v3/lenses/cost.dag::symbolic_cost_of(d, root_port)` on one
+  sequential transform and one branch/loop case. Keep existing
+  `Lookup<SymbolicCost>` Miss behavior as the oracle for read failures.
+- `idempotency_lens_framework_readiness` — compile-only or
+  structural-shape test that the current idempotency analyzer can expose
+  a `Lens<WorkflowIdempotencyReport>`-shaped plan once its carrier
+  becomes a monoid; do not migrate behavior in 3b unless the effect
+  report algebra is already declared.
+- `parallelism_lens_framework_readiness` — assert the current
+  `parallelism.dag` hard stub is not migrated as a fake completed
+  `Lens<C>` instance. The first real migration waits for the Stage 2e
+  `.dag` walk / `lane2_workflow_at` port.
+- Bootstrap/snapshot checks: run the focused new integration tests plus
+  `cargo run -p v3-compiler --features bootstrap-regen-fresh --bin
+  regen_bootstrap -- --verify`; run `regen_lens` snapshots only for lens
+  files edited in that PR.
+
+**STOP+PING criteria before implementation:**
+
+- `workflow_root_port` lands without a typed `WorkflowRoot` partition for
+  `SingleRoot` / `NoRoot` / `AmbiguousRoot`.
+- `fold_lens<C>` needs a new stored DAG-side accumulator, root marker, or
+  report carrier rather than consuming existing `Lens<C>`,
+  `WorkflowRoot`, `Witness<C>`, `OptionalDiagnostic`, and
+  `DimensionReport<C>`.
+- #1248 leaves `.dag` unable to author the constructors needed for
+  `Witness<C>`, `OptionalDiagnostic`, or `DimensionReport<C>` in real
+  `read` / `validate` helpers.
+- Type-param lowering cannot express `fn fold_lens<C>(...) ->
+  DimensionReport<C>` without hand-Rust scaffolding.
+
 ---
 
 ## Workflow-root semantic question (Director M2 note)
