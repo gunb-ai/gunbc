@@ -39,6 +39,17 @@ fn dag_shape_report_carrier_projects_reflected_dag_shape_lists() {
 }
 
 #[test]
+fn dag_shape_report_public_producer_returns_shape_report() {
+    let dag = dag_shape_dag();
+    let report = dag
+        .declaration_by_name("DagShapeReport")
+        .expect("DagShapeReport carrier exists")
+        .id;
+
+    assert_arrow_output(&dag, "dag_shape_report", report);
+}
+
+#[test]
 fn dag_shape_producer_helpers_are_lens_shaped_without_fake_data_instance() {
     let dag = dag_shape_dag();
     let report = dag
