@@ -633,6 +633,98 @@ mod stratum_a_tests {
     }
 
     #[test]
+    fn enforce_closed_record_schema_rejects_duplicate_method_ref_field() {
+        let fields = vec![
+            (
+                "decl".to_string(),
+                FieldValue::Literal(LiteralBits::Bool(false)),
+            ),
+            (
+                "decl".to_string(),
+                FieldValue::Literal(LiteralBits::Bool(true)),
+            ),
+        ];
+        let err =
+            enforce_closed_record_schema(&fields, RUST_LIST, 0, "MethodRef", METHOD_REF_FIELDS)
+                .expect_err("duplicate decl");
+        let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
+            panic!("unexpected diagnostic: {err:?}");
+        };
+        assert!(
+            detail.contains("duplicate"),
+            "expected duplicate-field detail, got {detail}"
+        );
+    }
+
+    #[test]
+    fn enforce_closed_record_schema_rejects_extra_method_template_contract_field() {
+        let dummy = FieldValue::Literal(LiteralBits::Bool(false));
+        let mut fields: Vec<(String, FieldValue)> = METHOD_TEMPLATE_CONTRACT_FIELDS
+            .iter()
+            .map(|&label| (label.to_string(), dummy.clone()))
+            .collect();
+        fields.push(("surprise".to_string(), dummy));
+        let err = enforce_closed_record_schema(
+            &fields,
+            RUST_LIST,
+            0,
+            "MethodTemplateContract",
+            METHOD_TEMPLATE_CONTRACT_FIELDS,
+        )
+        .expect_err("extra field");
+        let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
+            panic!("unexpected diagnostic: {err:?}");
+        };
+        assert!(
+            detail.contains("extra") || detail.contains("mismatch"),
+            "expected field-set mismatch detail, got {detail}"
+        );
+    }
+
+    #[test]
+    fn placeholder_convention_canonical_rejects_payload_for_nullary_indexed_args() {
+        let dag = generated_full_bootstrap_dag();
+        let root = dag
+            .declaration_by_name("PlaceholderConvention")
+            .expect("PlaceholderConvention");
+        let TypeConnective::Disj { variants } = &root.connective else {
+            panic!("expected Disj, got {:?}", root.connective);
+        };
+        let indexed = variants
+            .iter()
+            .find(|v| v.label == "IndexedArgs")
+            .expect("IndexedArgs variant");
+        let ph = FieldValue::Variant {
+            constructor: indexed.ty,
+            payload: vec![FieldValue::Literal(LiteralBits::Bool(false))],
+        };
+        let err = placeholder_convention_canonical(&dag, &ph).expect_err("non-empty payload");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumADagProjectionFailed { step, .. }
+                    if *step == "placeholder_convention_canonical.arity"
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn method_registry_name_rejects_non_method_declaration_instantiation() {
+        let dag = generated_full_bootstrap_dag();
+        let decl = dag.declaration_by_name("Int").expect("Int");
+        let err = method_registry_name(&dag, decl.id, RUST_LIST, 0)
+            .expect_err("Int is not MethodDeclaration");
+        let GroundingTestsDiagnostic::StratumARegistryResolutionFailed { detail, .. } = err else {
+            panic!("unexpected diagnostic: {err:?}");
+        };
+        assert!(
+            detail.contains("MethodDeclaration") || detail.contains("Instantiation"),
+            "expected registry gate detail, got {detail}"
+        );
+    }
+
+    #[test]
     fn stratum_a_phase1_bootstrap_verification() {
         verify_stratum_a_lockstep_all_targets().unwrap_or_else(|e| panic!("{e}"));
     }
