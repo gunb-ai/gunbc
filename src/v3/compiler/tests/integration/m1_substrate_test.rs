@@ -419,6 +419,46 @@ fn m17_multi_statement_brace_fn_parse_surface_stays_fn_external_body() {
 }
 
 #[test]
+fn m17_malformed_brace_expr_probe_err_maps_to_fn_external_body() {
+    // `parse_expr` fails inside `{ … }` (incomplete additive). Recovery uses the same
+    // `Err(_)` arm as multi-statement bodies: we **cannot** propagate `parse_expr`
+    // diagnostics from this probe without rejecting `.v3` sources where the first
+    // inner token is `let` — `parse_expr` also fails there (see
+    // `m17_multi_statement_brace_fn_parse_surface_stays_fn_external_body`).
+    // Contract: `FnExternalBody` (opaque parse surface), not a fabricated
+    // `SurfaceItem::Fn` / `UserDefined` tree; lowering stays `ArrowBody::Unparsed`.
+    let src = "fn broken(x: Int) -> Int { x + }";
+    let tokens = v3_compiler::tokenize_for_test(src, "malformed_brace_probe.v3").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "malformed_brace_probe.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| match i {
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { name, .. }
+            | v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } => name == "broken",
+            _ => false,
+        })
+        .expect("broken fn item");
+    assert!(
+        matches!(
+            item,
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { .. }
+        ),
+        "malformed single-expr probe must fall back to FnExternalBody, got {item:?}"
+    );
+    let dag = compile_any(src, "malformed_brace_lower.v3");
+    let id = find_named(&dag, "broken");
+    let body = match &dag.declaration(id).connective {
+        TypeConnective::Arrow { body, .. } => body.clone(),
+        other => panic!("expected Arrow, got {other:?}"),
+    };
+    assert!(
+        matches!(body, ArrowBody::Unparsed(_)),
+        "malformed brace-body fallback should lower to ArrowBody::Unparsed, got {body:?}"
+    );
+}
+
+#[test]
 fn m17_data_declaration_produces_typed_declaration() {
     // Class 3 (QW2): `data foo: Int = { body }` parses as
     // `SurfaceItem::Data` and lowers to a declaration whose
