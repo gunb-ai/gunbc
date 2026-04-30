@@ -2457,12 +2457,14 @@ impl<'a> TestRunner<'a> {
         }
     }
 
-    /// `TestPredicate::BridgeLedgerZero { ledger: DeclarationRef }`. Resolves
-    /// `ledger` to a `List<BridgeLedgerRow>` declaration (`bridge_ledger.dag`),
-    /// walks the rows, and `Pass`es iff every row's `status` field resolves
-    /// to the `Retired` constructor of `BridgeStatus`. Open rows surface
-    /// in the failure message by name so Verification points directly at
-    /// the residual debt.
+    /// `TestPredicate::BridgeLedgerZero { ledger: BridgeLedgerRef }`.
+    /// Unwraps the `BridgeLedgerRef { decl: DeclarationRef }` typed
+    /// wrapper, fail-closes if the inner declaration is not the
+    /// canonical `bridge_ledger`, then walks the
+    /// `List<BridgeLedgerRow>` and `Pass`es iff every row's `status`
+    /// field resolves to the `Retired` constructor of `BridgeStatus`.
+    /// Open rows surface in the failure message by name so
+    /// Verification points directly at the residual debt.
     fn eval_bridge_ledger_zero(
         &self,
         _claim: &TestClaimValue,
