@@ -2482,13 +2482,41 @@ impl<'a> TestRunner<'a> {
             }
         };
         let decl = self.dag.declaration(ledger_id);
-        // Fail-closed type check: the ledger declaration must be exactly
-        // `List<BridgeLedgerRow>`, not any structurally similar list.
-        // The carrier ratchet (`bridge_ledger_carrier_test`) protects
-        // `bridge_ledger`'s shape; this guard protects against a claim
-        // pointing `ledger` at any other list whose row records happen
-        // to carry `name`/`status`. The predicate consumes the substrate
-        // carrier type, not look-alikes.
+        // Fail-closed *identity* check: the ledger declaration must be
+        // exactly `bridge_ledger` from `v3.std.bridge_ledger`, not any
+        // sibling `List<BridgeLedgerRow>`. Single-authority discipline
+        // (INVARIANTS P2 / modeling-discipline single-authority): a
+        // second list that happens to share the row type cannot be
+        // accepted as a parallel ledger authority and pass the gate
+        // independently of the canonical carrier.
+        let canonical_ledger_id = self
+            .dag
+            .declaration_by_name("bridge_ledger")
+            .map(|d| d.id);
+        match canonical_ledger_id {
+            Some(canonical) if canonical == ledger_id => {}
+            Some(_) => {
+                return ClaimResult::Fail(format!(
+                    "BridgeLedgerZero `ledger`: only the canonical \
+                     `v3.std.bridge_ledger.bridge_ledger` declaration is an \
+                     accepted ledger authority. Got `{}` (DeclarationId {:?}).",
+                    decl_display_name(decl.id, decl),
+                    decl.id
+                ));
+            }
+            None => {
+                return ClaimResult::Fail(
+                    "BridgeLedgerZero: canonical `bridge_ledger` declaration is missing \
+                     from the bootstrap; the ledger gate cannot resolve."
+                        .to_string(),
+                );
+            }
+        }
+        // Type check (kept as a defense-in-depth guard even after the
+        // identity check above): the canonical declaration must be
+        // `List<BridgeLedgerRow>`. If the carrier authority ever
+        // diverges from this shape the predicate fails closed instead
+        // of silently misreading the rows.
         match &decl.connective {
             TypeConnective::Instantiation {
                 template,

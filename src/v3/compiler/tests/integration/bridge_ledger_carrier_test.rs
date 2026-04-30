@@ -324,8 +324,53 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn bridge_ledger_zero_runner_fails_closed_on_sibling_canonical_shape_ledger() {
+    // INVARIANTS P2 / single-authority: a sibling `List<BridgeLedgerRow>`
+    // declaration must NOT be accepted as a parallel ledger authority.
+    // Only the canonical `v3.std.bridge_ledger.bridge_ledger` is an
+    // accepted gate input — even a list whose element type IS
+    // `BridgeLedgerRow` and whose rows are well-formed must fail
+    // closed if the declaration identity is not the canonical one.
+    let source = r#"
+data sibling_ledger: List<BridgeLedgerRow> = []
+
+data sibling_claim: TestClaim = {
+  name: "sibling_canonical_shape_ledger",
+  source: "let x: Int = 1",
+  file_name: "bridge_ledger_zero_sibling.v3",
+  predicate: BridgeLedgerZero { ledger: sibling_ledger },
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "bridge_ledger_zero_sibling_suite",
+  claims: [sibling_claim]
+}
+"#;
+    let dag = compile_clean(source, "bridge_ledger_zero_sibling.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+    assert_eq!(results.len(), 1);
+    let reason = match &results[0].result {
+        ClaimResult::Fail(reason) => reason.clone(),
+        other => panic!(
+            "expected `Fail` for sibling List<BridgeLedgerRow>; got {other:?}"
+        ),
+    };
+    // Diagnostic must call out the canonical-identity check, not just
+    // type compatibility — `sibling_ledger` has the right element
+    // type, so a type-only check would let it slip through.
+    assert!(
+        reason.contains("canonical")
+            && (reason.contains("bridge_ledger") || reason.contains("authority")),
+        "BridgeLedgerZero failure for a sibling List<BridgeLedgerRow> must call \
+         out the canonical-identity check (single-authority); got: {reason}"
+    );
+}
+
+#[test]
 fn bridge_ledger_zero_runner_fails_closed_on_wrong_ledger_type() {
-    // Fail-closed type check at the claim boundary: a claim that points
+    // Fail-closed type check (defense-in-depth alongside the canonical-
+    // identity check) at the claim boundary: a claim that points
     // `BridgeLedgerZero { ledger: ... }` at any list-shaped declaration
     // other than `List<BridgeLedgerRow>` must be rejected before row
     // scanning. Without this guard, any list whose records happen to
@@ -366,15 +411,18 @@ data suite: TestSuite = {
         ClaimResult::Fail(reason) => reason.clone(),
         other => panic!("expected `Fail` for wrong-typed ledger; got {other:?}"),
     };
-    // Failure must call out the type mismatch — not silently scan
-    // FakeLedgerRow as if it were BridgeLedgerRow.
+    // The canonical-identity check fires first (a wrong-typed ledger
+    // is never the canonical `bridge_ledger`), so the diagnostic
+    // surfaces the identity mismatch — not silently scan FakeLedgerRow
+    // as if it were BridgeLedgerRow. The type-check guard is still in
+    // place as defense-in-depth (covered by the unit tests below).
     assert!(
-        reason.contains("BridgeLedgerRow"),
-        "BridgeLedgerZero failure for wrong ledger type must name the expected \
-         element type `BridgeLedgerRow`; got: {reason}"
+        reason.contains("canonical"),
+        "BridgeLedgerZero failure for wrong-typed ledger must call out the \
+         canonical-identity check; got: {reason}"
     );
     assert!(
-        reason.contains("FakeLedgerRow") || reason.contains("List<"),
-        "failure should reference the wrong type; got: {reason}"
+        reason.contains("fake_ledger"),
+        "failure should reference the offending declaration name; got: {reason}"
     );
 }
