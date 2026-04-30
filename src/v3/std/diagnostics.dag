@@ -195,13 +195,18 @@ type EmissionDiagnostic
   // (R3 fold-in). The construct name surfaces so the user/test sees
   // why the analyzer declined.
   | OutOfR2Scope { construct: String }
-  // Lifetime-Analyzer: `Dag` → `LifetimeProgram` extraction wiring
-  // gap. Returning `Ok(empty)` would silently drop load-bearing
-  // program shape (C-8). Detail string captures the wiring stage.
+  // 🟡 TRANSITIONAL — Lifetime-Analyzer: `Dag` → `LifetimeProgram`
+  // extraction wiring gap. Returning `Ok(empty)` would silently drop
+  // load-bearing program shape (C-8). Detail string captures the
+  // wiring stage. **Retires when Dag-extraction lands** (per #1218 /
+  // #1247) — this variant is named here so the lane-local mirror
+  // can remove it from its sum at the same time.
   | LifetimeProgramExtractionPending { detail: String }
-  // Coercion-Fold: full structural fold not yet implemented;
-  // returning `Ok` would fabricate target choices (C-8 /
-  // engine-retraction discipline). Replaced when the fold body lands.
+  // 🟡 TRANSITIONAL — Coercion-Fold: full structural fold not yet
+  // implemented; returning `Ok` would fabricate target choices
+  // (C-8 / engine-retraction discipline). **Retires when Coercion-Fold
+  // body lands** (per nimble-pike-489's Examples 1-7 dispatch) —
+  // variant is a stub-failure surface for the in-flight fold.
   | FoldNotImplemented
   // CrossTarget-Meta L6: `(connective × behavior × target)` cell has
   // no LanguageSpec emission-path declaration. Each axis carries a
