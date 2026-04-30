@@ -342,7 +342,9 @@ fn row_record<'a>(
 #[derive(Debug, PartialEq, Eq)]
 enum ClosedRecordLabelsOutcome {
     Ok,
-    Duplicate { label: String },
+    Duplicate {
+        label: String,
+    },
     Mismatch {
         missing: Vec<String>,
         extra: Vec<String>,
