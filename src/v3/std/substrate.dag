@@ -535,6 +535,22 @@ type WorkflowRoot
 // Shared authority — both `fold_lens<C>` (workflow-root
 // identification for the equivalence target) and R2-Evaluator
 // (runtime entry-point identification) are the planned consumers.
+//
+// 🟡 BOUNDED STAGING SCAFFOLD on the realization side. The
+// declaration + Rust impl + Rust-side consumer tests land here
+// (Prereq-3a); the per-target `SubstrateAccessorBinding` (e.g.,
+// `rust_workflow_root_port_accessor` in `src/v3/spec/rust.dag`,
+// same shape as `rust_lane2_workflow_accessor`) is intentionally
+// NOT in this PR. Trigger: when the first generated `.dag`
+// consumer references `workflow_root_port` (Prereq-3b
+// `fold_lens<C>` is the planned first consumer), the binding
+// lands atomically with that consumer — same staging discipline as
+// `lane2_workflow_at` (carrier + accessor + Rust impl landed first;
+// `rust_lane2_workflow_accessor` binding landed when emitter
+// consumed it). Until then `Dag::workflow_root_port` is callable
+// from hand-written Rust (the four acceptance tests), and the
+// emitter path fails closed with a clear error if a `.dag`
+// consumer references the accessor without a binding.
 fn workflow_root_port(d: Dag) -> WorkflowRoot {
   host workflow_root_port
 }
