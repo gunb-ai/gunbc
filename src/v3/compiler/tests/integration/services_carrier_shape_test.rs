@@ -130,9 +130,7 @@ fn operation_callable_field_is_callable_ref_wrapper() {
     );
     // `CallableRef` itself wraps a single `decl: DeclarationRef` field —
     // mirror of `MethodRef` in `v3.std.methods`.
-    let labels: HashSet<String> = conj_field_labels(&dag, "CallableRef")
-        .into_iter()
-        .collect();
+    let labels: HashSet<String> = conj_field_labels(&dag, "CallableRef").into_iter().collect();
     let expected: HashSet<String> = ["decl"].iter().map(|s| s.to_string()).collect();
     assert_eq!(
         labels, expected,
