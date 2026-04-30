@@ -341,6 +341,91 @@ fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
     );
 }
 
+/// Inbox #1130 / #1139 — complexity `Lens<Int>` migration readiness: Prereq-1
+/// (Arrow-typed record fields + nested `Monoid<C>`) already lowers `fn`
+/// declaration references. This shape matches `Lens<C>`'s `branch` /
+/// `sequential` surface over `Int`; a real `data … : Lens<Int>` still waits
+/// on Prereq-2 for `read: … -> Witness<C>` and `validate: … ->
+/// OptionalDiagnostic` (variant constructors / block bodies), not on
+/// anything complexity-specific beyond that shared gap.
+#[test]
+fn test_3a2_lensish_int_carrier_lowers_branch_and_monoid_fn_refs() {
+    let src = "\
+        type MiniMonoid {\n\
+          op: fn(Int, Int) -> Int,\n\
+          identity: Int\n\
+        }\n\
+        type LensishIntCarrier {\n\
+          name: String,\n\
+          read: fn(Int) -> Int,\n\
+          sequential: MiniMonoid,\n\
+          branch: fn(Int, Int) -> Int\n\
+        }\n\
+        fn passthrough(x: Int) -> Int = x\n\
+        fn int_add(a: Int, b: Int) -> Int = a + b\n\
+        fn int_max(a: Int, b: Int) -> Int = if a > b then a else b\n\
+        data lensish_smoke: LensishIntCarrier = {\n\
+          name: \"smoke\",\n\
+          read: passthrough,\n\
+          sequential: { op: int_add, identity: 0 },\n\
+          branch: int_max\n\
+        }";
+    let dag = cached_compile_to_dag(src, "lensish_int_carrier.v3");
+    let read_id = dag
+        .declaration_by_name("passthrough")
+        .expect("passthrough must exist")
+        .id;
+    let op_id = dag
+        .declaration_by_name("int_add")
+        .expect("int_add must exist")
+        .id;
+    let branch_id = dag
+        .declaration_by_name("int_max")
+        .expect("int_max must exist")
+        .id;
+    let decl = dag
+        .declaration_by_name("lensish_smoke")
+        .expect("lensish_smoke must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected lensish_smoke data body to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let read = fields
+        .iter()
+        .find(|(label, _)| label == "read")
+        .map(|(_, value)| value)
+        .expect("read field");
+    assert_eq!(read, &v3_compiler::dag::FieldValue::Reference(read_id));
+
+    let branch = fields
+        .iter()
+        .find(|(label, _)| label == "branch")
+        .map(|(_, value)| value)
+        .expect("branch field");
+    assert_eq!(
+        branch,
+        &v3_compiler::dag::FieldValue::Reference(branch_id),
+        "`branch: int_max` must lower like `Lens<C>.branch` (join over arms)"
+    );
+
+    let sequential = fields
+        .iter()
+        .find(|(label, _)| label == "sequential")
+        .map(|(_, value)| value)
+        .expect("sequential field");
+    let v3_compiler::dag::FieldValue::Record(nested) = sequential else {
+        panic!("`sequential` must lower as a nested record, got {sequential:?}");
+    };
+    let op = nested
+        .iter()
+        .find(|(label, _)| label == "op")
+        .map(|(_, value)| value)
+        .expect("op field");
+    assert_eq!(op, &v3_compiler::dag::FieldValue::Reference(op_id));
+}
+
 #[test]
 fn test_3a2_record_data_rejects_type_alias_as_function_ref_value() {
     let src = "\
