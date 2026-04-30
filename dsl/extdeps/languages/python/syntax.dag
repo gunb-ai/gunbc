@@ -14,7 +14,7 @@ import std.syntax {
   OperatorSpec,
   BinOp, Add, Sub, Mul, Div, Mod,
   Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
-  AlgebraFieldKind, AlgReciprocal
+  AlgebraFieldKind, AlgReciprocal, AlgQuotient
 }
 
 // Python emission item forms — target keywords for .dag→Python compilation.
@@ -39,6 +39,8 @@ data python_item_forms: List<ItemForm> = [
 
 // Python operator precedence (emission-relevant subset).
 // Python uses word operators for boolean (and, or) and // for integer div.
+// The // binding is retained for v2 compatibility with AlgQuotient; v3 no
+// longer exposes OrderedRing.quotient in std/algebra.dag.
 // Ref: Python Reference §6.17 "Operator precedence"
 
 data python_operators: List<OperatorSpec> = [
@@ -53,10 +55,10 @@ data python_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
   OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
   OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
-  // Div is algebra-aware only for total reciprocal-shaped Field division.
-  // OrderedRing integer division is v3-owned by checked `/` and no longer
-  // exposes a bare quotient field.
+  // Div is algebra-aware for total reciprocal-shaped Field division and the
+  // v2 AlgQuotient compatibility selector.
   // Ref: Python Reference §6.7 "Binary arithmetic operations"
   OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgReciprocal } },
+  OperatorSpec { symbol: "//", left_bp: 15, right_bp: 16, binop: Div, algebra_field: Some { value: AlgQuotient } },
   OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none }
 ]
