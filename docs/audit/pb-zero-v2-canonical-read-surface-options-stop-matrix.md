@@ -64,6 +64,6 @@ So the “existing v2 extension point” candidate is **mechanical source discov
 ## Cross-refs (link-only)
 
 - Prior audit (row files × gap matrix): [`docs/audit/pb-zero-v2-method-template-row-authority-consumer-gap.md`](pb-zero-v2-method-template-row-authority-consumer-gap.md)
-- PB program + (γ): [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md), [`docs/briefs/r2-pure-bootstrap-manager.md`](../briefs/r2-pure-bootstrap-manager.md)
-- Substrate intake: [`docs/briefs/r2-substrate-manager.md`](../briefs/r2-substrate-manager.md)
+- PB program / (γ): [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md); [`docs/briefs/r2-pure-bootstrap-manager.md`](../briefs/r2-pure-bootstrap-manager.md)
+- Substrate ownership / P1 routing: [`INVARIANTS.md`](../../INVARIANTS.md); [`docs/briefs/r2-substrate-manager.md`](../briefs/r2-substrate-manager.md)
 - Structure / v2 retirement timing: [`docs/r2-structure.md`](../r2-structure.md)
