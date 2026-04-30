@@ -339,6 +339,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
+    // Prereq-X (call-on-field-access) blocker ratchet for fold_lens<C>
+    // consumer wiring (Prereq-3b dispatch on inbox #1141; audit at
+    // docs/design-prereq-x-ho-field-call.md / PR #1264). Pins the parser
+    // diagnostic shape of X1 (`w.f(x)`) and X3 (`= { let g = w.f; g(x) }`)
+    // so the ratchet flips red when the implementation lane lands; retired
+    // by the lane owner at the same time as the parser/lowerer change.
+    "src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs",
     // R1 release acceptance fixture: strict PB gate 3 plus Director-approved
     // release deferral markers for the five concession-encoded gates.
     // Dissolution trigger: R3 closes the named T-LensProducer-Retirement /
