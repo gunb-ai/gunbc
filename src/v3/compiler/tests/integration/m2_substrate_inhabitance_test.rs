@@ -2108,7 +2108,7 @@ fn runtime_mirror_snapshots_are_fresh() {
 }
 
 #[test]
-fn runtime_value_carrier_has_locked_pb_runtime_coproduct_shape() {
+fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let value = dag
@@ -2164,11 +2164,7 @@ fn runtime_value_carrier_has_locked_pb_runtime_coproduct_shape() {
         find_named(&dag, "DeclarationId")
     );
     assert_eq!(conj_field_by_id(&dag, variant_value, "payload"), value.id);
-}
 
-#[test]
-fn runtime_value_carrier_named_field_uses_runtime_value_payload() {
-    let dag = v3_compiler::generated_full_bootstrap_dag();
     assert_eq!(
         conj_field_by_id(&dag, find_named(&dag, "NamedField"), "label"),
         find_named(&dag, "String")
@@ -2177,11 +2173,7 @@ fn runtime_value_carrier_named_field_uses_runtime_value_payload() {
         conj_field_by_id(&dag, find_named(&dag, "NamedField"), "value"),
         find_named(&dag, "Value")
     );
-}
 
-#[test]
-fn runtime_value_carrier_value_behavior_marker_remains_distinct() {
-    let dag = v3_compiler::generated_full_bootstrap_dag();
     let runtime_value = find_named(&dag, "Value");
     let value_behavior = find_named(&dag, "ValueBehavior");
     assert_ne!(

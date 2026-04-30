@@ -12,7 +12,7 @@ import std.verification { Compiles, TestClaim, TestSuite }
 
 data evaluator_runtime_value_model_landed: TestClaim = {
   name: "evaluator_runtime_value_model_landed",
-  source: "// Runtime-value model PR-A.1 marker; Value / NamedField shape is validated by runtime_value_carrier_test.rs.\nlet _: Int = 0\n",
+  source: "// Runtime-value model PR-A.1 marker; Value / NamedField shape is validated by m2_substrate_inhabitance_test.rs.\nlet _: Int = 0\n",
   file_name: "r2_evaluator_runtime_value_model_marker.v3",
   predicate: Compiles,
   requires: []
