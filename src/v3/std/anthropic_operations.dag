@@ -46,7 +46,7 @@ import v3.std.services {
   RestEndpointBinding,
   InputField
 }
-import v3.std.effects {
+import std.effects {
   PathTemplate,
   UrlPathToken,
   LiteralToken
