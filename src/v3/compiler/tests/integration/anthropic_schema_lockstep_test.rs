@@ -352,10 +352,10 @@ fn assert_disj_lockstep(type_name: &str) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: BTreeSet<String> = disj_variant_labels(&dag, type_name).into_iter().collect();
     let v2_variants = v2_disj_variants(type_name);
-    let v2_labels: BTreeSet<String> =
-        v2_variants.iter().map(|(name, _)| name.clone()).collect();
+    let v2_labels: BTreeSet<String> = v2_variants.iter().map(|(name, _)| name.clone()).collect();
     assert_eq!(
-        v3_labels, v2_labels,
+        v3_labels,
+        v2_labels,
         "lockstep drift on `type {type_name}` variant set: v3 mirror and \
          v2 source disagree. v3-only: {:?}; v2-only: {:?}",
         v3_labels.difference(&v2_labels).collect::<Vec<_>>(),
@@ -370,12 +370,11 @@ fn assert_disj_lockstep(type_name: &str) {
         match (v2_payload, v3_payload) {
             (None, None) => {}
             (Some(v2_fields), Some(v3_fields)) => {
-                let v2_set: BTreeSet<String> =
-                    v2_fields.iter().map(|(l, _)| l.clone()).collect();
-                let v3_set: BTreeSet<String> =
-                    v3_fields.iter().map(|(l, _)| l.clone()).collect();
+                let v2_set: BTreeSet<String> = v2_fields.iter().map(|(l, _)| l.clone()).collect();
+                let v3_set: BTreeSet<String> = v3_fields.iter().map(|(l, _)| l.clone()).collect();
                 assert_eq!(
-                    v3_set, v2_set,
+                    v3_set,
+                    v2_set,
                     "lockstep drift on payload of \
                      `type {type_name}::{variant_label}`: \
                      v3-only fields: {:?}; v2-only fields: {:?}",
@@ -389,12 +388,21 @@ fn assert_disj_lockstep(type_name: &str) {
                         .map(|(_, o)| *o)
                         .unwrap_or(false);
                     assert_eq!(
-                        v3_optional, *v2_optional,
+                        v3_optional,
+                        *v2_optional,
                         "lockstep optionality drift on \
                          `type {type_name}::{variant_label}.{label}`: v2 marks it {} \
                          but v3 lowers as {}.",
-                        if *v2_optional { "optional (`T?`)" } else { "required (`T`)" },
-                        if v3_optional { "Cardinality(AtMostOne, _)" } else { "non-optional" }
+                        if *v2_optional {
+                            "optional (`T?`)"
+                        } else {
+                            "required (`T`)"
+                        },
+                        if v3_optional {
+                            "Cardinality(AtMostOne, _)"
+                        } else {
+                            "non-optional"
+                        }
                     );
                 }
             }
