@@ -324,11 +324,17 @@ fabricates a `composed` value when a root or witness failure occurs.
 
 **Minimal first implementation tests:**
 
-- `lens_fold_no_root_fails_closed` — a fixture DAG with no eligible root
-  returns `DimensionFail`, not `DimensionOk` with a monoid identity.
-- `lens_fold_ambiguous_root_fails_closed` — a fixture using the
-  `AmbiguousRoot` path from #1232 returns `DimensionFail` with candidate
-  evidence and no chosen `composed`.
+- `lens_fold_no_root_fails_closed` — crate-private / synthetic-DAG
+  coverage for a DAG with no eligible root returns `DimensionFail`, not
+  `DimensionOk` with a monoid identity. Do not require an ordinary
+  lowered-source fixture for this case if the source pipeline always
+  produces at least one `Bind`.
+- `lens_fold_ambiguous_root_fails_closed` — future enumerate-all-entry
+  coverage, or crate-private helper/unit coverage over an explicit
+  `AmbiguousRoot { candidates }`, returns `DimensionFail` with candidate
+  evidence and no chosen `composed`. Under the accepted α
+  last-topological-`Bind` rule in #1232, `AmbiguousRoot` is a drift arm,
+  not a normal source-fixture result.
 - `complexity_lens_via_framework_correct` — a `Lens<Int>` fixture reports
   the same root value as `src/v3/lenses/complexity.dag::cost_of(d,
   root_port)`. This is the first full fold correctness test.
