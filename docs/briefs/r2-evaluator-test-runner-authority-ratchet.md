@@ -48,7 +48,7 @@ Below, **Rust authority surface** means what the runner does in-process that a p
 | --- | --- |
 | **Rust authority surface** | Same shape as release deferrals but fixture locked to `tc1_substrate_lens_eta_equivalence_deferred.dag`; roles: `Tc1ResearchGateMarker`, `SubstrateLensPrimitiveTargetLaneMarker`, `LambdaCalculusGroundingAuthorityDoc`. |
 | **Why it exists** | TC1 / R2 substrate research lane: fail-closed proof that deferred claims are declared in the **one** authorized TC1 fixture (constants at top of `test_runner.rs`). |
-| **Dissolution target** | **T-Substrate** research closure + **Evaluator** readyness when TC1 content promotes; **PR-B.2/3/4 bundle** may fold TC-shaped deferrals into the same dissolution hooks as other runner extensions (see [PR #1315](https://github.com/gunb-ai/gunbc/pull/1315)). |
+| **Dissolution target** | **T-Substrate** research closure + **Evaluator** readiness when TC1 content promotes; **PR-B.2/3/4 bundle** may fold TC-shaped deferrals into the same dissolution hooks as other runner extensions (see [PR #1315](https://github.com/gunb-ai/gunbc/pull/1315)). |
 | **Retirement** | No runner hard-coded path list; deferral validity is structural (role + graph) or evaluated by substrate-carried witness. |
 
 ### 2.4 PB census resolution — `CensusBoundCheck`, `CensusSubsetCount`, `RatchetZero`, and census-backed pieces of `GeneratedFromDag`
