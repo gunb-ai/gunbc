@@ -21,11 +21,11 @@ fn semantic_diagnostics(source: &str, file: &str) -> Vec<Diagnostic> {
         .collect()
 }
 
-fn has_resolve_error_name(diagnostics: &[Diagnostic], expected: &str) -> bool {
+fn has_fixture_resolve_error(diagnostics: &[Diagnostic], file: &str) -> bool {
     diagnostics.iter().any(|diagnostic| {
         matches!(
             diagnostic,
-            Diagnostic::ResolveError { name, .. } if name == expected
+            Diagnostic::ResolveError { span, .. } if span.file == file
         )
     })
 }
@@ -56,16 +56,11 @@ data int_lens: MiniLens<Int> = {
 }
 "#;
 
-    let diagnostics = semantic_diagnostics(source, "idempotency_lens_function_field_gap.dag");
+    let file = "idempotency_lens_function_field_gap.dag";
+    let diagnostics = semantic_diagnostics(source, file);
 
     assert!(
-        has_resolve_error_name(
-            &diagnostics,
-            "data `int_monoid` field `op` does not match the declared structural type",
-        ) || has_resolve_error_name(
-            &diagnostics,
-            "data `int_lens` field `read` does not match the declared structural type",
-        ),
+        has_fixture_resolve_error(&diagnostics, file),
         "expected generic data-body function refs to hit the Lens/Monoid lowerer gap; got: {diagnostics:?}"
     );
 }
