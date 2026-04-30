@@ -138,9 +138,36 @@ that observes the **structural value domain** of each target's emitted
 program output, not the raw exit code. The runner reads target identity
 from the existing target spec layer, picks a per-target producer (akin
 to W1's `rust_emit_output`, plus analogous `python_emit_output` and
-`go_emit_output` selected by target), runs each, captures the
-declared observation channel, and normalizes to a comparable structural
-value before per-pair (or pair-and-oracle) equality checks.
+`go_emit_output` selected by target), runs each, captures the program's
+declared output, and normalizes to a comparable structural value before
+per-pair (or pair-and-oracle) equality checks.
+
+**Structural observation authority — W3 hard substrate prerequisite,
+NOT silently in scope:** today's `ForAllTargets`
+(`src/v3/std/verification.dag:160`) carries `{ command, args,
+expect_exit_code }` only — exit-code is the entire observation surface,
+and there is **no typed structural-output carrier** in `verification.dag`
+that names "the program's structured output value over which a value-domain
+comparison is taken". W3 implementation cannot proceed against an
+exit-code-shaped observation; before any W3 worker writes runner code,
+the **structural observation carrier must be added to the substrate via
+the `INVARIANTS.md` §P1 substrate-fact-introduction procedure** (same
+routing as `Distributivity`). Candidate shape — to be designed under P1,
+not locked here:
+
+```
+type ProgramOutputObservation
+  = ExitCodeOnly { expect_exit_code: Int }       // current ForAllTargets / ExecuteCommand
+  | StructuredValue { channel: ObservationChannel, expected_value_kind: ValueKind }
+```
+
+…where `ObservationChannel` (stdout / stderr / declared file) and
+`ValueKind` (Int / Bool / Record / …) become the typed surface the
+runner dispatches on. The exact carrier shape is P1's call. **Until
+that carrier lands, W3's structural-value-domain runner work is
+docs-only design — no implementation worker may extract a structured
+value through an ad-hoc stdout-pattern path silently parallel to
+`ExecuteCommand` / `ForAllTargets`.**
 
 **Initial value-domain coverage (sequential ship order):**
 
@@ -168,11 +195,14 @@ first.
 trigger; not in this bundle); a `ForAllTargets` variant change; any
 addition to `TestPredicate`.
 
-**Hard prerequisites:** target spec layer exposes per-target emit
-producers and a declared observation channel (today's
-`ExecuteCommand`-style command/args is the lower bound; richer
-observation channels are W3 dissolution trigger material, not a W3
-prerequisite).
+**Hard prerequisites:**
+1. Target spec layer exposes per-target emit producers (Rust today;
+   Python and Go to follow).
+2. **Structural observation carrier landed via INVARIANTS §P1** — see
+   "Structural observation authority" above. W3 implementation is
+   blocked on this; routing it through P1 is non-negotiable.
+3. PR-B.1 eager evaluator landed (so the `dag_eval_output` oracle from
+   W1 is available as the comparison authority).
 
 ## Sequencing — sequential-now vs parallelizable-later
 
@@ -180,7 +210,8 @@ prerequisite).
 |---------------------------------------------------------------------------|-----------|-------------------------------|
 | `dag_eval_output` producer wiring                                         | W1        | After PR-B.1 lands eager evaluator |
 | `rust_emit_output` producer wiring                                        | W1        | Parallelizable with `dag_eval_output` (different code path) |
-| Scalar value-domain normalization (`Int`, `Bool`)                         | W3        | Sequential — must land before W3 record + before W1 differential equality on `Value` |
+| Structural observation carrier (P1 substrate-fact-introduction)           | W3 (sub)  | **GATED on P1 procedure** — blocks all W3 implementation; docs-only until it lands |
+| Scalar value-domain normalization (`Int`, `Bool`)                         | W3        | After observation carrier lands; sequential before W3 record + before W1 differential equality on `Value` |
 | `Commutativity` runner check                                              | W2        | Parallelizable with W1 + W3   |
 | `Identity` runner check                                                   | W2        | After lens identity-element edge declared on algebra inhabitance |
 | `RecordValue` value-domain observation                                    | W3        | After scalar value-domain coverage  |
@@ -212,7 +243,9 @@ This brief does **not** propose:
   P1 substrate-fact-introduction).
 - A new `ProgramInputRole` substrate variant.
 - A new `Value` variant.
-- A new substrate-side observation-channel carrier.
+- A new substrate-side observation-channel carrier. **W3 explicitly
+  routes this to P1** — it is a *named gated prerequisite*, not a
+  silent omission. See "Structural observation authority" in W3.
 
 If during PR-B.2 / PR-B.3 / PR-B.4 implementation any reviewer or worker concludes that
 one of the above is required to ship a workstream, **STOP and escalate
