@@ -1,9 +1,11 @@
 # R2 PR-A.3 Strategy / Memoization Audit
 
-**Status:** AUDIT - docs-only decision surface for PR-A.3 while PR-A.2
-`EvalFrame` / `EvalStateStack` carriers are still owned by Worker C. This
-brief does not declare substrate carriers, does not edit evaluator Rust, and
-does not strengthen TC2.
+**Status:** AUDIT - docs-only decision surface for PR-A.3. PR-A.2 has
+landed `EvalFrame` / `EvalStateStack`, but the PR-A.3 implementation slice is
+blocked by the single-variant sum parser gap recorded in
+[`r2-pr-a3-implementation-blocker-audit.md`](r2-pr-a3-implementation-blocker-audit.md).
+This brief does not declare substrate carriers, does not edit evaluator Rust,
+and does not strengthen TC2.
 
 **Parent authority:** [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md),
 [`r2-evaluator-manager.md`](r2-evaluator-manager.md), and
@@ -19,8 +21,9 @@ owns the evaluator-internal closed-over environment carriers:
 `EvalFrame { bindings: Map<PortId, Value> }` and
 `EvalStateStack { frames: List<EvalFrame> }`.
 
-PR-A.3 depends on those state carriers. Until PR-A.2 lands, PR-A.3 remains a
-design/audit slice only.
+PR-A.3 depends on those state carriers. PR-A.2 has now landed them, but
+PR-A.3 implementation remains blocked until the parser/substrate surface can
+represent the closed one-inhabitant strategy carriers without fake variants.
 
 ## Decisions Locked For PR-A.3
 
@@ -176,8 +179,9 @@ already holds.
 
 ## Resume Gate
 
-PR-A.3 implementation may start after PR-A.2 lands or otherwise exposes the
-canonical `EvalStateStack` carrier. The first implementation PR must cite this
-audit, the live PR-A.2 carrier path, and the specific subset it is landing:
-closed eager strategy only, memo-key carriers, optional `EvalThunk`, or a
-strict TC2 strengthening slice.
+PR-A.3 implementation may start after the blocker in
+[`r2-pr-a3-implementation-blocker-audit.md`](r2-pr-a3-implementation-blocker-audit.md)
+is resolved by an approved substrate/parser path. The first implementation PR
+must cite this audit, the live PR-A.2 carrier path, and the specific subset it
+is landing: closed eager strategy only, memo-key carriers, optional
+`EvalThunk`, or a strict TC2 strengthening slice.
