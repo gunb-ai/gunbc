@@ -143,10 +143,19 @@ fn emit_template_canonical(
     let label = method_emit_template_variant_label(dag, *constructor)?;
     match label.as_str() {
         "SingleTemplate" => {
-            let Some(FieldValue::Literal(LiteralBits::String(s))) = payload.first() else {
+            if payload.len() != 1 {
                 return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
                     step: "emit_template_canonical.SingleTemplate",
-                    detail: format!("payload: {payload:?}"),
+                    detail: format!(
+                        "expected 1 payload field, got {}: {payload:?}",
+                        payload.len()
+                    ),
+                });
+            }
+            let FieldValue::Literal(LiteralBits::String(s)) = &payload[0] else {
+                return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
+                    step: "emit_template_canonical.SingleTemplate",
+                    detail: format!("expected String literal payload: {:?}", payload[0]),
                 });
             };
             Ok(format!("SingleTemplate({s})"))
