@@ -2,7 +2,7 @@
 
 **Status:** STANDBY — gates sequentially on Lane 1 (T-V-L4-L7-Direct) corpus existing + Shape A 3-target grounding (Rust + Python + Go). Brief authored at R3 Verification Manager spawn (2026-04-30); converts to dispatch-ready when prerequisites fire.
 
-**Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — Lane 2 of 3.
+**Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — Lane 2 of 2 owned lanes (per `r3-structure.md` L108 authority).
 
 **R3 lane authority:** [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" row **T-Verification-L5-Corpus** (L93).
 

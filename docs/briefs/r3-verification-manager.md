@@ -10,14 +10,17 @@
 - **Cross-program producer:** **R2-Evaluator** gates lanes 1 and 2 (Witness construction surface + cross-target equivalence harness primitives). R3-absorbed formal-grounding lane (TC1/TC2/TC3 bundling) consumes substrate primitives authored by Substrate Manager continuation.
 - **Substrate-fact-introduction procedure** ([`INVARIANTS.md`](../../INVARIANTS.md) §P1): self-serve through the 3-step decision procedure before escalating substrate-shape questions to Director. TC3 is the live escalation candidate (per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §"TC3 — Strong-normalization TestClaim").
 
-## Owned program scope (3 lanes + 1 ledger gate)
+## Owned program scope (2 lanes + 1 ledger gate, per `r3-structure.md` L108 authority)
 
-| Lane | Size | Status (at brief authoring) | Gates on |
+| Item | Size | Status (at brief authoring) | Gates on |
 |---|---|---|---|
 | **Lane 1: T-V-L4-L7-Direct** | M | **Worker brief authored, standby** — [`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md). Per-target equivalence harness using `DifferentialEquals` predicate (consumes Worker B PR-D scaffold per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) §slice 1). NOT a `Lens<C>` instance per codex BLOCKING `f5f63c7d9` — runtime equivalence check, not structural fold. | R2-Evaluator PR-A.3 implementation carriers + PR-B body evaluator landing |
 | **Lane 2: T-V-L5-Corpus** | M | **Worker brief authored, standby** — [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md). Cross-target equivalence corpus authoring (L5 only; L6 reclassified to R2-T-Ground-CrossTarget-Meta per [`r3-structure.md`](../r3-structure.md) L92-93). | Lane 1 corpus existing + R2-Grounding-Rust + R2-Grounding-Python + R2-Grounding-Go (Shape A 3-target grounding precondition) |
-| **Lane 3: T-FormalGrounding-Verification (TC1/TC2/TC3)** | L (research-tier) | **Worker brief authored** — [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md). TC1 landed via #1179 fixture; TC2 slice-0 hook landed; TC3 substrate-encoding gap framed per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L145-215. PM Tier C estimate: ~3-5 days research per TC strengthening. | Per-claim: TC1 already author-now-fire-later; TC2 strengthens on ≥2 executable strategies (R3-deferred from R2-Evaluator); TC3 on T-FixedPoint + T-Substrate-Lens-Primitive + substrate-fact-introduction |
 | **Ledger gate: T-Bridge-Retirement (`bridge_retirement_ledger_zero`)** | S (audit cadence; no implementation) | **Bridge map row maintenance** — 5 named bridges per [`r3-structure.md`](../r3-structure.md) L98 distribution map. Verification owns the unified audit gate; retirement work distributes per natural-owner program. | Per-bridge: each bridge fires structurally in its owner program; ledger-zero gate fires when all 5 are green. |
+
+### Absorbed cross-cutting responsibility — TC1/TC2/TC3 bundle (NOT a new lane)
+
+Per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L181 "TC3 ownership moves from PB to Verification" + R2-Evaluator residual transition for TC2 + #1179 ratification for TC1: the three formal-grounding `TestClaim`s are an **absorbed cross-cutting responsibility** of this manager, not a third owned lane. The structural authority `r3-structure.md` L108 names exactly **2 lanes + 1 ledger gate** for Verification scope; this brief defers to that authority. Audit cadence + strict-fire activation tracking is folded into manager cadence (not a separate dispatch program). Worker brief at [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) authors the bundle as an absorbed-responsibility audit-cadence artifact. **TC3 substrate-fact-introduction**, when its prerequisites land (B5 + T-Substrate-Lens-Primitive), is the only point at which absorbed work converts to a dispatched worker brief — at which time it joins the existing 2-lane scope as a substrate-introduction sub-task, not a new lane row. If Director ratifies a third lane in `r3-structure.md` itself, this brief updates accordingly; until then, 2-lane scope is the authority.
 
 ## Bridge-retirement ledger — current state (2026-04-30 audit)
 
@@ -47,7 +50,7 @@ Per [`docs/r3-structure.md`](../r3-structure.md) L98 distribution map; cross-che
 
 **Produces:**
 - **L4-L7 verification surface** — Lane 1 lands per-target equivalence; Lane 2 lands cross-target equivalence corpus.
-- **TC1/TC2/TC3 strict-fire activations** — Lane 3 strengthens deferred claims as upstream substrate / evaluator dependencies land.
+- **TC1/TC2/TC3 strict-fire activations** — absorbed-responsibility audit cadence strengthens deferred claims as upstream substrate / evaluator dependencies land.
 - **Unified bridge-retirement audit cadence** — periodic ledger-zero gate check; signals to Director when all 5 bridges fire.
 
 **Consumes:**
@@ -78,7 +81,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 
 - **Lane 1**: `verification_l4_l7_direct_per_target_equivalence_landed` — per-target `DifferentialEquals` receipts on the certification corpus; emit-target output vs `.dag` eval result match for each Shape A target.
 - **Lane 2**: `verification_l5_cross_target_consistency_landed` — Rust / Python / Go equivalent runtime behavior on the certification corpus (algebraic equivalence over computational results, not byte identity).
-- **Lane 3**: TC1/TC2/TC3 strict-fire activation across the three deferred-claim fixtures (TC3 fixture authored under substrate path).
+- **Absorbed responsibility (TC bundle)**: TC1/TC2/TC3 strict-fire activation across the three deferred-claim fixtures (TC3 fixture authored under substrate path) — tracked via audit cadence, not as a lane-close gate.
 - **Ledger gate**: `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining (per [`r3-structure.md`](../r3-structure.md) L84).
 
 ## Sub-briefs (authored / pending)
@@ -86,7 +89,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 **Authored at spawn (this PR):**
 - [`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md) — Lane 1 standby brief.
 - [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md) — Lane 2 standby brief.
-- [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — Lane 3 TC1/TC2/TC3 bundle.
+- [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — absorbed-responsibility TC1/TC2/TC3 bundle (NOT a lane; audit-cadence artifact per `r3-structure.md` L108 2-lane authority).
 
 **Pending (post-spawn manager authors autonomously):**
 - TC3 substrate-fact-introduction worker brief (gated on B5 + T-Substrate-Lens-Primitive).
@@ -94,7 +97,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 
 ## Working state (fill on dispatch)
 
-Lane status table refreshes here as work lands. Initial state: 3 lanes in standby + 1 ledger gate in audit cadence; bridge map row maintenance ongoing.
+Lane status table refreshes here as work lands. Initial state: 2 lanes in standby + 1 ledger gate in audit cadence + TC bundle absorbed-responsibility audit cadence; bridge map row maintenance ongoing.
 
 ## Cross-refs
 

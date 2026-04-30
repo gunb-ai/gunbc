@@ -1,8 +1,8 @@
-# R3 Lane 3 — T-FormalGrounding-Verification (TC1 / TC2 / TC3 bundle) Worker Brief
+# R3 Verification — T-FormalGrounding TC1/TC2/TC3 Bundle (Absorbed Responsibility)
 
-**Status:** PROPOSAL — Lane 3 of R3 Verification Manager. Bundles three formal-grounding TestClaims under one ownership lane per PM R3-absorption mapping. Research-tier work (~3-5 days per TC strengthening per PM Tier C estimate).
+**Status:** PROPOSAL — **absorbed cross-cutting responsibility** of R3 Verification Manager (NOT a third owned lane). The structural authority [`docs/r3-structure.md`](../r3-structure.md) L108 names exactly **2 lanes + 1 ledger gate** for Verification scope; this brief tracks TC1/TC2/TC3 author-now-fire-later cadence + TC3 substrate-introduction triggering as audit-cadence work, not a dispatch lane. Research-tier work (~3-5 days per TC strengthening per PM Tier C estimate) when TC3 substrate-introduction worker brief is authored under the existing 2-lane scope.
 
-**Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — Lane 3 of 3.
+**Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — §"Absorbed cross-cutting responsibility — TC1/TC2/TC3 bundle".
 
 ## Scope (this lane)
 
