@@ -57,8 +57,6 @@ mod extdeps_rust_primitives_loader_test;
 mod four_fixture_regression_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
 mod idempotency_lens_instance_blocker_test;
-#[path = "integration/prereq_x_call_on_field_access_ratchet_test.rs"]
-mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/int_literal_cardinality_test.rs"]
 mod int_literal_cardinality_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
@@ -137,6 +135,8 @@ mod p0_std_render_repeat_string_test;
 mod pb1_bootstrap_full_snapshot_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
+#[path = "integration/prereq_x_call_on_field_access_ratchet_test.rs"]
+mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/r1_release_acceptance_test.rs"]
 mod r1_release_acceptance_test;
 #[path = "integration/r1c_d_pb_census_gates_test.rs"]
