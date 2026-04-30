@@ -25,9 +25,12 @@ Same Item-4 prerequisite chain as sub-gate 1, with one difference: sub-gate 2 do
 3. **PR-A.1 (`Value` carrier) + PR-A.2 (`EvalFrame` / `EvalStateStack`) landed**.
 4. **Item 4 (PB-Runtime interpreter-as-data) landed**.
 5. **Convergence-matrix Row 4 TestClaim `pb_runtime_equivalent_to_evaluator_on_corpus` green** — same evidence base as sub-gate 1; the equivalence demonstrates PB-Runtime's testgen-applicable surface matches R2-Evaluator's.
-6. **Sub-gate 1 readiness** — sub-gates 1+2 share Item 4's mechanism. Sub-gate 2 does not strictly require sub-gate 1 to land first, but PB Manager may bundle them in adjacent dispatches since the dissolution mechanism is shared (per `r2-pure-bootstrap-manager.md` §"T-LensProducer-Retirement XL framing kept" — the lane stays as one program). Coordination, not gating.
 
 Sub-gate 2 has **no Item-5 dependency** (that's sub-gate 3's territory).
+
+### Cadence note (not a prerequisite)
+
+Sub-gates 1+2 share Item 4's mechanism. Sub-gate 2 does **not** require sub-gate 1 to land first as a structural prerequisite, but PB Manager may bundle them in adjacent dispatches since the dissolution mechanism is shared (per `r2-pure-bootstrap-manager.md` §"T-LensProducer-Retirement XL framing kept" — the lane stays as one program). This is dispatch cadence, not gating.
 
 ## Acceptance shape
 
