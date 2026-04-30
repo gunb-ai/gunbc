@@ -64,7 +64,7 @@ Both thresholds must hold per-mirror; gate fails if any single mirror exceeds ei
 
 ## Deliverables
 
-1. **Cargo bench fixtures** at `src/v3/compiler/benches/tier3_mirror_perf.rs` (new file) — uses `criterion` (existing dev-dep). Per-mirror bench groups; statistically-sound sample sizes (`criterion` default = 100).
+1. **Cargo bench fixtures** at `src/v3/compiler/benches/tier3_mirror_perf.rs` (new file) — uses `criterion` (added as new dev-dep per deliverable #4 below; not currently in any `Cargo.toml`). Per-mirror bench groups; statistically-sound sample sizes (`criterion` default = 100).
 2. **Stable benchmark inputs** — representative `DescentEvidence` / `SizeBound` / `SubValueRelation` / `EffectShape` fixtures committed under `src/v3/compiler/benches/tier3_fixtures/`. Inputs must be deterministic + version-pinned to avoid noise from corpus drift across PRs.
 3. **`.dag` `TestClaim`** authored at `src/v3/std/verification.dag` (or sibling) — single suite + four sub-claims; compose via existing `Conj` over `BehavioralObservation` per `feedback_compiler_is_dag_processor` (no new substrate variant).
 4. **`criterion` dev-dep added.** Codex BLOCKING review on PR #1331 sha `1870104a` flagged that no `criterion` dependency currently exists in any `Cargo.toml`. Adding `criterion` as `[dev-dependencies]` in `src/v3/compiler/Cargo.toml` is part of THIS lane's deliverables, not a precondition. The worker's first commit adds the dep; bench fixtures + harness follow.
