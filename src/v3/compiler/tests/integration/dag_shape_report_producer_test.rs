@@ -3,7 +3,9 @@
 //! Producer-first ratchets for `src/v3/lenses/dag_shape.dag`.
 
 use crate::common::cached_compile_to_dag;
-use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, TypeConnective, ValueBody};
+use v3_compiler::dag::{
+    ArrowBody, Behavior, Dag, DeclarationId, TransformTarget, TypeConnective, ValueBody,
+};
 
 fn dag_shape_dag() -> Dag {
     cached_compile_to_dag(
@@ -66,6 +68,7 @@ fn dag_shape_producer_helpers_are_lens_shaped_without_fake_data_instance() {
         .id;
 
     assert_arrow_output_instantiation(&dag, "dag_shape_read", witness, report);
+    assert_dag_shape_read_consumes_whole_dag_report(&dag);
     assert_arrow_output(&dag, "combine_dag_shape_reports", report);
     assert_arrow_output(&dag, "dag_shape_branch", report);
     assert_arrow_output(&dag, "dag_shape_iterate", report);
@@ -81,6 +84,49 @@ fn dag_shape_producer_helpers_are_lens_shaped_without_fake_data_instance() {
     assert!(
         dag.declaration_by_name("dag_shape_lens").is_none(),
         "do not author fake Lens<DagShapeReport> data until generic function-field validation lands"
+    );
+}
+
+fn assert_dag_shape_read_consumes_whole_dag_report(dag: &Dag) {
+    let read = dag
+        .declaration_by_name("dag_shape_read")
+        .expect("dag_shape_read declaration exists");
+    let TypeConnective::Arrow {
+        body: ArrowBody::UserDefined(bind_id),
+        ..
+    } = read.connective
+    else {
+        panic!("dag_shape_read must be a user-defined arrow");
+    };
+    let bind = dag
+        .node(bind_id)
+        .as_bind()
+        .expect("dag_shape_read body is a Bind");
+    let witness_transform = match dag.port(bind.value).produced_by {
+        Some(node_id) => match dag.node(node_id) {
+            Behavior::Transform(transform) => transform,
+            other => panic!("dag_shape_read body should build a Witness, got {other:?}"),
+        },
+        None => panic!("dag_shape_read body must have a producer"),
+    };
+    let report_port = *witness_transform
+        .inputs
+        .first()
+        .expect("Inhabits should receive the report value");
+    let report_transform = match dag.port(report_port).produced_by {
+        Some(node_id) => match dag.node(node_id) {
+            Behavior::Transform(transform) => transform,
+            other => panic!("dag_shape_read witness input should be a transform, got {other:?}"),
+        },
+        None => panic!("dag_shape_read witness input must have a producer"),
+    };
+    let TransformTarget::Callable(target) = report_transform.target else {
+        panic!("dag_shape_read should call dag_shape_report");
+    };
+    assert_eq!(
+        dag.declaration(target).name.as_deref(),
+        Some("dag_shape_report"),
+        "dag_shape_read must preserve the whole-Dag producer authority"
     );
 }
 

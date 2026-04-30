@@ -12,16 +12,14 @@
 
 module lenses.dag_shape
 
-import std.list { List, empty, cons, concat }
+import std.list { List }
 import std.substrate {
   Dag,
   Behavior,
   Declaration,
   DagPort,
-  Cluster,
-  LoopBound
+  Cluster
 }
-import v3.std.dimensions { Witness, OptionalDiagnostic }
 
 // Raw reflected-Dag shape carrier. This is intentionally a projection of the
 // existing reflected substrate authority, not a parallel hand-coded
@@ -35,13 +33,6 @@ type DagShapeReport {
   clusters: List<Cluster>
 }
 
-data empty_dag_shape_report: DagShapeReport = {
-  declarations: []
-  nodes: []
-  ports: []
-  clusters: []
-}
-
 fn dag_shape_report(d: Dag) -> DagShapeReport =
   {
     declarations: d.declarations
@@ -50,46 +41,10 @@ fn dag_shape_report(d: Dag) -> DagShapeReport =
     clusters: d.clusters
   }
 
-fn dag_shape_node_report(b: Behavior) -> DagShapeReport =
-  {
-    declarations: empty()
-    nodes: cons(b, empty())
-    ports: empty()
-    clusters: empty()
-  }
-
-fn combine_dag_shape_reports(left: DagShapeReport, right: DagShapeReport) -> DagShapeReport =
-  {
-    declarations: concat(left.declarations, right.declarations)
-    nodes: concat(left.nodes, right.nodes)
-    ports: concat(left.ports, right.ports)
-    clusters: concat(left.clusters, right.clusters)
-  }
-
-fn dag_shape_read(_d: Dag, b: Behavior) -> Witness<DagShapeReport> =
-  Inhabits(dag_shape_node_report(b))
-
-fn dag_shape_branch(left: DagShapeReport, right: DagShapeReport) -> DagShapeReport =
-  combine_dag_shape_reports(left, right)
-
-fn dag_shape_iterate(body: DagShapeReport, _bound: LoopBound) -> DagShapeReport =
-  body
-
-fn dag_shape_validate(_d: Dag, _report: DagShapeReport) -> OptionalDiagnostic =
-  NoDiagnostic
-
-// Lens<DagShapeReport> instance deferral.
-//
-// The helper declarations above have the exact Lens-shaped field signatures:
-// `dag_shape_read`, `combine_dag_shape_reports` / `empty_dag_shape_report`,
-// `dag_shape_branch`, `dag_shape_iterate`, and `dag_shape_validate`.
-// The actual
-//
-//   data dag_shape_lens: Lens<DagShapeReport> = { ... }
-//
-// value is intentionally not authored in this slice. Current structural
-// data-body validation still rejects the generic `Monoid<DagShapeReport>.op`
-// and `Lens<DagShapeReport>.read` function references as mismatched even
-// though the declarations are shaped correctly. That is the remaining
-// Lens<C> generic function-field validation prerequisite; landing a fake data
-// instance or hand-Rust fold would create a parallel producer authority.
+// Lens<DagShapeReport> is intentionally not part of this producer slice.
+// The live Lens<C> read contract is per-Behavior, while this carrier reports
+// whole-Dag facts (`declarations`, `nodes`, `ports`, and `clusters`). Forcing
+// this carrier through per-node helpers would drop reflected substrate facts.
+// A future lens surface needs either a separate behavior-only carrier or an
+// explicit framework contract for whole-Dag producers before `data
+// dag_shape_lens` can be authored honestly.

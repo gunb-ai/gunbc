@@ -14,7 +14,9 @@
 //!   substrate gap receipt.
 
 use std::collections::HashSet;
-use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
+
+use crate::common::cached_compile_to_dag;
+use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -41,6 +43,13 @@ fn decl_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
     dag.declaration_by_name(name)
         .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"))
         .id
+}
+
+fn dag_shape_dag() -> Dag {
+    cached_compile_to_dag(
+        include_str!("../../../lenses/dag_shape.dag"),
+        "src/v3/lenses/dag_shape.dag",
+    )
 }
 
 #[test]
@@ -159,5 +168,60 @@ fn lens_instance_kind_witness_payload_intentionally_absent() {
          typing trigger in `diagnostics.dag` has actually closed before \
          landing it (do not pretend payload is enforced via a free \
          TypeShape coordinate; that is the Q6.5-rejected illegal state)."
+    );
+}
+
+#[test]
+fn dag_shape_report_carrier_projects_reflected_dag_shape_lists() {
+    let dag = dag_shape_dag();
+    let report = dag
+        .declaration_by_name("DagShapeReport")
+        .expect("DagShapeReport carrier exists");
+    let TypeConnective::Conj { children } = &report.connective else {
+        panic!("DagShapeReport must be a record carrier");
+    };
+    let labels: Vec<&str> = children.iter().map(|field| field.label.as_str()).collect();
+    assert_eq!(labels, ["declarations", "nodes", "ports", "clusters"]);
+
+    for field in children {
+        let TypeConnective::Instantiation { template, .. } = &dag.declaration(field.ty).connective
+        else {
+            panic!("DagShapeReport.{} must be a List<...>", field.label);
+        };
+        assert_eq!(
+            dag.declaration(*template).name.as_deref(),
+            Some("List"),
+            "DagShapeReport.{} must be list-shaped",
+            field.label
+        );
+    }
+}
+
+#[test]
+fn dag_shape_report_public_producer_returns_shape_report() {
+    let dag = dag_shape_dag();
+    let report = dag
+        .declaration_by_name("DagShapeReport")
+        .expect("DagShapeReport carrier exists")
+        .id;
+
+    assert_arrow_output(&dag, "dag_shape_report", report);
+    assert!(
+        dag.declaration_by_name("dag_shape_lens").is_none(),
+        "do not author fake Lens<DagShapeReport> data until whole-Dag lens contract is honest"
+    );
+}
+
+fn assert_arrow_output(dag: &Dag, name: &str, expected: DeclarationId) {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{name} declaration exists"));
+    let TypeConnective::Arrow { output, body, .. } = &decl.connective else {
+        panic!("{name} must be an Arrow");
+    };
+    assert_eq!(*output, expected, "{name} output drifted");
+    assert!(
+        matches!(body, ArrowBody::UserDefined(_)),
+        "{name} should lower to a user-defined body"
     );
 }
