@@ -239,7 +239,7 @@ substrate-invariant cases. Each row names the dissolution trigger.
 | `ArrowBody::ExternalRealization`                    | host-binding gap      | Host-binding lookup slice (separate worker brief)            |
 | `ArrowBody::Pending`                                | substrate residual    | Pipeline slice that lowers Pending to executable             |
 | `ArrowBody::NoBody`                                 | substrate residual    | Author the body or mark non-executable upstream              |
-| `ArrowBody::Unparsed(span)`                         | parser lag            | Parser catches up; M2 surface coverage                       |
+| `ArrowBody::Unparsed(span)`                         | bootstrap / parser lag | Per `src/v3/std/substrate.dag:149-159`, `Unparsed` carries two distinct cases the substrate distinguishes: (a) **parser lag** — surface form not yet covered (M2 surface catch-up); (b) **pipeline compile ordering** — bootstrap arrow bodies legitimately stay `Unparsed` until emission-time target selection (see `substrate.dag` accessor §). Both cases are PR-B.1 fail-closed `Diagnostic`s; the dissolution triggers are different per case. PR-B.1 should not collapse them. |
 | `LoopBound::Descent { cluster }`                    | execution residual    | Descent-execution slice consuming `std.termination`          |
 | `Operator(op)` not yet lowered                      | operator coverage gap | Operator-coverage slice (per-op rule + receipt)              |
 | `Transform(FieldProject)` over non-record `Value`   | invariant violation   | Substrate guarantee — never reached on well-typed program    |
