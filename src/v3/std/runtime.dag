@@ -80,8 +80,7 @@ type EvalStateStack {
 // input evaluation, and lazy strategy variants are not inhabitants here until
 // they land with their executable rule, `EvalThunk` state, and TC2 comparison
 // obligation per `docs/briefs/r2-pr-a3-strategy-memoization-audit.md`.
-type EvalStrategy
-  = ApplicativeOrder { input_order: InputEvaluationOrder }
+type EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }
 
 // 🟢 TERMINAL at PR-A.3 eager-strategy scope. `LeftFirst` is the only input
 // order currently executable by the Evaluator strategy model. New input-order

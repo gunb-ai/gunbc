@@ -2436,7 +2436,7 @@ pub(crate) fn bootstrapped_fixture_without_parse_surface_dag() -> Dag {
         ports }
 ,
         diagnostics: { let mut table = DiagnosticTable::new();
-        table.insert(PortId(0), Diagnostic::ParseError { message: "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got LBrace".to_string(), span: SourceSpan::new("src/v3/std/runtime.dag", 4101, 4102), fixes: vec![] });
+        table.insert(PortId(0), Diagnostic::ParseError { message: "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got LBrace".to_string(), span: SourceSpan::new("src/v3/std/runtime.dag", 4099, 4100), fixes: vec![] });
         table }
 ,
         next_node_id: 271,
