@@ -87,9 +87,7 @@ fn rest_endpoint_binding_carries_only_method_and_path() {
 #[test]
 fn operation_carries_only_name_inputs_endpoint() {
     let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = conj_field_labels(&dag, "Operation")
-        .into_iter()
-        .collect();
+    let labels: HashSet<String> = conj_field_labels(&dag, "Operation").into_iter().collect();
     let expected: HashSet<String> = ["name", "inputs", "endpoint"]
         .iter()
         .map(|s| s.to_string())
@@ -112,7 +110,9 @@ fn operation_inputs_field_is_map_string_to_input_field() {
     let inputs_decl = dag.declaration(inputs_ty);
     let (template, args) = match &inputs_decl.connective {
         TypeConnective::Instantiation {
-            template, arguments, ..
+            template,
+            arguments,
+            ..
         } => (*template, arguments),
         other => panic!("`Operation.inputs` is not an Instantiation: {other:?}"),
     };
