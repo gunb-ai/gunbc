@@ -3370,6 +3370,23 @@ fn lower_record_to_structural(
         }
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
+    let mut seen_record_fields = HashSet::new();
+    for record_field in record_fields {
+        if !seen_record_fields.insert(record_field.name.clone()) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` record body repeats field `{}`",
+                        record_field.name
+                    ),
+                    span: record_field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
+    }
     // Check no extra fields in the data body.
     for record_field in record_fields {
         if !type_fields

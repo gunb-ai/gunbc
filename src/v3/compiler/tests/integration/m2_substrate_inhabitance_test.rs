@@ -2185,6 +2185,35 @@ fn map_body_duplicate_keys_fail_closed() {
 }
 
 #[test]
+fn record_body_duplicate_fields_fail_closed() {
+    let dag = semantic_dag_for(
+        "type Pair { a: Int, b: Int }\n\
+         data duplicate_fields: Pair = { a: 1, a: 2, b: 3 }\n",
+        "record_duplicate_fields.v3",
+    );
+    let decl = dag
+        .declaration_by_name("duplicate_fields")
+        .expect("duplicate_fields declaration should be allocated before lowering fails");
+
+    assert!(
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. }
+                    if name.contains("record body repeats field `a`")
+            )
+        }),
+        "expected duplicate-field lowering to report a ResolveError naming `a`, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Structural { .. })),
+        "duplicate-field record must not construct ValueBody::Structural, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
 fn map_body_on_non_map_type_fails_closed() {
     let dag = semantic_dag_for(
         "data not_a_map: Bool = {\n  \"x\": true\n}\n",
