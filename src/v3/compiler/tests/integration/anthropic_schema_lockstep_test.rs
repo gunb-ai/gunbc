@@ -77,14 +77,24 @@ fn v3_field_is_optional(dag: &Dag, owner: &str, field: &str) -> bool {
     }
 }
 
-/// Reconstruct a canonical v3 type-expression string for a declaration:
+/// Reconstruct a canonical v3 type-expression string for a declaration.
+///
+/// Rule: a *named* declaration (`String`, `Bool`, `AnthropicStopReason`,
+/// `AnthropicMessages200TextBlock`, …) canonicalizes as its surface name
+/// even when the underlying connective unfolds to `Instantiation`
+/// (e.g. `String = FreeMonoid<Int>`, `Int` refines from `Int64`); the
+/// v2 source addresses these by name and so does the v3 mirror at the
+/// field level. Anonymous declarations — typically site-instantiated
+/// `List<X>`, `Map<K, V>`, or `T?` carriers minted at use sites — get
+/// unfolded:
+///
 /// - `Cardinality(AtMostOne, T)` → `"T?"`
 /// - `Instantiation { template, args }` → `"<TemplateName><A, B, …>"`
-///   (or just `<TemplateName>` if no args)
-/// - Named (any other connective with a `name`) → the declaration name
-/// - Anonymous fallback → `"<anon>"` (should not appear in v3 mirror)
 fn v3_canonical_ty(dag: &Dag, ty: DeclarationId) -> String {
     let decl = dag.declaration(ty);
+    if let Some(name) = decl.name.as_deref() {
+        return name.to_string();
+    }
     match &decl.connective {
         TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
             format!("{}?", v3_canonical_ty(dag, p.element()))
@@ -93,11 +103,14 @@ fn v3_canonical_ty(dag: &Dag, ty: DeclarationId) -> String {
             template,
             arguments,
         } => {
+            // Even on an anonymous Instantiation site, the *template*
+            // declaration is typically named (`List`, `Map`, …); use its
+            // surface name and recurse into `arguments`.
             let template_name = dag
                 .declaration(*template)
                 .name
                 .clone()
-                .unwrap_or_else(|| "<anon>".to_string());
+                .unwrap_or_else(|| v3_canonical_ty(dag, *template));
             if arguments.is_empty() {
                 template_name
             } else {
@@ -108,14 +121,16 @@ fn v3_canonical_ty(dag: &Dag, ty: DeclarationId) -> String {
                 format!("{}<{}>", template_name, args.join(", "))
             }
         }
-        _ => decl.name.clone().unwrap_or_else(|| "<anon>".to_string()),
+        _ => "<anon>".to_string(),
     }
 }
 
 /// Normalize a v2 type-expression text (`List< X >` → `List<X>`,
 /// trimmed) for direct string comparison against `v3_canonical_ty`.
+/// Optionality (`?`) is asserted separately, so this strips a trailing
+/// `?` to match the inner-type form produced by callers that strip
+/// `?` from the v3 canonical.
 fn normalize_ty_text(raw: &str) -> String {
-    // Drop the trailing `?` (optionality is asserted separately).
     let mut s = raw.trim().to_string();
     if let Some(stripped) = s.strip_suffix('?') {
         s = stripped.trim_end().to_string();
@@ -376,7 +391,15 @@ fn v3_variant_payload_fields(
                         TypeConnective::Cardinality(p)
                             if p.bound() == CardinalityBound::AtMostOne
                     );
-                    let ty_canonical = v3_canonical_ty(dag, f.ty);
+                    // Strip the trailing `?` so the canonical form is
+                    // the inner element only — optionality is asserted
+                    // separately via the `optional` bit. This matches
+                    // `normalize_ty_text`'s `?`-stripping on the v2 side.
+                    let raw_canonical = v3_canonical_ty(dag, f.ty);
+                    let ty_canonical = raw_canonical
+                        .strip_suffix('?')
+                        .map(|s| s.trim_end().to_string())
+                        .unwrap_or(raw_canonical);
                     (f.label.clone(), ty_canonical, optional)
                 })
                 .collect(),
@@ -423,10 +446,15 @@ fn assert_record_lockstep(type_name: &str) {
                 "non-optional"
             }
         );
-        // Type-expression equality: canonicalized v3 carrier type must
-        // match the v2 source's normalized type text, including
-        // generic args (`List<X>`) and optionality marker (`X?`).
-        let v3_ty = v3_canonical_ty(&dag, conj_field_ty(&dag, type_name, label));
+        // Type-expression equality on the inner element type, including
+        // generic args (`List<X>`). Optionality is asserted separately
+        // (above), so strip a trailing `?` from the v3 canonical to
+        // match the inner-form `v2_ty` produced by `normalize_ty_text`.
+        let raw_v3_ty = v3_canonical_ty(&dag, conj_field_ty(&dag, type_name, label));
+        let v3_ty = raw_v3_ty
+            .strip_suffix('?')
+            .map(|s| s.trim_end().to_string())
+            .unwrap_or(raw_v3_ty);
         assert_eq!(
             &v3_ty, v2_ty,
             "lockstep type-expression drift on `type {type_name}.{label}`: \
