@@ -594,9 +594,7 @@ fn anthropic_schema_authors_no_data_rows_or_fns() {
         .declarations()
         .iter()
         .filter(|d| d.span.file == "src/v3/std/anthropic_schema.dag")
-        .filter(|d| {
-            d.value_body.is_some() || matches!(d.connective, TypeConnective::Arrow { .. })
-        })
+        .filter(|d| d.value_body.is_some() || matches!(d.connective, TypeConnective::Arrow { .. }))
         .map(|d| {
             d.name
                 .clone()
