@@ -8,18 +8,26 @@
 //! sum-return helper calls as constructor expressions. These tests pin those
 //! prerequisite gaps without introducing a Rust-only or test-only bridge.
 
-use v3_compiler::{compile_to_dag, CompileError};
+use v3_compiler::{compile_to_dag, CompileError, Diagnostic};
 
-fn semantic_diagnostics(source: &str, file: &str) -> String {
+fn semantic_diagnostics(source: &str, file: &str) -> Vec<Diagnostic> {
     let err = compile_to_dag(source, file).expect_err("fixture should pin current lowerer gap");
     let CompileError::Semantic(dag) = err else {
         panic!("expected semantic lowerer gap for {file}, got {err:?}");
     };
     dag.diagnostics()
         .iter()
-        .map(|(_, diagnostic)| format!("{diagnostic:?}"))
-        .collect::<Vec<_>>()
-        .join("\n")
+        .map(|(_, diagnostic)| diagnostic.clone())
+        .collect()
+}
+
+fn has_resolve_error_name(diagnostics: &[Diagnostic], expected: &str) -> bool {
+    diagnostics.iter().any(|diagnostic| {
+        matches!(
+            diagnostic,
+            Diagnostic::ResolveError { name, .. } if name == expected
+        )
+    })
 }
 
 #[test]
@@ -51,9 +59,14 @@ data int_lens: MiniLens<Int> = {
     let diagnostics = semantic_diagnostics(source, "idempotency_lens_function_field_gap.dag");
 
     assert!(
-        diagnostics.contains("data `int_monoid` field `op` does not match the declared structural type")
-            || diagnostics.contains("data `int_lens` field `read` does not match the declared structural type"),
-        "expected generic data-body function refs to hit the Lens/Monoid lowerer gap; got:\n{diagnostics}"
+        has_resolve_error_name(
+            &diagnostics,
+            "data `int_monoid` field `op` does not match the declared structural type",
+        ) || has_resolve_error_name(
+            &diagnostics,
+            "data `int_lens` field `read` does not match the declared structural type",
+        ),
+        "expected generic data-body function refs to hit the Lens/Monoid lowerer gap; got: {diagnostics:?}"
     );
 }
 
