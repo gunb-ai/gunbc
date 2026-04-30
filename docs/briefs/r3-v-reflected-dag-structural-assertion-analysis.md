@@ -1,10 +1,9 @@
 # R3 Verification — Reflected-Dag Structural Assertion Analysis
 
-**Status:** PROPOSAL / research-only. This brief does not introduce a
-`TestPredicate`, edit substrate, or assign implementation. Substrate-fact
-introduction remains routed through `INVARIANTS.md` §P1 and the Substrate
-Manager. It records Verification analysis for Director routing after #828
-c4356309499.
+**Status:** PROPOSAL / research-only, updated after Director producer-first
+ratification (#828 c4356368827). This brief does not edit substrate or assign
+implementation. Substrate-fact introduction remains routed through
+`INVARIANTS.md` §P1 and the Substrate Manager.
 
 ## Scope
 
@@ -45,22 +44,25 @@ A research-tier capability could be named `ReflectedDagAssert`,
 The atoms need exact-set forms, not only existence checks. Most current Rust
 tests are ratchets against unauthorized growth as much as unauthorized absence.
 
-## Reuse Versus New Variant
+## Producer Plus Comparison Shell
 
-This does **not** fold cleanly into the newly ratified
-`BinaryDimensionReportEquals` path as currently understood. That predicate is
-a binary structural-equality carrier for `DimensionReport<C>` outputs, with
-reflection-aware modifiers for TC1/TC2/TC3 strict-fire surfaces. Reflected-Dag
-shape assertions are usually unary queries against a Dag's declarations and
-rows. They could be forced into `BinaryDimensionReportEquals` only by first
-defining a dimension that projects "actual Dag shape report" and an expected
-shape report. That would reuse a comparison mechanism, but the missing
-capability would still be the reflected-Dag query/report producer.
+Director ratified the producer-first framing at #828 c4356368827: the missing
+substrate fact is a Substrate-authored `Lens<DagShapeReport>` producer, not a
+new Verification-owned predicate variant. The producer projects a reflected Dag
+into a structural `DagShapeReport`; the already-ratified
+`BinaryDimensionReportEquals` predicate is the consumer/comparison shell.
 
-Therefore the likely routing is: either define a reflected-Dag shape report
-producer that `BinaryDimensionReportEquals` can compare, or authorize a
-specialized assertion predicate. Verification should not choose that substrate
-shape autonomously.
+That resolves the earlier unary-versus-binary tension without hiding it. A
+raw Dag-shape assertion is a unary query over declarations and rows, while
+`BinaryDimensionReportEquals` compares two `DimensionReport<C>` outputs. The
+load-bearing move is to make shape-query output a first-class report. Once
+that producer exists, expected-shape reports, Rust-extracted shape reports,
+and `.dag`-reflected shape reports all compare through the same binary shell.
+
+The unified predicate now has four reflection-aware modifier roles:
+TC1 eta, TC2 strategy-order, TC3 evaluation-step, and shape-report. Verification
+consumes that surface; Substrate owns the producer and any substrate carrier
+introduction.
 
 ## RustDagIsomorphism Adjacency
 
@@ -77,10 +79,11 @@ Conceptually, these are adjacent but not identical:
 - `ReflectedDagAssert` is a query/assertion surface over selected declarations,
   fields, variants, rows, and absence constraints.
 
-They can collapse if Substrate's isomorphism work exposes reusable expected
-shape reports and partial structural predicates. If `RustDagIsomorphism` is
-only whole-Dag equality, then this remains a distinct consumer need that should
-share reflection/query atoms with it rather than fork another walker.
+Director's producer-first disposition also collapses `RustDagIsomorphism` into
+the same consumer pattern: extract one `DagShapeReport` from Rust enum/source
+shape, extract another from `.dag` reflection, then compare them through
+`BinaryDimensionReportEquals`. That keeps isomorphism from becoming a parallel
+predicate authority while preserving its purpose as a mirror-drift gate.
 
 ## Migration Audit
 
@@ -99,29 +102,31 @@ TC1's deferred fixture test is adjacent but separate: it verifies
 
 ## Research Finding
 
-The highest-value slice is not "add one more bespoke predicate"; it is a
-shared reflected-Dag query/report substrate that can feed either:
+The highest-value slice is the shared reflected-Dag query/report producer:
+`Lens<DagShapeReport>`. It carries exact-set and absence-sensitive structural
+facts in a reusable report form. `BinaryDimensionReportEquals` remains the
+comparison shell; it should not be treated as the producer.
 
-1. `BinaryDimensionReportEquals`, if the project wants all structural equality
-   claims to route through the unified binary report predicate; or
-2. a specialized Dag-shape assertion predicate, if diagnostics and exact-set
-   query syntax are too different from dimension reports.
-
-The first path is attractive for single-carrier discipline, but only if the
-report producer is first-class and reusable. Without that producer, calling the
-capability `BinaryDimensionReportEquals` would hide the real missing substrate
-fact behind an equality envelope.
+This matters for migration discipline. The old hand-Rust tests combine two
+concerns: deriving shape facts from a live Dag, and comparing those facts to
+an expected shape. The Director-ratified split makes the derivation a
+Substrate-owned producer and the comparison a Verification-consumed predicate
+instance. That avoids both a bespoke `ReflectedDagAssert` predicate and a
+parallel `RustDagIsomorphism` authority.
 
 ## Coordination Signal
 
-Verification should surface this as a Substrate/Director decision point:
+Director-ratified outcome (#828 c4356368827):
 
-- If `RustDagIsomorphism` already intends reusable reflected-Dag shape reports,
-  collapse this dispatch into that queue.
-- If unified `BinaryDimensionReportEquals` becomes the comparison shell, define
-  the reflected-Dag shape report producer as the load-bearing carrier.
-- If neither is true, ratify a separate `ReflectedDagAssert`/`DagShapeAssert`
-  capability before any `.dag` TestClaim authoring.
+- Substrate authors the single `Lens<DagShapeReport>` producer.
+- Verification consumes `BinaryDimensionReportEquals` with the new
+  shape-report modifier as the comparison shell.
+- `RustDagIsomorphism` becomes a consumer instance comparing two
+  `DagShapeReport` outputs, not a separate predicate family.
+
+Follow-up dispatch should therefore target the producer shape and report
+schema under Substrate ownership. Verification work should describe required
+coverage and diagnostics, not author a competing predicate.
 
 ## Reflection-Completeness Residual
 
@@ -145,7 +150,6 @@ routing. This note is consumer-side awareness only.
 
 ## Non-Claims
 
-- No new `TestPredicate` is proposed here.
 - No substrate edit is authorized here.
 - No hand-Rust test is declared obsolete until the generated `.dag` claim path
   exists and each migrated acceptance surface has an equivalent diagnostic.
