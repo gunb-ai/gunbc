@@ -1,12 +1,8 @@
-#[cfg(test)]
-use crate::dag::ArrowBody;
 use crate::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
 
 pub(crate) const PIPELINE_AUTHORITY_FILE: &str = "src/v3/compiler/pipeline.dag";
 
 const PIPELINE_STAGE_BINDING_TYPE: &str = "PipelineStageBinding";
-#[cfg(test)]
-const PIPELINE_COMPILE_FN: &str = "compile";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PipelineSnapshotKind {
@@ -220,6 +216,9 @@ fn require_snapshot_kind(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dag::ArrowBody;
+
+    const PIPELINE_COMPILE_FN: &str = "compile";
 
     #[test]
     fn ordered_pipeline_stages_authority_is_pipeline_stage_binding_only() {
