@@ -40,7 +40,7 @@ For the **body evaluator**, “strategy” must be a **closed substrate inhabita
 
 ## 3. Prerequisites on the lens / fold side
 
-TC2 is stated over **lens results** ([`tc2_evaluation_order_independence_deferred.dag`](../../src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag) L4–5, L18). **`fold_lens<C>`** yields `DimensionReport<C>` ([`src/v3/std/lens.dag`](../../src/v3/std/lens.dag) L6–8, L71–76) but is **documented, not authored** in substrate today.
+TC2 is stated over **lens results** ([`tc2_evaluation_order_independence_deferred.dag`](../../src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag) L4–5, L18). **`fold_lens<C>`** → `DimensionReport<C>` appears **only in module commentary** today ([`src/v3/std/lens.dag`](../../src/v3/std/lens.dag) L6–8; the `Lens<C>` carrier is L70–77); there is **no** substrate `fn fold_lens` yet. Workflow-root design notes also reference `fold_lens<C>` ([`src/v3/std/substrate.dag`](../../src/v3/std/substrate.dag) L503–504, L535–536).
 
 Q6/Q6.5/Q7 ([`docs/design-lens-framework.md`](../design-lens-framework.md) §Q6.5, §Q7) govern diagnostics into `DimensionFail.violations`; strategy-pair runs must not treat **diagnostic divergence** as success.
 
