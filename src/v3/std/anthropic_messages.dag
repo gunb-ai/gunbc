@@ -1,0 +1,75 @@
+module v3.std.anthropic_messages
+
+import std.types { Secret }
+import std.list { List }
+import v3.std.anthropic_schema {
+  AnthropicChatMessage,
+  AnthropicMessages200Body
+}
+
+// T-Substrate-AnthropicMessagesCallable — service-operation callable
+// declaration precursor for the Anthropic Messages REST operation. The
+// real top-level callable that PR-β's `anthropic_operations: List<Operation>`
+// row will reference via `Operation.callable.decl`, satisfying the
+// `CallableRef` typed-edge requirement (#1246, #1261).
+//
+// Authority source for the signature is `dsl/extdeps/llm/anthropic.dag`'s
+// `service llm.Anthropic { operation Messages { … } }` block at lines
+// 180-203. The v3 mirror types in `v3.std.anthropic_schema` (#1261) carry
+// the input/output structural fidelity that lets this callable land
+// honestly — without the schema mirror, the only options were primitive-
+// only signatures (forbidden as fake-by-omission) or wholesale v2 service
+// parser ingestion (forbidden as out-of-scope). Both stops are documented
+// in #1130's STOP+PING chain that produced #1261.
+//
+// **Signature shape vs. v2 source.** Two intentional simplifications
+// preserve honesty at the v3 layer rather than introducing fake structure:
+//
+// 1. `max_tokens: Int` here vs `max_tokens: Int = 4096` in v2.
+//    v3's function-decl surface does not carry parameter defaults; the
+//    v2 default is a caller-side convenience that PR-β fixture rows
+//    surface (or that downstream consumers fold in). The v3 callable
+//    requires `max_tokens` explicitly, which is structurally stricter
+//    than the v2 default but does not invent a fake type — `Int` is
+//    the right type, only the optionality story differs.
+// 2. The 4xx/5xx response carriers (`AnthropicErrorShape`) are not on
+//    the typed return; the callable returns the 200 body
+//    (`AnthropicMessages200Body`) per v2's `response { 200 => … }`
+//    slot. Error-response handling lives with the operation-row
+//    response/wire lockstep lane (PR-β scope, sibling to the row authoring
+//    Grounding owns).
+//
+// **Body.** `host anthropic_messages` lowers to
+// `ArrowBody::ExternalRealization`, exactly the shape `pipeline.dag`'s
+// `host parse` / `host lower` / etc. use. The realization is external
+// to v3 — for service operations, the runtime dispatcher consumes the
+// REST endpoint binding from the `Operation` row PR-β authors. v3
+// substrate does not need a `CompilerHostRealization`-style data row
+// here because the realization is identified by the callable's
+// `Operation.endpoint` REST shape, not by a Rust symbol; minting a
+// data row whose only job is to satisfy a binding-carrier slot would
+// be the producerless parallel surface the dispatch explicitly rejects.
+//
+// **Out of scope.** The `Operation` row that closes the
+// callable-to-source-identity edge (`callable: { decl: anthropic_messages },
+// inputs: …, endpoint: { method: POST, path: parse_path_template("/v1/messages"),
+// … }`) is Grounding-owned PR-β work in a sibling
+// `src/v3/std/anthropic_operations.dag` file. Grounding can rebase
+// #1252 against this PR's `anthropic_messages` decl id directly via
+// `CallableRef.decl`.
+//
+// **Dissolution.** Same trigger as `anthropic_schema.dag`: when v3
+// grows a service-DSL parse/load surface that ingests
+// `dsl/extdeps/llm/*.dag` with full structural fidelity, the v2
+// source becomes the only authority and this callable
+// declaration retires alongside the schema mirror it references.
+fn anthropic_messages(
+  api_key:     Secret,
+  model:       String,
+  messages:    List<AnthropicChatMessage>,
+  max_tokens:  Int,
+  temperature: Float?,
+  system:      String?
+) -> AnthropicMessages200Body {
+  host anthropic_messages
+}
