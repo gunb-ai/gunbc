@@ -1,7 +1,7 @@
 # T-V2-Retirement — Bounded Planning / Audit
 
 **Status:** PROPOSAL (audit only). Authored 2026-04-30 (silent-boar-29) per Director dispatch via cool-stag-230 (R3 PB).
-**Authority basis:** `docs/r3-structure.md` §11 row "T-V2-Retirement" + ROADMAP §"v2 retirement" (PR #1319, 2026-04-30 user directive *"nothing can be deferred past R3"*).
+**Authority basis:** `docs/r3-structure.md` Lane structure §11 row "T-V2-Retirement" (added 2026-04-30) + `docs/r3-structure.md` §165 (the post-R3 → R3 move row). PR #1319 (commit `a83b58bbd`, "gunbc Director", 2026-04-30) is the ratifying merge; it carries the user directive *"nothing can be deferred past R3."* `ROADMAP.md` mentions "v2 retirement" inline at lines 366 and 421 as scope references, but does NOT carry a dedicated `§"v2 retirement"` section — `r3-structure.md` is the live anchor.
 **Scope:** planning + audit only. **No code/test/build changes.** No deletions, no workspace edits, no v2/v3 import bridge, no PB-Runtime trampoline implementation.
 
 ---
