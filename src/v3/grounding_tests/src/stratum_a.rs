@@ -124,7 +124,8 @@ fn method_declaration_template_id(dag: &Dag) -> Result<DeclarationId, String> {
 ///
 /// Fail-closed: the referenced declaration must **instantiate** `MethodDeclaration`
 /// (same structural gate as `method_registry_covers_all_algebra_template_names`), not merely
-/// carry a string `name` field on an arbitrary record.
+/// carry a string `name` field on an arbitrary record. The value body must be a closed record
+/// with exactly the `name` field (no duplicates, no extra keys).
 fn method_registry_name(
     dag: &Dag,
     method_decl_id: DeclarationId,
@@ -162,14 +163,13 @@ fn method_registry_name(
             ),
         });
     }
-    let vb = decl
-        .value_body
-        .as_ref()
-        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+    let vb = decl.value_body.as_ref().ok_or_else(|| {
+        GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
             row_index,
             detail: format!("declaration {:?} has no value_body", decl.name),
-        })?;
+        }
+    })?;
     let ValueBody::Structural { fields } = vb else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
