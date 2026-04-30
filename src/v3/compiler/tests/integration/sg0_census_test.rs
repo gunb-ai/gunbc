@@ -260,6 +260,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // the dsl/extdeps loader surface.
     "src/v3/compiler/tests/integration/extdeps_rust_primitives_loader_test.rs",
     "src/v3/compiler/tests/integration/four_fixture_regression_test.rs",
+    // Idempotency Lens<C> instance blocker ratchet (R2 Substrate): focused
+    // hand-Rust receipt proving the actual idempotency lens instance must
+    // wait for generic function-valued data-field matching, while imported
+    // sum-return helper calls are not the current blocker. No substrate
+    // instance lands here; dissolves into the real idempotency Lens<C>
+    // instance/equivalence ratchet once the lowerer prerequisite is fixed.
+    "src/v3/compiler/tests/integration/idempotency_lens_instance_blocker_test.rs",
     // T-Substrate cardinality subset for int literals: behavior receipt for
     // range narrowing, explicit Int64 default, and MagnitudeOutOfRange.
     // Dissolves into .dag-native/testgen coverage when diagnostic assertions
