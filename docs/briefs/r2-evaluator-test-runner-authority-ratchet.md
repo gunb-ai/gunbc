@@ -4,7 +4,7 @@
 
 **Primary code anchor:** This PR is **docs-only** — it does not modify Rust. The audited implementation lives on the merge target (**`main`**): `TestRunner::run_claim` in `src/v3/compiler/src/test_runner.rs` (e.g. ~1497+) dispatches `TestPredicate` variant labels to Rust evaluators (`Compiles` through `MockBackedInvariant`); unknown labels return `NotYetImplemented`.
 
-**Cross-reads (required by dispatch):**
+**Cross-reads (required by dispatch; paths below are **tracked on `main`** and are **not** added or edited by this docs-only PR):**
 
 - [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) — Evaluator program scope, PR-A–PR-E cadence, PB-Runtime convergence, R3 lane gates.
 - [`ROADMAP.md`](../ROADMAP.md) — §"Scheduled cleanups: LensOutputEquals runner and R1 gate fixtures" (PR #764 checklist); §"Post-merge debt (2026-04-25 reflective + exploratory analyses)" → **Filename / sentinel bridges in `test_runner.rs`** and **B4 bridge-retirement queue** (identity-carrier sequencing).
