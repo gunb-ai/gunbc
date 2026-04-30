@@ -246,6 +246,9 @@ substrate-invariant cases. Each row names the dissolution trigger.
 | `EvalStrategy` inhabitant other than `ApplicativeOrder/LeftFirst` | strategy residual     | PR-A.3 expansion + lazy / `EvalThunk` slice                  |
 | `LoopBound::Cardinality` count missing / non-int    | runtime data gap      | Caller-side rule: cardinality witness must be available      |
 | Unbound `PortId` at use site                        | resolve gap           | Resolution pass; should be caught upstream (Diagnostic here) |
+| `BranchPattern::UnresolvedVariant` at evaluation     | resolve gap           | Resolution pass must lower to `ResolvedVariant` upstream     |
+| Branch scrutinee not `VariantValue` / no path matches `tag` | invariant violation | Substrate / inference guarantee — never reached on well-typed program |
+| Duplicate `Bind` over a `PortId` already bound in current frame | invariant violation | Resolution pass should reject; PR-B.1 pre-checks `map_get` before `map_insert` |
 | Frame depth on exit ≠ on entry                      | invariant violation   | PR-B.1 internal assertion; never reached on correct evaluator|
 
 ## Out of scope (this brief, PR-B.1 seed)
