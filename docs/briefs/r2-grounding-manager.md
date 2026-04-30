@@ -19,7 +19,7 @@ The one true critical path in R2: `Pilot → Rust → LanguageSpec → Coercion-
 
 ### 11-lane structure (post-engine-reframe; locked 2026-04-28)
 
-**Brief-authoring closure receipt (2026-04-30):** 10 of 11 R2 Grounding lane briefs are authored; T-Ground-Coercion-Fold remains fenced by [`docs/design-emission-model.md`](../design-emission-model.md) rather than a separate brief until its consumer wiring dispatch unblocks.
+**Brief-authoring closure receipt:** 10 of 11 R2 Grounding lane briefs are authored; T-Ground-Coercion-Fold remains fenced by [`docs/design-emission-model.md`](../design-emission-model.md) rather than a separate brief until its consumer wiring dispatch unblocks.
 
 **Foundational (already landed):**
 1. **T-Ground-Pilot** S — DONE (PR #765 merged 2026-04-25). Toy inhabitance-search engine for Rust integer family + bool + Unit.
