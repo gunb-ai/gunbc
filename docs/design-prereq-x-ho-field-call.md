@@ -175,7 +175,7 @@ one of them requires a substrate extension:
   compile-time. Lowering walks `v` → `data v: WrapFn`'s
   `value_body` → `f: FieldValue::Reference(decl_id_of_double)`,
   resolves `decl_id_of_double` to `double`'s arrow signature, and
-  emits `TransformDispatch::Callable { callee: decl_id_of_double, args }` directly. No
+  emits `TransformDispatch::Callable(CallableDispatch { callee: decl_id_of_double, args })` directly (via `Dag::push_callable_transform`). No
   substrate extension; the carrier identity is preserved through
   field projection at the lowering boundary.
 
@@ -461,11 +461,11 @@ one of them requires a substrate extension:
 
   ```rust
   match &t.dispatch {
-      TransformDispatch::Indirect { callee, args } => {
-          render_indirect_call(*callee, args, ...)
+      TransformDispatch::Indirect(d) => {
+          render_indirect_call(d.callee(), d.args(), ...)
       }
-      TransformDispatch::Callable { callee, args } => {
-          render_callable(*callee, args, ...)
+      TransformDispatch::Callable(d) => {
+          render_callable(d.callee(), d.args(), ...)
       }
       // ... etc.
   }
@@ -497,7 +497,7 @@ one of them requires a substrate extension:
    if and only if `complexity_lens` is a `data` binding (which it
    is — Lens instances are top-level data).
 2. (L1.b) runtime-sourced case lands SECOND with the
-   `TransformDispatch::Indirect { callee: ArrowPortRef, args: Vec<PortId> }` (constructed atomically via `Dag::push_indirect_transform`)
+   `TransformDispatch::Indirect(IndirectDispatch { callee: ArrowPortRef, args: Vec<PortId> })` (constructed atomically via `Dag::push_indirect_transform`)
    variant + the `TransformNode.target/inputs` collapse described
    above.
    Required for `fn invoke(lens: Lens<Int>, ...) -> ... = lens.read(...)`
