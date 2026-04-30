@@ -2159,8 +2159,9 @@ pub(crate) struct EmitAnchorCache {
 
 #[derive(Debug, Default, Clone)]
 pub(crate) struct SubstrateMarkers {
-    /// `dsl/std/v3_l1.dag` `Value` marker. Targets values
-    /// (literals) in target language realizations.
+    /// `src/v3/spec/v3_l1.dag` `ValueBehavior` marker (L1 Value-shaped
+    /// behavior). Targets literals in target language realizations.
+    /// Bare `Value` is reserved for PB-Runtime union types, not this marker.
     pub value: Option<DeclarationId>,
     /// `Transform` marker. Targets generic transform-shaped
     /// emissions (currently unused — operators dispatch via the
@@ -2574,8 +2575,9 @@ impl Dag {
         self.substrate_markers.transform
     }
 
-    /// Typed accessor for the v3_l1 `Value` marker. Same bootstrap-
-    /// failure semantics as `bind_marker`.
+    /// Typed accessor for the v3_l1 `ValueBehavior` marker. Same bootstrap-
+    /// failure semantics as `bind_marker`. (Rust name `value_marker` is
+    /// stable; the underlying declaration is `ValueBehavior`, not bare `Value`.)
     pub fn value_marker(&self) -> Option<DeclarationId> {
         self.substrate_markers.value
     }
@@ -3336,13 +3338,13 @@ impl Dag {
             .map(|d| TypeShape::new(d.id));
 
         // Substrate marker resolution. Pulls each marker
-        // declaration from `dsl/std/v3_l1.dag` by its declared
+        // declaration from `src/v3/spec/v3_l1.dag` by its declared
         // name and stores the typed handle. The lookup happens
         // once at bootstrap end; downstream consumers
         // (`lower_record_to_structural`, `emit_rust`) read the
         // typed handle via `bind_marker()` / `branch_marker()` /
         // etc. without any runtime name strings.
-        self.substrate_markers.value = self.declaration_by_name("Value").map(|d| d.id);
+        self.substrate_markers.value = self.declaration_by_name("ValueBehavior").map(|d| d.id);
         self.substrate_markers.transform = self.declaration_by_name("Transform").map(|d| d.id);
         self.substrate_markers.branch = self.declaration_by_name("Branch").map(|d| d.id);
         self.substrate_markers.r#loop = self.declaration_by_name("Loop").map(|d| d.id);
