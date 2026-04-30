@@ -121,10 +121,12 @@ Authored:
 - [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md) — BinShim instances + emit pattern + retirement dispatch planning artifact (PROPOSAL; dispatch-gated on R2-Evaluator + Item 4 PB-Runtime + Substrate-owned `BinShim` carrier + §7.3 `CensusListConstant`/filter disposition).
 - [`r2-pb-runtime-evaluator-convergence-matrix.md`](r2-pb-runtime-evaluator-convergence-matrix.md) — PB-Runtime ↔ R2-Evaluator convergence verification matrix (audit; docs-only) mapping `design-pb-runtime-interpreter.md` §§2, 3.2, 5.4, 6, 7.1 obligations onto R2-Evaluator surfaces + prerequisite state for #1231 / PR-A.1.
 - [`r3-pb-runtime-equivalence-corpus-seed-audit.md`](r3-pb-runtime-equivalence-corpus-seed-audit.md) — corpus seed audit (docs-only, post-#1235) expanding the convergence matrix Row 4 corpus phrase into a per-seed table for arithmetic-on-`Int` / `List` map+fold / one `Lens<C>` instance.
+- [`r3-pb-t-lensproducer-sub1-lens-apply-retirement.md`](r3-pb-t-lensproducer-sub1-lens-apply-retirement.md) — T-LensProducer-Retirement sub-gate 1 (`lens_apply_dot_rs_retired`) skeleton (PROPOSAL; dispatch-gated on R2-Evaluator + Item 4 PB-Runtime + convergence-matrix Row 4 green + canonical-lens-bridge dependency surface migrated).
+- [`r3-pb-t-lensproducer-sub2-lens-testgen-retirement.md`](r3-pb-t-lensproducer-sub2-lens-testgen-retirement.md) — T-LensProducer-Retirement sub-gate 2 (`lens_testgen_dot_rs_retired`) skeleton (PROPOSAL; dispatch-gated on same Item 4 chain as sub-gate 1; testgen consumer surface mapped).
+- [`r3-pb-t-lensproducer-sub3-regen-lens-retirement.md`](r3-pb-t-lensproducer-sub3-regen-lens-retirement.md) — T-LensProducer-Retirement sub-gate 3 (`regen_lens_dot_rs_retired`) skeleton (PROPOSAL; dispatch-gated on Item 5 bin-shim emit pattern + `BinShim` carrier + `regen_lens_shim` instance authored via the BinShim retirement program).
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map` consumer plumbing)
-- **R3 T-LensProducer-Retirement** worker briefs (gated on R2-Evaluator close; PB-Runtime interpreter-as-data + PB-1 bin-shim emit pattern design LANDED via #1176; 3 internal sub-gates per §5.1 of the lock)
 - **R3 T-Tier3-Dissolution** worker brief (may share with Tier 3 Manager continuing post-R2)
 - **R3 distributed bridge retirements** — 3 worker briefs (canonical lens-name dispatch / include_str! / patch_lower_helpers_* residual)
 
