@@ -2186,3 +2186,80 @@ fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
         "Dag::value_marker() must keep returning the L1 behavior marker"
     );
 }
+
+#[test]
+fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let frame = dag
+        .declaration_by_name("EvalFrame")
+        .expect("PR-A.2 EvalFrame missing from full bootstrap");
+    assert_eq!(
+        frame.span.file, "src/v3/std/runtime.dag",
+        "EvalFrame must live in the single runtime authority module"
+    );
+    let bindings_ty = conj_field_by_id(&dag, frame.id, "bindings");
+    match &dag.declaration(bindings_ty).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let template_name = dag
+                .declaration(*template)
+                .name
+                .as_deref()
+                .expect("Map template must be a named declaration");
+            assert!(
+                template_name == "Map" || template_name == "PartialFunction",
+                "EvalFrame.bindings template must be Map / PartialFunction, got `{template_name}`"
+            );
+            assert_eq!(
+                arguments.len(),
+                2,
+                "EvalFrame.bindings must have exactly two type arguments (key, value)"
+            );
+            assert_eq!(
+                arguments[0].value,
+                find_named(&dag, "PortId"),
+                "EvalFrame.bindings key must be PortId"
+            );
+            assert_eq!(
+                arguments[1].value,
+                find_named(&dag, "Value"),
+                "EvalFrame.bindings value must be runtime Value"
+            );
+        }
+        other => panic!("EvalFrame.bindings is not an Instantiation: {other:?}"),
+    }
+
+    let stack = dag
+        .declaration_by_name("EvalStateStack")
+        .expect("PR-A.2 EvalStateStack missing from full bootstrap");
+    assert_eq!(
+        stack.span.file, "src/v3/std/runtime.dag",
+        "EvalStateStack must live in the single runtime authority module"
+    );
+    assert_runtime_value_instantiation(
+        &dag,
+        conj_field_by_id(&dag, stack.id, "frames"),
+        "List",
+        "EvalFrame",
+    );
+
+    let value = dag
+        .declaration_by_name("Value")
+        .expect("runtime Value missing from full bootstrap");
+    let labels: Vec<&str> = match &value.connective {
+        TypeConnective::Disj { variants } => variants.iter().map(|f| f.label.as_str()).collect(),
+        other => panic!("runtime Value is not a Disj: {other:?}"),
+    };
+    assert!(
+        !labels.contains(&"ClosureValue"),
+        "PR-A.2 must not introduce ClosureValue; closed-over environments \
+         are evaluator-internal state, not observable Value variants"
+    );
+    assert!(
+        !labels.contains(&"EvalFrame") && !labels.contains(&"EvalStateStack"),
+        "EvalFrame / EvalStateStack are evaluator state, never Value variants"
+    );
+}
