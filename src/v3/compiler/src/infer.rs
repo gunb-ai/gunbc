@@ -4437,17 +4437,15 @@ fn resolve_operator_arrow(
     //
     // Fail-closed for non-algebra LHS: if the walk never encountered
     // an algebra Conj at all, the LHS has no operator-rule carrier.
-    // The pre-fix fallback fabricated `(T,T)->T` / `(T,T)->Bool` for
-    // any such LHS, inventing an arrow contract for a type that
-    // declares none. Refuse synthesis here so the caller surfaces a
-    // typed unsupported-operator diagnostic. The class-5 gap path
-    // (Conj-with-missing-field, `saw_algebra_conj == true`) keeps
-    // its existing scaffold until the gap closes.
+    // The pre-fix fallback fabricated `(T,T)->T` / `(T,T)->Bool` /
+    // `(Bool,Bool)->Bool` / `(T,T)->Result<T,DivError>` for any such
+    // LHS — inventing an arrow contract for a type that declares
+    // none. Refuse synthesis for every operator kind so the caller
+    // surfaces a typed unsupported-operator diagnostic. The class-5
+    // gap path (Conj-with-missing-field, `saw_algebra_conj == true`)
+    // keeps its existing scaffold until the gap closes.
     if !saw_algebra_conj {
-        match op_kind {
-            OperatorKind::Arithmetic(ArithmeticOp::Div) | OperatorKind::Logical(_) => {}
-            OperatorKind::Arithmetic(_) | OperatorKind::Comparison(_) => return None,
-        }
+        return None;
     }
     let (inputs, output) = match op_kind {
         // Division leaves the class-5 scaffold: total shape matches algebra `div`.
@@ -5267,7 +5265,7 @@ mod bool_logical_operator_arrow_tests {
     use super::*;
     use crate::dag::PhantomParameter;
     use crate::infer_helpers::filter_non_self_template_arguments;
-    use crate::operators::ArithmeticOp;
+    use crate::operators::{ArithmeticOp, ComparisonOp};
 
     #[test]
     fn nominal_opaque_field_project_fails_closed_before_structural_descent() {
@@ -5515,6 +5513,89 @@ mod bool_logical_operator_arrow_tests {
         assert!(
             secret.nominal_opacity.is_some(),
             "Secret must consume the nominal-opacity carrier before Modeling dispatch"
+        );
+    }
+
+    #[test]
+    fn arithmetic_on_non_algebra_lhs_fails_closed_instead_of_synthesizing_arrow() {
+        // Director audit (post-merge finding): pre-fix, when the
+        // structural walk in `resolve_operator_arrow` did not encounter
+        // any algebra Conj on the LHS (e.g. an Arrow / Disj / Atom with
+        // no `inhabits` link), the fallback fabricated `(T,T)->T` for
+        // arithmetic and `(T,T)->Bool` for comparison. That invented
+        // an operator-rule arrow contract for a type that declares
+        // none. With the fail-closed check in place, the resolver
+        // returns None so the call site emits a typed
+        // unsupported-operator diagnostic.
+        let mut dag = Dag::new();
+        let span = SourceSpan::new("<non-algebra-lhs-test>", 0, 1);
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+
+        // A non-algebra LHS: an anonymous Arrow declaration. No
+        // `inhabits`, no Conj on the walk path.
+        let arrow_decl = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: arrow_decl,
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![int],
+                output: int,
+                body: ArrowBody::NoBody,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let lhs = TypeShape::new(arrow_decl);
+
+        assert!(
+            resolve_operator_arrow(
+                &mut dag,
+                OperatorKind::Arithmetic(ArithmeticOp::Add),
+                &lhs,
+            )
+            .is_none(),
+            "`+` on a non-algebra LHS must fail-closed: the pre-fix \
+             fallback fabricated `(Arrow,Arrow)->Arrow` instead of \
+             surfacing an unsupported-operator diagnostic"
+        );
+        assert!(
+            resolve_operator_arrow(
+                &mut dag,
+                OperatorKind::Comparison(ComparisonOp::Lt),
+                &lhs,
+            )
+            .is_none(),
+            "`<` on a non-algebra LHS must fail-closed: the pre-fix \
+             fallback fabricated `(Arrow,Arrow)->Bool` instead of \
+             surfacing an unsupported-operator diagnostic"
+        );
+        assert!(
+            resolve_operator_arrow(
+                &mut dag,
+                OperatorKind::Arithmetic(ArithmeticOp::Div),
+                &lhs,
+            )
+            .is_none(),
+            "`/` on a non-algebra LHS must fail-closed: the pre-fix \
+             Div fallback synthesized `(Arrow,Arrow)->Result<Arrow,DivError>`"
+        );
+        assert!(
+            resolve_operator_arrow(
+                &mut dag,
+                OperatorKind::Logical(LogicalOp::And),
+                &lhs,
+            )
+            .is_none(),
+            "`&&` on a non-algebra LHS must fail-closed: the pre-fix \
+             logical fallback produced `(Bool,Bool)->Bool` regardless \
+             of LHS, inventing a carrier the type does not declare"
         );
     }
 
