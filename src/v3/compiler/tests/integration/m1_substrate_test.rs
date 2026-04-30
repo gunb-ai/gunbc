@@ -298,20 +298,13 @@ fn m17_user_function_call_lowers_to_callable_target() {
 }
 
 #[test]
-fn m17_block_bodied_fn_produces_unparsed_scaffold_declaration() {
-    // Class 3 (QW1): `fn foo(x: Int) -> Int { body }` in a module
-    // context is parsed as `FnExternalBody`. Lowering produces a
-    // declaration whose connective is an `Arrow` carrying
-    // `ArrowBody::Unparsed(body_span)`. The signature flows forward
-    // through the declaration table — callers can type-check
-    // against it — and the body source span is preserved for M2+
-    // parser extensions.
-    //
-    // Note: at M1(2.7) the parser's opaque body consumer handles
-    // arbitrary token contents, so the body text below doesn't need
-    // to be real v3 — it just needs matching braces.
-    let src = "fn foo(x: Int) -> Int { some unparseable body }";
-    let dag = compile_any(src, "scaffold.v3");
+fn m17_brace_bodied_fn_parses_single_expr_to_user_defined_arrow_body() {
+    // Prereq-2 slice: `fn foo(x: Int) -> Int { x + 1 }` parses as
+    // `SurfaceItem::Fn` with a real `SurfaceExpr` body and lowers to
+    // `ArrowBody::UserDefined` (Bind), not `FnExternalBody` /
+    // `ArrowBody::Unparsed`.
+    let src = "fn foo(x: Int) -> Int { x + 1 }";
+    let dag = compile_any(src, "brace_fn_user_defined.v3");
 
     // The `foo` declaration exists and carries the right Arrow
     // signature.
@@ -326,8 +319,8 @@ fn m17_block_bodied_fn_produces_unparsed_scaffold_declaration() {
     };
     assert_eq!(inputs.len(), 1);
     assert!(
-        matches!(body, ArrowBody::Unparsed(_)),
-        "block-bodied fn must carry ArrowBody::Unparsed, got {body:?}"
+        matches!(body, ArrowBody::UserDefined(_)),
+        "brace-bodied fn with a single expression body must carry ArrowBody::UserDefined, got {body:?}"
     );
 
     // The signature types resolve to the cached primitives.
@@ -348,6 +341,184 @@ fn m17_block_bodied_fn_produces_unparsed_scaffold_declaration() {
     };
     assert_eq!(resolved_input_id, int_id);
     assert_eq!(resolved_output_id, int_id);
+}
+
+#[test]
+fn m17_brace_fn_body_accepts_type_labeled_record_literal() {
+    // `parse_field_label` accepts `type` (KwType) as a field name; brace-fn
+    // record lookahead must match `parse_record_literal`, not only `{ ident:`.
+    let src = "fn typed_field() -> Int { type: 1 }";
+    let tokens = v3_compiler::tokenize_for_test(src, "brace_fn_type_field.v3").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "brace_fn_type_field.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| matches!(i, v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } if name == "typed_field"))
+        .expect("typed_field fn");
+    let v3_compiler::parse_surface::SurfaceItem::Fn { body, .. } = item else {
+        panic!("expected Fn, got {item:?}");
+    };
+    assert!(
+        matches!(body, v3_compiler::parse_surface::SurfaceExpr::Record { .. }),
+        "expected Record literal body, got {body:?}"
+    );
+}
+
+#[test]
+fn m17_brace_fn_body_accepts_string_keyed_map_literal() {
+    // Same `{ "key": expr }` disambiguation as `parse_data_item` — map literals
+    // must not fall through to `parse_expr` (record parser rejects string keys).
+    let src = "fn map_body(x: Int) -> Int { \"k\": x }";
+    let tokens = v3_compiler::tokenize_for_test(src, "brace_fn_map_body.v3").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "brace_fn_map_body.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| matches!(i, v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } if name == "map_body"))
+        .expect("map_body fn");
+    let v3_compiler::parse_surface::SurfaceItem::Fn { body, .. } = item else {
+        panic!("expected Fn, got {item:?}");
+    };
+    assert!(
+        matches!(body, v3_compiler::parse_surface::SurfaceExpr::Map { .. }),
+        "expected Map literal body, got {body:?}"
+    );
+}
+
+#[test]
+fn m17_brace_fn_body_accepts_empty_record_literal() {
+    // `{}` is a valid zero-field `SurfaceExpr::Record`; brace-fn record lookahead
+    // must match `looks_like_record_literal` / `parse_data_item` (`{` then `}`).
+    let src = "fn empty_rec() -> Int {}";
+    let tokens = v3_compiler::tokenize_for_test(src, "brace_fn_empty_record.v3").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "brace_fn_empty_record.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| matches!(i, v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } if name == "empty_rec"))
+        .expect("empty_rec fn");
+    let v3_compiler::parse_surface::SurfaceItem::Fn { body, .. } = item else {
+        panic!("expected Fn, got {item:?}");
+    };
+    match body {
+        v3_compiler::parse_surface::SurfaceExpr::Record { fields, .. } => {
+            assert!(
+                fields.is_empty(),
+                "expected empty record literal fields, got {fields:?}"
+            );
+        }
+        other => panic!("expected Record body, got {other:?}"),
+    }
+}
+
+#[test]
+fn m17_dag_corpus_brace_fn_stays_fn_external_body_at_parse_time() {
+    // Parser gate (`fn_brace_body_parse_as_expression`): staged `.dag`
+    // sources keep the legacy `FnExternalBody` surface even when the
+    // brace contents are a single expressible `match` — bootstrap byte
+    // stability and `ArrowBody::Unparsed` contracts for std/ remain
+    // unchanged until an explicit corpus opt-in regen.
+    let src = "fn staged(x: Int) -> Int {\n  match x { A => 1 }\n}";
+    let tokens = v3_compiler::tokenize_for_test(src, "src/v3/std/corpus.dag").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "src/v3/std/corpus.dag").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| match i {
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { name, .. }
+            | v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } => name == "staged",
+            _ => false,
+        })
+        .expect("staged fn");
+    assert!(
+        matches!(
+            item,
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { .. }
+        ),
+        "authority .dag sources must keep brace-bodied fn on FnExternalBody at parse time, got {item:?}"
+    );
+}
+
+#[test]
+fn m17_multi_statement_brace_fn_in_v3_falls_back_to_unparsed_arrow() {
+    // Multi-statement / unparseable-as-single-expr brace bodies in `.v3`
+    // hit `parse_expr` failure or non-exhausting-`}` recovery →
+    // `FnExternalBody` → `ArrowBody::Unparsed` (opaque scaffold ratchet).
+    //
+    // M1(2.8) R14: user-range `ArrowBody::Unparsed` must still fail the
+    // `compile_to_dag` boundary (`Err(Semantic)` with diagnostics) — do not
+    // use `compile_any` here, which collapses clean vs semantic outcomes.
+    // See `m18_r14_user_block_bodied_fn_is_rejected`.
+    let src = "fn staged(x: Int) -> Int {\n  let y = x + 1\n  y + 1\n}";
+    let result = compile_to_dag(src, "multi_stmt_fn.v3");
+    assert!(
+        result.is_err(),
+        "user-range opaque fn body must fail compile_to_dag (R14), not compile cleanly"
+    );
+    let dag = match result {
+        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    let foo_id = find_named(&dag, "staged");
+    let body = match &dag.declaration(foo_id).connective {
+        TypeConnective::Arrow { body, .. } => body.clone(),
+        other => panic!("expected Arrow, got {other:?}"),
+    };
+    assert!(
+        matches!(body, ArrowBody::Unparsed(_)),
+        "multi-statement brace body in .v3 should lower to ArrowBody::Unparsed, got {body:?}"
+    );
+}
+
+#[test]
+fn m17_multi_statement_brace_fn_parse_surface_stays_fn_external_body() {
+    // Parse-phase receipt: multi-stmt / non-single-expr `.v3` brace bodies must
+    // surface as `FnExternalBody` (brace-skip), not `ParseError` — scheduled
+    // review claim "parser rejects instead of preserving" is false for this
+    // path (`parse_fn_item` `Err` / partial-expr branches).
+    let src = "fn staged(x: Int) -> Int {\n  let y = x + 1\n  y + 1\n}";
+    let tokens =
+        v3_compiler::tokenize_for_test(src, "multi_stmt_parse_surface.v3").expect("tokenize");
+    let module =
+        v3_compiler::parse_for_test(&tokens, "multi_stmt_parse_surface.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| match i {
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { name, .. }
+            | v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } => name == "staged",
+            _ => false,
+        })
+        .expect("staged fn item");
+    assert!(
+        matches!(
+            item,
+            v3_compiler::parse_surface::SurfaceItem::FnExternalBody { .. }
+        ),
+        "multi-line brace fn body must parse as FnExternalBody (fallback), got {item:?}"
+    );
+}
+
+#[test]
+fn m17_malformed_brace_expr_probe_returns_parse_error() {
+    // Incomplete `{ x + }` is a malformed single-expression probe: `parse_expr`
+    // fails after consuming a prefix, and the parser **propagates** that
+    // diagnostic. Only brace bodies whose first inner token is `let` use
+    // `FnExternalBody` on `parse_expr` `Err` (multi-statement scaffold); see
+    // `fn_brace_body_expr_err_falls_back_to_external` in `parse_parser_body.txt`.
+    let src = "fn broken(x: Int) -> Int { x + }";
+    let tokens = v3_compiler::tokenize_for_test(src, "malformed_brace_probe.v3").expect("tokenize");
+    let err = v3_compiler::parse_for_test(&tokens, "malformed_brace_probe.v3")
+        .expect_err("malformed brace-body expr must fail parse");
+    assert!(
+        matches!(err, Diagnostic::ParseError { .. }),
+        "expected ParseError for malformed probe, got {err:?}"
+    );
+    let result = compile_to_dag(src, "malformed_brace_lower.v3");
+    assert!(
+        matches!(result, Err(v3_compiler::CompileError::Parse(_))),
+        "malformed brace fn must fail compile_to_dag at parse boundary, got {result:?}"
+    );
 }
 
 #[test]
@@ -1036,21 +1207,33 @@ fn classify(h: Hue) -> Int = match h { Red => 0, Green => 1 }
 
 #[test]
 fn m18_r14_user_block_bodied_fn_is_rejected() {
-    // M1(2.8) R14: user-range ArrowBody::Unparsed scaffolds must
-    // fail-closed. The FnExternalBody surface form exists so
-    // std/bootstrap files with match/record/pipe/lambda bodies
-    // can parse cleanly (their bodies become scaffolds), but
-    // ordinary user code has no business shipping an opaque
-    // body that the compiler never validates.
+    // M1(2.8) R14: user-range `ArrowBody::Unparsed` scaffolds must fail-closed
+    // (`compile_to_dag` → `Err(Semantic)`) with the scaffold-rejection diagnostic.
     //
-    // Before R14, `fn foo(x: Int) -> Int { junk }` compiled
-    // cleanly because nothing rejected the user-range
-    // ArrowBody::Unparsed. After R14, the lower-side sweep
-    // rejects every user-range Unparsed scaffold.
-    let result = compile_to_dag("fn foo(x: Int) -> Int { junk }", "user.v3");
+    // `{ junk }` is no longer a reliable `FnExternalBody` boundary fixture: on
+    // user `.v3`, a lone identifier parses as a real `SurfaceExpr` and lowers
+    // through `UserDefined`, so the R14 unparsed-body sweep never runs. Use a
+    // multi-statement brace body instead — it hits `FnExternalBody` →
+    // `ArrowBody::Unparsed` like `m17_multi_statement_brace_fn_in_v3_falls_back_to_unparsed_arrow`.
+    let src = "fn foo(x: Int) -> Int {\n  let y = x + 1\n  y\n}";
+    let result = compile_to_dag(src, "user_r14_opaque_fn.v3");
     assert!(
         result.is_err(),
         "user-range fn with opaque body must fail compile_to_dag"
+    );
+    let dag = match result {
+        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| {
+            matches!(
+                diag,
+                Diagnostic::ResolveError { ref name, .. } if name.contains("opaque block body")
+            )
+        }),
+        "expected R14 opaque-fn-body scaffold rejection diagnostic, got {:?}",
+        dag.diagnostics()
     );
 }
 
@@ -2455,6 +2638,56 @@ fn wrap(point: Point) -> Wrapped = Wrap { inner: point }
     assert_eq!(
         bind_value_type_decl(&dag, "wrap"),
         find_named(&dag, "Wrapped")
+    );
+}
+
+/// Prereq-2 (lens-fold): brace-bodied `fn` lowers a `match` whose arms
+/// mix bare and record-shaped variant constructors against a sum whose
+/// variant carries a Conj payload (`Cell { n: Int }`), matching the
+/// class-5 payload path toward `Witness`-style constructors — without
+/// `Witness` / `OptionalDiagnostic` special cases.
+#[test]
+fn prereq2_brace_fn_match_returns_bare_variant_constructors() {
+    let src = "\
+type Slot = Cell { n: Int } | Vacant
+fn toggle(s: Slot) -> Slot {
+  match s {
+    Cell { n: k } => Vacant
+    Vacant => Cell { n: 1 }
+  }
+}
+";
+    let dag = cached_compile_to_dag(src, "prereq2_brace_fn_variants.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "brace-bodied fn with bare variant match arms should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    assert_eq!(
+        bind_value_type_decl(&dag, "toggle"),
+        find_named(&dag, "Slot")
+    );
+}
+
+#[test]
+fn prereq2_brace_fn_optional_diagnostic_bare_variant() {
+    let src = "\
+import v3.std.dimensions { OptionalDiagnostic }
+fn no_diag() -> OptionalDiagnostic {
+  NoDiagnostic
+}
+";
+    let dag = cached_compile_to_dag(src, "prereq2_optional_diag_brace_fn.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "OptionalDiagnostic brace-bodied bare variant should compile cleanly: {:?}",
+        dag.diagnostics()
+    );
+    let out = bind_value_type_decl(&dag, "no_diag");
+    let opt = find_named(&dag, "OptionalDiagnostic");
+    assert_eq!(
+        out, opt,
+        "OptionalDiagnostic fn should resolve to the sum declaration"
     );
 }
 
