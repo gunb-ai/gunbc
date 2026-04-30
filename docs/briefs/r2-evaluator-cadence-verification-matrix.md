@@ -8,7 +8,7 @@
 
 ## Purpose
 
-Make **Evaluator-side** gate status, **next allowed** work shape, and **forbidden widening** explicit so dispatch does not start downstream slices (body evaluator, strict TC2, PR-D slice 2 `ForAllTargets`-class receipts, full `Lens<C>` fold) before their **live** dependencies land. This matrix is for **fleet accounting and review**; it does not replace INVARIANTS P1 for substrate introduction.
+Make **Evaluator-side** gate status, **next allowed** work shape, and **forbidden widening** explicit so dispatch does not start downstream slices (body evaluator, strict TC2, PR-D slice 2 `ForAllTargets`-class receipts, full `Lens<C>` fold) before their **live** dependencies land. This matrix is for **fleet accounting and review**; it does not replace [`INVARIANTS.md`](../../INVARIANTS.md) **P1: Modeling Faithfulness** — specifically [**Procedure: substrate-fact introduction**](../../INVARIANTS.md#procedure-substrate-fact-introduction-decision-procedure-for-new-modeling) — for new substrate types, sum variants, fields, or `TestPredicate` variants.
 
 ## Cross-program anchor (PB-Runtime)
 
