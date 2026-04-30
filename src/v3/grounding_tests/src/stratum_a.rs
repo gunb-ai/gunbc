@@ -3,6 +3,12 @@
 //! Source: `docs/briefs/t-ground-tests.md` (test plan item 1). Generalizes the pilot
 //! kernel-integer checks (`src/v3/grounding_pilot/src/lib.rs:408-460`) onto the
 //! per-target row lists `rust_*` / `python_*` / `go_*` from T-Ground-LanguageSpec #1195.
+//!
+//! **Substrate read path:** Stratum A walks [`v3_compiler::generated_full_bootstrap_dag`] only.
+//! This crate intentionally does **not** `include_str!` the `src/v3/std/*_method_template_contracts.dag`
+//! sources from here: a path relative to `grounding_tests/src/` is easy to mis-write as `../std/…`
+//! (which resolves under `src/v3/grounding_tests/std/`, not `src/v3/std/`). The compiler’s embedded
+//! snapshot is the single structural authority for these rows.
 
 use std::collections::BTreeMap;
 
@@ -13,24 +19,6 @@ use crate::diagnostic::GroundingTestsDiagnostic;
 const RUST_LIST: &str = "rust_method_template_contracts";
 const PYTHON_LIST: &str = "python_method_template_contracts";
 const GO_LIST: &str = "go_method_template_contracts";
-
-// `include_str!` loads the sibling `std/` tree; `compile_to_dag(..., path)` uses the same files
-// via repo-root-relative `src/v3/std/…` paths (tokenizer / span identity).
-const RUST_SOURCE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../std/rust_method_template_contracts.dag"
-));
-const RUST_PATH: &str = "src/v3/std/rust_method_template_contracts.dag";
-const PYTHON_SOURCE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../std/python_method_template_contracts.dag"
-));
-const PYTHON_PATH: &str = "src/v3/std/python_method_template_contracts.dag";
-const GO_SOURCE: &str = include_str!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../std/go_method_template_contracts.dag"
-));
-const GO_PATH: &str = "src/v3/std/go_method_template_contracts.dag";
 
 /// Director-locked Phase 1 row counts (`t-ground-tests.md`; bump when `*_method_template_contracts.dag` grows).
 pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
