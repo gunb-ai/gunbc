@@ -16,6 +16,44 @@
 
 ---
 
+## Director closure acceptance — R2 closed-with-residuals
+
+**Ratification (Director-locked; PM framework + 3 tightening additions).** *Canonical instant:* Git **merge commit timestamp** of the PR landing this section (human summary below uses **2026-04-30 UTC** per Director lock).
+
+> **R2 declared closed-with-residuals at 2026-04-30 (UTC, effective on merge of this receipt).**
+>
+> All 7 R2 program managers signed off; residuals enumerated per program with concrete structural unblock conditions or named cadence boundaries.
+>
+> Distinct categories:
+> - **substrate-gap deferrals** (operate per substrate roadmap)
+> - **R3-continuation-by-design** (operate per cadence design lock)
+> - **RM-authoring-lag deferrals** (operate per RM cadence)
+> - **cross-program-dependency deferrals** (gate on named program lane)
+>
+> Continuation cadence routes through Director ratification + closure-ledger updates.
+>
+> *Vague-future deferrals (e.g., "next milestone", "TBD", "will revisit") were rejected in pre-close ratification per closure-acceptance discipline.*
+>
+> *Verification deferrals encode as TestClaim author-now-fire-later (TC2 pattern) where existing TestPredicate substrate suffices; otherwise as docs-only substrate-fact-introduction signals (TC3 pattern). Silent-drop is rejected in both cases.*
+>
+> *Per-program receipts authored by each Mgr enumerate (a) completed gates with merged-PR receipts and (b) named deferrals with category-tagged structural unblock conditions; bold-lynx-173 ratifies each receipt in `docs/r2-closure-ledger.md` per the signal-receiver protocol.*
+
+**Per-program manager receipts** (signal channel = session inbox issue; verbatim detail lives in-thread):
+
+| Manager | Session inbox | Receipt summary (R2 close) |
+|---|---|---|
+| Substrate | [jolly-ram-908 / #1130](https://github.com/gunb-ai/gunbc/issues/1130) | Closed-with-residuals; **6** R3 lanes named with category tags (**substrate-gap** for lens migrations + Anthropic chain residuals; **cross-program-dep** for OperationEffect retirement). |
+| Evaluator | [snappy-moth-795 / #1131](https://github.com/gunb-ai/gunbc/issues/1131) | Closed-with-residuals; **5** R3 residuals; PR-A.3 carriers **TBD** pending parser fix vs R2.5 (named alternatives). |
+| Modeling | [quick-bear-15 / #1132](https://github.com/gunb-ai/gunbc/issues/1132) | Closed-with-residuals; **5** R3 lanes reframed (**substrate-gap** for Secret/Dimension graduation; **cross-program-dep** for parser/LensAPI). |
+| Grounding | [silent-ant-322 / #1133](https://github.com/gunb-ai/gunbc/issues/1133) | **Closed**; **11/11** lane briefs **DONE**; **8** R3 lanes (down from **10** after Tier A pull-in: **#1271** CrossTarget-Meta L6 walker landed; **nimble-pike** Stratum A scaffold **#1274** in flight). |
+| Pure Bootstrap | [cool-stag-230 / #1134](https://github.com/gunb-ai/gunbc/issues/1134) | **Closed**; **no** R2-scope work **pushed** as incomplete (**R3-continuation-by-design**); planned R3 lanes: T-LensProducer-Retirement, T-FixedPoint, T-Tier3-Dissolution, BinShim retirement. |
+| Impossible-Bugs | [vivid-moth-43 / #1136](https://github.com/gunb-ai/gunbc/issues/1136) | **Closed**; Class **1+2** **GREEN**; Class **3** routed to **Substrate** continuation (**not** R3-Impossible-Bugs revival); Mgr **archives** at R2 close per `docs/r3-structure.md` §"Manager structure". |
+| **Release (this doc)** | [bold-lynx-173 / #1135](https://github.com/gunb-ai/gunbc/issues/1135) | **RM-authoring-lag** deferral on **§6a-3**; **closure-acceptance** receipt = this section (Release ratifies the **six** manager receipts above per signal-receiver protocol). |
+
+**Tier A pull-in (pre-close):** **#1271** — Grounding T-Ground-CrossTarget-Meta L6 walker (merged). **#1272** — Substrate `Secret` bootstrap opacity bridge retirement (merged). **#1274** — Grounding T-Ground-Tests Stratum A scaffold (**CI** / flight per Director standup at ratification lock).
+
+---
+
 ## Status legend
 
 | Enum | Meaning |
