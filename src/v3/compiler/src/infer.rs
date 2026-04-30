@@ -5614,44 +5614,28 @@ mod bool_logical_operator_arrow_tests {
         let lhs = TypeShape::new(arrow_decl);
 
         assert!(
-            resolve_operator_arrow(
-                &mut dag,
-                OperatorKind::Arithmetic(ArithmeticOp::Add),
-                &lhs,
-            )
-            .is_none(),
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Add), &lhs,)
+                .is_none(),
             "`+` on a non-algebra LHS must fail-closed: the pre-fix \
              fallback fabricated `(Arrow,Arrow)->Arrow` instead of \
              surfacing an unsupported-operator diagnostic"
         );
         assert!(
-            resolve_operator_arrow(
-                &mut dag,
-                OperatorKind::Comparison(ComparisonOp::Lt),
-                &lhs,
-            )
-            .is_none(),
+            resolve_operator_arrow(&mut dag, OperatorKind::Comparison(ComparisonOp::Lt), &lhs,)
+                .is_none(),
             "`<` on a non-algebra LHS must fail-closed: the pre-fix \
              fallback fabricated `(Arrow,Arrow)->Bool` instead of \
              surfacing an unsupported-operator diagnostic"
         );
         assert!(
-            resolve_operator_arrow(
-                &mut dag,
-                OperatorKind::Arithmetic(ArithmeticOp::Div),
-                &lhs,
-            )
-            .is_none(),
+            resolve_operator_arrow(&mut dag, OperatorKind::Arithmetic(ArithmeticOp::Div), &lhs,)
+                .is_none(),
             "`/` on a non-algebra LHS must fail-closed: the pre-fix \
              Div fallback synthesized `(Arrow,Arrow)->Result<Arrow,DivError>`"
         );
         assert!(
-            resolve_operator_arrow(
-                &mut dag,
-                OperatorKind::Logical(LogicalOp::And),
-                &lhs,
-            )
-            .is_none(),
+            resolve_operator_arrow(&mut dag, OperatorKind::Logical(LogicalOp::And), &lhs,)
+                .is_none(),
             "`&&` on a non-algebra LHS must fail-closed: the pre-fix \
              logical fallback produced `(Bool,Bool)->Bool` regardless \
              of LHS, inventing a carrier the type does not declare"
