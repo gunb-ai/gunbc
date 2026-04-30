@@ -580,13 +580,23 @@ fn anthropic_messages_200_body_lockstep() {
 }
 
 #[test]
-fn anthropic_schema_authors_no_data_rows() {
-    // Type authority only in this PR.
+fn anthropic_schema_authors_no_data_rows_or_fns() {
+    // Type authority only in this PR. Two leak classes:
+    //   (1) `data` rows lower with `value_body: Some(...)`.
+    //   (2) `fn` declarations lower as `TypeConnective::Arrow { … }` with
+    //       `value_body: None`, so the value_body filter alone would let
+    //       a stray `fn anthropic_messages` slip through. The Arrow check
+    //       fails closed against that.
+    // The follow-on substrate precursor authors `fn anthropic_messages`
+    // and any operation-row binding; neither belongs in PR-α.
     let dag = generated_full_bootstrap_dag();
     let leaks: Vec<String> = dag
         .declarations()
         .iter()
-        .filter(|d| d.span.file == "src/v3/std/anthropic_schema.dag" && d.value_body.is_some())
+        .filter(|d| d.span.file == "src/v3/std/anthropic_schema.dag")
+        .filter(|d| {
+            d.value_body.is_some() || matches!(d.connective, TypeConnective::Arrow { .. })
+        })
         .map(|d| {
             d.name
                 .clone()
@@ -595,7 +605,9 @@ fn anthropic_schema_authors_no_data_rows() {
         .collect();
     assert!(
         leaks.is_empty(),
-        "anthropic_schema.dag is type-authority only — no `data` rows or \
-         `fn` bodies allowed in this slice. Found: {leaks:?}."
+        "anthropic_schema.dag is type-authority only — no `data` rows \
+         (lowered as `value_body: Some(...)`) and no `fn` declarations \
+         (lowered as `TypeConnective::Arrow`) allowed in this slice. \
+         Found: {leaks:?}."
     );
 }
