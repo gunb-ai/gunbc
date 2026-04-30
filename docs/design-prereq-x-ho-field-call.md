@@ -523,12 +523,25 @@ one of them requires a substrate extension:
   required because the call is structural (no per-accessor
   carrier), only the call-syntax template per target.
 
-  **Dissolution / ratchet receipt:** the `Indirect` variant of
-  `TransformDispatch` is permanent (HO dispatch is a real
-  long-term language surface, not staging); no SCAFFOLD lifecycle.
-  The collapse from `(target, inputs)` → `dispatch` is also
-  permanent — single-authority dispatch encoding is the long-term
-  shape, not a transitional bridge.
+  **Dissolution / ratchet receipt.** Two distinct claims, kept
+  separate to avoid the muddle the reviewer flagged:
+
+  - **HO dispatch capability is permanent.** Higher-order dispatch
+    over Arrow-typed runtime values is a real long-term language
+    surface, not staging; some variant must encode it. No SCAFFOLD
+    lifecycle on the *capability*.
+  - **The specific variant spelling `Indirect(IndirectDispatch)` is
+    transitional.** Per the 🟡 ledger entry above, `Callable` /
+    `FieldCall` / `Indirect` future-collapse into a single
+    `Call { callee: CalleeRef, args }` variant where
+    `CalleeRef = Decl | Field | Port`. After that collapse, HO
+    dispatch is expressed as `Call { callee: CalleeRef::Port(_), .. }`
+    — same capability, different spelling. The variant *name*
+    `Indirect` retires; the *capability* it carries does not.
+
+  The `(target, inputs)` → `dispatch` collapse is permanent —
+  single-authority dispatch encoding is the long-term shape, not a
+  transitional bridge.
 
 **Sequencing for the implementation slice:**
 1. (L1.a) statically-resolvable case lands FIRST against the
