@@ -2208,6 +2208,30 @@ fn record_body_duplicate_fields_fail_closed() {
 }
 
 #[test]
+fn nested_record_body_duplicate_fields_fail_closed() {
+    let dag = semantic_dag_for(
+        "type Inner { a: Int, b: Int }\n\
+         type Outer { inner: Inner, tag: Int }\n\
+         data duplicate_nested_fields: Outer = { inner: { a: 1, a: 2, b: 3 }, tag: 0 }\n",
+        "nested_record_duplicate_fields.v3",
+    );
+    let decl = dag
+        .declaration_by_name("duplicate_nested_fields")
+        .expect("duplicate_nested_fields declaration should be allocated before lowering fails");
+
+    assert!(
+        has_resolve_error(&dag),
+        "expected nested duplicate-field lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Structural { .. })),
+        "duplicate nested record must not construct ValueBody::Structural, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
 fn map_body_on_non_map_type_fails_closed() {
     let dag = semantic_dag_for(
         "data not_a_map: Bool = {\n  \"x\": true\n}\n",

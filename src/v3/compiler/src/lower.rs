@@ -3370,22 +3370,19 @@ fn lower_record_to_structural(
         }
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
-    let mut seen_record_fields = HashSet::new();
-    for record_field in record_fields {
-        if !seen_record_fields.insert(record_field.name.clone()) {
-            report_declaration_error(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!(
-                        "data `{data_name}` record body repeats field `{}`",
-                        record_field.name
-                    ),
-                    span: record_field.span.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-            return None;
-        }
+    if let Some(record_field) = duplicate_record_field(record_fields) {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` record body repeats field `{}`",
+                    record_field.name
+                ),
+                span: record_field.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
     }
     // Check no extra fields in the data body.
     for record_field in record_fields {
@@ -3452,6 +3449,13 @@ fn lower_record_to_structural(
     Some(crate::dag::ValueBody::Structural {
         fields: structural_fields,
     })
+}
+
+fn duplicate_record_field(
+    fields: &[crate::parse::SurfaceRecordField],
+) -> Option<&crate::parse::SurfaceRecordField> {
+    let mut seen = HashSet::new();
+    fields.iter().find(|field| !seen.insert(field.name.clone()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3613,6 +3617,20 @@ fn lower_structural_field_value(
             );
             return None;
         };
+        if let Some(field) = duplicate_record_field(fields) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` repeats nested field `{}`",
+                        field.name
+                    ),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
         let expected_fields: Vec<(String, DeclarationId)> =
             match &dag.declaration(conj_id).connective {
                 TypeConnective::Conj { children } => children
@@ -6445,18 +6463,15 @@ fn lower_record_literal_expr(
             .collect(),
         _ => unreachable!("walk_to_conj_decl returned non-Conj"),
     };
-    let mut seen_record_fields = HashSet::new();
-    for field in fields {
-        if !seen_record_fields.insert(field.name.clone()) {
-            return unresolved_port(
-                dag,
-                Diagnostic::ResolveError {
-                    name: format!("record literal repeats field `{}`", field.name),
-                    span: field.span.clone(),
-                    fixes: Vec::new(),
-                },
-            );
-        }
+    if let Some(field) = duplicate_record_field(fields) {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!("record literal repeats field `{}`", field.name),
+                span: field.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
     }
     for field in fields {
         if !expected_fields
@@ -6537,6 +6552,19 @@ fn lower_variant_record_expr(
             },
         );
     };
+    if let Some(field) = duplicate_record_field(expr.fields) {
+        return unresolved_port(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "named constructor `{}` repeats payload field `{}`",
+                    expr.target, field.name
+                ),
+                span: field.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+    }
     for field in expr.fields {
         if !expected_fields
             .iter()
