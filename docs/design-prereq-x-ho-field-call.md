@@ -159,14 +159,78 @@ position. Concretely, generalize the call rule from
 through inference to an Arrow type. Field projection in callee
 position (`<expr>.<ident>(<args>)`) is the primary motivating case.
 
-**Lowerer impact:** the call-site lowering currently dispatches on
-the resolved decl-id of the head identifier (Callable target). It
-must also handle Arrow-typed value sources — field projection,
-let-bound names, function-parameter values — by lowering the
-callee to a port and dispatching through a Transform whose target
-is `Callable(<resolved-fn-decl-id>)` if the Arrow's underlying decl
-is a top-level fn, or via a higher-order Transform target if the
-callee is computed at runtime.
+**Lowerer + substrate impact:** call-site lowering today dispatches
+on the resolved decl-id of the head identifier and emits a
+`TransformTarget::Callable(DeclarationId)` (`src/v3/compiler/src/dag.rs:1695-1712`).
+The current `TransformTarget` enum has three variants — `Callable`,
+`FieldProject`, `Operator` — and **none** carries a runtime-port-
+sourced Arrow value. Two cases per call-site need lowering, and
+one of them requires a substrate extension:
+
+- **(L1.a) Statically-resolvable callee — reuse `Callable(decl_id)`.**
+  When the Arrow expression resolves at lowering time to a top-level
+  `fn` declaration (e.g., `data v: WrapFn = { f: double }; v.f(x)`,
+  where `v.f` projects a `FieldValue::Reference(double)` from the
+  data binding's `ValueBody::Structural`), the projection is
+  compile-time. Lowering walks `v` → `data v: WrapFn`'s
+  `value_body` → `f: FieldValue::Reference(decl_id_of_double)`,
+  resolves `decl_id_of_double` to `double`'s arrow signature, and
+  emits `TransformTarget::Callable(decl_id_of_double)` directly. No
+  substrate extension; the carrier identity is preserved through
+  field projection at the lowering boundary.
+
+- **(L1.b) Runtime-sourced callee — substrate extension required.**
+  When the callee is a function parameter (`fn invoke(w: WrapFn, x: Int)
+  = w.f(x)`) or a let-bound projection from a runtime-source value,
+  the callee Arrow is not statically resolvable to a top-level decl
+  and must be sourced from a port. Today's `TransformTarget` has
+  no variant that takes a `PortId` for the dispatch target;
+  `Callable(DeclarationId)` requires a static decl, `FieldProject`
+  is for projecting Conj children at the type-substitution boundary
+  (not for invoking Arrow values), `Operator` is for built-in
+  primitives.
+
+  The substrate extension is **`TransformTarget::IndirectCall { callee: PortId }`**
+  (or similar; name TBD in the implementation slice). The new variant
+  carries the port producing the Arrow value at runtime; emitters
+  render it as the target language's first-class function-call
+  surface (Rust closure call, Python `()` call on a callable, etc.
+  per `SubstrateAccessorBinding` carriers). The substrate extension
+  is bounded by the same fail-closed discipline as existing
+  `TransformTarget` variants — type-checking enforces that `callee`'s
+  port has an Arrow type, with arity matching `inputs`.
+
+  Adding this variant is the load-bearing substrate change in X1's
+  implementation slice. **Dissolution / ratchet receipt:** the
+  `IndirectCall` variant is permanent (HO dispatch is a real
+  long-term language surface, not staging); no SCAFFOLD lifecycle.
+  The variant attaches to existing `TransformTarget` rather than
+  introducing a parallel carrier; arity-checking and type-checking
+  reuse the current path with the callee's port type as the Arrow
+  source.
+
+**Sequencing for the implementation slice:**
+1. (L1.a) statically-resolvable case lands FIRST against existing
+   `TransformTarget::Callable` — no substrate change. Covers
+   `data v: WrapFn = { f: double }; v.f(x)`. This is enough to
+   unblock `data complexity_lens: Lens<Int> = { ... }` consumers
+   when `complexity_lens.read(d, b)` is called from `fold_lens<C>`
+   if and only if `complexity_lens` is a `data` binding (which it
+   is — Lens instances are top-level data).
+2. (L1.b) runtime-sourced case lands SECOND with the
+   `TransformTarget::IndirectCall { callee: PortId }` extension.
+   Required for `fn invoke(lens: Lens<Int>, ...) -> ... = lens.read(...)`
+   patterns where the Lens value flows through a parameter rather
+   than a static binding. `fold_lens<C>` itself is parametric over
+   `Lens<C>`, so its body's `lens.read(...)` dispatch is L1.b —
+   `lens` is a function parameter, not a static binding.
+
+**`fold_lens<C>` dependency on this split:** L1.a alone does NOT
+unblock `fold_lens<C>`. The body is `fn fold_lens<C>(lens: Lens<C>,
+d: Dag) -> DimensionReport<C>` — `lens` is a parameter, so every
+`lens.read(...)` / `lens.sequential.op(...)` / `lens.branch(...)` /
+`lens.iterate(...)` / `lens.validate(...)` call site is L1.b. The
+`IndirectCall` substrate extension is the actual unblocker.
 
 **Test matrix** (acceptance):
 - `T1.1` — call on field projection: `data v: WrapFn = { f: double }; fn r(x: Int) -> Int = v.f(x)`. Bootstraps; emit-Rust roundtrip computes `double(x)`.
