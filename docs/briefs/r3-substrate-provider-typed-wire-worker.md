@@ -59,8 +59,8 @@ type ProviderConfig<P> {
 }
 
 data anthropic_messages_wire: ProviderOperationWire<Anthropic> = { ... }
-data openai_chat_completions_wire: ProviderOperationWire<OpenAi> = { ... }
-data openai_embeddings_wire: ProviderOperationWire<OpenAi> = { ... }
+data openai_chat_completion_wire: ProviderOperationWire<OpenAi> = { ... }
+data openai_responses_wire: ProviderOperationWire<OpenAi> = { ... }
 
 data anthropic_config: ProviderConfig<Anthropic> = { ... }
 data openai_config: ProviderConfig<OpenAi> = { ... }
@@ -68,7 +68,14 @@ data openai_config: ProviderConfig<OpenAi> = { ... }
 
 The `P` parameter is a phantom-style type-tag that namespaces declarations without forcing nominal unification at the wire-shape level. Aligns with `feedback_naming_is_aliasing` (named types are namespaces) + `feedback_compositional_not_templating` (compositional substrate, not template duplication).
 
-**Multi-operation coverage required.** R3 acceptance scope covers Anthropic Messages + OpenAI Chat Completions at minimum (the two operations currently in `dsl/extdeps/llm/`); Anthropic Tool Use + OpenAI Embeddings + future operations land as additional rows under the same carrier without schema change.
+**Multi-operation coverage required.** R3 acceptance scope covers all THREE currently-declared REST operations across the two providers (verified against `dsl/extdeps/llm/{anthropic,openai}.dag`):
+
+| Provider | Operations declared | Source |
+|---|---|---|
+| Anthropic | `Messages` | `dsl/extdeps/llm/anthropic.dag:168-200` (`service llm.Anthropic { operation Messages { transport rest { ... } } }`) |
+| OpenAI | `ChatCompletion`, `Responses` | `dsl/extdeps/llm/openai.dag:152-220` (`service llm.OpenAI { operation ChatCompletion { ... } operation Responses { ... } }`) |
+
+Each operation lands as its own `ProviderOperationWire<P>` row; future operations (Anthropic Tool Use, OpenAI Embeddings, etc.) land as additional rows under the same carrier without schema change.
 
 **Design call deferred to dispatch time:** whether `ModelSpec` should itself be parametric (`ModelSpec<P>` for per-provider model-id format) or uniform. Substrate Mgr decides at brief-finalization based on what the OpenAI + Anthropic existing types share structurally vs diverge on. The brief assumes uniform `ModelSpec`; if dispatch reveals divergence, escalate back to Director.
 
@@ -79,7 +86,7 @@ Five gates compose the lane closure:
 | Gate | Acceptance |
 |---|---|
 | `provider_operation_wire_carrier_landed` | Both `ProviderOperationWire<P>` and `ProviderConfig<P>` declared in `src/v3/std/provider_typed_wire.dag`; `BOOTSTRAP_FIXTURE_PATH_KEYS` includes the file; structural test confirms carriers are consumable from `.dag` programs |
-| `openai_consumes_provider_operation_wire` | OpenAI module declares `data openai_chat_completions_wire: ProviderOperationWire<OpenAi> = { ... }` + `data openai_config: ProviderConfig<OpenAi> = { ... }`; covers the migration via OpenAI ratchet test (new lockstep or extension of existing) |
+| `openai_consumes_provider_operation_wire` | OpenAI module declares one `ProviderOperationWire<OpenAi>` row per OpenAI REST operation in `dsl/extdeps/llm/openai.dag` (currently `ChatCompletion` + `Responses` — both required) plus `data openai_config: ProviderConfig<OpenAi> = { ... }`; covers the migration via OpenAI ratchet test (new lockstep or extension of existing) |
 | `anthropic_consumes_provider_operation_wire` | Anthropic module declares `data anthropic_messages_wire: ProviderOperationWire<Anthropic> = { ... }` + `data anthropic_config: ProviderConfig<Anthropic> = { ... }`; subsumes/replaces `src/v3/std/anthropic_schema.dag` as canonical authority; satisfies the existing `anthropic_wire_typed_serde_alignment` gate per [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire" |
 | `provider_wire_old_authority_dissolved` | **Old per-provider files (`dsl/extdeps/llm/openai.dag`, `dsl/extdeps/llm/anthropic.dag`, `src/v3/std/anthropic_schema.dag`) are EITHER deleted OR exist as one-way generated projections from the new carriers** — NEVER as parallel hand-maintained authorities. See §"Migration discipline" below. SG-0 census reflects the dissolution. |
 | `provider_wire_no_per_provider_duplication` | No parallel mirror authority for fields that the carriers cover; future provider integrations land as new `data ...: ProviderOperationWire<P>` rows, not new mirror files |
@@ -101,7 +108,7 @@ Codex BLOCKING review on PR #1331 sha `1870104a` flagged the prior framing ("eit
 ## Deliverables
 
 1. **Carrier declarations** in `src/v3/std/provider_typed_wire.dag` (NEW file). Imports from `std.serialization`, `std.types`, `std.errors`. Exports `ProviderOperationWire<P>` + `ProviderConfig<P>` + supporting types (`ModelSpec`, `RestTransport`, etc.).
-2. **OpenAI rows** at `dsl/extdeps/providers/openai/operations.dag` + `dsl/extdeps/providers/openai/config.dag` (NEW files under NEW directory). One `ProviderOperationWire<OpenAi>` row per OpenAI operation currently in `dsl/extdeps/llm/openai.dag` (Chat Completions at minimum; Embeddings if reach demands).
+2. **OpenAI rows** at `dsl/extdeps/providers/openai/operations.dag` + `dsl/extdeps/providers/openai/config.dag` (NEW files under NEW directory). One `ProviderOperationWire<OpenAi>` row per OpenAI REST operation currently declared in `dsl/extdeps/llm/openai.dag` — verified live: `ChatCompletion` (`:163`) + `Responses` (`:200`). Both are required for migration; dropping either loses per-operation wire facts (codex BLOCKING inline review on line 46).
 3. **Anthropic rows** at `dsl/extdeps/providers/anthropic/operations.dag` + `dsl/extdeps/providers/anthropic/config.dag` (NEW). One `ProviderOperationWire<Anthropic>` row for Messages (current scope of `src/v3/std/anthropic_schema.dag`); future rows for Tool Use etc. land under same shape.
 4. **Old-authority dissolution** per §"Migration discipline" — path (a) deletion preferred; path (b) one-way generated projection acceptable IF v2 parser blocker forces it. Decision lands in same PR, not deferred. Files in scope:
    - `dsl/extdeps/llm/openai.dag` (delete or project)
