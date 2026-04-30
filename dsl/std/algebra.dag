@@ -42,7 +42,8 @@
 //   Lattice             | meet ∧ and join ∨ (both idempotent, absorptive)
 //   BoundedLattice      | top (⊤) and bottom (⊥)
 //   BooleanAlgebra      | complement (¬), distributive
-//   FreeMonoid<T>       | concat + empty; Int-indexed length/count + slice/index
+//   FreeMonoid<T>       | concat + empty; total access via List get(...)->T?
+//                       | plus length/count + slice/first/last
 //
 // DENOTATIONAL GROUNDING:
 //
@@ -164,8 +165,8 @@ type Ring<T> {
 // OrderedRing: ring with a total order compatible with addition.
 // Adds: compare(T, T) -> Ordering
 // Derived: less_than, greater_than, min, max, abs
-// Euclidean: quotient(T, T) -> T, remainder(T, T) -> T
-//   satisfying a = quotient(a,b) * b + remainder(a,b)
+// Euclidean quotient/remainder are intentionally absent in v3 until a total
+// Result-shaped surface exists; `/` is the checked division authority.
 //
 // Direct operator fields (sub, div, eq, ne, lt, le, gt, ge) are
 // declared so that v3's §8.9 inhabitance walk can resolve surface
@@ -184,8 +185,6 @@ type OrderedRing<T> {
   div: fn(T, T) -> Result<T, DivError>
   one: T
   compare: fn(T, T) -> Ordering
-  quotient: fn(T, T) -> T
-  remainder: fn(T, T) -> T
   eq: fn(T, T) -> Bool
   ne: fn(T, T) -> Bool
   lt: fn(T, T) -> Bool
@@ -291,8 +290,9 @@ type BooleanAlgebra<T> {
 //
 // Declared surface (receiver-shaped fields — matches the record below):
 //   Monoid: concat(self, other), empty, append(element)
-//   Int-indexed carrier: length(), count(), index(i: Int) -> T, slice(i, j),
-//     first() -> T?, last() -> T?
+//   Indexed carrier: length(), count(), slice(i, j), first() -> T?,
+//     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
+//     in std/primitives.dag, not a partial algebra field.
 //   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
 //   fold: monoid-shaped on T — init: T plus step fn(T, T) -> T -> T
 //   (Those two stay on T because executable authority here cannot yet name
@@ -303,8 +303,7 @@ type FreeMonoid<T> {
   concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
   empty: FreeMonoid<T>
   append: fn(T) -> FreeMonoid<T>
-  // Positional access — falls out of the carrier being Fin(n) → T
-  index: fn(Int) -> T
+  // Positional access — partial direct indexing is intentionally absent.
   slice: fn(Int, Int) -> FreeMonoid<T>
   length: fn() -> Int
   count: fn() -> Int
@@ -476,8 +475,6 @@ fn ordered_ring_templates() -> List<AlgebraFieldTemplate> {
     { name: "mul", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "one", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "compare", param_types: [ReceiverSelf, ReceiverSelf], return_type: NamedTemplate { name: "Ordering" }, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "quotient", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "remainder", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "clamp", param_types: [ReceiverSelf, ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeConstant }, callback_element_position: none }
   ]
 }
