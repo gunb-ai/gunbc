@@ -23,10 +23,7 @@
 use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
-fn arrow_inputs_output(
-    dag: &Dag,
-    name: &str,
-) -> (Vec<DeclarationId>, DeclarationId) {
+fn arrow_inputs_output(dag: &Dag, name: &str) -> (Vec<DeclarationId>, DeclarationId) {
     let decl = dag
         .declaration_by_name(name)
         .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
