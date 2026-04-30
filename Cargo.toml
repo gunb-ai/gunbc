@@ -19,6 +19,8 @@ members = [
     "src/v3/grounding_lifetime",
     # T-Ground-Coercion-Fold — structural emission fold scaffold (stub until LanguageSpec + boundary gates).
     "src/v3/grounding_coercion_fold",
+    # T-Ground-Tests — L4 routing-stability Stratum A (name-keyed parity) vs LanguageSpec rows.
+    "src/v3/grounding_tests",
     # Linux ExecuteCommand unshare bootstrap — fd3 sentinel + FD_CLOEXEC before execvp
     "src/v3/execute_command_bootstrap",
     # v1 compiler — ARCHIVED. No longer in the build or generation path.
