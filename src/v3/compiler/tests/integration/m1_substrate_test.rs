@@ -386,6 +386,32 @@ fn m17_brace_fn_body_accepts_string_keyed_map_literal() {
 }
 
 #[test]
+fn m17_brace_fn_body_accepts_empty_record_literal() {
+    // `{}` is a valid zero-field `SurfaceExpr::Record`; brace-fn record lookahead
+    // must match `looks_like_record_literal` / `parse_data_item` (`{` then `}`).
+    let src = "fn empty_rec() -> Int {}";
+    let tokens = v3_compiler::tokenize_for_test(src, "brace_fn_empty_record.v3").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "brace_fn_empty_record.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| matches!(i, v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } if name == "empty_rec"))
+        .expect("empty_rec fn");
+    let v3_compiler::parse_surface::SurfaceItem::Fn { body, .. } = item else {
+        panic!("expected Fn, got {item:?}");
+    };
+    match body {
+        v3_compiler::parse_surface::SurfaceExpr::Record { fields, .. } => {
+            assert!(
+                fields.is_empty(),
+                "expected empty record literal fields, got {fields:?}"
+            );
+        }
+        other => panic!("expected Record body, got {other:?}"),
+    }
+}
+
+#[test]
 fn m17_dag_corpus_brace_fn_stays_fn_external_body_at_parse_time() {
     // Parser gate (`fn_brace_body_parse_as_expression`): staged `.dag`
     // sources keep the legacy `FnExternalBody` surface even when the
