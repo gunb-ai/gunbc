@@ -190,15 +190,27 @@ one of them requires a substrate extension:
   (not for invoking Arrow values), `Operator` is for built-in
   primitives.
 
-  The substrate extension is **`TransformTarget::IndirectCall { callee: PortId }`**
-  (or similar; name TBD in the implementation slice). The new variant
-  carries the port producing the Arrow value at runtime; emitters
-  render it as the target language's first-class function-call
-  surface (Rust closure call, Python `()` call on a callable, etc.
-  per `SubstrateAccessorBinding` carriers). The substrate extension
-  is bounded by the same fail-closed discipline as existing
-  `TransformTarget` variants — type-checking enforces that `callee`'s
-  port has an Arrow type, with arity matching `inputs`.
+  The substrate extension is a **discriminator-only**
+  `TransformTarget::IndirectCall` variant (no payload). The callee
+  port is carried as **`TransformNode.inputs[0]`** by convention,
+  with `inputs[1..]` carrying the call arguments. This preserves
+  the **Facts Flow Forward / Every Dependency Is A Substrate Fact**
+  invariant: reflected consumers that walk `TransformNode.inputs`
+  to derive dependencies (lenses, schedulers, dataflow analyses)
+  see the callee dependency by construction — no separate field to
+  remember. The variant is a tag only; arity arithmetic is
+  `arity = inputs.len() - 1` for `IndirectCall` (vs `arity =
+  inputs.len()` for `Callable`).
+
+  Type-checking enforces that `inputs[0]`'s port has an Arrow type,
+  and that the Arrow's input arity matches `inputs.len() - 1`.
+
+  Emitters render the variant as the target language's first-class
+  function-call surface (Rust closure call, Python `()` on a
+  callable, etc.) using `inputs[0]` as the callee and `inputs[1..]`
+  as args. Per-target `SubstrateAccessorBinding`-style rendering
+  is not required because the call is structural (no per-accessor
+  carrier), only the call-syntax template per target.
 
   Adding this variant is the load-bearing substrate change in X1's
   implementation slice. **Dissolution / ratchet receipt:** the
@@ -218,7 +230,7 @@ one of them requires a substrate extension:
    if and only if `complexity_lens` is a `data` binding (which it
    is — Lens instances are top-level data).
 2. (L1.b) runtime-sourced case lands SECOND with the
-   `TransformTarget::IndirectCall { callee: PortId }` extension.
+   `TransformTarget::IndirectCall` extension.
    Required for `fn invoke(lens: Lens<Int>, ...) -> ... = lens.read(...)`
    patterns where the Lens value flows through a parameter rather
    than a static binding. `fold_lens<C>` itself is parametric over
