@@ -344,6 +344,48 @@ fn m17_brace_bodied_fn_parses_single_expr_to_user_defined_arrow_body() {
 }
 
 #[test]
+fn m17_brace_fn_body_accepts_type_labeled_record_literal() {
+    // `parse_field_label` accepts `type` (KwType) as a field name; brace-fn
+    // record lookahead must match `parse_record_literal`, not only `{ ident:`.
+    let src = "fn typed_field() -> Int { type: 1 }";
+    let tokens = v3_compiler::tokenize_for_test(src, "brace_fn_type_field.v3").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "brace_fn_type_field.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| matches!(i, v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } if name == "typed_field"))
+        .expect("typed_field fn");
+    let v3_compiler::parse_surface::SurfaceItem::Fn { body, .. } = item else {
+        panic!("expected Fn, got {item:?}");
+    };
+    assert!(
+        matches!(body, v3_compiler::parse_surface::SurfaceExpr::Record { .. }),
+        "expected Record literal body, got {body:?}"
+    );
+}
+
+#[test]
+fn m17_brace_fn_body_accepts_string_keyed_map_literal() {
+    // Same `{ "key": expr }` disambiguation as `parse_data_item` — map literals
+    // must not fall through to `parse_expr` (record parser rejects string keys).
+    let src = "fn map_body(x: Int) -> Int { \"k\": x }";
+    let tokens = v3_compiler::tokenize_for_test(src, "brace_fn_map_body.v3").expect("tokenize");
+    let module = v3_compiler::parse_for_test(&tokens, "brace_fn_map_body.v3").expect("parse");
+    let item = module
+        .items
+        .iter()
+        .find(|i| matches!(i, v3_compiler::parse_surface::SurfaceItem::Fn { name, .. } if name == "map_body"))
+        .expect("map_body fn");
+    let v3_compiler::parse_surface::SurfaceItem::Fn { body, .. } = item else {
+        panic!("expected Fn, got {item:?}");
+    };
+    assert!(
+        matches!(body, v3_compiler::parse_surface::SurfaceExpr::Map { .. }),
+        "expected Map literal body, got {body:?}"
+    );
+}
+
+#[test]
 fn m17_dag_corpus_brace_fn_stays_fn_external_body_at_parse_time() {
     // Parser gate (`fn_brace_body_parse_as_expression`): staged `.dag`
     // sources keep the legacy `FnExternalBody` surface even when the

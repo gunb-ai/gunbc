@@ -583,6 +583,13 @@ impl<'a> Parser<'a> {
         )
     }
 
+    /// Brace-bodied `fn` **record** lookahead: must stay aligned with
+    /// `parse_field_label` / `parse_record_literal` (same entry shapes as
+    /// `parse_data_item`: `{}`, `{ ident: expr`, `{ type: expr`, …).
+    fn fn_brace_body_looks_like_record_literal(&self) -> bool {
+        self.looks_like_record_literal()
+    }
+
     fn parse_fn_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         let fn_kw = self.expect_kind(TokenKind::KwFn)?;
         let name = self.parse_ident()?;
@@ -614,10 +621,12 @@ impl<'a> Parser<'a> {
                 // legacy `FnExternalBody` + brace-skip path — see
                 // `fn_brace_body_parse_as_expression`.
                 //
-                // `.v3` user sources: when `{` begins an unambiguous record
-                // literal (`{}` or `{ label: expr, ... }`), parse
-                // `SurfaceExpr::Record` so `{ x: 1 }` returns remain
-                // expressible.
+                // `.v3` user sources: when `{` begins a record literal (`{}` or
+                // `{ label: expr, ... }`, including `{ type: ... }` via
+                // `parse_field_label` soft keywords) or a string-key **map**
+                // literal (`{ "key": expr, ... }` — same disambiguation order as
+                // `parse_data_item`), parse that surface form. Otherwise probe a
+                // single `SurfaceExpr` through the closing `}`.
                 //
                 // Otherwise try a single complete `SurfaceExpr` through the
                 // closing `}`. If the expression parses but does not exhaust
@@ -638,8 +647,19 @@ impl<'a> Parser<'a> {
                         span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
                     });
                 }
-                if self.looks_like_record_literal() {
+                if self.fn_brace_body_looks_like_record_literal() {
                     let body_expr = self.parse_record_literal()?;
+                    let end = expr_span(&body_expr).byte_end;
+                    Ok(SurfaceItem::Fn {
+                        name,
+                        type_params,
+                        params,
+                        return_type,
+                        body: body_expr,
+                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                    })
+                } else if self.looks_like_map_literal() {
+                    let body_expr = self.parse_map_literal()?;
                     let end = expr_span(&body_expr).byte_end;
                     Ok(SurfaceItem::Fn {
                         name,
