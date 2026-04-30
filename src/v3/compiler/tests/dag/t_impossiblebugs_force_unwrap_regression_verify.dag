@@ -12,7 +12,7 @@ data force_unwrap_absent_resolve_error: TestClaim = {
   name: "force_unwrap_absent_resolve_error",
   source: "type Maybe<T> = Some(T) | None\nfn bad(m: Maybe<Int>) -> Int = force_unwrap(m)\n",
   file_name: "force_unwrap_absent_resolve_error.v3",
-  predicate: FailsWithDiagnostic({ kind: ResolveError, detail_contains: AnyDetail }),
+  predicate: FailsWithDiagnostic({ kind: ResolveError, detail_contains: Contains("force_unwrap") }),
   requires: []
 }
 
