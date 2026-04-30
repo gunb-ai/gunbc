@@ -273,16 +273,16 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 3-token lookahead for the record-literal disambiguation in
-    /// `parse_data_item`. Returns `true` when the next three tokens
-    /// are `{`, then `Ident`, then `:` — the unambiguous start of a
-    /// record literal field. Empty `{}` (LBrace immediately followed
-    /// by RBrace) also classifies as a record literal so zero-field
-    /// carriers like `data x: ProgramInput = {}` lower to
-    /// `ValueBody::Structural { fields: [] }` rather than falling
-    /// into the brace-skip / `Unparsed` path. `{` followed by a
-    /// non-identifier or `{ ident` without a colon still returns
-    /// false and the caller falls back to the brace-skip path.
+    /// 3-token lookahead for record-literal disambiguation (`parse_data_item`,
+    /// brace-bodied `fn` on `.v3`). Returns `true` when:
+    ///
+    /// - **`{}`**: `LBrace` immediately followed by `RBrace` (empty record).
+    /// - **`{ label: expr`**: `LBrace`, then a field label token (`Ident(_)` or any
+    ///   token accepted via `soft_keyword_ident_spelling`, e.g. `KwType` for
+    ///   `type:`), then `:` — same label set as `parse_field_label`.
+    ///
+    /// Otherwise returns `false` so callers can try map-literal lookahead or
+    /// other paths.
     fn looks_like_record_literal(&self) -> bool {
         let t0 = self.tokens.get(self.pos);
         let t1 = self.tokens.get(self.pos + 1);
