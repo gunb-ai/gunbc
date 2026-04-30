@@ -2507,7 +2507,6 @@ impl Dag {
         &mut self,
         kind: RuntimeBootstrapFixtureKind,
     ) {
-        self.mark_bootstrap_secret_nominal_opacity();
         if matches!(
             kind,
             RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot
@@ -2522,21 +2521,6 @@ impl Dag {
             crate::int_literal_ranges::validate_rust_pilot_integer_primitives(self);
         }
         self.stamp_declaration_append_begin_after_bootstrap();
-    }
-
-    fn mark_bootstrap_secret_nominal_opacity(&mut self) {
-        // Bridge until source-level nominal_opacity marking is lowered and
-        // regen_bootstrap carries std Secret through the generated fixtures.
-        // Delete this name-keyed stamp when Secret<T> graduation owns that
-        // fact in .dag authority.
-        let secret = self
-            .declarations
-            .iter()
-            .position(|decl| decl.name.as_deref() == Some("Secret"))
-            .expect("bootstrap fixture must contain std Secret for nominal-opacity seeding");
-        self.declarations[secret].nominal_opacity = Some(NominalOpacity {
-            permitted_accessors: Vec::new(),
-        });
     }
 
     /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
@@ -3980,6 +3964,33 @@ mod tests {
         assert!(
             variants.list_contains.is_some(),
             "CallableStrategy.ListContains"
+        );
+    }
+
+    #[test]
+    fn bridge_mark_bootstrap_secret_nominal_opacity_retired() {
+        fn assert_secret_marked(dag: Dag, label: &str) {
+            let secret = dag
+                .declaration_by_name("Secret")
+                .unwrap_or_else(|| panic!("{label} must include std Secret"));
+            assert!(
+                secret.nominal_opacity.is_some(),
+                "{label} must carry Secret nominal opacity in the generated snapshot"
+            );
+        }
+
+        assert_secret_marked(
+            bootstrap_std_generated::bootstrapped_std_fixture_dag(),
+            "std bootstrap snapshot",
+        );
+        assert_secret_marked(
+            bootstrap_generated::bootstrapped_fixture_dag(),
+            "full bootstrap snapshot",
+        );
+        assert_secret_marked(
+            bootstrap_generated_without_parse_surface::bootstrapped_fixture_without_parse_surface_dag(
+            ),
+            "bootstrap-without-parse-surface snapshot",
         );
     }
 
