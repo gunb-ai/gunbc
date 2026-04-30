@@ -360,10 +360,23 @@ one of them requires a substrate extension:
 
   impl TransformDispatch {
       /// Single-authority dependency walk for Facts Flow Forward.
-      /// For `Indirect`, yields the callee port first, then args.
-      /// For other variants, yields args only (callee identity is
-      /// declaration-resolved at lowering time, not a runtime port
-      /// dependency).
+      /// Yields *every* runtime `PortId` the dispatch depends on,
+      /// across all variants. Reflected consumers (lenses,
+      /// schedulers, dataflow analyses) iterate this without
+      /// knowing which variant they have.
+      ///
+      /// Per-variant enumeration (callee identities resolved by
+      /// `DeclarationId` at lowering time are not runtime ports
+      /// and are *not* yielded; runtime ports always are):
+      ///
+      /// - `Callable(d)`              — `d.args`.
+      /// - `FieldProject(d)`          — `d.carrier`.
+      /// - `FieldCall(d)`             — `d.carrier`, then `d.args`.
+      /// - `Operator(Unary{arg})`     — `arg`.
+      /// - `Operator(Binary{lhs,rhs})` — `lhs`, then `rhs`.
+      /// - `Indirect(d)`              — `d.callee` (the wrapped
+      ///                                `ArrowPortRef`'s port),
+      ///                                then `d.args`.
       pub fn input_ports(&self) -> impl Iterator<Item = &PortId> { ... }
   }
   ```
