@@ -273,16 +273,16 @@ impl<'a> Parser<'a> {
         })
     }
 
-    /// 3-token lookahead for the record-literal disambiguation in
-    /// `parse_data_item`. Returns `true` when the next three tokens
-    /// are `{`, then `Ident`, then `:` — the unambiguous start of a
-    /// record literal field. Empty `{}` (LBrace immediately followed
-    /// by RBrace) also classifies as a record literal so zero-field
-    /// carriers like `data x: ProgramInput = {}` lower to
-    /// `ValueBody::Structural { fields: [] }` rather than falling
-    /// into the brace-skip / `Unparsed` path. `{` followed by a
-    /// non-identifier or `{ ident` without a colon still returns
-    /// false and the caller falls back to the brace-skip path.
+    /// 3-token lookahead for record-literal disambiguation (`parse_data_item`,
+    /// brace-bodied `fn` on `.v3`). Returns `true` when:
+    ///
+    /// - **`{}`**: `LBrace` immediately followed by `RBrace` (empty record).
+    /// - **`{ label: expr`**: `LBrace`, then a field label token (`Ident(_)` or any
+    ///   token accepted via `soft_keyword_ident_spelling`, e.g. `KwType` for
+    ///   `type:`), then `:` — same label set as `parse_field_label`.
+    ///
+    /// Otherwise returns `false` so callers can try map-literal lookahead or
+    /// other paths.
     fn looks_like_record_literal(&self) -> bool {
         let t0 = self.tokens.get(self.pos);
         let t1 = self.tokens.get(self.pos + 1);
@@ -560,6 +560,36 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// User `.v3` modules parse brace-bodied `fn` bodies as real
+    /// `SurfaceExpr` trees (single expression, record literal, or
+    /// `parse_expr` + `FnExternalBody` fallback for multi-statement
+    /// blocks). Authority `.dag` sources (`dsl/std`, `src/v3/std`,
+    /// compiler/spec fixtures, etc.) keep the legacy brace-skip →
+    /// `FnExternalBody` path so bootstrap snapshots and staged std
+    /// `ArrowBody::Unparsed` contracts stay byte-stable until a
+    /// dedicated bootstrap regen lane opts the corpus in.
+    fn fn_brace_body_parse_as_expression(&self) -> bool {
+        self.file.ends_with(".v3")
+    }
+
+    /// After `{`, `parse_expr` fails immediately on `KwLet` (statements are not
+    /// expressions). Only that shape uses `FnExternalBody` + brace-skip on
+    /// `parse_expr` `Err` — other failures are malformed single-expression probes
+    /// and must surface the parser diagnostic (fail-closed at parse time).
+    fn fn_brace_body_expr_err_falls_back_to_external(&self, first_inner_token_pos: usize) -> bool {
+        matches!(
+            self.tokens.get(first_inner_token_pos).map(|t| &t.kind),
+            Some(TokenKind::KwLet)
+        )
+    }
+
+    /// Brace-bodied `fn` **record** lookahead: must stay aligned with
+    /// `parse_field_label` / `parse_record_literal` (same entry shapes as
+    /// `parse_data_item`: `{}`, `{ ident: expr`, `{ type: expr`, …).
+    fn fn_brace_body_looks_like_record_literal(&self) -> bool {
+        self.looks_like_record_literal()
+    }
+
     fn parse_fn_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         let fn_kw = self.expect_kind(TokenKind::KwFn)?;
         let name = self.parse_ident()?;
@@ -585,24 +615,115 @@ impl<'a> Parser<'a> {
                 })
             }
             TokenKind::LBrace => {
-                // Block-body scaffold form: `fn f(x) -> T { body }`.
-                // The body is brace-skipped and preserved as a span;
-                // the declaration it lowers to carries
-                // `ArrowBody::Unparsed(body_span)` so its signature
-                // flows forward and callers can type-check against
-                // it, but the body stays scaffolded until the M2+
-                // surface grammar covers match/pipe/lambda/etc.
-                let open = self.peek().span.clone();
-                let end = self.skip_brace_balanced()?;
-                let body_span = SourceSpan::new(self.file, open.byte_start, end);
-                Ok(SurfaceItem::FnExternalBody {
-                    name,
-                    type_params,
-                    params,
-                    return_type,
-                    body_span,
-                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
-                })
+                // Brace-bodied `fn f(x) -> T { body }`.
+                //
+                // Non-`.v3` sources (staged `.dag` corpus): preserve the
+                // legacy `FnExternalBody` + brace-skip path — see
+                // `fn_brace_body_parse_as_expression`.
+                //
+                // `.v3` user sources: when `{` begins a record literal (`{}` or
+                // `{ label: expr, ... }`, including `{ type: ... }` via
+                // `parse_field_label` soft keywords) or a string-key **map**
+                // literal (`{ "key": expr, ... }` — same disambiguation order as
+                // `parse_data_item`), parse that surface form. Otherwise probe a
+                // single `SurfaceExpr` through the closing `}`.
+                //
+                // Otherwise try a single complete `SurfaceExpr` through the
+                // closing `}`. If the expression parses but does not exhaust
+                // the brace (e.g. multi-`let` sequences), rewind and fall back to
+                // `FnExternalBody` + brace-skip. If `parse_expr` errors and the
+                // first inner token is `let`, use the same fallback (statement
+                // scaffold); otherwise propagate the parse diagnostic.
+                if !self.fn_brace_body_parse_as_expression() {
+                    let open = self.peek().span.clone();
+                    let end = self.skip_brace_balanced()?;
+                    let body_span = SourceSpan::new(self.file, open.byte_start, end);
+                    return Ok(SurfaceItem::FnExternalBody {
+                        name,
+                        type_params,
+                        params,
+                        return_type,
+                        body_span,
+                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                    });
+                }
+                if self.fn_brace_body_looks_like_record_literal() {
+                    let body_expr = self.parse_record_literal()?;
+                    let end = expr_span(&body_expr).byte_end;
+                    Ok(SurfaceItem::Fn {
+                        name,
+                        type_params,
+                        params,
+                        return_type,
+                        body: body_expr,
+                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                    })
+                } else if self.looks_like_map_literal() {
+                    let body_expr = self.parse_map_literal()?;
+                    let end = expr_span(&body_expr).byte_end;
+                    Ok(SurfaceItem::Fn {
+                        name,
+                        type_params,
+                        params,
+                        return_type,
+                        body: body_expr,
+                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                    })
+                } else {
+                    let checkpoint = self.pos;
+                    self.expect_kind(TokenKind::LBrace)?;
+                    let first_inner_token_pos = self.pos;
+                    match self.parse_expr() {
+                        Ok(body_expr) => {
+                            if matches!(self.peek().kind, TokenKind::RBrace) {
+                                let close = self.expect_kind(TokenKind::RBrace)?;
+                                let end = close.span.byte_end;
+                                Ok(SurfaceItem::Fn {
+                                    name,
+                                    type_params,
+                                    params,
+                                    return_type,
+                                    body: body_expr,
+                                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                                })
+                            } else {
+                                self.pos = checkpoint;
+                                let open = self.peek().span.clone();
+                                let end = self.skip_brace_balanced()?;
+                                let body_span = SourceSpan::new(self.file, open.byte_start, end);
+                                Ok(SurfaceItem::FnExternalBody {
+                                    name,
+                                    type_params,
+                                    params,
+                                    return_type,
+                                    body_span,
+                                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                                })
+                            }
+                        }
+                        Err(diag) => {
+                            if self.fn_brace_body_expr_err_falls_back_to_external(
+                                first_inner_token_pos,
+                            ) {
+                                self.pos = checkpoint;
+                                let open = self.peek().span.clone();
+                                let end = self.skip_brace_balanced()?;
+                                let body_span = SourceSpan::new(self.file, open.byte_start, end);
+                                Ok(SurfaceItem::FnExternalBody {
+                                    name,
+                                    type_params,
+                                    params,
+                                    return_type,
+                                    body_span,
+                                    span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                                })
+                            } else {
+                                self.pos = checkpoint;
+                                Err(diag)
+                            }
+                        }
+                    }
+                }
             }
             other => Err(Diagnostic::ParseError {
                 message: format!("expected `=` or `{{` after fn return type, got {other:?}"),

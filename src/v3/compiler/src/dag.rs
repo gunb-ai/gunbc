@@ -698,7 +698,11 @@ impl AtomPayload {
 /// - **`Unparsed`** — surface-grammar lag (**case 1**) and **case 2c** the
 ///   `pipeline.dag` **`compile`** orchestrator (ordering authority). Used at
 ///   M1(2.7) for block-bodied `fn foo(x) -> T { body }` declarations in std/
-///   files where the body contains match/pipe/lambda/ etc. **`pipeline.dag`
+///   files where the body contains match/pipe/lambda/ etc. **Parser note
+///   (Prereq-2 / #1248):** authority `.dag` sources still surface these as
+///   `SurfaceItem::FnExternalBody` (brace-skip) so bootstrap snapshots stay
+///   stable; user `.v3` modules may surface `SurfaceItem::Fn` for single-
+///   expression brace bodies instead. **`pipeline.dag`
 ///   per-stage fns (case 2a)** parse as `FnExternalBody` → `Unparsed`, then
 ///   bootstrap rewrites those Arrow bodies to `ExternalRealization` before
 ///   inference — so `Unparsed` does not persist for those stages in a
