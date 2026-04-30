@@ -33,7 +33,9 @@ Per-target equivalence harness for the **L4** (emit/eval match) + **L7** (algebr
 |---|---|---|
 | `verification_l4_l7_direct_per_target_equivalence_landed` | `src/v3/compiler/tests/fixtures/r3_verification_l4_l7_direct.dag` | `r3_verification_l4_l7_direct_suite` |
 
-**Dissolution trigger:** when L5 corpus (Lane 2) absorbs all per-target receipts as a single cross-target row, the per-target L4 stubs downgrade — but the **claim name** stays stable until a Director-amended acceptance table moves it.
+**Stability invariant** (per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) §"Deferred fixture path"): the **claim name** stays stable; only update fixture-module path with manager-brief + integration-test co-update in one PR.
+
+**No L5-absorbs-L4 dissolution.** L4 (per THESIS L179: emitted code executes and matches `.dag` evaluation) and L5 (per THESIS L180: same `.dag` produces same behavior across Rust/Python/Go) are categorically different equivalences — L5 passing does not entail any target matching `.dag` eval, so L5 cannot subsume L4. This lane is corpus-driven runtime by design (per codex BLOCKING `f5f63c7d9` — NOT a `Lens<C>` instance) and has no current structural dissolution trigger; it stays as runtime-verification work absorbing per-target evidence as Shape A targets ground.
 
 ## Explicitly out of scope
 
