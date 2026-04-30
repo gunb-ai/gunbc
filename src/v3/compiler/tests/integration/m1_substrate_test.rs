@@ -2458,12 +2458,11 @@ fn wrap(point: Point) -> Wrapped = Wrap { inner: point }
 #[test]
 fn prereq2_brace_fn_match_returns_bare_variant_constructors() {
     let src = "\
-type Cell { n: Int }
-type Slot = Cell | Vacant
+type Slot = On | Off
 fn toggle(s: Slot) -> Slot {
   match s {
-    Cell(payload) => Vacant
-    Vacant => Cell { n: 1 }
+    On => Off
+    Off => On
   }
 }
 ";
