@@ -6,9 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use v3_compiler::dag::{
-    Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
-};
+use v3_compiler::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 
 use crate::diagnostic::GroundingTestsDiagnostic;
 
@@ -24,11 +22,8 @@ const GO_SOURCE: &str = include_str!("../std/go_method_template_contracts.dag");
 const GO_PATH: &str = "src/v3/std/go_method_template_contracts.dag";
 
 /// Director-locked Phase 1 row counts (`t-ground-tests.md`; Go is 14 rows on main — `chars` deferred per file header).
-pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] = &[
-    (RUST_LIST, 9),
-    (PYTHON_LIST, 18),
-    (GO_LIST, 14),
-];
+pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
+    &[(RUST_LIST, 9), (PYTHON_LIST, 18), (GO_LIST, 14)];
 
 fn list_rows<'a>(dag: &'a Dag, list_name: &str) -> &'a [FieldValue] {
     let decl = dag
@@ -171,11 +166,13 @@ fn row_fingerprint(
     let (_, dag_method) = fields
         .iter()
         .find(|(label, _)| label == "dag_method")
-        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: "missing `dag_method`".to_string(),
-        })?;
+        .ok_or_else(
+            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: "missing `dag_method`".to_string(),
+            },
+        )?;
     let FieldValue::Record(method_ref_fields) = dag_method else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
@@ -186,11 +183,13 @@ fn row_fingerprint(
     let (_, decl_field) = method_ref_fields
         .iter()
         .find(|(label, _)| label == "decl")
-        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: "MethodRef missing `decl`".to_string(),
-        })?;
+        .ok_or_else(
+            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: "MethodRef missing `decl`".to_string(),
+            },
+        )?;
     let FieldValue::Reference(method_decl_id) = decl_field else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
@@ -209,11 +208,13 @@ fn row_fingerprint(
     let (_, runtime_field) = fields
         .iter()
         .find(|(label, _)| label == "runtime_template")
-        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: "missing `runtime_template`".to_string(),
-        })?;
+        .ok_or_else(
+            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: "missing `runtime_template`".to_string(),
+            },
+        )?;
     let runtime_template = match runtime_field {
         FieldValue::Literal(LiteralBits::String(s)) => s.clone(),
         other => {
@@ -228,11 +229,13 @@ fn row_fingerprint(
     let (_, emit_field) = fields
         .iter()
         .find(|(label, _)| label == "emit_template")
-        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: "missing `emit_template`".to_string(),
-        })?;
+        .ok_or_else(
+            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: "missing `emit_template`".to_string(),
+            },
+        )?;
     let emit_canonical = emit_template_canonical(dag, emit_field).map_err(|e| {
         GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
@@ -244,11 +247,13 @@ fn row_fingerprint(
     let (_, wraps_field) = fields
         .iter()
         .find(|(label, _)| label == "wraps_result")
-        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: "missing `wraps_result`".to_string(),
-        })?;
+        .ok_or_else(
+            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: "missing `wraps_result`".to_string(),
+            },
+        )?;
     let wraps_result = match wraps_field {
         FieldValue::Literal(LiteralBits::Bool(b)) => *b,
         other => {
@@ -263,13 +268,16 @@ fn row_fingerprint(
     let (_, ph_field) = fields
         .iter()
         .find(|(label, _)| label == "placeholder_convention")
-        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: "missing `placeholder_convention`".to_string(),
-        })?;
+        .ok_or_else(
+            || GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: "missing `placeholder_convention`".to_string(),
+            },
+        )?;
     let FieldValue::Variant {
-        constructor: ph_ctor, ..
+        constructor: ph_ctor,
+        ..
     } = ph_field
     else {
         return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
@@ -316,12 +324,18 @@ fn list_digest_from_fingerprints(map: &BTreeMap<String, RowFingerprint>) -> Stri
 }
 
 /// Sorted multiset digest — invariant under row iteration order (Stratum A determinism).
-pub fn stratum_a_list_digest(dag: &Dag, list_name: &str) -> Result<String, GroundingTestsDiagnostic> {
+pub fn stratum_a_list_digest(
+    dag: &Dag,
+    list_name: &str,
+) -> Result<String, GroundingTestsDiagnostic> {
     let fps = fingerprints_for_list(dag, list_name)?;
     Ok(list_digest_from_fingerprints(&fps))
 }
 
-fn assert_expected_row_count(list_name: &str, actual: usize) -> Result<(), GroundingTestsDiagnostic> {
+fn assert_expected_row_count(
+    list_name: &str,
+    actual: usize,
+) -> Result<(), GroundingTestsDiagnostic> {
     let expected = EXPECTED_STRATUM_A_ROW_COUNTS
         .iter()
         .find(|(n, _)| *n == list_name)
@@ -347,7 +361,8 @@ fn compare_fingerprint_maps(
             return Err(GroundingTestsDiagnostic::StratumALockstepMismatch {
                 list_name: list_name.to_string(),
                 method_name: k.clone(),
-                detail: "present in full-bootstrap Dag but missing in standalone compile".to_string(),
+                detail: "present in full-bootstrap Dag but missing in standalone compile"
+                    .to_string(),
             });
         };
         if b != s {
@@ -363,7 +378,8 @@ fn compare_fingerprint_maps(
             return Err(GroundingTestsDiagnostic::StratumALockstepMismatch {
                 list_name: list_name.to_string(),
                 method_name: k.clone(),
-                detail: "present in standalone compile but missing in full-bootstrap Dag".to_string(),
+                detail: "present in standalone compile but missing in full-bootstrap Dag"
+                    .to_string(),
             });
         }
     }
@@ -397,4 +413,3 @@ pub fn verify_stratum_a_lockstep_all_targets() -> Result<(), GroundingTestsDiagn
     }
     Ok(())
 }
-
