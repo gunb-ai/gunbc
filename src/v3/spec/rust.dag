@@ -1455,6 +1455,21 @@ data workflow_root_port_binding_rust: SubstrateAccessorBinding = {
   language: rust_language
 }
 
+// `WorkflowRoot` substrate sum mirror — emitted Rust matches over
+// `SingleRoot(PortId) | NoRoot | AmbiguousRoot { candidates }` need
+// the substrate-to-Rust carrier mapping so generated code preserves
+// the sum identity rather than rendering through a free name. The
+// Rust enum lives at `src/v3/compiler/src/dag.rs:1936-1941` and is
+// directly addressable as `WorkflowRoot` in the v3-compiler crate.
+data rust_workflow_root: TypeRealization = {
+  language: rust_language
+  target: WorkflowRoot
+  carrier: "WorkflowRoot"
+  is_copy: false
+  fields: []
+  cost: 1
+}
+
 // `declaration_by_id(d: Dag, id: DeclarationId) -> Declaration?` —
 // id-keyed parity with `port` / `node`. Host realization is
 // `Dag::declaration_opt(&DeclarationId)`; `.cloned()` mirrors the
