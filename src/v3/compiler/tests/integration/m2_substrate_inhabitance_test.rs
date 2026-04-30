@@ -70,12 +70,80 @@ fn sum_variants(dag: &Dag, name: &str) -> Vec<(String, Vec<String>)> {
     }
 }
 
+fn conj_field_by_id(
+    dag: &Dag,
+    id: v3_compiler::dag::DeclarationId,
+    field_name: &str,
+) -> v3_compiler::dag::DeclarationId {
+    let decl = dag.declaration(id);
+    match &decl.connective {
+        TypeConnective::Conj { children } => {
+            children
+                .iter()
+                .find(|field| field.label == field_name)
+                .unwrap_or_else(|| panic!("declaration {id:?} missing `{field_name}` field"))
+                .ty
+        }
+        other => panic!("declaration {id:?} is not a Conj: {other:?}"),
+    }
+}
+
+fn positional_payload(
+    dag: &Dag,
+    id: v3_compiler::dag::DeclarationId,
+) -> v3_compiler::dag::DeclarationId {
+    conj_field_by_id(dag, id, "_0")
+}
+
 fn workspace_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
         .expect("expected src/v3/compiler -> workspace root")
         .to_path_buf()
+}
+
+fn runtime_value_variant_payload(dag: &Dag, variant: &str) -> v3_compiler::dag::DeclarationId {
+    let value = dag
+        .declaration_by_name("Value")
+        .expect("runtime Value missing from full bootstrap");
+    match &value.connective {
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|field| field.label == variant)
+                .unwrap_or_else(|| panic!("Value missing `{variant}` variant"))
+                .ty
+        }
+        other => panic!("runtime Value is not a Disj: {other:?}"),
+    }
+}
+
+fn assert_runtime_value_instantiation(
+    dag: &Dag,
+    actual: v3_compiler::dag::DeclarationId,
+    template: &str,
+    argument: &str,
+) {
+    let expected_template = find_named(dag, template);
+    let expected_argument = find_named(dag, argument);
+    match &dag.declaration(actual).connective {
+        TypeConnective::Instantiation {
+            template: actual_template,
+            arguments,
+        } => {
+            assert_eq!(
+                *actual_template, expected_template,
+                "expected instantiation template `{template}`"
+            );
+            assert_eq!(arguments.len(), 1, "expected one template argument");
+            assert_eq!(
+                arguments[0].value, expected_argument,
+                "expected template argument `{argument}`"
+            );
+        }
+        other => panic!("expected Instantiation, got {other:?}"),
+    }
 }
 
 fn arrow_body(dag: &Dag, name: &str) -> ArrowBody {
@@ -2036,5 +2104,90 @@ fn runtime_mirror_snapshots_are_fresh() {
     assert!(
         status.success(),
         "parse-surface / serialize snapshots are stale; run scripts/regen_runtime_mirrors.py"
+    );
+}
+
+#[test]
+fn runtime_value_has_locked_pb_runtime_coproduct_shape() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let value = dag
+        .declaration_by_name("Value")
+        .expect("runtime Value missing from full bootstrap");
+    assert_eq!(
+        value.span.file, "src/v3/std/runtime.dag",
+        "bare Value must be the runtime carrier, not an L1 behavior marker"
+    );
+
+    let variants = match &value.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("runtime Value is not a Disj: {other:?}"),
+    };
+    let labels: Vec<&str> = variants.iter().map(|field| field.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        [
+            "LiteralValue",
+            "RecordValue",
+            "VariantValue",
+            "NodeRef",
+            "CardinalityValue"
+        ],
+        "runtime Value coproduct drifted from PB-Runtime section 3.2"
+    );
+
+    assert_eq!(
+        positional_payload(&dag, runtime_value_variant_payload(&dag, "LiteralValue")),
+        find_named(&dag, "LiteralBits")
+    );
+    assert_runtime_value_instantiation(
+        &dag,
+        positional_payload(&dag, runtime_value_variant_payload(&dag, "RecordValue")),
+        "List",
+        "NamedField",
+    );
+    assert_eq!(
+        positional_payload(&dag, runtime_value_variant_payload(&dag, "NodeRef")),
+        find_named(&dag, "NodeId")
+    );
+    assert_eq!(
+        positional_payload(&dag, runtime_value_variant_payload(&dag, "CardinalityValue")),
+        find_named(&dag, "LoopBound")
+    );
+
+    let variant_value = runtime_value_variant_payload(&dag, "VariantValue");
+    assert_eq!(
+        conj_field_by_id(&dag, variant_value, "tag"),
+        find_named(&dag, "DeclarationId")
+    );
+    assert_eq!(conj_field_by_id(&dag, variant_value, "payload"), value.id);
+}
+
+#[test]
+fn runtime_named_field_uses_runtime_value_payload() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    assert_eq!(
+        conj_field_by_id(&dag, find_named(&dag, "NamedField"), "label"),
+        find_named(&dag, "String")
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, find_named(&dag, "NamedField"), "value"),
+        find_named(&dag, "Value")
+    );
+}
+
+#[test]
+fn value_behavior_marker_remains_distinct_from_runtime_value() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let runtime_value = find_named(&dag, "Value");
+    let value_behavior = find_named(&dag, "ValueBehavior");
+    assert_ne!(
+        runtime_value, value_behavior,
+        "runtime Value must not alias the L1 ValueBehavior marker"
+    );
+    assert_eq!(
+        dag.value_marker(),
+        Some(value_behavior),
+        "Dag::value_marker() must keep returning the L1 behavior marker"
     );
 }
