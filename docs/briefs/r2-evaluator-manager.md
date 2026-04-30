@@ -140,6 +140,7 @@ Each sub-lane closes under a structural acceptance gate authored as a `.dag` `Te
 - [`r2-pr-a1-runtime-value-dependency-audit.md`](r2-pr-a1-runtime-value-dependency-audit.md) — PR-A.1 blocker audit, resolved by #1231's `ValueBehavior` marker rename.
 - [`r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md) — PR-A.3 strategy / memoization decision audit introduced by this slice; PR-A.2 `EvalFrame` / `EvalStateStack` carriers **landed** in `src/v3/std/runtime.dag` ([PR #1255](https://github.com/gunb-ai/gunbc/pull/1255)); substrate strategy/memo **implementation** remains gated on [`r2-pr-a3-implementation-blocker-audit.md`](r2-pr-a3-implementation-blocker-audit.md) parser preconditions in addition to that audit's discipline.
 - [`r2-pr-a3-implementation-blocker-audit.md`](r2-pr-a3-implementation-blocker-audit.md) — PR-A.3 implementation blocker audit for the current single-variant sum parser gap; forbids fake strategy/input-order variants.
+- [`r2-pr-a3-follow-on-test-surface.md`](r2-pr-a3-follow-on-test-surface.md) — Worker A follow-on test plan for PR-A.3 carriers after Substrate lands the runtime declarations; no carrier-authoring scope.
 
 **Pending (post-spawn manager authors autonomously):**
 - ~~PR-A worker brief — Runtime value model design lock~~ — **slice authored** at [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md); implementation worker remains pending.

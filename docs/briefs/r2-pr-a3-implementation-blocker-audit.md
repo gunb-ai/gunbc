@@ -1,7 +1,9 @@
 # R2 PR-A.3 Implementation Blocker Audit
 
-**Status:** BLOCKED - implementation audit for PR-A.3 eager strategy /
-memoization carriers. This is not a carrier declaration PR.
+**Status:** PARSER PREREQUISITE RESOLVED - PR #1286 landed parser support for
+the one-variant sum syntax. The blocker audit remains as the historical
+receipt; Substrate now owns the PR-A.3 carrier declarations. This is not a
+carrier declaration PR.
 
 **Parent authority:** [`r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md),
 [`r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md), and
