@@ -120,8 +120,10 @@ fn entry_for(
 // `loop_cost` composes iteration: bound × body.
 //
 // - Bound: `LinearCost(size_var_of(l.source))` — the runtime value
-//   the Loop descends upon (same carrier for `Cardinality { count }`
-//   and `Descent { cluster }` via `LoopNode.source`).
+//   the Loop descends upon. This is the legacy per-Loop computation
+//   path, not the Lens<SymbolicCost> instance boundary: `Lens<C>.iterate`
+//   receives only `(body_cost, LoopBound)`, so it cannot read
+//   `LoopNode.source` directly.
 // - Body: the already-lowered cost of `l.body`'s result port. The
 //   forward-fold contract guarantees the body's `entry_for` ran
 //   earlier in the walk (producers precede consumers in
@@ -299,3 +301,42 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 //
 // See `docs/design-symbolic-cost-algebra.md` §"Dimension<SymbolicCost>
 // wiring" for the target shape.
+
+// ── Lens<SymbolicCost> instance migration — BLOCKED on Descent projection ─
+//
+// Target surface (once honest):
+//
+//   data cost_lens: Lens<SymbolicCost> = {
+//     name: "symbolic_cost",
+//     read: symbolic_cost_read,
+//     sequential: symbolic_cost_monoid,
+//     branch: symbolic_cost_branch,
+//     iterate: symbolic_cost_iterate,
+//     validate: symbolic_cost_validate
+//   }
+//
+// Do NOT author the data instance until `LoopBound::Descent` has a
+// shared substrate projection to symbolic cost. The carrier shape is
+// intentionally `iterate: fn(C, LoopBound) -> C` (see
+// `src/v3/std/lens.dag`), and manager disposition on 2026-04-30 keeps
+// that boundary stable: do not widen it to `LoopNode` just to preserve
+// this file's legacy `loop_cost(l.source)` workaround.
+//
+// Honest mapping known today:
+//   - `Cardinality { count }` -> `LinearCost({ source_port: count })`
+//
+// Missing authority:
+//   - `Descent { cluster }` needs a cluster-measure-to-SymbolicCost
+//     projection before `symbolic_cost_iterate(body, bound)` can be
+//     total and fail-closed. The mutual-recursion design says Descent
+//     reads the cluster's shared measure, but the reflected substrate
+//     currently exposes only `ClusterId -> Cluster { members,
+//     intra_cluster_calls }`; it does not expose a `PortId`,
+//     `SizeVariable`, or `SymbolicCost` for that measure.
+//
+// Do not choose `UnknownCost("mutual recursion descent cluster")` here
+// as a local migration convenience. `UnknownCost` is an algebra top, not
+// a failure channel; if it becomes the Descent projection, that must be
+// named as the authoritative substrate decision. Until then, preserve
+// `compute_symbolic_costs` / `symbolic_cost_of` as the primary API and
+// keep the Lens<SymbolicCost> data instance parked.
