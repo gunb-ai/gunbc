@@ -1166,21 +1166,33 @@ fn classify(h: Hue) -> Int = match h { Red => 0, Green => 1 }
 
 #[test]
 fn m18_r14_user_block_bodied_fn_is_rejected() {
-    // M1(2.8) R14: user-range ArrowBody::Unparsed scaffolds must
-    // fail-closed. The FnExternalBody surface form exists so
-    // std/bootstrap files with match/record/pipe/lambda bodies
-    // can parse cleanly (their bodies become scaffolds), but
-    // ordinary user code has no business shipping an opaque
-    // body that the compiler never validates.
+    // M1(2.8) R14: user-range `ArrowBody::Unparsed` scaffolds must fail-closed
+    // (`compile_to_dag` → `Err(Semantic)`) with the scaffold-rejection diagnostic.
     //
-    // Before R14, `fn foo(x: Int) -> Int { junk }` compiled
-    // cleanly because nothing rejected the user-range
-    // ArrowBody::Unparsed. After R14, the lower-side sweep
-    // rejects every user-range Unparsed scaffold.
-    let result = compile_to_dag("fn foo(x: Int) -> Int { junk }", "user.v3");
+    // `{ junk }` is no longer a reliable `FnExternalBody` boundary fixture: on
+    // user `.v3`, a lone identifier parses as a real `SurfaceExpr` and lowers
+    // through `UserDefined`, so the R14 unparsed-body sweep never runs. Use a
+    // multi-statement brace body instead — it hits `FnExternalBody` →
+    // `ArrowBody::Unparsed` like `m17_multi_statement_brace_fn_in_v3_falls_back_to_unparsed_arrow`.
+    let src = "fn foo(x: Int) -> Int {\n  let y = x + 1\n  y\n}";
+    let result = compile_to_dag(src, "user_r14_opaque_fn.v3");
     assert!(
         result.is_err(),
         "user-range fn with opaque body must fail compile_to_dag"
+    );
+    let dag = match result {
+        Err(v3_compiler::CompileError::Semantic(dag)) => dag,
+        other => panic!("expected CompileError::Semantic, got {other:?}"),
+    };
+    assert!(
+        dag.diagnostics().iter().any(|(_, diag)| {
+            matches!(
+                diag,
+                Diagnostic::ResolveError { ref name, .. } if name.contains("opaque block body")
+            )
+        }),
+        "expected R14 opaque-fn-body scaffold rejection diagnostic, got {:?}",
+        dag.diagnostics()
     );
 }
 
