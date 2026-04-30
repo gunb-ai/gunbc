@@ -2525,16 +2525,20 @@ fn toggle(s: Slot) -> Slot {
 }
 
 /// Prereq-2 lens consumer shape: brace-bodied `fn` returning `Witness<Int>`
-/// via `match` + bare `Inhabits(...)` constructors (no `Witness` special
-/// case in lower/infer).
+/// via `match` on a user sum + bare `Inhabits(...)` constructors (no
+/// `Witness` special case in lower/infer). `Bool` scrutinee + `Witness`
+/// return is rejected today by return-type discharge on the `Branch`
+/// join; this fixture uses the same `Slot = On | Off` sum as the sibling
+/// bare-variant test so the proof tracks the class-5 constructor path.
 #[test]
 fn prereq2_brace_fn_witness_int_match_returns_inhabits() {
     let src = "\
 import v3.std.dimensions { Witness }
-fn witness_pick(b: Bool) -> Witness<Int> {
-  match b {
-    True => Inhabits(0)
-    False => Inhabits(1)
+type Slot = On | Off
+fn witness_pick(s: Slot) -> Witness<Int> {
+  match s {
+    On => Inhabits(0)
+    Off => Inhabits(1)
   }
 }
 ";
