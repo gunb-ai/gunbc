@@ -37,7 +37,8 @@ module v3.std.go_method_template_contracts
 import v3.std.emit_model {
   MethodTemplateContract,
   PlaceholderConvention,
-  NamedArg
+  NamedArg,
+  SingleTemplate
 }
 import v3.std.methods { MethodRef }
 import std.methods {
@@ -62,98 +63,98 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
   {
     dag_method: { decl: count_method },
     runtime_template: "len({recv})",
-    emit_template: "len({recv})",
+    emit_template: SingleTemplate { template: "len({recv})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: join_method },
     runtime_template: "strings.Join({recv}, {arg})",
-    emit_template: "strings.Join({recv}, {arg})",
+    emit_template: SingleTemplate { template: "strings.Join({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: split_method },
     runtime_template: "strings.Split({recv}, {arg})",
-    emit_template: "strings.Split({recv}, {arg})",
+    emit_template: SingleTemplate { template: "strings.Split({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: concat_method },
     runtime_template: "append({recv}, {arg}...)",
-    emit_template: "append({recv}, {arg}...)",
+    emit_template: SingleTemplate { template: "append({recv}, {arg}...)" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: map_method },
     runtime_template: "v2rt.Map({recv}, {arg})",
-    emit_template: "v2rt.Map({recv}, {arg})",
+    emit_template: SingleTemplate { template: "v2rt.Map({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: filter_method },
     runtime_template: "v2rt.Filter({recv}, {arg})",
-    emit_template: "v2rt.Filter({recv}, {arg})",
+    emit_template: SingleTemplate { template: "v2rt.Filter({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: any_method },
     runtime_template: "v2rt.Any({recv}, {arg})",
-    emit_template: "v2rt.Any({recv}, {arg})",
+    emit_template: SingleTemplate { template: "v2rt.Any({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: all_method },
     runtime_template: "v2rt.All({recv}, {arg})",
-    emit_template: "v2rt.All({recv}, {arg})",
+    emit_template: SingleTemplate { template: "v2rt.All({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: flat_map_method },
     runtime_template: "v2rt.FlatMap({recv}, {arg})",
-    emit_template: "v2rt.FlatMap({recv}, {arg})",
+    emit_template: SingleTemplate { template: "v2rt.FlatMap({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: skip_method },
     runtime_template: "{recv}[{arg}:]",
-    emit_template: "{recv}[{arg}:]",
+    emit_template: SingleTemplate { template: "{recv}[{arg}:]" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: take_method },
     runtime_template: "{recv}[:{arg}]",
-    emit_template: "{recv}[:{arg}]",
+    emit_template: SingleTemplate { template: "{recv}[:{arg}]" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: fold_method },
     runtime_template: "v2rt.Fold({recv}, {arg})",
-    emit_template: "v2rt.Fold({recv}, {arg})",
+    emit_template: SingleTemplate { template: "v2rt.Fold({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: sort_by_method },
     runtime_template: "v2rt.SortBy({recv}, {arg})",
-    emit_template: "v2rt.SortBy({recv}, {arg})",
+    emit_template: SingleTemplate { template: "v2rt.SortBy({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
   {
     dag_method: { decl: append_method },
     runtime_template: "append({recv}, {arg})",
-    emit_template: "append({recv}, {arg})",
+    emit_template: SingleTemplate { template: "append({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   }
