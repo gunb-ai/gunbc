@@ -36,9 +36,11 @@ named R3 residual:
   body-evaluator over `Value` / `EvalFrame` / `EvalStateStack`, behind a
   fail-closed boundary that errors on every non-eager / non-bounded case.
 - **R3 residual:** lazy / normal-order evaluation, TC2 evaluation-order
-  independence proof, witness construction surface (PR-B's other half), and
+  independence proof, witness construction surface (PR-B's other half),
   cross-target equivalence harness execution against the body evaluator
-  (PR-D's executable form).
+  (PR-D's executable form), and **`LoopBound::Descent` execution** —
+  fail-closed in PR-B.1, gated on a separate descent-execution slice that
+  lowers `std.termination` `DescentEvidence` to bounded iteration.
 
 This brief covers PR-B.0 only. PR-B.1 cannot be authored as a worker brief
 until PR-A.3 implementation lands the strategy / memoization carriers.
@@ -98,19 +100,23 @@ Scope is bounded by construction:
      primitive inhabitants.
    - `Branch` → eager-evaluate the scrutinee, select the path, evaluate the
      selected path body in a fresh frame containing the path binding.
-   - `Loop` → eager-evaluate the init once, then each bounded iteration body
-     in a fresh frame containing the accumulator binding for that iteration.
-     `LoopBound` is `Cardinality { count: PortId } | Descent { cluster: ClusterId }`
-     per `src/v3/std/substrate.dag` and
+   - `Loop` → eager-evaluate the init once, then dispatch on the two
+     variants of `LoopBound` per `src/v3/std/substrate.dag` and
      [`docs/design-mutual-recursion-lowering.md`](../design-mutual-recursion-lowering.md).
-     PR-B.1 dispatches on both variants by construction: `Cardinality` reads
-     the `count` port for the iteration count; `Descent` consults the
-     `ClusterId`'s descent evidence in `std.termination`
-     (`DescentEvidence`) to bound iteration via the proved well-founded
-     descent cluster. Dropping `Descent` would erase the mutual-recursion
-     proof carrier (Facts-Flow-Forward); both variants are non-optional
-     PR-B.1 dispatch arms. A `Descent` cluster whose `DescentEvidence` is
-     `DescentUnknown` is a fail-closed `Diagnostic`, not a hang.
+     The variants are non-optional dispatch arms (Facts-Flow-Forward;
+     dropping either erases substrate proof state):
+     - `LoopBound::Cardinality { count: PortId }` — executable in PR-B.1.
+       Read `count` through the declared runtime/value path; if the
+       cardinality witness is available, execute finite iteration in a
+       fresh frame containing the accumulator binding for that iteration;
+       otherwise fail closed with a `Diagnostic`.
+     - `LoopBound::Descent { cluster: ClusterId }` — **named fail-closed
+       residual at PR-B.1**: every `Descent` loop emits a `Diagnostic`,
+       not a hang and not a silent skip. Dissolution trigger: a separate
+       descent-execution slice that consumes `std.termination`
+       `DescentEvidence` and lowers it to bounded iteration. PR-B.1 must
+       not silently broaden to `Descent` execution; that rule belongs in
+       its own slice with its own design lock.
    - `Bind` → register the binding in the current frame; no body execution at
      the Bind site (function-form bodies enter from `Transform(Callable(...))`).
 3. **Strategy.** PR-B.1 reads
