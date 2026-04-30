@@ -361,6 +361,32 @@ fn test_3a2_record_data_rejects_type_alias_as_function_ref_value() {
 }
 
 #[test]
+fn test_3a2_record_data_rejects_refined_function_ref_before_discharge() {
+    let src = "\
+        type MiniLensShape {
+          read: fn(Int) -> Int
+        }\n\
+        fn only_positive(x: Int where x > 0) -> Int = x\n\
+        data bad_lens_like: MiniLensShape = { read: only_positive }";
+    let err = compile_to_dag(src, "test.v3").expect_err(
+        "data record field refs must not accept seeded unrefined signatures for functions whose parameters have `where` refinements",
+    );
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic error for refined function used before discharge, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("where") || joined.contains("refined"),
+        "diagnostic should explain that a refined function ref cannot be stored through the data pre-pass; got:\n{joined}"
+    );
+}
+
+#[test]
 fn test_3a2_data_field_access_resolves_statically() {
     // Acceptance (DB-10, lowering-time inlining): `cfg.host` inside
     // a fn body must resolve to the record-literal field's value at

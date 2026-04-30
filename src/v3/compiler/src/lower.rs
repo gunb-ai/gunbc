@@ -241,6 +241,8 @@ pub(crate) fn lower_bodies_phase(
     // declaration whose `value_body` is still `None` and fall
     // through to the unresolved diagnostic — order-dependent name
     // resolution.
+    let pending_refined_function_refs =
+        pending_refined_function_refs(&module.items, symbols, is_first);
     for (idx, item) in module.items.iter().enumerate() {
         if !is_first[idx] {
             continue;
@@ -275,7 +277,15 @@ pub(crate) fn lower_bodies_phase(
             ..
         } = item
         {
-            lower_data_item(name, ty, body.as_ref(), body_span, dag, symbols);
+            lower_data_item(
+                name,
+                ty,
+                body.as_ref(),
+                body_span,
+                dag,
+                symbols,
+                &pending_refined_function_refs,
+            );
         }
     }
     // DB-11 (3a.3) phase-ordered refinement lowering. Runs AFTER the
@@ -471,6 +481,27 @@ fn seed_function_signatures_phase(
             _ => {}
         }
     }
+}
+
+fn pending_refined_function_refs(
+    items: &[SurfaceItem],
+    symbols: &HashMap<String, DeclarationId>,
+    is_first: &[bool],
+) -> HashSet<DeclarationId> {
+    items
+        .iter()
+        .enumerate()
+        .filter(|(idx, _)| is_first[*idx])
+        .filter_map(|(_, item)| match item {
+            SurfaceItem::Fn { name, params, .. }
+            | SurfaceItem::FnExternalBody { name, params, .. }
+                if params.iter().any(|param| param.refinement.is_some()) =>
+            {
+                symbols.get(name).copied()
+            }
+            _ => None,
+        })
+        .collect()
 }
 
 /// DB-11 (3a.3): allocate the predicate `Declaration` for a `where`
@@ -1911,7 +1942,15 @@ fn lower_item(
             body_span,
             span: _,
         } => {
-            lower_data_item(name, ty, body.as_ref(), body_span, dag, symbols);
+            lower_data_item(
+                name,
+                ty,
+                body.as_ref(),
+                body_span,
+                dag,
+                symbols,
+                &HashSet::new(),
+            );
             scope
         }
         SurfaceItem::Module { .. } | SurfaceItem::Import { .. } => {
@@ -2727,6 +2766,7 @@ fn lower_data_item(
     body_span: &SourceSpan,
     dag: &mut Dag,
     symbols: &HashMap<String, DeclarationId>,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
 ) {
     let decl_id = symbols[name];
     let local: HashMap<String, DeclarationId> = HashMap::new();
@@ -2757,12 +2797,23 @@ fn lower_data_item(
     //   - Anything else   → ValueBody::Unparsed fallback.
     let mut suppress_unparsed_scaffold = false;
     let value_body = match body {
-        Some(SurfaceExpr::Record { fields, .. }) => {
-            lower_record_to_structural(name, fields, ty_decl_id, body_span, symbols, dag)
-        }
-        Some(list_expr @ SurfaceExpr::List { .. }) => {
-            lower_list_to_structural(name, list_expr, ty_decl_id, symbols, dag)
-        }
+        Some(SurfaceExpr::Record { fields, .. }) => lower_record_to_structural(
+            name,
+            fields,
+            ty_decl_id,
+            body_span,
+            symbols,
+            dag,
+            pending_refined_function_refs,
+        ),
+        Some(list_expr @ SurfaceExpr::List { .. }) => lower_list_to_structural(
+            name,
+            list_expr,
+            ty_decl_id,
+            symbols,
+            dag,
+            pending_refined_function_refs,
+        ),
         Some(lit_expr @ SurfaceExpr::Literal { .. }) => {
             match lower_scalar_literal_for_type(lit_expr, ty_decl_id, dag) {
                 LowerScalarLiteralOutcome::Literal(bits) => {
@@ -2776,9 +2827,14 @@ fn lower_data_item(
                 }
             }
         }
-        Some(map_expr @ SurfaceExpr::Map { .. }) => {
-            lower_map_to_structural(name, map_expr, ty_decl_id, symbols, dag)
-        }
+        Some(map_expr @ SurfaceExpr::Map { .. }) => lower_map_to_structural(
+            name,
+            map_expr,
+            ty_decl_id,
+            symbols,
+            dag,
+            pending_refined_function_refs,
+        ),
         Some(SurfaceExpr::Call { target, args, .. }) => {
             match (
                 dsl_std_render_repeat_string_decl_id(dag),
@@ -2906,6 +2962,7 @@ fn lower_list_to_structural(
     ty_decl_id: DeclarationId,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::ValueBody> {
     let Some(element_type) = list_element_type(dag, ty_decl_id) else {
         report_declaration_error(
@@ -2934,6 +2991,7 @@ fn lower_list_to_structural(
             dag,
             None,
             &expr_span(element),
+            pending_refined_function_refs,
         )?);
     }
     Some(crate::dag::ValueBody::List(lowered))
@@ -2945,6 +3003,7 @@ fn lower_map_to_structural(
     ty_decl_id: DeclarationId,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::ValueBody> {
     let Some(value_type) = map_value_type(dag, ty_decl_id) else {
         let expected_shape = if map_key_type_is_not_string(dag, ty_decl_id) {
@@ -2967,7 +3026,14 @@ fn lower_map_to_structural(
     let SurfaceExpr::Map { entries, .. } = expr else {
         unreachable!("lower_map_to_structural only accepts SurfaceExpr::Map");
     };
-    let lowered = lower_string_map_entries(name, entries, value_type, symbols, dag)?;
+    let lowered = lower_string_map_entries(
+        name,
+        entries,
+        value_type,
+        symbols,
+        dag,
+        pending_refined_function_refs,
+    )?;
     Some(crate::dag::ValueBody::Map(lowered))
 }
 
@@ -2977,6 +3043,7 @@ fn lower_string_map_entries(
     value_type: DeclarationId,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<FieldMap> {
     let mut seen = HashSet::new();
     let mut lowered = Vec::with_capacity(entries.len());
@@ -3003,6 +3070,7 @@ fn lower_string_map_entries(
                 dag,
                 None,
                 &expr_span(&entry.value),
+                pending_refined_function_refs,
             )?,
         ));
     }
@@ -3277,6 +3345,7 @@ fn lower_record_to_structural(
     body_span: &SourceSpan,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::ValueBody> {
     let Some(conj_id) = walk_to_conj_decl(dag, ty_decl_id) else {
         report_declaration_error(
@@ -3357,6 +3426,7 @@ fn lower_record_to_structural(
             dag,
             category,
             &record_field.span,
+            pending_refined_function_refs,
         )?;
         structural_fields.push((type_label.clone(), field_value));
     }
@@ -3375,6 +3445,7 @@ fn lower_structural_field_value(
     dag: &mut Dag,
     category: Option<RealizationCategoryTag>,
     span: &SourceSpan,
+    pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::FieldValue> {
     if let Some(marker_id) = dag.declaration_by_name("DeclarationRef").map(|d| d.id) {
         if walks_to(dag, expected_type, marker_id) {
@@ -3401,6 +3472,19 @@ fn lower_structural_field_value(
     }
 
     if let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) {
+        if pending_refined_function_refs.contains(&decl_id) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` references a function with a `where`-refined parameter before refinement discharge is available for data field references"
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
         let referenced = dag.declaration(decl_id);
         if is_value_level_arrow_declaration(referenced)
             && declaration_ref_types_equivalent(dag, decl_id, expected_type, 0)
@@ -3451,6 +3535,7 @@ fn lower_structural_field_value(
                 dag,
                 None,
                 &expr_span(element),
+                pending_refined_function_refs,
             )?);
         }
         return Some(crate::dag::FieldValue::List(lowered));
@@ -3470,7 +3555,14 @@ fn lower_structural_field_value(
             );
             return None;
         };
-        let lowered = lower_string_map_entries(data_name, entries, value_type, symbols, dag)?;
+        let lowered = lower_string_map_entries(
+            data_name,
+            entries,
+            value_type,
+            symbols,
+            dag,
+            pending_refined_function_refs,
+        )?;
         return Some(crate::dag::FieldValue::Map(lowered));
     }
 
@@ -3561,6 +3653,7 @@ fn lower_structural_field_value(
                     dag,
                     None,
                     &nested.span,
+                    pending_refined_function_refs,
                 )?,
             ));
         }
@@ -3702,6 +3795,7 @@ fn lower_structural_field_value(
                     dag,
                     None,
                     &expr_span(arg),
+                    pending_refined_function_refs,
                 )?);
             }
         } else if let Some(fields) = named_fields {
@@ -3747,6 +3841,7 @@ fn lower_structural_field_value(
                     dag,
                     None,
                     &field.span,
+                    pending_refined_function_refs,
                 )?);
             }
         }
@@ -7564,6 +7659,7 @@ mod tests {
             &mut dag,
             None,
             &span,
+            &HashSet::new(),
         );
 
         assert_eq!(
