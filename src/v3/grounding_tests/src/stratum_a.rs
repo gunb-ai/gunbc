@@ -551,9 +551,8 @@ pub fn verify_stratum_a_lockstep_all_targets() -> Result<(), GroundingTestsDiagn
         let digest_a = stratum_a_list_digest(&bootstrap_a, list_name)?;
         let digest_b = stratum_a_list_digest(&bootstrap_b, list_name)?;
         if digest_a != digest_b {
-            return Err(GroundingTestsDiagnostic::StratumALockstepMismatch {
+            return Err(GroundingTestsDiagnostic::StratumALockstepListDigestMismatch {
                 list_name: list_name.to_string(),
-                method_name: "<bootstrap-run>".to_string(),
                 detail:
                     "two `generated_full_bootstrap_dag()` runs produced different Stratum-A digests"
                         .to_string(),
