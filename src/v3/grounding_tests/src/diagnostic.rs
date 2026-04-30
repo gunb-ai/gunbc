@@ -7,6 +7,9 @@
 use std::fmt;
 
 /// Typed failure for Stratum A routing-parity checks (`t-ground-tests.md` §Test plan item 1).
+///
+/// **Practice 4 (`docs/modeling-discipline.md`): 🟡 YELLOW** — lane-local `Result` carrier until
+/// these cases fold into shared `EmissionDiagnostic` (`t-ground-diagnostic.md` / manager #1216).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GroundingTestsDiagnostic {
     /// `List<MethodTemplateContract>` row count drift vs Director-locked Phase 1 shape.
