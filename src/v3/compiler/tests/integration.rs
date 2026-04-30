@@ -37,6 +37,8 @@
 #[path = "integration/common/mod.rs"]
 mod common;
 
+#[path = "integration/anthropic_schema_lockstep_test.rs"]
+mod anthropic_schema_lockstep_test;
 #[path = "integration/bridge_lower_helpers_patch_zero_residual_test.rs"]
 mod bridge_lower_helpers_patch_zero_residual_test;
 #[path = "integration/canonical_lens_bridge_ratchet_test.rs"]

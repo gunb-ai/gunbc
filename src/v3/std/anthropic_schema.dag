@@ -1,0 +1,116 @@
+module v3.std.anthropic_schema
+
+// T-Substrate-AnthropicSchemaMirror — provider-domain type mirror staged
+// for the v3 Anthropic Messages callable precursor.
+//
+// Authority source is `dsl/extdeps/llm/anthropic.dag` (v2-parsed). v3's
+// parser does not handle the `service { operation { transport rest { … } } }`
+// block (same gap that motivates `T-Ground-Services` per #1130 / #1246), so
+// pulling `anthropic.dag` wholesale into `BOOTSTRAP_FIXTURE_PATH_KEYS` lowers
+// the service block as `ValueBody::Unparsed`. This file is the typed twin
+// authored on the v3 surface — same staged-fixture discipline as the
+// `MethodTemplateContract` rust/python/go contract files (#1195) and the
+// `services.dag` PR-α carrier (#1246). The file is **type authority only**
+// in this PR; `fn anthropic_messages` and any `Operation` data row are
+// deferred to a follow-on substrate precursor that consumes these types.
+//
+// Scope is narrow: only types reachable from the `operation Messages`
+// input + output signature (`dsl/extdeps/llm/anthropic.dag:180-203`).
+// Types not in that reach (`AnthropicModel`, `AnthropicModelSpec`,
+// `AnthropicToolDefinition`, `AnthropicApiVersion`, `SystemPrompt`,
+// `CacheControl`, `ThinkingMode`, `ThinkingConfig`, `AnthropicErrorShape`)
+// are deliberately omitted. `AnthropicErrorShape` covers the 4xx/5xx
+// response slots only; the callable's typed return is `AnthropicMessages200Body`,
+// so the error carrier is not on the signature reach today and lands with
+// the operation-row response/wire lockstep lane (per PR-β scope) rather
+// than here.
+//
+// Lockstep ratchet: `src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs`
+// pins the mirrored type names + field labels + variant labels against
+// `dsl/extdeps/llm/anthropic.dag`. Changing either authority without the
+// other fails closed.
+//
+// Dissolution trigger: when v3 grows a service-DSL parse/load surface
+// that ingests `dsl/extdeps/llm/*.dag` with full structural fidelity
+// (out-of-scope here; flagged in #1246 STOP+PING), this twin retires —
+// the v2 source becomes the only authority and this file collapses.
+
+// 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicChatMessage`
+// (`dsl/extdeps/llm/anthropic.dag:105-107`). Outer variant is the
+// role discriminator so role-specific content legality is structural —
+// user rows can carry text/tool-results, assistant rows can carry
+// text/tool-use requests. Same closed coproduct on both sides.
+type AnthropicChatMessage
+  = UserMessage      { content: List<AnthropicUserContentBlock> }
+  | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
+
+// 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicUserContentBlock`
+// (`dsl/extdeps/llm/anthropic.dag:48-50`). Tool-result content is a
+// flat string in the Anthropic v1 wire today; nested-content/image
+// surface is gap-carried on the v2 source's
+// `structural_coverage_gap_anthropic_tool_result_full_content_surface`
+// and stays out of scope for this mirror.
+type AnthropicUserContentBlock
+  = UserTextBlock       { text: String }
+  | UserToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
+
+// 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicAssistantContentBlock`
+// (`dsl/extdeps/llm/anthropic.dag:54-56`). Assistant rows emit either
+// text or tool-use requests; tool-result rows are user-side. `input: Json`
+// preserves the v2 source's opaque tool-input slot — kernel `Json` from
+// `dsl/std/types.dag:180` carries this without further structural
+// commitment in this mirror.
+type AnthropicAssistantContentBlock
+  = AssistantTextBlock    { text: String }
+  | AssistantToolUseBlock { id: String, name: String, input: Json }
+
+// 🟢 TERMINAL provider-domain enum mirroring `AnthropicStopReason`
+// (`dsl/extdeps/llm/anthropic.dag:127`). Closed Anthropic API enum;
+// dissolution-receipt rationale on the v2 source applies symmetrically
+// here (variant-is-data demotes it to free-form text; algebraic /
+// dimensional splits have no independent axes).
+type AnthropicStopReason
+  = EndTurn
+  | MaxTokens
+  | StopSequence
+  | ToolUse
+  | PauseTurn
+  | Refusal
+  | ModelContextWindowExceeded
+
+// 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200TextBlock`
+// (`dsl/extdeps/llm/anthropic.dag:111-114`). Narrow text-only slice of
+// the 200 response's `content[]` per `from "content/0/text"` extraction
+// in the operation; thinking/tool-use/image content blocks remain
+// gap-carried on the v2 source's
+// `structural_coverage_gap_anthropic_messages_outputs`.
+type AnthropicMessages200TextBlock {
+  type: String
+  text: String
+}
+
+// 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200Usage`
+// (`dsl/extdeps/llm/anthropic.dag:116-119`). Cache-token breakdowns
+// (`cache_creation_input_tokens`, `cache_read_input_tokens`) and
+// `service_tier` stay gap-carried on the v2 source per the same
+// `structural_coverage_gap_anthropic_messages_outputs` row.
+type AnthropicMessages200Usage {
+  input_tokens:  Int
+  output_tokens: Int
+}
+
+// 🟢 TERMINAL response envelope mirroring `AnthropicMessages200Body`
+// (`dsl/extdeps/llm/anthropic.dag:135-144`). Field set matches the
+// Anthropic Messages 200 response per the v2 authority comment;
+// extension fields beyond what's mirrored here remain gap-carried at
+// the source. `stop_sequence: String?` preserves the optional shape.
+type AnthropicMessages200Body {
+  id:            String
+  type:          String
+  role:          String
+  content:       List<AnthropicMessages200TextBlock>
+  model:         String
+  stop_reason:   AnthropicStopReason
+  stop_sequence: String?
+  usage:         AnthropicMessages200Usage
+}
