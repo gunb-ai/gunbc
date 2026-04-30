@@ -265,6 +265,102 @@ fn test_3a2_record_data_compiles_structural() {
 }
 
 #[test]
+fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
+    let src = "\
+        type MiniMonoid {
+          op: fn(Int, Int) -> Int,
+          identity: Int
+        }\n\
+        type MiniLensShape {
+          read: fn(Int) -> Int,
+          sequential: MiniMonoid
+        }\n\
+        fn passthrough(x: Int) -> Int = x\n\
+        fn choose_left(a: Int, b: Int) -> Int = a\n\
+        data mini_lens_like: MiniLensShape = {
+          read: passthrough,
+          sequential: { op: choose_left, identity: 0 }
+        }";
+    let dag = cached_compile_to_dag(src, "test.v3");
+    let read_id = dag
+        .declaration_by_name("passthrough")
+        .expect("passthrough must exist")
+        .id;
+    let op_id = dag
+        .declaration_by_name("choose_left")
+        .expect("choose_left must exist")
+        .id;
+    let decl = dag
+        .declaration_by_name("mini_lens_like")
+        .expect("mini_lens_like must exist");
+
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected function-ref/nested-record data body to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let read = fields
+        .iter()
+        .find(|(label, _)| label == "read")
+        .map(|(_, value)| value)
+        .expect("read field must be present");
+    assert_eq!(
+        read,
+        &v3_compiler::dag::FieldValue::Reference(read_id),
+        "`read: passthrough` must lower as a declaration reference"
+    );
+
+    let sequential = fields
+        .iter()
+        .find(|(label, _)| label == "sequential")
+        .map(|(_, value)| value)
+        .expect("sequential field must be present");
+    let v3_compiler::dag::FieldValue::Record(nested) = sequential else {
+        panic!("`sequential` must lower as a nested structural record, got {sequential:?}");
+    };
+    let op = nested
+        .iter()
+        .find(|(label, _)| label == "op")
+        .map(|(_, value)| value)
+        .expect("op field must be present");
+    assert_eq!(
+        op,
+        &v3_compiler::dag::FieldValue::Reference(op_id),
+        "`sequential.op: choose_left` must lower as a declaration reference"
+    );
+    let identity = nested
+        .iter()
+        .find(|(label, _)| label == "identity")
+        .map(|(_, value)| value)
+        .expect("identity field must be present");
+    assert_eq!(
+        identity,
+        &v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(0)),
+        "`sequential.identity` must remain a checked scalar literal"
+    );
+}
+
+#[test]
+fn test_3a2_record_data_rejects_type_alias_as_function_ref_value() {
+    let src = "\
+        type Callback = fn(Int) -> Int\n\
+        type MiniLensShape {
+          read: fn(Int) -> Int
+        }\n\
+        data bad_lens_like: MiniLensShape = { read: Callback }";
+    let err = compile_to_dag(src, "test.v3")
+        .expect_err("type-level function alias must not lower as a value-level function reference");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic error for type alias used as value, got {err:?}");
+    };
+    assert!(
+        dag.declaration_by_name("bad_lens_like").is_some(),
+        "semantic error should preserve the rejected data declaration for diagnostics"
+    );
+}
+
+#[test]
 fn test_3a2_data_field_access_resolves_statically() {
     // Acceptance (DB-10, lowering-time inlining): `cfg.host` inside
     // a fn body must resolve to the record-literal field's value at
