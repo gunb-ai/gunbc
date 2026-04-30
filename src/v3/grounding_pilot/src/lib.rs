@@ -281,7 +281,7 @@ pub const RUST_PILOT_PRIMITIVES: &[RustPrimitive] = &[
 // =============================================================================
 // Structural .dag-side facts.
 //
-// Mirrors dsl/std/integer.dag (Int8..Int64, UInt8..UInt64) and the
+// Mirrors dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64) and the
 // std-side declarations of Bool and Unit. Each .dag-side type unfolds
 // to a RoutingKey; production resolution will read the real type-alias
 // chain via the v3 substrate's resolve_item_types.
@@ -293,6 +293,7 @@ pub enum DagType {
     Int16,
     Int32,
     Int64,
+    Int128,
     UInt8,
     UInt16,
     UInt32,
@@ -306,6 +307,7 @@ pub const DAG_PILOT_TYPES: &[DagType] = &[
     DagType::Int16,
     DagType::Int32,
     DagType::Int64,
+    DagType::Int128,
     DagType::UInt8,
     DagType::UInt16,
     DagType::UInt32,
@@ -316,7 +318,7 @@ pub const DAG_PILOT_TYPES: &[DagType] = &[
 
 /// Unfold a pilot .dag-side type to its routing-key facts.
 ///
-/// Authority: dsl/std/integer.dag (Int8..Int64, UInt8..UInt64), plus the
+/// Authority: dsl/std/integer.dag (Int8..Int64 + Int128, UInt8..UInt64), plus the
 /// canonical std modeling of Bool as BooleanAlgebra<Bit> and Unit as the
 /// terminal object.
 pub fn dag_type_facts(t: DagType) -> RoutingKey {
@@ -336,6 +338,10 @@ pub fn dag_type_facts(t: DagType) -> RoutingKey {
         DagType::Int64 => RoutingKey::Integer {
             algebra: IntegerAlgebra::OrderedRing,
             carrier: TargetCarrier::Word64,
+        },
+        DagType::Int128 => RoutingKey::Integer {
+            algebra: IntegerAlgebra::OrderedRing,
+            carrier: TargetCarrier::Word128,
         },
         DagType::UInt8 => RoutingKey::Integer {
             algebra: IntegerAlgebra::Semiring,
@@ -482,6 +488,7 @@ mod tests {
             (DagType::Int16, "i16"),
             (DagType::Int32, "i32"),
             (DagType::Int64, "i64"),
+            (DagType::Int128, "i128"),
         ] {
             let p = ground(dag).unwrap_or_else(|e| panic!("{dag:?} must ground: {e:?}"));
             assert_eq!(target_name(p), expected, "routing for {dag:?}");
@@ -520,7 +527,7 @@ mod tests {
     }
 
     /// Coverage — every type in DAG_PILOT_TYPES grounds to exactly one
-    /// primitive. Asserts the 10-element pilot set is fully covered.
+    /// primitive. Asserts the pilot set is fully covered.
     #[test]
     fn pilot_set_fully_covered() {
         for &dag in DAG_PILOT_TYPES {
@@ -538,6 +545,7 @@ mod tests {
             (DagType::Int16, "i16"),
             (DagType::Int32, "i32"),
             (DagType::Int64, "i64"),
+            (DagType::Int128, "i128"),
             (DagType::UInt8, "u8"),
             (DagType::UInt16, "u16"),
             (DagType::UInt32, "u32"),
