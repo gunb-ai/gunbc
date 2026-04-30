@@ -118,7 +118,7 @@ Before body evaluation or reflection-projection consumes runtime values:
 
 PR-A.0 is design + structural gates only. It is not the runtime carrier implementation.
 
-- **PR-A.1:** declare the observable `Value` surface in the runtime module, matching `docs/design-pb-runtime-interpreter.md` section 3.2 exactly, including the `NamedField` record payload carrier.
+- **PR-A.1:** declare the observable `Value` surface in the runtime module, matching `docs/design-pb-runtime-interpreter.md` section 3.2 exactly, including the `NamedField` record payload carrier. **Authored:** `src/v3/std/runtime.dag` declares `Value` and `NamedField`; `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs` pins the carrier shape with `runtime_value_carrier_*` tests.
 - **PR-A.2:** declare and mirror evaluator-internal `EvalFrame` / `EvalStateStack` carriers; wire closed-over environment lookup without adding `Value` variants and without duplicate-admitting frame bindings.
 - **PR-A.3:** lock the executable strategy and memoization boundary (`EvalThunk` if lazy boundaries are enabled; eager baseline first).
 - **PR-B / body evaluator:** implement body execution only after PR-A.1 through PR-A.3 provide the carrier substrate.
