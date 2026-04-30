@@ -5100,6 +5100,9 @@ fn retained_template_arguments_for_target(
         .iter()
         .copied()
         .collect();
+    if let Some(enclosing_disj) = enclosing_disj_for_variant_lower(dag, template) {
+        allowed.extend(dag.declaration(enclosing_disj).type_params.iter().copied());
+    }
     if let Some(inputs) = direct_invocation_input_decls(dag, template, 0) {
         for input in inputs {
             if declaration_is_callable(dag, input, 0) {
@@ -5127,6 +5130,21 @@ fn retained_template_arguments_for_target(
         });
     }
     retained
+}
+
+fn enclosing_disj_for_variant_lower(
+    dag: &Dag,
+    variant_decl_id: DeclarationId,
+) -> Option<DeclarationId> {
+    dag.declarations().iter().find_map(|decl| {
+        let TypeConnective::Disj { variants } = &decl.connective else {
+            return None;
+        };
+        variants
+            .iter()
+            .find(|variant| variant.ty == variant_decl_id)
+            .map(|_| decl.id)
+    })
 }
 
 fn callable_binding_conflict_diagnostic(
@@ -5963,29 +5981,12 @@ fn lower_expr(
             }
             let retained_arguments =
                 retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
-            let target_decl = if retained_arguments.is_empty() {
-                base_target_decl
-            } else {
-                let instantiation_id = dag.alloc_declaration_id();
-                dag.push_declaration(Declaration {
-                    id: instantiation_id,
-                    name: None,
-                    connective: TypeConnective::Instantiation {
-                        template: base_target_decl,
-                        arguments: retained_arguments,
-                    },
-                    type_params: Vec::new(),
-                    phantom_params: Vec::new(),
-                    meta_tag: None,
-                    specialization_parent: None,
-                    inhabits: None,
-                    value_body: None,
-                    refinement: None,
-                    nominal_opacity: None,
-                    span: span.clone(),
-                });
-                instantiation_id
-            };
+            let target_decl = materialize_callable_target_with_retained_arguments(
+                dag,
+                base_target_decl,
+                retained_arguments,
+                span,
+            );
             let node_id = dag.alloc_node_id();
             let output = dag.alloc_port(Some(node_id));
             dag.push_node(Behavior::Transform(TransformNode {
@@ -6294,6 +6295,73 @@ fn lower_constructor_invocation(
         span,
     }));
     output
+}
+
+fn materialize_callable_target_with_retained_arguments(
+    dag: &mut Dag,
+    base_target_decl: DeclarationId,
+    retained_arguments: Vec<TemplateArgument>,
+    span: &SourceSpan,
+) -> DeclarationId {
+    let (template, mut arguments) = match &dag.declaration(base_target_decl).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => (*template, arguments.clone()),
+        _ => (base_target_decl, Vec::new()),
+    };
+    for argument in retained_arguments {
+        if let Some(existing) = arguments
+            .iter_mut()
+            .find(|existing| existing.parameter == argument.parameter)
+        {
+            existing.value = argument.value;
+        } else {
+            arguments.push(argument);
+        }
+    }
+    if arguments.is_empty() {
+        return template;
+    }
+    if let TypeConnective::Instantiation {
+        template: existing_template,
+        arguments: existing_arguments,
+    } = &dag.declaration(base_target_decl).connective
+    {
+        if *existing_template == template
+            && template_arguments_exact_match(existing_arguments, &arguments)
+        {
+            return base_target_decl;
+        }
+    }
+
+    let instantiation_id = dag.alloc_declaration_id();
+    dag.push_declaration(Declaration {
+        id: instantiation_id,
+        name: None,
+        connective: TypeConnective::Instantiation {
+            template,
+            arguments,
+        },
+        type_params: Vec::new(),
+        phantom_params: Vec::new(),
+        meta_tag: None,
+        specialization_parent: None,
+        inhabits: None,
+        value_body: None,
+        refinement: None,
+        nominal_opacity: None,
+        span: span.clone(),
+    });
+    instantiation_id
+}
+
+fn template_arguments_exact_match(lhs: &[TemplateArgument], rhs: &[TemplateArgument]) -> bool {
+    lhs.len() == rhs.len()
+        && lhs
+            .iter()
+            .zip(rhs.iter())
+            .all(|(lhs, rhs)| lhs.parameter == rhs.parameter && lhs.value == rhs.value)
 }
 
 fn direct_invocation_input_decls(
