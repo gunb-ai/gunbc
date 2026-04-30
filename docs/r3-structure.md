@@ -20,7 +20,7 @@ The R2 vs R3 boundary is therefore: **does this work need new substrate / new ru
 
 ## Summary
 
-R3 has ten lanes (revised 2026-04-28 per Director review of #1078; T-CostLens-Composition added 2026-04-28 per user direction folding cost-lens-over-emission into R3), each closing a specific thesis claim or claim-cluster:
+R3 has 12 lanes (revised 2026-04-28 per Director review of #1078; T-CostLens-Composition added 2026-04-28 per user direction folding cost-lens-over-emission into R3; **expanded to 12 lanes 2026-04-30 per user directive "nothing can be deferred past R3" — added T-V2-Retirement + T-Free-Consequences-Demonstration**), each closing a specific thesis claim or claim-cluster:
 
 1. **T-Tier3-Dissolution** — retire the four hand-Rust mirrors of `.dag` types (termination, computation, induction, effect-carrier) by consuming the Evaluator
 2. **T-LensProducer-Retirement** — retire `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` (the program-sized hand-Rust files) via PB-Runtime interpreter-as-data + PB-1 generated bin-shim emit pattern
@@ -29,11 +29,13 @@ R3 has ten lanes (revised 2026-04-28 per Director review of #1078; T-CostLens-Co
 5. **T-FixedPoint** — self-hosting facet 2: compile `compiler.dag` → bit-identical Rust output
 6. **T-Int128** — Tier 2 Int128/Word128 substrate (the int-lit closure half deferred from R2)
 7. **T-Omni-Shape-B** — at least 2 Shape B omni-emission demos exercising the "one workflow → full-stack artifacts" thesis claim. **Director-locked 2026-04-28**: primary pair = OpenAPI spec + Markdown drift-lock; SQL DDL is the alternative if OpenAPI runs into design surface issues. Other candidates (YAML/K8s, Terraform, SPICE, etc.) are post-R3 ecosystem work, not R3 demos
-8. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization)
+8. **T-Anthropic-Wire** — typed wire schema for Anthropic provider (held in R2 pending OpenAI #1028 stabilization). **Scope expanded 2026-04-30**: includes `ProviderTypedWire<P>` carrier + per-provider parameter rows (path (a) commit per C2 ratification)
 9. **T-Bridge-Retirement** — unified ledger of named identity bridges retired (`SourceSpan.file` participation checks, `mark_bootstrap_secret_nominal_opacity()`, canonical lens-name dispatch, `include_str!` side channels, exact-string patching residual). Surfaced by Reflective Pattern B (2026-04-25 analysis); without a unified lane these get scattered across PB / Substrate / Verification work without a unified retirement ledger
 10. **T-CostLens-Composition** — cost lens reads (1) `.dag` algebra-level cost + (2) target-primitive realization cost via the language spec; composes structurally; verifies the THESIS unification "**coercion cost = complexity**" holds **by construction** (not just by reviewer convention). **No "coercion cost" dimension** — falls out of the existing complexity lens reading substrate facts. Per Modeling problem 8 in [`docs/design-emission-model.md`](design-emission-model.md). Director-locked 2026-04-28 to land in R3 (deferring would leave the thesis unification asserted-not-structural)
+11. **T-V2-Retirement (NEW 2026-04-30)** — retire `src/v2/` (~79 .rs + 28 .dag files); workspace member removed; bootstrap routes through PB-Runtime trampoline only. Largely consequence of T-FixedPoint + T-LensProducer-Retirement closing; pulled into R3 per user directive *"nothing can be deferred past R3."*
+12. **T-Free-Consequences-Demonstration (NEW 2026-04-30)** — operationalizes thesis "free consequences" framing with `docs/design-free-consequences.md` + 10-gate TestClaim suite (auto-parallelism × 3 + auto-loop-parallelism × 3 + auto-memoization × 2 + cross-target-optimization × 2). Loop-iteration parallelism: sequential default + opt-in via `Lens<Iteration-Independence>`. Per user directive *"what guarantees does the compiler ACTUALLY provide."*
 
-**7 of 10 R3 lanes are gated on R2-Evaluator closing** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition). The other 3 (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement) are self-contained or substrate-completion work parallel to the Evaluator-gated lanes — they consume R2 substrate carriers but not the Evaluator itself, so they can dispatch in parallel with R2-Evaluator work or wait until R2-close per scheduling preference. Per-lane R2-close dependency is named in the §"Lane structure" table below; §"Dependency on R2" elaborates.
+**9 of 12 R3 lanes are gated on R2-Evaluator closing** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition, **T-V2-Retirement** [via T-FixedPoint + T-LensProducer-Retirement cascade], **T-Free-Consequences-Demonstration** [witness construction + lens-instance prerequisites]). The other 3 (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement) are self-contained or substrate-completion work parallel to the Evaluator-gated lanes — they consume R2 substrate carriers but not the Evaluator itself, so they can dispatch in parallel with R2-Evaluator work or wait until R2-close per scheduling preference. Per-lane R2-close dependency is named in the §"Lane structure" table below; §"Dependency on R2" elaborates.
 
 ## Acceptance — `.dag` gates
 
@@ -82,6 +84,20 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `bridge_include_str_side_channels_retired` — no `include_str!` macro reads source-substrate identity; substrate query surface used instead. **Open disposition (`pipeline_authority`, PR #1171, 2026-04-29):** `compile` remains `ArrowBody::Unparsed`, so compile-body stage order is not yet a structural Dag fact; runtime ordering reads `PipelineStageBinding` only — full gate for this site awaits derivation / lowered compile witness, not file IO.
   - `bridge_exact_string_patching_residual_retired` — umbrella row for exact-string patching scaffolds. **PB lower-helper slice (Tier-2 / #1014 lineage) is pinned at zero** in v3-compiler Rust: no `patch_lower_helpers*` code paths remain, and `bridge_lower_helpers_patch_zero_residual_test` ratchets reintroduction. **Other** exact-string patching classes (outside this retired lower-helper post-process bridge) remain **out of scope for this receipt** and keep their own dissolution triggers.
   - `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining
+- **T-V2-Retirement** (NEW 2026-04-30; pulled into R3 per user directive *"nothing can be deferred past R3"*).
+  - `v2_oracle_no_remaining_test_consumers` — no `.rs` test file under the workspace consumes anything from `src/v2/`; v2-oracle and v2-using test scaffolds retired
+  - `v2_directory_deleted` — `src/v2/` removed from the workspace; bootstrap routes through PB-Runtime trampoline only (per [`docs/design-pure-bootstrap-zero.md`](design-pure-bootstrap-zero.md) §`First-time bootstrap`); no v2 crate remains as a workspace member
+- **T-Free-Consequences-Demonstration** (NEW 2026-04-30; operationalizes thesis "free consequences" framing). Loop-iteration parallelism: sequential default + opt-in via `Lens<Iteration-Independence>` (Director-ratified 2026-04-30; zero-heuristic — same shape as `Lens<Bind-Independence>`).
+  - `auto_parallelism_independent_binds_emit_parallel` — `.dag` programs whose Bind sequence is provably bind-independent emit target code that schedules the binds in parallel
+  - `auto_parallelism_dependent_binds_emit_sequential` — `.dag` programs with bind dependence emit serialized binds; no false parallelism
+  - `auto_parallelism_branch_arms_serialize` — Branch arms are sequenced (one arm per execution); no spurious cross-arm parallelism in emitted target code
+  - `auto_loop_parallelism_provable_independence_emits_parallel` — Loops carrying `Lens<Iteration-Independence>` opt-in emit parallel iteration
+  - `auto_loop_parallelism_unproven_falls_back_sequential` — Loops without the opt-in lens fall back to sequential iteration; no heuristic auto-parallelization
+  - `auto_loop_parallelism_dependence_emits_sequential` — Loops with provable cross-iteration dependence emit sequential iteration even if the opt-in lens is requested (lens read returns "not independent")
+  - `auto_memoization_repeated_pure_call_cached` — repeated calls to a pure function with identical argument-value identity emit memoized target code (subsumes lens-fold caching as one instance)
+  - `auto_memoization_no_caching_for_one_shot` — single-call sites do not emit memoization scaffolding; memoization predicates compose `Lens<Purity>·Lens<Cost>` rather than firing universally
+  - `cross_target_optimization_constant_fold_consistent` — for the certification corpus, every emitted target collapses identical constant-fold opportunities (same algebraic shrink applied across Rust/Python/Go)
+  - `cross_target_optimization_cost_proportional` — emitted target programs' measured cost stays within the structural cost-lens prediction (cost lens drives lowering, not target-specific heuristics)
 
 ## Lane structure
 
@@ -141,7 +157,10 @@ T-Tier3-Diss  T-LensProducer  T-V-L4-L7-Direct  T-FixedPoint  T-Omni-Shape-B  (T
                    + R2-Grounding-Python landed)
 
                        T-Anthropic-Wire ◄── (parallel; gated on R2 OpenAI
-                                            wire stabilization)
+                                            wire stabilization;
+                                            scope expanded 2026-04-30 per C2 ratification:
+                                            +ProviderTypedWire<P> carrier + per-provider
+                                            parameter rows)
                        T-Bridge-Retirement ◄── (parallel substrate-completion;
                                               partial side-effect from
                                               T-LensProducer-Retirement)
@@ -150,9 +169,20 @@ T-Tier3-Diss  T-LensProducer  T-V-L4-L7-Direct  T-FixedPoint  T-Omni-Shape-B  (T
                                                   per-operation algebra cost
                                                   + R2-T-Ground-LanguageSpec
                                                   per-primitive realization cost)
+                       T-V2-Retirement ◄── (NEW 2026-04-30; cascade-gated:
+                                            T-FixedPoint AND T-LensProducer-Retirement
+                                            must close first — v2 retirement is largely
+                                            a *consequence* of those two)
+                       T-Free-Consequences-Demonstration ◄── (NEW 2026-04-30;
+                                                              R2-Evaluator-gated for
+                                                              witness construction +
+                                                              R2-T-Substrate-Lens-Primitive
+                                                              for Lens<C> instances;
+                                                              T-CostLens-Composition for
+                                                              cost-related claims)
 ```
 
-**Parallel-capable work at steady state:** 7+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement). Verification has its own internal critical path: `T-V-L4-L7-Direct → T-V-L5-Corpus` (because Corpus's L5 cross-target work consumes Direct's L4 corpus).
+**Parallel-capable work at steady state:** 9+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint → T-V2-Retirement` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement; v2 retirement cascades on fixed-point + lens-producer closing). Verification has its own internal critical path: `T-V-L4-L7-Direct → T-V-L5-Corpus` (because Corpus's L5 cross-target work consumes Direct's L4 corpus). T-Free-Consequences-Demonstration parallels the Verification critical path post-R2-Evaluator.
 
 ## Compromises being made
 
@@ -294,16 +324,16 @@ Workers cannot dispatch on under-specified scope, especially on multi-week T-Ver
 
 R3 cannot start meaningful work until R2 closes. Specifically:
 
-- **R2-Evaluator** is the upstream gate for **7 of 10 R3 lanes** (T-Tier3, T-LensProducer, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition). Without it, R3 dispatchers spin.
+- **R2-Evaluator** is the upstream gate for **9 of 12 R3 lanes** (T-Tier3, T-LensProducer, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition, **T-V2-Retirement** [via T-FixedPoint + T-LensProducer-Retirement cascade], **T-Free-Consequences-Demonstration** [witness construction + lens-instance prerequisites]). Without it, R3 dispatchers spin.
 - **R2-Grounding-Rust + R2-Grounding-Python** are the upstream gate for T-Verification-L5-Corpus (specifically L5 cross-target).
 - **R2 substrate carriers** (NominalOpacity, ValueBody::Map, parametric algebra) feed T-Int128 + T-Anthropic-Wire + T-Bridge-Retirement as parallel substrate-completion work.
 
-**R3 worker dispatch precondition** (Director-locked 2026-04-28; clarified 2026-04-28 per gpt-5-5-pro BLOCKING on `dbc48dc0` re P2 single-authority discipline):
+**R3 worker dispatch precondition** (Director-locked 2026-04-28; clarified 2026-04-28 per gpt-5-5-pro BLOCKING on `dbc48dc0` re P2 single-authority discipline; expanded 2026-04-30 for 12-lane structure):
 
-- **Applies to the 7 Evaluator-gated lanes** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition): R2-Evaluator landed AND R2-Grounding-Rust+Python landed. Pre-R3 *brief authoring* may begin during R2 final week (Director-discretionary, mirroring R2's pre-R1-close pattern), but worker dispatch waits for the joint precondition. This prevents R3 brief authoring from spawning drift if R2 close definition slips.
-- **Carve-out for the 3 non-Evaluator-gated lanes** (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement): these are self-contained or substrate-completion work parallel to the Evaluator-gated lanes. They consume R2 substrate carriers but not the Evaluator itself, so they MAY dispatch pre-R3 (in parallel with R2-Evaluator work) per scheduling preference. The global R3 worker-dispatch precondition above applies ONLY to the 7 Evaluator-gated lanes; the 3 non-gated lanes operate as explicitly-scoped substrate-completion work outside that precondition.
+- **Applies to the 9 Evaluator-gated lanes** (T-Tier3-Dissolution, T-LensProducer-Retirement, T-Verification-L4-L7-Direct, T-Verification-L5-Corpus, T-FixedPoint, T-Omni-Shape-B, T-CostLens-Composition, T-V2-Retirement, T-Free-Consequences-Demonstration): R2-Evaluator landed AND R2-Grounding-Rust+Python landed. Pre-R3 *brief authoring* may begin during R2 final week (Director-discretionary, mirroring R2's pre-R1-close pattern), but worker dispatch waits for the joint precondition. This prevents R3 brief authoring from spawning drift if R2 close definition slips. **T-V2-Retirement** carries an additional internal cascade gate (T-FixedPoint + T-LensProducer-Retirement must close before v2 retirement work begins); pre-cascade brief authoring is still permitted under the same Director-discretionary rule.
+- **Carve-out for the 3 non-Evaluator-gated lanes** (T-Int128, T-Anthropic-Wire, T-Bridge-Retirement): these are self-contained or substrate-completion work parallel to the Evaluator-gated lanes. They consume R2 substrate carriers but not the Evaluator itself, so they MAY dispatch pre-R3 (in parallel with R2-Evaluator work) per scheduling preference. The global R3 worker-dispatch precondition above applies ONLY to the 9 Evaluator-gated lanes; the 3 non-gated lanes operate as explicitly-scoped substrate-completion work outside that precondition.
 
-This split resolves the prior single-authority drift between `:36` (non-gated lanes can dispatch in parallel) and the global precondition (worker dispatch waits): the precondition is now scoped to the 7 Evaluator-gated lanes only, with the 3 non-gated lanes explicitly carved out.
+This split resolves the prior single-authority drift between `:38` (non-gated lanes can dispatch in parallel) and the global precondition (worker dispatch waits): the precondition is now scoped to the 9 Evaluator-gated lanes only, with the 3 non-gated lanes explicitly carved out.
 
 ## R3 closure criteria
 
