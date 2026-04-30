@@ -1,8 +1,8 @@
 // std.runtime - R2 Evaluator / PB-Runtime observable runtime values.
 //
 // This module lands PR-A.1's Value-only carrier surface. It deliberately
-// excludes evaluator-internal state (`EvalFrame`, `EvalStateStack`,
-// `EvalThunk`) and body-evaluator logic; those land in later PR-A slices.
+// excludes body-evaluator logic and lazy strategy state (`EvalThunk`);
+// those land in later PR-A slices.
 //
 // Authority: docs/design-pb-runtime-interpreter.md section 3.2 and
 // docs/briefs/r2-pr-a-runtime-value-model.md. The existing L1 behavior marker
@@ -72,4 +72,40 @@ type EvalFrame {
 // amend the locked carrier shape.
 type EvalStateStack {
   frames: List<EvalFrame>
+}
+
+// 🟢 TERMINAL at PR-A.3 eager-strategy scope. This carrier intentionally
+// contains only the executable eager baseline: applicative-order evaluation
+// with a closed input-order carrier. `NormalOrder`, `RightFirst`, parallel
+// input evaluation, and lazy strategy variants are not inhabitants here until
+// they land with their executable rule, `EvalThunk` state, and TC2 comparison
+// obligation per `docs/briefs/r2-pr-a3-strategy-memoization-audit.md`.
+type EvalStrategy
+  = ApplicativeOrder { input_order: InputEvaluationOrder }
+
+// 🟢 TERMINAL at PR-A.3 eager-strategy scope. `LeftFirst` is the only input
+// order currently executable by the Evaluator strategy model. New input-order
+// variants must land with their evaluation rule and memo-key/TC2 obligations.
+type InputEvaluationOrder
+  = LeftFirst
+
+// 🟢 TERMINAL at PR-A.3 memo-key scope. The memo state identity is structural:
+// it carries the reachable `EvalStateStack`, not a string digest or name-only
+// fingerprint. A future digest carrier may replace this only if its
+// construction and equality become the single declared authority over
+// reachable evaluator-state identity.
+type EvalStateKey {
+  state: EvalStateStack
+}
+
+// 🟢 TERMINAL at PR-A.3 memo-key scope. Memoization is evaluator-owned state,
+// not observable `Value`. Entries keyed by this shape may cache only completed
+// `Value` results; diagnostics, partial results, in-progress thunks, and failed
+// evaluations are not values and must not be cached as values. `strategy` is a
+// closed carrier, not a string label.
+type EvalMemoKey {
+  program: DeclarationId
+  node: NodeId
+  state_key: EvalStateKey
+  strategy: EvalStrategy
 }

@@ -2263,3 +2263,111 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
         "EvalFrame / EvalStateStack are evaluator state, never Value variants"
     );
 }
+
+#[test]
+fn pr_a_3_eval_strategy_and_memo_key_carriers_match_eager_baseline() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let strategy = dag
+        .declaration_by_name("EvalStrategy")
+        .expect("PR-A.3 EvalStrategy missing from full bootstrap");
+    assert_eq!(
+        strategy.span.file, "src/v3/std/runtime.dag",
+        "EvalStrategy must live in the single runtime authority module"
+    );
+    let strategy_variants = match &strategy.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("EvalStrategy is not a Disj: {other:?}"),
+    };
+    let strategy_labels: Vec<&str> = strategy_variants
+        .iter()
+        .map(|field| field.label.as_str())
+        .collect();
+    assert_eq!(
+        strategy_labels,
+        ["ApplicativeOrder"],
+        "PR-A.3 eager baseline must not admit lazy or alternate-order strategy inhabitants"
+    );
+
+    let applicative_payload = strategy_variants
+        .iter()
+        .find(|field| field.label == "ApplicativeOrder")
+        .expect("ApplicativeOrder variant must exist")
+        .ty;
+    assert_eq!(
+        conj_field_by_id(&dag, applicative_payload, "input_order"),
+        find_named(&dag, "InputEvaluationOrder"),
+        "ApplicativeOrder must carry the closed input-order carrier"
+    );
+
+    let input_order = dag
+        .declaration_by_name("InputEvaluationOrder")
+        .expect("PR-A.3 InputEvaluationOrder missing from full bootstrap");
+    assert_eq!(
+        input_order.span.file, "src/v3/std/runtime.dag",
+        "InputEvaluationOrder must live in the single runtime authority module"
+    );
+    let order_labels: Vec<&str> = match &input_order.connective {
+        TypeConnective::Disj { variants } => variants.iter().map(|f| f.label.as_str()).collect(),
+        other => panic!("InputEvaluationOrder is not a Disj: {other:?}"),
+    };
+    assert_eq!(
+        order_labels,
+        ["LeftFirst"],
+        "PR-A.3 eager baseline must not admit RightFirst or parallel input-order inhabitants"
+    );
+
+    assert!(
+        dag.declaration_by_name("NormalOrder").is_none(),
+        "NormalOrder must not be a standalone declaration or strategy inhabitant before EvalThunk lands"
+    );
+    assert!(
+        dag.declaration_by_name("RightFirst").is_none(),
+        "RightFirst must not be constructible before its evaluation rule and TC2 obligation land"
+    );
+    assert!(
+        dag.declaration_by_name("EvalThunk").is_none(),
+        "EvalThunk remains deferred in the eager-baseline PR-A.3 slice"
+    );
+
+    let state_key = dag
+        .declaration_by_name("EvalStateKey")
+        .expect("PR-A.3 EvalStateKey missing from full bootstrap");
+    assert_eq!(
+        state_key.span.file, "src/v3/std/runtime.dag",
+        "EvalStateKey must live in the single runtime authority module"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, state_key.id, "state"),
+        find_named(&dag, "EvalStateStack"),
+        "EvalStateKey must carry structural EvalStateStack identity, not a string fingerprint"
+    );
+
+    let memo_key = dag
+        .declaration_by_name("EvalMemoKey")
+        .expect("PR-A.3 EvalMemoKey missing from full bootstrap");
+    assert_eq!(
+        memo_key.span.file, "src/v3/std/runtime.dag",
+        "EvalMemoKey must live in the single runtime authority module"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, memo_key.id, "program"),
+        find_named(&dag, "DeclarationId"),
+        "EvalMemoKey.program must identify the declaration/program authority"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, memo_key.id, "node"),
+        find_named(&dag, "NodeId"),
+        "EvalMemoKey.node must identify the evaluated node"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, memo_key.id, "state_key"),
+        state_key.id,
+        "EvalMemoKey.state_key must use structural EvalStateKey"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, memo_key.id, "strategy"),
+        strategy.id,
+        "EvalMemoKey.strategy must use the closed EvalStrategy carrier, not a string"
+    );
+}
