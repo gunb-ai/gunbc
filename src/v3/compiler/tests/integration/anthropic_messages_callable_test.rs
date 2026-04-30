@@ -20,7 +20,7 @@
 //! - No `Operation` / `data anthropic_operations` row leaks here; that
 //!   stays Grounding-owned in PR-β.
 
-use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
+use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn arrow_inputs_output(dag: &Dag, name: &str) -> (Vec<DeclarationId>, DeclarationId) {
@@ -156,6 +156,37 @@ fn anthropic_messages_is_acceptable_callable_ref_target() {
          lockstep against the response/wire lane has a real type to \
          project. Got anonymous output: {:?}",
         output_decl.connective
+    );
+}
+
+#[test]
+fn anthropic_messages_body_is_unparsed() {
+    // The `host anthropic_messages` body lowers as
+    // `ArrowBody::Unparsed(span)` in the bootstrap, not as
+    // `ExternalRealization` / `UserDefined` / `NoBody` / `Pending`.
+    // The pipeline-stage `host parse` / `host lower` patch
+    // (`bootstrap.rs:256`) is pipeline-specific; service-operation
+    // callables don't have an equivalent and don't get one in this
+    // PR (per #1130 dispatch — no producerless realization carrier).
+    // Pinning the actual body class makes the substrate fact match the
+    // file header's prose; a silent rewrite in either direction would
+    // fail closed here.
+    let dag = generated_full_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name("anthropic_messages")
+        .expect("`anthropic_messages` missing from full bootstrap");
+    let body = match &decl.connective {
+        TypeConnective::Arrow { body, .. } => body,
+        other => panic!("`anthropic_messages` is not an Arrow: {other:?}"),
+    };
+    assert!(
+        matches!(body, ArrowBody::Unparsed(_)),
+        "`anthropic_messages` body must be `ArrowBody::Unparsed(...)` in \
+         this slice (the honest substrate state for `host anthropic_messages` \
+         without a service-operation realization patch). Got: {body:?}. \
+         If this rewrites to `ExternalRealization`, that means a producerless \
+         realization carrier landed — re-validate against the #1130 dispatch \
+         before relaxing this ratchet."
     );
 }
 

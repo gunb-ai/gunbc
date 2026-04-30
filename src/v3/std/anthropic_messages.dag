@@ -39,16 +39,33 @@ import v3.std.anthropic_schema {
 //    response/wire lockstep lane (PR-β scope, sibling to the row authoring
 //    Grounding owns).
 //
-// **Body.** `host anthropic_messages` lowers to
-// `ArrowBody::ExternalRealization`, exactly the shape `pipeline.dag`'s
-// `host parse` / `host lower` / etc. use. The realization is external
-// to v3 — for service operations, the runtime dispatcher consumes the
-// REST endpoint binding from the `Operation` row PR-β authors. v3
-// substrate does not need a `CompilerHostRealization`-style data row
-// here because the realization is identified by the callable's
-// `Operation.endpoint` REST shape, not by a Rust symbol; minting a
-// data row whose only job is to satisfy a binding-carrier slot would
-// be the producerless parallel surface the dispatch explicitly rejects.
+// **Body — actual state and bound.** `host anthropic_messages` lowers
+// to `ArrowBody::Unparsed(span)` in the bootstrap, NOT to
+// `ArrowBody::ExternalRealization`. The pipeline-stage pattern in
+// `src/v3/compiler/pipeline.dag` (`host parse` / `host lower` / etc.)
+// gets its body rewritten to `ExternalRealization(realization_id)` by
+// a hard-coded post-processing loop in
+// `src/v3/compiler/src/bootstrap.rs:256` keyed by stage name; that
+// patch is pipeline-specific and does not fire here. Without an
+// equivalent service-operation realization patch (which would require
+// authoring a `CompilerHostRealization`-style data row whose only job
+// is to satisfy a binding-carrier slot — exactly the producerless
+// parallel surface the dispatch explicitly rejects), the body remains
+// `Unparsed`.
+//
+// `Unparsed` is the honest temporary state for this callable: v3 can
+// type-check the `Arrow` (parameters + output) but does not resolve a
+// realization. PR-β consumers (`Operation.callable.decl`) read the
+// signature only — the body is not on the consumer surface. The
+// shape ratchet at
+// `src/v3/compiler/tests/integration/anthropic_messages_callable_test.rs::anthropic_messages_body_is_unparsed`
+// pins this fact so a silent rewrite to `ExternalRealization` /
+// `UserDefined` / `NoBody` fails closed.
+//
+// **Bound on the unparsed-body state.** The dissolution trigger below
+// (v3 service-DSL parse/load surface) closes both this body class
+// and the schema mirror it depends on. Until then, the body stays
+// `Unparsed` and the ratchet enforces it.
 //
 // **Out of scope.** The `Operation` row that closes the
 // callable-to-source-identity edge (`callable: { decl: anthropic_messages },
