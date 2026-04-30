@@ -14,7 +14,9 @@
 //! - `method_template_contract_does_not_carry_cost_data`
 
 use std::collections::HashSet;
-use v3_compiler::dag::{Dag, DeclarationId, FieldValue, TypeConnective, ValueBody};
+use v3_compiler::dag::{
+    Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody,
+};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -31,6 +33,20 @@ fn decl_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
     dag.declaration_by_name(name)
         .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"))
         .id
+}
+
+fn conj_field_ty(dag: &Dag, name: &str, field: &str) -> DeclarationId {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+    match &decl.connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .find(|f| f.label == field)
+            .unwrap_or_else(|| panic!("`{name}` missing `{field}` field"))
+            .ty,
+        other => panic!("`{name}` is not a Conj: {other:?}"),
+    }
 }
 
 #[test]
@@ -93,6 +109,46 @@ fn method_template_contract_does_not_carry_cost_data() {
     );
 }
 
+#[test]
+fn method_template_contract_emit_template_uses_sum_not_nullable_bridge_fields() {
+    let dag = generated_full_bootstrap_dag();
+    let emit_template_ty = conj_field_ty(&dag, "MethodTemplateContract", "emit_template");
+    assert_eq!(
+        dag.declaration(emit_template_ty).name.as_deref(),
+        Some("MethodEmitTemplate"),
+        "MethodTemplateContract.emit_template must point at the sum carrier, not raw String"
+    );
+
+    let TypeConnective::Disj { variants } = &dag.declaration(emit_template_ty).connective else {
+        panic!("MethodEmitTemplate must be a Disj");
+    };
+    let labels: HashSet<&str> = variants.iter().map(|v| v.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        ["SingleTemplate", "HigherOrderTemplates"]
+            .into_iter()
+            .collect(),
+        "MethodEmitTemplate must keep the ordinary vs higher-order split explicit"
+    );
+
+    let contract_fields: HashSet<String> = conj_field_labels(&dag, "MethodTemplateContract")
+        .into_iter()
+        .collect();
+    for forbidden in [
+        "inline_template",
+        "fn_ref_template",
+        "wraps_in_sharing",
+        "emit_template_inline",
+        "emit_template_fn_ref",
+    ] {
+        assert!(
+            !contract_fields.contains(forbidden),
+            "MethodTemplateContract grew nullable/parallel higher-order field `{forbidden}` \
+             instead of using MethodEmitTemplate"
+        );
+    }
+}
+
 /// Walk a per-target `List<MethodTemplateContract>` declaration's value body
 /// and assert that every row's `dag_method: DeclarationRef` is unique within
 /// the list. Empty lists vacuously pass (no rows to compare); once Substrate's
@@ -150,6 +206,126 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
              MethodTemplateContract rows must be unique by `dag_method`"
         );
     }
+}
+
+fn method_ref_decl_from_row<'a>(
+    row: &'a FieldValue,
+    row_context: &str,
+) -> (&'a DeclarationId, &'a FieldValue) {
+    let FieldValue::Record(fields) = row else {
+        panic!("{row_context}: row is not a FieldValue::Record");
+    };
+    let (_, dag_method) = fields
+        .iter()
+        .find(|(label, _)| label == "dag_method")
+        .unwrap_or_else(|| panic!("{row_context}: missing `dag_method` field"));
+    let FieldValue::Record(method_ref_fields) = dag_method else {
+        panic!("{row_context}: `dag_method` is not MethodRef record");
+    };
+    let (_, decl_field) = method_ref_fields
+        .iter()
+        .find(|(label, _)| label == "decl")
+        .unwrap_or_else(|| panic!("{row_context}: MethodRef missing `decl` field"));
+    let FieldValue::Reference(decl_id) = decl_field else {
+        panic!("{row_context}: MethodRef.decl is not a reference");
+    };
+    let (_, emit_template) = fields
+        .iter()
+        .find(|(label, _)| label == "emit_template")
+        .unwrap_or_else(|| panic!("{row_context}: missing `emit_template` field"));
+    (decl_id, emit_template)
+}
+
+fn method_emit_template_variant_label(dag: &Dag, constructor: DeclarationId) -> &str {
+    let method_emit_template = dag
+        .declaration_by_name("MethodEmitTemplate")
+        .expect("MethodEmitTemplate");
+    let TypeConnective::Disj { variants } = &method_emit_template.connective else {
+        panic!("MethodEmitTemplate must be a Disj");
+    };
+    variants
+        .iter()
+        .find(|variant| variant.ty == constructor)
+        .unwrap_or_else(|| panic!("unknown MethodEmitTemplate constructor {constructor:?}"))
+        .label
+        .as_str()
+}
+
+fn rust_method_template_rows(dag: &Dag) -> &[FieldValue] {
+    let decl = dag
+        .declaration_by_name("rust_method_template_contracts")
+        .expect("rust_method_template_contracts");
+    let body = decl.value_body.as_ref().expect("value body");
+    let ValueBody::List(rows) = body else {
+        panic!("rust_method_template_contracts must lower to ValueBody::List");
+    };
+    rows
+}
+
+#[test]
+fn rust_higher_order_method_template_contracts_are_present() {
+    let dag = generated_full_bootstrap_dag();
+    let rows = rust_method_template_rows(&dag);
+    let mut seen = HashSet::new();
+
+    for (idx, row) in rows.iter().enumerate() {
+        let (decl_id, emit_template) =
+            method_ref_decl_from_row(row, &format!("rust row {idx}"));
+        let method_name = dag
+            .declaration(*decl_id)
+            .name
+            .as_deref()
+            .unwrap_or("<unnamed>");
+        if ![
+            "all_method",
+            "any_method",
+            "filter_method",
+            "flat_map_method",
+        ]
+        .contains(&method_name)
+        {
+            continue;
+        }
+        seen.insert(method_name.to_string());
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = emit_template
+        else {
+            panic!("{method_name}: emit_template must be MethodEmitTemplate variant");
+        };
+        assert_eq!(
+            method_emit_template_variant_label(&dag, *constructor),
+            "HigherOrderTemplates",
+            "{method_name} must use the higher-order template variant"
+        );
+        assert_eq!(
+            payload.len(),
+            3,
+            "{method_name}: HigherOrderTemplates must carry inline, fn-ref, wraps flag"
+        );
+        assert!(
+            matches!(&payload[0], FieldValue::Literal(LiteralBits::String(s)) if s.contains("{param}") && s.contains("{iter}")),
+            "{method_name}: inline_template should preserve legacy inline placeholders"
+        );
+        assert!(
+            matches!(&payload[1], FieldValue::Literal(LiteralBits::String(s)) if s.contains("{arg}")),
+            "{method_name}: fn_ref_template should preserve legacy fn-ref placeholder"
+        );
+        assert!(
+            matches!(&payload[2], FieldValue::Literal(LiteralBits::Bool(_))),
+            "{method_name}: wraps_in_sharing must be a Bool payload"
+        );
+    }
+
+    assert_eq!(
+        seen,
+        ["all_method", "any_method", "filter_method", "flat_map_method"]
+            .into_iter()
+            .map(String::from)
+            .collect(),
+        "Rust MethodTemplateContract rows must include the four higher-order methods"
+    );
 }
 
 #[test]
