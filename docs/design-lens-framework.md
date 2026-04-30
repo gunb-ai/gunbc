@@ -414,7 +414,7 @@ Things to think through during design phase that could surface gaps:
 
 2. **Error recovery for partial failure.** If a program partially violates IFC (some paths leak, others don't), does the fold report all violations or stop at the first? Director's "no silent fabrication" rule says report all. Is that the spec?
 
-3. **Lens-application performance.** The fold visits every Node in the DAG. For large programs, can we memoize? If so, on what key (Node identity? structural hash?). This is post-R3 optimization; flagging here so we don't accidentally bake in non-memoizable shape.
+3. **Lens-application performance.** The fold visits every Node in the DAG. For large programs, can we memoize? If so, on what key (Node identity? structural hash?). ~~This is post-R3 optimization; flagging here so we don't accidentally bake in non-memoizable shape.~~ **Director-ratified 2026-04-30 invariant (locks memoizable shape; defers implementation):** **`Lens.read` MUST depend only on the (Node, Behavior) pair, not external state.** This locks memoizable shape; runtime memoization of the lens fold is then an instance of the auto-memoization free consequence (T-Free-Consequences-Demonstration in R3). Same lane that demonstrates auto-parallelism + auto-memoization + cross-target opt + space-bound CX as structural consequences of the Lens<C> fold framework over the 5 substrate behaviors. Memoization implementation is the consequence demonstration; the *purity invariant on `Lens.read`* is the substrate discipline that makes it possible.
 
 4. **Parametric algebra interaction.** `Dimension<Carrier>` (R2 Modeling) is a parametric type. Does a `Lens<Dimension<...>>` make sense? Should be expressible if `Lens<C>` is fully parametric.
 
