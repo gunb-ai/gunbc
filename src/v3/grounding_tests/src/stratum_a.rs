@@ -125,44 +125,79 @@ fn method_declaration_template_id(dag: &Dag) -> Result<DeclarationId, String> {
 /// Fail-closed: the referenced declaration must **instantiate** `MethodDeclaration`
 /// (same structural gate as `method_registry_covers_all_algebra_template_names`), not merely
 /// carry a string `name` field on an arbitrary record.
-fn method_registry_name(dag: &Dag, method_decl_id: DeclarationId) -> Result<String, String> {
-    let method_decl_template = method_declaration_template_id(dag)?;
+fn method_registry_name(
+    dag: &Dag,
+    method_decl_id: DeclarationId,
+    list_name: &str,
+    row_index: usize,
+) -> Result<String, GroundingTestsDiagnostic> {
+    let method_decl_template = method_declaration_template_id(dag).map_err(|e| {
+        GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: e,
+        }
+    })?;
     let decl = dag.declaration(method_decl_id);
     let template = match &decl.connective {
         TypeConnective::Instantiation { template, .. } => *template,
         other => {
-            return Err(format!(
-                "declaration {:?}: expected MethodDeclaration instantiation (Instantiation connective), got {other:?}",
-                decl.name
-            ));
+            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: format!(
+                    "declaration {:?}: expected MethodDeclaration instantiation (Instantiation connective), got {other:?}",
+                    decl.name
+                ),
+            });
         }
     };
     if template != method_decl_template {
-        return Err(format!(
-            "declaration {:?}: instantiates template {template:?}, expected MethodDeclaration ({method_decl_template:?})",
-            decl.name
-        ));
+        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: format!(
+                "declaration {:?}: instantiates template {template:?}, expected MethodDeclaration ({method_decl_template:?})",
+                decl.name
+            ),
+        });
     }
     let vb = decl
         .value_body
         .as_ref()
-        .ok_or_else(|| format!("declaration {:?} has no value_body", decl.name))?;
+        .ok_or_else(|| GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: format!("declaration {:?} has no value_body", decl.name),
+        })?;
     let ValueBody::Structural { fields } = vb else {
-        return Err(format!(
-            "declaration {:?}: value_body not Structural: {vb:?}",
-            decl.name
-        ));
+        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: format!(
+                "declaration {:?}: value_body not Structural: {vb:?}",
+                decl.name
+            ),
+        });
     };
-    let name_field = fields
-        .iter()
-        .find(|(label, _)| label == "name")
-        .ok_or_else(|| format!("declaration {:?}: missing `name` field", decl.name))?;
-    match &name_field.1 {
+    enforce_closed_record_schema(
+        fields,
+        list_name,
+        row_index,
+        "MethodDeclaration.value_body",
+        &["name"],
+    )?;
+    let name_field = row_field(fields, list_name, row_index, "name")?;
+    match name_field {
         FieldValue::Literal(LiteralBits::String(s)) => Ok(s.clone()),
-        other => Err(format!(
-            "declaration {:?}: `name` not a string literal: {other:?}",
-            decl.name
-        )),
+        other => Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+            list_name: list_name.to_string(),
+            row_index,
+            detail: format!(
+                "declaration {:?}: `name` not a string literal: {other:?}",
+                decl.name
+            ),
+        }),
     }
 }
 
@@ -390,13 +425,7 @@ fn method_name_from_dag_method(
             detail: format!("MethodRef.decl not a reference: {decl_field:?}"),
         });
     };
-    method_registry_name(dag, *method_decl_id).map_err(|e| {
-        GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: e,
-        }
-    })
+    method_registry_name(dag, *method_decl_id, list_name, row_index)
 }
 
 fn row_fingerprint(
