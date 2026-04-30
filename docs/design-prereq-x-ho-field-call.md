@@ -167,7 +167,7 @@ The current `TransformTarget` enum has three variants — `Callable`,
 sourced Arrow value. Two cases per call-site need lowering, and
 one of them requires a substrate extension:
 
-- **(L1.a) Statically-resolvable callee — reuse `Callable(decl_id)`.**
+- **(L1.a) Statically-resolvable callee — reuse `Callable { callee: decl_id, args }`.**
   When the Arrow expression resolves at lowering time to a top-level
   `fn` declaration (e.g., `data v: WrapFn = { f: double }; v.f(x)`,
   where `v.f` projects a `FieldValue::Reference(double)` from the
@@ -175,7 +175,7 @@ one of them requires a substrate extension:
   compile-time. Lowering walks `v` → `data v: WrapFn`'s
   `value_body` → `f: FieldValue::Reference(decl_id_of_double)`,
   resolves `decl_id_of_double` to `double`'s arrow signature, and
-  emits `TransformTarget::Callable(decl_id_of_double)` directly. No
+  emits `TransformDispatch::Callable { callee: decl_id_of_double, args }` directly. No
   substrate extension; the carrier identity is preserved through
   field projection at the lowering boundary.
 
@@ -190,9 +190,10 @@ one of them requires a substrate extension:
   (not for invoking Arrow values), `Operator` is for built-in
   primitives.
 
-  The substrate extension is `TransformTarget::IndirectCall` with
-  the callee port carried in `TransformNode.inputs`, alongside the
-  argument ports. Two competing constraints shape the encoding:
+  The substrate extension introduces a runtime-callee dispatch
+  variant; the encoding question is how to carry the callee port
+  alongside argument ports without admitting illegal cardinality
+  states. Two competing constraints shape it:
 
   - **Facts Flow Forward / Every Dependency Is A Substrate Fact:**
     reflected consumers walk `TransformNode.inputs` to derive
@@ -204,93 +205,123 @@ one of them requires a substrate extension:
     `inputs[0]`. Pushing enforcement to later type-checking
     violates modeling-discipline §"API-level enforcement."
 
-  **Resolution: structurally-tagged input element type.** Refine
-  `TransformNode.inputs` from `Vec<PortId>` to
-  `Vec<TransformInput>` where:
+  **Resolution: collapse `target` + `inputs` into a single typed
+  `TransformDispatch` sum.** A tagged-element-type approach
+  (`Vec<TransformInput>` where `TransformInput = Arg | Callee`)
+  was considered and rejected: cardinality of `Callee` per
+  `IndirectCall` transform stays a cross-field invariant
+  (variant `Callee` is valid only inside `IndirectCall`,
+  arbitrary other variants must not carry `Callee`), enforced by
+  builder + debug assert rather than by the type. That fails the
+  illegal-states-unrepresentable bar.
+
+  The structurally-honest shape collapses
+  `TransformNode.target: TransformTarget` and
+  `TransformNode.inputs: Vec<PortId>` into one typed sum:
 
   ```rust
-  pub enum TransformInput {
-      Arg(PortId),       // ordinary argument port; existing semantics
-      Callee(PortId),    // Arrow-typed dispatch source; valid only inside IndirectCall transforms
+  pub struct TransformNode {
+      pub id: NodeId,
+      pub dispatch: TransformDispatch,
+      pub output: PortId,
+      pub span: SourceSpan,
+  }
+
+  pub enum TransformDispatch {
+      Callable      { callee: DeclarationId,       args: Vec<PortId> },
+      FieldProject  { field_label: String, field_child: Option<DeclarationId>, args: Vec<PortId> },
+      Operator      { op: OperatorKind,            args: Vec<PortId> },
+      Indirect      { callee: PortId,              args: Vec<PortId> },
+  }
+
+  impl TransformDispatch {
+      /// Single-authority dependency walk for Facts Flow Forward.
+      /// For `Indirect`, yields the callee port first, then args.
+      /// For other variants, yields args only (callee identity is
+      /// declaration-resolved at lowering time, not a runtime port
+      /// dependency).
+      pub fn input_ports(&self) -> impl Iterator<Item = &PortId> { ... }
   }
   ```
 
-  This preserves both invariants: `inputs.iter()` still walks every
-  dependency port (Facts Flow Forward), and the `Callee`/`Arg`
-  distinction is structural rather than positional (illegal states
-  unrepresentable at the variant level). For `Callable`,
-  `FieldProject`, `Operator` transforms, every element is
-  `TransformInput::Arg(_)`. For `IndirectCall`, exactly one
-  element is `TransformInput::Callee(_)`; the rest are `Arg`.
+  Both invariants now hold structurally:
 
-  **Constructor-API enforcement (Track 9 named-typed-handle):** a
-  dedicated builder `Dag::push_indirect_call_transform(callee:
-  PortId, args: Vec<PortId>) -> NodeId` is the only way to
-  construct an `IndirectCall` transform. The builder validates at
-  construction time that `callee`'s port has an Arrow type and
-  that `args.len()` matches the Arrow's declared arity, then emits
-  `inputs = [Callee(callee), Arg(args[0]), Arg(args[1]), ...]`.
-  Direct field construction (e.g., `TransformNode { target:
-  IndirectCall, inputs: vec![Arg(...), Arg(...)] }` with no
-  `Callee`) is impossible without bypassing the builder; reviewers
-  enforce builder usage in code review the same way `push_node`
-  call discipline is enforced today.
+  - **Facts Flow Forward:** `dispatch.input_ports()` is the single
+    authority that yields every runtime-port dependency for any
+    variant. Reflected consumers (lenses, schedulers, dataflow
+    analyses) walk this iterator without knowing which variant
+    they have.
+  - **Illegal states unrepresentable at the type level:**
+    - `Callable` / `FieldProject` / `Operator` cannot accidentally
+      carry a runtime callee port (no `callee: PortId` field).
+    - `Indirect` cannot omit its callee (single field, not a
+      `Vec`; not `Option`).
+    - Multi-callee `Indirect` is impossible (single field, not a
+      `Vec`).
+    - `Callable.callee` is `DeclarationId` (compile-time),
+      `Indirect.callee` is `PortId` (runtime); the type system
+      makes them incompatible.
 
-  **Cardinality discipline:** the variant requires exactly one
-  `Callee` element and zero-or-more `Arg` elements. Without a
-  refinement primitive in v3 today, the cardinality is enforced by
-  the builder + a debug assertion in the constructor. Future
-  refinement: when v3 supports refined enum payload (`{ inputs:
-  Vec<TransformInput> | inputs has exactly one Callee }`), the
-  cardinality dissolves into the type. For now: builder + assert.
+  No builder + debug-assert ratchet; cardinality and target/callee
+  compatibility are both expressed in `TransformDispatch`'s shape.
+  The constructor APIs (`Dag::push_callable_transform(...)`,
+  `Dag::push_indirect_call_transform(...)`, etc.) become
+  ergonomic helpers, not invariant-defenders — the type rejects
+  malformed combinations at construction by definition.
 
-  **Emitter contract (typed-tag, not positional).** Emitters
-  consume `TransformNode.inputs` by partitioning on the
-  `TransformInput` tag, NOT by positional index:
+  **Migration cost.** The collapse is a substantial refactor of
+  `TransformNode` and every consumer that walks `target` /
+  `inputs` separately (`emit_*_target.rs`, lens reads, lowerer
+  call-site emit, bootstrap-generated). All consumers move from
+  `(t.target, t.inputs)` to `t.dispatch`, with the
+  `dispatch.input_ports()` iterator replacing direct
+  `t.inputs.iter()` walks. **Implementation worker scopes the
+  migration**; the audit only locks the target shape.
 
-  - Find the unique `TransformInput::Callee(callee_port)` element.
-    Fail closed via `EmitError::MalformedIndirectCall` if `Callee`
-    is missing or appears more than once. The substrate cardinality
-    invariant (exactly one `Callee` per `IndirectCall` transform)
-    is enforced at the construction boundary by the builder; the
-    emitter validates fail-closed at the rendering boundary in case
-    the substrate consumer skipped the builder.
-  - Project the remaining `TransformInput::Arg(arg_port)` elements
-    in their declared order — these are the call arguments.
-  - Render the target language's first-class function-call surface
-    (Rust closure call, Python `()` on a callable, etc.) using
-    `callee_port` as the dispatched callee and the projected
-    `arg_port` list as args.
+  **Emitter contract.** Emitters match on `TransformDispatch`
+  variant:
 
-  Positional authority (`inputs[0]` = callee) is **rejected**: the
-  `TransformInput` tag IS the single authority for "which
-  dependency is the callee." Emitters that walk by position
-  reintroduce the convention this section's earlier paragraph
-  rejects.
+  ```rust
+  match &t.dispatch {
+      TransformDispatch::Indirect { callee, args } => {
+          render_indirect_call(*callee, args, ...)
+      }
+      TransformDispatch::Callable { callee, args } => {
+          render_callable(*callee, args, ...)
+      }
+      // ... etc.
+  }
+  ```
+
+  No partition/lookup/fail-closed defense needed; the variant
+  branch carries the right fields. `EmitError::MalformedIndirectCall`
+  retires — the malformed state is unrepresentable.
 
   Per-target `SubstrateAccessorBinding`-style rendering is not
   required because the call is structural (no per-accessor
   carrier), only the call-syntax template per target.
 
-  Adding this variant is the load-bearing substrate change in X1's
-  implementation slice. **Dissolution / ratchet receipt:** the
-  `IndirectCall` variant is permanent (HO dispatch is a real
+  **Dissolution / ratchet receipt:** the `Indirect` variant of
+  `TransformDispatch` is permanent (HO dispatch is a real
   long-term language surface, not staging); no SCAFFOLD lifecycle.
-  The variant attaches to existing `TransformTarget` rather than
-  introducing a parallel carrier; arity-checking and type-checking
-  reuse the current path with the callee's port type as the Arrow
-  source.
+  The collapse from `(target, inputs)` → `dispatch` is also
+  permanent — single-authority dispatch encoding is the long-term
+  shape, not a transitional bridge.
 
 **Sequencing for the implementation slice:**
 1. (L1.a) statically-resolvable case lands FIRST against existing
-   `TransformTarget::Callable` — no substrate change. Covers
+   the existing static-callee dispatch path (renamed to
+   `TransformDispatch::Callable` post-collapse, but no new
+   variant). Covers
    `data v: WrapFn = { f: double }; v.f(x)`. This is enough to
    unblock `data complexity_lens: Lens<Int> = { ... }` consumers
    when `complexity_lens.read(d, b)` is called from `fold_lens<C>`
    if and only if `complexity_lens` is a `data` binding (which it
    is — Lens instances are top-level data).
 2. (L1.b) runtime-sourced case lands SECOND with the
-   `TransformTarget::IndirectCall` extension.
+   `TransformDispatch::Indirect { callee: PortId, args: Vec<PortId> }`
+   variant + the `TransformNode.target/inputs` collapse described
+   above.
    Required for `fn invoke(lens: Lens<Int>, ...) -> ... = lens.read(...)`
    patterns where the Lens value flows through a parameter rather
    than a static binding. `fold_lens<C>` itself is parametric over
