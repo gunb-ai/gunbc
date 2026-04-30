@@ -2250,9 +2250,7 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
         .declaration_by_name("Value")
         .expect("runtime Value missing from full bootstrap");
     let labels: Vec<&str> = match &value.connective {
-        TypeConnective::Disj { variants } => {
-            variants.iter().map(|f| f.label.as_str()).collect()
-        }
+        TypeConnective::Disj { variants } => variants.iter().map(|f| f.label.as_str()).collect(),
         other => panic!("runtime Value is not a Disj: {other:?}"),
     };
     assert!(
