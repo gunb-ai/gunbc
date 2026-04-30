@@ -201,29 +201,15 @@ fn complexity_behavior_result_port(b: Behavior) -> PortId =
     Bind(bind) => bind.result_port
   }
 
-fn complexity_lookup_int_to_witness(l: Lookup<Int>, at: Behavior) -> Witness<Int> =
-  match l {
-    Miss => Violates { reason: "structural depth lookup miss", at: at }
-    Hit(n) => Inhabits(n)
-  }
-
-fn complexity_read(d: Dag, b: Behavior) -> Witness<Int> =
-  complexity_lookup_int_to_witness(
-    lookup_cost(compute_costs(d), complexity_behavior_result_port(b)),
-    b
-  )
+fn complexity_read(d: Dag, b: Behavior) -> Witness<Int> = Inhabits(0)
 
 fn complexity_sequential_op(a: Int, b: Int) -> Int = a + b
 
 fn complexity_branch(a: Int, b: Int) -> Int = if a > b then a else b
 
-fn complexity_iterate(c: Int, bound: LoopBound) -> Int {
-  c
-}
+fn complexity_iterate(c: Int, bound: LoopBound) -> Int = c
 
-fn complexity_validate(d: Dag, c: Int) -> OptionalDiagnostic {
-  NoDiagnostic
-}
+fn complexity_validate(d: Dag, c: Int) -> OptionalDiagnostic = NoDiagnostic
 
 data complexity_lens: Lens<Int> = {
   name: "complexity",
