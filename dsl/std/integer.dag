@@ -25,19 +25,21 @@
 module std.integer
 
 import std.algebra { OrderedRing, Semiring }
-import std.bit { Byte, Word16, Word32, Word64 }
+import std.bit { Byte, Word16, Word32, Word64, Word128 }
 
 // Signed integers: ordered rings (add + negate + mul + compare)
 type Int8 = OrderedRing<Byte>
 type Int16 = OrderedRing<Word16>
 type Int32 = OrderedRing<Word32>
 type Int64 = OrderedRing<Word64>
+type Int128 = OrderedRing<Word128>
 
 // Unsigned integers: semirings (add + mul, no negate)
 type UInt8 = Semiring<Byte>
 type UInt16 = Semiring<Word16>
 type UInt32 = Semiring<Word32>
 type UInt64 = Semiring<Word64>
+type UInt128 = Semiring<Word128>
 
 // Default aliases
 type Int = Int64
