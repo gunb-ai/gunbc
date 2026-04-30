@@ -19,6 +19,8 @@ The one true critical path in R2: `Pilot → Rust → LanguageSpec → Coercion-
 
 ### 11-lane structure (post-engine-reframe; locked 2026-04-28)
 
+**Brief-authoring closure receipt:** 10 of 11 R2 Grounding lane briefs are authored; T-Ground-Coercion-Fold remains fenced by [`docs/design-emission-model.md`](../design-emission-model.md) rather than a separate brief until its consumer wiring dispatch unblocks.
+
 **Foundational (already landed):**
 1. **T-Ground-Pilot** S — DONE (PR #765 merged 2026-04-25). Toy inhabitance-search engine for Rust integer family + bool + Unit.
 
@@ -67,7 +69,7 @@ The 8-question design dialogue resolved into a cadence whose merge gates worker 
 | **T-Ground-Diagnostic** *(NEW)* | S | **BRIEF LANDED** — [`t-ground-diagnostic.md`](t-ground-diagnostic.md) (#1216); implementation pending | Declared structural ordering for diagnostic enumeration; `EmissionDiagnostic` carrier |
 | **T-Ground-CrossTarget-Meta** *(NEW)* | S | **BRIEF LANDED** — [`t-ground-cross-target-meta.md`](t-ground-cross-target-meta.md) (#1224 + L6 form-axis anchor #1229); **implementation gated on PR-J merge (likely no-op)** | Cross-target uniformity meta-spec; owns L6 per-(form × target) load-completeness check |
 | T-Ground-Tests | S | **BRIEF LANDED** — [`t-ground-tests.md`](t-ground-tests.md) (#1223); implementation pending — gated on Q4 lock (PR-I) + Coercion-Fold body | L4 routing correctness verification |
-| T-Ground-Dissolve | S | BRIEF AUTHORED — [`t-ground-dissolve.md`](t-ground-dissolve.md); implementation pending after Coercion-Fold carries the load | Track-13 dissolution: delete `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` |
+| T-Ground-Dissolve | S | **BRIEF LANDED** — [`t-ground-dissolve.md`](t-ground-dissolve.md) (#1234); implementation pending after Coercion-Fold carries the load | Track-13 dissolution: delete `TypeCheckpoint` / `InhabitantDecl` / `carrier: String` |
 
 ## Cross-program dependencies
 
@@ -145,7 +147,7 @@ Pending — post-spawn manager-authored autonomously:
 - T-Ground-Diagnostic (S) — brief [`t-ground-diagnostic.md`](t-ground-diagnostic.md) **LANDED** (#1216); implementation pending
 - T-Ground-CrossTarget-Meta (S; gated on PR-J no-op confirmation) — brief [`t-ground-cross-target-meta.md`](t-ground-cross-target-meta.md) **LANDED** (#1224 + #1229); implementation pending
 - T-Ground-Tests (S) — brief [`t-ground-tests.md`](t-ground-tests.md) **LANDED** (#1223); implementation pending — gated on Q4 (PR-I) + Coercion-Fold body
-- T-Ground-Dissolve (Track-13 cleanup) — brief [`t-ground-dissolve.md`](t-ground-dissolve.md)
+- T-Ground-Dissolve (S) — brief [`t-ground-dissolve.md`](t-ground-dissolve.md) **LANDED** (#1234); implementation pending after Coercion-Fold carries the load
 - T-Ground-Python
 - T-Ground-Go
 - **Cleanup wave**: post-LanguageSpec, retire PR #989's engine-framed structure into the Coercion-Fold framing (per `design-emission-model.md` §"Affected lanes" option (c))
