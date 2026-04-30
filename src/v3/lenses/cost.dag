@@ -332,20 +332,23 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 // using `linear_at(l.source)` for both Cardinality and Descent loops
 // until a richer, authoritative cluster-measure fact is introduced.
 //
-// Forward Lens<SymbolicCost> note: if the later R3 lens framework
-// migrates cost onto `Lens<C>.iterate: fn(C, LoopBound) -> C`, the
-// source-less iterate boundary must either consume a real projected
-// measure or make an explicit carrier decision. The partial mapping is:
+// Forward Lens<SymbolicCost> note: current cost semantics do not need a
+// Descent-specific cost projection because `LoopNode.source` is the
+// runtime descent carrier for both bound variants. If a later R3 lens
+// framework migrates cost onto a source-less `Lens<C>.iterate:
+// fn(C, LoopBound) -> C`, that framework must preserve this source
+// carrier or make an explicit replacement decision. Current mapping:
 //
 //   - `Cardinality { count }` -> `LinearCost({ source_port: count })`
-//   - `Descent { cluster }` -> no standalone SymbolicCost projection
-//     is declared today; current DB-3 analysis reads `LoopNode.source`
-//     instead of projecting cost from `cluster` alone.
+//   - `Descent { cluster }` -> `LinearCost({ source_port: l.source })`
+//     through the enclosing `LoopNode`; the cluster sidecar carries the
+//     termination witness topology, not a replacement cost carrier.
 //
 // Do not choose `UnknownCost("mutual recursion descent cluster")` as a
 // local migration convenience. `UnknownCost` is an algebra top, not a
-// failure channel; if it becomes the Descent projection, that must be
-// named as the authoritative substrate decision. Until the class-5 data
-// declaration and any future Lens-specific projection are honest,
-// preserve `compute_symbolic_costs` / `symbolic_cost_of` as the primary
-// API and do not author `data cost_lens`.
+// failure channel; if a future lens fold wants a different Descent cost
+// policy, that must be named as the authoritative substrate decision.
+// Until the class-5 data declaration and any future Lens-specific
+// source-carrier handling are honest, preserve `compute_symbolic_costs`
+// / `symbolic_cost_of` as the primary API and do not author
+// `data cost_lens`.
