@@ -335,8 +335,8 @@ one of them requires a substrate extension:
   shape, not a transitional bridge.
 
 **Sequencing for the implementation slice:**
-1. (L1.a) statically-resolvable case lands FIRST against existing
-   the existing static-callee dispatch path (renamed to
+1. (L1.a) statically-resolvable case lands FIRST against the
+   existing static-callee dispatch path (renamed to
    `TransformDispatch::Callable` post-collapse, but no new
    variant). Covers
    `data v: WrapFn = { f: double }; v.f(x)`. This is enough to
