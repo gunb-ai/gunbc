@@ -2581,12 +2581,10 @@ fn no_diag() -> OptionalDiagnostic {
     );
     let out = bind_value_type_decl(&dag, "no_diag");
     let opt = find_named(&dag, "OptionalDiagnostic");
-    match &dag.declaration(out).connective {
-        TypeConnective::Instantiation { template, .. } => {
-            assert_eq!(*template, opt);
-        }
-        other => panic!("expected OptionalDiagnostic<_> instantiation, got {other:?}"),
-    }
+    assert_eq!(
+        out, opt,
+        "OptionalDiagnostic fn should resolve to the sum declaration"
+    );
 }
 
 #[test]
