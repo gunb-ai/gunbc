@@ -38,7 +38,7 @@ type Wrapper { f: fn(Int) -> Int }
 fn invoke(w: Wrapper, x: Int) -> Int = w.f(x)
 "#;
     let tokens = tokenize_for_test(src, "x1.v3").expect("tokenize");
-    let err = parse_for_test(&tokens, "x1.v3").err().expect(
+    let err = parse_for_test(&tokens, "x1.v3").expect_err(
         "Prereq-X1 still blocks `w.f(x)` — if this test panics, the parser was extended; retire this ratchet.",
     );
     assert!(
@@ -58,7 +58,7 @@ type Wrapper { f: fn(Int) -> Int }
 fn invoke(w: Wrapper, x: Int) -> Int = { let g = w.f; g(x) }
 "#;
     let tokens = tokenize_for_test(src, "x3.v3").expect("tokenize");
-    let err = parse_for_test(&tokens, "x3.v3").err().expect(
+    let err = parse_for_test(&tokens, "x3.v3").expect_err(
         "Prereq-X3 still blocks `= { let ...; ... }` — if this test panics, retire this ratchet.",
     );
     assert!(
