@@ -11,8 +11,9 @@
 //!   canonical name is the enclosing map key, never duplicated as a field.
 //! - `RestEndpointBinding` carries `method` + `path` only.
 //! - `Operation` carries `callable`, `inputs`, `endpoint` only — typed
-//!   `DeclarationRef` callable identity instead of a free-form `name: String`,
-//!   so the operation row is keyed by the actual callable it mirrors.
+//!   `CallableRef` (wrapper around `DeclarationRef`, mirror of `MethodRef`)
+//!   instead of a free-form `name: String`, so the operation row is keyed
+//!   by the actual callable it mirrors.
 //! - `Operation.inputs` is `Map<String, InputField>` — by-construction
 //!   uniqueness on input-field names; `ParamToken.name` resolves into the
 //!   key set in PR-β.
@@ -97,9 +98,10 @@ fn operation_carries_only_callable_inputs_endpoint() {
     assert_eq!(
         labels, expected,
         "Operation is the minimal PR-α product: callable + inputs + endpoint. \
-         `callable: DeclarationRef` is the typed operation-to-callable edge — \
-         display names derive from it, no parallel `name: String` field. \
-         Adding outputs / body / response shape here is PR-β..ω scope, not PR-α."
+         `callable: CallableRef` (typed wrapper around `DeclarationRef`, mirror \
+         of `MethodRef`) is the typed operation-to-callable edge — display \
+         names derive from it, no parallel `name: String` field. Adding \
+         outputs / body / response shape here is PR-β..ω scope, not PR-α."
     );
 }
 
