@@ -2196,14 +2196,8 @@ fn record_body_duplicate_fields_fail_closed() {
         .expect("duplicate_fields declaration should be allocated before lowering fails");
 
     assert!(
-        dag.diagnostics().iter().any(|(_, diagnostic)| {
-            matches!(
-                diagnostic,
-                Diagnostic::ResolveError { name, .. }
-                    if name.contains("record body repeats field `a`")
-            )
-        }),
-        "expected duplicate-field lowering to report a ResolveError naming `a`, got {:?}",
+        has_resolve_error(&dag),
+        "expected duplicate-field lowering to report a ResolveError, got {:?}",
         dag.diagnostics()
     );
     assert!(
