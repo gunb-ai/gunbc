@@ -57,6 +57,8 @@ mod extdeps_rust_primitives_loader_test;
 mod four_fixture_regression_test;
 #[path = "integration/idempotency_lens_instance_blocker_test.rs"]
 mod idempotency_lens_instance_blocker_test;
+#[path = "integration/prereq_x_call_on_field_access_ratchet_test.rs"]
+mod prereq_x_call_on_field_access_ratchet_test;
 #[path = "integration/int_literal_cardinality_test.rs"]
 mod int_literal_cardinality_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
