@@ -8,7 +8,7 @@
 - **Program scope source:** [`THESIS.md`](../../THESIS.md) §"Tier 3 — Verification from structure" (L4, L5, L7 verification-surface claims) + [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" rows for T-Verification-L4-L7-Direct / T-Verification-L5-Corpus / T-Bridge-Retirement.
 - **Why a new manager (per `r3-structure.md` L108):** the R3 verification surface {L4, L5, L7} is structural-acceptance-by-construction — its own discipline, not foldable into Substrate (different concern) or PB (different concern).
 - **Cross-program producer:** **R2-Evaluator** gates lanes 1 and 2 (Witness construction surface + cross-target equivalence harness primitives). R3-absorbed formal-grounding lane (TC1/TC2/TC3 bundling) consumes substrate primitives authored by Substrate Manager continuation.
-- **Substrate-fact-introduction procedure** ([`INVARIANTS.md`](../../INVARIANTS.md) §P1): self-serve through the 3-step decision procedure before escalating substrate-shape questions to Director. TC3 is the live escalation candidate (per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §"TC3 — Strong-normalization TestClaim").
+- **Substrate-fact-introduction procedure** ([`INVARIANTS.md`](../../INVARIANTS.md) §P1): self-serve through the 3-step decision procedure before escalating substrate-shape questions to Director. Director ratified unified substrate-introduction for TC1/TC2/TC3 as `BinaryDimensionReportEquals` at [#828 c#4356050427](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356050427) + [#828 c#4356138359](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356138359); Substrate owns the predicate variant, while Verification supplies consuming coverage requirements.
 
 ## Owned program scope (2 lanes + 1 ledger gate, per `r3-structure.md` L108 authority)
 
@@ -20,7 +20,9 @@
 
 ### Absorbed cross-cutting responsibility — TC1/TC2/TC3 bundle (NOT a new lane)
 
-Per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L181 "TC3 ownership moves from PB to Verification" + R2-Evaluator residual transition for TC2 + #1179 ratification for TC1: the three formal-grounding `TestClaim`s are an **absorbed cross-cutting responsibility** of this manager, not a third owned lane. The structural authority `r3-structure.md` L108 names exactly **2 lanes + 1 ledger gate** for Verification scope; this brief defers to that authority. Audit cadence + strict-fire activation tracking is folded into manager cadence (not a separate dispatch program). Worker brief at [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) authors the bundle as an absorbed-responsibility audit-cadence artifact. **TC3 substrate-fact-introduction**, when its prerequisites land (B5 + T-Substrate-Lens-Primitive), is the only point at which absorbed work converts to a dispatched worker brief — at which time it joins the existing 2-lane scope as a substrate-introduction sub-task, not a new lane row. If Director ratifies a third lane in `r3-structure.md` itself, this brief updates accordingly; until then, 2-lane scope is the authority.
+Per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L181 "TC3 ownership moves from PB to Verification" + R2-Evaluator residual transition for TC2 + #1179 ratification for TC1: the three formal-grounding `TestClaim`s are an **absorbed cross-cutting responsibility** of this manager, not a third owned lane. The structural authority `r3-structure.md` L108 names exactly **2 lanes + 1 ledger gate** for Verification scope; this brief defers to that authority. Audit cadence + strict-fire activation tracking is folded into manager cadence (not a separate dispatch program). Worker brief at [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) authors the bundle as an absorbed-responsibility audit-cadence artifact.
+
+**Unified-predicate disposition (Director-ratified):** PR #1309's TC1 analysis named Option 2 first — generalize `LensOutputEquals` into binary structural equality over `DimensionReport<C>`. PR #1316 independently converged on the same shape for TC2. Director ratified the unified substrate target at [#828 c#4356050427](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356050427) and [#828 c#4356138359](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356138359): one Substrate-owned `BinaryDimensionReportEquals` `TestPredicate` variant with reflection-aware modifiers absorbs TC1 eta-equivalence, TC2 strategy-order equality, and TC3 evaluation-step witnessing. Verification authors coverage requirements and consuming `TestClaim`s; Substrate authors the predicate variant / carrier. If Director ratifies a third lane in `r3-structure.md` itself, this brief updates accordingly; until then, 2-lane scope is the authority.
 
 ## Bridge-retirement ledger — current state (2026-04-30 audit)
 
@@ -40,9 +42,9 @@ Per [`docs/r3-structure.md`](../r3-structure.md) L98 distribution map; cross-che
 
 | TC | Fixture / authority | Strict-fire gate | Audit result |
 |---|---|---|---|
-| **TC1 — η-equivalence** | `src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag` (#1179); `SubstrateResearchDeferredClaim` runner-valid only for this fixture per [`r2-closure-ledger.md`](../r2-closure-ledger.md) L220 | T-Substrate-Lens-Primitive + lens producer retirement | **Consistent on main** — fixture exists; deferred-claim carrier authored per Director #1130 / dispatch #1139. |
-| **TC2 — Church-Rosser / evaluation-order independence** | `src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag` slice-0 hook (per [`r2-evaluator-manager.md`](r2-evaluator-manager.md) L127) | Strict claim activation needs **≥2 executable strategies** (R3-deferred from R2-Evaluator; PR-B.1 lands a single eager strategy per [`r2-pr-b-body-evaluator-eager-baseline.md`](r2-pr-b-body-evaluator-eager-baseline.md) L154) | **Consistent on main** — slice-0 deferred fixture exists; strengthens to strict strategy-output equality over `DimensionReport<C>` once second strategy lands. |
-| **TC3 — strong normalization** | **Text-form only** in [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L145-215; **no fixture on disk** | Substrate-fact-introduction required — no existing `TestPredicate` variant carries the meta-theorem-over-well-typed-fragment quantifier shape (per L171 of that brief) | **Consistent — declaration-as-PROPOSAL preserved.** TC3 ownership transitions from PB to Verification per L181-185 contract. Verification will author substrate path when B5 + T-Substrate-Lens-Primitive land; PB does not re-author. |
+| **TC1 — η-equivalence** | `src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag` (#1179); `SubstrateResearchDeferredClaim` runner-valid only for this fixture per [`r2-closure-ledger.md`](../r2-closure-ledger.md) L220 | Unified `BinaryDimensionReportEquals` predicate with TC1 eta-equivalence modifier, plus T-Substrate-Lens-Primitive / lens producer prerequisites | **Consistent on main** — fixture exists; deferred-claim carrier authored per Director #1130 / dispatch #1139. Strict-fire path is now the unified predicate, not a TC1-specific predicate. |
+| **TC2 — Church-Rosser / evaluation-order independence** | `src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag` slice-0 hook (per [`r2-evaluator-manager.md`](r2-evaluator-manager.md) L127) | Unified `BinaryDimensionReportEquals` predicate with TC2 strategy-order modifier, plus **≥2 executable strategies** (PR-B.1 lands one eager strategy; second strategy remains R3 residual) | **Consistent on main** — slice-0 deferred fixture exists. Strict-fire path is unified `DimensionReport<C>` equality via the strategy-order modifier once the second strategy lands. |
+| **TC3 — strong normalization** | **Text-form only** in [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L145-215; **no fixture on disk** | Unified `BinaryDimensionReportEquals` predicate required with TC3 evaluation-step modifier; no TC3-specific `MetaTheoremOverTypedFragment` predicate after Director ratification | **Consistent — declaration-as-PROPOSAL preserved.** TC3 ownership transitions from PB to Verification per L181-185 contract. Verification will author TC3 coverage requirements for the unified predicate when B5 + T-Substrate-Lens-Primitive land; PB does not re-author. |
 
 **No drift surfaced to Director.** All three claims maintain author-now-fire-later discipline; structural unblock conditions are category-tagged per dispatch contract.
 
@@ -50,7 +52,7 @@ Per [`docs/r3-structure.md`](../r3-structure.md) L98 distribution map; cross-che
 
 **Produces:**
 - **L4-L7 verification surface** — Lane 1 lands per-target equivalence; Lane 2 lands cross-target equivalence corpus.
-- **TC1/TC2/TC3 strict-fire activations** — absorbed-responsibility audit cadence strengthens deferred claims as upstream substrate / evaluator dependencies land.
+- **TC1/TC2/TC3 strict-fire activations** — absorbed-responsibility audit cadence strengthens deferred claims as the unified `BinaryDimensionReportEquals` substrate predicate and each TC's modifier/prerequisites land.
 - **Unified bridge-retirement audit cadence** — periodic ledger-zero gate check; signals to Director when all 5 bridges fire.
 
 **Consumes:**
@@ -65,13 +67,13 @@ Per [`docs/r3-structure.md`](../r3-structure.md) L98 distribution map; cross-che
 - Dispatches workers against Verification sub-briefs once cross-program prerequisites land.
 - Resolves Verification-internal scope refinements; escalates substrate-shape questions / cross-program scope-changes to Director.
 - Per `docs/r2-structure.md` P5 dispatch-discipline (carried into R3): every Verification worker brief that introduces a scaffold names its dissolution trigger + adjacent ROADMAP debt row + contributes-or-defers stance.
-- **TC3 substrate-fact-introduction**: when B5 + T-Substrate-Lens-Primitive land, author substrate path through INVARIANTS §P1 procedure; cross-coordinate with Substrate Manager for the meta-theorem quantifier shape.
+- **Unified predicate coverage proposal**: when TC1/TC2/TC3 coverage inputs mature, author the Verification-side requirements for `BinaryDimensionReportEquals`; Substrate owns the predicate variant / carrier through INVARIANTS §P1.
 
 ## Reporting cadence
 
 - **Lane-close → R2 Release Manager continuation** (closure ledger maintenance via bold-lynx-173 #1135). Each lane's structural acceptance gate IS the demo per the structural-acceptance-per-lane-close discipline.
 - **Cross-program signals** (e.g., bridge ledger-zero audit results) → cross-manager queue + Director.
-- **TC strict-fire activation signals** → Director (gates R3 verification surface closure).
+- **TC strict-fire activation signals** → Director (gates R3 verification surface closure); unified-predicate coverage requirements route to Substrate when mature.
 - **Blockers + scope changes** → Director (#828).
 - **Brief-PR cadence** (per `feedback_brief_pr_cadence.md`): brief PRs only when carrying a new cross-manager signal; pure checkbox maintenance bundles into next signal PR or end-of-session sweep.
 
@@ -81,7 +83,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 
 - **Lane 1**: closes under both `l4_emit_eval_match` (per [`r3-structure.md`](../r3-structure.md) L53 — every `.dag` program in certification corpus has emit-target output equal to `.dag` eval output, algebraic equality) AND `l7_algebraic_laws_witnessed` (per [`r3-structure.md`](../r3-structure.md) L54 — every algebra × every applicable law has a runtime-constructed witness via `AlgebraicLaw` `TestPredicate`). Partial-coverage early slices do NOT close the lane; full coverage required.
 - **Lane 2**: `l5_cross_target_consistency` (per [`r3-structure.md`](../r3-structure.md) L56) — for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus (algebraic equivalence over computational results, not byte identity).
-- **Absorbed responsibility (TC bundle)**: TC1/TC2/TC3 strict-fire activation across the three deferred-claim fixtures (TC3 fixture authored under substrate path) — tracked via audit cadence, not as a lane-close gate.
+- **Absorbed responsibility (TC bundle)**: TC1/TC2/TC3 strict-fire activation across the three deferred-claim fixtures via unified `BinaryDimensionReportEquals` once Substrate lands the predicate and each reflection-aware modifier is covered — tracked via audit cadence, not as a lane-close gate.
 - **Ledger gate**: `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining (per [`r3-structure.md`](../r3-structure.md) L84).
 
 ## Sub-briefs (authored / pending)
@@ -92,7 +94,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 - [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — absorbed-responsibility TC1/TC2/TC3 bundle (NOT a lane; audit-cadence artifact per `r3-structure.md` L108 2-lane authority).
 
 **Pending (post-spawn manager authors autonomously):**
-- TC3 substrate-fact-introduction worker brief (gated on B5 + T-Substrate-Lens-Primitive).
+- Unified `BinaryDimensionReportEquals` coverage-requirements proposal (TC1/TC2/TC3 inputs; Substrate authors predicate variant when proposal is mature).
 - Lane 1 / Lane 2 implementation worker briefs (gated on R2-Evaluator landing — convert from standby to dispatch-ready when prerequisites fire).
 
 ## Working state (fill on dispatch)
@@ -105,6 +107,9 @@ Lane status table refreshes here as work lands. Initial state: 2 lanes in standb
 - Closure ledger predecessor: [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) (R2 closed-with-residuals 2026-04-30)
 - R2 Evaluator producer brief: [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md)
 - TC3 upstream declarative shape: [`docs/briefs/r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §"TC3 — Strong-normalization TestClaim" (L145-215; ownership transitions to Verification per L181-185)
+- Unified substrate-introduction ratification: [#828 c#4356050427](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356050427), [#828 c#4356138359](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356138359)
+- TC1 deeper analysis: [PR #1309](https://github.com/gunb-ai/gunbc/pull/1309)
+- TC2 independent coverage analysis: [PR #1316](https://github.com/gunb-ai/gunbc/pull/1316)
 - Worker B PR-D scaffold consumer: [`docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md)
 - Bridge distribution map: [`docs/r3-structure.md`](../r3-structure.md) L98
 - INVARIANTS substrate-fact-introduction procedure: [`INVARIANTS.md`](../../INVARIANTS.md) §P1
