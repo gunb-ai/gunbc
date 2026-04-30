@@ -12,8 +12,9 @@
 module v3.std.runtime
 
 import std.list { List }
+import std.types { Map }
 import v3.std.substrate { LiteralBits, LoopBound }
-import v3.std.substrate_minimal { NodeId, DeclarationId }
+import v3.std.substrate_minimal { NodeId, PortId, DeclarationId }
 
 type NamedField {
   label: String
@@ -46,3 +47,29 @@ type Value
   | VariantValue { tag: DeclarationId, payload: Value }
   | NodeRef(NodeId)
   | CardinalityValue(LoopBound)
+
+// 🟢 TERMINAL at PR-A.2 evaluator-state scope. Per
+// docs/briefs/r2-pr-a-runtime-value-model.md §Substrate Targets and
+// docs/design-pb-runtime-interpreter.md §3.3, closed-over environments are
+// evaluator-internal state, not observable `Value` inhabitants. `EvalFrame`
+// is one binding scope: a finite partial function from `PortId` to runtime
+// `Value`. `Map<PortId, Value>` (= `PartialFunction<PortId, Value>` per
+// `dsl/std/types.dag:213`) makes duplicate binding for one `PortId`
+// unrepresentable at the carrier boundary; this is the locked shape and
+// must not be replaced with a duplicate-admitting `List<EvalBinding>`.
+type EvalFrame {
+  bindings: Map<PortId, Value>
+}
+
+// 🟢 TERMINAL at PR-A.2 evaluator-state scope. Stack of `EvalFrame`s for
+// nested calls, branch path bindings, and bounded loop iterations, locked
+// to `List<EvalFrame>` by `docs/briefs/r2-pr-a-runtime-value-model.md`
+// §Substrate Targets and the merged audit
+// `docs/briefs/r2-pr-a-2-eval-frame-dependency-audit.md`. Frame push/pop
+// is evaluator-internal; the stack is not observable as a `Value`. PR-A.3
+// owns `EvalThunk` / `EvalStrategy` / `EvalMemoKey` and may revisit the
+// orientation when memoization keying lands; PR-A.2 must not silently
+// amend the locked carrier shape.
+type EvalStateStack {
+  frames: List<EvalFrame>
+}
