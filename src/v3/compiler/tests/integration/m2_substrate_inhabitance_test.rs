@@ -1645,7 +1645,7 @@ fn parse_sum_type_first_variant_may_be_named_type_keyword() {
 fn parse_single_variant_sum_record_payload_without_pipe() {
     let source = concat!(
         "type EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }\n",
-        "type InputEvaluationOrder = LeftFirst ()\n",
+        "type InputEvaluationOrder = LeftFirst\n",
     );
     let tokens = tokenize_for_test(source, "pr_a3_eval_strategy.v3").expect("tokenize");
     let parsed = parse_for_test(&tokens, "pr_a3_eval_strategy.v3").expect("parse");
@@ -1675,6 +1675,42 @@ fn parse_single_variant_sum_record_payload_without_pipe() {
             ));
         }
         other => panic!("expected TypeSum InputEvaluationOrder, got {other:?}"),
+    }
+}
+
+/// PR-A.3 alias preservation: bare RHS names that resolve to imports or sibling
+/// declarations remain aliases rather than being reclassified as nullary sums.
+#[test]
+fn parse_bare_rhs_alias_reference_stays_type_alias() {
+    let source = concat!(
+        "import std.types { String }\n",
+        "type LocalString = String\n",
+        "type Forward = Later\n",
+        "type Later = Only\n",
+    );
+    let tokens = tokenize_for_test(source, "pr_a3_alias_preservation.v3").expect("tokenize");
+    let parsed = parse_for_test(&tokens, "pr_a3_alias_preservation.v3").expect("parse");
+    let mirrored: &parse_surface::SurfaceModule = &parsed;
+    assert_eq!(mirrored.items.len(), 4);
+    match &mirrored.items[1] {
+        parse_surface::SurfaceItem::TypeAlias { name, .. } => {
+            assert_eq!(name, "LocalString");
+        }
+        other => panic!("expected imported bare RHS to stay TypeAlias, got {other:?}"),
+    }
+    match &mirrored.items[2] {
+        parse_surface::SurfaceItem::TypeAlias { name, .. } => {
+            assert_eq!(name, "Forward");
+        }
+        other => panic!("expected sibling bare RHS to stay TypeAlias, got {other:?}"),
+    }
+    match &mirrored.items[3] {
+        parse_surface::SurfaceItem::TypeSum { name, variants, .. } => {
+            assert_eq!(name, "Later");
+            assert_eq!(variants.len(), 1);
+            assert_eq!(variants[0].name, "Only");
+        }
+        other => panic!("expected unresolved bare RHS to parse as TypeSum, got {other:?}"),
     }
 }
 
