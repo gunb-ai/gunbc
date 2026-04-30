@@ -400,15 +400,26 @@ one of them requires a substrate extension:
   classification, each variant is tagged with its dissolution
   status (🟢 keep / 🟡 future-dissolve / 🔴 dissolve-now):
 
-  - 🟢 **`Operator { op: OperatorCall }`** — keep. Built-in
-    operator dispatch is a true user-input-boundary distinction:
-    no `DeclarationId` exists for `+` / `-` / unary-`!`; the
-    callee identity is a fixed enum of language primitives, not
-    a name resolvable through the program. Coordinate-collapsing
-    `Operator` into the call-shapes would require synthesizing
-    fictional `DeclarationId`s for primitives, which is the
-    dissolution anti-pattern (encoding a primitive as a
-    pseudo-declaration).
+  - 🟡 **`Operator { op: OperatorCall }`** — future-dissolve.
+    Per modeling-discipline Practice 4, the canonical example
+    of an algebraic-form coproduct that should dissolve is
+    `ArithOp::{Add,Sub,Mul,Div}` → `Apply { function: FunctionRef }`
+    pointing at the corresponding `std::int::add` / `std::int::sub`
+    function references. `OperatorCall::{Unary,Binary}` is
+    structurally that case: each operator has a richer source —
+    the algebra-witness function in `std/int/`, `std/bool/`, etc.
+    — so absence of a *current* `DeclarationId` is not the same
+    as "no richer source exists." Held as its own variant today
+    because (a) the std-side algebra-witness functions are not
+    yet declared as resolvable `DeclarationId`s for unary `!` /
+    binary `+` etc., and (b) the parser still emits operator
+    tokens distinct from call syntax. **Tracking gate:** dissolve
+    when `std/{int,bool,float}/` declares the operator-algebra
+    witness functions and the parser desugars operator tokens
+    to `Call(FunctionRef)` at parse time. At that point
+    `Operator` collapses into the same `Call { callee: CalleeRef
+    = Decl(...) }` shape as the rest of the call-shapes, and the
+    🟡 set above absorbs it.
 
   - 🟡 **`Callable` / `FieldProject` / `Indirect`** — future
     dissolution to a single `Call { callee: CalleeRef, args }`
@@ -430,7 +441,7 @@ one of them requires a substrate extension:
     nothing in `TransformDispatch` admits a malformed-state shape
     that a downstream lens would have to defend against; the
     invariants (Facts Flow Forward, illegal-states-unrepresentable,
-    args-bound-to-target) all hold under the 🟢/🟡 set above.
+    args-bound-to-target) all hold under the 🟡 set above.
 
   No variant is added speculatively: each axis (built-in op vs
   user-defined call vs runtime-port callee) has a present
