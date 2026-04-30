@@ -384,7 +384,17 @@ fn assert_expected_row_count(
         .iter()
         .find(|(n, _)| *n == list_name)
         .map(|(_, c)| *c)
-        .unwrap_or(0);
+        .ok_or_else(|| GroundingTestsDiagnostic::StratumADagProjectionFailed {
+            step: "assert_expected_row_count.unknown_list",
+            detail: format!(
+                "list `{list_name}` has no Director-locked expected row count; known: {}",
+                EXPECTED_STRATUM_A_ROW_COUNTS
+                    .iter()
+                    .map(|(n, _)| *n)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        })?;
     if actual != expected {
         return Err(GroundingTestsDiagnostic::StratumARowCountMismatch {
             list_name: list_name.to_string(),
@@ -454,6 +464,20 @@ mod stratum_a_tests {
         assert_eq!(
             list_digest_from_fingerprints(&forward),
             stratum_a_list_digest(&dag, RUST_LIST).expect("digest")
+        );
+    }
+
+    #[test]
+    fn assert_expected_row_count_unknown_list_is_not_silent_zero_expected() {
+        let err = super::assert_expected_row_count("typo_method_template_contracts", 0)
+            .expect_err("unknown list must not default to expected=0");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumADagProjectionFailed { step, .. }
+                    if *step == "assert_expected_row_count.unknown_list"
+            ),
+            "unexpected diagnostic: {err}"
         );
     }
 
