@@ -1,7 +1,7 @@
 module v3.std.services
 
 import std.types { HttpMethod }
-import v3.std.effects { PathTemplate }
+import std.effects { PathTemplate }
 
 // PR-α — service / operation / REST-endpoint substrate carrier types.
 //
@@ -13,7 +13,7 @@ import v3.std.effects { PathTemplate }
 // `MethodTemplateContract` precedent these carriers mirror in shape and cadence).
 //
 // **Path-structure authority is upstream.** This file does NOT define
-// path-template structure; it imports `PathTemplate` from `v3.std.effects`
+// path-template structure; it imports `PathTemplate` from `std.effects`
 // (`src/v3/std/effects.dag:142`), which carries the
 // `UrlPathToken = LiteralToken{text} | ParamToken{name}` flat-token shape
 // staged from `dsl/std/http_path.dag` (RFC 6570 Level 1 substitution). That
@@ -68,7 +68,7 @@ type InputField {}
 // realization: the HTTP verb, and the path template whose last segment
 // drives the create-vs-upsert-vs-delete branch via
 // `last_path_param(template)`. `path` reuses the upstream `PathTemplate`
-// authority from `v3.std.effects` so mixed parameter/literal segments
+// authority from `std.effects` so mixed parameter/literal segments
 // (`{secret_name}:addVersion`) are representable without loss.
 //
 // Body-shape (which input fields compose into the request body) is not

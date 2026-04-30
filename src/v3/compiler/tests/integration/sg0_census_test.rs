@@ -348,6 +348,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
+    "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
     "src/v3/compiler/tests/integration/sg2_parse_authority_test.rs",
