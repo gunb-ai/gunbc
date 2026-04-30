@@ -1,0 +1,28 @@
+// std.runtime - R2 Evaluator / PB-Runtime observable runtime values.
+//
+// This module lands PR-A.1's Value-only carrier surface. It deliberately
+// excludes evaluator-internal state (`EvalFrame`, `EvalStateStack`,
+// `EvalThunk`) and body-evaluator logic; those land in later PR-A slices.
+//
+// Authority: docs/design-pb-runtime-interpreter.md section 3.2 and
+// docs/briefs/r2-pr-a-runtime-value-model.md. The existing L1 behavior marker
+// is `ValueBehavior`, so the bare declaration name `Value` is reserved here for
+// the observable runtime result domain.
+
+module v3.std.runtime
+
+import std.list { List }
+import v3.std.substrate { LiteralBits, LoopBound }
+import v3.std.substrate_minimal { NodeId, DeclarationId }
+
+type NamedField {
+  label: String
+  value: Value
+}
+
+type Value
+  = LiteralValue(LiteralBits)
+  | RecordValue(List<NamedField>)
+  | VariantValue { tag: DeclarationId, payload: Value }
+  | NodeRef(NodeId)
+  | CardinalityValue(LoopBound)
