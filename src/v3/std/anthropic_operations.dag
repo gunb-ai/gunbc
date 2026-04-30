@@ -1,0 +1,77 @@
+// v3.std.anthropic_operations -- per-operation rows for the Anthropic
+// service, populating the `Operation` substrate carrier in
+// `src/v3/std/services.dag` (PR-α #1246; sharp-raven-604).
+//
+// SCOPE (T-Ground services.dag PR-β, Phase 1 pilot): row population
+// only — single Messages operation. Substrate Manager dispatched
+// anthropic first per narrow-scope pilot (parallel to #1195's
+// `MethodTemplateContract` Phase 1 row population). The legacy
+// authority at `dsl/extdeps/llm/anthropic.dag:168-220` (the
+// `service llm.Anthropic { ... operation Messages { ... } }` block)
+// remains the v2 emit-pipeline source-of-truth until Phase 2
+// retirement (separate dispatch); the row-list here is net-additive
+// in PR-β. Phase 1.5 / Phase 2 retirement of the v2 service block
+// folds into Pure-Bootstrap-Zero / v2 retirement scope (parallel to
+// the LanguageSpec `*_method_templates` deferral pattern landed in
+// #1210 + #1213).
+//
+// HOME (post-#1187 audit lesson): this file lives under `src/v3/std/`
+// because v2's `collect_dag_sources` walks `dsl/` recursively (see
+// `src/v2/tests/src/pipeline.rs:27`) — placing this file in
+// `dsl/extdeps/...` would re-trigger the cross-tree-import
+// regression. The bootstrap-fixture authority
+// (`src/v3/std/extdeps_bootstrap_fixtures.dag`) plus
+// `BOOTSTRAP_FIXTURE_PATH_KEYS` (`src/v3/compiler/src/bootstrap.rs`)
+// resolve mixed-tree fixtures across `STAGED_FILES` and `EXTDEPS_FILES`.
+//
+// SOURCE OF TRUTH for this row's content:
+// `dsl/extdeps/llm/anthropic.dag:182-198` `operation Messages`:
+//   - input fields: api_key, model, messages, max_tokens, temperature, system
+//   - transport: method=POST, path="/v1/messages"
+// PR-α `InputField {}` is empty by design — per-input-field metadata
+// (types, defaults, optionality) is PR-β scope extension and not in
+// the Phase 1 pilot. The Map<String, InputField> shape carries name
+// uniqueness by construction; ParamToken.name resolution against
+// these keys is the boundary check that lands alongside any path
+// template carrying ParamTokens. `/v1/messages` has no
+// ParamTokens — pure literal segments — so the boundary check is
+// vacuous for this row, but the carrier shape is the structural
+// surface the next-provider's pilot (per dispatch rotation) consumes.
+
+module v3.std.anthropic_operations
+
+import std.types { HttpMethod, POST }
+import v3.std.services {
+  Operation,
+  RestEndpointBinding,
+  InputField
+}
+import v3.std.effects {
+  PathTemplate,
+  UrlPathToken,
+  LiteralToken
+}
+
+
+data anthropic_operations: List<Operation> = [
+  {
+    name: "Messages",
+    inputs: {
+      "api_key": {},
+      "model": {},
+      "messages": {},
+      "max_tokens": {},
+      "temperature": {},
+      "system": {}
+    },
+    endpoint: {
+      method: POST,
+      path: {
+        tokens: [
+          LiteralToken { text: "v1" },
+          LiteralToken { text: "messages" }
+        ]
+      }
+    }
+  }
+]

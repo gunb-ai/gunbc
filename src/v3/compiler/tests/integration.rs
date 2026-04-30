@@ -119,6 +119,8 @@ mod m2_lens_unused_parameters_migration_test;
 mod m2_lens_variant_payload_migration_test;
 #[path = "integration/m2_substrate_inhabitance_test.rs"]
 mod m2_substrate_inhabitance_test;
+#[path = "integration/anthropic_operations_test.rs"]
+mod anthropic_operations_test;
 #[path = "integration/method_registry_test.rs"]
 mod method_registry_test;
 #[path = "integration/method_template_contract_test.rs"]
