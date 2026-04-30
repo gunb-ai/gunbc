@@ -79,8 +79,8 @@ Per [`docs/r3-structure.md`](../r3-structure.md) L98 distribution map; cross-che
 
 Each lane closes under a structural acceptance gate authored as a `.dag` `TestClaim`:
 
-- **Lane 1**: `verification_l4_l7_direct_per_target_equivalence_landed` — per-target `DifferentialEquals` receipts on the certification corpus; emit-target output vs `.dag` eval result match for each Shape A target.
-- **Lane 2**: `verification_l5_cross_target_consistency_landed` — Rust / Python / Go equivalent runtime behavior on the certification corpus (algebraic equivalence over computational results, not byte identity).
+- **Lane 1**: closes under both `l4_emit_eval_match` (per [`r3-structure.md`](../r3-structure.md) L53 — every `.dag` program in certification corpus has emit-target output equal to `.dag` eval output, algebraic equality) AND `l7_algebraic_laws_witnessed` (per [`r3-structure.md`](../r3-structure.md) L54 — every algebra × every applicable law has a runtime-constructed witness via `AlgebraicLaw` `TestPredicate`). Partial-coverage early slices do NOT close the lane; full coverage required.
+- **Lane 2**: `l5_cross_target_consistency` (per [`r3-structure.md`](../r3-structure.md) L56) — for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus (algebraic equivalence over computational results, not byte identity).
 - **Absorbed responsibility (TC bundle)**: TC1/TC2/TC3 strict-fire activation across the three deferred-claim fixtures (TC3 fixture authored under substrate path) — tracked via audit cadence, not as a lane-close gate.
 - **Ledger gate**: `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining (per [`r3-structure.md`](../r3-structure.md) L84).
 

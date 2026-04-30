@@ -30,7 +30,9 @@ L6 form coverage is **explicitly out of scope** — moved to R2-T-Ground-CrossTa
 
 | Gate name | Fixture (proposed) | Suite |
 |---|---|---|
-| `verification_l5_cross_target_consistency_landed` | `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` | `r3_verification_l5_corpus_suite` |
+| `l5_cross_target_consistency` | `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` | `r3_verification_l5_corpus_suite` |
+
+Per [`r3-structure.md`](../r3-structure.md) L56 authority — for every `.dag` program, emitted Rust/Python/Go produce equivalent runtime behavior on the certification corpus.
 
 **Stability invariant** (per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) §"Deferred fixture path"): keep the **declaration name** stable; only update fixture-module path with manager-brief + integration-test co-update in one PR.
 

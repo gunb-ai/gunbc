@@ -25,13 +25,16 @@ Per-target equivalence harness for the **L4** (emit/eval match) + **L7** (algebr
 
 1. **Slice 1 — single-target L4 receipt:** one `TestClaim` using `TestPredicate::DifferentialEquals` comparing Rust emit-target output vs `.dag` eval result on a minimal corpus program. Fixture: `src/v3/compiler/tests/fixtures/r3_verification_l4_direct_rust.dag` (proposed). Suite: `r3_verification_l4_direct_suite`.
 2. **Slice 2 — multi-target L4:** add per-target receipts as Python / Go grounding lands. Each target adds one `DifferentialEquals` row using existing predicate; no new `TestPredicate` variants.
-3. **Slice 3 — L7 algebraic-law witness:** use `TestPredicate::AlgebraicLaw` (already on substrate at `src/v3/std/verification.dag` L189; `AlgebraicLawKind` enum L103) for at least one named law (associativity / commutativity / identity) per the lens-framework I4 + I9 TestClaims.
+3. **Slice 3 — L7 algebraic-law witness (early slice; does NOT close Lane 1):** use `TestPredicate::AlgebraicLaw` (already on substrate at `src/v3/std/verification.dag` L189; `AlgebraicLawKind` enum L103) for at least one named law (associativity / commutativity / identity) per the lens-framework I4 + I9 TestClaims. **This is a coverage-seed slice only.** L7 closure per [`docs/r3-structure.md`](../r3-structure.md) L54 (`l7_algebraic_laws_witnessed`) requires every algebra declared in `dsl/std/algebra.dag` to have a runtime-constructed witness for **each of its applicable laws** (associativity, commutativity, identity, distributivity). Subsequent slices grow to full coverage; Lane 1 closure gate is the full r3-structure.md authority, not the seed.
 
-## Structural acceptance — `.dag` hook
+## Structural acceptance — `.dag` hooks (per [`r3-structure.md`](../r3-structure.md) L53-54 authority)
 
-| Gate name | Fixture (proposed) | Suite |
-|---|---|---|
-| `verification_l4_l7_direct_per_target_equivalence_landed` | `src/v3/compiler/tests/fixtures/r3_verification_l4_l7_direct.dag` | `r3_verification_l4_l7_direct_suite` |
+| Gate name | Authority | Fixture (proposed) | Suite |
+|---|---|---|---|
+| `l4_emit_eval_match` | `r3-structure.md` L53 — every `.dag` program in the certification corpus has emitted target output equal to `.dag` evaluation output (algebraic equality, not byte-equal) | `src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag` | `r3_verification_l4_l7_direct_suite` |
+| `l7_algebraic_laws_witnessed` | `r3-structure.md` L54 — every algebra in `dsl/std/algebra.dag` has a runtime-constructed witness for each applicable law (associativity, commutativity, identity, distributivity); `AlgebraicLaw` `TestPredicate` evaluates via Evaluator-constructed witnesses, not host-mediated harness | `src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag` | `r3_verification_l4_l7_direct_suite` |
+
+Both gates close under Lane 1; partial-coverage early slices (slice 1 single-target / slice 3 single-law seed) do NOT satisfy these gates and do NOT close the lane.
 
 **Stability invariant** (per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) §"Deferred fixture path"): the **claim name** stays stable; only update fixture-module path with manager-brief + integration-test co-update in one PR.
 
