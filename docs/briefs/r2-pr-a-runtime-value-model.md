@@ -53,7 +53,6 @@ type EvalThunk {
 
 type EvalStrategy
   = ApplicativeOrder { input_order: InputEvaluationOrder }
-  | NormalOrder
 
 type InputEvaluationOrder
   = LeftFirst
@@ -64,6 +63,7 @@ type EvalStateKey {
 ```
 
 `EvalThunk` is not required for an eager-only first evaluator, but the carrier is the right lazy boundary if the evaluator chooses normal-order evaluation for a call or branch edge. A thunk captures state because evaluating a delayed node must use the lexical environment at thunk creation, not the caller's later frame stack.
+`NormalOrder` must not be added as an `EvalStrategy` inhabitant unless `EvalThunk` and the corresponding evaluation rule land in the same slice; otherwise the closed carrier would admit an unexecutable strategy.
 
 `NamedField` is the `RecordValue` field carrier named by `docs/design-pb-runtime-interpreter.md` section 3.2. PR-A.1 must not introduce a second `NamedRuntimeField` authority unless it simultaneously amends the PB-Runtime design lock. `EvalFrame.bindings` uses `Map<PortId, Value>` because maps are finite partial functions: duplicate binding for one `PortId` is unrepresentable at the carrier boundary. If `Map<K, V>` is not yet available in the v3 runtime module when PR-A.2 lands, PR-A.2 must either port the existing `Map = PartialFunction` authority or add a fail-closed unique-binding carrier before mirroring evaluator state; it must not fall back to a duplicate-admitting `List<EvalBinding>`.
 

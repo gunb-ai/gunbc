@@ -69,19 +69,24 @@ Strategy identity is a closed carrier, not a string:
 ```dag
 type EvalStrategy
   = ApplicativeOrder { input_order: InputEvaluationOrder }
-  | NormalOrder
 
 type InputEvaluationOrder
   = LeftFirst
 ```
 
 `LeftFirst` is the only input order PR-A.3 should land with the eager baseline.
-Adding `RightFirst`, parallel input evaluation, or additional normal-order
-variants is a semantic expansion. Such a variant must land with:
+The initial carrier is therefore eager-only unless the same implementation slice
+also lands `EvalThunk` and the normal-order evaluation rule. `NormalOrder` is a
+future strategy inhabitant, not part of the baseline carrier by itself.
+
+Adding `NormalOrder`, `RightFirst`, parallel input evaluation, or additional
+strategy variants is a semantic expansion. Such a variant must land with:
 
 1. A stated evaluation rule.
 2. A memo-key inclusion rule.
 3. A TC2 comparison obligation that says which two strategies are compared.
+4. Any state carrier that makes the strategy executable; for `NormalOrder`,
+   that means `EvalThunk` with captured `EvalStateStack`.
 
 No PR-A.3 implementation may use string labels such as `"normal"` or
 `"left-first"` as strategy authority.
@@ -120,8 +125,10 @@ small substrate/runtime slice:
 
 - [`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag): add
   `EvalStrategy`, `InputEvaluationOrder`, `EvalStateKey`, and `EvalMemoKey`.
-  Add `EvalThunk` only if the slice enables an explicit lazy boundary; otherwise
-  keep the carrier deferred with this audit as the named dependency.
+  The first `EvalStrategy` carrier should contain only
+  `ApplicativeOrder { input_order: LeftFirst }` unless the same slice enables
+  an explicit lazy boundary. Add `EvalThunk` and `NormalOrder` together, or keep
+  both deferred with this audit as the named dependency.
 - `src/v3/compiler/src/bootstrap_generated.rs` and
   `src/v3/compiler/src/bootstrap_generated_without_parse_surface.rs`:
   regenerate after the `.dag` carrier declarations land.
