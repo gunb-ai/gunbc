@@ -40,49 +40,58 @@
 //   `Operation` deliberately does NOT carry a parallel `name: String`
 //   field that could drift from the callable.
 //
-// EXPLICIT DEFERRAL — INPUT-FIELDS POPULATION + v2 PARAMETER DEFAULTS:
+// EXPLICIT DEFERRAL §1 — INPUT-FIELDS POPULATION
+// (parser-grammar gap; Substrate-tracked Phase 1.5+ slice):
 //
-// Two structural-honesty receipts (parallel to the LanguageSpec
-// deferral patterns in #1210/#1213, Go `chars` tokenizer deferral in
-// #1196, `string_contains` Modeling-level classification deferral,
-// and Rust higher-order Phase 1.5 deferral):
+// The v2 source declares 6 input fields (api_key, model, messages,
+// max_tokens, temperature, system), but `Operation.inputs:
+// Map<String, InputField>` per `services.dag:124` cannot be
+// populated inline because v3's grammar does not currently support
+// nested string-keyed `Map<String, X>` literals in record-field-value
+// positions. Even an empty literal `{}` doesn't satisfy the
+// structural type — it parses as an empty record, not an empty Map,
+// and the row fails the `Operation.inputs` shape check
+// (`ResolveError: data anthropic_operations field <list element>
+// does not match the declared structural type`).
 //
-//   1. **Input-fields population deferred** (parser-grammar gap;
-//      Substrate-routed): the v2 source declares 6 input fields
-//      (api_key, model, messages, max_tokens, temperature, system),
-//      but `Operation.inputs: Map<String, InputField>` per
-//      `services.dag:124` cannot be populated inline because v3's
-//      grammar does not currently support nested
-//      `Map<String, X>` literals as record-field-values. Audit at
-//      HEAD: every existing `Map<String, X>` data item lives at
-//      top-level (`algebra.dag:460`, `types.dag:65/79/114/133`,
-//      `node.dag:207`, etc.); zero precedent for nested
-//      construction. Cross-manager request to jolly-ram-908 routed
-//      from R2 Grounding Manager (#1133 inbox 4353126932) for the
-//      parser-grammar extension. Phase 1.5+ row-fill cycle picks
-//      this up once the grammar lands — at that point this row's
-//      `inputs: {}` becomes `inputs: { "api_key": {}, ... }` and
-//      the lockstep test re-asserts the v2-parity input-key set.
-//      For the Messages pilot specifically, the `ParamToken.name`
-//      → `inputs` boundary check is vacuous regardless (POST
-//      /v1/messages is pure literal segments — zero `ParamToken`s);
-//      the deferred check is load-bearing only for future
-//      ParamToken-bearing rows (GitHub provider operations, etc.).
+// Audit at HEAD: every existing `Map<String, X>` data item lives at
+// top-level (`algebra.dag:460`, `types.dag:65/79/114/133`,
+// `node.dag:207`, etc.); zero precedent for nested construction.
+// Cross-manager request routed from R2 Grounding Manager (#1133
+// inbox 4353126932); Substrate has queued the parser slice as
+// Phase 1.5+ work (#1130 comment 4353153545).
 //
-//   2. **v2 parameter defaults deferred** (Substrate disposition,
-//      #1130 [comment 4352585286](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4352585286)):
-//      v2's `max_tokens: Int = 4096` carries a parameter default
-//      not represented in PR-β rows. PR-α `InputField {}` is empty
-//      terminal; the `InputField.default` carrier is queued as a
-//      Phase 1.5+ Substrate slice. Until that slice lands, PR-β
-//      rows are honest about the v2 service-block input shape
-//      **minus the defaults**. The default is preserved in legacy
-//      v2 source until the carrier lands — no silent drop.
+// Pilot impact: the Messages row (POST /v1/messages) has zero
+// `ParamToken`s, so the `ParamToken.name` → `inputs` boundary check
+// is vacuous regardless. The deferred input-field-keys assertion is
+// load-bearing only for future ParamToken-bearing rows (GitHub
+// provider operations, etc.). For now the entire pilot row is
+// deferred (the empty-list scaffolding lands; populated row
+// re-arms once the grammar extension lands).
 //
-// Both deferrals share the same dissolution trigger pattern:
-// Substrate grows the missing structural surface (parser-grammar
-// extension or `InputField.default` field), and PR-β fixture rows
-// rebase to populate the now-expressible facts.
+// Parallel to: Go `chars` tokenizer deferral (#1196 hot-fix).
+//
+// EXPLICIT DEFERRAL §2 — v2 PARAMETER DEFAULTS
+// (`InputField.default` carrier; Substrate-tracked Phase 1.5+ slice;
+// distinct gap from §1):
+//
+// v2's `max_tokens: Int = 4096` carries a parameter default not
+// represented in PR-β rows. PR-α `InputField {}` is empty terminal;
+// the `InputField.default` carrier is queued as a Phase 1.5+
+// Substrate slice (Substrate disposition #1130 comment 4352585286).
+// Until that slice lands, PR-β rows are honest about the v2
+// service-block input shape **minus the defaults**. The default is
+// preserved in legacy v2 source until the carrier lands — no silent
+// drop.
+//
+// Parallel to: `*_method_templates` PB-Zero deferral (#1210 / #1213),
+// `string_contains` Modeling-level classification deferral, Rust
+// higher-order Phase 1.5 deferral.
+//
+// **Distinct gaps, distinct dispositions** (per #1133 inbox
+// 4353159066): §1 is a parser-grammar question; §2 is an
+// `InputField` schema question. Each has its own cross-manager
+// citation and its own dissolution trigger.
 
 module v3.std.anthropic_operations
 
