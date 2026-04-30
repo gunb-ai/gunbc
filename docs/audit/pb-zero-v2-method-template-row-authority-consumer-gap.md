@@ -71,3 +71,7 @@ No v2 compiler code changes in this audit PR; no v3 substrate edits; no `v3.std.
 
 - `docs/r2-structure.md` — search `v2 retirement` / `post-R3` for explicit non-scoping of v2 removal from R2/R3 thesis gates.
 - `docs/briefs/t-ground-tests.md` — lines ~13–14 (substrate single-authority paths), ~112–114 (`MethodTemplateContract` landed), ~143–145 (Stratum A/B corpus keyed to row files).
+
+## See also (planning / audit only)
+
+- Canonical read **surface options** and **STOP matrix** (does not choose a surface): [`docs/audit/pb-zero-v2-canonical-read-surface-options-stop-matrix.md`](pb-zero-v2-canonical-read-surface-options-stop-matrix.md)

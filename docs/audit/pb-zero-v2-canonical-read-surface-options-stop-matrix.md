@@ -64,17 +64,6 @@ So the “existing v2 extension point” candidate is **mechanical source discov
 ## Cross-refs (link-only)
 
 - Prior audit (row files × gap matrix): [`docs/audit/pb-zero-v2-method-template-row-authority-consumer-gap.md`](pb-zero-v2-method-template-row-authority-consumer-gap.md)
-- PB program + (γ): [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md), [`docs/briefs/r2-pure-bootstrap-manager.md`](../briefs/r2-substrate-manager.md) — *correct the second link*: should be r2-pure-bootstrap-manager for PB, and substrate manager for substrate. Fix in file.
-
-I made an error - I linked r2-pure-bootstrap-manager.md to r2-substrate-manager path. Let me fix:
-
-Cross-refs:
-- r2-pure-bootstrap-manager.md for PB
-- r2-substrate-manager.md for Substrate
-
-Fix the Write content - the line says `../briefs/r2-substrate-manager.md` wrongly paired with "PB program". I'll fix in the file.
-
-
-
-
-StrReplace
+- PB program + (γ): [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md), [`docs/briefs/r2-pure-bootstrap-manager.md`](../briefs/r2-pure-bootstrap-manager.md)
+- Substrate intake: [`docs/briefs/r2-substrate-manager.md`](../briefs/r2-substrate-manager.md)
+- Structure / v2 retirement timing: [`docs/r2-structure.md`](../r2-structure.md)
