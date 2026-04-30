@@ -578,6 +578,7 @@ fn pilot_carrier_name(carrier: PilotTargetCarrier) -> &'static str {
         PilotTargetCarrier::Word16 => "Word16Carrier",
         PilotTargetCarrier::Word32 => "Word32Carrier",
         PilotTargetCarrier::Word64 => "Word64Carrier",
+        PilotTargetCarrier::Word128 => "Word128Carrier",
         PilotTargetCarrier::Terminal => "TerminalCarrier",
     }
 }
