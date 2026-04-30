@@ -2470,14 +2470,35 @@ impl<'a> TestRunner<'a> {
     ) -> ClaimResult {
         let [ledger] = payload else {
             return ClaimResult::Fail(
-                "BridgeLedgerZero payload should be (DeclarationRef)".to_string(),
+                "BridgeLedgerZero payload should be (BridgeLedgerRef)".to_string(),
             );
         };
+        // `ledger: BridgeLedgerRef` lowers as a record `{ decl: DeclarationRef }`.
+        // Extract the inner declaration reference structurally; reject
+        // an unwrapped `DeclarationRef` because that would regress the
+        // typed-edge discipline the `BridgeLedgerRef` wrapper adds.
         let ledger_id = match ledger {
-            FieldValue::Reference(id) => *id,
+            FieldValue::Record(fields) => {
+                let Some(decl) = fields.iter().find(|(l, _)| l == "decl").map(|(_, v)| v) else {
+                    return ClaimResult::Fail(
+                        "BridgeLedgerZero `ledger`: BridgeLedgerRef record missing `decl` field"
+                            .to_string(),
+                    );
+                };
+                match decl {
+                    FieldValue::Reference(id) => *id,
+                    other => {
+                        return ClaimResult::Fail(format!(
+                            "BridgeLedgerZero `ledger.decl`: expected \
+                             FieldValue::Reference(DeclarationId), got {other:?}"
+                        ));
+                    }
+                }
+            }
             other => {
                 return ClaimResult::Fail(format!(
-                    "BridgeLedgerZero `ledger`: expected FieldValue::Reference(DeclarationId), got {other:?}"
+                    "BridgeLedgerZero `ledger`: expected BridgeLedgerRef record \
+                     `{{ decl: <ref> }}`, got {other:?}"
                 ));
             }
         };
@@ -2598,7 +2619,16 @@ impl<'a> TestRunner<'a> {
             };
             let name = match fields.iter().find(|(l, _)| l == "name").map(|(_, v)| v) {
                 Some(FieldValue::Literal(LiteralBits::String(s))) => s.clone(),
-                _ => format!("<row {idx} missing `name`>"),
+                Some(other) => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row {idx} `name` must be a String literal, got {other:?}"
+                    ));
+                }
+                None => {
+                    return ClaimResult::Fail(format!(
+                        "BridgeLedgerZero: row {idx} missing required `name` field"
+                    ));
+                }
             };
             let status = match fields.iter().find(|(l, _)| l == "status").map(|(_, v)| v) {
                 Some(FieldValue::Variant { constructor, .. }) => *constructor,

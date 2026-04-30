@@ -219,12 +219,13 @@ fn compile_clean(source: &str, file: &str) -> Dag {
 }
 
 #[test]
-fn bridge_ledger_zero_predicate_carries_only_ledger_declaration_ref() {
+fn bridge_ledger_zero_predicate_carries_only_ledger_bridge_ledger_ref() {
     // Verification's BridgeLedgerZero predicate contract: a single
-    // structural payload field `ledger: DeclarationRef`. Adding fields
-    // (e.g. an `expected_status: BridgeStatus` filter) requires an
-    // explicit substrate amendment so the runner branch can't silently
-    // diverge from the carrier's authority.
+    // structural payload field `ledger: BridgeLedgerRef`. The wrapper
+    // makes the ledger-target intent structural at the field-type
+    // level (mirror of MethodRef / CallableRef); adding fields or
+    // regressing to bare `DeclarationRef` requires an explicit
+    // substrate amendment.
     let dag = generated_full_bootstrap_dag();
     let predicate = dag
         .declaration_by_name("TestPredicate")
@@ -244,7 +245,7 @@ fn bridge_ledger_zero_predicate_carries_only_ledger_declaration_ref() {
     let expected: HashSet<String> = ["ledger"].iter().map(|s| s.to_string()).collect();
     assert_eq!(
         labels, expected,
-        "BridgeLedgerZero must carry exactly `{{ ledger: DeclarationRef }}` per \
+        "BridgeLedgerZero must carry exactly `{{ ledger: BridgeLedgerRef }}` per \
          the Verification dispatch contract."
     );
     let ledger_field = match &payload.connective {
@@ -257,9 +258,21 @@ fn bridge_ledger_zero_predicate_carries_only_ledger_declaration_ref() {
     let ledger_decl = dag.declaration(ledger_field.ty);
     assert_eq!(
         ledger_decl.name.as_deref(),
-        Some("DeclarationRef"),
-        "BridgeLedgerZero.ledger must be `DeclarationRef`; got {:?}",
+        Some("BridgeLedgerRef"),
+        "BridgeLedgerZero.ledger must point at the typed `BridgeLedgerRef` \
+         wrapper, not bare `DeclarationRef`; got {:?}",
         ledger_decl.name
+    );
+    // BridgeLedgerRef wraps a single `decl: DeclarationRef` field —
+    // mirror of MethodRef / CallableRef.
+    let inner_labels: Vec<String> = match &ledger_decl.connective {
+        TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
+        other => panic!("BridgeLedgerRef must be a Conj record; got {other:?}"),
+    };
+    assert_eq!(
+        inner_labels,
+        vec!["decl"],
+        "BridgeLedgerRef must wrap a single `decl: DeclarationRef`."
     );
 }
 
@@ -277,7 +290,7 @@ data ledger_zero_claim: TestClaim = {
   name: "bridge_ledger_zero_at_head",
   source: "let x: Int = 1",
   file_name: "bridge_ledger_zero_runner.v3",
-  predicate: BridgeLedgerZero { ledger: bridge_ledger },
+  predicate: BridgeLedgerZero { ledger: { decl: bridge_ledger } },
   requires: []
 }
 
@@ -338,7 +351,7 @@ data sibling_claim: TestClaim = {
   name: "sibling_canonical_shape_ledger",
   source: "let x: Int = 1",
   file_name: "bridge_ledger_zero_sibling.v3",
-  predicate: BridgeLedgerZero { ledger: sibling_ledger },
+  predicate: BridgeLedgerZero { ledger: { decl: sibling_ledger } },
   requires: []
 }
 
@@ -393,7 +406,7 @@ data wrong_type_claim: TestClaim = {
   name: "wrong_ledger_type",
   source: "let x: Int = 1",
   file_name: "bridge_ledger_zero_wrong_type.v3",
-  predicate: BridgeLedgerZero { ledger: fake_ledger },
+  predicate: BridgeLedgerZero { ledger: { decl: fake_ledger } },
   requires: []
 }
 

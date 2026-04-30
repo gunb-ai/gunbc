@@ -21,6 +21,7 @@ import std.types { FilePath, NonEmptyStr }
 import v3.std.substrate { ComparisonOp }
 import v3.spec.v3_l1 { DeclarationRef }
 import v3.std.resources { ResourceReference }
+import v3.std.bridge_ledger { BridgeLedgerRef }
 
 // R1C-A / T-TestGen PB-census predicate shape vocabulary. These are narrow
 // bootstrap-local carriers for R1C-D's census-as-TestClaim fixtures; the Rust
@@ -248,17 +249,20 @@ type TestPredicate
       authority_doc: DeclarationRef
     }
   // 🟢 TERMINAL at PR-α scope. Bridge-retirement ledger zero-residual
-  // gate. Points at a `bridge_ledger` declaration of type
-  // `List<BridgeLedgerRow>` (`v3.std.bridge_ledger`); the runner reads
-  // every row's `status` field and `Pass`es iff every row's status
-  // resolves to the `Retired` constructor of `BridgeStatus`. Open rows
-  // produce `Fail` with the offending names so the diagnostic surfaces
-  // the residual debt directly. Single payload field — `ledger:
-  // DeclarationRef` — preserves the typed-edge discipline of the
-  // census-style predicates above; the carrier authority lives in
-  // `bridge_ledger.dag`, not here.
+  // gate. `ledger: BridgeLedgerRef` points at the canonical
+  // `bridge_ledger` declaration of type `List<BridgeLedgerRow>`
+  // (`v3.std.bridge_ledger`); the runner reads every row's `status`
+  // field and `Pass`es iff every row's status resolves to the
+  // `Retired` constructor of `BridgeStatus`. Open rows produce `Fail`
+  // with the offending names so the diagnostic surfaces the residual
+  // debt directly. The wrapped `BridgeLedgerRef` makes the ledger-
+  // target intent structural at the field-type level (mirror of
+  // `MethodRef` / `CallableRef`); the canonical-identity check
+  // (decl == `bridge_ledger`) lands at the runner boundary in
+  // `eval_bridge_ledger_zero` until refinement-typing on
+  // `DeclarationRef` retires the wrapper class.
   | BridgeLedgerZero {
-      ledger: DeclarationRef
+      ledger: BridgeLedgerRef
     }
 
 // Structural runner input role for predicates whose input is the compiled
