@@ -528,6 +528,18 @@ impl<'a> Parser<'a> {
         })
     }
 
+    /// User `.v3` modules parse brace-bodied `fn` bodies as real
+    /// `SurfaceExpr` trees (single expression, record literal, or
+    /// `parse_expr` + `FnExternalBody` fallback for multi-statement
+    /// blocks). Authority `.dag` sources (`dsl/std`, `src/v3/std`,
+    /// compiler/spec fixtures, etc.) keep the legacy brace-skip →
+    /// `FnExternalBody` path so bootstrap snapshots and staged std
+    /// `ArrowBody::Unparsed` contracts stay byte-stable until a
+    /// dedicated bootstrap regen lane opts the corpus in.
+    fn fn_brace_body_parse_as_expression(&self) -> bool {
+        self.file.ends_with(".v3")
+    }
+
     fn parse_fn_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
         let fn_kw = self.expect_kind(TokenKind::KwFn)?;
         let name = self.parse_ident()?;
@@ -555,16 +567,33 @@ impl<'a> Parser<'a> {
             TokenKind::LBrace => {
                 // Brace-bodied `fn f(x) -> T { body }`.
                 //
-                // When `{` begins an unambiguous record literal (`{}` or
-                // `{ label: expr, ... }`), parse `SurfaceExpr::Record` so
-                // `{ x: 1 }` returns remain expressible.
+                // Non-`.v3` sources (staged `.dag` corpus): preserve the
+                // legacy `FnExternalBody` + brace-skip path — see
+                // `fn_brace_body_parse_as_expression`.
+                //
+                // `.v3` user sources: when `{` begins an unambiguous record
+                // literal (`{}` or `{ label: expr, ... }`), parse
+                // `SurfaceExpr::Record` so `{ x: 1 }` returns remain
+                // expressible.
                 //
                 // Otherwise try a single complete `SurfaceExpr` through the
                 // closing `}`. If parsing fails or the expression does not
-                // exhaust the brace (e.g. `let`-sequence std bodies such as
-                // `effects.dag` `parse_path_template`), fall back to
+                // exhaust the brace (e.g. multi-`let` sequences), fall back to
                 // `FnExternalBody` + brace-skip so signatures and body spans
-                // still flow forward (Facts Flow Forward / staged std).
+                // still flow forward (Facts Flow Forward).
+                if !self.fn_brace_body_parse_as_expression() {
+                    let open = self.peek().span.clone();
+                    let end = self.skip_brace_balanced()?;
+                    let body_span = SourceSpan::new(self.file, open.byte_start, end);
+                    return Ok(SurfaceItem::FnExternalBody {
+                        name,
+                        type_params,
+                        params,
+                        return_type,
+                        body_span,
+                        span: SourceSpan::new(self.file, fn_kw.span.byte_start, end),
+                    });
+                }
                 if self.looks_like_record_literal() {
                     let body_expr = self.parse_record_literal()?;
                     let end = expr_span(&body_expr).byte_end;
