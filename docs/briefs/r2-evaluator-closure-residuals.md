@@ -4,6 +4,12 @@
 
 **Parent:** [`r2-evaluator-manager.md`](r2-evaluator-manager.md). **Live gating companion:** [`r2-evaluator-cadence-verification-matrix.md`](r2-evaluator-cadence-verification-matrix.md).
 
+## PR-C (reflection completeness) — intentionally out of scope here
+
+**Landed:** PR-C **spec** authority is [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) (**LANDED via #1129**); Evaluator Manager’s **Lens application** / reflection sub-lane disposition already treats that structural work as landed. **Rust / compiler hooks** that consume the spec are likewise **landed** at the integration seams cited there and in the manager table.
+
+**Remaining PR-C surface (not listed in this file):** follow-on work is **dissolution / structural-gate consumption** (how reflection completeness evidence wires into named `TestClaim` rows and the R2 closure ledger), **not** an open “implementation backlog” for PR-C itself. This note records **PR-D / PR-E / TC2** deferrals only so [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) consumers get a **bounded** Evaluator slice without mistaking this file for the full Evaluator closure residual inventory.
+
 ## PR-D — cross-target equivalence harness
 
 **Landed (Evaluator-side, as of this note):** PR-D **slice 0** (named `.dag` claims + suite) and **slice 1** (`DifferentialEquals` scaffold alongside the existing harness primitives) per [`r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md).
