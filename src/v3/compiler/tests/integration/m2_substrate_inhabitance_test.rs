@@ -2151,7 +2151,10 @@ fn runtime_value_has_locked_pb_runtime_coproduct_shape() {
         find_named(&dag, "NodeId")
     );
     assert_eq!(
-        positional_payload(&dag, runtime_value_variant_payload(&dag, "CardinalityValue")),
+        positional_payload(
+            &dag,
+            runtime_value_variant_payload(&dag, "CardinalityValue")
+        ),
         find_named(&dag, "LoopBound")
     );
 
