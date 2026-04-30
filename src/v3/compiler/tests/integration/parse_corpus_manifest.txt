@@ -28,7 +28,7 @@ src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
 src/v3/std/diagnostics.dag	10	12179	bc414c493551b464
 src/v3/std/dimensions.dag	21	40239	d595746d2bda22f6
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
-src/v3/std/emit_model.dag	36	69306	a7ebe91c95d9f288
+src/v3/std/emit_model.dag	36	68760	30bb483bab671fa7
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	12090	e307b3796658c074
 src/v3/std/go_method_template_contracts.dag	5	110898	7eb5c9f1296f4a45
 src/v3/std/induction.dag	56	88794	546f74c63c189c50
@@ -40,7 +40,7 @@ src/v3/std/parse_surface.dag	18	99510	b73114d5b178303d
 src/v3/std/python_method_template_contracts.dag	5	142882	3086daf4cf293650
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	6	7993	0e703b02069526f6
-src/v3/std/rust_method_template_contracts.dag	5	114675	cab18629c0485fa6
+src/v3/std/rust_method_template_contracts.dag	5	109753	7b10fcd0d9079900
 src/v3/std/substrate.dag	59	128739	82987951254e7b4d
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
 src/v3/std/termination.dag	18	36478	d010232f0373dc99
