@@ -228,11 +228,25 @@ one of them requires a substrate extension:
   }
 
   pub enum TransformDispatch {
-      Callable      { callee: DeclarationId,       args: Vec<PortId> },
-      FieldProject  { field_label: String, field_child: Option<DeclarationId>, args: Vec<PortId> },
-      Operator      { op: OperatorKind,            args: Vec<PortId> },
-      Indirect      { callee: ArrowPortRef,        args: Vec<PortId> },
+      Callable      { callee: DeclarationId,       args: ArityCheckedArgs },
+      FieldProject  { field_label: String, field_child: Option<DeclarationId>, args: ArityCheckedArgs },
+      Operator      { op: OperatorCall },
+      Indirect      { callee: ArrowPortRef,        args: ArityCheckedArgs },
   }
+
+  /// Operators have fixed arity per op-kind; encode it in the sum.
+  /// Unary/Binary cannot accidentally swap arities.
+  pub enum OperatorCall {
+      Unary  { op: UnaryOp,  arg: PortId },
+      Binary { op: BinaryOp, lhs: PortId, rhs: PortId },
+  }
+
+  /// Track-9 typed handle — wraps `Vec<PortId>` with proof that arity
+  /// and per-position types match a resolved Arrow signature. Private
+  /// constructor; only `Dag::resolve_call_args(sig, ports)` produces it,
+  /// returning `Err(ArityMismatch | TypeMismatch)` on malformed calls.
+  /// Same pattern as `ArrowPortRef` / `NonSingletonList::from_vec`.
+  pub struct ArityCheckedArgs(/* private */ Vec<PortId>);
 
   /// Track-9 typed handle — wraps a PortId with proof that the
   /// referenced port carries an Arrow-typed value. Only constructable
@@ -260,6 +274,18 @@ one of them requires a substrate extension:
       pub fn input_ports(&self) -> impl Iterator<Item = &PortId> { ... }
   }
   ```
+
+  **Arity enforcement.** `Operator` arity is fixed by op-kind and
+  encoded directly in `OperatorCall`'s variants — a `Unary` cannot
+  carry two operands, a `Binary` cannot carry one, by type. The
+  call-shapes (`Callable` / `FieldProject` / `Indirect`) have
+  signature-dependent arity that only the lowerer knows; for those,
+  `ArityCheckedArgs` is a Track-9 typed handle whose private
+  constructor (`Dag::resolve_call_args`) validates arity and
+  per-position types against the resolved Arrow signature, exactly
+  parallel to `ArrowPortRef`. A malformed `args` cannot inhabit
+  `ArityCheckedArgs`; type-checking happens at the handle's
+  construction boundary, not as a downstream validation pass.
 
   Both invariants now hold structurally:
 
