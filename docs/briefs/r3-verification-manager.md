@@ -31,7 +31,7 @@ Per [`docs/r3-structure.md`](../r3-structure.md) L98 distribution map; cross-che
 | 4 | `include_str!` side channels (e.g., `pipeline_authority.rs`) | **PB** | **outstanding-or-waiting** | #1171 suspended `reconcile_with_compile_body` rather than swapping `include_str!` for runtime file IO; **`bridge_include_str_side_channels_retired` still open** per [`docs/design-emission-model.md:944`](../design-emission-model.md). Awaits derivation or structural compile-body witness. |
 | 5 | `patch_lower_helpers_*` residual | **PB** | **slice landed; narrow scope** | #1014 (first slice — generated field native) + #1192 (`bridge_lower_helpers_patch_zero_residual_test.rs` — narrow ratchet-zero). Broader exact-string patching outside this slice not claimed retired. |
 
-**Net position:** 1 retired (#1272), 3 narrow slices landed (#1014/#1171/#1183/#1192 — but ledger-zero unification pending per #1275 PB row L147), 1 R3-deferred (#1273). **Unified `bridge_retirement_ledger_zero` gate remains open** until all 5 fire structurally — row stays in-flight per closure ledger discipline.
+**Net position:** 1 retired (#1272), 2 narrow slices landed (#1183 canonical lens / #1014 + #1192 lower-helper), 1 outstanding (#1171 suspended `reconcile_with_compile_body` only — `bridge_include_str_side_channels_retired` still open; tracked separately by closure-ledger update #1283), 1 R3-deferred (#1273). **Unified `bridge_retirement_ledger_zero` gate remains open** until all 5 fire structurally — row stays in-flight per closure ledger discipline.
 
 ## TestClaim author-now-fire-later state — audit (2026-04-30)
 
