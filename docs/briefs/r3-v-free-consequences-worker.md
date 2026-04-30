@@ -43,8 +43,11 @@ heuristics as guarantees.
 - **Cross-target optimization** = `Lens<Cost>·LanguageSpec`. The claim is not
   "each target emits identical syntax"; it is that target-specific choices
   preserve the same cost/semantic relation under the language-spec facts.
-- **Space-bound CX** = R1-closed reference. Cite the closed R1 evidence in
-  `design-free-consequences.md`; do not re-derive it in this lane.
+- **Space-bound CX** = status/reference section only. Cite the closed R1 CX
+  baseline where relevant, but explicitly preserve the active analysis state:
+  `docs/v3-modeling-analysis.md` still marks space bound proofs **NOT
+  STARTED** because the space lens is not modeled. Do not present space-bound
+  proofs as a current compiler guarantee in this lane.
 
 ## Loop-Iteration Parallelism
 
