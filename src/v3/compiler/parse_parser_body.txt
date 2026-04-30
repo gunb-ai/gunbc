@@ -590,10 +590,11 @@ impl<'a> Parser<'a> {
                 // expressible.
                 //
                 // Otherwise try a single complete `SurfaceExpr` through the
-                // closing `}`. If parsing fails or the expression does not
-                // exhaust the brace (e.g. multi-`let` sequences), fall back to
-                // `FnExternalBody` + brace-skip so signatures and body spans
-                // still flow forward (Facts Flow Forward).
+                // closing `}`. If the expression parses but does not exhaust
+                // the brace (e.g. multi-`let` sequences), rewind and fall back to
+                // `FnExternalBody` + brace-skip. If `parse_expr` errors and the
+                // first inner token is `let`, use the same fallback (statement
+                // scaffold); otherwise propagate the parse diagnostic.
                 if !self.fn_brace_body_parse_as_expression() {
                     let open = self.peek().span.clone();
                     let end = self.skip_brace_balanced()?;
