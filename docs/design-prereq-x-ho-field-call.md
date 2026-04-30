@@ -484,8 +484,10 @@ landed) and the Lens<C> carrier (#1186, landed) are unaffected.
 
 This document is the deliverable. No code changes; no test
 additions; no parser edits. The next dispatch consumes this audit
-to scope Prereq-X1 (and X3 if Director confirms) as a separate
-parser/lowerer slice.
+to scope Prereq-X1 (and Prereq-X3 if Director confirms it is
+required for `fold_lens<C>` — X3's syntax is already locked to
+explicit block markers; only the *need* for X3 in this slice
+remains an open call) as a separate parser/lowerer slice.
 
 ---
 
