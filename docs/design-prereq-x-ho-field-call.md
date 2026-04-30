@@ -227,34 +227,70 @@ one of them requires a substrate extension:
       pub span: SourceSpan,
   }
 
+  /// Sum is public so consumers can match; per-variant payloads
+  /// are tuple-wrapped structs with crate-private fields. Outside
+  /// the dag module no caller can construct `Callable`,
+  /// `FieldProject`, or `Indirect` directly — the only path is
+  /// the Dag builder that validates against the target signature.
+  /// Read access is through accessor methods on the payload structs.
   pub enum TransformDispatch {
-      Callable      { callee: DeclarationId,       args: Vec<PortId> },
-      FieldProject  { field_label: String, field_child: Option<DeclarationId>, args: Vec<PortId> },
-      Operator      { op: OperatorCall },
-      Indirect      { callee: ArrowPortRef,        args: Vec<PortId> },
+      Callable     (CallableDispatch),
+      FieldProject (FieldProjectDispatch),
+      Operator     (OperatorCall),
+      Indirect     (IndirectDispatch),
   }
 
+  pub struct CallableDispatch {
+      pub(crate) callee: DeclarationId,
+      pub(crate) args:   Vec<PortId>,
+  }
+
+  pub struct FieldProjectDispatch {
+      pub(crate) field_label: String,
+      pub(crate) field_child: Option<DeclarationId>,
+      pub(crate) carrier:     PortId,
+      pub(crate) args:        Vec<PortId>,
+  }
+
+  pub struct IndirectDispatch {
+      pub(crate) callee: ArrowPortRef,
+      pub(crate) args:   Vec<PortId>,
+  }
+
+  impl CallableDispatch {
+      pub fn callee(&self) -> DeclarationId { self.callee }
+      pub fn args(&self)   -> &[PortId]     { &self.args }
+  }
+  // (analogous accessors for FieldProjectDispatch / IndirectDispatch)
+
   /// Operators have fixed arity per op-kind; encode it in the sum.
-  /// Unary/Binary cannot accidentally swap arities.
+  /// Unary/Binary cannot accidentally swap arities. `OperatorCall`
+  /// remains a plain pub enum because both variants are
+  /// constructable from primitives without target resolution —
+  /// no signature is being witnessed, so there's no proof to
+  /// protect.
   pub enum OperatorCall {
       Unary  { op: UnaryOp,  arg: PortId },
       Binary { op: BinaryOp, lhs: PortId, rhs: PortId },
   }
 
   /// **Atomic dispatch construction binds the args proof to the
-  /// target.** `TransformDispatch`'s call-shape variants are
-  /// constructable only through Dag-level builders that take
-  /// `(target_identity, raw_ports)`, resolve the target's Arrow
-  /// signature, validate arity + per-position types against it,
-  /// and emit the variant in a single step. The args proof and
-  /// the target are co-constructed; an args list checked against
-  /// signature A cannot inhabit a dispatch built for target B
-  /// because there is no public path that takes pre-validated
-  /// args and pairs them with an arbitrary target — the variant
-  /// fields are crate-private and the only public surface is the
-  /// builder that fuses them. Same pattern as
-  /// `NonSingletonList::from_vec` extended to a co-constructed
-  /// pair.
+  /// target.** The payload structs (`CallableDispatch`,
+  /// `FieldProjectDispatch`, `IndirectDispatch`) have
+  /// `pub(crate)` fields, so outside the dag module they cannot
+  /// be constructed directly — the type system, not convention,
+  /// blocks `CallableDispatch { callee, args }` literal
+  /// construction. The only public path that yields a
+  /// `TransformDispatch::Callable(_)` / `FieldProject(_)` /
+  /// `Indirect(_)` is a Dag-level builder that takes
+  /// `(target_identity, raw_ports)`, resolves the target's Arrow
+  /// signature, and validates arity + per-position types in one
+  /// step. The args proof and target are co-constructed; an args
+  /// list checked against signature A cannot inhabit a dispatch
+  /// built for target B because no public constructor exists
+  /// that pairs pre-validated args with an arbitrary target.
+  /// Same pattern as `NonSingletonList::from_vec` extended to a
+  /// co-constructed pair.
   ///
   /// ```rust
   /// impl Dag {
