@@ -228,10 +228,10 @@ one of them requires a substrate extension:
   }
 
   pub enum TransformDispatch {
-      Callable      { callee: DeclarationId,       args: ArityCheckedArgs },
-      FieldProject  { field_label: String, field_child: Option<DeclarationId>, args: ArityCheckedArgs },
+      Callable      { callee: DeclarationId,       args: Vec<PortId> },
+      FieldProject  { field_label: String, field_child: Option<DeclarationId>, args: Vec<PortId> },
       Operator      { op: OperatorCall },
-      Indirect      { callee: ArrowPortRef,        args: ArityCheckedArgs },
+      Indirect      { callee: ArrowPortRef,        args: Vec<PortId> },
   }
 
   /// Operators have fixed arity per op-kind; encode it in the sum.
@@ -241,12 +241,42 @@ one of them requires a substrate extension:
       Binary { op: BinaryOp, lhs: PortId, rhs: PortId },
   }
 
-  /// Track-9 typed handle — wraps `Vec<PortId>` with proof that arity
-  /// and per-position types match a resolved Arrow signature. Private
-  /// constructor; only `Dag::resolve_call_args(sig, ports)` produces it,
-  /// returning `Err(ArityMismatch | TypeMismatch)` on malformed calls.
-  /// Same pattern as `ArrowPortRef` / `NonSingletonList::from_vec`.
-  pub struct ArityCheckedArgs(/* private */ Vec<PortId>);
+  /// **Atomic dispatch construction binds the args proof to the
+  /// target.** `TransformDispatch`'s call-shape variants are
+  /// constructable only through Dag-level builders that take
+  /// `(target_identity, raw_ports)`, resolve the target's Arrow
+  /// signature, validate arity + per-position types against it,
+  /// and emit the variant in a single step. The args proof and
+  /// the target are co-constructed; an args list checked against
+  /// signature A cannot inhabit a dispatch built for target B
+  /// because there is no public path that takes pre-validated
+  /// args and pairs them with an arbitrary target — the variant
+  /// fields are crate-private and the only public surface is the
+  /// builder that fuses them. Same pattern as
+  /// `NonSingletonList::from_vec` extended to a co-constructed
+  /// pair.
+  ///
+  /// ```rust
+  /// impl Dag {
+  ///     pub fn push_callable_transform(
+  ///         &mut self, callee: DeclarationId, raw_ports: Vec<PortId>, ...,
+  ///     ) -> Result<NodeId, CallShapeError> { ... }
+  ///
+  ///     pub fn push_indirect_transform(
+  ///         &mut self, callee: ArrowPortRef, raw_ports: Vec<PortId>, ...,
+  ///     ) -> Result<NodeId, CallShapeError> { ... }
+  ///
+  ///     pub fn push_field_project_transform(
+  ///         &mut self, field_label: String, field_child: Option<DeclarationId>,
+  ///         carrier_port: PortId, raw_ports: Vec<PortId>, ...,
+  ///     ) -> Result<NodeId, CallShapeError> { ... }
+  /// }
+  /// ```
+  ///
+  /// Args therefore carry no separate type — the binding to the
+  /// target's signature is established at construction and
+  /// expressed by the absence of any public constructor that
+  /// could split them.
 
   /// Track-9 typed handle — wraps a PortId with proof that the
   /// referenced port carries an Arrow-typed value. Only constructable
@@ -279,13 +309,18 @@ one of them requires a substrate extension:
   encoded directly in `OperatorCall`'s variants — a `Unary` cannot
   carry two operands, a `Binary` cannot carry one, by type. The
   call-shapes (`Callable` / `FieldProject` / `Indirect`) have
-  signature-dependent arity that only the lowerer knows; for those,
-  `ArityCheckedArgs` is a Track-9 typed handle whose private
-  constructor (`Dag::resolve_call_args`) validates arity and
-  per-position types against the resolved Arrow signature, exactly
-  parallel to `ArrowPortRef`. A malformed `args` cannot inhabit
-  `ArityCheckedArgs`; type-checking happens at the handle's
-  construction boundary, not as a downstream validation pass.
+  signature-dependent arity that only the lowerer knows. For those,
+  the args proof is bound to the target by **atomic dispatch
+  construction**: variant fields are crate-private, and the only
+  public surface that yields a `Callable` / `FieldProject` /
+  `Indirect` is a Dag builder (`push_callable_transform`,
+  `push_field_project_transform`, `push_indirect_transform`) that
+  takes `(target_identity, raw_ports)`, resolves the target's
+  Arrow signature, and validates arity + per-position types against
+  it in one step. There is no public constructor that takes a
+  pre-validated args list and pairs it with an arbitrary target —
+  the proof and target are co-constructed, so args validated against
+  signature A cannot be re-attached to a dispatch built for target B.
 
   Both invariants now hold structurally:
 
@@ -371,7 +406,7 @@ one of them requires a substrate extension:
    if and only if `complexity_lens` is a `data` binding (which it
    is — Lens instances are top-level data).
 2. (L1.b) runtime-sourced case lands SECOND with the
-   `TransformDispatch::Indirect { callee: ArrowPortRef, args: ArityCheckedArgs }`
+   `TransformDispatch::Indirect { callee: ArrowPortRef, args: Vec<PortId> }` (constructed atomically via `Dag::push_indirect_transform`)
    variant + the `TransformNode.target/inputs` collapse described
    above.
    Required for `fn invoke(lens: Lens<Int>, ...) -> ... = lens.read(...)`
