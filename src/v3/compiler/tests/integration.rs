@@ -52,7 +52,6 @@ mod extdeps_rust_primitives_loader_test;
 #[path = "integration/four_fixture_regression_test.rs"]
 mod four_fixture_regression_test;
 
-
 #[path = "integration/int_literal_cardinality_test.rs"]
 mod int_literal_cardinality_test;
 #[path = "integration/l1_5_fixed_point_test.rs"]
