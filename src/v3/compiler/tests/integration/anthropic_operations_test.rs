@@ -269,7 +269,11 @@ fn anthropic_operations_messages_pilot_present() {
          defers nested-map literals). Once Substrate's parser extension lands, \
          populate this row + grow the assertion to v2-parity keys. Got {} entries: {:?}",
         input_map.entries().len(),
-        input_map.entries().iter().map(|(k, _)| k).collect::<Vec<_>>()
+        input_map
+            .entries()
+            .iter()
+            .map(|(k, _)| k)
+            .collect::<Vec<_>>()
     );
 }
 
