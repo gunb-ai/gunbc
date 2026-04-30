@@ -244,11 +244,32 @@ one of them requires a substrate extension:
   Vec<TransformInput> | inputs has exactly one Callee }`), the
   cardinality dissolves into the type. For now: builder + assert.
 
-  Emitters render the variant as the target language's first-class
-  function-call surface (Rust closure call, Python `()` on a
-  callable, etc.) using `inputs[0]` as the callee and `inputs[1..]`
-  as args. Per-target `SubstrateAccessorBinding`-style rendering
-  is not required because the call is structural (no per-accessor
+  **Emitter contract (typed-tag, not positional).** Emitters
+  consume `TransformNode.inputs` by partitioning on the
+  `TransformInput` tag, NOT by positional index:
+
+  - Find the unique `TransformInput::Callee(callee_port)` element.
+    Fail closed via `EmitError::MalformedIndirectCall` if `Callee`
+    is missing or appears more than once. The substrate cardinality
+    invariant (exactly one `Callee` per `IndirectCall` transform)
+    is enforced at the construction boundary by the builder; the
+    emitter validates fail-closed at the rendering boundary in case
+    the substrate consumer skipped the builder.
+  - Project the remaining `TransformInput::Arg(arg_port)` elements
+    in their declared order — these are the call arguments.
+  - Render the target language's first-class function-call surface
+    (Rust closure call, Python `()` on a callable, etc.) using
+    `callee_port` as the dispatched callee and the projected
+    `arg_port` list as args.
+
+  Positional authority (`inputs[0]` = callee) is **rejected**: the
+  `TransformInput` tag IS the single authority for "which
+  dependency is the callee." Emitters that walk by position
+  reintroduce the convention this section's earlier paragraph
+  rejects.
+
+  Per-target `SubstrateAccessorBinding`-style rendering is not
+  required because the call is structural (no per-accessor
   carrier), only the call-syntax template per target.
 
   Adding this variant is the load-bearing substrate change in X1's
