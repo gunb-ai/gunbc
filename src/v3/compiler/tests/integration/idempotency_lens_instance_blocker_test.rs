@@ -21,12 +21,28 @@ fn semantic_diagnostics(source: &str, file: &str) -> Vec<Diagnostic> {
         .collect()
 }
 
-fn has_fixture_resolve_error(diagnostics: &[Diagnostic], file: &str) -> bool {
+fn has_function_field_ref_resolve_error(
+    diagnostics: &[Diagnostic],
+    source: &str,
+    file: &str,
+    expected_field_ref: &str,
+) -> bool {
     diagnostics.iter().any(|diagnostic| {
-        matches!(
-            diagnostic,
-            Diagnostic::ResolveError { span, .. } if span.file == file
-        )
+        let Diagnostic::ResolveError { span, .. } = diagnostic else {
+            return false;
+        };
+        if span.file != file {
+            return false;
+        }
+        let Ok(start) = usize::try_from(span.byte_start) else {
+            return false;
+        };
+        let Ok(end) = usize::try_from(span.byte_end) else {
+            return false;
+        };
+        source
+            .get(start..end)
+            .is_some_and(|text| text.contains(expected_field_ref))
     })
 }
 
@@ -60,7 +76,8 @@ data int_lens: MiniLens<Int> = {
     let diagnostics = semantic_diagnostics(source, file);
 
     assert!(
-        has_fixture_resolve_error(&diagnostics, file),
+        has_function_field_ref_resolve_error(&diagnostics, source, file, "op: add_int")
+            || has_function_field_ref_resolve_error(&diagnostics, source, file, "read: read_int"),
         "expected generic data-body function refs to hit the Lens/Monoid lowerer gap; got: {diagnostics:?}"
     );
 }
