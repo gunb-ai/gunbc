@@ -231,8 +231,25 @@ one of them requires a substrate extension:
       Callable      { callee: DeclarationId,       args: Vec<PortId> },
       FieldProject  { field_label: String, field_child: Option<DeclarationId>, args: Vec<PortId> },
       Operator      { op: OperatorKind,            args: Vec<PortId> },
-      Indirect      { callee: PortId,              args: Vec<PortId> },
+      Indirect      { callee: ArrowPortRef,        args: Vec<PortId> },
   }
+
+  /// Track-9 typed handle — wraps a PortId with proof that the
+  /// referenced port carries an Arrow-typed value. Only constructable
+  /// via a Dag-level validator that resolves the port's producer
+  /// behavior signature and verifies it's an Arrow connective:
+  ///
+  /// ```rust
+  /// impl Dag {
+  ///     pub fn resolve_arrow_port(&self, p: PortId)
+  ///         -> Result<ArrowPortRef, NonArrowPortError> { ... }
+  /// }
+  /// ```
+  ///
+  /// `ArrowPortRef`'s constructor is private to the dag module; outside
+  /// callers must go through `Dag::resolve_arrow_port`. Same pattern
+  /// as `NonSingletonList::from_vec` — the type carries the proof.
+  pub struct ArrowPortRef(/* private */ PortId);
 
   impl TransformDispatch {
       /// Single-authority dependency walk for Facts Flow Forward.
@@ -248,19 +265,28 @@ one of them requires a substrate extension:
 
   - **Facts Flow Forward:** `dispatch.input_ports()` is the single
     authority that yields every runtime-port dependency for any
-    variant. Reflected consumers (lenses, schedulers, dataflow
-    analyses) walk this iterator without knowing which variant
-    they have.
+    variant — including the `Indirect.callee`'s wrapped `PortId`.
+    Reflected consumers (lenses, schedulers, dataflow analyses)
+    walk this iterator without knowing which variant they have.
   - **Illegal states unrepresentable at the type level:**
     - `Callable` / `FieldProject` / `Operator` cannot accidentally
-      carry a runtime callee port (no `callee: PortId` field).
+      carry a runtime callee port (no `callee` field of any kind).
     - `Indirect` cannot omit its callee (single field, not a
       `Vec`; not `Option`).
     - Multi-callee `Indirect` is impossible (single field, not a
       `Vec`).
-    - `Callable.callee` is `DeclarationId` (compile-time),
-      `Indirect.callee` is `PortId` (runtime); the type system
-      makes them incompatible.
+    - `Callable.callee: DeclarationId` (compile-time) and
+      `Indirect.callee: ArrowPortRef` (runtime) are incompatible
+      types; the type system separates them.
+    - **Arrow-typed callee proof:** `Indirect.callee` is
+      `ArrowPortRef`, not raw `PortId`. A non-Arrow port cannot
+      inhabit `ArrowPortRef` because the only constructor
+      (`Dag::resolve_arrow_port`) validates the port's producer
+      signature is Arrow-typed and returns `Err(NonArrowPortError)`
+      otherwise. Constructing `Indirect { callee: ..., ... }` with
+      a non-Arrow port is therefore unrepresentable —
+      type-checking happens at the type-handle's construction
+      boundary, not behaviorally inside the lowerer.
 
   No builder + debug-assert ratchet; cardinality and target/callee
   compatibility are both expressed in `TransformDispatch`'s shape.
@@ -319,7 +345,7 @@ one of them requires a substrate extension:
    if and only if `complexity_lens` is a `data` binding (which it
    is — Lens instances are top-level data).
 2. (L1.b) runtime-sourced case lands SECOND with the
-   `TransformDispatch::Indirect { callee: PortId, args: Vec<PortId> }`
+   `TransformDispatch::Indirect { callee: ArrowPortRef, args: Vec<PortId> }`
    variant + the `TransformNode.target/inputs` collapse described
    above.
    Required for `fn invoke(lens: Lens<Int>, ...) -> ... = lens.read(...)`
