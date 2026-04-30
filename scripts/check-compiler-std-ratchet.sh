@@ -33,6 +33,7 @@ POSITIVE_ROWS=(
   "src/v3/compiler/regen.dag:LensRegistryEntry"
   "src/v3/lenses/complexity.dag:CostEntry"
   "src/v3/lenses/cost.dag:SymbolicCostEntry"
+  "src/v3/lenses/dag_shape.dag:DagShapeReport"
   "src/v3/lenses/effect_enumeration.dag:StructuralEffectShape"
   "src/v3/lenses/effect_enumeration.dag:EffectFact"
   "src/v3/lenses/effect_enumeration.dag:CoverageGap"
