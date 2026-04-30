@@ -1,0 +1,98 @@
+module v3.std.services
+
+import std.types { HttpMethod }
+import std.list { List }
+
+// PR-α — service / operation / REST-endpoint substrate carrier types.
+//
+// Type-authority pass only. No `data` rows here; `bootstrap_fixture_authority`
+// (`src/v3/std/extdeps_bootstrap_fixtures.dag`) is unchanged in this PR.
+// Sibling fixture rows of shape `data <provider>_operations: List<Operation>`
+// (anthropic / openai / github) are PR-β..ω scope, owned by R2 Grounding Manager
+// (T-Ground-Services analog of T-Ground-LanguageSpec — see #1195 for the
+// `MethodTemplateContract` precedent these carriers mirror in shape and cadence).
+//
+// Lands without a producerless-carrier complaint by the same argument that
+// applied to `MethodTemplateContract` in `emit_model.dag` ahead of Phase 1:
+// type declarations are substrate authority; fixture rows are downstream
+// population. The dissolution-tracked carrier discipline runs on the
+// fixture side, not on the type side.
+//
+// Downstream consumers (after PR-β..ω land):
+//   - `analyze_workflow` / `analyze_parallelism`
+//     (`src/v3/compiler/src/workflow_idempotency.rs`,
+//     `workflow_parallelism.rs`) derive `OperationEffect` per
+//     `std.effects::derive_op_effect(method, path)` from loaded `Operation`
+//     records; authored `lane2_workflow` retires.
+//   - `OperationEffect` substrate type
+//     (`src/v3/compiler/src/dag/effects.rs`, `src/v3/std/effects.dag`)
+//     retires once derivation replaces the authored shape — path (ii) of
+//     the T-ImpossibleBugs unenumerated-effects design (PR #808 / #971,
+//     `docs/briefs/r2-impossible-bugs-unenumerated-effects-worker.md` Q5.5).
+
+// 🟢 TERMINAL. String-keyed reference into the enclosing `Operation.inputs`.
+// The check that a `name` resolves to an `InputField` actually present on
+// the same `Operation` is a fail-closed boundary check at fixture load
+// time; that boundary lands with the first fixture row + accessor in
+// PR-β. The type itself is terminal — there is no narrower substrate
+// shape to evolve toward, only the cross-record resolution that
+// fixture-load enforces.
+type InputFieldRef {
+  name: String
+}
+
+// 🟢 TERMINAL. Two-variant split of REST path-template segments: a literal
+// URL fragment vs a placeholder bound to one of the operation's input
+// fields. Mirrors the `/v1/path/{input_field}` shape every existing
+// `dsl/extdeps/{llm,github}/*.dag` `transport rest { path: ... }` already
+// uses. Durable because REST URI templates really do split this way
+// (RFC 6570 Level 1 substitution covers the bypass-primitive surface in
+// scope; richer levels are not in use across current extdeps).
+type PathSegment
+  = LiteralSegment { text: String }
+  | InputFieldSegment { field: InputFieldRef }
+
+// 🟢 TERMINAL at this scope. Ordered segment list; concatenation order is
+// URL order. No separator field — `/` is the only inter-segment delimiter
+// in REST URI templates and is implicit at render time.
+type PathTemplate {
+  segments: List<PathSegment>
+}
+
+// 🟢 TERMINAL at PR-α scope. Carries the structural facts
+// `std.effects::derive_op_effect(method_str, path_str)` (see `effects.dag`
+// line 707) needs to derive `OperationEffect.shape` from a callable's REST
+// realization: the HTTP verb, and the path template whose last segment
+// drives the create-vs-upsert-vs-delete branch via
+// `last_path_param(template)`.
+//
+// Body-shape (which input fields compose into the request body) is not
+// modeled here in PR-α. `derive_op_effect` does not consume body shape
+// today; if a future shape needs it, extend with a `body_inputs:
+// List<InputFieldRef>` field. Omission preserves the minimal-PR-α scope.
+type RestEndpointBinding {
+  method: HttpMethod
+  path:   PathTemplate
+}
+
+// 🟢 TERMINAL at PR-α scope. Operation's input-field list — `name`-only,
+// because `derive_op_effect` keys path-segment binding by name and does
+// not consume the field type today. A typed `ty` field is omitted to
+// keep PR-α minimal; PR-β authors fixtures against the name-only shape,
+// and a sibling field can land in a focused follow-up if a downstream
+// lens needs type information.
+type InputField {
+  name: String
+}
+
+// 🟢 TERMINAL at PR-α scope. Named operation plus its REST realization +
+// input-field list (the latter scoping `InputFieldRef` resolution). The
+// product is `std.effects::OperationEffect`'s prerequisite shape: every
+// `OperationEffect.operation_name + endpoint.method + endpoint.path` is
+// recoverable from one `Operation`, dissolving the parallel-rep that
+// motivates the retirement (T-ImpossibleBugs path (ii)).
+type Operation {
+  name:     String
+  inputs:   List<InputField>
+  endpoint: RestEndpointBinding
+}
