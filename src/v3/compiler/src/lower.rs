@@ -3402,6 +3402,11 @@ fn lower_structural_field_value(
 
     if let Some(decl_id) = resolve_field_value_as_declaration_ref(expr, symbols, dag) {
         let referenced = dag.declaration(decl_id);
+        if is_value_level_arrow_declaration(referenced)
+            && declaration_ref_types_equivalent(dag, decl_id, expected_type, 0)
+        {
+            return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
         if referenced
             .meta_tag
             .is_some_and(|actual| declaration_ref_types_equivalent(dag, actual, expected_type, 0))
@@ -3764,6 +3769,19 @@ fn lower_structural_field_value(
     None
 }
 
+fn is_value_level_arrow_declaration(decl: &crate::dag::Declaration) -> bool {
+    matches!(
+        &decl.connective,
+        TypeConnective::Arrow {
+            body: ArrowBody::Pending
+                | ArrowBody::UserDefined(_)
+                | ArrowBody::ExternalRealization(_)
+                | ArrowBody::Unparsed(_),
+            ..
+        }
+    )
+}
+
 /// 🟢 TERMINAL — file-local lowering outcome coproduct.
 ///
 /// 4-pattern check: Pattern 1 (fact placement) reaches the terminal
@@ -3992,6 +4010,25 @@ fn declaration_ref_types_equivalent(
             },
         ) if arguments.is_empty() => {
             declaration_ref_types_equivalent(dag, lhs, *template, depth + 1)
+        }
+        (
+            TypeConnective::Arrow {
+                inputs: lhs_inputs,
+                output: lhs_output,
+                ..
+            },
+            TypeConnective::Arrow {
+                inputs: rhs_inputs,
+                output: rhs_output,
+                ..
+            },
+        ) => {
+            lhs_inputs.len() == rhs_inputs.len()
+                && lhs_inputs
+                    .iter()
+                    .zip(rhs_inputs.iter())
+                    .all(|(lhs, rhs)| declaration_ref_types_equivalent(dag, *lhs, *rhs, depth + 1))
+                && declaration_ref_types_equivalent(dag, *lhs_output, *rhs_output, depth + 1)
         }
         (
             TypeConnective::Instantiation {
