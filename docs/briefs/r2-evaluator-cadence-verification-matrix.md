@@ -4,6 +4,8 @@
 
 **Parent:** [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) — Evaluator Manager program scope + pre-dispatch cadence.
 
+**R2 Release ledger (closure residuals):** [`r2-evaluator-closure-residuals.md`](r2-evaluator-closure-residuals.md) — PR-D / PR-E / TC2 explicit deferrals in Evaluator territory (docs-only).
+
 **Read first:** [`docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md) (PR-D dependencies + slice ordering), [`docs/briefs/r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md) (PR-A.0–A.3 split + `Map<PortId, Value>` discipline), [`docs/briefs/r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md) (PR-E slice 1 vs deeper fold).
 
 ## Purpose
