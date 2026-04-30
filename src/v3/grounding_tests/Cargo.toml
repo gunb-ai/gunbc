@@ -1,0 +1,16 @@
+[package]
+name = "v3-grounding-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# T-Ground-Tests — L4 routing-stability Stratum A (name-keyed parity) against
+# LanguageSpec Phase 1 `MethodTemplateContract` row authorities. Sibling to
+# grounding_pilot / grounding_engine / grounding_lifetime / grounding_coercion_fold;
+# does not touch `src/v3/compiler/` SG-0.
+
+[dependencies]
+v3-compiler = { path = "../compiler" }
+
+[dev-dependencies]
+v3-grounding-lifetime = { path = "../grounding_lifetime" }

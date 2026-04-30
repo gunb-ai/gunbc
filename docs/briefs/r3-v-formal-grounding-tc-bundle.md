@@ -1,56 +1,66 @@
-# R3 Formal-Grounding Verification TC Bundle
+# R3 Verification — T-FormalGrounding TC1/TC2/TC3 Bundle (Absorbed Responsibility)
 
-**Status:** AUTHOR-NOW-FIRE-LATER management brief.
+**Status:** PROPOSAL — **absorbed cross-cutting responsibility** of R3 Verification Manager (NOT a third owned lane). The structural authority [`docs/r3-structure.md`](../r3-structure.md) L108 names exactly **2 lanes + 1 ledger gate** for Verification scope; this brief tracks TC1/TC2/TC3 author-now-fire-later cadence + TC3 substrate-introduction triggering as audit-cadence work, not a dispatch lane. Research-tier work (~3-5 days per TC strengthening per PM Tier C estimate) when TC3 substrate-introduction worker brief is authored under the existing 2-lane scope.
 
-**Owning manager:** R3 Verification Manager.
+**Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — §"Absorbed cross-cutting responsibility — TC1/TC2/TC3 bundle".
 
-## Scope
+## Scope (this bundle)
 
-Track and harden the three formal-grounding TestClaims that bridge R2 substrate/evaluator work into R3 verification:
+Manage the three formal-grounding `TestClaim` author-now-fire-later commitments through their strict-fire activation. Each TC has a different unblock condition; this bundle coordinates across them and authors the substrate path for TC3 when its prerequisites land.
 
-| Claim | Current state | R3 action |
+| TC | Claim | Status (2026-04-30 audit) | Strict-fire gate |
+|---|---|---|---|
+| **TC1** | η-equivalence (substrate-lens research) | **Author-now-fire-later landed** — fixture `src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag` via #1179; uses `SubstrateResearchDeferredClaim` carrier (runner-valid only for this fixture per [`r2-closure-ledger.md`](../r2-closure-ledger.md) L220). | T-Substrate-Lens-Primitive landing + lens producer retirement (per [`r2-closure-ledger.md`](../r2-closure-ledger.md) §216 ratification). |
+| **TC2** | Church-Rosser / evaluation-order independence | **Slice-0 hook landed** — fixture `src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag` (per [`r2-evaluator-manager.md`](r2-evaluator-manager.md) L127); current predicate is deferred (`Compiles`-shaped). | **R3-deferred from R2-Evaluator** — needs ≥2 executable strategies. PR-B.1 lands a single eager strategy per [`r2-pr-b-body-evaluator-eager-baseline.md`](r2-pr-b-body-evaluator-eager-baseline.md) L154; second strategy is R3 residual. Strengthens to strict strategy-output equality over `DimensionReport<C>`. |
+| **TC3** | Strong normalization (meta-theorem over well-typed fragment) | **Text-form only** in [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L145-215; no fixture. **Substrate-encoding gap** — every existing `TestPredicate` variant is per-program; TC3 is a meta-theorem universally quantified across all well-typed programs. No existing variant carries that quantifier shape (per L171 of that brief). | **Two-stage gate (single authority — both stages required for strict-fire):** (a) **Substrate-introduction prerequisites:** [`INVARIANTS.md`](../../INVARIANTS.md) §P1 substrate-fact-introduction + B5 audit + T-Substrate-Lens-Primitive (provides the `Lens<C>` shape TC3's evaluation-step witness consumes). Stage (a) lands `tc3_strong_normalization_substrate_introduced` per §Acceptance below. (b) **Strict-fire:** T-FixedPoint completion (termination semantics) — only after stage (a) lands. Ownership transitions PB→Verification per L181-185 of `r3-pb-t-fixedpoint-worker.md`. **No fire-before-(b) path exists** — stage (a) lands the substrate path + fixture only; full theorem witnessing requires (b). |
+
+## Owned deliverables
+
+1. **TC strict-fire activation cadence** — when a TC's strict-fire prerequisites land, replace the deferred-claim variant with the strict predicate; preserve fixture path + claim name (stability invariant).
+2. **TC3 substrate-fact-introduction (load-bearing)** — when B5 + T-Substrate-Lens-Primitive land, author the substrate path for the meta-theorem quantifier shape per INVARIANTS §P1 procedure. Cross-coordinate with Substrate Manager continuation (the carrier-type shape is substrate-owned per #1078 dispatch lock pattern). PB does not re-author after transition per L181-185 of `r3-pb-t-fixedpoint-worker.md`.
+3. **Drift surfacing** — periodic audit (rolled into bridge-ledger audit cadence) that TC fixture paths + carrier shapes remain consistent on main. Surface drift to Director.
+
+## TC3 substrate-fact-introduction — open design questions (parked)
+
+These resolve when TC3 dispatch fires. Listed here for handoff continuity:
+
+- **Quantifier carrier shape** — does TC3 need a new `TestPredicate` variant (e.g., `MetaTheoremOverTypedFragment`), or does it dissolve into a structural fold once T-Substrate-Lens-Primitive provides the evaluation-step witness shape? Per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L171: "no existing variant carries that quantifier shape" — so substrate introduction is the live candidate, dissolution is the hope.
+- **Witness construction** — what does an evaluation-step witness look like for "every well-typed program reduces to normal form"? Consumes T-FixedPoint termination semantics + `Lens<C>` shape.
+- **Fixture path** — proposed `src/v3/compiler/tests/fixtures/tc3_strong_normalization_deferred.dag` (mirroring TC1/TC2 naming convention). Lock at substrate-introduction PR.
+
+## Dependencies summary
+
+| TC | Blocker | Owner |
 |---|---|---|
-| **TC1 eta-equivalence** | Fixture exists at `src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag` using `SubstrateResearchDeferredClaim`. | Replace the deferred marker with an executable eta-equivalence claim once the substrate/lens proof surface lands. |
-| **TC2 Church-Rosser / evaluation-order independence** | Fixture exists at `src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag`; R2 Evaluator manager names it as the slice-0 hook. | Strengthen to strict strategy-output equality over `DimensionReport<C>` once PB-Runtime and `T-Substrate-Lens-Primitive` support the proof. |
-| **TC3 strong normalization** | Text-form only in `r3-pb-t-fixedpoint-worker.md` §"TC3 — Strong-normalization TestClaim". | Resolve the substrate gap for a theorem over the whole well-typed fragment, then author the executable proof/claim fixture. |
+| TC1 | T-Substrate-Lens-Primitive + lens producer retirement | Substrate Manager + PB Manager continuations |
+| TC2 | Second executable evaluation strategy | R3 Evaluator residual (post-R2-Evaluator close) |
+| TC3 | B5 audit + T-Substrate-Lens-Primitive + substrate-fact-introduction | PB Manager (B5) + Substrate Manager + this bundle (introduction authorship) |
 
-## Current Audit
+## Cadence
 
-- TC1 is present, fixture-scoped, and runner-gated to prevent `SubstrateResearchDeferredClaim` from becoming a general release-deferral escape hatch.
-- TC2 is present and suite-named `tc2_evaluation_order_independence_suite`; it remains a deferred/evaluator-semantics hook.
-- TC3 correctly has no `.dag` fixture yet. Current `TestPredicate` variants are per-program and cannot express universal quantification over every well-typed `.dag` program with bounded loops.
+- **No active worker dispatch** until at least one TC's strict-fire prerequisites land.
+- **Audit cadence** — bundled with bridge-ledger audit; refresh status table at each manager-brief PR.
+- **TC3 dispatch trigger** — when both B5 and T-Substrate-Lens-Primitive are green, this bundle authors a TC3 substrate-introduction worker brief (~3-5 days research-tier per PM Tier C estimate).
 
-## TC3 Substrate Gap
+## Explicitly out of scope
 
-TC3 requires a structural proof shape for:
+- **TC1 substrate-research authoring** — Substrate Manager continuation owns T-Substrate-Lens-Primitive; this bundle only consumes the strengthening signal.
+- **TC2 second-strategy implementation** — R3 Evaluator residual (per [`r2-closure-ledger.md`](../r2-closure-ledger.md) Evaluator row); this bundle only consumes the strengthening signal.
+- **TC3 declaration content** — already authored in [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L145-215 (PB-authored declarative shape). This lane authors the substrate path + fixture, NOT the declaration text per L181-185 ownership-transition contract.
+- **L4 / L5 / L7 verification claims** — Lanes 1 + 2 of this manager.
 
-```dag
-every_typed_dag_program_terminates_in_bounded_steps
-```
+## Acceptance — `.dag` gates (each TC fires independently)
 
-The likely proof obligation is structural induction over `Behavior` and `LoopBound` / bounded-lattice facts. That does not fit the existing per-program `TestClaim.source` model. R3 Verification must either:
+- `tc1_substrate_lens_eta_equivalence_strict_fire` — TC1 strengthens from `SubstrateResearchDeferredClaim` to strict predicate.
+- `tc2_evaluation_order_independence_strict_fire` — TC2 strengthens from `Compiles`-shaped slice-0 to strict strategy-output equality over `DimensionReport<C>` per [`r2-evaluator-manager.md`](r2-evaluator-manager.md) L127.
+- `tc3_strong_normalization_substrate_introduced` — TC3 substrate path authored + fixture lands; subsequent strict-fire when T-FixedPoint completes.
 
-- Compose TC3 from a newly landed substrate proof surface, if Substrate provides one before dispatch.
-- Escalate substrate introduction via `INVARIANTS.md` §P1 for a quantifier-capable proof predicate or equivalent structural theorem carrier.
+## Cross-refs
 
-Do not encode TC3 as a corpus test and call it theorem coverage. Corpus termination checks can be supporting evidence, but they do not discharge the universal claim.
-
-## Fire Conditions
-
-- **TC1 fires** when the eta-equivalence proof can compare two equivalent `.dag` forms through the same lens and produce identical lens results without a deferred marker.
-- **TC2 fires** when at least two executable evaluation strategies exist and produce identical `DimensionReport<C>` / observable outputs for the same program set.
-- **TC3 fires** when B5 Loop construction-closure plus the substrate proof surface make the universal termination theorem expressible and checkable.
-
-## STOP Conditions
-
-- Reusing `ReleaseDeferredClaim` for TC1 / TC2 / TC3.
-- Adding a new `TestPredicate` variant directly from this Verification brief without the substrate-fact introduction procedure.
-- Treating a finite corpus as sufficient for TC3's universal theorem.
-- Letting a deferred marker remain after its executable proof surface lands.
-
-## Cross-Refs
-
-- TC1 fixture: `src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag`
-- TC2 fixture: `src/v3/compiler/tests/fixtures/tc2_evaluation_order_independence_deferred.dag`
-- TC3 source: [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §"TC3 — Strong-normalization TestClaim"
-- R2 evaluator acceptance hook: [`r2-evaluator-manager.md`](r2-evaluator-manager.md) §"Acceptance — .dag gates"
+- Parent manager: [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md)
+- TC3 upstream declarative shape (PB-authored, transition contract): [`docs/briefs/r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §"TC3 — Strong-normalization TestClaim" (L145-215; L181-185 ownership transition)
+- TC1 fixture authority: [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) §216 (Director ratification of #1179 direction)
+- TC2 slice-0 hook: [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) L127
+- B5 dependency for TC3: [`docs/briefs/r2-release-b5-loop-construction-closure-audit-worker.md`](r2-release-b5-loop-construction-closure-audit-worker.md)
+- INVARIANTS substrate-fact-introduction procedure: [`INVARIANTS.md`](../../INVARIANTS.md) §P1 (TC3 introduction path)
+- P4 Decidability (TC3 formal home): [`INVARIANTS.md`](../../INVARIANTS.md) §P4

@@ -14,6 +14,7 @@ use crate::parse_tables::{
     BracketRole, ItemDispatchKind, PrimaryAtomClass, PrimaryPrefixDispatch,
 };
 use crate::tokenize::{Token, TokenKind};
+use std::collections::HashSet;
 
 impl SurfaceType {
     pub fn span(&self) -> &SourceSpan {
@@ -52,11 +53,99 @@ impl SurfaceType {
 // recursion + list-body emission support"). Until that lands, any `.dag` port of
 // the recursive-descent algorithm routes through a hidden Rust host layer.
 //
+
+/// Host-authored names that may appear as the sole RHS identifier of a
+/// `type T = U` **alias** even when `U` is not declared in the same module
+/// (bootstrap / prelude spellings). Keep this list conservative: expand it
+/// when integration tests surface a legitimate `type X = Builtin` alias the
+/// two-pass disambiguator mis-classified as a nullary sum.
+const PRELUDE_BARE_RHS_ALIAS_IDENTS: &[&str] = &[
+    "Bit",
+    "Bool",
+    "Char",
+    "Classical",
+    "Double",
+    "Float",
+    "Float32",
+    "Float64",
+    "Int",
+    "Int8",
+    "Int16",
+    "Int32",
+    "Int64",
+    "List",
+    "Map",
+    "Nat",
+    "Never",
+    "Str",
+    "String",
+    "Set",
+    "UInt",
+    "UInt8",
+    "UInt16",
+    "UInt32",
+    "UInt64",
+    "Unit",
+    "Vec",
+    "Void",
+    "Word8",
+    "Word16",
+    "Word32",
+    "Word64",
+];
+
+/// Build the identifier set for which a bare `type T = U` RHS must classify
+/// as [`SurfaceItem::TypeAlias`]: prelude spellings, explicit `import … { … }`
+/// names, and every `type` / `data` LHS in the module (declaration order does
+/// not matter — forward aliases to sibling types stay aliases). Local generic
+/// binders are declaration-scoped and are added only at the RHS lookahead site.
+fn collect_bare_rhs_alias_reference_idents(items: &[SurfaceItem]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    for name in PRELUDE_BARE_RHS_ALIAS_IDENTS {
+        out.insert((*name).to_string());
+    }
+    for item in items {
+        match item {
+            SurfaceItem::Import { names, .. } => {
+                for n in names {
+                    out.insert(n.clone());
+                }
+            }
+            SurfaceItem::TypeRecord { name, .. }
+            | SurfaceItem::TypeSum { name, .. }
+            | SurfaceItem::TypeAlias { name, .. }
+            | SurfaceItem::TypeAtom { name, .. } => {
+                out.insert(name.clone());
+            }
+            SurfaceItem::Data { name, .. } => {
+                out.insert(name.clone());
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 pub fn parse(tokens: &[Token], file: &str) -> Result<SurfaceModule, Diagnostic> {
+    let pass1_items = {
+        let mut parser = Parser {
+            tokens,
+            pos: 0,
+            file,
+            bare_rhs_alias_reference_idents: None,
+        };
+        let mut items = Vec::new();
+        while !parser.at_eof() {
+            items.push(parser.parse_item()?);
+        }
+        items
+    };
+    let refs = collect_bare_rhs_alias_reference_idents(&pass1_items);
     let mut parser = Parser {
         tokens,
         pos: 0,
         file,
+        bare_rhs_alias_reference_idents: Some(refs),
     };
     let mut items = Vec::new();
     while !parser.at_eof() {
@@ -69,6 +158,10 @@ struct Parser<'a> {
     tokens: &'a [Token],
     pos: usize,
     file: &'a str,
+    /// `None` during pass 1 (bare-RHS sum disambiguation disabled). `Some` during
+    /// pass 2: a bare `type T = U` is [`SurfaceItem::TypeSum`] iff `U` is **not**
+    /// in this set (prelude + imports + module `type`/`data` LHS names).
+    bare_rhs_alias_reference_idents: Option<HashSet<String>>,
 }
 
 impl<'a> Parser<'a> {
@@ -859,10 +952,13 @@ impl<'a> Parser<'a> {
     }
 
     /// After `type Name<T> =`, decide between TypeSum (one-or-more variants
-    /// separated by `|`) and TypeAlias (a single type expression). A variant
-    /// looks like `Ident` or `Ident(payload)`. A type expression can start
-    /// with `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare
-    /// `Ident` that happens not to be followed by `|`.
+    /// separated by `|`, or a **single** variant without a top-level `|` when
+    /// it opens as `Variant { ... }` / `Variant(...)` — PR-A.3 EvalStrategy
+    /// carrier) and TypeAlias (a single type expression). A variant looks like
+    /// `Ident`, `Ident(...)`, or `Ident { ... }`. A type expression can start
+    /// with `Ident<...>` (parameterized), `fn(...)` (arrow), or a bare `Ident`
+    /// at RHS end (alias to another type — **not** a nullary sum; use
+    /// `Variant()` for a single nullary sum variant without `|`).
     ///
     /// Optional alias-RHS `where` (DB-11): `where <expr> [, <expr>]*` parses
     /// to `SurfaceExpr` (comma-separated parts fold as left-associated `&&`).
@@ -877,7 +973,7 @@ impl<'a> Parser<'a> {
         nominal_opaque: bool,
         nominal_opaque_clause_span: Option<SourceSpan>,
     ) -> Result<SurfaceItem, Diagnostic> {
-        if !self.rhs_is_sum() {
+        if !self.rhs_is_sum(&type_params) {
             if inhabits.is_some() {
                 return Err(Diagnostic::ParseError {
                     message: String::from(
@@ -983,9 +1079,12 @@ impl<'a> Parser<'a> {
         Ok((Some(combined), end))
     }
 
-    /// Lookahead: after `=`, is the RHS a sum (contains `|` at top level before
-    /// the next item boundary)? Tracks paren/brace depth so a `|` inside a
-    /// payload list doesn't confuse the scan.
+    /// Lookahead: after `=`, is the RHS a sum? True when (a) a top-level `|`
+    /// exists before the next item boundary, or (b) the RHS opens as
+    /// `Variant {` / `Variant(` at depth zero (single-variant sum without `|`).
+    /// Tracks paren/brace depth so a `|` inside a payload list doesn't confuse
+    /// the scan. [`Self::parse_sum_variants`] skips a **leading** run of `|`
+    /// tokens so `| A | B` and `A | B` both parse.
     ///
     /// Do **not** treat [`TokenKind::Ident`] `inhabits` as an item boundary: it
     /// can spell a sum variant / record field (see [`Self::parse_field_label`],
@@ -996,7 +1095,10 @@ impl<'a> Parser<'a> {
     /// not tokenized, so distinguish `type | …` (variant label) from
     /// `type Name =` / `type Name<` / `type Name inhabits` (next decl) via a
     /// two-token lookahead when depth is zero.
-    fn rhs_is_sum(&self) -> bool {
+    fn rhs_is_sum(&self, local_alias_reference_idents: &[String]) -> bool {
+        if self.rhs_opens_single_variant_sum_shape(local_alias_reference_idents) {
+            return true;
+        }
         let mut i = self.pos;
         let mut depth: i32 = 0;
         while i < self.tokens.len() {
@@ -1046,7 +1148,52 @@ impl<'a> Parser<'a> {
         false
     }
 
+    /// After `=`, does the RHS open as a single sum variant without a top-level
+    /// `|`? True for `Variant { ... }`, `Variant(...)` / `Variant()`, and bare
+    /// `Variant` when the spelling is not a known alias target. False for
+    /// `Variant<Args>` — that begins a parameterized **alias** RHS
+    /// (`parse_type_expr`), not a variant payload.
+    fn rhs_opens_single_variant_sum_shape(&self, local_alias_reference_idents: &[String]) -> bool {
+        let i = self.pos;
+        let Some(t0) = self.tokens.get(i) else {
+            return false;
+        };
+        let label = match &t0.kind {
+            TokenKind::Ident(s) => Some(s.as_str()),
+            _ => soft_keyword_ident_spelling(&t0.kind),
+        };
+        let Some(label) = label else {
+            return false;
+        };
+        if matches!(
+            self.tokens.get(i + 1).map(|t| &t.kind),
+            Some(TokenKind::LBrace) | Some(TokenKind::LParen)
+        ) {
+            return true;
+        }
+        let Some(refs) = &self.bare_rhs_alias_reference_idents else {
+            return false;
+        };
+        if refs.contains(label)
+            || local_alias_reference_idents
+                .iter()
+                .any(|name| name == label)
+        {
+            return false;
+        }
+        matches!(
+            self.tokens.get(i + 1).map(|t| &t.kind),
+            Some(TokenKind::KwWhere | TokenKind::Eof)
+        ) || self
+            .tokens
+            .get(i + 1)
+            .is_some_and(|t| is_type_rhs_boundary_keyword(&t.kind))
+    }
+
     fn parse_sum_variants(&mut self) -> Result<Vec<SurfaceVariant>, Diagnostic> {
+        while matches!(self.peek().kind, TokenKind::Pipe) {
+            self.bump();
+        }
         let mut variants = vec![self.parse_variant()?];
         while matches!(self.peek().kind, TokenKind::Pipe) {
             self.bump();
