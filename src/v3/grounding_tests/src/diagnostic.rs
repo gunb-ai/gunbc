@@ -1,8 +1,17 @@
 //! Lane-local fail-closed outcomes for T-Ground-Tests (Stratum A scaffold).
 //!
-//! Converges toward the shared `EmissionDiagnostic` substrate carrier per
-//! `docs/briefs/t-ground-diagnostic.md` / manager #1216 — this crate keeps a
-//! small structural sum until that hand-off lands.
+//! The shared `EmissionDiagnostic` substrate carrier **LANDED** at
+//! `src/v3/std/diagnostics.dag` per #1216 brief + #1133 dispatch 4355793511.
+//! However, this crate's variants (`StratumARowCountMismatch` with usize
+//! fields, `StratumARegistryResolutionFailed { row_index, ... }`, etc.)
+//! are **test-outcome-specific** — they carry test-side measurement
+//! coordinates that don't naturally fit the fold/emission failure pattern
+//! the substrate carrier authors. These stay lane-local pending a
+//! follow-up dispatch deciding whether to (a) extend the substrate
+//! carrier with test-side variants, (b) author a sibling
+//! `GroundingTestsDiagnostic` substrate carrier, or (c) keep the
+//! lane-local Rust mirror permanently as test-outcome scaffolding.
+//! Manager-acknowledged in dispatch 4355793511.
 
 use std::fmt;
 
