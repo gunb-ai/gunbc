@@ -782,15 +782,15 @@ mod stratum_a_tests {
         let decl = dag.declaration_by_name("Int").expect("Int");
         let method_decl_template =
             method_declaration_template_id(&dag).expect("MethodDeclaration template");
-        match &decl.connective {
-            TypeConnective::Instantiation { template, .. } => {
-                assert_ne!(
-                    *template, method_decl_template,
-                    "regression witness: Int must not instantiate MethodDeclaration"
-                );
-            }
-            _ => {}
-        }
+        let int_is_not_method_declaration_instantiation = match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => *template != method_decl_template,
+            _ => true,
+        };
+        assert!(
+            int_is_not_method_declaration_instantiation,
+            "regression witness: Int must not instantiate MethodDeclaration; connective={:?}",
+            decl.connective
+        );
         let err = method_registry_name(&dag, decl.id, RUST_LIST, 0)
             .expect_err("Int is not MethodDeclaration");
         assert!(
