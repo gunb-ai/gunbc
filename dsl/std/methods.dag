@@ -65,7 +65,7 @@ type MethodDeclaration {
 // ---------------------------------------------------------------------------
 // Method-name registry. One `data` binding per unique method name carried by
 // the seven per-profile algebra template lists in `dsl/std/algebra.dag`.
-// Sorted alphabetically; 63 entries. Each binding is a `MethodDeclaration`
+// Sorted alphabetically. Each binding is a `MethodDeclaration`
 // with the `name` field matching the string used in algebra templates.
 // ---------------------------------------------------------------------------
 
@@ -111,9 +111,7 @@ data member_method: MethodDeclaration = { name: "member" }
 data mul_method: MethodDeclaration = { name: "mul" }
 data negate_method: MethodDeclaration = { name: "negate" }
 data one_method: MethodDeclaration = { name: "one" }
-data quotient_method: MethodDeclaration = { name: "quotient" }
 data reciprocal_method: MethodDeclaration = { name: "reciprocal" }
-data remainder_method: MethodDeclaration = { name: "remainder" }
 data replace_method: MethodDeclaration = { name: "replace" }
 data reverse_method: MethodDeclaration = { name: "reverse" }
 data skip_method: MethodDeclaration = { name: "skip" }
