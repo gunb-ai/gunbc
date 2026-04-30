@@ -227,6 +227,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m2_emit_multi_field_struct_variant_test.rs",
     "src/v3/compiler/tests/determinism_test.rs",
     "src/v3/compiler/tests/integration.rs",
+    // T-Ground services.dag PR-β anthropic_operations Phase 1 pilot
+    // (#1252; gated on Substrate's schema-mirror + callable-decl precursor
+    // chain). Hand-authored ratchet entry added per SG-0 census discipline.
+    "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
     // PB Tier-2 lower-helper exact-string patch class (#1014): zero-residual receipt +
     // source ratchet; see `bridge_lower_helpers_patch_zero_residual_test.rs` module docs.
     "src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs",
