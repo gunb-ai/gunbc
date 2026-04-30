@@ -304,7 +304,7 @@ splitting into X1 (field-call) and X2 (var-call) creates parallel
 representations of the same dispatch path.
 
 **Test matrix** (covered if X1 generalizes):
-- `T2.1` — call on let-bound name: `fn r(x: Int) -> Int = { let g = double; g(x) }`. Requires X3 for the `{ let ... }` block, but the call-site dispatch is X2.
+- `T2.1` — call on let-bound name: `fn r(x: Int) -> Int = do { let g = double; g(x) }`. Requires X3 for the explicit `do { ... }` block (per X3 lock above), but the call-site dispatch is X2.
 - `T2.2` — call on function parameter: `fn r(g: fn(Int) -> Int, x: Int) -> Int = g(x)`. Pure X2 without block-expression dependency.
 
 ### Prereq-X3 — block expressions with let inside `=` bodies
