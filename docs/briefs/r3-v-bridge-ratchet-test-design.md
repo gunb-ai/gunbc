@@ -58,8 +58,9 @@ Cons: requires carrier authoring before the test can be strict; may need `INVARI
 
 1. Freeze the five bridge rows from `r3-structure.md`; fail if the materialized row count is not exactly five.
 2. Require a strict retired authority per row. #2 can reference/migrate the current Rust unit test; #3/#5 partial ratchets stay non-retired until their umbrella gates fire; #1/#4 stay open until owner programs land strict predicates.
-3. Add a negative fixture/state test proving any open row keeps `bridge_retirement_ledger_zero` red.
-4. Add the final positive path only when all five rows are structurally retired.
+3. Carry explicit `Open` rows for unresolved bridges (#1/#4 today) if the ratified shape supports ledger states; an `Open` row is evidence for red, not a skipped predicate.
+4. Add a negative fixture/state test proving any open row keeps `bridge_retirement_ledger_zero` red.
+5. Add the final positive path only when all five rows are structurally retired.
 
 ## Open Questions
 
