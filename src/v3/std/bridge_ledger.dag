@@ -36,7 +36,8 @@ import std.list { List }
 //     declaration (PR A landed in R2)."
 //   - `bridge_canonical_lens_name_dispatch_retired` — Retired. Lens
 //     dispatch routes via `DeclarationRef`/typed identity; ratcheted by
-//     `bridge_lower_helpers_patch_zero_residual_test` siblings in v3.
+//     `canonical_lens_bridge_ratchet_test.rs` (R2 PB canonical-lens
+//     bridge ratchet, PR #1183 disposition).
 //   - `bridge_include_str_side_channels_retired` — Open. Per
 //     `r3-structure.md:82`: "Open disposition (`pipeline_authority`,
 //     PR #1171, 2026-04-29): `compile` remains `ArrowBody::Unparsed`,
