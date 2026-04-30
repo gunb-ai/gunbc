@@ -1,23 +1,23 @@
 //! Dag → `LifetimeProgram` projection (R2 extraction).
 //!
-//! Bootstrap fixtures (`Dag::new()`) only carry declarations whose spans live under
-//! checked-in authority prefixes; those are not yet lowered into the bind/use graph,
-//! so extraction returns an **empty** program (the structural fold is validated via
-//! [`LifetimeProgram`] fixtures).
+//! Bootstrap fixtures (`Dag::new()`) embed a large declaration snapshot that is not yet
+//! lowered into the bind/use graph this lane analyzes, so extraction returns an **empty**
+//! program for fixture-only rows (the structural fold is validated via [`LifetimeProgram`]
+//! fixtures).
 //!
-//! Any **`data` or `fn` declaration** rooted in a **non-authority** source file (user
-//! or test modules) is treated as load-bearing program surface we cannot project yet:
+//! Any runtime-appended **`data` or `fn` declaration** with load-bearing surface (`data` body
+//! or `fn` / `Arrow` connective) is treated as program surface we cannot project yet:
 //! fail-closed per C-8 instead of returning `Ok(empty)` and dropping facts.
 //!
-//! ## Transitional authority gate
+//! ## Authority gate (structural boundary)
 //!
-//! **Path-prefix authority detection is intentional staging.** It will migrate to a
-//! substrate-declared post-bootstrap boundary on [`Dag`] (so consumers can distinguish
-//! fixture-loaded declarations from runtime-appended ones without trusting
-//! caller-controlled `span.file`), once Substrate lands that metadata; see cross-manager
-//! request on issue #1130. Until then, `span.file` under an authority prefix is trusted
-//! only for the embedded corpus shape (same transitional-debt pattern as the lane-local
-//! `EmissionDiagnostic` mirror noted in #1216).
+//! Fixture vs user rows are distinguished by **Substrate-declared declaration identity**, not
+//! by path-prefix matching on caller-controlled `span.file` strings on each declaration.
+//! After **PR #1221**, [`Dag::post_bootstrap_declaration_append_begin`] and
+//! [`Dag::is_runtime_appended_declaration`] stamp the first [`DeclarationId::raw`] allocated
+//! after embedded bootstrap construction; runtime lowering (`compile_to_dag`, etc.) appends
+//! rows at or above that bound. **Path-prefix staging** from #1218 / #1220 is **retired** here
+//! in favor of that boundary (cross-manager request #1130 satisfied on the compiler side).
 
 use v3_compiler::dag::{Dag, TypeConnective};
 
@@ -29,32 +29,9 @@ use crate::program::{BindingId, LifetimeProgram};
 
 use std::collections::BTreeMap;
 
-/// Span roots that appear on [`Dag::new()`] bootstrap fixtures (regenerated snapshots).
-///
-/// Keep aligned with `bootstrap_generated.rs` / `bootstrap_generated_without_parse_surface.rs`
-/// when new fixture corpora land; otherwise user/test modules may be misclassified.
-///
-/// Note: only **three** `src/v3/compiler/*.dag` stubs ship inside the fixture — not every path
-/// under `src/v3/compiler/` (tests live there too).
-fn is_bootstrap_fixture_authority_source_file(file: &str) -> bool {
-    if file.starts_with("dsl/std/")
-        || file.starts_with("dsl/extdeps/")
-        || file.starts_with("src/v3/std/")
-        || file.starts_with("src/v3/spec/")
-    {
-        return true;
-    }
-    matches!(
-        file,
-        "src/v3/compiler/operators.dag"
-            | "src/v3/compiler/pipeline.dag"
-            | "src/v3/compiler/regen.dag"
-    )
-}
-
-fn first_non_authority_lifetime_surface_declaration(dag: &Dag) -> Option<(String, String)> {
+fn first_runtime_appended_lifetime_surface_declaration(dag: &Dag) -> Option<(String, String)> {
     for decl in dag.declarations() {
-        if is_bootstrap_fixture_authority_source_file(&decl.span.file) {
+        if !dag.is_runtime_appended_declaration(decl.id) {
             continue;
         }
         let surface =
@@ -75,7 +52,7 @@ fn first_non_authority_lifetime_surface_declaration(dag: &Dag) -> Option<(String
 ///
 /// Fail-closed on constructs the R2 analyzer does not model (once lowering surfaces them).
 pub fn extract_lifetime_program(dag: &Dag) -> Result<LifetimeProgram, EmissionDiagnostic> {
-    if let Some((name, file)) = first_non_authority_lifetime_surface_declaration(dag) {
+    if let Some((name, file)) = first_runtime_appended_lifetime_surface_declaration(dag) {
         return Err(EmissionDiagnostic::LifetimeProgramExtractionPending {
             detail: format!("{name} ({file})"),
         });
