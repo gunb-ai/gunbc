@@ -47,18 +47,83 @@ fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
     }
 }
 
-fn assert_v2_declares_type(name: &str) {
-    let needle_record = format!("type {name} {{");
-    let needle_coproduct = format!("type {name}\n");
-    let needle_inline_eq = format!("type {name} =");
+/// Extract the source text of `type <name> { … }` / `type <name> = …` /
+/// `type <name>\n  | …` from the v2 file. Returns the slice from the
+/// matching `type <name>` keyword through the end of the block (next
+/// top-level `type ` / `data ` / `service ` / `fn ` / `module ` keyword,
+/// or end-of-file). Used so lockstep assertions check label presence
+/// against the v2 source itself, not just hard-coded constants.
+fn v2_type_block(name: &str) -> &'static str {
+    // Probe for any of the three opening shapes.
+    let needles = [
+        format!("type {name} {{"),
+        format!("type {name}\n"),
+        format!("type {name} ="),
+    ];
+    let start = needles
+        .iter()
+        .find_map(|n| V2_SOURCE.find(n.as_str()))
+        .unwrap_or_else(|| {
+            panic!(
+                "v2 source `dsl/extdeps/llm/anthropic.dag` no longer declares \
+                 `type {name}` — lockstep with v3 mirror is broken."
+            )
+        });
+    // Block ends at the next top-level keyword on a line, after we've
+    // consumed at least the opening `type ` keyword itself.
+    let after_open = start + "type ".len();
+    let rest = &V2_SOURCE[after_open..];
+    let stop_keywords = ["\ntype ", "\ndata ", "\nservice ", "\nfn ", "\nmodule "];
+    let block_len_in_rest = stop_keywords
+        .iter()
+        .filter_map(|kw| rest.find(kw))
+        .min()
+        .unwrap_or(rest.len());
+    &V2_SOURCE[start..(after_open + block_len_in_rest)]
+}
+
+fn assert_v2_block_contains(type_name: &str, needle: &str) {
+    let block = v2_type_block(type_name);
     assert!(
-        V2_SOURCE.contains(&needle_record)
-            || V2_SOURCE.contains(&needle_coproduct)
-            || V2_SOURCE.contains(&needle_inline_eq),
-        "v2 source `dsl/extdeps/llm/anthropic.dag` no longer declares `type {name}` — \
-         lockstep with `src/v3/std/anthropic_schema.dag` is broken; either the v2 \
-         declaration was renamed or the mirror is stale."
+        block.contains(needle),
+        "v2 source's `type {type_name}` block no longer contains `{needle}` — \
+         lockstep with v3 mirror is broken; the v2 declaration drifted or the \
+         mirror is stale.\n--- v2 block ---\n{block}\n--- end ---"
     );
+}
+
+fn assert_lockstep_record(type_name: &str, expected_field_labels: &[&str]) {
+    let dag = generated_full_bootstrap_dag();
+    let v3_labels: HashSet<String> = conj_field_labels(&dag, type_name).into_iter().collect();
+    let expected_labels: HashSet<String> =
+        expected_field_labels.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        v3_labels, expected_labels,
+        "{type_name} v3 field set diverged from expected"
+    );
+    // Couple expected labels to v2 source: each label must appear in the
+    // v2 block, fail-closed against drift in either direction.
+    for label in expected_field_labels {
+        assert_v2_block_contains(type_name, &format!("{label}:"));
+    }
+}
+
+fn assert_lockstep_disj(type_name: &str, expected_variant_labels: &[&str]) {
+    let dag = generated_full_bootstrap_dag();
+    let v3_labels: HashSet<String> = disj_variant_labels(&dag, type_name).into_iter().collect();
+    let expected_labels: HashSet<String> =
+        expected_variant_labels.iter().map(|s| s.to_string()).collect();
+    assert_eq!(
+        v3_labels, expected_labels,
+        "{type_name} v3 variant set diverged from expected"
+    );
+    // Each variant label must appear in the v2 block. We use the bare
+    // identifier — the v2 source writes variants with optional payload
+    // (`UserTextBlock { … }` or `EndTurn`), so the substring match is
+    // tight enough to fail when the v2 source drops/renames a variant.
+    for label in expected_variant_labels {
+        assert_v2_block_contains(type_name, label);
+    }
 }
 
 #[test]
