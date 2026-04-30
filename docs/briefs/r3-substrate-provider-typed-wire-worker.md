@@ -163,7 +163,7 @@ Worker STOPs and PINGs (canonical output: docs-only audit PR, per `feedback_work
 ## Cross-refs
 
 - Parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire" (scope-expanded 2026-04-30 per PR #1319)
-- Sibling: T-V2-Retirement ([`r3-pb-tier3-perf-budget-worker.md`](r3-pb-tier3-perf-budget-worker.md) is co-sibling; no shared scope but same dispatch wave)
+- Sibling brief: [`r3-pb-tier3-perf-budget-worker.md`](r3-pb-tier3-perf-budget-worker.md) (C1 sub-gate of T-Tier3-Dissolution; co-sibling authored in same wave per PR #1319 ratification ask 4)
 - Substrate Manager scope: [`r2-substrate-manager.md`](r2-substrate-manager.md) §"R3 continuation: T-CostLens-Composition" + T-Anthropic-Wire scope expansion
 - Existing OpenAI: `dsl/extdeps/llm/openai.dag`
 - Existing Anthropic: `dsl/extdeps/llm/anthropic.dag` + `src/v3/std/anthropic_schema.dag`
