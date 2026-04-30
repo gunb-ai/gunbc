@@ -20,6 +20,26 @@ type NamedField {
   value: Value
 }
 
+// 🟢 TERMINAL at PR-A.1 observable-runtime scope. This is the single
+// PB-Runtime / R2-Evaluator runtime result-domain carrier locked by
+// docs/design-pb-runtime-interpreter.md section 3.2 and
+// docs/briefs/r2-pr-a-runtime-value-model.md. The five variants are the
+// irreducible inhabitants the evaluator can return or pass as runtime data:
+//
+//   - `LiteralValue` for Bit / Atom inhabitants through `LiteralBits`
+//   - `RecordValue` for Conj inhabitants through `NamedField`
+//   - `VariantValue` for Disj inhabitants through declaration-tagged payloads
+//   - `NodeRef` for behavior-bearing node identity, not inlined subtrees
+//   - `CardinalityValue` for bounded iteration / cardinality inhabitants
+//
+// `Arrow` and `Instantiation` intentionally are not variants: Arrow values are
+// represented structurally through `Bind` / callable node identity plus the
+// evaluator's internal frame stack, and instantiation erases to the instantiated
+// runtime value. This type must not grow `ClosureValue`; captured environments
+// are PR-A.2 evaluator state (`EvalFrame` / `EvalStateStack`), not observable
+// `Value`. Dissolution trigger: none until PB-Runtime / PR-A.0 is explicitly
+// amended through the substrate-fact-introduction path; this carrier is the
+// convergence authority, not a scaffold.
 type Value
   = LiteralValue(LiteralBits)
   | RecordValue(List<NamedField>)
