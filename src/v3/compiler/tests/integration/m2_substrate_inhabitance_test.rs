@@ -6,8 +6,8 @@ use v3_compiler::dag::{
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
     merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
     promote_to_strict, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
-    ArrowBody, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval, IntervalWidth,
-    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval,
+    IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
@@ -2457,11 +2457,13 @@ fn program_observation_carrier_is_producer_neutral_typed_envelope() {
         1,
         "ProgramObservation must have exactly one typed observation carrier"
     );
-    assert_eq!(
-        dag.declaration(type_params[0]).name.as_deref(),
-        Some("Carrier"),
-        "ProgramObservation's type parameter should name the typed observation domain"
-    );
+    match &dag.declaration(type_params[0]).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) => assert_eq!(
+            name, "Carrier",
+            "ProgramObservation's type parameter should name the typed observation domain"
+        ),
+        other => panic!("ProgramObservation type parameter must be a TypeParam atom, got {other:?}"),
+    }
     assert_eq!(
         conj_field_by_id(&dag, observation.id, "observed"),
         type_params[0],
