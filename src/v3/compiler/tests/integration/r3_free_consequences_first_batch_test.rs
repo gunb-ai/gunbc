@@ -1,9 +1,9 @@
 //! **Layer:** integration
 //!
 //! R3 T-Free-Consequences first-batch author-now/fire-later claims. The
-//! auto-parallelism claims exercise the ordinary lens-data path because
-//! parallelism is not a Dimension instance; auto-memoization locks the
-//! cost-related `BinaryDimensionReportEquals` shape.
+//! auto-parallelism claims exercise the ordinary lens-data path and stay
+//! fail-closed because parallelism is not a Dimension instance; auto-memoization
+//! locks the cost-related `BinaryDimensionReportEquals` shape.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -44,10 +44,16 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape() {
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
         if idx < 3 {
-            assert_eq!(
-                result.result,
-                ClaimResult::Pass,
-                "expected {expected_name} to exercise the ordinary parallelism lens-data path"
+            assert!(
+                matches!(
+                    &result.result,
+                    ClaimResult::Fail(reason)
+                        if reason.contains("expected 1")
+                            && reason.contains("computed 0")
+                            && reason.contains("auto_parallelism_pending_lens")
+                ),
+                "expected {expected_name} to fail closed on the pending ordinary parallelism lens, got {:?}",
+                result.result
             );
         } else {
             assert!(

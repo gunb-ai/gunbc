@@ -29,12 +29,15 @@ data auto_parallelism_program_input: ProgramInput = {}
 
 // Ordinary-lens placeholder until `src/v3/lenses/parallelism.dag` is ported from
 // its fail-closed stub to a `.dag` producer over DB-20 workflow parallelism data.
-// Keep this scalar: current `LensOutputEquals` evaluation can execute scalar
-// demo lenses, while DB-20's full `WorkflowParallelismReport` producer is still
-// a follow-on ordinary-lens surface.
+// Keep this scalar and intentionally mismatched: current `LensOutputEquals`
+// evaluation can execute scalar demo lenses, while DB-20's full
+// `WorkflowParallelismReport` producer is still a follow-on ordinary-lens
+// surface. The mismatch keeps the gate fail-closed; replace the placeholder
+// lens and expected value together when `parallelism.dag` exposes the real
+// structural producer.
 fn auto_parallelism_pending_lens(_d: Dag) -> Int = 0
 
-data auto_parallelism_pending_expected: Int = 0
+data auto_parallelism_pending_expected: Int = 1
 
 type repeated_pure_call_observed_report = DimensionReport<AutoMemoizationEvidence>
 type repeated_pure_call_expected_report = DimensionReport<AutoMemoizationEvidence>
