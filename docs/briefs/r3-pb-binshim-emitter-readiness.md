@@ -27,6 +27,32 @@ These are **readiness pins**, not dispatch greens:
 
 Until (1)–(2) are at least **named on main**, a merge-blocking `.dag` emitter wired into `cargo run` / `build.rs` would be **fabricating** integration. **STOP** there; use this brief + [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md) §"Emitter readiness" for handoff.
 
+## Implementation slice STOP — emitter / entry function (2026-05-01 dispatch)
+
+**Dispatch ask:** land the smallest **real** emitter / `<bin_name>_main` entry surface toward `regen_lens_shim` without fabricating runtime behavior.
+
+**Loader / build audit (facts on `origin/main`):**
+
+- **`regen_bootstrap.rs`** — full-bootstrap labels are still `dsl/std/*.dag + src/v3/std/*.dag + …` (see `compile_full_bootstrap_*` call sites around lines 70–80). **`dsl/std/runtime/**` is not concatenated** into that snapshot; per-shim instance files planned under `dsl/std/runtime/bin_shims/` do not enter `bootstrap_generated*.rs` unless the glob / seed pipeline is extended under Substrate + build coordination.
+- **`REGEN_OUTPUTS`** (`src/v3/compiler/build.rs`) — gates **written** codegen outputs for SG-0 partition; adding generated `regen_lens.rs` from an emitter belongs to a **retirement** slice, not this STOP.
+- **Parse prep harness** (`src/v3/compiler/tests/integration.rs` `parse_corpus_paths`) — enumerates a fixed `dsl/std` eight-file subset + **all** `src/v3/std/*.dag` + compiler/spec paths; a new `src/v3/std/*.dag` authority file is prep-visible, but **does not** solve `dsl/std/runtime/bin_shims/*.dag` loader inclusion for bootstrap.
+
+**Honest blocker — why a “tiny” `regen_lens_main` is not a free commit today**
+
+1. **Real body** — needs PB-Runtime **Item 4** so the `.dag` entry mirrors the existing regen pipeline per design §4.2 / §5.4; authoring pipeline semantics here would **fabricate** Item 5 + Item 4 convergence.
+2. **Fail-closed stub only** — `std.process.exit_failure` exists, but the framework README (`dsl/std/runtime/bin_shims/README.md` §"Substrate prerequisite") currently routes **any** placeholder entry, even fail-closed `ProcessExit` shapes, through **§P1 substrate convention** before PB lands it unilaterally. Until that disposition is recorded (Director / Substrate / PB Manager), a stub `regen_lens_main` would **violate the published STOP discipline** on the instance framework README — not a silent docs tweak.
+3. **Instance row** (`data regen_lens_shim: BinShim`) — still coordinated with neat-boar; **`entry: DeclarationRef` must resolve** to a live `regen_lens_main` in the same loader story as the row file.
+
+**Smallest next-unblock PR shapes (pick at gate; not ordered here as a program):**
+
+| Shape | What lands | Who gates |
+|-------|------------|-----------|
+| **A — §P1 disposition + fail-closed staging entry** | Record §P1 OK for a **single** fail-closed `regen_lens_main() -> ProcessExit` scaffold (e.g. `exit_failure` with a fixed reason string citing Item 4 STOP) in an agreed module path (`src/v3/std/...dag` **or** runtime subtree **after** loader extension), then `regen_bootstrap --verify` snapshot regen. Still **no** `data regen_lens_shim` until instance slice. | Director + Substrate note on placeholder convention; PB Manager for Item 5 sequencing |
+| **B — Loader-first** | Narrow allow-list in `regen_bootstrap` / seed for **`dsl/std/runtime/bin_shims/*.dag`** (not blanket `dsl/std/runtime/**`), then instance + entry co-authored under that loader. | Substrate / build owners + PB Manager |
+| **C — Item 4-first** | Land PB-Runtime interpreter slice that can host the real `regen_lens_main` fold; then emitter consumes it. | Item 4 program |
+
+**This STOP path (this PR if docs-only):** record the above; **no** new `.dag` entry body, **no** emitter wiring, **no** §7.2, **no** `regen_lens.rs` retirement, **no** `BinShim` carrier edit.
+
 ## STOP / escalation
 
 - **Carrier shape pressure** — `INVARIANTS.md` §P1 to Substrate Manager; PB does not edit `src/v3/std/bin_shim.dag`.
