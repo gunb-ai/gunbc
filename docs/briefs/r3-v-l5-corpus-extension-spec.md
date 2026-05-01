@@ -1,6 +1,6 @@
 # R3 Lane 2 — L5 corpus extension spec (algebraic-equivalence harness primitives)
 
-**Status:** PROPOSAL — research-only. Bridges standby skeleton (`src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag`, seed `add_then_branch_seed.v3`, PR #1408 on `main`) + readiness audits (**#1390**, **#1393**, **#1394**) to a **slice 2–5 corpus-shape** spec for the eventual Lane 2 implementation worker. **No implementation**, no substrate, no new `TestPredicate` variants, no new fixtures in this document.
+**Status:** PROPOSAL — research-only. Builds on the **slice 1 L5 skeleton already merged to `main`** (fixture + seed paths listed under **§Live-repo anchors**; merge PR **#1408**) and on readiness audits (**#1390**, **#1393**, **#1394**), extending them into a **slice 2–5 corpus-shape** spec for the eventual Lane 2 implementation worker. **No implementation**, no substrate, no new `TestPredicate` variants, no new fixtures in this document.
 
 **Director authority (read-only):** [`docs/r3-structure.md`](../r3-structure.md) gate **`l5_cross_target_consistency`** (L56 narrative).
 
@@ -8,7 +8,7 @@
 
 **Test harness discipline (defaults for future worker code):** integration receipts should follow **OnceLock + `cached_compile`** amortization where appropriate; assert **`ClaimResult` variants by shape** (`Pass` / `Fail` / `NotYetImplemented(_)`) without pinning raw diagnostic strings (**DB-3 / DB-20** posture — avoid message substring coupling).
 
-**Live-repo anchors (`main`):** This document is **research-only** and lands as a single `.md` file, but its claims are grounded in **already-merged** artifacts — not hypothetical paths. Present on `main` (verify with `git cat-file -e origin/main:<path>`):
+**Live-repo anchors (`main`):** This document is **research-only** and lands as a single `.md` file, but its claims are grounded in **already-merged** artifacts — not hypothetical paths. Each path exists in **`git`** at **both** `origin/main` and **this branch's `HEAD`** (`git cat-file -e HEAD:<path>`):
 
 | Role | Path |
 |------|------|
@@ -66,7 +66,7 @@ For each target **T** ∈ {Rust, Python, Go} and each corpus **program** **P** (
 5. **Parse to structural value:** Map captured material into Phase A/B domain (§2); mismatch is **observation parse failure**.
 6. **Algebraic equality:** After all targets succeed through step 5, compare normalized values; mismatch is **cross-target mismatch** even if each target “ran fine.”
 
-**`ForAllTargets` substrate:** Today’s `(command, args, exit_code)` scaffold is **insufficient** for strict L5 (readiness audit §2); the runner extension should treat the predicate as scheduling the **six-step pipeline** above (or an equivalent consolidated producer), **without** a new `TestPredicate` variant (**INVARIANTS §P1** only if a genuinely new substrate fact is needed — e.g. a typed cross-target observation carrier).
+**`ForAllTargets` substrate (named element):** [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag) declares `type TestPredicate` including scaffold variant **`ForAllTargets { command: String, args: List<String>, expect_exit_code: Int }`** (search `ForAllTargets` in-file — line numbers drift across edits). That existing sum arm is the **substrate target** for L5 staging rows; this spec does **not** propose a new `TestPredicate` variant. The raw `(command, args, exit_code)` payload remains **insufficient** for strict cross-target **value** observation (readiness audit §2); runner extension should schedule the **six-step pipeline** §3 behind this variant (or an absorbed successor capability), reserving **INVARIANTS §P1** only for genuinely new substrate facts (e.g. a typed cross-target observation carrier), not for re-labeling `ForAllTargets`.
 
 ---
 
