@@ -124,7 +124,7 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
 
 **Field rules:**
 
-- `median_ns` and `p99_ns` are non-negative integers in nanoseconds. Round criterion's `point_estimate` from `target/criterion/<bench>/new/estimates.json` to the nearest nanosecond; do not commit decimal/float timings (avoids floating-point platform variance in the JSON itself).
+- `median_ns` and `p99_ns` are **strictly positive integers** in nanoseconds (> 0; matches §5 rule 4). `median_ns` is the `point_estimate` for the median field of `target/criterion/<bench>/new/estimates.json`, rounded to the nearest nanosecond. `p99_ns` is **derived per §2.1** from `target/criterion/<bench>/new/sample.json` raw per-iteration timings (Criterion 0.5's `estimates.json` has no p99 field); use path (a) extraction helper or path (b) Gaussian approximation as documented there. Do not commit decimal/float timings — round both fields to integer nanoseconds before writing the JSON to avoid floating-point platform variance.
 - `host_id` is required and must match the canonical host designated under R-3. CI rejects edits to `tier3_baseline.json` whose `host_id` differs from the recorded canonical host without an accompanying Director approval receipt.
 - `git_sha` is the full 40-char SHA, not abbreviated.
 - `mirror_groups` keys MUST be exactly the four strings `termination`, `computation`, `induction`, `effect_carrier` — no others, no aliases. The Phase 2 gate uses these as join keys.
