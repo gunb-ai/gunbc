@@ -61,6 +61,8 @@
 use v3_compiler::dag::Dag;
 
 mod cells;
+#[cfg(test)]
+mod closure_ledger_gate;
 mod coverage;
 mod diagnostic;
 mod walker;
