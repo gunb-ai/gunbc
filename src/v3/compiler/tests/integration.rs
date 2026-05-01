@@ -43,6 +43,8 @@ mod anthropic_messages_callable_test;
 mod anthropic_operations_test;
 #[path = "integration/anthropic_schema_lockstep_test.rs"]
 mod anthropic_schema_lockstep_test;
+#[path = "integration/bin_shim_carrier_test.rs"]
+mod bin_shim_carrier_test;
 #[path = "integration/bridge_ledger_carrier_test.rs"]
 mod bridge_ledger_carrier_test;
 #[path = "integration/bridge_lower_helpers_patch_zero_residual_test.rs"]
@@ -149,8 +151,8 @@ mod r1c_e_emit_gates_dag_test;
 mod r1c_e_emit_gates_omni_dag_test;
 #[path = "integration/r2_b5_loop_construction_closure_test.rs"]
 mod r2_b5_loop_construction_closure_test;
-#[path = "integration/r3_structural_equality_consumers_test.rs"]
-mod r3_structural_equality_consumers_test;
+#[path = "integration/r3_free_consequences_first_batch_test.rs"]
+mod r3_free_consequences_first_batch_test;
 #[path = "integration/services_carrier_shape_test.rs"]
 mod services_carrier_shape_test;
 #[path = "integration/sg0_census_test.rs"]
