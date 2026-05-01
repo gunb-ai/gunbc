@@ -26,4 +26,4 @@ single `AlgebraicLaw(Identity, …)` placeholder claim — not a per-law explosi
 non–Lane-E-cost lineage pairing.
 
 **Lane 5 (`ForAllTargets`):** `r3_verification_l5_corpus.dag` + `fixtures/r3_l5_corpus/add_then_branch_seed.v3`
-— structural fixtures use `[]` for the argv list (not `empty()` calls in `.dag` data bodies). The runner still hits the default **`TestPredicate::ForAllTargets is not wired`** arm.
+— structural fixtures use `[]` for the argv list (not `empty()` calls in `.dag` data bodies). The runner still hits the default **`TestPredicate::ForAllTargets is not wired`** arm. The skeleton integration test asserts `TestClaim.source` equals the sidecar `.v3` bytes so program text stays single-authority under CI.
