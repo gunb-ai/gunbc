@@ -37,6 +37,7 @@ for p in \
   docs/briefs/r3-v-l5-corpus-readiness-audit.md \
   docs/briefs/r3-v-l4-l7-direct-readiness-audit.md \
   src/v3/compiler/src/test_runner.rs \
+  src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs \
   src/v3/std/verification.dag
 do git cat-file -e "origin/main:$p" || exit 1; done
 
