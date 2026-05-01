@@ -6,8 +6,8 @@ use v3_compiler::dag::{
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
     merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
     promote_to_strict, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
-    ArrowBody, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval, IntervalWidth,
-    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval,
+    IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
@@ -2437,6 +2437,53 @@ fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
         dag.value_marker(),
         Some(value_behavior),
         "Dag::value_marker() must keep returning the L1 behavior marker"
+    );
+}
+
+#[test]
+fn program_observation_carrier_is_producer_neutral_typed_envelope() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let observation = dag
+        .declaration_by_name("ProgramObservation")
+        .expect("PR-B.2 ProgramObservation missing from full bootstrap");
+    assert_eq!(
+        observation.span.file, "src/v3/std/runtime.dag",
+        "ProgramObservation must live with the runtime observation authority"
+    );
+    let type_params = observation.type_params.clone();
+    assert_eq!(
+        type_params.len(),
+        1,
+        "ProgramObservation must have exactly one typed observation carrier"
+    );
+    match &dag.declaration(type_params[0]).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) => assert_eq!(
+            name, "Carrier",
+            "ProgramObservation's type parameter should name the typed observation domain"
+        ),
+        other => {
+            panic!("ProgramObservation type parameter must be a TypeParam atom, got {other:?}")
+        }
+    }
+    assert_eq!(
+        conj_field_by_id(&dag, observation.id, "observed"),
+        type_params[0],
+        "ProgramObservation must wrap the typed observed value directly"
+    );
+
+    let TypeConnective::Conj { children } = &observation.connective else {
+        panic!(
+            "ProgramObservation must lower as a single-field Conj, got {:?}",
+            observation.connective
+        );
+    };
+    let labels: Vec<&str> = children.iter().map(|field| field.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        ["observed"],
+        "ProgramObservation must not bake producer evidence such as stdout, target, \
+         exit status, or evaluator strategy into the comparable carrier"
     );
 }
 
