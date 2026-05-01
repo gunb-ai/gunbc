@@ -199,16 +199,17 @@ pub mod evaluator {
                     });
                 }
                 let out = match (&operands[0], &operands[1]) {
-                    (Value::LiteralValue(LiteralBits::Int(a)), Value::LiteralValue(LiteralBits::Int(b))) => {
-                        match op {
-                            ComparisonOp::Eq => a == b,
-                            ComparisonOp::Ne => a != b,
-                            ComparisonOp::Lt => a < b,
-                            ComparisonOp::Le => a <= b,
-                            ComparisonOp::Gt => a > b,
-                            ComparisonOp::Ge => a >= b,
-                        }
-                    }
+                    (
+                        Value::LiteralValue(LiteralBits::Int(a)),
+                        Value::LiteralValue(LiteralBits::Int(b)),
+                    ) => match op {
+                        ComparisonOp::Eq => a == b,
+                        ComparisonOp::Ne => a != b,
+                        ComparisonOp::Lt => a < b,
+                        ComparisonOp::Le => a <= b,
+                        ComparisonOp::Gt => a > b,
+                        ComparisonOp::Ge => a >= b,
+                    },
                     (
                         Value::LiteralValue(LiteralBits::String(a)),
                         Value::LiteralValue(LiteralBits::String(b)),
@@ -230,17 +231,15 @@ pub mod evaluator {
                 };
                 Ok(Value::LiteralValue(LiteralBits::Bool(out)))
             }
-            TransformTarget::Operator(OperatorKind::Logical(_)) => Err(
-                EvalError::UnsupportedTransformTarget {
-                    kind: "Logical",
-                },
-            ),
+            TransformTarget::Operator(OperatorKind::Logical(_)) => {
+                Err(EvalError::UnsupportedTransformTarget { kind: "Logical" })
+            }
             TransformTarget::FieldProject { .. } => Err(EvalError::UnsupportedTransformTarget {
                 kind: "FieldProject",
             }),
-            TransformTarget::Callable(_) => Err(EvalError::UnsupportedTransformTarget {
-                kind: "Callable",
-            }),
+            TransformTarget::Callable(_) => {
+                Err(EvalError::UnsupportedTransformTarget { kind: "Callable" })
+            }
         }
     }
 
