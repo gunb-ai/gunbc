@@ -137,6 +137,48 @@ type AbelianGroup<T> {
 }
 
 // =========================================================================
+// Algebraic constructions over existing algebras
+// =========================================================================
+
+// GroupCompletion<M>: opaque atom denoting the **carrier** of "the abelian
+// group derived from a commutative monoid M" via the Grothendieck
+// construction. Strictly a derived-carrier construction — NOT an
+// algebra-with-derived-carrier. The algebra witness is named separately at
+// each use site as `AbelianGroup<GroupCompletion<M>>` (standard parametric
+// reading: `T = GroupCompletion<M>` is the carrier; `AbelianGroup<T>` carries
+// op/identity/inverse over that carrier).
+//
+// Authority: `docs/audit/t-numeric-construction-group-completion-6q.md`
+// (Shape C — opaque atom; carrier-representation deferred to per-target
+// emission; the construction is named exactly once in std). Slice 3 (later)
+// will land `type Int = AbelianGroup<GroupCompletion<Nat>>` consuming this.
+//
+// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
+//   Denotationally `<M>` must inhabit `CommutativeMonoid` for the Grothendieck
+//   construction to be well-defined. The current substrate has no parametric
+//   where-clause syntax (`<M> where M : CommutativeMonoid<_>`), so this
+//   declaration accepts any type-reference for `<M>` at the parser/lower
+//   level. Slice 3's only intended consumer is `GroupCompletion<Nat>`, and
+//   `Nat = Semiring<Magnitude>` (Slice 2) carries the commutative-monoid
+//   laws via Semiring's `add`+`zero`+commutativity-on-add — denotationally
+//   the precondition holds.
+//
+//   **Dissolution trigger:** when constrained-inhabitance / parametric
+//   where-clause syntax lands in the substrate (separate substrate-feature
+//   lane, not T-Numeric-Construction's scope), tighten this declaration to
+//   require `<M> : CommutativeMonoid`. Existing call sites
+//   `AbelianGroup<GroupCompletion<Nat>>` continue to type-check.
+//
+// HARD BOUNDARIES (per dispatch on inbox #1288):
+//   - Opaque atom only — no fields, no quotient-of-pairs `(M, M) / ~`
+//     representation, no sign-magnitude `(Sign, M)` representation.
+//     Per-target representation is emission's job.
+//   - No mechanical AbelianGroup-witness derivation declared at this layer
+//     — current substrate cannot express algebra-inhabitance over a
+//     parametric carrier; the inhabitance lens is a follow-up.
+type GroupCompletion<M>
+
+// =========================================================================
 // Ring-like structures (two operations: additive + multiplicative)
 // =========================================================================
 
