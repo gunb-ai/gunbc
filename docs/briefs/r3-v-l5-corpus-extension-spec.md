@@ -6,7 +6,7 @@
 
 **Upstream briefs (read-only):** [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md), [`r3-v-l5-corpus-scaffold-notes.md`](r3-v-l5-corpus-scaffold-notes.md), [`r3-v-l5-corpus-readiness-audit.md`](r3-v-l5-corpus-readiness-audit.md). Semantic lock: [`design-cross-target-equivalence.md`](../design-cross-target-equivalence.md).
 
-**Test harness discipline (defaults for future worker code):** integration receipts should follow **OnceLock + `cached_compile`** amortization where appropriate; assert **`ClaimResult` variants by shape** (`Pass` / `Fail` / `NotYetImplemented(_)`) without pinning raw diagnostic strings (**DB-3 / DB-20** posture — avoid message substring coupling).
+**Test harness discipline (defaults for future worker code):** integration receipts should follow **OnceLock + `cached_compile`** amortization where appropriate; assert **`ClaimResult` variants by shape** (`Pass` / `Fail` / `NotYetImplemented(_)`) without pinning raw diagnostic strings — per [**TESTING.md**](../../TESTING.md#dont-assert-on-implementation-details) ("Don't assert on implementation details": match diagnostics structurally, not substring text).
 
 **Live-repo anchors (`main`):** This document is **research-only** and lands as a single `.md` file, but its claims are grounded in **already-merged** artifacts — not hypothetical paths. Each path exists in **`git`** at **both** `origin/main` and **this branch's `HEAD`** (`git cat-file -e HEAD:<path>`):
 
