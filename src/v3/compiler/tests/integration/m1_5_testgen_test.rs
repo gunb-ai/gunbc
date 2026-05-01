@@ -908,30 +908,31 @@ fn extension_predicates_reach_interpreter_boundary() {
     );
     assert_runner_deferred_panics(&dag, positive_source, file, &diff, "DifferentialEquals");
 
-    // Unsupported `AlgebraicLawKind` is classified by `AlgebraicLawProgramError` (not panic
-    // message substrings). The M1.5 interpreter still panics on this path; the public helper
-    // is the typed contract shared with the DB-15 `TestRunner` lane (`NotYetImplemented`).
-    let algebraic_law_payload = vec![
-        sum_variant(&dag, "AlgebraicLawKind", "Commutativity", Vec::new()),
-        declaration_ref_field(&dag, "ValueBehavior"),
-    ];
+    // `Identity` remains classified by `AlgebraicLawProgramError` (not panic message substrings)
+    // until the identity-element edge is present. `Commutativity` is covered by TestRunner's
+    // focused PR-B.3 tests because this bootstrap-only expectation DAG has no fixture-local lens
+    // declaration for the public helper to resolve.
     let inner = match cached_compile_outcome(positive_source, file) {
         CachedCompileOutcome::Clean(program_dag) => program_dag,
         other => panic!(
             "extension_predicates fixture should compile cleanly for AlgebraicLaw probe, got {other:?}"
         ),
     };
+    let identity_payload = vec![
+        sum_variant(&dag, "AlgebraicLawKind", "Identity", Vec::new()),
+        declaration_ref_field(&dag, "ValueBehavior"),
+    ];
     assert_eq!(
-        eval_algebraic_law_for_claim_program(&dag, &inner, &algebraic_law_payload),
+        eval_algebraic_law_for_claim_program(&dag, &inner, &identity_payload),
         Err(AlgebraicLawProgramError::UnsupportedLaw {
-            law_label: "Commutativity".to_string(),
+            law_label: "Identity".to_string(),
         })
     );
     let law = sum_variant(
         &dag,
         "TestPredicate",
         "AlgebraicLaw",
-        algebraic_law_payload.clone(),
+        identity_payload.clone(),
     );
     assert!(
         catch_unwind(AssertUnwindSafe(|| {
