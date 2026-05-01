@@ -101,6 +101,15 @@ type Interval<D>
   = BoundedInterval { lower: D, width: IntervalWidth }
   | Unbounded
 
+// 🟢 TERMINAL at Coercion-Fold bound-declaration scope. Static value-domain
+// bounds are represented by the shared Interval<Int> parent; platform-dependent
+// bounds are a distinct kind because their interval is resolved only after the
+// target platform is known. No parser/lowerer or per-target population lands in
+// this substrate carrier slice.
+type BoundDeclaration
+  = StaticBound(Interval<Int>)
+  | PlatformDependent
+
 // 🟢 TERMINAL. Cardinality bounds are structural substrate facts and
 // not a temporary bridge to another representation. PR-PreF projects this
 // carrier through Interval<Int> for consumers that need the shared parent.
