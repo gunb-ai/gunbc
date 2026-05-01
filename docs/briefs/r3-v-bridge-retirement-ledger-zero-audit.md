@@ -20,8 +20,11 @@ The production fixture from PR #1352 is structurally wired:
 `Pass` iff every row's status constructor is `Retired`.
 
 Current live ledger fold is red: rows #1, #4, and #5 are `Open`. This audit also
-finds one status drift candidate: row #3 currently says `Retired`, but the live
-canonical-lens ratchet still pins nonzero bridge surface.
+found one status drift candidate in the canonical-lens row. Director ratified
+Option 2 for that drift: split the row by class, preserving the narrow PR #1183
+retired slice and adding an open broader canonical-lens-name patching residual.
+Substrate Manager owns the substrate row edit; this audit records the ratified
+disposition only.
 
 ## Row Audit
 
@@ -29,7 +32,8 @@ canonical-lens ratchet still pins nonzero bridge surface.
 |---|---|---|---|---|---|
 | 1 | `bridge_source_span_file_participation_retired` | `Open` | Open. Production/lens paths still consult `SourceSpan.file` for participation or filtering: `lens_apply.rs::behavior_source_file`, `reflect_program_dag_nodes_in_file` / `fold_lens_over_reflected_program`, lower's `DIMENSION_STD_AUTHORITY_FILE` gates, and emit `source_filtering.excludes`. | `r3-structure.md` L87; `ROADMAP.md#lens-fold-file-path-semantics`. | None. Ledger `Open` matches code. |
 | 2 | `bridge_mark_bootstrap_secret_nominal_opacity_retired` | `Retired` | Retired. `dag.rs::bridge_mark_bootstrap_secret_nominal_opacity_retired` asserts `Secret.nominal_opacity` exists in std, full bootstrap, and without-parse-surface snapshots. No live `mark_bootstrap_secret_nominal_opacity` helper remains. | Rust unit test in `src/v3/compiler/src/dag.rs`; Secret nominal-opacity lineage #1272 / old row authority `PR #937`. | None for status. Authority string is historical but not contradictory. |
-| 3 | `bridge_canonical_lens_name_dispatch_retired` | `Retired` | Not fully retired. `canonical_lens_bridge_ratchet_test.rs` pins two canonical-lens `include_str!` constants, two `lens_decl.name.as_deref() == Some(...)` dispatch arms, and two generic name-keyed lookups in `test_runner.rs`. The test text says full retirement waits for PB-Runtime interpreter-as-data or a typed lens-registry carrier. | `canonical_lens_bridge_ratchet_test.rs`; `r2-pb-canonical-lens-bridge-disposition.md`; #1183 narrow slice. | **Drift candidate:** ledger says `Retired`, but live ratchet/code indicate partial/open residual. Route to Substrate Mgr for row-status correction or Director for ratification. |
+| 3a | `bridge_canonical_lens_name_dispatch_pr1183_slice_retired` | Pending substrate split; ratified target `Retired` | Retired at narrow PR #1183 scope. The specific dispatch path covered by #1183 is treated as closed by Director-ratified split. | PR #1183 dispatch path; `canonical_lens_bridge_ratchet_test.rs` narrow ratchet; Director #828 c#4358798673. | None after Substrate Mgr authors the split. The prior single-row drift is resolved by class enumeration, not by treating all canonical-lens-name patching as retired. |
+| 3b | `bridge_canonical_lens_name_patching_residual` | Pending substrate split; ratified target `Open` | Open. `canonical_lens_bridge_ratchet_test.rs` pins two canonical-lens `include_str!` constants, two `lens_decl.name.as_deref() == Some(...)` dispatch arms, and two generic name-keyed lookups in `test_runner.rs`. Dissolution trigger: PB-Runtime interpreter-as-data or a typed lens-registry carrier. | Broader exact-string canonical-lens-name class; Director #828 c#4358798673. | None after Substrate Mgr authors the split. Until then, the live single substrate row remains coarser than the ratified class model. |
 | 4 | `bridge_include_str_side_channels_retired` | `Open` | Open. `pipeline_authority.rs` explicitly says compile-body cross-check remains suspended because `fn compile` lowers to `ArrowBody::Unparsed`; the prior `include_str!`/file-read side-channel is rejected until a structural compile-body witness exists. | `design-emission-model.md:944`; `pipeline_authority.rs`; PR #1171. | None. Ledger `Open` matches code. |
 | 5 | `bridge_exact_string_patching_residual_retired` | `Open` | Open at umbrella scope. The lower-helper sub-slice is retired and ratcheted by `bridge_lower_helpers_patch_zero_residual_test.rs`, but other exact-string patch classes remain. `bootstrap.rs::patch_kernel_bool_boolean_algebra_inhabits` is a live class-5-style residual called from bootstrap paths. | `r3-structure.md` L91; `r2-closure-ledger.md` Tier-2 row; #1014 + #1192 narrow receipt. | None. Ledger `Open` correctly refuses to treat the lower-helper sub-slice as umbrella closure. |
 
@@ -41,9 +45,10 @@ canonical-lens ratchet still pins nonzero bridge surface.
   replace those path checks.
 - #2 is backed by an executable Rust unit ratchet over generated snapshots. This
   is a stronger signal than prose status, so `Retired` is grounded.
-- #3's live ratchet is a nonzero-count pin, not a zero-residual gate. A
-  nonzero-count pin is useful anti-growth evidence, but it does not by itself
-  establish ledger retirement.
+- #3's live ratchet is a nonzero-count pin, not a zero-residual gate. Director
+  ratified splitting the narrow PR #1183 retired path from the broader open
+  canonical-lens-name patching class, so the anti-growth evidence feeds the open
+  residual row instead of falsely closing the whole class.
 - #4's authority is explicit in `pipeline_authority.rs`: compile-body drift
   detection is suspended until a structural witness exists. That is a deliberate
   open row, not missing coverage.
@@ -83,10 +88,25 @@ the last bridge owner lands its structural retirement receipt and the canonical
 
 ## Routing
 
-Only row #3 needs escalation. This PR does not change the row because status
-ownership lives in the substrate ledger. Recommended routing: ask Substrate
-Manager / Director whether `bridge_canonical_lens_name_dispatch_retired` should
-be corrected back to `Open` until the pinned canonical-lens bridges reach zero,
-or whether a newer Director disposition intentionally treats the remaining
-ratchet as non-blocking for the ledger. Do not close `bridge_retirement_ledger_zero`
-while this drift is unresolved.
+Director ratified Option 2: sub-class split per the Q2 pattern. Substrate Mgr
+authors the substrate-row split per the ratified row structure in #828
+c#4358798673:
+
+- `bridge_canonical_lens_name_dispatch_pr1183_slice_retired`: `Retired`;
+  authority is the PR #1183 dispatch path / narrow ratchet.
+- `bridge_canonical_lens_name_patching_residual`: `Open`; authority is the
+  broader exact-string canonical-lens-name class with two `include_str!`
+  constants, two `lens_decl.name.as_deref()` arms, and two generic name-keyed
+  lookups. Dissolution trigger is PB-Runtime interpreter-as-data or a typed
+  lens-registry carrier.
+
+This PR does not change the row because status ownership lives in the substrate
+ledger. Do not close `bridge_retirement_ledger_zero` while the ratified split is
+pending in substrate.
+
+**Q2 pattern second instance:** this row split mirrors bridge #5
+(`bridge_exact_string_patching_residual_retired` umbrella =>
+`bridge_lower_helpers_patch_zero_residual` narrow + open broader umbrella).
+Future bridge-retirement work defaults to per-class enumeration per
+`feedback_coproduct_dissolution` and
+`feedback_state_space_vs_behavioral_invariants`.
