@@ -761,11 +761,9 @@ pub mod evaluator {
                 span(),
             );
             let entry = node_for_port(&dag, output);
-            let frame = EvalFrame::from_bindings([(
-                scrutinee,
-                Value::LiteralValue(LiteralBits::Int(42)),
-            )])
-            .expect("frame");
+            let frame =
+                EvalFrame::from_bindings([(scrutinee, Value::LiteralValue(LiteralBits::Int(42)))])
+                    .expect("frame");
             let mut state = EvalStateStack::with_root_frame(frame);
             let strategy = eager_strategy();
 
@@ -846,8 +844,7 @@ pub mod evaluator {
             let mut state = EvalStateStack::with_root_frame(frame);
             let strategy = eager_strategy();
 
-            let value =
-                evaluate_body(&dag, entry, &mut state, strategy).expect("branch evaluates");
+            let value = evaluate_body(&dag, entry, &mut state, strategy).expect("branch evaluates");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(99)));
         }
