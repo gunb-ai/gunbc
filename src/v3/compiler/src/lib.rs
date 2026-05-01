@@ -51,7 +51,72 @@ pub mod evaluator {
 
     use std::collections::HashMap;
 
-    use crate::dag::PortId;
+    use crate::dag::{Behavior, Dag, DeclarationId, LiteralBits, LoopBound, NodeId, PortId};
+
+    /// Rust mirror of the substrate runtime `Value` carrier in
+    /// `src/v3/std/runtime.dag`.
+    ///
+    /// **Dissolution receipt: TERMINAL.** This is not a second value authority:
+    /// it has the same five inhabitants as the `.dag` carrier and exists so the
+    /// Rust eager evaluator can return typed runtime data until generated
+    /// substrate-backed calls replace this host helper.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum Value {
+        LiteralValue(LiteralBits),
+        RecordValue(Vec<NamedField>),
+        VariantValue {
+            tag: DeclarationId,
+            payload: Box<Value>,
+        },
+        NodeRef(NodeId),
+        CardinalityValue(LoopBound),
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct NamedField {
+        pub label: String,
+        pub value: Value,
+    }
+
+    /// **Dissolution receipt: TERMINAL.** These are the E1 body-evaluator miss
+    /// modes until later PR-E slices implement the remaining behavior arms.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum EvalError {
+        MissingNode {
+            node: NodeId,
+        },
+        UnsupportedBehavior {
+            node: NodeId,
+            behavior: &'static str,
+        },
+    }
+
+    pub fn evaluate_body(
+        dag: &Dag,
+        entry: NodeId,
+        _state: &EvalStateStack<Value>,
+    ) -> Result<Value, EvalError> {
+        match dag
+            .node_opt(&entry)
+            .ok_or(EvalError::MissingNode { node: entry })?
+        {
+            Behavior::Value(value) => Ok(Value::LiteralValue(value.data.clone())),
+            behavior => Err(EvalError::UnsupportedBehavior {
+                node: behavior.id(),
+                behavior: behavior_label(behavior),
+            }),
+        }
+    }
+
+    fn behavior_label(behavior: &Behavior) -> &'static str {
+        match behavior {
+            Behavior::Value(_) => "Value",
+            Behavior::Transform(_) => "Transform",
+            Behavior::Branch(_) => "Branch",
+            Behavior::Loop(_) => "Loop",
+            Behavior::Bind(_) => "Bind",
+        }
+    }
 
     /// **Dissolution receipt: TERMINAL.** The three variants are distinct
     /// fail-closed outcomes for the E2 frame boundary.
@@ -149,8 +214,11 @@ pub mod evaluator {
 
     #[cfg(test)]
     mod tests {
-        use super::{EvalFrame, EvalFrameError, EvalStateStack};
-        use crate::dag::{Dag, LiteralBits, PortId};
+        use super::{evaluate_body, EvalError, EvalFrame, EvalFrameError, EvalStateStack, Value};
+        use crate::dag::{
+            ArithmeticOp, Behavior, BranchPattern, Dag, LiteralBits, LoopBound, NodeId, Path,
+            PortId, TransformTarget,
+        };
         use crate::diagnostics::SourceSpan;
 
         fn span() -> SourceSpan {
@@ -162,6 +230,145 @@ pub mod evaluator {
             (0..count)
                 .map(|i| dag.push_value(LiteralBits::Int(i as i64), span()))
                 .collect()
+        }
+
+        fn node_for_port(dag: &Dag, port: PortId) -> NodeId {
+            dag.resolve_producer_opt(&port).expect("producer").id()
+        }
+
+        fn empty_state() -> EvalStateStack<Value> {
+            EvalStateStack::with_root_frame(EvalFrame::empty())
+        }
+
+        #[test]
+        fn value_behavior_evaluates_to_literal_runtime_value() {
+            let mut dag = Dag::new();
+            let output = dag.push_value(LiteralBits::String("ready".to_string()), span());
+            let entry = node_for_port(&dag, output);
+            let state = empty_state();
+
+            let value = evaluate_body(&dag, entry, &state).expect("value evaluates");
+
+            assert_eq!(
+                value,
+                Value::LiteralValue(LiteralBits::String("ready".to_string()))
+            );
+        }
+
+        #[test]
+        fn missing_entry_node_fails_closed() {
+            let mut source = Dag::new();
+            let output = source.push_value(LiteralBits::Int(1), span());
+            let stale_entry = node_for_port(&source, output);
+            let empty = Dag::new();
+            let state = empty_state();
+
+            let err = evaluate_body(&empty, stale_entry, &state).expect_err("missing node");
+
+            assert_eq!(err, EvalError::MissingNode { node: stale_entry });
+        }
+
+        #[test]
+        fn transform_behavior_fails_closed() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(1), span());
+            let rhs = dag.push_value(LiteralBits::Int(2), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let state = empty_state();
+
+            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported transform");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedBehavior {
+                    node: entry,
+                    behavior: "Transform"
+                }
+            );
+        }
+
+        #[test]
+        fn branch_behavior_fails_closed() {
+            let mut dag = Dag::new();
+            let input = dag.push_value(LiteralBits::Bool(true), span());
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
+            let output = dag.push_branch(
+                input,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "True".to_string(),
+                        span: span(),
+                    },
+                    binding: None,
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let state = empty_state();
+
+            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported branch");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedBehavior {
+                    node: entry,
+                    behavior: "Branch"
+                }
+            );
+        }
+
+        #[test]
+        fn loop_behavior_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.push_value(LiteralBits::Int(3), span());
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let body = dag.push_bind("body", init, Vec::new(), span());
+            let output = dag.push_loop(
+                source,
+                init,
+                body,
+                LoopBound::Cardinality { count: source },
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let state = empty_state();
+
+            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported loop");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedBehavior {
+                    node: entry,
+                    behavior: "Loop"
+                }
+            );
+        }
+
+        #[test]
+        fn bind_behavior_fails_closed() {
+            let mut dag = Dag::new();
+            let value = dag.push_value(LiteralBits::Bool(false), span());
+            let entry = dag.push_bind("flag", value, Vec::new(), span());
+            let state = empty_state();
+
+            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported bind");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedBehavior {
+                    node: entry,
+                    behavior: "Bind"
+                }
+            );
+            assert!(matches!(dag.node(entry), Behavior::Bind(_)));
         }
 
         #[test]
