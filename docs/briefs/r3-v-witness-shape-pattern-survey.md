@@ -43,6 +43,20 @@ consumer envelope that returns `NotYetImplemented` until concrete
 those existing consumer surfaces; it does not authorize predicate or runner
 changes.
 
+Witness-label readiness is separate from predicate readiness. Labels in the
+formulas below, such as `bind_independence.green`,
+`effect_commutativity.green`, `purity.green`, `strategy-order`, and
+`evaluation-step`, are conceptual witness roles unless this survey names a live
+declaration or runner surface beside them. Live anchors include
+`BridgeLedgerZero`, `LensOutputEquals`, `BinaryDimensionReportEquals`,
+`DifferentialEquals`, `ForAllTargets`, and `AlgebraicLaw` in
+`src/v3/std/verification.dag`; `DimensionReport<C>` in
+`src/v3/std/dimensions.dag`; `LanguageSpec` in `src/v3/std/emit_model.dag`; and
+the canonical bridge ledger in `src/v3/std/bridge_ledger.dag`. Missing role
+carriers stay in the Substrate-Introduction Catalog below and must route through
+`INVARIANTS.md` P1 / Substrate Manager before any future worker treats them as
+authority.
+
 ## Substrate-Fold Gates
 
 ```
@@ -61,7 +75,9 @@ predicates; the substrate declaration is the witness.
 
 ## Lens<C>-Fold Gates
 
-Free-Consequences gates are the canonical `Lens<C>`-fold pattern.
+Free-Consequences gates are the canonical `Lens<C>`-fold pattern. The formula
+variables in this section are pending witness roles, not declarations of live
+carrier names.
 
 Auto-parallelism:
 
@@ -108,8 +124,9 @@ R2-Evaluator can execute the reads.
 
 ## Consumer-Instance Gates
 
-TC1/TC2/TC3 and RustDagIsomorphism are consumer instances. They should share
-producer-first discipline:
+TC1/TC2/TC3 and RustDagIsomorphism are consumer instances. Modifier names here
+identify producer obligations, not live report-carrier declarations unless a
+producer has already landed. They should share producer-first discipline:
 
 - Substrate owns the producer that creates the report.
 - Verification owns the consumer fixture and coverage requirement.
