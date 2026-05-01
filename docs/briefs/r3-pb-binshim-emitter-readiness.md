@@ -39,4 +39,4 @@ Until (1)–(2) are at least **named on main**, a merge-blocking `.dag` emitter 
 - Parent program: [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md).
 - Instance framework: [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md).
 - Consumer / call-surface audit: [`r3-pb-regen-lens-consumer-audit.md`](r3-pb-regen-lens-consumer-audit.md).
-- Carrier ratchet: `src/v3/compiler/tests/integration/bin_shim_carrier_test.rs`.
+- Carrier ratchet: [`src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`](../../src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs) (`bin_shim_carrier_*` — consolidated here post-#1370; standalone `bin_shim_carrier_test.rs` removed).
