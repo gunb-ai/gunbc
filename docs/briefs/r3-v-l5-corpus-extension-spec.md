@@ -62,7 +62,7 @@ Slice numbering aligns with [`r3-v-l5-corpus-scaffold-notes.md`](r3-v-l5-corpus-
 | **1 — Seed** | **Landed** conceptually via skeleton | Single `add` + `match` + `Int` observable (`add_then_branch` family); no IO, effects, floats, host libs | Proves emit/run/observation plumbing only — **does not** close Lane 2 |
 | **2 — Primitive values** | First expansion | `Bool` literals and Boolean connectives safe at emit boundary; `Int` arithmetic (+, −, ×) **only under §1.1** (shared overflow/range rule — not division-only gating); guarded `/` only if all targets share identical partiality; **simple records** (named fields, order-stable lowering); **simple variants** with payloads drawn only from prior primitives — **no** `String`/unicode/stdlib, no filesystem paths | Surfaces **match lowering**, **call ABI**, **literal range** regressions early |
 | **3 — Collections** | Lists / maps | Homogeneous `List<T>` / map-like carriers **only after** Rust/Python/Go agree on a **shared structural observation encoding** (not debug `println!`, not locale-dependent formatting) | Highest coordination cost — defer until observation codec is frozen |
-| **4 — User-program corpus** | Lane 1 identity | Stable programs promoted from **Lane 1 certification corpus**; each row classified by **observable value shape** (primitive vs record vs later list) | Breadth comes from **program identity reuse**, not ad hoc L5-only prose |
+| **4 — User-program corpus** | Lane 1 identity | Stable programs promoted from **Lane 1 certification corpus**; each row classified by **observable value shape** (primitive vs record vs simple variant vs later list) | Breadth comes from **program identity reuse**, not ad hoc L5-only prose |
 | **5 — Strict L5 fire** | Acceptance | Corpus wide enough to represent the **accepted certification surface**; **every materialized row** passes for the **frozen** Shape A target set | **`l5_cross_target_consistency`** strict mode — still **not** byte identity |
 
 ### 1.1 Slice-2 `Int` arithmetic — overflow / range gate (Tier 2 totality)
@@ -90,8 +90,8 @@ Slice 2 cannot admit **`+` / `−` / `×`** on default `Int` for strict cross-ta
 
 **Structural value domain (phased):**
 
-- **Phase A (slices 1–2):** `Int`, `Bool`, and **finite product records** whose fields range only over Phase A types (field order normalized per LanguageSpec tables — implementation detail for the worker, not invented here).
-- **Phase B (slice 3+):** finite **lists** / **maps** of Phase A values once §3 observation contract extends — **closed** sums only; no opaque host pointers.
+- **Phase A (slices 1–2):** `Int`, `Bool`, **finite product records**, and **closed simple variants** whose payloads range only over Phase A types — the same structural **`VariantValue`** equality surface as [`design-cross-target-equivalence.md`](../design-cross-target-equivalence.md#equality-domain) (tag = declaration/constructor identity; recursive payload equality). Record field order is normalized per LanguageSpec tables (implementation detail for the worker). **Phase A excludes** slice‑3 **collections** (`List`, maps): those remain Phase B once the observation codec lands.
+- **Phase B (slice 3+):** finite **lists** / **maps** whose elements are Phase A values once §3 observation contract extends — still **closed** algebraic sums/products only; no opaque host pointers.
 
 **Normalization:** Each target emits or prints something **losslessly parseable** into the shared domain (binary encodings acceptable only if spec’d cross-target). **Not accepted:** raw stdout byte equality, string fuzzy match, or “same console text.”
 
