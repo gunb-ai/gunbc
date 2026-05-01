@@ -24,7 +24,7 @@ witness pattern from this file instead of re-reading the full PR chain.
 |---|---|---|---|
 | **Substrate-fold** | `bridge_retirement_ledger_zero` | already-materialized substrate declaration | runner folds static carrier; no Evaluator runtime |
 | **Lens<C>-fold** | Free-Consequences | lens reads over `(Dag, Behavior)` | Evaluator constructs lens reports, then runner compares/projections |
-| **Consumer instance** | TC1/TC2/TC3, RustDagIsomorphism | Substrate-owned producer emits report | `BinaryDimensionReportEquals` compares paired reports |
+| **Consumer instance** | TC1/TC2/TC3, RustDagIsomorphism | Substrate-owned producer emits report | `BinaryDimensionReportEquals` shape-valid scaffold compares paired reports once producers exist |
 | **Corpus-driven runtime** | L4/L5 | emitted/evaluated program observations | runner produces normalized values, then algebraic equality |
 | **Harness skeleton** | Lane 1/Lane 2 readiness | fixture path, corpus identity, failure taxonomy | waits for producers; avoids new predicate variants |
 
@@ -32,6 +32,16 @@ The first decision for any future worker is category selection. Most blocking
 review failures in this cluster came from using the wrong category: treating
 parallelism as `DimensionReport<C>`, treating corpus runtime checks as lenses,
 or treating substrate-fold gates as if they needed an Evaluator witness.
+
+Predicate readiness matters too. `LensOutputEquals` and
+`BinaryDimensionReportEquals` are live `TestPredicate` variants in
+`src/v3/std/verification.dag`, but they are not equally complete runtime
+surfaces: `LensOutputEquals` is runner-wired for the current scalar lens
+scaffolds, while `BinaryDimensionReportEquals` is presently a shape-valid
+consumer envelope that returns `NotYetImplemented` until concrete
+`DimensionReport<C>` producers and equality evaluation land. This survey indexes
+those existing consumer surfaces; it does not authorize predicate or runner
+changes.
 
 ## Substrate-Fold Gates
 
@@ -86,10 +96,12 @@ target_cost_report =
   dag_algebra_cost + language_spec.realization_cost
 ```
 
-Parallelism gates stay on `LensOutputEquals`; DB-3/DB-20 keep workflow
-parallelism out of `DimensionReport<C>`. Memoization and cross-target cost
-gates use `BinaryDimensionReportEquals` because they are cost-shaped
-`DimensionReport<C>` consumers. Placeholders remain fail-closed until
+Parallelism gates stay on the runner-wired `LensOutputEquals` scalar scaffold;
+DB-3/DB-20 keep workflow parallelism out of `DimensionReport<C>`.
+Memoization and cross-target cost gates are authored against the live
+`BinaryDimensionReportEquals` shape-valid scaffold because they are cost-shaped
+`DimensionReport<C>` consumers, but full report equality remains NYI until the
+producer/evaluator side lands. Placeholders remain fail-closed until
 `src/v3/lenses/parallelism.dag`, `Lens<Purity>`, `Lens<Cost>`,
 `Lens<Effect-Commutativity>`, and the relevant independence producers exist and
 R2-Evaluator can execute the reads.
@@ -101,7 +113,9 @@ producer-first discipline:
 
 - Substrate owns the producer that creates the report.
 - Verification owns the consumer fixture and coverage requirement.
-- `BinaryDimensionReportEquals` compares two structured reports.
+- `BinaryDimensionReportEquals` is the current comparison envelope; today the
+  runner validates paired `DimensionReport<C>` shape and defers real structural
+  equality until producers exist.
 
 TC modifiers: TC1 eta-equivalence compares `DimensionReport<C>` under `f` and
 eta-expanded `lambda x.apply(f, [x])`; TC2 strategy-order compares reports
