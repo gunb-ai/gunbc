@@ -99,20 +99,16 @@ pub mod evaluator {
         LeftFirst,
     }
 
-<<<<<<< HEAD
     /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
     /// the body evaluator: missing-substrate cases (`MissingNode`,
     /// `UnboundPort`), behavior-not-yet-implemented stubs for arms still
-    /// owned by later PR-E slices (`UnsupportedBehavior`), Branch
+    /// owned by later PR-E slices (`UnsupportedBehavior`), E3 transform
+    /// operand / arity diagnostics (`TransformArityMismatch`,
+    /// `UnsupportedTransformTarget`, `BadTransformOperands`), Branch
     /// resolution / shape / payload-frame errors (E4), and frame
     /// discipline propagation (`FrameError`). Adding a new variant is a
     /// STOP+PING per the E0 brief — either route the underlying gap
     /// through P1 or extend PR-B.1's fail-closed catalog first.
-=======
-    /// **Dissolution receipt: TERMINAL.** These are the E1/E2 body-evaluator miss
-    /// modes until later PR-E slices implement the remaining behavior arms, plus
-    /// E3 transform operand / arity diagnostics.
->>>>>>> origin/main
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalError {
         MissingNode {
@@ -125,7 +121,16 @@ pub mod evaluator {
             node: NodeId,
             behavior: &'static str,
         },
-<<<<<<< HEAD
+        TransformArityMismatch {
+            expected: usize,
+            got: usize,
+        },
+        UnsupportedTransformTarget {
+            kind: &'static str,
+        },
+        BadTransformOperands {
+            reason: &'static str,
+        },
         /// E4 fail-closed: a `BranchPath.pattern` is still
         /// `UnresolvedVariant` at evaluation time. Resolution must lower
         /// `UnresolvedVariant` to `ResolvedVariant(DeclarationId)` before
@@ -160,18 +165,6 @@ pub mod evaluator {
         fn from(err: EvalFrameError) -> Self {
             EvalError::FrameError(err)
         }
-=======
-        TransformArityMismatch {
-            expected: usize,
-            got: usize,
-        },
-        UnsupportedTransformTarget {
-            kind: &'static str,
-        },
-        BadTransformOperands {
-            reason: &'static str,
-        },
->>>>>>> origin/main
     }
 
     pub fn eval_value(value: &crate::dag::ValueNode) -> Value {
@@ -209,11 +202,8 @@ pub mod evaluator {
         }
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
-<<<<<<< HEAD
-            Behavior::Branch(branch) => eval_branch(dag, branch.clone(), state, strategy),
-=======
             Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
->>>>>>> origin/main
+            Behavior::Branch(branch) => eval_branch(dag, branch.clone(), state, strategy),
             behavior => Err(EvalError::UnsupportedBehavior {
                 node: behavior.id(),
                 behavior: behavior_label(behavior),
@@ -221,7 +211,6 @@ pub mod evaluator {
         }
     }
 
-<<<<<<< HEAD
     /// PR-E E4: evaluate a `Branch` node per PR-B.1 §B.1.3 — eager
     /// scrutinee evaluation, exact `ResolvedVariant` tag match,
     /// payload binding in a fresh frame, body evaluation through
@@ -314,7 +303,8 @@ pub mod evaluator {
             let _ = eval_node(dag, path.body, state, strategy)?;
         }
         eval_port(dag, path.output, state, strategy)
-=======
+    }
+
     fn eval_transform_node(
         dag: &Dag,
         t: &TransformNode,
@@ -433,7 +423,6 @@ pub mod evaluator {
                 kind: "ArithmeticDiv",
             }),
         }
->>>>>>> origin/main
     }
 
     pub fn evaluate_body(
@@ -556,13 +545,9 @@ pub mod evaluator {
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
-<<<<<<< HEAD
-            ArithmeticOp, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits, LoopBound,
-            NodeId, Path, PayloadBinding, PortId, TransformTarget,
-=======
-            ArithmeticOp, Behavior, BranchPattern, ComparisonOp, Dag, LiteralBits, LogicalOp,
-            LoopBound, NodeId, OperatorKind, Path, PortId, TransformTarget,
->>>>>>> origin/main
+            ArithmeticOp, Behavior, BranchPattern, ComparisonOp, Dag, DeclarationId, LiteralBits,
+            LogicalOp, LoopBound, NodeId, OperatorKind, Path, PayloadBinding, PortId,
+            TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
@@ -822,7 +807,6 @@ pub mod evaluator {
         // branch input port matches the path whose `ResolvedVariant.tag`
         // equals the runtime tag; the body's value is returned.
         #[test]
-<<<<<<< HEAD
         fn eval_branch_selects_resolved_variant_by_tag() {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
             let some_tag = declaration_id_by_name(&dag, "Bool");
