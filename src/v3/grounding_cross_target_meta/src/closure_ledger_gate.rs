@@ -8,7 +8,7 @@ use std::collections::HashSet;
 
 use v3_compiler::generated_full_bootstrap_dag;
 
-use crate::{check_l6_load_completeness, Cell};
+use crate::check_l6_load_completeness;
 
 const R2_CLOSURE_LEDGER: &str = include_str!("../../../../docs/r2-closure-ledger.md");
 
