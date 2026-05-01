@@ -2138,6 +2138,33 @@ let total: Int = x_of({ x: 1, y: 2 })
 }
 
 #[test]
+fn record_literal_duplicate_fields_fail_closed_at_repeated_field() {
+    let src = "\
+type Pair { a: Int b: Int }
+fn first(p: Pair) -> Int = p.a
+let duplicate: Int = first({ a: 1, a: 2, b: 3 })
+";
+    let dag = compile_any(src, "expr_record_literal_duplicate_fields.v3");
+    let duplicate_span = u32::try_from(src.find("a: 2").expect("fixture includes repeated field"))
+        .expect("fixture span fits in SourceSpan");
+
+    assert!(
+        dag.diagnostics().iter().any(|(_, diagnostic)| {
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, span, .. }
+                    if name.contains("record literal repeats field `a`")
+                        && span.file == "expr_record_literal_duplicate_fields.v3"
+                        && span.byte_start <= duplicate_span
+                        && duplicate_span < span.byte_end
+            )
+        }),
+        "expected duplicate record literal diagnostic anchored to second `a`, got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn prereq4_list_literal_in_expression_position_lowers_through_std_list_constructors() {
     let dag = cached_compile_to_dag("let xs: List<Int> = [1, 2, 3]", "expr_list_literal.v3");
     assert!(
