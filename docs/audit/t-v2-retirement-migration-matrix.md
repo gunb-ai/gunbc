@@ -45,14 +45,23 @@ src/v2/tests/src/sub_value_lattice_factor_test.rs
 
 **Migration disposition for Population A:** none individually. The crate retires as a unit when G-2's workspace-member removal fires. Per-test coverage migration (if any v2-tests-crate behavior is not already covered by v3-side tests) is the responsibility of the PM-authored worker brief — flagged as routing question §6.1.
 
-### 2.2 Population B — substantive G-1 consumers (2 files)
+### 2.2 Population B — substantive G-1 consumers (2 test files + 2 Cargo edges)
 
-These are the only test surfaces *outside* `src/v2/` that substantively reference v2 crates. Each is enumerated in §3 with disposition.
+These are the surfaces *outside* `src/v2/` that substantively reference v2 crates. Each is enumerated in §3 with disposition. **Per #1338 §3.1 green criteria, G-1 closure requires both the test-file dispositions AND deletion of the two Cargo edges below**; treating only the test files as Population B would let the matrix declare consumers "migrated" while `v2-compiler` / `v2-compiler-tests` remain live workspace dependencies of `src/v3/compiler` — exactly the parallel-authority residue INVARIANTS §P2 (facts-flow-forward) forbids.
 
+Test consumers (2 files):
 ```
 src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs
 src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs
 ```
+
+Cargo edges (2 lines):
+```
+src/v3/compiler/Cargo.toml:32  v2-compiler        = { path = "../../v2/stage0" }
+src/v3/compiler/Cargo.toml:33  v2-compiler-tests  = { path = "../../v2/tests" }
+```
+
+The Cargo edges have no other consumer in `src/v3/compiler` — they exist solely to support the two test files in §3.1 / §3.2. Their deletion is mechanical once both tests dissolve, but it is **part of G-1 closure, not a downstream cleanup**.
 
 ### 2.3 Population C — non-G-1 references (cosmetic at deletion)
 
@@ -96,6 +105,19 @@ Doc-comments, string literals, README mentions. **Not** G-1 consumers; cleaned u
 | Prerequisite | S-1 (PM brief routes the authority migration between PB + Substrate per §P1 substrate-fact-introduction); landing of v3-side single-authority `kernel_algebra_profile` (Substrate continuation work). |
 | STOP condition | S-1 unmet → no migration. Substrate-side authority migration not landed → parity test cannot be safely retired (would lose drift detection). |
 | What green looks like | `kernel_algebra_profile` has a single v3-side authority (under `dsl/std/algebra.dag` or named successor); `m2_substrate_inhabitance_test.rs` no longer matches `\bv2_compiler\b`; the rest of `m2_substrate_inhabitance_test.rs` (other tests in the file) continue to pass under `cargo test --workspace --exclude v2-compiler-tests`. |
+
+### 3.3 `src/v3/compiler/Cargo.toml:32-33` — `v2-compiler` + `v2-compiler-tests` path deps
+
+| Field | Value |
+|---|---|
+| Current dependency | `v2-compiler = { path = "../../v2/stage0" }` and `v2-compiler-tests = { path = "../../v2/tests" }`. |
+| Role | Workspace-internal Cargo edges; exist solely to support §3.1 + §3.2. No other consumer in `src/v3/compiler`. |
+| Counts against G-1? | **Yes** — per #1338 §3.1 green criteria, G-1 closure requires these edges deleted alongside the test-file dispositions. INVARIANTS §P2 (facts-flow-forward): leaving the deps live while the only callers are gone leaves a parallel-authority residue. |
+| Owner | PB Manager (per `docs/audit/t-v2-retirement-audit.md` §3.1; same lane as §3.1 + §3.2). |
+| Proposed migration | Mechanical deletion of both lines from `src/v3/compiler/Cargo.toml` once both §3.1 + §3.2 are green. No replacement; `src/v3/compiler` does not need v2 crates after the test consumers retire. |
+| Prerequisite | §3.1 green + §3.2 green. (Pre-emptive deletion would break the live tests.) |
+| STOP condition | Either §3.1 or §3.2 still has substantive `\bv2_compiler(_tests)?\b` references → cannot delete without breaking the build. |
+| What green looks like | `grep -n 'v2-compiler\|v2_compiler' src/v3/compiler/Cargo.toml` returns no matches; `cargo build -p v3-compiler` and `cargo test -p v3-compiler` both pass. The `src/v2/stage0` and `src/v2/tests` workspace members remain (G-2 owns their removal). |
 
 ---
 
