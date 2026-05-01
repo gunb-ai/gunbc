@@ -383,6 +383,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Lane 2 `AlgebraicLaw::Identity`, and L5 `ForAllTargets` compile but defer as
     // `NotYetImplemented`. Dissolves when `TestRunner` can evaluate these claims directly without
     // this host-side NYI harness (same dissolution class as the R3 Free-Consequences batches).
+    // Retirement must also fold the L5 program-text bridge (`fixtures/r3_l5_corpus/add_then_branch_seed.v3`
+    // vs embedded `TestClaim.source` — byte equality ratchet lives only in this harness today).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
