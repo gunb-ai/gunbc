@@ -8,7 +8,7 @@
 
 ## In-repo authority anchors (not PR labels alone)
 
-GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenance**, not a substitute for merged design text. This contract’s **in-tree** Markdown links resolve from **`docs/briefs/`** as **`../../…`** for repo-root files (`INVARIANTS.md`, `TESTING.md`, `src/…`) and **`../…`** for other files under `docs/` — a **`../INVARIANTS.md`** link would incorrectly resolve under `docs/` and **does not exist** (common false “missing authority” report). §P1 / §P2 URL fragments (`#p1-modeling-faithfulness`, `#p2-boundary-discipline`) target GitHub’s auto-generated heading anchors for `## P1: Modeling Faithfulness` and `## P2: Boundary Discipline` in [`INVARIANTS.md`](../../INVARIANTS.md). **Same commitments (compact):** list items **1–2** under **[The five principles](../../INVARIANTS.md#the-five-principles)** (“Modeling Faithfulness”, “Boundary Discipline”). **Mechanical live check:** §In-tree anchor verification receipt below (`git cat-file -e origin/main:<path>` on every hyperlinked path).
+GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenance**, not a substitute for merged design text. This contract’s **in-tree** Markdown links resolve from **`docs/briefs/`** as **`../../…`** for repo-root files (`INVARIANTS.md`, `TESTING.md`, `src/…`) and **`../…`** for other files under `docs/` — a **`../INVARIANTS.md`** link would incorrectly resolve under `docs/` and **does not exist** (common false “missing authority” report). §P1 / §P2 URL fragments (`#p1-modeling-faithfulness`, `#p2-boundary-discipline`) target GitHub’s auto-generated heading anchors for `## P1: Modeling Faithfulness` and `## P2: Boundary Discipline` in [`INVARIANTS.md`](../../INVARIANTS.md). **Same commitments (compact):** list items **1–2** under **[The five principles](../../INVARIANTS.md#the-five-principles)** (“Modeling Faithfulness”, “Boundary Discipline”). **Mechanical live check:** §receipt below — **(1)** every hyperlinked path exists on `origin/main`; **(2)** each **in-repo `#fragment`** this brief cites still has backing prose on `origin/main` (expected heading line or explicit `<a id="…">`), so anchor drift fails closed instead of passing on path existence alone.
 
 - **[INVARIANTS.md](../../INVARIANTS.md#p2-boundary-discipline) — §P2 Boundary Discipline** — “every fact lives in exactly one authoritative place”; parallel copies are the failure mode import mechanisms must prevent.
 - **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness) — Modeling Faithfulness** — substrate extensions (`CertifiedProgramText`, widening `TestClaim`, …) route through the §P1 substrate-fact introduction procedure; not ad hoc fixture forks.
@@ -19,9 +19,9 @@ GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenan
 - **[ROADMAP.md](../../ROADMAP.md)** — program-level R3 Verification / debt narrative (dispatch context; named gates stay authoritative in [`r3-structure.md`](../r3-structure.md)).
 - **[modeling-discipline.md](../modeling-discipline.md)** — read alongside any future **§P1** carrier that merges `source` + `file_name` into one nominal.
 
-### In-tree anchor verification receipt
+### In-tree link receipt (paths + cited `#fragments`)
 
-Re-run whenever **`main`** moves materially. **Scope:** every repository-relative path hyperlinked from this brief (extend when adding new links).
+Re-run whenever **`main`** moves materially. **Extend both steps** when adding paths or in-repo `#fragments` from this brief.
 
 ```bash
 git fetch origin
@@ -39,6 +39,16 @@ for p in \
   src/v3/compiler/src/test_runner.rs \
   src/v3/std/verification.dag
 do git cat-file -e "origin/main:$p" || exit 1; done
+
+# Every `#fragment` hyperlinked from this brief — expected Markdown headings or explicit IDs on origin/main.
+git show origin/main:INVARIANTS.md | rg -q '^## The five principles$' || exit 1
+git show origin/main:INVARIANTS.md | rg -q '^## P1: Modeling Faithfulness$' || exit 1
+git show origin/main:INVARIANTS.md | rg -q '^## P2: Boundary Discipline$' || exit 1
+git show origin/main:INVARIANTS.md | rg -q '^## P5: Progress Is Dissolution$' || exit 1
+git show origin/main:INVARIANTS.md | rg -q '<a id="db-1"></a>' || exit 1
+git show origin/main:INVARIANTS.md | rg -q '<a id="c-5"></a>' || exit 1
+git show origin/main:docs/briefs/r3-v-l5-corpus-readiness-audit.md | rg -q '^## 4\. Critical-path consumption from Lane 1 \(boundary\)$' || exit 1
+git show origin/main:TESTING.md | rg -q "^### Don't assert on implementation details$" || exit 1
 ```
 
 ---
@@ -58,6 +68,7 @@ do git cat-file -e "origin/main:$p" || exit 1; done
 ## Shared requirements (all mechanisms)
 
 - **Single editable authority** per corpus program row — second copies are either generated or read-only structural imports.
+- **Cross-lane row key (`HEAD`):** **`TestClaim.name`** — surfaced as **`TestClaimValue.claim_name`** after compile ([`test_runner.rs`](../../src/v3/compiler/src/test_runner.rs)) — is the **authoritative join** for pairing Lane 1 vs Lane 2 rows in CI ratchets; **`source` / `file_name`** remain the compiled program identity payload (§Program identity binding).
 - **Program identity** per row is **one binding** projecting to **`TestClaim.source` + `TestClaim.file_name` together** — see §Program identity binding (not two unrelated strings).
 - **CI-visible drift detection** — silent divergence between Lane 1 and Lane 2 rows is unacceptable (ratchet shape varies by mechanism below).
 - **Harness assertion posture** for future integration code: pin **`ClaimResult` / typed outcomes** (`Pass` / `Fail` / `NotYetImplemented(_)`) structurally — today these variants are the Rust **`TestRunner`** carrier in [`src/v3/compiler/src/test_runner.rs`](../../src/v3/compiler/src/test_runner.rs) (`pub enum ClaimResult`, not a separate `.dag` nominal yet); combine with **[INVARIANTS DB-1](../../INVARIANTS.md#db-1)** (typed diagnostic carriers, not ad hoc warning text) and **[C-5](../../INVARIANTS.md#c-5)** (no string-sentinel probing); operational examples in [**TESTING.md**](../../TESTING.md#dont-assert-on-implementation-details) §“Don’t assert on implementation details.”
