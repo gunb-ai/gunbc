@@ -57,7 +57,7 @@ Each lane’s **`TestClaim`** references these declarations (import/projection) 
 
 ### 3.2 Optional `BoundDeclaration` adjunct (post–#1449 + §P1 consumers)
 
-Orthogonal to §3.1, a row-level witness might someday declare a **static integer interval** for literals/intermediates using **`StaticBound(...)`** once lowering attaches bounds to the declarations coercion-fold cares about. Sketch only:
+Orthogonal to §3.1, a row-level witness might someday declare a **static integer interval** for literals/intermediates using **`StaticBound(...)`** once lowering attaches bounds to the declarations coercion-fold cares about. Sketch only — **`BoundedInterval { lower, width }`** is the **bounded** arm of substrate **`Interval<Int>`** (see §1 and `src/v3/std/substrate.dag`: the sibling arm is **`Unbounded`**). This is the same carrier **`StaticBound(Interval<Int>)`** names, not a parallel type.
 
 ```text
 // PROPOSAL — requires landed consumers beyond #1449 carrier slice.
