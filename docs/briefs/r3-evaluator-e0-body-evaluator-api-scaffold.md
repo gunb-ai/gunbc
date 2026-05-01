@@ -211,18 +211,15 @@ in the scaffold.
   `fn eval_transform(dag, t: &TransformNode, stack, strategy) -> Result<Value, EvalDiagnostic>`
   per PR-B.1 §B.1.2 and §B.1.6 / §B.1.7. `t.inputs` is `Vec<PortId>`
   per `dag.rs:1721`, **not** `Vec<NodeId>`. Eager evaluation under
-  `LeftFirst` is therefore **port-resolution**, not recursive
-  `eval_node` over node ids: for each `port` in `t.inputs`
-  left-to-right, resolve the bound `Value` via `frame_lookup(stack,
-  port)` (E2's API). The producing node's `result_port` value must
-  already be bound in the current frame stack — either as a parameter
-  binding the caller registered before invoking `evaluate_body`, or
-  as a downstream `Bind` registration `eval_node` performed earlier
-  in topological order. An unbound input port is fail-closed
-  `EvalDiagnostic::UnboundPort(port)`. After all inputs resolve to
-  `Value`s, `eval_transform` dispatches on `t.target` (`Callable` /
-  `FieldProject` / `Operator`) and writes the result `Value` to
-  `t.output` via `frame_bind` so downstream nodes can consume it.
+  `LeftFirst` is **port-resolution via `eval_port`** (the port-level
+  authority defined above): for each `port` in `t.inputs`
+  left-to-right, call `eval_port(dag, port, stack, strategy)` to get
+  the `Value`. `eval_port` handles both bound-parameter and
+  producer-node demand-eval cases internally, so `eval_transform`
+  does not branch on those cases. After all inputs resolve, dispatch
+  on `t.target` (`Callable` / `FieldProject` / `Operator`) and write
+  the result to `t.output` via `frame_bind` so downstream consumers
+  can read.
 - **E4 — `eval_branch`:**
   `fn eval_branch(dag, b: &BranchNode, stack, strategy) -> Result<Value, EvalDiagnostic>`
   per PR-B.1 §B.1.3 (resolved-variant dispatch only; no wildcard).
