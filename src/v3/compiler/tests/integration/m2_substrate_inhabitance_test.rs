@@ -2462,7 +2462,9 @@ fn program_observation_carrier_is_producer_neutral_typed_envelope() {
             name, "Carrier",
             "ProgramObservation's type parameter should name the typed observation domain"
         ),
-        other => panic!("ProgramObservation type parameter must be a TypeParam atom, got {other:?}"),
+        other => {
+            panic!("ProgramObservation type parameter must be a TypeParam atom, got {other:?}")
+        }
     }
     assert_eq!(
         conj_field_by_id(&dag, observation.id, "observed"),
