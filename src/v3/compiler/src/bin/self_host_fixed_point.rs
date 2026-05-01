@@ -166,7 +166,8 @@ fn run() -> Result<(), String> {
         }
         Err(msg) => {
             receipt.push_str(&format!(
-                "  \"compiler_dag_v3_parse\": {},\n",
+                "  \"{}\": {},\n",
+                receipt_p0::K_COMPILER_DAG_V3_PARSE,
                 json_string(&msg)
             ));
         }
@@ -177,7 +178,11 @@ fn run() -> Result<(), String> {
     } else {
         "completed"
     };
-    receipt.push_str(&format!("  \"status\": {}\n}}\n", json_string(exit_status)));
+    receipt.push_str(&format!(
+        "  \"{}\": {}\n}}\n",
+        receipt_p0::K_STATUS,
+        json_string(exit_status)
+    ));
 
     write_receipt(&receipt_path, &receipt);
     writeln!(
