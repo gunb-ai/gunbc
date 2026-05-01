@@ -153,6 +153,8 @@ mod r2_b5_loop_construction_closure_test;
 mod r3_free_consequences_first_batch_test;
 #[path = "integration/r3_free_consequences_second_batch_test.rs"]
 mod r3_free_consequences_second_batch_test;
+#[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
+mod r3_verification_l4_l7_l5_skeleton_test;
 #[path = "integration/services_carrier_shape_test.rs"]
 mod services_carrier_shape_test;
 #[path = "integration/sg0_census_test.rs"]
