@@ -245,6 +245,8 @@ Today it's shallow/lossy (per Reflective Pattern B): doesn't reflect full behavi
 
 **DECISION (Director-locked 2026-04-28):** Algebraic equivalence over a curated corpus (not byte-equal across all programs). The L5 claim is that *semantics is invariant across targets* — that's algebraic, not lexical. L5 spec doc is PR-D in cadence below; gates T-Verification-L5-Corpus.
 
+**DESIGN LOCK introduced by PR-D:** [`docs/design-cross-target-equivalence.md`](design-cross-target-equivalence.md) defines semantic observations, corpus curation, oracle validity, float policy, side-effect normalization, and the R3 consumption gates for T-Verification-L5-Corpus / PR-E planning.
+
 ### 4. SG-0 zero requirement for fixed-point
 
 **Question:** Does T-FixedPoint require SG-0 = 0 (full lens-producer retirement complete) before fixed-point semantics close, or only "non-test = 0"?
@@ -315,8 +317,8 @@ The 8 design challenges above are not resolvable via comment-thread back-and-for
 | **PR-A** (this PR — #1078) | r2-structure.md amendment + r3-structure.md pre-promotion + thesis-mapping + design-emission-model | Frame; lane structure; engine reframe | In review |
 | **PR-B** | Evaluator runtime-value model decision (closed-over environments, lazy/eager, memoization, witness construction) | Design challenge #1 — biggest open question | Pending |
 | **PR-C** | Reflection completeness spec doc (definition of "complete" for `reflect_program_dag_nodes_in_file`) | Design challenge #2 | Pending |
-| **PR-D** | Cross-target equivalence semantics (algebraic-equal corpus) | Design challenge #3 | Pending |
-| **PR-E** | Evaluator dispatch brief (after PR-A through PR-D land) | Worker dispatch precondition | Pending |
+| **PR-D** | Cross-target equivalence semantics (algebraic-equal corpus) | Design challenge #3 | Design lock introduced at [`docs/design-cross-target-equivalence.md`](design-cross-target-equivalence.md) |
+| **PR-E** | Evaluator dispatch brief (after PR-A through PR-D land) | Worker dispatch precondition | Authored at [`docs/briefs/r3-evaluator-dispatch.md`](briefs/r3-evaluator-dispatch.md) |
 
 Workers cannot dispatch on under-specified scope, especially on multi-week T-Verification critical path. PR-B through PR-D are gates; PR-E starts Evaluator implementation work.
 
