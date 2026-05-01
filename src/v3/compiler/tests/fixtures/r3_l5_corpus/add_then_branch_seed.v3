@@ -1,4 +1,5 @@
-// R3 L5 corpus seed — keep byte-sync with `r3_verification_l5_corpus.dag` `TestClaim.source`.
+// Program authority for `r3_verification_l5_cross_target_skeleton`: integration test requires
+// `TestClaim.source` in `r3_verification_l5_corpus.dag` to match this file exactly.
 module user.r3_l5_add_then_branch_seed
 
 fn add(a: Int, b: Int) -> Int = a + b

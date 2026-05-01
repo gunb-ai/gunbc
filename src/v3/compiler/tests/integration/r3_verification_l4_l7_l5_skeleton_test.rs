@@ -8,7 +8,7 @@ use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
-use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
@@ -27,6 +27,7 @@ const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag
 const L5_FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag";
 const L5_SUITE: &str = "r3_verification_l5_corpus_suite";
 const L5_CLAIM: &str = "r3_verification_l5_cross_target_skeleton";
+const L5_AUTHORITY_PROGRAM: &str = include_str!("../fixtures/r3_l5_corpus/add_then_branch_seed.v3");
 
 static L4_DAG: OnceLock<Dag> = OnceLock::new();
 static L7_DAG: OnceLock<Dag> = OnceLock::new();
@@ -83,6 +84,16 @@ fn r3_verification_l7_algebraic_law_identity_skeleton_is_nyi() {
 #[test]
 fn r3_verification_l5_corpus_for_all_targets_skeleton_is_nyi() {
     let dag = cached_compile(L5_FIXTURE, L5_FIXTURE_PATH, &L5_DAG);
+    let claim_decl = dag
+        .declaration_by_name(L5_CLAIM)
+        .unwrap_or_else(|| panic!("missing `{L5_CLAIM}` in {}", L5_FIXTURE_PATH));
+    let claim = TestClaimValue::from_declaration(claim_decl).unwrap_or_else(|reason| {
+        panic!("`{L5_CLAIM}` should lower to a structural TestClaim: {reason}");
+    });
+    assert_eq!(
+        claim.source, L5_AUTHORITY_PROGRAM,
+        "`TestClaim.source` must equal `add_then_branch_seed.v3` bytes (single program authority)"
+    );
     let results = TestRunner::new(dag).run_suite(L5_SUITE);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].claim_name, L5_CLAIM);

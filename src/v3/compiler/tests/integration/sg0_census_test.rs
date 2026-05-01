@@ -379,8 +379,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
-    // R3 L4/L7/L5 skeleton: deferred `TestPredicate` receipts (`NotYetImplemented`) over compiling
-    // `.dag` fixtures — Lane 1 + Lane 2 + L5 corpus pre-authoring bundle.
+    // R3 L4/L7/L5 skeleton: hand-Rust receipt that Lane 1 `DifferentialEquals` emit/eval pairing,
+    // Lane 2 `AlgebraicLaw::Identity`, and L5 `ForAllTargets` compile but defer as
+    // `NotYetImplemented`. Dissolves when `TestRunner` can evaluate these claims directly without
+    // this host-side NYI harness (same dissolution class as the R3 Free-Consequences batches).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
