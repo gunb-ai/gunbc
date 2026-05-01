@@ -63,7 +63,7 @@ Authoritative split is unchanged ([`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-dir
 - `DifferentialEquals` receipts, evaluator outputs, or target-vs-eval pass/fail artifacts.
 - L7 algebraic-law witness rows as inputs to L5 comparison logic.
 
-**Structural import path (when Lane 1 lands):** add rows to the proposed Lane 2 fixture [`src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag`](../../src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag) (path matches [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md)) by **referencing or copying program identity** from Lane 1’s corpus artifact — **not** by reading L4 proof objects.
+**Structural import path (when Lane 1 lands):** add rows to the proposed Lane 2 fixture [`src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag`](../../src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag) (path matches [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md)) while preserving **P2 single-authority discipline** for program text: prefer a **stable reference** into Lane 1’s corpus artifact (shared module / `include_str!` anchor), **generated** L5 surface materialized from that single source with an explicit equality ratchet in CI, or another Director-approved mechanism that cannot silently fork into a second editable copy. **Do not** maintain Lane 1 program source as independently hand-edited duplicate prose in the L5 fixture. Lane 2 still does **not** read L4 proof objects.
 
 ---
 
@@ -72,7 +72,7 @@ Authoritative split is unchanged ([`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-dir
 When gates fire, **Slice 1** should:
 
 1. **Fixture:** `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag`, suite `r3_verification_l5_corpus_suite`, gate name `l5_cross_target_consistency` per [`docs/r3-structure.md`](../r3-structure.md) and [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md).
-2. **Seed row:** one `TestClaim` with `TestPredicate::ForAllTargets` (existing substrate) over **`add_then_branch`** seed, identical program text to Lane 1 seed for traceability.
+2. **Seed row:** one `TestClaim` with `TestPredicate::ForAllTargets` (existing substrate) over **`add_then_branch`** seed; program text must be **provably identical** to the Lane 1 seed via the same single-authority mechanism as §4 (reference or generated copy + ratchet), not a free-standing duplicate string maintained only for L5.
 3. **Observation domain:** normalize per-target outputs to **`Int` / `Bool` / simple records** before equivalence (scaffold notes §"Concrete Observation Contract").
 4. **Producer shape:** per frozen target — **emit (`Dag` constant)** → **target compile** → **target run** → **capture named bind** → **parse to structural value** → **algebraic equality** across targets.
 5. **Failure taxonomy** (non-exhaustive staging list): emit failure → per-target compile failure → run failure → observation parse failure → **cross-target mismatch**. Optional oracle text is **not** L5 authority (would blur into L4).
@@ -84,6 +84,6 @@ When gates fire, **Slice 1** should:
 ## 6. Open inputs for parallel Lane 1 readiness audit
 
 - Shared **runner-extension** scope (`ForAllTargets` vs `DifferentialEquals` producers).
-- Whether Lane 1’s first corpus artifact exposes **stable module boundaries** for copying program identity into L5 without duplicating authority.
+- Whether Lane 1’s first corpus artifact exposes **stable module boundaries** so L5 can **reference** program identity (or feed a generator) **without** a second authoritative copy of source text.
 
 Reply coordination: Verification Manager inbox [#1276](https://github.com/gunb-ai/gunbc/issues/1276).
