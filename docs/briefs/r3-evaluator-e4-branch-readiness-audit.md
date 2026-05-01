@@ -38,6 +38,33 @@ no fixture changes land in this slice.**
   Rust types exist in `src/v3/compiler/src/dag.rs`; no new mirror
   needed for E4's substrate inputs.
 
+## Supersedes (E0 contract corrections)
+
+This audit corrects two E0 contract holes the merged E0 brief
+(`r3-evaluator-e0-body-evaluator-api-scaffold.md`, #1371) left
+unspecified. **These corrections supersede E0 for E1 implementation
+purposes** until a follow-on docs amendment to E0 mirrors the wording:
+
+- **E0 §"Port-level evaluation contract" step 1 is superseded** by this
+  audit's §2 "Port membership check first" — `eval_port` must call
+  `dag.port_opt(&port)` *before* `frame_lookup`, not after; a `None`
+  port returns `EvalDiagnostic::ResolveError(port)`. The E0 sequence
+  "frame lookup first" admits caller-supplied bindings on
+  nonexistent `PortId`s and violates Fail-Closed (per the merged
+  reviewer finding on E0).
+- **E0 §"Per-`Behavior` slice fills" `eval_value` signature is
+  superseded** by this audit's §2a "Producer-bind invariant" — every
+  per-`Behavior` evaluator (including `eval_value`) takes
+  `stack: &mut EvalStateStack` and calls `stack.bind_top(node.result_port,
+  value)` before returning. Without this, `eval_port`'s
+  producer-demand-eval branch cannot cache a `Value`-produced port
+  and Facts-Flow-Forward fails.
+
+E1's implementation MUST follow this audit's wording for these two
+points; the merged E0 wording is the older draft. A short follow-on
+PR amending E0 is the cleanest landing for the contract; until then
+this audit is the authoritative reference for E1 / E4 consumers.
+
 ## E1 prerequisites E4 depends on (concrete inventory)
 
 E4 cannot ship as a bounded slice until **all four** of these land via
