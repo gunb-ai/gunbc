@@ -1550,7 +1550,6 @@ fn rust_dag_realizes_reflected_substrate_types() {
         "Declaration",
         "TemplateArgument",
         "Interval",
-        "BoundDeclaration",
         "PositiveIntervalWidth",
         "IntervalWidth",
         "PhantomParameter",
