@@ -11,6 +11,9 @@
 // (stage b) remains gated on T-FixedPoint completion; this fixture does not assert
 // runtime termination over the typed fragment.
 //
+// `TestClaim.source` is empty — predicate is structural (paired report refs); no
+// claim program slice (Verification structural-claim convention; cf. PR #1325).
+//
 // NO new `TestPredicate` variants — consumer-only authoring per Director #828.
 
 module std.tc3_strong_normalization_deferred
@@ -25,7 +28,7 @@ type tc3_evaluation_step_compare_dimension_report = DimensionReport<Dag>
 
 data tc3_strong_normalization_substrate_introduced: TestClaim = {
   name: "tc3_strong_normalization_substrate_introduced",
-  source: "// TC3 stage-(a) substrate-introduced marker; no termination oracle execution yet.\nlet _: Int = 0\n",
+  source: "",
   file_name: "tc3_strong_normalization_substrate_introduced.v3",
   predicate: BinaryDimensionReportEquals(
     tc3_evaluation_step_baseline_dimension_report,

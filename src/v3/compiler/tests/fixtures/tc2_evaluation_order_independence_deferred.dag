@@ -13,7 +13,8 @@
 // live in the future report producers / runner wiring, not in a parallel
 // `TestPredicate` variant. Runner evaluation is NYI until generic
 // `DimensionReport<C>` production lands; strict-fire still waits on ≥2
-// executable strategies (PR #1316 §4 P4).
+// executable strategies (PR #1316 §4 P4). `TestClaim.source` is empty —
+// predicate is structural (paired report refs); no claim program slice.
 
 module std.tc2_evaluation_order_independence_deferred
 
@@ -33,7 +34,7 @@ type tc2_rightfirst_strategy_dimension_report = DimensionReport<Dag>
 // DimensionReport<C>.
 data evaluation_order_independent_lens_results: TestClaim = {
   name: "evaluation_order_independent_lens_results",
-  source: "// TC2 deferred theorem marker; no evaluator strategy execution yet.\nlet _: Int = 0\n",
+  source: "",
   file_name: "tc2_evaluation_order_independent_lens_results.v3",
   predicate: BinaryDimensionReportEquals(
     tc2_leftfirst_strategy_dimension_report,
