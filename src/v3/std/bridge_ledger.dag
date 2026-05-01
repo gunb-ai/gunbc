@@ -142,6 +142,16 @@ data bridge_ledger: List<BridgeLedgerRow> = [
     name:      "bridge_exact_string_patching_residual_retired",
     owner:     "PB-Tier-2",
     status:    Open,
-    authority: "src/v3/compiler/tests/integration/bridge_lower_helpers_patch_zero_residual_test.rs"
+    // Umbrella row — `bridge_lower_helpers_patch_zero_residual_test.rs`
+    // ratchets only the retired sub-slice (PR #1014 lineage); the row
+    // stays Open because *other* exact-string patching classes remain
+    // outside that receipt's scope. Point `authority` at the prose
+    // row where the umbrella's open-scope framing is defined,
+    // not at the closed sub-slice's ratchet (the residual debt the
+    // open status tracks is exactly the "other classes" the prose
+    // row names — those classes' own dissolution triggers cover the
+    // remaining scope, and the umbrella retires when those triggers
+    // all fire).
+    authority: "docs/r3-structure.md:83"
   }
 ]
