@@ -6,10 +6,32 @@
 
 ---
 
+## In-repo authority anchors (not PR labels alone)
+
+GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenance**, not a substitute for merged design text. This contract’s **in-tree** anchors:
+
+- **[INVARIANTS.md](../INVARIANTS.md) — §P2 Boundary Discipline** — “every fact lives in exactly one authoritative place”; parallel copies are the failure mode import mechanisms must prevent.
+- **[r3-v-l5-corpus-readiness-audit.md](r3-v-l5-corpus-readiness-audit.md) §4** — P2 program-text options + bridge-retirement posture for certification corpus lifts (authoritative Verification lane narrative on `main`).
+- **[modeling-discipline.md](../modeling-discipline.md)** — read alongside any future **§P1** carrier that merges `source` + `file_name` into one nominal.
+
+---
+
+## Program identity binding (logical contract)
+
+**Program identity** for one corpus row is the **inseparable pair** `(source_text, file_name)` passed to `compile_to_dag(source, file_name)`. Today `TestClaim` projects that identity into **two sibling fields** without a dedicated substrate record (**at HEAD** — see [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag)).
+
+**Contract:** Authoring must treat the pair as **one binding** then **project** into `TestClaim`:
+
+- **Never** edit `source` or `file_name` **in isolation** in steady state (that re-opens parallel authority and breaks diagnostics consistency).
+- **Mechanisms (a)/(b):** a **single** import resolution or **single** generator transaction produces **both** projections for each lane; Lane 1 vs Lane 2 differs in **predicate / suite**, not in independently maintained halves of the pair.
+- **§P1 steady-state option:** a Director-ratified nominal (illustrative: **`CertifiedProgramText`**) holding both strings once, with lowering into `TestClaim` — eliminates the “two-field projection” drift surface at the substrate layer.
+
+---
+
 ## Shared requirements (all mechanisms)
 
 - **Single editable authority** per corpus program row — second copies are either generated or read-only structural imports.
-- **`TestClaim.source` + `file_name` pairing** stays consistent everywhere (both fields participate in compile identity and diagnostics routing — see readiness audits).
+- **Program identity** per row is **one binding** projecting to **`TestClaim.source` + `TestClaim.file_name` together** — see §Program identity binding (not two unrelated strings).
 - **CI-visible drift detection** — silent divergence between Lane 1 and Lane 2 rows is unacceptable (ratchet shape varies by mechanism below).
 - **DB-3 / DB-20 posture** for future harness code: assert typed outcomes (`Pass` / `Fail` / `NotYetImplemented(_)`) without brittle substring coupling on diagnostics.
 
@@ -26,11 +48,11 @@
 2. **Per-program bindings** expose the **same** string the compiler uses for `compile_to_dag(source, file_name)` — today `TestClaim` carries `source: String` and `file_name: String` directly ([`src/v3/std/verification.dag`](../../src/v3/std/verification.dag)); there is **no** separate `ProgramSource { source, file_name }` nominal on substrate **at HEAD**.
 
 3. **Concrete binding pattern (research target):**
-   - **Preferred structural approach:** `data r3_cert_add_then_branch_source: String = "<escaped program text>"`  
-     plus `data r3_cert_add_then_branch_file: String = "add_then_branch_seed.v3"` (or `FilePath`-typed equivalent if already modeled), **or** a single imported binding pair validated by a trivial structural predicate — exact lowering must match compiler rules for multiline string bodies.
-   - Lane 1 fixture (`r3_verification_l4_emit_eval_match.dag` family) and Lane 2 fixture (`r3_verification_l5_corpus.dag` family) each **`import std.r3_certification_corpus { … }`** and construct their **`TestClaim`** rows referencing those bindings for **`source`** / **`file_name`** fields.
+   - **Pair discipline (mandatory):** One authoring step / one generator emission defines **both** `source` and `file_name`. **Do not** maintain two independently hand-edited `data …: String` declarations for the same row without a freshness ratchet — that is a **parallel-authority** footgun (violates [INVARIANTS §P2](../INVARIANTS.md#p2-boundary-discipline) intent).
+   - **Acceptable at HEAD:** (i) generated `.dag` fragment that sets both `TestClaim` fields from a **single** template input; (ii) compiler-supported structural literal that supplies both strings **atomically** in one declaration; (iii) interim **paired** imports only if CI ratchet below proves **both** fields stay byte-identical across lanes on every change.
+   - Lane 1 fixture (`r3_verification_l4_emit_eval_match.dag` family) and Lane 2 fixture (`r3_verification_l5_corpus.dag` family) each consume the **same projected pair** for a given corpus key.
 
-4. **If imports cannot splice into `TestClaim` fields** at lowering time (tooling gap), do **not** fork strings by hand — fall through to mechanism **(b)** or file **INVARIANTS §P1** for a minimal **`CertifiedProgramText`** record type reused by both lanes.
+4. **If imports cannot splice into `TestClaim` fields** at lowering time (tooling gap), do **not** fork strings by hand — fall through to mechanism **(b)** or file **INVARIANTS §P1** for a minimal **`CertifiedProgramText`** record type reused by both lanes (single carrier → dual projection at lowering).
 
 ### CI ratchet (byte-level)
 
@@ -49,7 +71,7 @@
 
 2. **Deterministic generator** (acceptable homes: `xtask/` command or **`build.rs`** scoped to `v3-compiler` tests — choose by repo policy; generator must be **deterministic**, **side-effect free**, stable ordering).
 
-3. **Outputs:** generated fragments **checked into git** that materialize Lane 1 `TestClaim.source` / Lane 2 `TestClaim.source` (and metadata) — either **two generated `.dag` patches** merged into respective fixtures or **one generated module** consumed by import.
+3. **Outputs:** generated fragments **checked into git** that materialize, **in one transaction per row**, Lane 1 `TestClaim.source` **and** `file_name` plus Lane 2 `TestClaim.source` **and** `file_name` — both lanes’ pairs derived from the **same** generator inputs (never regenerate only one field for one lane).
 
 ### CI ratchet
 
