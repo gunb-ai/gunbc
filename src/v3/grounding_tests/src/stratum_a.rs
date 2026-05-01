@@ -338,6 +338,49 @@ fn row_record<'a>(
     Ok(fields.as_slice())
 }
 
+/// Label-set outcome for a closed record row (duplicate labels vs allowed set mismatch vs OK).
+#[derive(Debug, PartialEq, Eq)]
+enum ClosedRecordLabelsOutcome {
+    Ok,
+    Duplicate {
+        label: String,
+    },
+    Mismatch {
+        missing: Vec<String>,
+        extra: Vec<String>,
+    },
+}
+
+/// Single source of truth for closed-record label discipline (see `enforce_closed_record_schema`).
+fn analyze_closed_record_labels(
+    fields: &[(String, FieldValue)],
+    allowed: &[&str],
+) -> ClosedRecordLabelsOutcome {
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (label, _) in fields {
+        if !seen.insert(label.as_str()) {
+            return ClosedRecordLabelsOutcome::Duplicate {
+                label: label.clone(),
+            };
+        }
+    }
+    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+    if seen == expected {
+        return ClosedRecordLabelsOutcome::Ok;
+    }
+    let missing: Vec<String> = expected
+        .difference(&seen)
+        .copied()
+        .map(str::to_string)
+        .collect();
+    let extra: Vec<String> = seen
+        .difference(&expected)
+        .copied()
+        .map(str::to_string)
+        .collect();
+    ClosedRecordLabelsOutcome::Mismatch { missing, extra }
+}
+
 /// Fail-closed record shape: no duplicate labels, no unknown fields — every substrate key in
 /// `allowed` appears exactly once (order-independent).
 fn enforce_closed_record_schema(
@@ -347,30 +390,27 @@ fn enforce_closed_record_schema(
     record_kind: &'static str,
     allowed: &[&str],
 ) -> Result<(), GroundingTestsDiagnostic> {
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
-    for (label, _) in fields {
-        if !seen.insert(label.as_str()) {
-            return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+    match analyze_closed_record_labels(fields, allowed) {
+        ClosedRecordLabelsOutcome::Ok => Ok(()),
+        ClosedRecordLabelsOutcome::Duplicate { label } => {
+            Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
                 list_name: list_name.to_string(),
                 row_index,
                 detail: format!("{record_kind}: duplicate field `{label}`"),
-            });
+            })
+        }
+        ClosedRecordLabelsOutcome::Mismatch { missing, extra } => {
+            let expected: BTreeSet<&str> = allowed.iter().copied().collect();
+            Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                list_name: list_name.to_string(),
+                row_index,
+                detail: format!(
+                    "{record_kind}: field set mismatch — missing {missing:?}, extra {extra:?} (expected exactly {:?})",
+                    expected.iter().collect::<Vec<_>>()
+                ),
+            })
         }
     }
-    let expected: BTreeSet<&str> = allowed.iter().copied().collect();
-    if seen != expected {
-        let missing: Vec<&str> = expected.difference(&seen).copied().collect();
-        let extra: Vec<&str> = seen.difference(&expected).copied().collect();
-        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-            list_name: list_name.to_string(),
-            row_index,
-            detail: format!(
-                "{record_kind}: field set mismatch — missing {missing:?}, extra {extra:?} (expected exactly {:?})",
-                expected.iter().collect::<Vec<_>>()
-            ),
-        });
-    }
-    Ok(())
 }
 
 fn row_field<'a>(
@@ -597,6 +637,16 @@ mod stratum_a_tests {
 
     use super::*;
 
+    fn method_template_contract_row_fields_with_extra_surprise() -> Vec<(String, FieldValue)> {
+        let dummy = FieldValue::Literal(LiteralBits::Bool(false));
+        let mut fields: Vec<(String, FieldValue)> = METHOD_TEMPLATE_CONTRACT_FIELDS
+            .iter()
+            .map(|&label| (label.to_string(), dummy.clone()))
+            .collect();
+        fields.push(("surprise".to_string(), dummy));
+        fields
+    }
+
     #[test]
     fn determinism_forward_vs_reverse_row_walk_before_btree_keying() {
         let dag = generated_full_bootstrap_dag();
@@ -629,6 +679,130 @@ mod stratum_a_tests {
                     if *step == "assert_expected_row_count.unknown_list"
             ),
             "unexpected diagnostic: {err}"
+        );
+    }
+
+    #[test]
+    fn enforce_closed_record_schema_rejects_duplicate_method_ref_field() {
+        let fields = vec![
+            (
+                "decl".to_string(),
+                FieldValue::Literal(LiteralBits::Bool(false)),
+            ),
+            (
+                "decl".to_string(),
+                FieldValue::Literal(LiteralBits::Bool(true)),
+            ),
+        ];
+        assert_eq!(
+            analyze_closed_record_labels(&fields, METHOD_REF_FIELDS),
+            ClosedRecordLabelsOutcome::Duplicate {
+                label: "decl".to_string(),
+            }
+        );
+        let err =
+            enforce_closed_record_schema(&fields, RUST_LIST, 0, "MethodRef", METHOD_REF_FIELDS)
+                .expect_err("duplicate decl");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name,
+                    row_index,
+                    ..
+                } if list_name == RUST_LIST && *row_index == 0
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn analyze_closed_record_labels_flags_extra_surprise_with_empty_missing() {
+        let fields = method_template_contract_row_fields_with_extra_surprise();
+        assert_eq!(
+            analyze_closed_record_labels(&fields, METHOD_TEMPLATE_CONTRACT_FIELDS),
+            ClosedRecordLabelsOutcome::Mismatch {
+                missing: vec![],
+                extra: vec!["surprise".to_string()],
+            }
+        );
+    }
+
+    #[test]
+    fn enforce_closed_record_schema_rejects_extra_method_template_contract_field() {
+        let fields = method_template_contract_row_fields_with_extra_surprise();
+        let err = enforce_closed_record_schema(
+            &fields,
+            RUST_LIST,
+            0,
+            "MethodTemplateContract",
+            METHOD_TEMPLATE_CONTRACT_FIELDS,
+        )
+        .expect_err("extra field");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed { .. }
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn placeholder_convention_canonical_rejects_payload_for_nullary_indexed_args() {
+        let dag = generated_full_bootstrap_dag();
+        let root = dag
+            .declaration_by_name("PlaceholderConvention")
+            .expect("PlaceholderConvention");
+        let TypeConnective::Disj { variants } = &root.connective else {
+            panic!("expected Disj, got {:?}", root.connective);
+        };
+        let indexed = variants
+            .iter()
+            .find(|v| v.label == "IndexedArgs")
+            .expect("IndexedArgs variant");
+        let ph = FieldValue::Variant {
+            constructor: indexed.ty,
+            payload: vec![FieldValue::Literal(LiteralBits::Bool(false))],
+        };
+        let err = placeholder_convention_canonical(&dag, &ph).expect_err("non-empty payload");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumADagProjectionFailed { step, .. }
+                    if *step == "placeholder_convention_canonical.arity"
+            ),
+            "unexpected diagnostic: {err:?}"
+        );
+    }
+
+    #[test]
+    fn method_registry_name_rejects_non_method_declaration_instantiation() {
+        let dag = generated_full_bootstrap_dag();
+        let decl = dag.declaration_by_name("Int").expect("Int");
+        let method_decl_template =
+            method_declaration_template_id(&dag).expect("MethodDeclaration template");
+        let int_is_not_method_declaration_instantiation = match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => *template != method_decl_template,
+            _ => true,
+        };
+        assert!(
+            int_is_not_method_declaration_instantiation,
+            "regression witness: Int must not instantiate MethodDeclaration; connective={:?}",
+            decl.connective
+        );
+        let err = method_registry_name(&dag, decl.id, RUST_LIST, 0)
+            .expect_err("Int is not MethodDeclaration");
+        assert!(
+            matches!(
+                &err,
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name,
+                    row_index,
+                    ..
+                } if list_name == RUST_LIST && *row_index == 0
+            ),
+            "unexpected diagnostic: {err:?}"
         );
     }
 

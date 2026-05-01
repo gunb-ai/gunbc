@@ -2185,6 +2185,79 @@ fn map_body_duplicate_keys_fail_closed() {
 }
 
 #[test]
+fn record_body_duplicate_fields_fail_closed() {
+    let dag = semantic_dag_for(
+        "type Pair { a: Int, b: Int }\n\
+         data duplicate_fields: Pair = { a: 1, a: 2, b: 3 }\n",
+        "record_duplicate_fields.v3",
+    );
+    let decl = dag
+        .declaration_by_name("duplicate_fields")
+        .expect("duplicate_fields declaration should be allocated before lowering fails");
+
+    assert!(
+        has_resolve_error(&dag),
+        "expected duplicate-field lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Structural { .. })),
+        "duplicate-field record must not construct ValueBody::Structural, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
+fn nested_record_body_duplicate_fields_fail_closed() {
+    let dag = semantic_dag_for(
+        "type Inner { a: Int, b: Int }\n\
+         type Outer { inner: Inner, tag: Int }\n\
+         data duplicate_nested_fields: Outer = { inner: { a: 1, a: 2, b: 3 }, tag: 0 }\n",
+        "nested_record_duplicate_fields.v3",
+    );
+    let decl = dag
+        .declaration_by_name("duplicate_nested_fields")
+        .expect("duplicate_nested_fields declaration should be allocated before lowering fails");
+
+    assert!(
+        has_resolve_error(&dag),
+        "expected nested duplicate-field lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Structural { .. })),
+        "duplicate nested record must not construct ValueBody::Structural, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
+fn data_body_named_variant_duplicate_payload_fields_fail_closed() {
+    let dag = semantic_dag_for(
+        "type Status = Ready { code: Int, retry: Bool } | Blocked\n\
+         type Job { status: Status }\n\
+         data duplicate_variant_payload_fields: Job = { status: Ready { code: 1, code: 2, retry: false } }\n",
+        "data_body_named_variant_duplicate_payload_fields.v3",
+    );
+    let decl = dag
+        .declaration_by_name("duplicate_variant_payload_fields")
+        .expect(
+        "duplicate_variant_payload_fields declaration should be allocated before lowering fails",
+    );
+
+    assert!(
+        has_resolve_error(&dag),
+        "expected named-variant duplicate payload field lowering to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+    assert!(
+        !matches!(decl.value_body, Some(ValueBody::Structural { .. })),
+        "duplicate named-variant payload must not construct ValueBody::Structural, got {:?}",
+        decl.value_body
+    );
+}
+
+#[test]
 fn map_body_on_non_map_type_fails_closed() {
     let dag = semantic_dag_for(
         "data not_a_map: Bool = {\n  \"x\": true\n}\n",
