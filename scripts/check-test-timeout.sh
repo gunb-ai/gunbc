@@ -188,7 +188,7 @@ warned=""
 if [ -n "$violations" ]; then
   while IFS=$'\t' read -r name elapsed_ms; do
     if [ -z "$name" ]; then continue; fi
-    if [ -n "$exempt_set" ] && echo "$exempt_set" | grep -Fxq "$name"; then
+    if [ -n "$exempt_set" ] && grep -Fxq "$name" <<< "$exempt_set"; then
       warned+=$(printf '%s\t%s\n' "$name" "$elapsed_ms")
       warned+=$'\n'
     else
