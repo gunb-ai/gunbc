@@ -30,7 +30,7 @@ Per design-doc §7.2: "The precise predicate shape is deferred to the worker aut
 
 | Mechanism | Why locked / deferred |
 |---|---|
-| (1) **Canonicalize-then-diff** *(LOCKED here)* | Maps cleanly to the existing `ExecuteCommand("bash", ["-c", …], 0)` host-receipt pattern (precedent at `src/v3/compiler/tests/fixtures/r1_gates.dag:98,106` for `r1_p0_no_fabrication_sentinel` + `r1_p0_rest_ops_aligned`). Tolerates `// AUTO-GENERATED` header drift + whitespace formatting differences inevitable between hand-Rust and `.dag`-emitted Rust per design-doc §7.2 framing. |
+| (1) **Canonicalize-then-diff** *(LOCKED here)* | Maps cleanly to the existing `ExecuteCommand("bash", ["-c", …], 0)` host-receipt pattern (precedent at `src/v3/compiler/tests/fixtures/r1_gates.dag:94-108` for `p0_no_fabrication_sentinel` + `p0_rest_ops_aligned`). Tolerates `// AUTO-GENERATED` header drift + whitespace formatting differences inevitable between hand-Rust and `.dag`-emitted Rust per design-doc §7.2 framing. |
 | (2) AST-equivalence via `syn` | Strictest; would also map to `ExecuteCommand` calling a `syn`-based comparator binary, but adds a Rust-side dependency surface this PR doesn't need to commit to now. Available as a follow-up tighten under a Substrate Manager §P1 disposition if mechanism (1)'s tolerance is too loose. |
 | (3) Behavioral run-and-compare | Captures the actual contract (exit codes / stdout / filesystem effects) but requires holding two binaries simultaneously during cutover. Mechanism (1) is sufficient for §7.2's structural intent ("emitted Rust is *behaviorally* equivalent to hand-Rust shim — not byte-identical"); behavioral runs add operational surface that's out of §7.2's stated scope. |
 
@@ -124,6 +124,6 @@ The §7.2 claim shape locked in this PR is the artifact step (6) consumes. It wi
 - Consumer audit (per-handoff atomic deltas): [`docs/briefs/r3-pb-regen-lens-consumer-audit.md`](r3-pb-regen-lens-consumer-audit.md).
 - PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md).
 - `ExecuteCommand` host-receipt fixture precedent (the live shape this lane mirrors): `src/v3/compiler/tests/fixtures/r1_gates.dag:95-109` (`p0_no_fabrication_sentinel` + `p0_rest_ops_aligned`).
-- Live `TestPredicate` variants: `src/v3/std/verification.dag` (TestClaim/TestSuite at lines 4-32; predicate variants at lines 108-280).
+- Live `TestPredicate` variants and `TestClaim` / `TestSuite` carriers: `src/v3/std/verification.dag` (origin/main HEAD at audit time: `type TestPredicate` at `:109`, `ExecuteCommand` at `:148-152`, `type TestClaim` at `:299`, `type TestSuite` at `:307` — line numbers drift; grep for the type/variant name to re-anchor).
 - Live `BinShim` carrier: `src/v3/std/bin_shim.dag:19`.
 - Live `ExecuteCommand` variant: `src/v3/std/verification.dag:148-152`.
