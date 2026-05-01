@@ -82,16 +82,23 @@ data openai_provider_wire: ProviderTypedWire<OpenAi> = { provider_identity: Open
 
 ## Acceptance gates (`.dag`)
 
-Four gates compose the lane closure:
+Four gates compose the lane closure. Each gate names its concrete observable subject + the substrate variant that observes it (or surfaces a substrate gap if no existing variant fits — codex BLOCKING on PR #1331 sha `aca422d2` line 65 caught the prior brief draft hand-waving "compose via existing `BehavioralObservation`" without naming subjects).
 
-| Gate | Acceptance |
-|---|---|
-| `provider_extdeps_relocated_under_providers_dir` | `dsl/extdeps/providers/openai/wire.dag` + `dsl/extdeps/providers/anthropic/wire.dag` exist with content equivalent to (or an evolution of) the prior `dsl/extdeps/llm/{openai,anthropic}.dag`; old paths deleted (or carry `// moved to ...` redirect with explicit deletion-deadline metadata, per §"Migration discipline" anti-pattern 1 stop) |
-| `anthropic_schema_v3_mirror_dissolved` | `src/v3/std/anthropic_schema.dag` deleted; `BOOTSTRAP_FIXTURE_PATH_KEYS` reads canonical extdeps directly via T-Ground-Services parser; `anthropic_schema_lockstep_test` retired or transformed; SG-0 census reflects the deletion. Satisfies the existing `anthropic_wire_typed_serde_alignment` gate per [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire" via the canonical service block as authority. |
-| `provider_typed_wire_alias_optional` | EITHER (a) `ProviderTypedWire<P>` thin alias declared in `src/v3/std/provider_typed_wire.dag` wrapping `Service<P>` (T-Ground-Services owned) — IF cross-provider lens-instance authoring needs a parametric handle, OR (b) explicit Director-decided "no alias needed at this time" with consumer-demand trigger noted for future revisit. **Not both** — alias OR documented-no-alias, both rejected if facts get re-encoded. |
-| `provider_wire_no_fact_re_encoding` | No carrier in `src/v3/std/` re-encodes per-operation facts (output projection paths, transport body bindings, headers, mock responses, response status mapping, rate-limit/retry config) — these live in the parsed `Service<P>` from the canonical extdeps. The only carriers post-this-lane are: `Service<P>` (T-Ground-Services), `ProviderTypedWire<P>` (optional thin alias). |
+| Gate | Acceptance shape | Observable via |
+|---|---|---|
+| `provider_extdeps_relocated_under_providers_dir` | `dsl/extdeps/providers/openai/wire.dag` + `dsl/extdeps/providers/anthropic/wire.dag` exist; `dsl/extdeps/llm/{openai,anthropic}.dag` deleted (or carry redirect-with-deadline) | **Substrate gap** — no existing `TestPredicate` variant structurally observes filesystem path existence/absence. **Path (a)**: new variant `BootstrapFixturePathPresent { path: FilePath, must_exist: Bool }` or similar (Substrate Mgr territory). **Path (b)**: `ExecuteCommand { command: "test", args: ["-f"/"-e", path], expect_exit_code: 0 }` fallback (loses structural precision; subprocess-shaped) |
+| `anthropic_schema_v3_mirror_dissolved` | `src/v3/std/anthropic_schema.dag` deleted; `BOOTSTRAP_FIXTURE_PATH_KEYS` reads canonical extdeps via T-Ground-Services parser; `anthropic_schema_lockstep_test` retired or transformed; SG-0 census reflects the deletion. Satisfies the existing `anthropic_wire_typed_serde_alignment` gate per [`docs/r3-structure.md`](../r3-structure.md) §"T-Anthropic-Wire" via the canonical service block as authority. | **Substrate gap (same as gate 1)** for the file-deletion check; for the BOOTSTRAP_FIXTURE_PATH_KEYS membership, a `Compiles` predicate on a fixture importing the canonical extdeps suffices (existing `TestPredicate::Compiles` covers it). For the lockstep-test retirement, SG-0 census counts already track Rust-test deletion structurally. |
+| `provider_typed_wire_alias_optional` | EITHER (a) `ProviderTypedWire<P>` thin alias declared in `src/v3/std/provider_typed_wire.dag` wrapping `Service<P>` — IF cross-provider lens-instance authoring needs a parametric handle, OR (b) explicit Director-decided "no alias needed at this time" with consumer-demand trigger noted for future revisit. **Not both** — alias OR documented-no-alias, both rejected if facts get re-encoded. | If alias declared: `TestPredicate::Compiles` on a fixture that imports + applies the alias as type witness (covered by existing variant). If alias deferred: meta-fact recorded in lane closure ledger as PR-level checklist (not a `.dag` `TestClaim` — it's a recorded design decision, not a structural property). |
+| `provider_wire_no_fact_re_encoding` | No carrier in `src/v3/std/` re-encodes per-operation facts (output projection paths, transport body bindings, headers, mock responses, response status mapping, rate-limit/retry config) — these live in the parsed `Service<P>` from the canonical extdeps. The only carriers post-this-lane are: `Service<P>` (T-Ground-Services), `ProviderTypedWire<P>` (optional thin alias). | **Substrate gap** — no existing `TestPredicate` variant structurally observes "no declaration of kind X exists in directory Y." **Path (a)**: new variant `NoDeclarationMatching { kind: DeclarationKind, in_directory: Path, except: List<DeclarationName> }` (Substrate Mgr territory; structurally walks declarations in scope). **Path (b)**: `ExecuteCommand { command: "tier3_no_re_encoding_check", ..., expect_exit_code: 0 }` fallback. **Path (c)**: this gate is PR-review checklist, not a structural lens — reviewer-enforced rather than gate-fired. Director-decision at brief-finalization. |
 
-**Composition.** The lane closes when `Conj` over all four gates fires. Per `feedback_compiler_is_dag_processor`: no new substrate variant; structural composition over existing `BehavioralObservation`-shaped TestPredicates. Per `feedback_projections_must_compose_facts`: no fact authored at extdeps is dropped — all preservation is via T-Ground-Services parsing the canonical authority.
+**Composition.** The lane closes when the gates fire — composition shape depends on which substrate paths land. Per `feedback_projections_must_compose_facts`: no fact authored at extdeps is dropped; all preservation is via T-Ground-Services parsing the canonical authority.
+
+**Substrate-gap summary (Substrate Mgr decision at brief-finalization):**
+- Path-existence/absence variant for gates 1 + 2 (subset of `feedback_no_textual_enforcement_bridges` — file-presence is a typed substrate fact, not a grep operation)
+- Structural-absence variant for gate 4 (or accept gate 4 as PR-review checklist with explicit decision)
+- Gate 3 already covered by existing `TestPredicate::Compiles` if alias declared; meta-fact recorded otherwise
+
+This brief assumes path (a) for gates 1, 2, 4 (substrate-Mgr-authored variants) at finalization — same shape as C1's `PerfWithinBaseline` substrate gap. STOP+PING per §"STOP conditions" if Substrate Mgr declines.
 
 ## Migration discipline — no parallel-authority window
 
@@ -135,17 +142,18 @@ Worker dispatches when:
 - T-Ground-Services parser-grammar slice has merged on `main` and v3 parses `service { operation { transport rest { ... } } }` blocks natively (verified by a sample `.dag` test importing `dsl/extdeps/llm/anthropic.dag` and reading the parsed `Service<Anthropic>` reach).
 - R2-Evaluator readiness signal received from Evaluator Manager (or PR-B/C/D/E cadence has converged sufficiently).
 - OpenAI #1028 has landed and stabilized on `main`.
-- Substrate Mgr has finalized the design call: optional `ProviderTypedWire<P>` alias needed or not? (Defaults to "no alias unless lens-consumer demand exists.")
+- Substrate Mgr has finalized two design calls: (i) optional `ProviderTypedWire<P>` alias needed or not? (defaults to "no alias unless lens-consumer demand exists"); (ii) substrate-gap resolution per gate table — author new path-existence + structural-absence `TestPredicate` variants (path a) OR fall back to `ExecuteCommand` (path b) OR accept gate 4 as PR-review checklist (path c). Per-gate decision recorded in lane closure ledger.
 
 ## STOP conditions
 
 Worker STOPs and PINGs (canonical output: docs-only audit PR, per `feedback_worker_stall_diagnosis` substrate-gap-stall pattern) if:
 
 1. **T-Ground-Services has not landed.** This lane has no work it can do without the parser-grammar slice. STOP and route signal to R3 Grounding Mgr — coordination, not in-lane work.
-2. **Service-block grammar diverges between OpenAI + Anthropic** beyond what `Service<P>` can express. Surfacing this IS the right output. Escalate to T-Ground-Services + Director: divergence may indicate the service-block grammar needs additional axes, OR the providers are genuinely terminal in their divergence.
-3. **Optional alias scope creeps into fact reification.** If during dispatch the worker realizes the alias is being asked to encode facts the parsed `Service<P>` already carries, STOP and re-read this brief's §"Migration discipline" — that's the prior-brief mistake the codex BLOCKING review flagged. The alias is a thin wrapper, not a parallel encoding.
-4. **Relocation breaks v2 parser tests in the same wave.** If v2 still reads from `dsl/extdeps/llm/...` paths during the dissolution window, the relocation can't simply delete old paths. Either (a) v2 retirement is concurrent (T-V2-Retirement sibling lane), OR (b) old paths get a `// moved to ...` redirect with a documented 1-week deletion deadline (single-PR transition; not "kept as legacy").
-3. **OpenAI refactor breaks the existing `canonical_lens_bridge_ratchet_test`** (or sibling). Migration must keep ratchet green; if it can't, surface to Substrate Mgr — likely carrier shape needs adjustment.
+2. **Substrate-gap variants for gates 1, 2, 4 not authored** by Substrate Mgr (path a) AND no Director sign-off on path-(b) `ExecuteCommand` fallback or path-(c) PR-checklist downshift. Phase 2 has nothing structural to fire on. STOP and escalate.
+3. **Service-block grammar diverges between OpenAI + Anthropic** beyond what `Service<P>` can express. Surfacing this IS the right output. Escalate to T-Ground-Services + Director: divergence may indicate the service-block grammar needs additional axes, OR the providers are genuinely terminal in their divergence.
+4. **Optional alias scope creeps into fact reification.** If during dispatch the worker realizes the alias is being asked to encode facts the parsed `Service<P>` already carries, STOP and re-read this brief's §"Migration discipline" — that's the prior-brief mistake the codex BLOCKING review flagged. The alias is a thin wrapper, not a parallel encoding.
+5. **Relocation breaks v2 parser tests in the same wave.** If v2 still reads from `dsl/extdeps/llm/...` paths during the dissolution window, the relocation can't simply delete old paths. Either (a) v2 retirement is concurrent (T-V2-Retirement sibling lane), OR (b) old paths get a `// moved to ...` redirect with a documented 1-week deletion deadline (single-PR transition; not "kept as legacy").
+6. **OpenAI refactor breaks the existing `canonical_lens_bridge_ratchet_test`** (or sibling). Migration must keep ratchet green; if it can't, surface to Substrate Mgr — likely carrier shape needs adjustment.
 
 ## Discipline
 
