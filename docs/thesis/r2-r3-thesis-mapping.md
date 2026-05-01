@@ -107,12 +107,16 @@ Per THESIS §"Free consequences (fall out when Tiers 1-2 close)":
 
 | Claim | Disposition | Lane / gate | Evidence | Status |
 |---|---|---|---|---|
-| **Automatic parallelism from dependency graph** | post-R3 ecosystem | not gated on a release; emerges when Tier 1 + Tier 2 fully close | implicit in substrate; no demo lane | 🟡 implicit |
-| **Automatic memoization from purity + cost** | post-R3 ecosystem | same | same | 🟡 implicit |
+| **Automatic parallelism from dependency graph** | R3 | T-Free-Consequences-Demonstration / `auto_parallelism_*` + `auto_loop_parallelism_*` gates | `docs/design-free-consequences.md` + 6 parallelism TestClaims; `Lens<Bind-Independence>` / `Lens<Iteration-Independence>` + `Lens<Effect-Commutativity>` + `Lens<Cost>` | 🟡 R3 |
+| **Automatic memoization from purity + cost** | R3 | T-Free-Consequences-Demonstration / `auto_memoization_*` gates | `docs/design-free-consequences.md` + 2 memoization TestClaims; `Lens<Purity>` + `Lens<Cost>` | 🟡 R3 |
 | **Space bound proofs from CX** | R1 | T-LaneE complexity-lens gates | E-family carrier port | 🟡 R1 closure |
-| **Cross-language optimization from shared cost algebra** | post-R3 ecosystem | falls out when R3 closes; not a release gate | implicit | 🟡 implicit |
+| **Cross-language optimization from shared cost algebra** | R3 | T-Free-Consequences-Demonstration / `cross_target_optimization_*` gates | `docs/design-free-consequences.md` + 2 cross-target optimization TestClaims; `Lens<Cost>` + `LanguageSpec` | 🟡 R3 |
 
-**Note on "free consequences":** these are *consequences*, not gates. The thesis claim is that they fall out *because* Tier 1 + Tier 2 close — they're not separately deliverable. R3's L4-L7 verification harness is the structural test that they actually do fall out (not just claimed-to).
+**Note on "free consequences":** these are *consequences*, but the 2026-04-30
+R3 expansion operationalizes three of them as Lane 3 demonstration deliverables:
+`docs/design-free-consequences.md` plus the 10-gate TestClaim suite named in
+`docs/r3-structure.md`. Space-bound CX remains assigned to R1/T-LaneE authority
+and is referenced, not re-derived, by Lane 3.
 
 ## Disposition table — Omni-emission
 
