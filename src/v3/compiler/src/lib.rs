@@ -34,6 +34,7 @@ pub mod generated_files {
 
 pub mod emit;
 pub mod emit_rust;
+pub mod self_host_receipt_p0;
 pub mod evaluator {
     //! E2 evaluator frame helpers.
     //!
@@ -52,8 +53,8 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        Behavior, BranchNode, BranchPattern, Dag, DeclarationId, LiteralBits, LoopBound, NodeId,
-        Path, PortId,
+        ArithmeticOp, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag, DeclarationId,
+        LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode, TransformTarget,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -98,6 +99,7 @@ pub mod evaluator {
         LeftFirst,
     }
 
+<<<<<<< HEAD
     /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
     /// the body evaluator: missing-substrate cases (`MissingNode`,
     /// `UnboundPort`), behavior-not-yet-implemented stubs for arms still
@@ -106,6 +108,11 @@ pub mod evaluator {
     /// discipline propagation (`FrameError`). Adding a new variant is a
     /// STOP+PING per the E0 brief — either route the underlying gap
     /// through P1 or extend PR-B.1's fail-closed catalog first.
+=======
+    /// **Dissolution receipt: TERMINAL.** These are the E1/E2 body-evaluator miss
+    /// modes until later PR-E slices implement the remaining behavior arms, plus
+    /// E3 transform operand / arity diagnostics.
+>>>>>>> origin/main
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalError {
         MissingNode {
@@ -118,6 +125,7 @@ pub mod evaluator {
             node: NodeId,
             behavior: &'static str,
         },
+<<<<<<< HEAD
         /// E4 fail-closed: a `BranchPath.pattern` is still
         /// `UnresolvedVariant` at evaluation time. Resolution must lower
         /// `UnresolvedVariant` to `ResolvedVariant(DeclarationId)` before
@@ -152,6 +160,18 @@ pub mod evaluator {
         fn from(err: EvalFrameError) -> Self {
             EvalError::FrameError(err)
         }
+=======
+        TransformArityMismatch {
+            expected: usize,
+            got: usize,
+        },
+        UnsupportedTransformTarget {
+            kind: &'static str,
+        },
+        BadTransformOperands {
+            reason: &'static str,
+        },
+>>>>>>> origin/main
     }
 
     pub fn eval_value(value: &crate::dag::ValueNode) -> Value {
@@ -189,7 +209,11 @@ pub mod evaluator {
         }
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
+<<<<<<< HEAD
             Behavior::Branch(branch) => eval_branch(dag, branch.clone(), state, strategy),
+=======
+            Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
+>>>>>>> origin/main
             behavior => Err(EvalError::UnsupportedBehavior {
                 node: behavior.id(),
                 behavior: behavior_label(behavior),
@@ -197,6 +221,7 @@ pub mod evaluator {
         }
     }
 
+<<<<<<< HEAD
     /// PR-E E4: evaluate a `Branch` node per PR-B.1 §B.1.3 — eager
     /// scrutinee evaluation, exact `ResolvedVariant` tag match,
     /// payload binding in a fresh frame, body evaluation through
@@ -289,6 +314,126 @@ pub mod evaluator {
             let _ = eval_node(dag, path.body, state, strategy)?;
         }
         eval_port(dag, path.output, state, strategy)
+=======
+    fn eval_transform_node(
+        dag: &Dag,
+        t: &TransformNode,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        let mut operands = Vec::with_capacity(t.inputs.len());
+        for port in &t.inputs {
+            operands.push(eval_port(dag, *port, state, strategy)?);
+        }
+        match &t.target {
+            TransformTarget::Operator(OperatorKind::Arithmetic(op)) => {
+                if operands.len() != 2 {
+                    return Err(EvalError::TransformArityMismatch {
+                        expected: 2,
+                        got: operands.len(),
+                    });
+                }
+                let a = expect_int_literal(&operands[0])?;
+                let b = expect_int_literal(&operands[1])?;
+                // `Div` is totalized as `Result<T, DivError>` on the transform port in inference.
+                // The host `Value` carrier has no std `Result` projection yet — fail closed here
+                // instead of routing `/` through the same `i64` success path as `+`/`-`/`*`.
+                if matches!(op, ArithmeticOp::Div) {
+                    return Err(EvalError::UnsupportedTransformTarget {
+                        kind: "ArithmeticDiv",
+                    });
+                }
+                let n = apply_arithmetic_int_ring_only(*op, a, b)?;
+                Ok(Value::LiteralValue(LiteralBits::Int(n)))
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(op)) => {
+                if operands.len() != 2 {
+                    return Err(EvalError::TransformArityMismatch {
+                        expected: 2,
+                        got: operands.len(),
+                    });
+                }
+                let out = match (&operands[0], &operands[1]) {
+                    (
+                        Value::LiteralValue(LiteralBits::Int(a)),
+                        Value::LiteralValue(LiteralBits::Int(b)),
+                    ) => match op {
+                        ComparisonOp::Eq => a == b,
+                        ComparisonOp::Ne => a != b,
+                        ComparisonOp::Lt => a < b,
+                        ComparisonOp::Le => a <= b,
+                        ComparisonOp::Gt => a > b,
+                        ComparisonOp::Ge => a >= b,
+                    },
+                    (
+                        Value::LiteralValue(LiteralBits::Bool(a)),
+                        Value::LiteralValue(LiteralBits::Bool(b)),
+                    ) => match op {
+                        ComparisonOp::Eq => a == b,
+                        ComparisonOp::Ne => a != b,
+                        ComparisonOp::Lt => a < b,
+                        ComparisonOp::Le => a <= b,
+                        ComparisonOp::Gt => a > b,
+                        ComparisonOp::Ge => a >= b,
+                    },
+                    (
+                        Value::LiteralValue(LiteralBits::String(a)),
+                        Value::LiteralValue(LiteralBits::String(b)),
+                    ) => match op {
+                        ComparisonOp::Eq => a == b,
+                        ComparisonOp::Ne => a != b,
+                        _ => {
+                            return Err(EvalError::BadTransformOperands {
+                                reason: "string comparison beyond Eq/Ne",
+                            });
+                        }
+                    },
+                    _ => {
+                        return Err(EvalError::BadTransformOperands {
+                            reason:
+                                "comparison operands must be Int literals, Bool literals, or String literals (Eq/Ne only for String)",
+                        });
+                    }
+                };
+                Ok(Value::LiteralValue(LiteralBits::Bool(out)))
+            }
+            TransformTarget::Operator(OperatorKind::Logical(_)) => {
+                Err(EvalError::UnsupportedTransformTarget { kind: "Logical" })
+            }
+            TransformTarget::FieldProject { .. } => Err(EvalError::UnsupportedTransformTarget {
+                kind: "FieldProject",
+            }),
+            TransformTarget::Callable(_) => {
+                Err(EvalError::UnsupportedTransformTarget { kind: "Callable" })
+            }
+        }
+    }
+
+    fn expect_int_literal(value: &Value) -> Result<i64, EvalError> {
+        match value {
+            Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+            _ => Err(EvalError::BadTransformOperands {
+                reason: "expected Int literal",
+            }),
+        }
+    }
+
+    /// Checked `Int` ring ops only (`Add` / `Sub` / `Mul`). `Div` is rejected
+    /// at the [`eval_transform_node`] call site so this helper never collapses
+    /// division through the same `i64` carrier as ring success values.
+    fn apply_arithmetic_int_ring_only(op: ArithmeticOp, a: i64, b: i64) -> Result<i64, EvalError> {
+        const OVERFLOW: EvalError = EvalError::BadTransformOperands {
+            reason: "integer overflow",
+        };
+        match op {
+            ArithmeticOp::Add => a.checked_add(b).ok_or(OVERFLOW),
+            ArithmeticOp::Sub => a.checked_sub(b).ok_or(OVERFLOW),
+            ArithmeticOp::Mul => a.checked_mul(b).ok_or(OVERFLOW),
+            ArithmeticOp::Div => Err(EvalError::UnsupportedTransformTarget {
+                kind: "ArithmeticDiv",
+            }),
+        }
+>>>>>>> origin/main
     }
 
     pub fn evaluate_body(
@@ -411,8 +556,13 @@ pub mod evaluator {
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
+<<<<<<< HEAD
             ArithmeticOp, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits, LoopBound,
             NodeId, Path, PayloadBinding, PortId, TransformTarget,
+=======
+            ArithmeticOp, Behavior, BranchPattern, ComparisonOp, Dag, LiteralBits, LogicalOp,
+            LoopBound, NodeId, OperatorKind, Path, PortId, TransformTarget,
+>>>>>>> origin/main
         };
         use crate::diagnostics::SourceSpan;
 
@@ -589,12 +739,12 @@ pub mod evaluator {
         }
 
         #[test]
-        fn transform_behavior_fails_closed() {
+        fn transform_arithmetic_add_evaluates() {
             let mut dag = Dag::new();
             let lhs = dag.push_value(LiteralBits::Int(1), span());
             let rhs = dag.push_value(LiteralBits::Int(2), span());
             let output = dag.push_transform(
-                TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![lhs, rhs],
                 span(),
             );
@@ -602,14 +752,48 @@ pub mod evaluator {
             let mut state = empty_state();
             let strategy = eager_strategy();
 
-            let err =
-                eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported transform");
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("transform evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(3)));
+        }
+
+        #[test]
+        fn transform_arithmetic_sub_evaluates() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(10), span());
+            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("sub");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        #[test]
+        fn transform_arithmetic_checked_overflow_fails_closed() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(i64::MAX), span());
+            let rhs = dag.push_value(LiteralBits::Int(1), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("overflow");
 
             assert_eq!(
                 err,
-                EvalError::UnsupportedBehavior {
-                    node: entry,
-                    behavior: "Transform"
+                EvalError::BadTransformOperands {
+                    reason: "integer overflow",
                 }
             );
         }
@@ -638,6 +822,7 @@ pub mod evaluator {
         // branch input port matches the path whose `ResolvedVariant.tag`
         // equals the runtime tag; the body's value is returned.
         #[test]
+<<<<<<< HEAD
         fn eval_branch_selects_resolved_variant_by_tag() {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
             let some_tag = declaration_id_by_name(&dag, "Bool");
@@ -649,6 +834,134 @@ pub mod evaluator {
             let some_arm_body = node_for_port(&dag, some_arm_output);
             let other_arm_output = dag.push_value(LiteralBits::Int(13), span());
             let other_arm_body = node_for_port(&dag, other_arm_output);
+=======
+        fn transform_arithmetic_div_unsupported_until_result_carrier_eval_lands() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(8), span());
+            let rhs = dag.push_value(LiteralBits::Int(2), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("div");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget {
+                    kind: "ArithmeticDiv",
+                }
+            );
+        }
+
+        #[test]
+        fn transform_comparison_int_evaluates() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(2), span());
+            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("cmp");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(true)));
+        }
+
+        #[test]
+        fn transform_comparison_bool_matches_rust_total_order() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Bool(false), span());
+            let rhs = dag.push_value(LiteralBits::Bool(true), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("bool lt");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(true)));
+        }
+
+        #[test]
+        fn transform_logical_operator_unsupported_in_e3_slice() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Bool(true), span());
+            let rhs = dag.push_value(LiteralBits::Bool(false), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("logical");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget { kind: "Logical" }
+            );
+        }
+
+        #[test]
+        fn transform_field_project_unsupported_in_e3_slice() {
+            let mut dag = Dag::new();
+            let v = dag.push_value(LiteralBits::Int(1), span());
+            let output = dag.push_transform(
+                TransformTarget::FieldProject {
+                    field_label: "x".to_string(),
+                    field_child: None,
+                },
+                vec![v],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("project");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget {
+                    kind: "FieldProject",
+                }
+            );
+        }
+
+        #[test]
+        fn transform_callable_unsupported_in_e3_slice() {
+            let mut dag = Dag::new();
+            let int_decl = dag.declaration_by_name("Int").expect("Int").id;
+            let output = dag.push_transform(TransformTarget::Callable(int_decl), vec![], span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("callable");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget { kind: "Callable" }
+            );
+        }
+
+        #[test]
+        fn branch_behavior_fails_closed() {
+            let mut dag = Dag::new();
+            let input = dag.push_value(LiteralBits::Bool(true), span());
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
+>>>>>>> origin/main
             let output = dag.push_branch(
                 scrutinee,
                 vec![
