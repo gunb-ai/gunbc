@@ -95,6 +95,37 @@ port-resolution authority. E4's scrutinee evaluation calls
   available in `dag.rs:3237` + the producer-follow logic at `:3061`.
 - Recursive `eval_node` for producer demand-eval — see (3) below.
 
+### 2a. Producer-bind invariant — every `Behavior` evaluator binds its `result_port`
+
+E0's port contract says `eval_port`'s producer-demand-eval branch
+calls `eval_node(producer)` and then re-does `frame_lookup(port)`,
+expecting the value to be bound. That requires **every per-`Behavior`
+evaluator to `frame_bind(node.result_port, value)` on success** —
+including `eval_value`. E0's `eval_value` signature was
+`fn eval_value(node: &ValueNode) -> Result<Value, EvalDiagnostic>`
+with no `stack` parameter, which would prevent the binding.
+
+E1's signature must be:
+```text
+fn eval_value(
+    node: &ValueNode,
+    stack: &mut EvalStateStack,
+) -> Result<Value, EvalDiagnostic>;
+```
+
+`eval_value` returns the `Value` AND calls
+`stack.bind_top(node.result_port, value.clone())?` before returning,
+so subsequent `eval_port` calls for `node.result_port` resolve via
+`frame_lookup` instead of re-triggering demand-eval. Same invariant
+for `eval_transform` (binds `t.output`), `eval_loop` (binds
+`l.result_port`), `eval_branch` (binds `b.result_port`), and
+`eval_bind` (already binds explicitly).
+
+This is "Facts Flow Forward" at the port boundary: a producer's
+output is durable in the frame stack after evaluation, not
+recomputed each time a downstream port reader looks it up. (E0's
+`eval_value` signature was a docs slip; E1 must fix it.)
+
 ### 3. `eval_node` dispatch shell
 
 E0 §"Internal dispatch entrypoint" specifies
