@@ -11,7 +11,8 @@ module v3.std.approximate_field
 
 import std.types { PositiveInt }
 
-// Rounding behavior is a program-visible fact. Keep it as a closed sum so
+// 🟢 TERMINAL at approximate-arithmetic policy scope. Rounding behavior is a
+// program-visible fact, and these modes are the durable closed policy axis;
 // target groundings cannot smuggle policy through strings or defaults.
 type RoundingMode
   = ToNearestEven
@@ -20,18 +21,31 @@ type RoundingMode
   | ToNegativeInfinity
   | ToAwayFromZero
 
-// Precision is structural, not a target-name tag like "f64". Binary precision
-// names significand and exponent width separately; total IEEE width alone is
-// too compressed for later grounding and equivalence policy.
+// 🟢 TERMINAL at precision-axis scope. Precision is structural, not a
+// target-name tag like "f64". Binary precision names significand and exponent
+// width separately; total IEEE width alone is too compressed for later
+// grounding and equivalence policy.
 type Precision
   = Unbounded
   | BinaryPrecision { significand_bits: PositiveInt, exponent_bits: PositiveInt }
   | DecimalPrecision { digits: PositiveInt, exponent_digits: PositiveInt }
 
-// NaN, infinity, signed-zero, and subnormal/denormal behavior are independent
-// axes. They stay split here; the later carrier slice can aggregate them into
-// `SpecialValues` without introducing new policy vocabulary.
+// 🟢 TERMINAL at special-value policy scope. NaN support is an independent
+// closed policy axis; the later carrier slice can aggregate it without adding
+// new policy vocabulary.
 type NanPolicy = NoNaN | QuietNaN | QuietAndSignalingNaN
+
+// 🟢 TERMINAL at special-value policy scope. Infinity support is an independent
+// closed policy axis; the later carrier slice can aggregate it without adding
+// new policy vocabulary.
 type InfinityPolicy = NoInfinity | SignedInfinity
+
+// 🟢 TERMINAL at special-value policy scope. Signed-zero support is an
+// independent closed policy axis; the later carrier slice can aggregate it
+// without adding new policy vocabulary.
 type SignedZeroPolicy = NoSignedZero | SignedZero
+
+// 🟢 TERMINAL at subnormal/denormal policy scope. Underflow behavior is an
+// independent closed policy axis; the later carrier slice can aggregate it
+// without adding new policy vocabulary.
 type SubnormalPolicy = NoSubnormals | GradualUnderflow | FlushToZero
