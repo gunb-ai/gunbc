@@ -2615,3 +2615,59 @@ fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
         other => panic!("LeftFirst payload must lower as empty Conj, got {other:?}"),
     }
 }
+
+/// T-Numeric-Construction Slice 2 — `Nat = Semiring<Magnitude>` resolves
+/// structurally to a `Semiring` instantiation whose carrier argument is the
+/// `Magnitude` opaque atom landed by Slice 1.
+///
+/// The ratchet enforces both authorities at once:
+/// - `Nat` must lower to a `TypeConnective::Instantiation` whose template is
+///   `Semiring` (`dsl/std/algebra.dag`), not a fresh record or a name-keyed bridge.
+/// - The single carrier argument must resolve to `Magnitude` (`dsl/std/magnitude.dag`),
+///   not to a `Word*` storage carrier — those remain storage refinements per
+///   `docs/audit/t-numeric-construction-magnitude-6q.md`.
+#[test]
+fn nat_resolves_to_semiring_over_magnitude() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let nat = dag
+        .declaration_by_name("Nat")
+        .expect("`Nat` missing from full bootstrap (T-Numeric-Construction Slice 2)");
+    assert_eq!(
+        nat.span.file, "dsl/std/nat.dag",
+        "Nat must live in the canonical std/nat.dag module, not in a parallel authority"
+    );
+
+    let semiring = dag
+        .declaration_by_name("Semiring")
+        .expect("`Semiring` algebra must be loaded from dsl/std/algebra.dag");
+    let magnitude = dag
+        .declaration_by_name("Magnitude")
+        .expect("`Magnitude` opaque carrier must be loaded from dsl/std/magnitude.dag (Slice 1)");
+
+    match &nat.connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, semiring.id,
+                "Nat must instantiate `Semiring`, not an alternate algebra record"
+            );
+            assert_eq!(
+                arguments.len(),
+                1,
+                "Semiring takes exactly one carrier type parameter"
+            );
+            assert_eq!(
+                arguments[0].value, magnitude.id,
+                "Nat's Semiring carrier argument must be `Magnitude`, not a Word* storage carrier"
+            );
+        }
+        other => panic!(
+            "Nat must lower to a Semiring instantiation; got {other:?} — \
+             a non-Instantiation connective indicates a parallel algebra authority \
+             rather than a clean Semiring<Magnitude> alias"
+        ),
+    }
+}
