@@ -1,0 +1,11 @@
+// R3 L5 corpus seed — keep byte-sync with `r3_verification_l5_corpus.dag` `TestClaim.source`.
+module user.r3_l5_add_then_branch_seed
+
+fn add(a: Int, b: Int) -> Int = a + b
+
+let seed_acc: Int = add(1, 2)
+let _: Int =
+  match seed_acc == 3 {
+    True => seed_acc
+    False => 0
+  }

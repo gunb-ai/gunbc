@@ -1,0 +1,24 @@
+// std.r3_verification_l7_algebraic_laws — R3 Lane 2 skeleton: single `AlgebraicLaw(Identity, …)`
+// placeholder (not per-law enumeration). Runner returns `NotYetImplemented` until lens identity
+// metadata is exposed (PR-B.3 W2). Laws such as distributivity over dual ops are theory in
+// `dsl/std/algebra.dag` but **not** `AlgebraicLawKind` variants — extend substrate via INVARIANTS §P1.
+
+module std.r3_verification_l7_algebraic_laws
+
+import std.types { Int }
+import std.verification { AlgebraicLaw, Identity, TestClaim, TestSuite }
+
+fn r3_l7_identity_placeholder_op(a: Int, b: Int) -> Int = a + b
+
+data r3_verification_l7_algebraic_laws_skeleton: TestClaim = {
+  name: "r3_verification_l7_algebraic_laws_skeleton",
+  source: "let _: Int = 1\n",
+  file_name: "r3_verification_l7_algebraic_laws_skeleton.v3",
+  predicate: AlgebraicLaw(Identity, r3_l7_identity_placeholder_op),
+  requires: []
+}
+
+data r3_verification_l4_l7_direct_suite: TestSuite = {
+  name: "r3_verification_l4_l7_direct_suite",
+  claims: [r3_verification_l7_algebraic_laws_skeleton]
+}

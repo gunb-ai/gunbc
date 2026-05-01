@@ -379,6 +379,9 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 L4/L7/L5 skeleton: deferred `TestPredicate` receipts (`NotYetImplemented`) over compiling
+    // `.dag` fixtures — Lane 1 + Lane 2 + L5 corpus pre-authoring bundle.
+    "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
