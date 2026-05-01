@@ -1,7 +1,8 @@
 //! P0 prerequisite pin: stable top-level JSON keys in `target/self_host/receipt.json`.
 //!
-//! Authority: [`docs/briefs/r3-pb-t-fixedpoint-worker.md`](../../docs/briefs/r3-pb-t-fixedpoint-worker.md)
-//! §P0 readiness checklist (DB-8 mechanical ratchet) and [`docs/db-history/db-8.md`](../../docs/db-history/db-8.md).
+//! Authority (workspace-root paths as code — not file-relative rustdoc URLs):
+//! `docs/briefs/r3-pb-t-fixedpoint-worker.md` §P0 readiness checklist (DB-8 mechanical ratchet);
+//! `docs/db-history/db-8.md`; `docs/design-fixed-point-ratchet.md`.
 //! `self_host_fixed_point` consumes these identifiers so renames are deliberate (trend readers / DB-8).
 
 /// Pipeline snapshot fixed-point on [`crate::default_fixed_point_source`] (always `ok` when the binary runs past that stage).
