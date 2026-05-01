@@ -318,7 +318,7 @@ The 8 design challenges above are not resolvable via comment-thread back-and-for
 | **PR-B** | Evaluator runtime-value model decision (closed-over environments, lazy/eager, memoization, witness construction) | Design challenge #1 — biggest open question | Pending |
 | **PR-C** | Reflection completeness spec doc (definition of "complete" for `reflect_program_dag_nodes_in_file`) | Design challenge #2 | Pending |
 | **PR-D** | Cross-target equivalence semantics (algebraic-equal corpus) | Design challenge #3 | Design lock introduced at [`docs/design-cross-target-equivalence.md`](design-cross-target-equivalence.md) |
-| **PR-E** | Evaluator dispatch brief (after PR-A through PR-D land) | Worker dispatch precondition | Pending |
+| **PR-E** | Evaluator dispatch brief (after PR-A through PR-D land) | Worker dispatch precondition | Authored at [`docs/briefs/r3-evaluator-dispatch.md`](briefs/r3-evaluator-dispatch.md) |
 
 Workers cannot dispatch on under-specified scope, especially on multi-week T-Verification critical path. PR-B through PR-D are gates; PR-E starts Evaluator implementation work.
 
