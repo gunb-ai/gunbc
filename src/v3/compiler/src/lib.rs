@@ -271,14 +271,9 @@ pub mod evaluator {
             ArithmeticOp::Add => a.checked_add(b).ok_or(OVERFLOW),
             ArithmeticOp::Sub => a.checked_sub(b).ok_or(OVERFLOW),
             ArithmeticOp::Mul => a.checked_mul(b).ok_or(OVERFLOW),
-            ArithmeticOp::Div => {
-                if b == 0 {
-                    return Err(EvalError::BadTransformOperands {
-                        reason: "division by zero",
-                    });
-                }
-                a.checked_div(b).ok_or(OVERFLOW)
-            }
+            ArithmeticOp::Div => Err(EvalError::UnsupportedTransformTarget {
+                kind: "ArithmeticDiv",
+            }),
         }
     }
 
@@ -635,6 +630,29 @@ pub mod evaluator {
                 err,
                 EvalError::BadTransformOperands {
                     reason: "integer overflow",
+                }
+            );
+        }
+
+        #[test]
+        fn transform_arithmetic_div_unsupported_until_result_carrier_eval_lands() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(8), span());
+            let rhs = dag.push_value(LiteralBits::Int(2), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("div");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget {
+                    kind: "ArithmeticDiv",
                 }
             );
         }
