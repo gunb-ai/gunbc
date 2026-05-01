@@ -184,6 +184,8 @@ fn run() -> Result<(), String> {
         json_string(exit_status)
     ));
 
+    // P0 receipt contract: substring needles in `self_host_receipt_p0::validate_receipt_json_always_emitted_keys`
+    // must match the `  "key":` shape emitted in this function (see `top_level_property_needle` docs).
     receipt_p0::validate_receipt_json_always_emitted_keys(&receipt).map_err(|e| {
         format!("self_host_fixed_point: receipt contract (P0 always-emitted keys): {e}")
     })?;

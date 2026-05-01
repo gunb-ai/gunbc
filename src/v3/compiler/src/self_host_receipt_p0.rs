@@ -21,32 +21,38 @@ pub const ALWAYS_EMITTED_TOP_LEVEL_KEYS: &[&str] = &[
     K_STATUS,
 ];
 
-/// `self_host_fixed_point` emits each top-level field as `  "key":` (two spaces, JSON string key, colon).
-/// This checks that every [`ALWAYS_EMITTED_TOP_LEVEL_KEYS`] entry appears at least once that way so
-/// the serialized receipt cannot drift from the P0 pin without failing closed before `write_receipt`.
-pub fn receipt_json_contains_always_emitted_key_properties(json_body: &str) -> bool {
-    ALWAYS_EMITTED_TOP_LEVEL_KEYS.iter().all(|key| {
-        let mut needle = String::with_capacity(key.len() + 8);
-        needle.push_str("  \"");
-        needle.push_str(key);
-        needle.push_str("\":");
-        json_body.contains(&needle)
-    })
+/// Serialized top-level property opener emitted by `self_host_fixed_point` today
+/// (`src/v3/compiler/src/bin/self_host_fixed_point.rs`, `run`): two ASCII spaces, `"`, key, `":`
+/// — same shape as `format!("  \"{}\":"` / `format!("  \"{}\": {},\n", …` using
+/// `K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE`, `K_COMPILER_DAG_V3_PARSE`, and `K_STATUS` (and the
+/// parse-error branch). If the emitter changes indentation or switches to `serde_json` pretty-print
+/// with different spacing, update this needle in the same change.
+fn top_level_property_needle(key: &str) -> String {
+    let mut needle = String::with_capacity(key.len() + 8);
+    needle.push_str("  \"");
+    needle.push_str(key);
+    needle.push_str("\":");
+    needle
 }
 
-/// [`receipt_json_contains_always_emitted_key_properties`] with a stable error listing missing keys.
-pub fn validate_receipt_json_always_emitted_keys(json_body: &str) -> Result<(), String> {
-    let missing: Vec<&str> = ALWAYS_EMITTED_TOP_LEVEL_KEYS
+fn missing_always_emitted_key_properties(json_body: &str) -> Vec<&'static str> {
+    ALWAYS_EMITTED_TOP_LEVEL_KEYS
         .iter()
         .copied()
-        .filter(|key| {
-            let mut needle = String::with_capacity(key.len() + 8);
-            needle.push_str("  \"");
-            needle.push_str(key);
-            needle.push_str("\":");
-            !json_body.contains(&needle)
-        })
-        .collect();
+        .filter(|key| !json_body.contains(&top_level_property_needle(key)))
+        .collect()
+}
+
+/// True iff [`validate_receipt_json_always_emitted_keys`] would succeed — single matching rule.
+pub fn receipt_json_contains_always_emitted_key_properties(json_body: &str) -> bool {
+    validate_receipt_json_always_emitted_keys(json_body).is_ok()
+}
+
+/// Every [`ALWAYS_EMITTED_TOP_LEVEL_KEYS`] entry must appear as a top-level JSON property using
+/// [`top_level_property_needle`]'s shape so the serialized receipt cannot drift from the P0 pin
+/// without failing closed before `write_receipt`.
+pub fn validate_receipt_json_always_emitted_keys(json_body: &str) -> Result<(), String> {
+    let missing = missing_always_emitted_key_properties(json_body);
     if missing.is_empty() {
         Ok(())
     } else {
@@ -82,6 +88,29 @@ mod tests {
         assert!(super::receipt_json_contains_always_emitted_key_properties(
             body
         ));
+    }
+
+    #[test]
+    fn contains_tracks_validate_success_and_failure() {
+        let ok = r#"{
+  "pipeline_fixed_point_default_source": "ok",
+  "compiler_dag_v3_parse": "ok",
+  "status": "completed"
+}
+"#;
+        assert_eq!(
+            super::receipt_json_contains_always_emitted_key_properties(ok),
+            super::validate_receipt_json_always_emitted_keys(ok).is_ok()
+        );
+        let bad = r#"{
+  "compiler_dag_v3_parse": "ok",
+  "status": "completed"
+}
+"#;
+        assert_eq!(
+            super::receipt_json_contains_always_emitted_key_properties(bad),
+            super::validate_receipt_json_always_emitted_keys(bad).is_ok()
+        );
     }
 
     #[test]
