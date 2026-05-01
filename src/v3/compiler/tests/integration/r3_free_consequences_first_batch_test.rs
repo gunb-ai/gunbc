@@ -1,0 +1,56 @@
+//! **Layer:** integration
+//!
+//! R3 T-Free-Consequences first-batch author-now/fire-later claims. The
+//! fixture locks five `BinaryDimensionReportEquals` consumer shapes; runner
+//! evaluation remains deferred until the Lens<C> and cost witnesses land.
+
+use v3_compiler::compile_to_dag;
+use v3_compiler::test_runner::{ClaimResult, TestRunner};
+use v3_compiler::CompileError;
+
+const FIXTURE_SOURCE: &str = include_str!("../fixtures/r3_free_consequences_first_batch.dag");
+const FIXTURE_PATH: &str = "src/v3/compiler/tests/fixtures/r3_free_consequences_first_batch.dag";
+const SUITE_NAME: &str = "r3_free_consequences_first_batch_suite";
+const EXPECTED_CLAIMS: [&str; 5] = [
+    "auto_parallelism_independent_binds_emit_parallel",
+    "auto_parallelism_dependent_binds_emit_sequential",
+    "auto_parallelism_branch_arms_serialize",
+    "auto_memoization_repeated_pure_call_cached",
+    "auto_memoization_no_caching_for_one_shot",
+];
+
+#[test]
+fn r3_free_consequences_first_batch_reaches_unified_predicate_shape() {
+    let dag = match compile_to_dag(FIXTURE_SOURCE, FIXTURE_PATH) {
+        Ok(dag) => {
+            assert!(
+                dag.diagnostics().is_empty(),
+                "{FIXTURE_PATH}: expected empty module diagnostics, got {:?}",
+                dag.diagnostics().iter().collect::<Vec<_>>()
+            );
+            dag
+        }
+        Err(CompileError::Semantic(dag)) => panic!(
+            "{FIXTURE_PATH} should lower without module diagnostics. Got `Err(Semantic)`: {:?}",
+            dag.diagnostics().iter().collect::<Vec<_>>()
+        ),
+        Err(other) => panic!("unexpected compile error for {FIXTURE_PATH}: {other:?}"),
+    };
+
+    let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
+    assert_eq!(results.len(), EXPECTED_CLAIMS.len());
+
+    for (result, expected_name) in results.iter().zip(EXPECTED_CLAIMS) {
+        assert_eq!(result.claim_name, expected_name);
+        assert!(
+            matches!(
+                &result.result,
+                ClaimResult::NotYetImplemented(reason)
+                    if reason.contains("BinaryDimensionReportEquals")
+                        && reason.contains("structural shape is valid")
+            ),
+            "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
+            result.result
+        );
+    }
+}
