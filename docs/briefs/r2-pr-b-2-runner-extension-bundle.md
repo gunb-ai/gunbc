@@ -248,7 +248,8 @@ Per-workstream dissolution targets:
 | `rust_emit_output` producer wiring                                        | W1        | Parallelizable with `dag_eval_output` (different code path) |
 | Structural observation carrier (P1 substrate-fact-introduction)           | W3 (sub)  | **GATED on P1 procedure** — blocks all W3 implementation; docs-only until it lands |
 | Scalar value-domain normalization (`Int`, `Bool`)                         | W3        | After observation carrier lands; sequential before W3 record + before W1 differential equality on `Value` |
-| `Commutativity` runner check                                              | W2        | Parallelizable with W1 + W3   |
+| Shared value-domain comparator helper (`Int` / `Bool` scalar equality)    | W2 + W3   | Sequential — must land before `Commutativity` runner check and before W3 scalar value-domain normalization (single shared helper authority, not a per-workstream copy) |
+| `Commutativity` runner check                                              | W2        | After shared comparator helper; otherwise parallelizable with W1 |
 | `Identity` runner check                                                   | W2        | After lens identity-element edge declared on algebra inhabitance |
 | `RecordValue` value-domain observation                                    | W3        | After scalar value-domain coverage  |
 | `ForAllTargets` per-target dispatch beyond Rust                           | W3        | After Rust-only scalar coverage; Python and Go parallelizable per target |
