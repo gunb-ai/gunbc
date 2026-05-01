@@ -13,6 +13,8 @@
 //!   drives **design-emission-model §Example 1** (unrefined `Int` → substrate-shaped
 //!   [`EmissionDiagnostic::UnderRefined`](diagnostic::EmissionDiagnostic::UnderRefined) with axis `"bound"`)
 //!   and **§Example 2** (`Int(0..2^32)` / `Semiring` exact-bound → [`TargetInhabitance::RustU32`](types::TargetInhabitance::RustU32))
+//!   plus **§Example 5** (same bound without algebra annotation → `UnderRefined("algebra")`)
+//!   and **§Example 6** (`Int(0..2^65)` → [`EmissionDiagnostic::NoInhabitant`](diagnostic::EmissionDiagnostic::NoInhabitant))
 //!   for a single synthetic binding — checkpoint until a real LanguageSpec projection replaces
 //!   the scratch carrier (manager #1133 / #1286).
 //!
@@ -75,5 +77,32 @@ mod tests {
             got.get(&v3_grounding_lifetime::BindingId(0)),
             Some(&TargetInhabitance::RustU32)
         );
+    }
+
+    #[test]
+    fn fold_dag_int_ambiguous_algebra_fails_closed() {
+        let dag = Dag::new();
+        let lifetime: LifetimeAnalysisReport = Default::default();
+        let spec = LanguageSpecProjection::ScratchIntExamples(
+            IntScratchExample::DesignDocExample5AmbiguousAlgebra,
+        );
+        let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("under-refined");
+        assert_eq!(
+            err,
+            EmissionDiagnostic::UnderRefined {
+                unspecified_axis: "algebra".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn fold_dag_int_bound_exceeds_max_no_inhabitant() {
+        let dag = Dag::new();
+        let lifetime: LifetimeAnalysisReport = Default::default();
+        let spec = LanguageSpecProjection::ScratchIntExamples(
+            IntScratchExample::DesignDocExample6NoInhabitant,
+        );
+        let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("no inhabitant");
+        assert_eq!(err, EmissionDiagnostic::NoInhabitant);
     }
 }
