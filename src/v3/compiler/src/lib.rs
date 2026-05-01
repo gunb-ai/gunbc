@@ -282,7 +282,9 @@ pub mod evaluator {
             ArithmeticOp::Add => a.checked_add(b).ok_or(OVERFLOW),
             ArithmeticOp::Sub => a.checked_sub(b).ok_or(OVERFLOW),
             ArithmeticOp::Mul => a.checked_mul(b).ok_or(OVERFLOW),
-            ArithmeticOp::Div => unreachable!("caller filters Div before ring-only arithmetic"),
+            ArithmeticOp::Div => Err(EvalError::UnsupportedTransformTarget {
+                kind: "ArithmeticDiv",
+            }),
         }
     }
 
