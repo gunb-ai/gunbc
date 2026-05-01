@@ -7,8 +7,9 @@
 //!
 //! Coverage is derived from substrate-loaded `List<MethodTemplateContract>`
 //! declarations per Shape A target (`*_method_template_contracts.dag`), not
-//! from a dedicated `emission_paths` map. [`cell_covered_by_language_spec`]
-//! delegates to [`crate::coverage::language_spec_emission_cells_covered`].
+//! from a dedicated `emission_paths` map. [`walk_cross_product`] builds the
+//! covered-cell set via [`crate::coverage::language_spec_emission_cells_covered`],
+//! then partitions [`crate::cells::Cell::all`] with `covered.contains(&cell)`.
 
 use v3_compiler::dag::Dag;
 

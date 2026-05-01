@@ -36,6 +36,10 @@ const TARGET_LISTS: &[(&str, ShapeATarget)] = &[
 ///
 /// Fail-closed: missing declarations, wrong `value_body` shapes, or empty lists
 /// contribute **no** coverage (those targets stay absent from the returned set).
+///
+/// TODO: When rows span multiple L6 cells per target (e.g. Branch-shaped templates),
+/// replace list-non-empty checks with a per-row projection that unions each row's
+/// target `Cell`s instead of a single bucket per list.
 pub(crate) fn language_spec_emission_cells_covered(dag: &Dag) -> HashSet<Cell> {
     let mut covered = HashSet::new();
     for &(list_name, target) in TARGET_LISTS {
