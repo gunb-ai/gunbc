@@ -53,7 +53,7 @@ use crate::int_literal_ranges::{
     magnitude_out_of_range_for_interval, IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
-use crate::operators::{LogicalOp, OperatorKind};
+use crate::operators::{ComparisonOp, LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 
 /// Outcome of [`try_reconcile_int_literal_decision_set`].
@@ -4423,6 +4423,39 @@ fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<T
     Some(TypeShape::new(id))
 }
 
+/// Comparison operators the host eager Transform evaluator
+/// ([`crate::evaluator::eval_transform_node`]) can interpret on literal
+/// carriers today: `Int` (full ordering), `Bool` (total order `false < true`,
+/// matching Rust `bool::lt` / `cmp`), and `String` limited to `Eq` / `Ne`
+/// (same contract as [`crate::lens_apply`] D1). Keep inference aligned so
+/// operator transforms do not type-check comparisons that always fail at E3
+/// evaluation.
+fn host_eager_comparison_operator_supported(
+    dag: &Dag,
+    lhs_base: &TypeShape,
+    op: ComparisonOp,
+) -> bool {
+    let Some(int_shape) = dag.int_shape() else {
+        return false;
+    };
+    if lhs_base == &int_shape {
+        return true;
+    }
+    let Some(bool_shape) = dag.bool_shape() else {
+        return false;
+    };
+    if lhs_base == &bool_shape {
+        return true;
+    }
+    let Some(string_shape) = dag.string_shape() else {
+        return false;
+    };
+    if lhs_base == &string_shape {
+        return matches!(op, ComparisonOp::Eq | ComparisonOp::Ne);
+    }
+    false
+}
+
 fn resolve_operator_arrow(
     dag: &mut Dag,
     op_kind: OperatorKind,
@@ -4456,6 +4489,11 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
+                    if let OperatorKind::Comparison(op) = op_kind {
+                        if !host_eager_comparison_operator_supported(dag, &base_lhs, op) {
+                            return None;
+                        }
+                    }
                     return read_algebra_field(dag, &decl, field.ty, source_id, op_kind, &base_lhs);
                 }
                 // Algebra doesn't declare this operator's field —
