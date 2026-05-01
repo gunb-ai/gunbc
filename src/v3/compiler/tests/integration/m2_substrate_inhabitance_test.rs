@@ -2360,6 +2360,144 @@ fn bin_shim_field_types_match_design_lock() {
     );
 }
 
+fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+    match &decl.connective {
+        TypeConnective::Disj { variants } => variants
+            .iter()
+            .map(|variant| variant.label.clone())
+            .collect(),
+        other => panic!("`{name}` must be a Disj, got {other:?}"),
+    }
+}
+
+fn variant_payload_field_types(
+    dag: &Dag,
+    type_name: &str,
+    variant_name: &str,
+) -> Vec<(String, v3_compiler::dag::DeclarationId)> {
+    let decl = dag
+        .declaration_by_name(type_name)
+        .unwrap_or_else(|| panic!("`{type_name}` missing from full bootstrap"));
+    let variant_ty = match &decl.connective {
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|variant| variant.label == variant_name)
+                .unwrap_or_else(|| panic!("`{type_name}` missing variant `{variant_name}`"))
+                .ty
+        }
+        other => panic!("`{type_name}` must be a Disj, got {other:?}"),
+    };
+    match &dag.declaration(variant_ty).connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|field| (field.label.clone(), field.ty))
+            .collect(),
+        other => panic!("`{type_name}.{variant_name}` payload must be a Conj, got {other:?}"),
+    }
+}
+
+#[test]
+fn approximate_field_axes_live_in_v3_std_authority() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    for name in [
+        "RoundingMode",
+        "Precision",
+        "NanPolicy",
+        "InfinityPolicy",
+        "SignedZeroPolicy",
+        "SubnormalPolicy",
+    ] {
+        let decl = dag
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+        assert_eq!(
+            decl.span.file, "src/v3/std/approximate_field.dag",
+            "`{name}` must stay in the approximate-field axes precursor; the \
+             full ApproximateField carrier and Float migration land later"
+        );
+    }
+}
+
+#[test]
+fn rounding_mode_axis_is_closed_sum() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    assert_eq!(
+        disj_variant_labels(&dag, "RoundingMode"),
+        [
+            "ToNearestEven",
+            "ToZero",
+            "ToPositiveInfinity",
+            "ToNegativeInfinity",
+            "ToAwayFromZero"
+        ]
+        .map(String::from),
+        "`RoundingMode` must remain a typed closed sum, not a string tag"
+    );
+}
+
+#[test]
+fn precision_axis_splits_binary_and_decimal_payloads() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let positive_int = find_named(&dag, "PositiveInt");
+
+    assert_eq!(
+        disj_variant_labels(&dag, "Precision"),
+        ["Unbounded", "BinaryPrecision", "DecimalPrecision"].map(String::from),
+        "`Precision` must not regress to a compressed total-width token"
+    );
+    assert_eq!(
+        variant_payload_field_types(&dag, "Precision", "BinaryPrecision"),
+        [
+            (String::from("significand_bits"), positive_int),
+            (String::from("exponent_bits"), positive_int)
+        ],
+        "`BinaryPrecision` must name significand/exponent counts with a \
+         positive-count type"
+    );
+    assert_eq!(
+        variant_payload_field_types(&dag, "Precision", "DecimalPrecision"),
+        [
+            (String::from("digits"), positive_int),
+            (String::from("exponent_digits"), positive_int)
+        ],
+        "`DecimalPrecision` must name decimal precision counts with a \
+         positive-count type"
+    );
+}
+
+#[test]
+fn special_value_policy_axes_are_closed_sums() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    assert_eq!(
+        disj_variant_labels(&dag, "NanPolicy"),
+        ["NoNaN", "QuietNaN", "QuietAndSignalingNaN"].map(String::from),
+        "`NanPolicy` must distinguish no-NaN from quiet/signaling support"
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "InfinityPolicy"),
+        ["NoInfinity", "SignedInfinity"].map(String::from),
+        "`InfinityPolicy` must stay typed, not a target-specific string"
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "SignedZeroPolicy"),
+        ["NoSignedZero", "SignedZero"].map(String::from),
+        "`SignedZeroPolicy` must stay typed"
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "SubnormalPolicy"),
+        ["NoSubnormals", "GradualUnderflow", "FlushToZero"].map(String::from),
+        "`SubnormalPolicy` must distinguish absent, gradual, and flushed \
+         underflow behavior"
+    );
+}
+
 #[test]
 fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
     let dag = v3_compiler::generated_full_bootstrap_dag();

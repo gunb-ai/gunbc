@@ -167,6 +167,11 @@ const CENSUS_ROOT: &str = "src/v3/compiler";
 // declared unsigned range parseable by source literals. At that point
 // this helper should consume those declared rows directly or move behind
 // generated substrate accessors.
+//
+// R3 T-FixedPoint P0 / DB-8: `self_host_receipt_p0.rs` is intentionally hand-authored
+// receipt-key surface (stable JSON field names for `self_host_fixed_point` trend reads),
+// not generated output. Dissolution: fold into a `.dag` or generated authority when one
+// owns receipt schema; until then this module + census line are the bounded ratchet receipt.
 const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // R3 C1 perf-budget bench skeleton: Phase-1 Criterion harness for
     // `tier3_mirror_dissolution_perf_within_budget` per
@@ -224,6 +229,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/regen_bootstrap_emit.rs",
     "src/v3/compiler/src/regen_parse_emit.rs",
     "src/v3/compiler/src/regen_parse_tables_emit.rs",
+    "src/v3/compiler/src/self_host_receipt_p0.rs",
     "src/v3/compiler/src/test_runner.rs",
     "src/v3/compiler/src/workflow_idempotency.rs",
     "src/v3/compiler/src/workflow_parallelism.rs",
