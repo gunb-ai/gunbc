@@ -166,17 +166,29 @@ Acceptance):
 3. **IFC** — after the `IfcLabel` carrier exists, analyze a program with mixed
    High/Low labels; assert `DimensionFail` with typed diagnostics when a Low
    edge consumes a High value.
-4. **Typed-diagnostic discipline** — every `Witness::Violates.reason`
-   and every `DimensionFail.violations[i]` is asserted by **typed
-   pattern match**, not string parsing. `Diagnostic` is the typed
-   envelope; reason strings are human-facing only.
+4. **Typed-diagnostic discipline** — typed assertion lives on
+   `DimensionFail.violations: List<Diagnostic>`: every entry is
+   asserted by **typed pattern match on the `Diagnostic` enum**, not
+   string parsing. `Witness::Violates.reason` is `String` per the
+   substrate (`dimensions.dag:35-37`) and the Rust mirror
+   (`dimension.rs:46-49`); it is **human-facing only** and tests
+   assert at most that it is non-empty / non-fabricated, never that it
+   matches a substring or pattern. The typed-diagnostic axis is the
+   `DimensionFail.violations` list, not a field on `Witness::Violates`.
 5. **Fail-closed propagation** — a program with `Behavior::Loop` of
-   `LoopBound::Descent { cluster }` returns `DimensionFail` with the
-   E5 residual diagnostic, not a fabricated carrier.
+   `LoopBound::Descent { cluster }` returns `DimensionFail` whose
+   `violations` list contains the typed E5 residual `Diagnostic`, not
+   a fabricated carrier.
 6. **No bridge fabrication** — when `evaluate_body` returns
    `EvalError::UnboundPort` or other E0/E1/E2 fail-closed cases, the
-   witness wrapper propagates `Witness::Violates` with a typed
-   diagnostic, never `Witness::Inhabits` over an arbitrary default.
+   witness wrapper produces `Witness::Violates { reason, at }` (with
+   `reason` a human-facing string) **and** emits a typed `Diagnostic`
+   into the eventual `DimensionFail.violations` list. It must never
+   return `Witness::Inhabits` over an arbitrary default. The two
+   carriers — `Witness` for per-behavior partition, `Diagnostic` for
+   typed cause — are coordinate, not redundant; per
+   `dimensions.dag:25-32`, "no evidence" and "evidence of violation"
+   cannot masquerade as each other.
 
 ## STOP+PING boundary (E7 itself, when implemented)
 
