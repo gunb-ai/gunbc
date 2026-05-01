@@ -186,6 +186,13 @@ fn bootstrap_loads_verification_authority_types() {
                 ],
             ),
             (
+                String::from("BinaryDimensionReportEquals"),
+                vec![
+                    String::from("left_report_ref"),
+                    String::from("right_report_ref"),
+                ],
+            ),
+            (
                 String::from("AlgebraicLaw"),
                 vec![String::from("law"), String::from("lens_ref")],
             ),
