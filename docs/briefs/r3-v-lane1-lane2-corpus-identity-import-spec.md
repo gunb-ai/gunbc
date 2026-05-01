@@ -8,7 +8,7 @@
 
 ## In-repo authority anchors (not PR labels alone)
 
-GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenance**, not a substitute for merged design text. This contract’s **in-tree** anchors (each path exists on `main`; verify with `git cat-file -e HEAD:<path>` when authoring):
+GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenance**, not a substitute for merged design text. This contract’s **in-tree** Markdown links resolve from **`docs/briefs/`** as **`../../…`** for repo-root files (`INVARIANTS.md`, `TESTING.md`, `src/…`) and **`../…`** for other files under `docs/` — a **`../INVARIANTS.md`** link would incorrectly resolve under `docs/` and **does not exist** (common false “missing authority” report). §P1 / §P2 URL fragments (`#p1-modeling-faithfulness`, `#p2-boundary-discipline`) target GitHub’s auto-generated heading anchors for `## P1: Modeling Faithfulness` and `## P2: Boundary Discipline` in [`INVARIANTS.md`](../../INVARIANTS.md). **Mechanical live check:** §In-tree anchor verification receipt below (`git cat-file -e origin/main:<path>` on every hyperlinked path).
 
 - **[INVARIANTS.md](../../INVARIANTS.md#p2-boundary-discipline) — §P2 Boundary Discipline** — “every fact lives in exactly one authoritative place”; parallel copies are the failure mode import mechanisms must prevent.
 - **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness) — Modeling Faithfulness** — substrate extensions (`CertifiedProgramText`, widening `TestClaim`, …) route through the §P1 substrate-fact introduction procedure; not ad hoc fixture forks.
@@ -20,12 +20,13 @@ GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenan
 
 ### In-tree anchor verification receipt
 
-Re-run whenever **`main`** moves materially:
+Re-run whenever **`main`** moves materially. **Scope:** every repository-relative path hyperlinked from this brief (extend when adding new links).
 
 ```bash
 git fetch origin
 for p in \
   INVARIANTS.md \
+  TESTING.md \
   docs/modeling-discipline.md \
   docs/design-cross-target-equivalence.md \
   docs/design-test-infra.md \
