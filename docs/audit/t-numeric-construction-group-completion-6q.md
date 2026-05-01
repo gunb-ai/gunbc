@@ -10,7 +10,7 @@ Director's decision (inbox #1288 #4360232423): keep `AbelianGroup<T>` standard (
 
 ## Design call — what is `GroupCompletion<M>`?
 
-Two candidate shapes:
+Three candidate shapes:
 
 | Shape | Declaration | Tradeoffs |
 |---|---|---|
