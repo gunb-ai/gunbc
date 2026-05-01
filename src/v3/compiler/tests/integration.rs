@@ -183,6 +183,8 @@ mod t_pb_b_1_dag_runner_test;
 mod t_pb_b_brief_d_fixture_smoke_test;
 #[path = "integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs"]
 mod tc1_substrate_lens_eta_equivalence_deferred_test;
+#[path = "integration/tc3_strong_normalization_deferred_test.rs"]
+mod tc3_strong_normalization_deferred_test;
 #[path = "integration/test_runner_test.rs"]
 mod test_runner_test;
 #[path = "integration/thesis_parallelism_test.rs"]
@@ -567,17 +569,18 @@ mod parse_stage4_prep {
 
     fn parse_corpus_paths() -> Vec<String> {
         let compiler_root = compiler_root();
-        // Keep the `dsl/std` subset aligned with the seven bootstrap
-        // fixtures loaded in `bootstrap.rs`; this prep harness is a
-        // snapshot of the incumbent parser over that bootstrap-facing
-        // corpus, not a claim that every `dsl/std/*.dag` file parses
-        // under v3 today.
+        // Keep the `dsl/std` subset aligned with the bootstrap fixtures
+        // loaded in `bootstrap_regen_fresh.rs::std_fixtures`; this prep
+        // harness is a snapshot of the incumbent parser over that
+        // bootstrap-facing corpus, not a claim that every
+        // `dsl/std/*.dag` file parses under v3 today.
         let mut paths = vec![
             "dsl/std/algebra.dag".to_string(),
             "dsl/std/bit.dag".to_string(),
             "dsl/std/float.dag".to_string(),
             "dsl/std/integer.dag".to_string(),
             "dsl/std/logic.dag".to_string(),
+            "dsl/std/magnitude.dag".to_string(),
             "dsl/std/string_type.dag".to_string(),
             "dsl/std/types.dag".to_string(),
         ];
@@ -698,6 +701,14 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/integer.dag"),
             "dsl/std/integer.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_magnitude_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/magnitude.dag"),
+            "dsl/std/magnitude.dag",
         );
     }
 
