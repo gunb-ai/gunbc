@@ -266,7 +266,7 @@ These are deferred to Substrate Mgr 6Q audits + worker brief authoring:
 ## Cross-refs
 
 - **Lane authority**: [`docs/r3-structure.md`](r3-structure.md) §"T-Numeric-Construction" (Lane #6, scope-reframed 2026-05-01)
-- **Superseded brief**: [`docs/briefs/t-int128-r3-initial-slice.md`](briefs/t-int128-r3-initial-slice.md) — deleted in same PR as this doc lands; scope absorbed into T-Numeric-Construction
+- **Superseded brief**: `docs/briefs/t-int128-r3-initial-slice.md` (deleted in [PR #1364](https://github.com/gunb-ai/gunbc/pull/1364); pre-deletion content viewable at the PR's diff or `git show <PR-1364-parent>:docs/briefs/t-int128-r3-initial-slice.md`); scope absorbed into T-Numeric-Construction
 - **Sibling**: [`docs/briefs/r2-substrate-cardinality-int-lit-worker.md`](briefs/r2-substrate-cardinality-int-lit-worker.md) — int-lit magnitude consumer (R2; this lane extends from i64-bounded to abstract Magnitude)
 - **Director ratifications**:
   - [comment 4357560099](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4357560099) — initial reframe proposal (3 direct bake-ins + abstract-plus-refinement shape)
