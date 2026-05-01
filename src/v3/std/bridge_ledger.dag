@@ -40,10 +40,15 @@ import v3.spec.v3_l1 { DeclarationRef }
 //     Per `r3-structure.md:80`: "name-keyed bootstrap bridge from #937
 //     deleted; nominal-opacity authority lives in source-level
 //     declaration (PR A landed in R2)."
-//   - `bridge_canonical_lens_name_dispatch_retired` — Retired. Lens
-//     dispatch routes via `DeclarationRef`/typed identity; ratcheted by
-//     `canonical_lens_bridge_ratchet_test.rs` (R2 PB canonical-lens
-//     bridge ratchet, PR #1183 disposition).
+//   - `bridge_canonical_lens_name_dispatch_pr1183_slice_retired` —
+//     Retired. Narrow PR #1183 slice: lens dispatch routes via
+//     `DeclarationRef`/typed identity; ratcheted by
+//     `canonical_lens_bridge_ratchet_test.rs`.
+//   - `bridge_canonical_lens_name_patching_residual` — Open. Broader
+//     exact-string canonical-lens-name class remains live in
+//     `test_runner.rs` (`include_str!`, name arms, and generic
+//     name-keyed lookups); full retirement waits for PB-Runtime
+//     interpreter-as-data or a typed lens-registry carrier.
 //   - `bridge_include_str_side_channels_retired` — Open. Per
 //     `r3-structure.md:82`: "Open disposition (`pipeline_authority`,
 //     PR #1171, 2026-04-29): `compile` remains `ArrowBody::Unparsed`,
@@ -107,8 +112,10 @@ type BridgeLedgerRow {
   authority: String
 }
 
-// Five canonical bridge-retirement rows. Authoring order matches
-// `docs/r3-structure.md:79-83`. Per-row `authority` points at the
+// Canonical bridge-retirement rows. Authoring order follows
+// `docs/r3-structure.md:79-83`; split rows enumerate sub-classes when
+// one prose bridge has both a retired slice and a remaining residual.
+// Per-row `authority` points at the
 // concrete ratchet (test, PR, gating doc-anchor) that establishes
 // the row's status — not a generic taxonomy heading. Status flips
 // from `Open` to `Retired` are gated on the named ratchet reaching
@@ -127,10 +134,16 @@ data bridge_ledger: List<BridgeLedgerRow> = [
     authority: "PR #937"
   },
   {
-    name:      "bridge_canonical_lens_name_dispatch_retired",
+    name:      "bridge_canonical_lens_name_dispatch_pr1183_slice_retired",
     owner:     "R2-Substrate",
     status:    Retired,
     authority: "src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs"
+  },
+  {
+    name:      "bridge_canonical_lens_name_patching_residual",
+    owner:     "PB-Runtime",
+    status:    Open,
+    authority: "docs/briefs/r2-pb-canonical-lens-bridge-disposition.md"
   },
   {
     name:      "bridge_include_str_side_channels_retired",

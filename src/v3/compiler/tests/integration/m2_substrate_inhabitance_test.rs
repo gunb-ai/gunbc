@@ -6,8 +6,8 @@ use v3_compiler::dag::{
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
     merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
     promote_to_strict, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
-    ArrowBody, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval, IntervalWidth,
-    IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval,
+    IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
@@ -2297,6 +2297,69 @@ fn runtime_mirror_snapshots_are_fresh() {
     );
 }
 
+fn bin_shim_fields(dag: &Dag) -> Vec<(&str, v3_compiler::dag::DeclarationId)> {
+    let decl = dag
+        .declaration_by_name("BinShim")
+        .expect("`BinShim` missing from full bootstrap");
+    match &decl.connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|field| (field.label.as_str(), field.ty))
+            .collect(),
+        other => panic!("`BinShim` must be a record carrier, got {other:?}"),
+    }
+}
+
+#[test]
+fn bin_shim_carrier_lives_in_v3_std_authority() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name("BinShim")
+        .expect("`BinShim` missing from full bootstrap");
+
+    assert_eq!(
+        decl.span.file, "src/v3/std/bin_shim.dag",
+        "`BinShim` carrier authority must stay in the staged v3 std surface; \
+         concrete shim rows belong under `dsl/std/runtime/bin_shims/`"
+    );
+}
+
+#[test]
+fn bin_shim_carrier_has_locked_three_field_shape() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let labels: Vec<&str> = bin_shim_fields(&dag)
+        .into_iter()
+        .map(|(label, _)| label)
+        .collect();
+
+    assert_eq!(
+        labels,
+        ["entrypoint_name", "description", "entry"],
+        "`BinShim` must remain metadata plus entry declaration; adding a \
+         pipeline-step DSL or extra emitter state requires a substrate \
+         amendment"
+    );
+}
+
+#[test]
+fn bin_shim_field_types_match_design_lock() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let fields = bin_shim_fields(&dag);
+
+    let expected = [
+        ("entrypoint_name", find_named(&dag, "NonEmptyStr")),
+        ("description", find_named(&dag, "String")),
+        ("entry", find_named(&dag, "DeclarationRef")),
+    ];
+
+    assert_eq!(
+        fields, expected,
+        "`BinShim.entry` stays a DeclarationRef to a .dag `() -> \
+         std.process.ProcessExit` function until DeclarationRef signature \
+         refinement lands"
+    );
+}
+
 #[test]
 fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
@@ -2374,6 +2437,53 @@ fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
         dag.value_marker(),
         Some(value_behavior),
         "Dag::value_marker() must keep returning the L1 behavior marker"
+    );
+}
+
+#[test]
+fn program_observation_carrier_is_producer_neutral_typed_envelope() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let observation = dag
+        .declaration_by_name("ProgramObservation")
+        .expect("PR-B.2 ProgramObservation missing from full bootstrap");
+    assert_eq!(
+        observation.span.file, "src/v3/std/runtime.dag",
+        "ProgramObservation must live with the runtime observation authority"
+    );
+    let type_params = observation.type_params.clone();
+    assert_eq!(
+        type_params.len(),
+        1,
+        "ProgramObservation must have exactly one typed observation carrier"
+    );
+    match &dag.declaration(type_params[0]).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(name)) => assert_eq!(
+            name, "Carrier",
+            "ProgramObservation's type parameter should name the typed observation domain"
+        ),
+        other => {
+            panic!("ProgramObservation type parameter must be a TypeParam atom, got {other:?}")
+        }
+    }
+    assert_eq!(
+        conj_field_by_id(&dag, observation.id, "observed"),
+        type_params[0],
+        "ProgramObservation must wrap the typed observed value directly"
+    );
+
+    let TypeConnective::Conj { children } = &observation.connective else {
+        panic!(
+            "ProgramObservation must lower as a single-field Conj, got {:?}",
+            observation.connective
+        );
+    };
+    let labels: Vec<&str> = children.iter().map(|field| field.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        ["observed"],
+        "ProgramObservation must not bake producer evidence such as stdout, target, \
+         exit status, or evaluator strategy into the comparable carrier"
     );
 }
 
@@ -2503,5 +2613,61 @@ fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
             "LeftFirst is a bare nullary variant and must carry no payload fields"
         ),
         other => panic!("LeftFirst payload must lower as empty Conj, got {other:?}"),
+    }
+}
+
+/// T-Numeric-Construction Slice 2 — `Nat = Semiring<Magnitude>` resolves
+/// structurally to a `Semiring` instantiation whose carrier argument is the
+/// `Magnitude` opaque atom landed by Slice 1.
+///
+/// The ratchet enforces both authorities at once:
+/// - `Nat` must lower to a `TypeConnective::Instantiation` whose template is
+///   `Semiring` (`dsl/std/algebra.dag`), not a fresh record or a name-keyed bridge.
+/// - The single carrier argument must resolve to `Magnitude` (`dsl/std/magnitude.dag`),
+///   not to a `Word*` storage carrier — those remain storage refinements per
+///   `docs/audit/t-numeric-construction-magnitude-6q.md`.
+#[test]
+fn nat_resolves_to_semiring_over_magnitude() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let nat = dag
+        .declaration_by_name("Nat")
+        .expect("`Nat` missing from full bootstrap (T-Numeric-Construction Slice 2)");
+    assert_eq!(
+        nat.span.file, "dsl/std/nat.dag",
+        "Nat must live in the canonical std/nat.dag module, not in a parallel authority"
+    );
+
+    let semiring = dag
+        .declaration_by_name("Semiring")
+        .expect("`Semiring` algebra must be loaded from dsl/std/algebra.dag");
+    let magnitude = dag
+        .declaration_by_name("Magnitude")
+        .expect("`Magnitude` opaque carrier must be loaded from dsl/std/magnitude.dag (Slice 1)");
+
+    match &nat.connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, semiring.id,
+                "Nat must instantiate `Semiring`, not an alternate algebra record"
+            );
+            assert_eq!(
+                arguments.len(),
+                1,
+                "Semiring takes exactly one carrier type parameter"
+            );
+            assert_eq!(
+                arguments[0].value, magnitude.id,
+                "Nat's Semiring carrier argument must be `Magnitude`, not a Word* storage carrier"
+            );
+        }
+        other => panic!(
+            "Nat must lower to a Semiring instantiation; got {other:?} — \
+             a non-Instantiation connective indicates a parallel algebra authority \
+             rather than a clean Semiring<Magnitude> alias"
+        ),
     }
 }

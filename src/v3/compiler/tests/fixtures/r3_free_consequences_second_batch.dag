@@ -1,0 +1,112 @@
+// std.r3_free_consequences_second_batch - T-Free-Consequences second-batch
+// author-now/fire-later consumers.
+//
+// Five gates from `r3-v-free-consequences-worker.md`:
+// - auto-loop-parallelism x3
+// - cross-target-optimization x2
+//
+// The auto-loop-parallelism gates follow the first-batch DB-3/DB-20 split:
+// parallelism is ordinary lens data, not `DimensionReport<C>`. The
+// cross-target-optimization gates are cost-related consumers and therefore
+// keep the `BinaryDimensionReportEquals` shape over paired `DimensionReport<C>`
+// aliases.
+
+module std.r3_free_consequences_second_batch
+
+import std.dimensions { DimensionReport }
+import std.substrate { Dag }
+import std.verification {
+  BinaryDimensionReportEquals,
+  LensOutputEquals,
+  ProgramInput,
+  TestClaim,
+  TestSuite
+}
+
+type CrossTargetOptimizationEvidence {}
+
+data auto_loop_parallelism_program_input: ProgramInput = {}
+
+// Ordinary-lens placeholder until `src/v3/lenses/parallelism.dag` exposes the
+// real DB-20 `WorkflowParallelismReport` producer for `Lens<Iteration-Independence>`.
+// Keep this scalar path out of `DimensionReport<C>`; replace the placeholder
+// lens and expected value together when the structural parallelism producer
+// lands. The mismatch keeps the gate fail-closed while the real producer is
+// pending.
+fn auto_loop_parallelism_pending_lens(_d: Dag) -> Int = 0
+
+data auto_loop_parallelism_pending_expected: Int = 1
+
+type constant_fold_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
+type constant_fold_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
+type cost_structurally_derived_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
+type cost_structurally_derived_expected_report = DimensionReport<CrossTargetOptimizationEvidence>
+
+data auto_loop_parallelism_provable_independence_emits_parallel: TestClaim = {
+  name: "auto_loop_parallelism_provable_independence_emits_parallel",
+  source: "// free-consequences fixture: provable iteration independence may emit a parallel loop schedule when iteration-independence, effect-commutativity, and cost witnesses land.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_loop_parallelism_provable_independence.v3",
+  predicate: LensOutputEquals(
+    auto_loop_parallelism_pending_lens,
+    auto_loop_parallelism_program_input,
+    auto_loop_parallelism_pending_expected
+  ),
+  requires: []
+}
+
+data auto_loop_parallelism_unproven_falls_back_sequential: TestClaim = {
+  name: "auto_loop_parallelism_unproven_falls_back_sequential",
+  source: "// free-consequences fixture: unproven iteration independence falls back to sequential loop emission.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_loop_parallelism_unproven.v3",
+  predicate: LensOutputEquals(
+    auto_loop_parallelism_pending_lens,
+    auto_loop_parallelism_program_input,
+    auto_loop_parallelism_pending_expected
+  ),
+  requires: []
+}
+
+data auto_loop_parallelism_dependence_emits_sequential: TestClaim = {
+  name: "auto_loop_parallelism_dependence_emits_sequential",
+  source: "// free-consequences fixture: detected loop-carried dependence emits sequential loop code.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_loop_parallelism_dependence.v3",
+  predicate: LensOutputEquals(
+    auto_loop_parallelism_pending_lens,
+    auto_loop_parallelism_program_input,
+    auto_loop_parallelism_pending_expected
+  ),
+  requires: []
+}
+
+data cross_target_optimization_constant_fold_consistent: TestClaim = {
+  name: "cross_target_optimization_constant_fold_consistent",
+  source: "// free-consequences fixture: constant folding stays semantically consistent across target language specs when cost facts land.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_cross_target_constant_fold_consistent.v3",
+  predicate: BinaryDimensionReportEquals(
+    constant_fold_observed_report,
+    constant_fold_expected_report
+  ),
+  requires: []
+}
+
+data cross_target_optimization_cost_structurally_derived: TestClaim = {
+  name: "cross_target_optimization_cost_structurally_derived",
+  source: "// free-consequences fixture: cross-target optimization cost is structurally derived from Lens<Cost> and LanguageSpec facts.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_cross_target_cost_structurally_derived.v3",
+  predicate: BinaryDimensionReportEquals(
+    cost_structurally_derived_observed_report,
+    cost_structurally_derived_expected_report
+  ),
+  requires: []
+}
+
+data r3_free_consequences_second_batch_suite: TestSuite = {
+  name: "r3_free_consequences_second_batch_suite",
+  claims: [
+    auto_loop_parallelism_provable_independence_emits_parallel,
+    auto_loop_parallelism_unproven_falls_back_sequential,
+    auto_loop_parallelism_dependence_emits_sequential,
+    cross_target_optimization_constant_fold_consistent,
+    cross_target_optimization_cost_structurally_derived
+  ]
+}

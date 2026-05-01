@@ -383,6 +383,24 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
+    // R3 T-Free-Consequences first batch: hand-Rust driver for five
+    // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.
+    // Dissolves when generic DimensionReport<C> evaluation can execute
+    // the claims without a host-side integration harness.
+    "src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs",
+    // R3 T-Free-Consequences second batch: hand-Rust driver for five
+    // author-now/fire-later TestClaims over ordinary-lens loop parallelism and
+    // `BinaryDimensionReportEquals` cross-target cost optimization.
+    // Dissolves when generic runner coverage can execute the claims without a
+    // host-side integration harness.
+    "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 L4/L7/L5 skeleton: hand-Rust receipt that Lane 1 `DifferentialEquals` emit/eval pairing,
+    // Lane 2 `AlgebraicLaw::Identity`, and L5 `ForAllTargets` compile but defer as
+    // `NotYetImplemented`. Dissolves when `TestRunner` can evaluate these claims directly without
+    // this host-side NYI harness (same dissolution class as the R3 Free-Consequences batches).
+    // Retirement must also fold the L5 program-text bridge (`fixtures/r3_l5_corpus/add_then_branch_seed.v3`
+    // vs embedded `TestClaim.source` — byte equality ratchet lives only in this harness today).
+    "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
@@ -403,6 +421,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724;
     // cycle-5 merge hygiene gunb-ai/gunbc#1142 c4341940508).
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",

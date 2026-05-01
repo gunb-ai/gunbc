@@ -15,7 +15,7 @@ Main already carries R2 close and R3-continuation choreography (#1275 lineage) a
 T-FixedPoint closes the **R3 thesis facet 2 horizon** of the `pb_self_compile_fixed_point` predicate: `compiler.dag` compiled by the v3 binary produces **bit-identical stage0 Rust + bit-identical emitted artifacts** under fixed-point semantics, with the in-tree hand-Rust floor at zero (per Director-locked decision 2026-04-28 in `r3-structure.md` §"Design challenge 4").
 
 The lane delivers:
-1. The strong-interpretation `.dag` `TestClaim` `pb_self_compile_fixed_point_strong` (per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101) authored against the existing `FixedPointConverges` substrate variant at `src/v3/std/verification.dag:206` — same `FixedPointConverges` predicate variant, distinct strong claim name (`pb_self_compile_fixed_point_strong`, not the R1 `pb_self_compile_fixed_point`).
+1. The strong-interpretation `.dag` `TestClaim` `pb_self_compile_fixed_point_strong` (per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101) authored against the existing `FixedPointConverges` substrate variant at `src/v3/std/verification.dag:219` — same `FixedPointConverges` predicate variant, distinct strong claim name (`pb_self_compile_fixed_point_strong`, not the R1 `pb_self_compile_fixed_point`).
 2. Verification that running the cycle a second time on the v3-emitted Rust produces byte-identical output (true fixed point, not just "compiles itself once").
 3. Closure-ledger signal that R3 thesis facet 2 has landed.
 
@@ -25,13 +25,31 @@ Scanning aid only: each cell defers to the cited sections for wording, STOP rule
 
 | Phase | Preconditions (what must be true before this cadence step) | Deliverable *shape* (planning, not an order to implement now) | Acceptance / artifact pointer | If false → |
 |---|---|---|---|---|
-| **P0 — Brief** | Director discretionary pre-R3 authoring per [`r3-structure.md`](../r3-structure.md) | PROPOSAL text in-repo | This document | N/A; **no worker dispatch** |
+| **P0 — Brief + prerequisite pins** | §"P0 readiness checklist" satisfied as **read-only authority alignment** (not “gates green”); Director discretionary pre-R3 authoring per [`r3-structure.md`](../r3-structure.md) | PROPOSAL text + pinned surfaces in-repo | This document §"P0 readiness checklist" | N/A; **no worker dispatch** |
 | **P1 — Evaluator substrate** | R2-Evaluator landed; parser surface for the strong claim path merged (#1286) | Runnable `compiler.dag` fixed-point cycle | §"Dependencies" (1); R2 close (#1275) ≠ Evaluator | **Wait** on R2-Evaluator program; §"STOP conditions" |
 | **P2 — Lens / SG-0** | T-LensProducer-Retirement (XL) + PB-1 shim pattern; three producer files retired | SG-0 non-test = 0 census signal | §"Dependencies" (2–3); `*_retired` greens in sibling Lens briefs | **Wait** on XL; SG-0 > 0 → STOP in §"STOP conditions" |
 | **P3 — T-FixedPoint worker** (future dispatch) | Joint ledger read in §"Dispatch preconditions" (Evaluator + Rust+Python grounding + Row-B set) | `pb_self_compile_fixed_point_strong` + second-pass byte identity + ledger close | §"Acceptance gate"; §"Relationship to DB-8" + [`self_host_fixed_point.rs`](../../src/v3/compiler/src/bin/self_host_fixed_point.rs) staging | Any §"STOP conditions" row fires → halt |
 | **TC3 / verification handoff** | B5 + T-Substrate-Lens-Primitive per §"TC3" | R3 Verification spine (separate program) | §"TC3"; substrate gap paragraph | Do not invent evaluator semantics; follow §"TC3" STOP |
 
 **P3 does not start** while P1 or P2 is incomplete: receipts on main for R2 closure and R3 continuation are **necessary, not sufficient** for this lane’s dispatch.
+
+## P0 readiness checklist (prerequisite pins — planning only)
+
+**Scope:** Work that can proceed **before** R2-Evaluator and T-LensProducer-Retirement close. Completing this checklist **does not** assert P1/P2/P3 dispatch eligibility, does **not** turn `self_host_ratchet` merge-blocking, and does **not** authorize authoring `pb_self_compile_fixed_point_strong` in `verification.dag` (that remains **P3** and dispatch-gated per §"STOP conditions" + §"Non-goals"). Checklist items are **pins to existing authority**, not new obligations.
+
+| Pin | Read once (authority) | P0 “done” means |
+|---|---|---|
+| **Two horizons** | §"Two-horizon framing" + `r2-structure.md` / `r3-structure.md` citations there | PB / Director readers agree the R1 vs R3 thesis split for `pb_self_compile_fixed_point` is unchanged by matrix work. |
+| **Strong suite stays deferred** | §"Acceptance gate" + §"STOP conditions" (R1 fixture / substrate pressure) | Planning explicitly treats `pb_self_compile_fixed_point_strong` as **future** `.dag` composition; no worker adds a `TestSuite` with that name to `src/v3/std/verification.dag` until §"Dispatch preconditions". |
+| **Substrate rows exist (composition, not introduction)** | `src/v3/std/verification.dag` — `FixedPointConverges` + `RatchetZero` variants (≈219–226 at authoring) | Readers locate the two predicate shapes the strong suite will compose later; no variant edits from this lane. |
+| **SG-0 floor definition** | `r3-structure.md` §"Design challenge 4" + [`design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) §`First-time bootstrap` | **Definition + census authority** are named; **SG-0 non-test = 0** remains a **P2** acceptance signal, not a P0 pass/fail. |
+| **DB-8 mechanical ratchet** | [`db-8.md`](../db-history/db-8.md) + [`design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) + [`self_host_fixed_point.rs`](../../src/v3/compiler/src/bin/self_host_fixed_point.rs) module docs | Staging contract understood: pipeline snapshot on `default_fixed_point_source`; `dsl/gunbc/compiler.dag` slice is **probe / conditional** until promotion (§"Relationship to DB-8" item 1); `receipt.json` under `target/self_host/` for trend reads; D-1 fail-closed when the full slice runs. |
+| **CI policy for ratchet** | [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) job `self_host_ratchet` | **Observed:** job + listed steps use `continue-on-error: true` until Lane 1e / graduation (matches §"Relationship to DB-8" item 2). P0 does not change workflow policy. |
+| **Determinism harness surface** | `db-8.md` → `determinism_test.rs` + `tests/common/determinism_fixtures.rs` | Emit matrix + HashMap/HashSet debt visibility expectations are **located** for later ratchet failures; fixing emit debt stays Lane 1e / non-goals here. |
+| **Parser surface for strong `.dag` path** | Landed #1286 (see Status paragraph above) | Confirms authoring-time syntax for the future suite is not blocked by parse holes called out in dispatch; still **not** an Evaluator substitute. |
+| **Joint dispatch ledger rule** | §"Dispatch preconditions" + §"Single grounding gate" | One ledger read → dispatch + Row-B set; P0 readers can trace the rule without a live ledger exercise. |
+
+**Optional local observation (non-authoritative):** `cargo run -p v3-compiler --release --bin self_host_fixed_point` then inspect `target/self_host/receipt.json` — useful for trend/debug only; exit code / receipt fields are **not** mapped to P1–P3 greens in this checklist.
 
 ## Two-horizon framing (load-bearing — do not collapse)
 
@@ -74,7 +92,7 @@ One `FixedPointConverges { compile_target = T, expected = artifact_T_snapshot }`
 
 #### Row class C — SG-0 census = 0
 
-**`RatchetZero { authority, ratchet_kind }`** (line 210-213) — single row asserting SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` census = 0 at evaluation time. Cross-reads the SG-0 census authority (does not duplicate the list).
+**`RatchetZero { authority, ratchet_kind }`** (lines 223-226 in `src/v3/std/verification.dag` at authoring) — single row asserting SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` census = 0 at evaluation time. Cross-reads the SG-0 census authority (does not duplicate the list).
 
 ### Single grounding gate (artifact set derivation)
 
@@ -95,7 +113,7 @@ T-FixedPoint closes when every materialized row evaluates true. **Late-arriving 
 
 ### Substrate readiness check
 
-Both `FixedPointConverges` and `RatchetZero` variants exist on main today (verified at `src/v3/std/verification.dag:206-213`). The strong claim is **substrate-composition**, not substrate-introduction. STOP condition (see §"STOP conditions"): if `TestSuite`-level composition of these two predicates proves structurally insufficient at authoring time (e.g., the runtime cannot evaluate the AND-conjunction across the two predicate kinds, or the SG-0 census authority surface is not addressable from `RatchetZero.authority`), that's a substrate gap → escalate per `INVARIANTS.md` §P1 (signal Substrate Manager; do not extend variants from this lane).
+Both `FixedPointConverges` and `RatchetZero` variants exist on main today (verified at `src/v3/std/verification.dag` ≈219–226 at authoring). The strong claim is **substrate-composition**, not substrate-introduction. STOP condition (see §"STOP conditions"): if `TestSuite`-level composition of these two predicates proves structurally insufficient at authoring time (e.g., the runtime cannot evaluate the AND-conjunction across the two predicate kinds, or the SG-0 census authority surface is not addressable from `RatchetZero.authority`), that's a substrate gap → escalate per `INVARIANTS.md` §P1 (signal Substrate Manager; do not extend variants from this lane).
 
 ### Relationship to DB-8 ratchet infrastructure
 
@@ -215,7 +233,7 @@ When the R3 Verification Manager spawns (per `r3-structure.md` §"Manager struct
 - SG-0 floor authority: [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) §`First-time bootstrap` (≤1 trampoline rule)
 - DB-8 ratchet design (mechanical authority): [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md)
 - DB-8 history (landed infrastructure): [`docs/db-history/db-8.md`](../db-history/db-8.md)
-- Substrate variant: `src/v3/std/verification.dag:206-209` (`FixedPointConverges`)
+- Substrate variant: `src/v3/std/verification.dag:219-226` (`FixedPointConverges` + `RatchetZero`)
 - Ratchet binary (extend, do not rebuild): `src/v3/compiler/src/bin/self_host_fixed_point.rs`
 - R1 fixture (do not edit): `src/v3/compiler/tests/integration/r1_release_acceptance_test.rs:18`
 - Existing test scaffolding (reference, not the strong gate): `src/v3/compiler/tests/integration/l1_5_fixed_point_test.rs`, `src/v3/compiler/tests/integration/r1c_d_pb_census_gates_test.rs`
