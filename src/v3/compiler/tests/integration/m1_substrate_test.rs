@@ -39,7 +39,13 @@ fn operator_helpers_round_trip_from_dag_authority() {
 }
 
 #[test]
-fn bootstrap_int_add_walk_reaches_ordered_ring_add_nobody_arrow() {
+fn bootstrap_int64_add_walk_reaches_ordered_ring_add_nobody_arrow() {
+    // T-Numeric-Construction Slice 3: default `Int` alias pivoted to
+    // `AbelianGroup<Nat>`; this ratchet now walks the fixed-width `Int64`
+    // row, which still terminates at `OrderedRing<Word64>` per
+    // `dsl/std/integer.dag`. The default `Int` alias is covered by
+    // `int_default_alias_resolves_to_abelian_group_over_nat` in
+    // `m2_substrate_inhabitance_test.rs`.
     assert_bootstrap_int_ordered_ring_add_arrow(&Dag::new());
 }
 
