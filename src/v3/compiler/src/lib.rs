@@ -259,7 +259,17 @@ pub mod evaluator {
         if let Some(binding) = &path.binding {
             state.bind_top(binding.payload_port, payload)?;
         }
-        eval_node(dag, path.body, state, strategy)
+        // Evaluate the body for its frame-binding side effects, then
+        // read the arm's authoritative value at `path.output` via
+        // `eval_port`. The body's `eval_node` return is **not** the
+        // arm value: the substrate names `BranchPath.output: PortId`
+        // as the result-port edge, and an arm whose `output` is an
+        // existing or payload-bound port (e.g. the arm returns its
+        // payload directly) would drop that fact if the evaluator
+        // returned the body's local result instead. Any body
+        // diagnostic propagates through the `?`.
+        let _ = eval_node(dag, path.body, state, strategy)?;
+        eval_port(dag, path.output, state, strategy)
     }
 
     pub fn evaluate_body(
@@ -868,6 +878,54 @@ pub mod evaluator {
             let value = evaluate_body(&dag, entry, &mut state, strategy).expect("branch evaluates");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(99)));
+        }
+
+        // E4 / Facts-Flow-Forward: the arm value is the value at
+        // `BranchPath.output`, not the body's local return. When
+        // `path.output` is a payload-bound port (the arm "returns its
+        // payload"), the evaluator must read that port via `eval_port`
+        // after running the body for its side effects, not return the
+        // body node's own value. Constructed so the body is a Value
+        // node returning a *different* literal than the payload — if
+        // the evaluator returned the body's value the test would see
+        // the wrong literal.
+        #[test]
+        fn eval_branch_returns_value_at_path_output_not_body_value() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let payload_port = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            // Body returns a sentinel literal; if the evaluator wrongly
+            // returned this directly, the test would fail.
+            let body_output = dag.push_value(LiteralBits::Int(0xdead), span());
+            let arm_body = node_for_port(&dag, body_output);
+            let payload_value = Value::LiteralValue(LiteralBits::Int(7));
+            let output = dag.push_branch(
+                scrutinee,
+                vec![Path {
+                    body: arm_body,
+                    // Authoritative arm value comes from `payload_port`,
+                    // not from `body_output`.
+                    output: payload_port,
+                    pattern: BranchPattern::ResolvedVariant(some_tag),
+                    binding: Some(PayloadBinding {
+                        binding_name: "p".to_string(),
+                        payload_port,
+                    }),
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame =
+                EvalFrame::from_bindings([(scrutinee, variant(some_tag, payload_value.clone()))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, payload_value);
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
         // E4 §B.1.3 fail-closed: every `BranchPath.pattern` must be
