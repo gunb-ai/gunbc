@@ -24,6 +24,8 @@ PB does **not** own and **must not** edit:
 
 ## First slice — `regen_lens.rs`
 
+Retirement-readiness checklist (owners, SG-0 / `REGEN_OUTPUTS`, STOP routing, dispatch row): [`r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
+
 Per design doc §4.3 the dissolution path is:
 
 1. Author `data regen_lens_shim: BinShim = { name: "regen_lens", entry: regen_lens, ... }` in `dsl/std/runtime/bin_shims/regen_lens.dag`.
@@ -126,4 +128,5 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94` §"Procedure: substrate-fact introduction".
 - SG-0 census authority + generated-file partition: `src/v3/compiler/tests/integration/sg0_census_test.rs` (`EXPECTED_HAND_AUTHORED_NON_TEST` + `GENERATED_FILES`); `src/v3/compiler/build.rs` `REGEN_OUTPUTS`.
 - First-shim source (unchanged until retirement): `src/v3/compiler/src/bin/regen_lens.rs`.
+- First-target readiness (planning only): [`r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
 - Existing emitter shape reference (per anti-bridge invariant #4): `dsl/extdeps/languages/rust/emit.dag`.

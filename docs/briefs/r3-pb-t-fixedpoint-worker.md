@@ -8,6 +8,8 @@
 
 **This is a planning artifact — not a dispatch order.** Worker dispatch is gated; see §"Dispatch preconditions" + §"STOP conditions". PB Manager re-reads this brief at gate-clear to issue worker dispatch.
 
+Main already carries R2 close and R3-continuation choreography (#1275 lineage) and the parser prerequisite for the strong `.dag` authoring surface (#1286). Those landings **do not** substitute for R2-Evaluator execution or T-LensProducer-Retirement completion; see §"Post-R2 / R3-continuation execution matrix (planning index)" and §"Dispatch preconditions".
+
 ## Scope
 
 T-FixedPoint closes the **R3 thesis facet 2 horizon** of the `pb_self_compile_fixed_point` predicate: `compiler.dag` compiled by the v3 binary produces **bit-identical stage0 Rust + bit-identical emitted artifacts** under fixed-point semantics, with the in-tree hand-Rust floor at zero (per Director-locked decision 2026-04-28 in `r3-structure.md` §"Design challenge 4").
@@ -16,6 +18,20 @@ The lane delivers:
 1. The strong-interpretation `.dag` `TestClaim` `pb_self_compile_fixed_point_strong` (per `r2-pure-bootstrap-manager.md` §"Acceptance" line 101) authored against the existing `FixedPointConverges` substrate variant at `src/v3/std/verification.dag:206` — same `FixedPointConverges` predicate variant, distinct strong claim name (`pb_self_compile_fixed_point_strong`, not the R1 `pb_self_compile_fixed_point`).
 2. Verification that running the cycle a second time on the v3-emitted Rust produces byte-identical output (true fixed point, not just "compiles itself once").
 3. Closure-ledger signal that R3 thesis facet 2 has landed.
+
+## Post-R2 / R3-continuation execution matrix (planning index)
+
+Scanning aid only: each cell defers to the cited sections for wording, STOP rules, and ledger authority. **No new obligations** beyond those sections.
+
+| Phase | Preconditions (what must be true before this cadence step) | Deliverable *shape* (planning, not an order to implement now) | Acceptance / artifact pointer | If false → |
+|---|---|---|---|---|
+| **P0 — Brief** | Director discretionary pre-R3 authoring per [`r3-structure.md`](../r3-structure.md) | PROPOSAL text in-repo | This document | N/A; **no worker dispatch** |
+| **P1 — Evaluator substrate** | R2-Evaluator landed; parser surface for the strong claim path merged (#1286) | Runnable `compiler.dag` fixed-point cycle | §"Dependencies" (1); R2 close (#1275) ≠ Evaluator | **Wait** on R2-Evaluator program; §"STOP conditions" |
+| **P2 — Lens / SG-0** | T-LensProducer-Retirement (XL) + PB-1 shim pattern; three producer files retired | SG-0 non-test = 0 census signal | §"Dependencies" (2–3); `*_retired` greens in sibling Lens briefs | **Wait** on XL; SG-0 > 0 → STOP in §"STOP conditions" |
+| **P3 — T-FixedPoint worker** (future dispatch) | Joint ledger read in §"Dispatch preconditions" (Evaluator + Rust+Python grounding + Row-B set) | `pb_self_compile_fixed_point_strong` + second-pass byte identity + ledger close | §"Acceptance gate"; §"Relationship to DB-8" + [`self_host_fixed_point.rs`](../../src/v3/compiler/src/bin/self_host_fixed_point.rs) staging | Any §"STOP conditions" row fires → halt |
+| **TC3 / verification handoff** | B5 + T-Substrate-Lens-Primitive per §"TC3" | R3 Verification spine (separate program) | §"TC3"; substrate gap paragraph | Do not invent evaluator semantics; follow §"TC3" STOP |
+
+**P3 does not start** while P1 or P2 is incomplete: receipts on main for R2 closure and R3 continuation are **necessary, not sufficient** for this lane’s dispatch.
 
 ## Two-horizon framing (load-bearing — do not collapse)
 
