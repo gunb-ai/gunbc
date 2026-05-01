@@ -90,7 +90,7 @@ clears.
   assert `lens(id, x) == x` and `lens(x, id) == x` over a single-arg
   sample table. **Hard precondition:** the substrate must already expose
   an identity-element edge on the lens's algebra inhabitance; if it does
-  not, W2 ships **`Associativity` + `Commutativity` only**; **`Identity`** stays deferred.
+  not, W2 reduces to `Commutativity` only and `Identity` deferred.
 
 **`Distributivity` — explicit routing, NOT W2 scope:**
 `AlgebraicLawKind = Associativity | Commutativity | Identity` per
