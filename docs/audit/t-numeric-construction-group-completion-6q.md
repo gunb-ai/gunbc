@@ -18,14 +18,22 @@ Three candidate shapes:
 | **B — algebra-with-explicit-derived-carrier** | `type GroupCompletion<M> { carrier: ?, op, identity, inverse }` | More structurally explicit but requires a way to name the derived carrier — likely either a phantom-parameter (`Brand`-style) or a refinement that says "carrier is some opaque `Pair<M, M>`/`Sum<M, M>` derived from M." Pulls in carrier-representation facts the design doc rejected. |
 | **C — abstract atom + algebra-witness pattern** | `type GroupCompletion<M>` (opaque atom; no fields) + a separate inhabitance witness pattern that says "Int inhabits AbelianGroup via GroupCompletion<Nat>" | Closest to Magnitude's shape (Slice 1 abstract counting). The atom names the construction; the AbelianGroup witness over the abstract `GroupCompletion<M>` carrier is structurally honest because the carrier is opaque, not Nat. |
 
-**Recommendation: Shape C** — opaque-atom `type GroupCompletion<M>` parameterized by a commutative-monoid type, with the implied algebra structure being "AbelianGroup over the opaque GroupCompletion<M> carrier itself, with a derivation rule from M's monoid structure." This matches:
-- Slice 1's `Magnitude` precedent (abstract opaque atom; carrier shape at the algebraic-axiom layer; refinements bind concrete representations at grounding time).
-- Design doc §3 Option 3's "without committing to a specific encoding" framing.
+**Recommendation: Shape C as a carrier construction** — opaque-atom `type GroupCompletion<M>` parameterized by a commutative-monoid type, denoting the **carrier** of "the abelian group derived from `M`." `GroupCompletion<M>` is **not** an algebra-with-derived-carrier; it is the carrier alone. The algebra witness is named separately at the use site as standard `AbelianGroup<T>` with `T = GroupCompletion<M>`.
+
+This matches:
+- Slice 1's `Magnitude` precedent (abstract opaque atom; carrier shape at the algebraic-axiom layer; algebra inhabitance attached at use sites via `Semiring<Magnitude>`).
+- Design doc §3 Option 3's "without committing to a specific encoding" framing — `GroupCompletion<M>` opaqueness defers representation.
+- Director's "keep `AbelianGroup<T>` standard: group carrier is `T`" boundary (inbox #1288 [#4360232423](https://github.com/gunb-ai/gunbc/issues/1288#issuecomment-4360232423)).
 - Director's "no quotient-of-pairs or sign-magnitude representation facts in this prerequisite" boundary.
 
-Once `GroupCompletion<M>` lands, `type Int = AbelianGroup<GroupCompletion<Nat>>` becomes type-correct under the standard parametric reading: `T = GroupCompletion<Nat>` (an opaque atom representing "the abelian group derived from Nat"), and `inverse: fn(GroupCompletion<Nat>) -> GroupCompletion<Nat>` is honest — every element of the group-completion carrier has an additive inverse by construction.
+**Canonical Slice 3 form:** `type Int = AbelianGroup<GroupCompletion<Nat>>`.
 
-Alternative simpler form once Shape C lands: `type Int = GroupCompletion<Nat>` directly, where `GroupCompletion<M>`'s implied algebra inhabitance IS AbelianGroup. This collapses the two-step `AbelianGroup<GroupCompletion<Nat>>` into a single named type. Either is acceptable per design doc; the simpler form is preferred unless reviewers want the algebra inhabitance made structurally explicit.
+Type-correctness under the standard parametric reading:
+- `T = GroupCompletion<Nat>` is an opaque atom denoting "the abelian-group carrier derived from Nat."
+- `AbelianGroup<T>`'s structural shape `{ op: fn(T,T)->T, identity: T, inverse: fn(T)->T }` instantiates to `{ op, identity, inverse }` over `GroupCompletion<Nat>`. `inverse: fn(GroupCompletion<Nat>) -> GroupCompletion<Nat>` is honest — every element of the group-completion carrier has an additive inverse by construction.
+- The derivation rule (how `M`'s commutative-monoid structure produces the abelian group) lives in a future inhabitance lens, not in the substrate shape.
+
+**Q6 single-authority resolution.** The earlier draft of this audit floated an alternative compact form `type Int = GroupCompletion<Nat>` (collapsing carrier + algebra into a single named type). That admits two structurally distinct shapes for the same Slice 3 fact and would violate Q6 representation-duality. **Rejected.** Canonical form is the explicit two-step `AbelianGroup<GroupCompletion<Nat>>`: `GroupCompletion<M>` is **only** the carrier, and the algebra witness is **only** the standard `AbelianGroup<T>`. This keeps single authority for both surfaces (`GroupCompletion<M>` declares the derived carrier; `AbelianGroup<T>` declares the algebra structure) and prevents drift between "GroupCompletion as carrier" and "GroupCompletion as algebra-witness" readings.
 
 ## The 6 questions
 
