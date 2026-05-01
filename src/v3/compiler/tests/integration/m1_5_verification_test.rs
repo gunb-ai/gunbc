@@ -418,8 +418,10 @@ fn r2_pr_a_runtime_value_model_suite_passes() {
 }
 
 /// TC2 (Evaluator Manager): evaluation-order independence theorem shape.
-/// This is an author-now/fire-later `Compiles` fixture until PB-Runtime and
-/// T-Substrate-Lens-Primitive make strategy comparison executable.
+/// **Author-now-fire-later** `BinaryDimensionReportEquals` consumer (unified predicate
+/// PR #1318) with strategy-order role declarations; runner report equality is NYI until
+/// `DimensionReport<C>` production lands. Strict-fire still waits on a second executable
+/// strategy (PR #1316 §4 P4).
 const TC2_EVALUATION_ORDER_FIXTURE: &str =
     include_str!("../fixtures/tc2_evaluation_order_independence_deferred.dag");
 const TC2_EVALUATION_ORDER_FIXTURE_PATH: &str =
@@ -452,5 +454,14 @@ fn tc2_evaluation_order_independence_suite_passes() {
         results[0].claim_name,
         "evaluation_order_independent_lens_results"
     );
-    assert_eq!(results[0].result, ClaimResult::Pass);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("structural shape is valid")
+        ),
+        "expected TC2 unified predicate to pass shape validation with NYI evaluation, got {:?}",
+        results[0].result
+    );
 }
