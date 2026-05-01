@@ -27,6 +27,10 @@ pub const ALWAYS_EMITTED_TOP_LEVEL_KEYS: &[&str] = &[
 /// `K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE`, `K_COMPILER_DAG_V3_PARSE`, and `K_STATUS` (and the
 /// parse-error branch). If the emitter changes indentation or switches to `serde_json` pretty-print
 /// with different spacing, update this needle in the same change.
+///
+/// **False positives:** a `contains` needle could match inside a quoted JSON value; the fixed
+/// snake_case P0 key names and the receipt's flat object shape keep that risk negligible for this
+/// bounded DB-8 trend surface.
 fn top_level_property_needle(key: &str) -> String {
     let mut needle = String::with_capacity(key.len() + 8);
     needle.push_str("  \"");
@@ -91,7 +95,7 @@ mod tests {
     }
 
     #[test]
-    fn contains_tracks_validate_success_and_failure() {
+    fn contains_tracks_validate_on_accepting_receipt() {
         let ok = r#"{
   "pipeline_fixed_point_default_source": "ok",
   "compiler_dag_v3_parse": "ok",
@@ -102,6 +106,10 @@ mod tests {
             super::receipt_json_contains_always_emitted_key_properties(ok),
             super::validate_receipt_json_always_emitted_keys(ok).is_ok()
         );
+    }
+
+    #[test]
+    fn contains_tracks_validate_on_missing_pipeline() {
         let bad = r#"{
   "compiler_dag_v3_parse": "ok",
   "status": "completed"
