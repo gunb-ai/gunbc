@@ -1,8 +1,11 @@
 # T-Numeric-Construction — `ApproximateField<F>` 6Q Audit
 
 **Lane:** R3 #6 (T-Numeric-Construction). **Authority:**
-[`docs/design-numeric-construction.md`](../design-numeric-construction.md).
-**Subject:** `ApproximateField<F>` — the structural carrier for `Real =
+[`docs/design-numeric-construction.md`](../design-numeric-construction.md)
+for numeric-construction shape and
+[`docs/r3-structure.md`](../r3-structure.md) for R3 lane ownership. ROADMAP.md
+is not the milestone authority for this reframed R3 lane. **Subject:**
+`ApproximateField<F>` — the structural carrier for `Real =
 ApproximateField<Rational>` and IEEE-754-style bounded real approximations.
 
 This is a design-decision receipt only. It intentionally does not introduce
