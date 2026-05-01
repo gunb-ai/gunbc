@@ -1652,7 +1652,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1274, 1303),
+                span: SourceSpan::new("dsl/std/integer.dag", 2013, 2042),
             },
             Declaration {
                 id: DeclarationId(66),
@@ -1672,7 +1672,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1304, 1336),
+                span: SourceSpan::new("dsl/std/integer.dag", 2043, 2075),
             },
             Declaration {
                 id: DeclarationId(67),
@@ -1692,7 +1692,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1337, 1369),
+                span: SourceSpan::new("dsl/std/integer.dag", 2076, 2108),
             },
             Declaration {
                 id: DeclarationId(68),
@@ -1712,7 +1712,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1370, 1402),
+                span: SourceSpan::new("dsl/std/integer.dag", 2109, 2141),
             },
             Declaration {
                 id: DeclarationId(69),
@@ -1732,7 +1732,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1403, 1437),
+                span: SourceSpan::new("dsl/std/integer.dag", 2142, 2176),
             },
             Declaration {
                 id: DeclarationId(70),
@@ -1752,7 +1752,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1494, 1521),
+                span: SourceSpan::new("dsl/std/integer.dag", 2233, 2260),
             },
             Declaration {
                 id: DeclarationId(71),
@@ -1772,7 +1772,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1522, 1552),
+                span: SourceSpan::new("dsl/std/integer.dag", 2261, 2291),
             },
             Declaration {
                 id: DeclarationId(72),
@@ -1792,7 +1792,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1553, 1583),
+                span: SourceSpan::new("dsl/std/integer.dag", 2292, 2322),
             },
             Declaration {
                 id: DeclarationId(73),
@@ -1812,7 +1812,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1584, 1614),
+                span: SourceSpan::new("dsl/std/integer.dag", 2323, 2353),
             },
             Declaration {
                 id: DeclarationId(74),
@@ -1832,14 +1832,17 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1615, 1647),
+                span: SourceSpan::new("dsl/std/integer.dag", 2354, 2386),
             },
             Declaration {
                 id: DeclarationId(75),
                 name: Some("Int".to_string()),
                 connective: TypeConnective::Instantiation {
-                    template: DeclarationId(68),
-                    arguments: vec![],
+                    template: DeclarationId(25),
+                    arguments: vec![TemplateArgument {
+                        parameter: DeclarationId(26),
+                        value: DeclarationId(64),
+                    }],
                 },
                 type_params: vec![],
                 phantom_params: Vec::new(),
@@ -1849,7 +1852,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1668, 1684),
+                span: SourceSpan::new("dsl/std/integer.dag", 3056, 3084),
             },
             Declaration {
                 id: DeclarationId(76),
@@ -1866,7 +1869,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/integer.dag", 1685, 1703),
+                span: SourceSpan::new("dsl/std/integer.dag", 3085, 3103),
             },
             Declaration {
                 id: DeclarationId(77),
