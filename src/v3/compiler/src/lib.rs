@@ -211,6 +211,17 @@ pub mod evaluator {
                         ComparisonOp::Ge => a >= b,
                     },
                     (
+                        Value::LiteralValue(LiteralBits::Bool(a)),
+                        Value::LiteralValue(LiteralBits::Bool(b)),
+                    ) => match op {
+                        ComparisonOp::Eq => a == b,
+                        ComparisonOp::Ne => a != b,
+                        ComparisonOp::Lt => a < b,
+                        ComparisonOp::Le => a <= b,
+                        ComparisonOp::Gt => a > b,
+                        ComparisonOp::Ge => a >= b,
+                    },
+                    (
                         Value::LiteralValue(LiteralBits::String(a)),
                         Value::LiteralValue(LiteralBits::String(b)),
                     ) => match op {
@@ -642,6 +653,24 @@ pub mod evaluator {
             let mut state = empty_state();
 
             let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("cmp");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(true)));
+        }
+
+        #[test]
+        fn transform_comparison_bool_matches_rust_total_order() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Bool(false), span());
+            let rhs = dag.push_value(LiteralBits::Bool(true), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("bool lt");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(true)));
         }

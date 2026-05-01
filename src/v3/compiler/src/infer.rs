@@ -4554,7 +4554,12 @@ fn resolve_operator_arrow(
             div_total_result_output_shape(dag, base_lhs)?,
         ),
         OperatorKind::Arithmetic(_) => (vec![base_lhs, base_lhs], base_lhs),
-        OperatorKind::Comparison(_) => (vec![base_lhs, base_lhs], dag.bool_shape()?),
+        OperatorKind::Comparison(op) => {
+            if !host_eager_comparison_operator_supported(dag, &base_lhs, op) {
+                return None;
+            }
+            (vec![base_lhs, base_lhs], dag.bool_shape()?)
+        }
         OperatorKind::Logical(_) => {
             let bool_shape = dag.bool_shape()?;
             (vec![bool_shape, bool_shape], bool_shape)
@@ -5681,6 +5686,50 @@ mod bool_logical_operator_arrow_tests {
              logical fallback produced `(Bool,Bool)->Bool` regardless \
              of LHS, inventing a carrier the type does not declare"
         );
+    }
+
+    #[test]
+    fn string_ordering_comparison_fails_resolve_operator_arrow_until_host_eval_supports_it() {
+        let mut dag = Dag::new();
+        let string_shape = dag.string_shape().expect("bootstrap String");
+        assert!(
+            resolve_operator_arrow(
+                &mut dag,
+                OperatorKind::Comparison(ComparisonOp::Lt),
+                &string_shape,
+            )
+            .is_none(),
+            "host eager evaluator has no String `<`; inference must not admit it"
+        );
+        assert!(
+            resolve_operator_arrow(
+                &mut dag,
+                OperatorKind::Comparison(ComparisonOp::Eq),
+                &string_shape,
+            )
+            .is_some(),
+            "`==` on String must still resolve (Eq/Ne parity with lens_apply)"
+        );
+    }
+
+    #[test]
+    fn bool_comparison_operators_resolve_for_host_eval_total_order() {
+        let mut dag = Dag::new();
+        let bool_shape = dag.bool_shape().expect("bootstrap Bool");
+        for op in [
+            ComparisonOp::Eq,
+            ComparisonOp::Ne,
+            ComparisonOp::Lt,
+            ComparisonOp::Le,
+            ComparisonOp::Gt,
+            ComparisonOp::Ge,
+        ] {
+            assert!(
+                resolve_operator_arrow(&mut dag, OperatorKind::Comparison(op), &bool_shape,)
+                    .is_some(),
+                "Bool comparison {op:?} should resolve (Rust `bool` ordering)"
+            );
+        }
     }
 
     #[test]
