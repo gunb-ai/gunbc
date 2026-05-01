@@ -56,6 +56,17 @@ const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
 const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
     "src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag";
 
+/// `.dag` path for [`TestPredicate::ReleaseDeferredClaim`] (R1 release concession pattern).
+/// Single lock for release deferral validation (see
+/// [`docs/briefs/r2-evaluator-test-runner-authority-ratchet.md`](../../docs/briefs/r2-evaluator-test-runner-authority-ratchet.md) §2.2).
+const RELEASE_DEFERRAL_FIXTURE_PATH: &str =
+    "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
+
+/// Only compile-target / snapshot-ref pair accepted by [`Self::eval_fixed_point_converges_shape`]
+/// until T-FixedPoint generalizes wiring (ratchet audit §2.6).
+const FIXED_POINT_SUPPORTED_COMPILE_TARGET: &str = "default_fixed_point_source";
+const FIXED_POINT_SUPPORTED_SNAPSHOT_REF: &str = "pipeline_stage_snapshots";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
