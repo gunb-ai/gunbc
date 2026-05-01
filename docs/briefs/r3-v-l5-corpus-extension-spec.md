@@ -40,7 +40,7 @@ for p in \
 do git cat-file -e "origin/main:$p" || exit 1; done
 ```
 
-**`ForAllTargets` spot-check:** `rg -n '\\| ForAllTargets \\{' src/v3/std/verification.dag` — expects the scaffold sum arm `{ command: String, args: List<String>, expect_exit_code: Int }` (line numbers intentionally **not** pinned in prose).
+**`ForAllTargets` spot-check:** `rg -n "ForAllTargets" src/v3/std/verification.dag` — confirms the scaffold sum arm `{ command: String, args: List<String>, expect_exit_code: Int }` exists (line numbers intentionally **not** pinned in prose).
 
 Substrate **changes** (new carriers, new predicate variants) are **out of scope** for this PR — route via **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** when implementation dispatch proposes them ([§7](#7-substrate-introduction-flag-invariants-p1)).
 
