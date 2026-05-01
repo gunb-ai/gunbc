@@ -72,8 +72,11 @@ The algorithmic shape is:
    fabricated `composed` value.
 3. Compose successful carrier values according to the behavior structure:
    `sequential` for Bind composition, `branch` for exclusive branch arms, and
-   `iterate` for loop bounds. The fold must not replace those declared
-   operations with per-lens Rust dispatch.
+   `iterate` for loop bounds. For empty / unit sequential structure, the fold
+   must evaluate and consume `Lens.sequential.identity`; for non-empty Bind
+   composition it must evaluate and consume `Lens.sequential.op`. The fold must
+   not replace those declared operations with per-lens Rust dispatch or
+   fabricated unit values.
 4. Evaluate `Lens.validate(dag, composed)` after successful composition.
    `SomeDiagnostic` yields `DimensionFail`; `NoDiagnostic` yields
    `DimensionOk`.
@@ -83,9 +86,10 @@ The algorithmic shape is:
 
 E6 cannot honestly implement the full fold on top of E1/E2 alone.
 
-- **Body-evaluator coverage:** `Lens.read`, `branch`, `iterate`, and
-  `validate` are function-valued substrate fields. Executing them requires the
-  PR-E body evaluator to run the lens instance bodies through the shared
+- **Body-evaluator coverage:** `Lens.read`, `Lens.sequential.op`,
+  `Lens.sequential.identity`, `branch`, `iterate`, and `validate` are the
+  declared carrier authorities the fold must consume. Executing them requires
+  the PR-E body evaluator to run the lens instance bodies through the shared
   `eval_node` / `eval_port` boundary. With only E1, non-Value behaviors still
   fail closed.
 - **Transform / Branch / Loop dependencies:** E3, E4, and E5 supply the
@@ -117,6 +121,9 @@ E6 implementation may resume when:
 
 - E3, E4, and E5 have landed enough behavior semantics for lens bodies and loop
   iteration to execute through the shared evaluator boundary;
+- sequential composition consumes the declared `Lens.sequential` monoid witness:
+  `identity` for empty/unit structure and `op` for Bind sequencing, with no
+  host-fabricated unit or per-lens Rust sequencing;
 - Bind / callable-entry semantics are available for applying `Lens<C>` function
   fields without local `FieldValue` frames;
 - the implementation names its structural program-scope authority, or explicitly
@@ -132,6 +139,8 @@ Required implementation tests:
   fabricated `composed` value;
 - the fold consumes Behavior tree structure through evaluator semantics rather
   than per-lens Rust dispatch;
+- empty/unit sequential structure consumes `Lens.sequential.identity`;
+- Bind sequencing composes through `Lens.sequential.op`;
 - branch and loop composition use the declared `Lens<C>.branch` and
   `Lens<C>.iterate` fields;
 - `fold_lens_over_reflected_program` remains either a compatibility seam or is
