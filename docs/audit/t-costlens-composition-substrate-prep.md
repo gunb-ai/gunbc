@@ -1,6 +1,6 @@
 # T-CostLens-Composition substrate-prep audit
 
-**Lane:** R3 T-CostLens-Composition. **Authority:** PR #1263 cost-lens blocker history, [`docs/design-numeric-construction.md`](../design-numeric-construction.md) cost-lens implications, and the current symbolic-cost substrate in `src/v3/lenses/cost.dag`.
+**Lane:** R3 T-CostLens-Composition. **Authority:** PR #1263 cost-lens blocker history, cost-lens implications in `docs/design-numeric-construction.md`, and the current symbolic-cost substrate in `src/v3/lenses/cost.dag`.
 
 This audit names the bottom-up substrate fact needed before cost-lens composition can honestly consume loop bounds after the numeric construction chain starts landing. It is docs-only: no `data cost_lens: Lens<SymbolicCost>`, no hand-Rust fold scaffold, no parser/literal/refinement work, and no numeric-consumer migration.
 
@@ -46,7 +46,8 @@ So the honest next PR is a focused substrate precursor, not this audit PR:
 2. Add/ratchet `loop_bound_measure(bound) -> PortId`.
 3. Populate `Descent.measure` from the same per-entry descent parameter currently used as `LoopNode.source`.
 4. Add a ratchet that `LoopNode.source == loop_bound_measure(LoopNode.bound)` while `LoopNode.source` still exists.
-5. In a later migration, retire direct `LoopNode.source` reads or make `source` derived from `LoopBound`.
+5. Update the `LoopBound` green dissolution receipt in `src/v3/std/substrate.dag` and the mutual-recursion lowering design receipt in `docs/design-mutual-recursion-lowering.md` so they name the new measure facet and keep cluster topology distinct from cost measure.
+6. In a later migration, retire direct `LoopNode.source` reads or make `source` derived from `LoopBound`.
 
 That sequence preserves single authority while giving the cost lens a source-free projection point.
 
