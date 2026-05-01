@@ -36,19 +36,23 @@ fn fold_design_doc_example_2_semiring_u32() -> Result<TargetInhabitance, Emissio
 ///   [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 /// - [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples): runs
 ///   design-doc Examples 1–2 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`.
-///   **Checkpoint:** ignores `_dag` and `_lifetime_facts` by design; do not widen this arm to
-///   multiple bindings or real program facts without landing the declared projection / dissolution
-///   path first (#1133 / #1286).
+///   **Checkpoint:** ignores `_dag` by design; on the scratch path, `lifetime_facts` must be
+///   empty in debug builds until this body reads real facts. Do not widen this arm to multiple
+///   bindings or real program facts without landing the declared projection / dissolution path
+///   first (#1133 / #1286).
 pub fn fold_program_to_target(
     _dag: &Dag,
-    _lifetime_facts: &LifetimeAnalysisReport,
+    lifetime_facts: &LifetimeAnalysisReport,
     language_spec: &LanguageSpecProjection,
 ) -> Result<BTreeMap<BindingId, TargetInhabitance>, EmissionDiagnostic> {
     match language_spec {
-        LanguageSpecProjection::Undeclared => Err(EmissionDiagnostic::FoldNotImplemented),
+        LanguageSpecProjection::Undeclared => {
+            let _ = lifetime_facts;
+            Err(EmissionDiagnostic::FoldNotImplemented)
+        }
         LanguageSpecProjection::ScratchIntExamples(example) => {
             debug_assert!(
-                _lifetime_facts.is_empty(),
+                lifetime_facts.is_empty(),
                 "ScratchIntExamples checkpoint: pass an empty LifetimeAnalysisReport until this body reads facts (#1133 / #1286)"
             );
             let binding = BindingId(0);
