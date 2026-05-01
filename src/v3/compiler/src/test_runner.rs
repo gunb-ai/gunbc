@@ -2535,23 +2535,29 @@ impl<'a> TestRunner<'a> {
                 "FixedPointConverges payload should be (Path, SnapshotRef)".to_string(),
             );
         };
-        if compile_target != "default_fixed_point_source" {
+        if compile_target != FIXED_POINT_SUPPORTED_COMPILE_TARGET {
             return ClaimResult::Fail(format!(
-                "FixedPointConverges only supports `default_fixed_point_source` today, got `{compile_target}`"
+                "FixedPointConverges only supports `{FIXED_POINT_SUPPORTED_COMPILE_TARGET}` today, got `{compile_target}`"
             ));
         }
-        if expected != "pipeline_stage_snapshots" {
+        if expected != FIXED_POINT_SUPPORTED_SNAPSHOT_REF {
             return ClaimResult::Fail(format!(
-                "FixedPointConverges only supports `pipeline_stage_snapshots` today, got `{expected}`"
+                "FixedPointConverges only supports `{FIXED_POINT_SUPPORTED_SNAPSHOT_REF}` today, got `{expected}`"
             ));
         }
-        let pass1 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
+        let pass1 = match compile_stage_snapshots(
+            default_fixed_point_source(),
+            FIXED_POINT_SUPPORTED_COMPILE_TARGET,
+        ) {
             Ok(snapshots) => snapshots,
             Err(err) => {
                 return ClaimResult::Fail(format!("FixedPointConverges pass1 failed: {err:?}"))
             }
         };
-        let pass2 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
+        let pass2 = match compile_stage_snapshots(
+            default_fixed_point_source(),
+            FIXED_POINT_SUPPORTED_COMPILE_TARGET,
+        ) {
             Ok(snapshots) => snapshots,
             Err(err) => {
                 return ClaimResult::Fail(format!("FixedPointConverges pass2 failed: {err:?}"))
