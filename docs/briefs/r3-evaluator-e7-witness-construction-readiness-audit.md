@@ -9,10 +9,17 @@ substrate, no fixture changes land in this slice.**
 **Authorities:**
 - [`docs/briefs/r3-evaluator-dispatch.md`](r3-evaluator-dispatch.md)
   §"Implementation Slices" → E7 spec; §"Parallelization" — "E6 and E7
-  wait for the body evaluator spine."
+  wait for the body evaluator spine." The locked E7 decisions consumed here
+  are: materialize `Witness::Inhabits` / `Witness::Violates` from evaluator
+  results, cover complexity / tenant-flow / IFC-style outcomes, use typed
+  diagnostics, and do not parse `Witness.reason`.
 - [`src/v3/std/dimensions.dag`](../../src/v3/std/dimensions.dag) §
   `Witness<Carrier>` (line 35), `DimensionReport<Carrier>` (line 51),
-  `AnalysisDimension<Carrier>` (line 73) — substrate authorities.
+  `AnalysisDimension<Carrier>` (line 73), and `Dimension<Unit, Carrier>`
+  (line 89) — substrate type authorities. **No `data
+  AnalysisDimension<...>` instances are live today**; `dimensions.dag`
+  explicitly defers `data symbolic_cost_dimension: AnalysisDimension<SymbolicCost>`
+  behind the class-5 record-body gap.
 - [`src/v3/compiler/src/dimension.rs`](../../src/v3/compiler/src/dimension.rs)
   — existing Rust mirrors for `Witness<C>` / `DimensionReport<C>`,
   plus `analyze_symbolic_cost_dimension` (the Q6.5 lens-instance
@@ -21,12 +28,18 @@ substrate, no fixture changes land in this slice.**
   E5 (Loop) NOT YET LANDED — `Behavior::Loop` returns
   `EvalError::UnsupportedBehavior { behavior: "Loop" }` in
   `eval_node`, regression-tested at `lib.rs::loop_behavior_fails_closed`.
+  `Behavior::Bind` is also still fail-closed; it is body-evaluator coverage,
+  not the E6 lens-fold slice.
 
 ## State at HEAD
 
-- **Substrate `Witness` / `DimensionReport` / `AnalysisDimension`**:
-  declared in `dimensions.dag`, mirrored in Rust at `dimension.rs:46-69`
-  with the same coproduct partition.
+- **Substrate `Witness` / `DimensionReport` / dimension types**:
+  `Witness<Carrier>` and `DimensionReport<Carrier>` are declared in
+  `dimensions.dag` and mirrored in Rust at `dimension.rs:46-69` with the
+  same coproduct partition. `AnalysisDimension<Carrier>` and
+  `Dimension<Unit, Carrier>` are type authorities in `dimensions.dag`, but no
+  concrete `AnalysisDimension` data record is live; E7 must not pretend one
+  exists until class-5 record bodies or an explicit host bridge lands.
 - **Existing analyzer**:
   `dimension.rs::analyze_symbolic_cost_dimension(Dag, NodeId)
   -> DimensionReport<SymbolicCost>` walks `behavior_spine_in_node_order`
@@ -35,7 +48,9 @@ substrate, no fixture changes land in this slice.**
   Q6.5 lens-instance precedent E7 should generalize.
 - **Body evaluator**: `evaluate_body` (E0/E1) plus per-`Behavior`
   evaluators E1 (Value), E3 (Transform), E4 (Branch). E5 (Loop)
-  returns `UnsupportedBehavior`; E6 (Bind) likewise.
+  returns `UnsupportedBehavior`; `Bind` also returns `UnsupportedBehavior`.
+  This audit treats both as prerequisites for representative E7 execution
+  rather than importing state from an unlanded branch.
 - **No `Witness`-from-`Value` bridge**: `evaluate_body` returns a
   runtime `Value`, not a `Witness<C>`. Nothing in the tree today
   composes a `DimensionReport` from `evaluate_body` results for
@@ -79,21 +94,24 @@ fn witness_for_behavior<C>(
 ) -> Witness<C>;
 ```
 
-`LensRunnerView<C>` is a Rust-side trait that mirrors the
-substrate's `AnalysisDimension<Carrier>.witness_of` field — it
-exposes a single `witness_of_value(&Behavior, Value) -> Witness<C>`
-method per dimension. E7 will start with three concrete
-implementations (one per representative lens):
+`LensRunnerView<C>` is a proposed Rust-side adapter for the first
+implementation slice, not a claim that `AnalysisDimension` data instances are
+already constructible. It consumes the live `Witness<C>` /
+`DimensionReport<C>` mirrors and exposes
+`witness_of_value(&Behavior, Value) -> Witness<C>` per representative
+dimension until the substrate can instantiate `AnalysisDimension` records.
+E7 will start with three concrete implementations (one per representative
+lens):
 
 - `ComplexityDimension` — wraps the existing `cost_of` / `compute_costs`
   path; converts `CostLookup::Hit(_)` → `Inhabits(SymbolicCost)`,
   `CostLookup::Miss` → `Violates`.
-- `TenantFlowDimension` — placeholder until lens-instance details are
-  named; first slice may ship as a structural stub returning
-  `Inhabits(())` for behaviors with no tenant flow and `Violates` for
-  cross-tenant edges.
-- `IfcDimension` — same shape; first slice ships a minimal IFC
-  classification per behavior.
+- `TenantFlowDimension` — **not live today**. The first executable slice must
+  either consume a landed evaluator-side carrier or stay readiness-only; it
+  must not use `()` as a silent stand-in for tenant flow.
+- `IfcDimension` — **not live today**. The first executable slice must consume
+  a landed IFC label carrier or stay readiness-only; it must not fabricate a
+  local label space.
 
 Each per-dimension implementation is a small free-function fold over
 the existing generated lens code (`lens_cost_generated.rs` etc.)
@@ -112,12 +130,13 @@ fn analyze_with_evaluator<C>(
 ```
 
 Mirrors `analyze_symbolic_cost_dimension`'s structure but consumes
-`evaluate_body` instead of `behavior_spine` directly. Composes via
-the dimension's `compose` / `identity` (Rust trait methods mirroring
-substrate `AnalysisDimension`'s `compose: fn(C, C) -> C` and
-`identity: C`). On any `Witness::Violates`, returns
-`DimensionFail { violations, witnesses }` — never fabricates a
-`composed: C` (R2 fail-closed, per `dimensions.dag:48-50`).
+`evaluate_body` instead of `behavior_spine` directly. Composition must use the
+representative dimension's declared compose/identity authority when that
+authority is live; until concrete `AnalysisDimension` data records are
+instantiable, the first implementation slice may only use already-landed
+host authority such as the symbolic-cost analyzer path. On any
+`Witness::Violates`, returns `DimensionFail { violations, witnesses }` —
+never fabricates a `composed: C` (R2 fail-closed, per `dimensions.dag:48-60`).
 
 ### 3. Per-lens public entrypoints
 
@@ -128,8 +147,9 @@ pub fn analyze_ifc(dag: &Dag, root: NodeId) -> DimensionReport<IfcLabel>;
 ```
 
 Each is a thin wrapper over `analyze_with_evaluator` with the
-appropriate `LensRunnerView<C>` instance. These are the entrypoints
-E7 acceptance tests target.
+appropriate `LensRunnerView<C>` instance **after** the corresponding carrier
+types are live. Until `TenantFlow` and `IfcLabel` exist, those entrypoints are
+named targets, not implementation-ready functions.
 
 ## Acceptance — first executable post-E5 slice
 
@@ -140,12 +160,12 @@ Acceptance):
    assert `DimensionReport::DimensionOk { composed: SymbolicCost::… }`
    matches `analyze_symbolic_cost_dimension`'s result. (Cross-check
    against the existing analyzer's Q6.5 precedent.)
-2. **Tenant-flow** — analyze a program with two tenants; assert
-   `DimensionFail` when a cross-tenant edge exists, `DimensionOk`
-   otherwise.
-3. **IFC** — analyze a program with mixed High/Low labels; assert
-   `DimensionFail { violations: [Diagnostic::IfcLeak { … }] }`
-   when a Low edge consumes a High value.
+2. **Tenant-flow** — after the `TenantFlow` carrier exists, analyze a program
+   with two tenants; assert `DimensionFail` when a cross-tenant edge exists,
+   `DimensionOk` otherwise.
+3. **IFC** — after the `IfcLabel` carrier exists, analyze a program with mixed
+   High/Low labels; assert `DimensionFail` with typed diagnostics when a Low
+   edge consumes a High value.
 4. **Typed-diagnostic discipline** — every `Witness::Violates.reason`
    and every `DimensionFail.violations[i]` is asserted by **typed
    pattern match**, not string parsing. `Diagnostic` is the typed
@@ -188,9 +208,13 @@ Acceptance):
 - PR-E E1 / E2 / E3 / E4 (#1387, #1374, E3 PR, #1426) — consumed
   through `evaluate_body`.
 - PR-E E5 (Loop) — hard prerequisite; **NOT YET LANDED**.
+- `Behavior::Bind` body-evaluator coverage — hard prerequisite for programs
+  whose selected branch / loop bodies need binding semantics; this is not E6
+  lens-fold work.
 - PR-B.0 / PR-B.1 — body evaluator semantics + fail-closed catalog.
 - `src/v3/std/dimensions.dag` — Witness / DimensionReport /
-  AnalysisDimension substrate authority.
+  AnalysisDimension / Dimension substrate type authority; concrete
+  `AnalysisDimension` data instances are deferred in that file.
 - `src/v3/compiler/src/dimension.rs::analyze_symbolic_cost_dimension`
   — Q6.5 lens-instance precedent the E7 generalization mirrors.
 
@@ -211,7 +235,6 @@ Acceptance):
    residual (per PR-B.1).
 2. **Worker dispatch**: Director routes the E7 implementation slice
    on a fresh branch, consuming this audit's API contract.
-3. **Per-lens carrier types**: at minimum `TenantFlow` / `IfcLabel`
-   (or a stand-in for the first slice) — these can land inside E7
-   implementation if scoped narrowly, since they are evaluator-side
-   carriers, not substrate.
+3. **Per-lens carrier types**: at minimum `TenantFlow` / `IfcLabel`, or a
+   Director-approved decision that the first executable E7 slice is
+   symbolic-cost-only. No silent stand-in carrier.
