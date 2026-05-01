@@ -3,16 +3,18 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId, PortState,
-    TypeConnective, ValueBody,
+    AtomPayload, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId,
+    PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::generated_files::GENERATED_FILES;
+use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
     reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
 };
 use crate::lens_cost::{cost_of, CostLookup};
+use crate::types::TypeShape;
 use crate::{
     compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
     CompileError,
@@ -1516,6 +1518,9 @@ impl<'a> TestRunner<'a> {
                         "CostBounded" => self.eval_cost_bounded(claim, &payload),
                         "LensOutputEquals" => self.eval_lens_output_equals(claim, &payload),
                         "DifferentialEquals" => self.eval_differential_equals(claim, &payload),
+                        "BinaryDimensionReportEquals" => {
+                            self.eval_binary_dimension_report_equals_shape(claim, &payload)
+                        }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -1970,6 +1975,130 @@ impl<'a> TestRunner<'a> {
                 render_field_value(self.dag, &computed),
             ))
         }
+    }
+
+    fn eval_binary_dimension_report_equals_shape(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [left_fv, right_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals payload should be exactly two DeclarationRef fields \
+                 (left_report_ref, right_report_ref); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let left_id = match self.resolve_declaration_ref_id(left_fv, "left_report_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let right_id = match self.resolve_declaration_ref_id(right_fv, "right_report_ref") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let left_name = decl_display_name(left_id, self.dag.declaration(left_id));
+        let right_name = decl_display_name(right_id, self.dag.declaration(right_id));
+        let left_carrier = match self.validate_dimension_report_ref(left_id, "left_report_ref") {
+            Ok(carrier) => carrier,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        let right_carrier = match self.validate_dimension_report_ref(right_id, "right_report_ref") {
+            Ok(carrier) => carrier,
+            Err(reason) => return ClaimResult::Fail(reason),
+        };
+        if !self.dimension_report_carriers_equivalent(left_carrier, right_carrier) {
+            return ClaimResult::Fail(format!(
+                "BinaryDimensionReportEquals requires both refs to produce DimensionReport<C> \
+                 for the same carrier C; `{left_name}` uses `{}` but `{right_name}` uses `{}`",
+                decl_display_name(left_carrier, self.dag.declaration(left_carrier)),
+                decl_display_name(right_carrier, self.dag.declaration(right_carrier))
+            ));
+        }
+        ClaimResult::NotYetImplemented(format!(
+            "BinaryDimensionReportEquals: structural shape is valid for `{left_name}` and \
+             `{right_name}`, but runner evaluation waits for generic DimensionReport<C> \
+             production/evaluation substrate; serialized report comparison is intentionally \
+             unsupported"
+        ))
+    }
+
+    fn validate_dimension_report_ref(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<DeclarationId, String> {
+        let decl = self.dag.declaration(decl_id);
+        let candidate_type = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        self.dimension_report_carrier(candidate_type)
+            .ok_or_else(|| {
+                format!(
+                    "BinaryDimensionReportEquals `{field_label}` must reference a declaration \
+                     that produces or inhabits DimensionReport<C>; `{}` does not",
+                    decl_display_name(decl_id, decl)
+                )
+            })
+    }
+
+    fn dimension_report_carriers_equivalent(
+        &self,
+        left_carrier: DeclarationId,
+        right_carrier: DeclarationId,
+    ) -> bool {
+        left_carrier == right_carrier
+            || type_shapes_equivalent(
+                self.dag,
+                &TypeShape::new(left_carrier),
+                &TypeShape::new(right_carrier),
+            )
+    }
+
+    fn dimension_report_carrier(&self, mut current: DeclarationId) -> Option<DeclarationId> {
+        let report_id = self
+            .dag
+            .declaration_by_name("DimensionReport")
+            .map(|decl| decl.id)?;
+        // Bounded alias walk: this is a fail-closed cycle/depth guard, not a
+        // semantic limit on valid DimensionReport<C> producer shapes.
+        for _ in 0..32 {
+            match &self.dag.declaration(current).connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if *template == report_id => match arguments.as_slice() {
+                    [carrier] => return Some(self.normalize_transparent_type(carrier.value)),
+                    _ => return None,
+                },
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => current = *template,
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => current = *next,
+                _ => return None,
+            }
+        }
+        None
+    }
+
+    fn normalize_transparent_type(&self, mut current: DeclarationId) -> DeclarationId {
+        for _ in 0..32 {
+            match &self.dag.declaration(current).connective {
+                TypeConnective::Instantiation {
+                    template,
+                    arguments,
+                } if arguments.is_empty() => current = *template,
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => current = *next,
+                _ => return current,
+            }
+        }
+        current
     }
 
     fn resolve_declaration_ref_id(

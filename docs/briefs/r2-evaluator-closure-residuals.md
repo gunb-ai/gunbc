@@ -6,9 +6,9 @@
 
 ## PR-C (reflection completeness) — intentionally out of scope here
 
-**Landed:** PR-C **spec** authority is [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) (**LANDED via #1129**); Evaluator Manager’s **Lens application** / reflection sub-lane disposition already treats that structural work as landed. **Rust / compiler hooks** that consume the spec are likewise **landed** at the integration seams cited there and in the manager table.
+**Landed:** PR-C **spec** authority is [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) (**LANDED via #1129**); Evaluator Manager’s **Lens application** / reflection sub-lane disposition already treats that structural work as landed. **Rust / compiler hooks** that consume the spec are likewise **landed** via [PR #1170](https://github.com/gunb-ai/gunbc/pull/1170) at the integration seams cited there and in the manager table.
 
-**Remaining PR-C surface (not listed in this file):** follow-on work is **dissolution / structural-gate consumption** (how reflection completeness evidence wires into named `TestClaim` rows and the R2 closure ledger), **not** an open “implementation backlog” for PR-C itself. This note records **PR-D / PR-E / TC2** deferrals only so [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) consumers get a **bounded** Evaluator slice without mistaking this file for the full Evaluator closure residual inventory.
+**Remaining PR-C surface (tracked separately):** follow-on work is **dissolution / structural-gate consumption** (how reflection completeness evidence wires into named `TestClaim` rows and the R2 closure ledger), **not** an open “implementation backlog” for PR-C itself. See [`r2-pr-c-reflection-dissolution-gates.md`](r2-pr-c-reflection-dissolution-gates.md) for the R2.5/R3 gate guidance. This note records **PR-D / PR-E / TC2** deferrals only so [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) consumers get a **bounded** Evaluator slice without mistaking this file for the full Evaluator closure residual inventory.
 
 ## PR-D — cross-target equivalence harness
 
