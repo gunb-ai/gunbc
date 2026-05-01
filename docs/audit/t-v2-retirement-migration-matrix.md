@@ -191,8 +191,8 @@ These are NOT decisions — they are routing questions surfaced by the migration
 
 This matrix is intentionally bounded:
 
-- §2 enumerates **Population A** (13 internal files, fall with G-2), **Population B** (2 substantive G-1 consumers), **Population C** (cosmetic).
-- §3 gives per-file G-1 disposition for both Population B files (current dependency / role / G-1? / owner / proposed migration / prerequisite / STOP / green).
+- §2 enumerates **Population A** (13 internal files, fall with G-2), **Population B** (2 test files + 2 Cargo edges — all 4 surfaces are G-1 closure work per §2.2), **Population C** (cosmetic).
+- §3 gives per-surface G-1 disposition for all 4 Population B surfaces — §3.1 + §3.2 (test files) and §3.3 (Cargo edges) — each with current dependency / role / G-1? / owner / proposed migration / prerequisite / STOP / green.
 - §4 maps the legacy emit chain (G-2 prerequisite, not G-1).
 - §5 maps the dual `verification.dag` surface as routed to Substrate / Director — no convergence decision proposed.
 - §6 routes 4 open questions to the PM brief author.
