@@ -74,9 +74,10 @@ The algorithmic shape is:
    `sequential` for Bind composition, `branch` for exclusive branch arms, and
    `iterate` for loop bounds. For empty / unit sequential structure, the fold
    must evaluate and consume `Lens.sequential.identity`; for non-empty Bind
-   composition it must evaluate and consume `Lens.sequential.op`. The fold must
-   not replace those declared operations with per-lens Rust dispatch or
-   fabricated unit values.
+   composition it must evaluate and consume `Lens.sequential.op`. `sequential`
+   is a `Monoid<C>` carrier, not a direct Rust callback; E6 must project and
+   execute the declared monoid fields through evaluator authority rather than
+   replacing them with per-lens Rust dispatch or fabricated unit values.
 4. Evaluate `Lens.validate(dag, composed)` after successful composition.
    `SomeDiagnostic` yields `DimensionFail`; `NoDiagnostic` yields
    `DimensionOk`.
@@ -100,6 +101,13 @@ E6 cannot honestly implement the full fold on top of E1/E2 alone.
   into a user-authored body. The implementation needs the evaluator's Bind /
   callable-entry discipline, including parameter binding and top-frame write
   rules, rather than the hand `FieldValue` frame in `lens_apply.rs`.
+- **Sequential Monoid projection:** `Lens<C>.sequential` is a `Monoid<C>`, not
+  a direct Rust callback. E6 must be able to project the declared monoid
+  identity and composition operation, then execute that operation through the
+  same body-evaluator / callable-entry authority as `read`, `branch`,
+  `iterate`, and `validate`. A local Rust "sequential combine" helper would
+  duplicate the algebra carrier and silently bypass the lens's declared
+  sequential semantics.
 - **Program scope:** the current reflect/apply seam selects behaviors by
   `SourceSpan.file`. A generic `fold_lens<C>: Lens<C> -> Dag ->
   DimensionReport<C>` needs a structural program scope or whole-Dag traversal
