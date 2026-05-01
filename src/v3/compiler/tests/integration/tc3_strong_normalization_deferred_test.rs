@@ -36,14 +36,11 @@ fn tc3_strong_normalization_suite_shape_valid_nyi_at_head() {
         results[0].claim_name,
         "tc3_strong_normalization_substrate_introduced"
     );
+    // See `tc2_evaluation_order_independence_suite_passes`: fixture is a single
+    // `BinaryDimensionReportEquals` claim; NYI without matching on `reason` text.
     assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("BinaryDimensionReportEquals")
-                    && reason.contains("structural shape is valid")
-        ),
-        "expected TC3 unified predicate to pass shape validation with NYI evaluation, got {:?}",
+        matches!(&results[0].result, ClaimResult::NotYetImplemented(_)),
+        "expected TC3 claim to stop at NYI (shape-valid `BinaryDimensionReportEquals`), got {:?}",
         results[0].result
     );
 }

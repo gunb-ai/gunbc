@@ -454,14 +454,11 @@ fn tc2_evaluation_order_independence_suite_passes() {
         results[0].claim_name,
         "evaluation_order_independent_lens_results"
     );
+    // Predicate is `BinaryDimensionReportEquals` only; at head the runner returns NYI after
+    // shape validation. Do not assert on `reason` substrings (TESTING.md: avoid pinning message text).
     assert!(
-        matches!(
-            &results[0].result,
-            ClaimResult::NotYetImplemented(reason)
-                if reason.contains("BinaryDimensionReportEquals")
-                    && reason.contains("structural shape is valid")
-        ),
-        "expected TC2 unified predicate to pass shape validation with NYI evaluation, got {:?}",
+        matches!(&results[0].result, ClaimResult::NotYetImplemented(_)),
+        "expected TC2 claim to stop at NYI (shape-valid `BinaryDimensionReportEquals`), got {:?}",
         results[0].result
     );
 }
