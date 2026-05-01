@@ -1,8 +1,9 @@
 //! **Layer:** integration
 //!
 //! R3 T-Free-Consequences first-batch author-now/fire-later claims. The
-//! fixture locks five `BinaryDimensionReportEquals` consumer shapes; runner
-//! evaluation remains deferred until the Lens<C> and cost witnesses land.
+//! auto-parallelism claims exercise the ordinary lens-data path because
+//! parallelism is not a Dimension instance; auto-memoization locks the
+//! cost-related `BinaryDimensionReportEquals` shape.
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -40,17 +41,25 @@ fn r3_free_consequences_first_batch_reaches_unified_predicate_shape() {
     let results = TestRunner::new(&dag).run_suite(SUITE_NAME);
     assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
-    for (result, expected_name) in results.iter().zip(EXPECTED_CLAIMS) {
+    for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
-        assert!(
-            matches!(
-                &result.result,
-                ClaimResult::NotYetImplemented(reason)
-                    if reason.contains("BinaryDimensionReportEquals")
-                        && reason.contains("structural shape is valid")
-            ),
-            "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
-            result.result
-        );
+        if idx < 3 {
+            assert_eq!(
+                result.result,
+                ClaimResult::Pass,
+                "expected {expected_name} to exercise the ordinary parallelism lens-data path"
+            );
+        } else {
+            assert!(
+                matches!(
+                    &result.result,
+                    ClaimResult::NotYetImplemented(reason)
+                        if reason.contains("BinaryDimensionReportEquals")
+                            && reason.contains("structural shape is valid")
+                ),
+                "expected {expected_name} to reach BinaryDimensionReportEquals deferred path, got {:?}",
+                result.result
+            );
+        }
     }
 }
