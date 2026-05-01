@@ -2671,4 +2671,3 @@ fn nat_resolves_to_semiring_over_magnitude() {
         ),
     }
 }
-
