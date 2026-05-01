@@ -51,7 +51,10 @@ pub mod evaluator {
 
     use std::collections::HashMap;
 
-    use crate::dag::{Behavior, Dag, DeclarationId, LiteralBits, LoopBound, NodeId, PortId};
+    use crate::dag::{
+        Behavior, BranchNode, BranchPattern, Dag, DeclarationId, LiteralBits, LoopBound, NodeId,
+        Path, PortId,
+    };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
     /// `src/v3/std/runtime.dag`.
@@ -95,7 +98,7 @@ pub mod evaluator {
         LeftFirst,
     }
 
-    /// **Dissolution receipt: TERMINAL.** These are the E1 body-evaluator miss
+    /// **Dissolution receipt: TERMINAL.** These are the body-evaluator miss
     /// modes until later PR-E slices implement the remaining behavior arms.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalError {
@@ -109,6 +112,40 @@ pub mod evaluator {
             node: NodeId,
             behavior: &'static str,
         },
+        /// E4 fail-closed: a `BranchPath.pattern` is still
+        /// `UnresolvedVariant` at evaluation time. Resolution must lower
+        /// `UnresolvedVariant` to `ResolvedVariant(DeclarationId)` before
+        /// the body evaluator runs. Reaching this variant is a resolution
+        /// gap, not a runtime case.
+        BranchUnresolvedVariant {
+            node: NodeId,
+            name: String,
+        },
+        /// E4 fail-closed: scrutinee `Value` is not `VariantValue`, so no
+        /// `BranchPattern::ResolvedVariant(tag)` can match. Substrate +
+        /// inference guarantee totality on well-typed programs; reaching
+        /// this is an invariant violation, not a runtime case.
+        BranchScrutineeShape {
+            node: NodeId,
+        },
+        /// E4 fail-closed: scrutinee is a `VariantValue { tag, .. }` but
+        /// no `BranchPath` carries `pattern: ResolvedVariant(decl)` with
+        /// `decl == tag`. Same invariant-violation framing.
+        BranchNoMatchingArm {
+            node: NodeId,
+            tag: DeclarationId,
+        },
+        /// E4 / E2 propagation: an `EvalFrameError` produced during
+        /// frame discipline (push/pop balance, duplicate bind, unbound
+        /// port). Carries the underlying `EvalFrameError` for
+        /// diagnostic locality.
+        FrameError(EvalFrameError),
+    }
+
+    impl From<EvalFrameError> for EvalError {
+        fn from(err: EvalFrameError) -> Self {
+            EvalError::FrameError(err)
+        }
     }
 
     pub fn eval_value(value: &crate::dag::ValueNode) -> Value {
@@ -136,7 +173,7 @@ pub mod evaluator {
     pub fn eval_node(
         dag: &Dag,
         node: NodeId,
-        _state: &mut EvalStateStack<Value>,
+        state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
         match strategy {
@@ -146,11 +183,75 @@ pub mod evaluator {
         }
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
+            Behavior::Branch(branch) => eval_branch(dag, branch.clone(), state, strategy),
             behavior => Err(EvalError::UnsupportedBehavior {
                 node: behavior.id(),
                 behavior: behavior_label(behavior),
             }),
         }
+    }
+
+    /// PR-E E4: evaluate a `Branch` node per PR-B.1 §B.1.3 — eager
+    /// scrutinee evaluation, exact `ResolvedVariant` tag match,
+    /// payload binding in a fresh frame, body evaluation through
+    /// `eval_node`. Frame push/pop is balanced on both success and
+    /// diagnostic paths so the stack invariant survives errors.
+    pub fn eval_branch(
+        dag: &Dag,
+        branch: BranchNode,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        let scrutinee = eval_port(dag, branch.input, state, strategy)?;
+        let (tag, payload) = match scrutinee {
+            Value::VariantValue { tag, payload } => (tag, payload),
+            _ => return Err(EvalError::BranchScrutineeShape { node: branch.id }),
+        };
+        let path = select_branch_path(&branch, tag)?;
+        state.push_frame(EvalFrame::empty());
+        let body_result = eval_branch_body_in_pushed_frame(dag, &path, *payload, state, strategy);
+        let pop_result = state.pop_frame();
+        // The body result is authoritative; only surface a frame
+        // error if the body otherwise succeeded.
+        match (body_result, pop_result) {
+            (Ok(value), Ok(_)) => Ok(value),
+            (Err(err), _) => Err(err),
+            (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+        }
+    }
+
+    fn select_branch_path(branch: &BranchNode, tag: DeclarationId) -> Result<Path, EvalError> {
+        for path in &branch.paths {
+            match &path.pattern {
+                BranchPattern::UnresolvedVariant { name, .. } => {
+                    return Err(EvalError::BranchUnresolvedVariant {
+                        node: branch.id,
+                        name: name.clone(),
+                    });
+                }
+                BranchPattern::ResolvedVariant(decl) if *decl == tag => {
+                    return Ok(path.clone());
+                }
+                BranchPattern::ResolvedVariant(_) => {}
+            }
+        }
+        Err(EvalError::BranchNoMatchingArm {
+            node: branch.id,
+            tag,
+        })
+    }
+
+    fn eval_branch_body_in_pushed_frame(
+        dag: &Dag,
+        path: &Path,
+        payload: Value,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        if let Some(binding) = &path.binding {
+            state.bind_top(binding.payload_port, payload)?;
+        }
+        eval_node(dag, path.body, state, strategy)
     }
 
     pub fn evaluate_body(
@@ -269,12 +370,12 @@ pub mod evaluator {
     #[cfg(test)]
     mod tests {
         use super::{
-            eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame, EvalFrameError,
-            EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+            eval_branch, eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame,
+            EvalFrameError, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
         };
         use crate::dag::{
-            ArithmeticOp, Behavior, BranchPattern, Dag, LiteralBits, LoopBound, NodeId, Path,
-            PortId, TransformTarget,
+            ArithmeticOp, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits, LoopBound,
+            NodeId, Path, PayloadBinding, PortId, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
