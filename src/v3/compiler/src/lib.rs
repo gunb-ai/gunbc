@@ -188,7 +188,15 @@ pub mod evaluator {
                 }
                 let a = expect_int_literal(&operands[0])?;
                 let b = expect_int_literal(&operands[1])?;
-                let n = apply_arithmetic_int(*op, a, b)?;
+                // `Div` is totalized as `Result<T, DivError>` on the transform port in inference.
+                // The host `Value` carrier has no std `Result` projection yet — fail closed here
+                // instead of routing `/` through the same `i64` success path as `+`/`-`/`*`.
+                if matches!(op, ArithmeticOp::Div) {
+                    return Err(EvalError::UnsupportedTransformTarget {
+                        kind: "ArithmeticDiv",
+                    });
+                }
+                let n = apply_arithmetic_int_ring_only(*op, a, b)?;
                 Ok(Value::LiteralValue(LiteralBits::Int(n)))
             }
             TransformTarget::Operator(OperatorKind::Comparison(op)) => {
@@ -263,7 +271,10 @@ pub mod evaluator {
         }
     }
 
-    fn apply_arithmetic_int(op: ArithmeticOp, a: i64, b: i64) -> Result<i64, EvalError> {
+    /// Checked `Int` ring ops only (`Add` / `Sub` / `Mul`). `Div` is rejected
+    /// at the [`eval_transform_node`] call site so this helper never collapses
+    /// division through the same `i64` carrier as ring success values.
+    fn apply_arithmetic_int_ring_only(op: ArithmeticOp, a: i64, b: i64) -> Result<i64, EvalError> {
         const OVERFLOW: EvalError = EvalError::BadTransformOperands {
             reason: "integer overflow",
         };
@@ -271,9 +282,7 @@ pub mod evaluator {
             ArithmeticOp::Add => a.checked_add(b).ok_or(OVERFLOW),
             ArithmeticOp::Sub => a.checked_sub(b).ok_or(OVERFLOW),
             ArithmeticOp::Mul => a.checked_mul(b).ok_or(OVERFLOW),
-            ArithmeticOp::Div => Err(EvalError::UnsupportedTransformTarget {
-                kind: "ArithmeticDiv",
-            }),
+            ArithmeticOp::Div => unreachable!("caller filters Div before ring-only arithmetic"),
         }
     }
 
