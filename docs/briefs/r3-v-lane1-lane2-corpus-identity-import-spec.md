@@ -76,13 +76,15 @@ do git cat-file -e "origin/main:$p" || exit 1; done
 3. **Concrete binding pattern (research target):**
    - **Pair discipline (mandatory):** One authoring step / one generator emission defines **both** `source` and `file_name`. **Do not** maintain two independently hand-edited `data …: String` declarations for the same row without a freshness ratchet — that is a **parallel-authority** footgun (violates [INVARIANTS §P2](../../INVARIANTS.md#p2-boundary-discipline) intent).
    - **Acceptable at HEAD:** (i) generated `.dag` fragment that sets both `TestClaim` fields from a **single** template input; (ii) compiler-supported structural literal that supplies both strings **atomically** in one declaration; (iii) interim **paired** imports only if CI ratchet below proves **both** fields stay byte-identical across lanes on every change.
-   - Lane 1 fixture (`r3_verification_l4_emit_eval_match.dag` family) and Lane 2 fixture (`r3_verification_l5_corpus.dag` family) each consume the **same projected pair** for a given corpus key.
+   - Lane 1 fixture (`r3_verification_l4_emit_eval_match.dag` family) and Lane 2 fixture (`r3_verification_l5_corpus.dag` family) each consume the **same projected pair** for a given **row identity** — conventionally the substrate **`TestClaim.name`** field (see CI ratchet).
 
 4. **If imports cannot splice into `TestClaim` fields** at lowering time (tooling gap), do **not** fork strings by hand — fall through to mechanism **(b)** or file a **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** substrate extension for a minimal **`CertifiedProgramText`** record type reused by both lanes (single carrier → dual projection at lowering).
 
 ### CI ratchet (byte-level)
 
-- Add a **hermetic integration assertion**: compile Lane 1 claim DAG + Lane 2 claim DAG, extract the two `TestClaimValue` structs for the **same corpus key**, `assert_eq!(l4.source, l5.source)` and `assert_eq!(l4.file_name, l5.file_name)`.  
+- **Live realization shape (`HEAD`):** the Rust harness already projects each compiled `TestClaim` declaration into **[`TestClaimValue`](../../src/v3/compiler/src/test_runner.rs)** (`source`, `file_name`, `claim_name`, …) via **`TestClaimValue::from_declaration`** — not a separate `.dag` nominal, but a **real, typed integration boundary** used today (e.g. [`r3_verification_l4_l7_l5_skeleton_test.rs`](../../src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs)).
+- **Join discipline (explicit boundary):** pairing Lane 1 vs Lane 2 rows uses an agreed **claim identity** — by default the substrate **`name`** string (== `TestClaimValue.claim_name`). There is **no** dedicated `CorpusKey` carrier **at HEAD**; if `name` is not a sufficient join key for a future corpus, introduce one under **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** rather than inventing ad hoc string conventions in fixtures.
+- Add a **hermetic integration assertion**: compile the Lane 1 verification DAG + Lane 2 verification DAG, resolve the two structural `TestClaim` declarations with the **same** `claim_name`, build **`TestClaimValue`** for each, then `assert_eq!(l4.source, l5.source)` and `assert_eq!(l4.file_name, l5.file_name)`.
 - This is the **import-resolution ratchet**: both lanes must resolve to identical bytes even if authored as separate `TestClaim` rows.
 
 ---
