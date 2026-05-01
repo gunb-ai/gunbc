@@ -232,6 +232,10 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // (#1252). Hand-authored ratchet entry added per SG-0 census discipline.
     "src/v3/compiler/tests/integration/anthropic_operations_test.rs",
     "src/v3/compiler/tests/integration/anthropic_schema_lockstep_test.rs",
+    // PB-Runtime BinShim substrate carrier ratchet (#1361). Host-side
+    // full-bootstrap assertion until `.dag` TestClaim shape predicates can
+    // validate carrier fields directly.
+    "src/v3/compiler/tests/integration/bin_shim_carrier_test.rs",
     "src/v3/compiler/tests/integration/bridge_ledger_carrier_test.rs",
     // PB Tier-2 lower-helper exact-string patch class (#1014): zero-residual receipt +
     // source ratchet; see `bridge_lower_helpers_patch_zero_residual_test.rs` module docs.
