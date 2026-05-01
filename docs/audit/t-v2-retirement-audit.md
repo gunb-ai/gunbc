@@ -105,7 +105,7 @@ Bootstrap currently routes through `src/v2/stage0`. Until PB-Runtime trampoline 
 | **Current consumers** | The build itself (workspace members), via `src/v2/stage0` as bootstrap source-of-truth; the legacy emit chain (`dsl/extdeps/languages/{rust,python,go}/emit.dag` — `rust_simple_method_specs`, `rust_method_templates()`, `rust_method_wraps_result()`); the `dsl/std/verification.dag` v2 surface. |
 | **Owner** | PB Manager (R3 continuation). |
 | **Prerequisites** | (a) **G-1 green** (no test consumers). (b) **S-4 green** — PB-Runtime trampoline is the live bootstrap. (c) Legacy emit chain (§2.4) retired or migrated to v3 authorities. (d) `verification.dag` convergence design-call landed (§2.5) and v2 surface no longer load-bearing for any surviving authority. |
-| **STOP condition for G-2 work** | S-1 + S-4 + G-1. |
+| **STOP condition for G-2 work** | S-1 + S-2 + S-3 + S-4 + G-1 (matches §1 per-gate authority). S-2 (T-FixedPoint) and S-3 (T-LensProducer-Retirement) are explicit prerequisites because their closure is what allows S-4 (PB-Runtime trampoline) to be the live bootstrap; without S-2+S-3, removing `src/v2/stage0` from the workspace breaks the build chain even if PB-Runtime is technically present. |
 | **What counts as green** | `find src/v2 -type f` returns empty (or directory does not exist). `Cargo.toml` workspace `members` array does not contain any `src/v2/...` entry. `cargo build --workspace` + `cargo test --workspace` both pass with no remaining `v2-compiler*` references. `dsl/extdeps/languages/{rust,python,go}/emit.dag` legacy chain deleted or audited as no-consumer. PR description includes an explicit checklist mapping each prerequisite (a)-(d) to a closed receipt. |
 
 ---
