@@ -4,13 +4,15 @@
 
 **Parent:** [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md) — sub-lane **Cross-target equivalence harness primitives** + design-lock row **PR-D**.
 
+**Design lock:** [`docs/design-cross-target-equivalence.md`](../design-cross-target-equivalence.md) — semantic equality, corpus curation, oracle validity, float policy, side-effect normalization, and R3 consumption gates. This brief owns harness primitives only.
+
 **R3 consumer:** [`docs/r3-structure.md`](../r3-structure.md) — **T-Verification-L5-Corpus** acceptance `l5_cross_target_consistency` (Rust / Python / Go equivalent runtime behavior on the certification corpus). R2 lands **primitives only**; corpus authoring stays R3.
 
 ## Scope (this PR-D program)
 
 1. **Harness contract (R2):** a stable, named structural gate `evaluator_cross_target_equivalence_harness_primitives_landed` so R3 Verification Manager can depend on a single fixture path without inventing parallel claim names.
 2. **Primitives, not corpus:** stub programs and `std.verification` `TestPredicate` variants **already declared** on substrate (`Compiles` for slice 0; **scaffold** variants `ForAllTargets` / `LensOutputEquals` / `DifferentialEquals` at `src/v3/std/verification.dag` ~L147–L181 — each marked 🟡 in-file with a dissolution comment). **Strict L5-shaped harness rows** (multi-target emit/eval parity, certification corpus) remain **ungated until §Dependencies** — this brief does not treat those receipts as grounded. No curated L5 corpus rows at R2.
-3. **Algebraic equivalence framing:** L5 compares **computational results** across targets (per `r3-structure.md`), not byte identity. PR-D does not introduce new `TestPredicate` variants — substrate introduction is [`INVARIANTS.md`](../../INVARIANTS.md) §P1 / Grounding Manager only if a **future** fact cannot be expressed even after the existing sum + runner wiring is exercised.
+3. **Algebraic equivalence framing:** L5 compares **computational results** across targets (per `r3-structure.md`), not byte identity. The comparison policy is locked in [`docs/design-cross-target-equivalence.md`](../design-cross-target-equivalence.md). PR-D does not introduce new `TestPredicate` variants — substrate introduction is [`INVARIANTS.md`](../../INVARIANTS.md) §P1 / Grounding Manager only if a **future** fact cannot be expressed even after the existing sum + runner wiring is exercised.
 
 ## Explicitly out of scope (Worker A / PR-A / PB-Runtime)
 
