@@ -2,7 +2,7 @@
 //!
 //! ## Design authority (`docs/design-emission-model.md`)
 //!
-//! Worked **Examples 1–7** in that doc are behavioral targets. **Examples 1–2** are
+//! Worked **Examples 1–7** in that doc are behavioral targets. **Examples 1, 2, 5, and 6** are
 //! implemented for the [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples)
 //! checkpoint path only; other examples and `Undeclared` remain
 //! [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
@@ -29,13 +29,23 @@ fn fold_design_doc_example_2_semiring_u32() -> Result<TargetInhabitance, Emissio
     Ok(TargetInhabitance::RustU32)
 }
 
+fn fold_design_doc_example_5_ambiguous_algebra() -> Result<TargetInhabitance, EmissionDiagnostic> {
+    Err(EmissionDiagnostic::UnderRefined {
+        unspecified_axis: "algebra".to_string(),
+    })
+}
+
+fn fold_design_doc_example_6_no_inhabitant() -> Result<TargetInhabitance, EmissionDiagnostic> {
+    Err(EmissionDiagnostic::NoInhabitant)
+}
+
 /// Structural fold: program + lifetime analysis + LanguageSpec projection →
 /// per-binding target inhabitances, **or** a single typed diagnostic.
 ///
 /// - [`LanguageSpecProjection::Undeclared`](crate::types::LanguageSpecProjection::Undeclared): fail-closed
 ///   [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 /// - [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples): runs
-///   design-doc Examples 1–2 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`.
+///   design-doc Int Examples 1, 2, 5, and 6 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`.
 ///   **Checkpoint:** ignores `_dag` by design; on the scratch path, `lifetime_facts` must be
 ///   empty in debug builds until this body reads real facts. Do not widen this arm to multiple
 ///   bindings or real program facts without landing the declared projection / dissolution path
@@ -62,6 +72,12 @@ pub fn fold_program_to_target(
                 }
                 IntScratchExample::DesignDocExample2BoundedU32 => {
                     fold_design_doc_example_2_semiring_u32()?
+                }
+                IntScratchExample::DesignDocExample5AmbiguousAlgebra => {
+                    fold_design_doc_example_5_ambiguous_algebra()?
+                }
+                IntScratchExample::DesignDocExample6NoInhabitant => {
+                    fold_design_doc_example_6_no_inhabitant()?
                 }
             };
             Ok(BTreeMap::from([(binding, inhabitance)]))

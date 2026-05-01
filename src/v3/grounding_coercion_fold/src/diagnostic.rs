@@ -29,6 +29,8 @@ pub enum EmissionDiagnostic {
         /// replace free-form spelling here rather than widening implicit string conventions.
         unspecified_axis: String,
     },
+    /// No target inhabitant can satisfy the requested structural facts.
+    NoInhabitant,
     /// Full structural fold is not implemented; returning `Ok` would fabricate
     /// target choices (C-8 / `INVARIANTS.md`).
     FoldNotImplemented,
