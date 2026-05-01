@@ -104,6 +104,11 @@ Implement only `LoopBound::Cardinality` with deterministic accumulator
 threading. `LoopBound::Descent` remains a named fail-closed residual until a
 descent-execution slice consumes `std.termination` evidence.
 
+**Readiness receipt:** [`r3-pr-e5-loop-readiness-audit.md`](r3-pr-e5-loop-readiness-audit.md)
+records the current implementation blocker: E1/E2 are live, but E5 cannot
+honestly prove accumulator threading until the body evaluator can execute a loop
+body that consumes the iteration accumulator binding.
+
 **Inputs:** PR-B.1 Loop rule, `LoopBound`, runtime `Value`, and frame discipline.
 
 **Acceptance:** tests cover zero iterations, multiple iterations, accumulator
