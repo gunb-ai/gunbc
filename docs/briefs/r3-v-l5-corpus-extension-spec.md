@@ -31,10 +31,25 @@ Slice numbering aligns with [`r3-v-l5-corpus-scaffold-notes.md`](r3-v-l5-corpus-
 | Slice | Scope | Intended program classes | Gate toward strict fire |
 |-------|--------|---------------------------|-------------------------|
 | **1 — Seed** | **Landed** conceptually via skeleton | Single `add` + `match` + `Int` observable (`add_then_branch` family); no IO, effects, floats, host libs | Proves emit/run/observation plumbing only — **does not** close Lane 2 |
-| **2 — Primitive values** | First expansion | `Bool` literals and Boolean connectives safe at emit boundary; `Int` arithmetic (+, −, ×, guarded `/` only if all targets share identical partiality); **simple records** (named fields, order-stable lowering); **simple variants** with payloads drawn only from prior primitives — **no** `String`/unicode/stdlib, no filesystem paths | Surfaces **match lowering**, **call ABI**, **literal range** regressions early |
+| **2 — Primitive values** | First expansion | `Bool` literals and Boolean connectives safe at emit boundary; `Int` arithmetic (+, −, ×) **only under §1.1** (shared overflow/range rule — not division-only gating); guarded `/` only if all targets share identical partiality; **simple records** (named fields, order-stable lowering); **simple variants** with payloads drawn only from prior primitives — **no** `String`/unicode/stdlib, no filesystem paths | Surfaces **match lowering**, **call ABI**, **literal range** regressions early |
 | **3 — Collections** | Lists / maps | Homogeneous `List<T>` / map-like carriers **only after** Rust/Python/Go agree on a **shared structural observation encoding** (not debug `println!`, not locale-dependent formatting) | Highest coordination cost — defer until observation codec is frozen |
 | **4 — User-program corpus** | Lane 1 identity | Stable programs promoted from **Lane 1 certification corpus**; each row classified by **observable value shape** (primitive vs record vs later list) | Breadth comes from **program identity reuse**, not ad hoc L5-only prose |
 | **5 — Strict L5 fire** | Acceptance | Corpus wide enough to represent the **accepted certification surface**; **every materialized row** passes for the **frozen** Shape A target set | **`l5_cross_target_consistency`** strict mode — still **not** byte identity |
+
+### 1.1 Slice-2 `Int` arithmetic — overflow / range gate (Tier 2 totality)
+
+Slice 2 cannot admit **`+` / `−` / `×`** on default `Int` for strict cross-target rows until **overflow and intermediate-range behavior** are as constrained as division partiality already is. Rust / Python / Go agree on **IEEE-ish numeric towers only where the LanguageSpec + row numeric policy say so**; for fixed-width `Int` the missing piece is a **single named rule** every target realizes the same way.
+
+**Grounding today:** default `Int` is **`Int64`** (`type Int = Int64` — [`dsl/std/integer.dag`](../../dsl/std/integer.dag)). Broader magnitude / refinement-parametric overflow policy is **R3 numeric-construction dispatch** — see [`docs/design-numeric-construction.md`](../design-numeric-construction.md) and the integer-overflow row in [`docs/thesis/r2-r3-thesis-mapping.md`](../thesis/r2-r3-thesis-mapping.md) — not an implicit “every target wraps the same” assumption.
+
+**Design-lock hook:** [`design-cross-target-equivalence.md`](../design-cross-target-equivalence.md) §Corpus Policy already requires a per-row **numeric policy**. For slice-2 `Int` ops, that policy must record **one** of:
+
+1. **Proven overflow-freedom on `i64`** — every literal, operand, and intermediate for `+` / `−` / `×` is in a range where overflow **cannot** occur (conservative small-integer programs). This is the **default** allowed path for Tier-2 totality **until** (2) exists.
+2. **Named cross-target overflow semantics** — specified in LanguageSpec / numeric policy (e.g. trap vs two’s-complement wrap vs fail-closed emit) and shared by all Shape A emitters. Until this is written and wired, **saturation-edge** arithmetic programs are **not** strict-L5 evidence (fail closed, same spirit as deferred float policy in the design lock).
+
+**Division / remainder:** unchanged — use `/` (and related partial ops) only when partiality matches **across** targets.
+
+**Non-claim:** This brief does not pick wrapping vs trap; it **requires** the policy surface above before +/−/× drives cross-target certification.
 
 **Explicit non-claims:** No L6 form-coverage absorption; no assertion that L5 retires or dissolves L4; Lane 2 still compares **targets to each other**, not target-vs-evaluator (see scaffold notes §"Critical-Path Consumption From Lane 1").
 
@@ -89,7 +104,7 @@ Ordered diagnostic stages (each must be **fail-closed** and **attributed** to th
 | Slice class | Primary risk surfaces | Mitigation spec |
 |-------------|----------------------|-----------------|
 | **1 — Seed** | Match lowering, call ABI, integer literal edges | Keep observable **`Int`** small and branch-disciplined; document fallback `1+2` seed if branch parity lags (scaffold notes) |
-| **2 — Primitives** | Boolean compares, record layout, arithmetic partiality | Avoid target-specific math libs; gate division/mod on shared partiality tables |
+| **2 — Primitives** | Boolean compares, record layout, arithmetic partiality | §1.1 `Int` overflow/range gate for `+` / `−` / `×`; avoid target-specific math libs; gate division/mod on shared partiality tables |
 | **3 — Collections** | Iterator protocols, map ordering, stringification traps | **Block** slice 3 until observation codec + ordering semantics are written down cross-target |
 | **4 — Lane 1 imports** | Drift between Lane 1 authority and L5 row materialization | Enforce **P2** mechanisms (§6) — never maintain independent edited duplicates |
 | **5 — Fire** | Corpus breadth vs flakiness | Require frozen target-set revision **Director-visible** when toolchain pins move |
