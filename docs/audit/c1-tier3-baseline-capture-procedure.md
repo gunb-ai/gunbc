@@ -33,8 +33,11 @@ Once that line lands, this procedure is executable as written.
 
 ```sh
 # Run from workspace root on the canonical bench host.
-# Single invocation; no arguments. Outputs criterion's JSON estimate files
-# under target/criterion/<group>/<bench>/new/estimates.json.
+# Single invocation; no arguments. Outputs criterion's JSON files under
+# target/criterion/<bench>/new/ : `estimates.json` (point estimates +
+# confidence intervals for mean / median / std_dev / median_abs_dev /
+# slope) and `sample.json` (the raw sample iteration counts +
+# per-iteration nanosecond totals from this run).
 cargo bench --bench tier3_mirror_perf -p v3-compiler
 ```
 
@@ -44,6 +47,15 @@ cargo bench --bench tier3_mirror_perf -p v3-compiler
 - Criterion's default sample size is 100; do NOT override unless PB Manager explicitly approves a different statistical window. Larger windows reduce p99 variance at the cost of capture time.
 - Run on a quiesced host: no concurrent CPU-intensive jobs. The brief's `≤2× median / ≤5× p99` thresholds assume hardware-stable measurement.
 - Capture is one-shot. Once `tier3_baseline.json` lands on `main`, the file is read-only data per the brief; recapture requires Director approval.
+
+### 2.1 p99 source — explicit
+
+**Criterion 0.5's `estimates.json` does NOT carry a p99 field.** Its `Estimates` shape names `mean`, `median`, `median_abs_dev`, `slope`, and `std_dev` (point estimate + confidence interval each). p99 must be computed from the raw per-iteration timings. Two paths, **the Phase 1 0c capture PR MUST land one of them — not "p99 is read from estimates.json"**:
+
+- **Path (a) — small extraction helper alongside the capture PR.** Add a tiny script (Python preferred to avoid adding Rust deps; ~30 lines) that reads `target/criterion/<bench>/new/sample.json`, normalizes per-iteration time as `times[i] / iters[i]` (Criterion's sample shape stores iteration counts and total ns per sample slot), sorts the per-iteration ns values, and reports `median_ns` and `p99_ns` (linear interpolation between order-statistic ranks; sample size 100 → p99 ≈ value at rank 99 / 100, or `quantile(0.99)`). Helper output is the canonical input to `tier3_baseline.json`'s `mirror_groups[*].benches[*]` rows. Helper is committed alongside the JSON in the same PR; future rebases of the bench surface re-run it.
+- **Path (b) — derive p99 from `estimates.json`'s mean/std_dev under a documented Gaussian assumption (NOT recommended).** `p99 ≈ mean + 2.326 × std_dev`. This is fast but lossy — Criterion's distributions are not guaranteed Gaussian (especially with allocator/cache jitter), and the worker-brief budget bracket exists precisely to absorb tail variance. Path (b) is recorded here only because it might be tempting; **prefer (a)**.
+
+The Phase 1 0c capture PR MUST cite which path it took in its description and (for path (a)) commit the extraction script.
 
 ---
 
@@ -125,7 +137,7 @@ The committed baseline file lives at `src/v3/compiler/benches/tier3_baseline.jso
 Before the Phase 1 0c PR opens, the operator MUST run the following checks against the produced JSON:
 
 1. **Schema completeness:** every key in §4 is present; no extras; types match.
-2. **Bench-name coverage:** for each `git_sha` in `captured_on`, the bench-names listed in `mirror_groups[*].benches[].name` form a *superset of* the bench-names registered in `tier3_mirror_perf.rs` at that SHA. (Subset = missing measurement; superset only allowed if a future bench is intentionally not in the budget — none currently apply.)
+2. **Bench-name exact match (fail-closed):** the set of bench-names listed in `mirror_groups[*].benches[].name` MUST equal exactly the budgeted bench-name set defined in §3 — no missing names (every budgeted bench measured), no extra names (no out-of-budget bench in the JSON). Concretely at HEAD `f66334729` the required set is exactly `{tier3_termination_merge_evidence, tier3_computation_positive_descent_count, tier3_computation_lower_same_argument_call, tier3_induction_type_iteration_dimension_miss, tier3_effects_lane2_linear_read_chain}` (5 names). If a future bench is intentionally added to `tier3_mirror_perf.rs` but excluded from the budget, that exclusion MUST be a separate explicit allowlist row in §3 of this procedure document (with a receipt) and the JSON's bench-name set continues to equal the §3-budgeted set, not all bench-names registered in the bench file. Supersets are NOT permitted; subsets are NOT permitted.
 3. **Sanity bands:** for each bench, `p99_ns >= median_ns` (criterion guarantees this; reject the JSON if violated as it indicates capture corruption).
 4. **Non-zero:** every `median_ns` and `p99_ns` is `> 0`. A zero indicates measurement failure (criterion below floor), not a real timing.
 5. **Host stability:** `captured_on.host_id` matches the R-3 canonical host string; reject if not.
