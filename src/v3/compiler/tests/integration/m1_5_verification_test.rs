@@ -464,6 +464,9 @@ const BRIDGE_LEDGER_ZERO_SOURCE: &str =
     include_str!("../fixtures/r3_bridge_retirement_ledger_zero.dag");
 const BRIDGE_LEDGER_ZERO_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_bridge_retirement_ledger_zero.dag";
+
+// Performance caches only: these amortize fixture/bootstrap compilation across
+// tests and are not part of the verification model or claim authority.
 static BRIDGE_LEDGER_ZERO_DAG: OnceLock<Dag> = OnceLock::new();
 
 fn bridge_ledger_zero_dag() -> &'static Dag {
