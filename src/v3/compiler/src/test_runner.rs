@@ -8,11 +8,13 @@ use crate::dag::{
 };
 use crate::diagnostics::Diagnostic;
 use crate::generated_files::GENERATED_FILES;
+use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
     reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
 };
 use crate::lens_cost::{cost_of, CostLookup};
+use crate::types::TypeShape;
 use crate::{
     compare_stage_snapshots, compile_stage_snapshots, compile_to_dag, default_fixed_point_source,
     CompileError,
@@ -2004,7 +2006,7 @@ impl<'a> TestRunner<'a> {
             Ok(carrier) => carrier,
             Err(reason) => return ClaimResult::Fail(reason),
         };
-        if left_carrier != right_carrier {
+        if !self.dimension_report_carriers_equivalent(left_carrier, right_carrier) {
             return ClaimResult::Fail(format!(
                 "BinaryDimensionReportEquals requires both refs to produce DimensionReport<C> \
                  for the same carrier C; `{left_name}` uses `{}` but `{right_name}` uses `{}`",
@@ -2038,6 +2040,19 @@ impl<'a> TestRunner<'a> {
                     decl_display_name(decl_id, decl)
                 )
             })
+    }
+
+    fn dimension_report_carriers_equivalent(
+        &self,
+        left_carrier: DeclarationId,
+        right_carrier: DeclarationId,
+    ) -> bool {
+        left_carrier == right_carrier
+            || type_shapes_equivalent(
+                self.dag,
+                &TypeShape::new(left_carrier),
+                &TypeShape::new(right_carrier),
+            )
     }
 
     fn dimension_report_carrier(&self, mut current: DeclarationId) -> Option<DeclarationId> {

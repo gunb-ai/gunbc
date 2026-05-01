@@ -5116,7 +5116,7 @@ fn synthetic_span() -> SourceSpan {
     SourceSpan::new("<inferred>", 0, 0)
 }
 
-fn type_shapes_equivalent(dag: &Dag, lhs: &TypeShape, rhs: &TypeShape) -> bool {
+pub(crate) fn type_shapes_equivalent(dag: &Dag, lhs: &TypeShape, rhs: &TypeShape) -> bool {
     if lhs == rhs {
         return true;
     }

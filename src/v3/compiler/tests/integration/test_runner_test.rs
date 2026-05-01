@@ -746,6 +746,52 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn binary_dimension_report_equals_accepts_structurally_equivalent_report_carriers() {
+    let source = r#"
+module test.binary_dimension_report_equals_structural_carriers
+
+import std.dimensions { DimensionReport }
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+type LeftCarrier { value: Int }
+type RightCarrier { value: Int }
+
+type left_report = DimensionReport<LeftCarrier>
+type right_report = DimensionReport<RightCarrier>
+
+data claim: TestClaim = {
+  name: "structurally equivalent report carriers pass shape validation",
+  source: "let _: Int = 0",
+  file_name: "binary_dimension_report_structural_carriers.v3",
+  predicate: BinaryDimensionReportEquals(left_report, right_report),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(
+        source,
+        "binary_dimension_report_structural_carriers_harness.v3",
+    );
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("structural shape is valid")
+        ),
+        "expected structurally equivalent report carriers to pass shape validation, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
 fn lens_output_equals_malformed_claim_source_fails_closed_with_literal_input() {
     // INVARIANTS P3 / TESTING: tokenize/parse failure for `TestClaim.source` must surface as
     // `Fail`, not fall back to the fixture lens (which could still `Pass` on a stub).
