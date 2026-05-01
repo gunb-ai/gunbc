@@ -74,8 +74,8 @@ This supports **numeric policy** articulation for Tier‑2 strict rows; it does 
 **Import-resolution ratchet** (from [`r3-v-lane1-lane2-corpus-identity-import-spec.md`](r3-v-lane1-lane2-corpus-identity-import-spec.md) §Mechanism **(a)**):
 
 1. Compile Lane 1 verification DAG + Lane 2 verification DAG using **`cached_compile`** under **`OnceLock`** amortization where appropriate ([**TESTING.md**](../../TESTING.md)).
-2. Locate structural **`TestClaim`** declarations with the **same** `claim_name`.
-3. `TestClaimValue::from_declaration` each; assert:
+2. **Join:** locate structural **`TestClaim`** declarations whose substrate **`name`** field matches across lanes ([`verification.dag`](../../src/v3/std/verification.dag)). **`TestClaimValue.claim_name`** is **`name`** projected through **`TestClaimValue::from_declaration`** — there is **no** separate `claim_name` field on the `.dag` `TestClaim` record.
+3. `TestClaimValue::from_declaration` each matched declaration; assert:
 
 ```rust
 assert_eq!(l4.source, l5.source);
