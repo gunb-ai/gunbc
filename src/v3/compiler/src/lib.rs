@@ -798,18 +798,20 @@ pub mod evaluator {
         #[test]
         fn eval_branch_fails_closed_on_no_matching_arm() {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
-            let true_tag = declaration_id_by_name(&dag, "Bool");
-            let false_tag = declaration_id_by_name(&dag, "Int");
+            let path_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee_tag = declaration_id_by_name(&dag, "Int");
             let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
             let arm_output = dag.push_value(LiteralBits::Int(1), span());
             let arm_body = node_for_port(&dag, arm_output);
             let output = dag.push_branch(
                 scrutinee,
-                // Only `True` arm; scrutinee will carry `False` tag.
+                // Only the `path_tag` (`Bool`) arm; scrutinee carries
+                // `scrutinee_tag` (`Int`) so no path matches and the
+                // evaluator must fail closed on no-matching-arm.
                 vec![Path {
                     body: arm_body,
                     output: arm_output,
-                    pattern: BranchPattern::ResolvedVariant(true_tag),
+                    pattern: BranchPattern::ResolvedVariant(path_tag),
                     binding: None,
                 }],
                 span(),
@@ -817,7 +819,7 @@ pub mod evaluator {
             let entry = node_for_port(&dag, output);
             let frame = EvalFrame::from_bindings([(
                 scrutinee,
-                variant(false_tag, Value::LiteralValue(LiteralBits::Bool(false))),
+                variant(scrutinee_tag, Value::LiteralValue(LiteralBits::Bool(false))),
             )])
             .expect("frame");
             let mut state = EvalStateStack::with_root_frame(frame);
@@ -830,7 +832,7 @@ pub mod evaluator {
                 err,
                 EvalError::BranchNoMatchingArm {
                     node: entry,
-                    tag: false_tag,
+                    tag: scrutinee_tag,
                 }
             );
             assert_eq!(state.frames_outer_to_inner().len(), 1);
