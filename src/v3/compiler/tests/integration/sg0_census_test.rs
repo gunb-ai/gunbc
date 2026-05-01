@@ -393,6 +393,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // direction ratified for #1179, comment 4341788769; mechanical checklist c4341800724;
     // cycle-5 merge hygiene gunb-ai/gunbc#1142 c4341940508).
     "src/v3/compiler/tests/integration/tc1_substrate_lens_eta_equivalence_deferred_test.rs",
+    "src/v3/compiler/tests/integration/tc3_strong_normalization_deferred_test.rs",
     "src/v3/compiler/tests/integration/test_runner_test.rs",
     "src/v3/compiler/tests/integration/thesis_parallelism_test.rs",
     "src/v3/compiler/tests/integration/thesis_validation_test.rs",
