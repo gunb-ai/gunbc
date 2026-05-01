@@ -70,7 +70,7 @@ The four perf-budget claims in `tier3_mirror_dissolution_perf_within_budget` map
 | induction | `tier3_induction_mirror_perf_within_budget` | `tier3_induction_type_iteration_dimension_miss` |
 | effect-carrier | `tier3_effect_carrier_mirror_perf_within_budget` | `tier3_effects_lane2_linear_read_chain` |
 
-For mirrors with multiple bench names (computation), the per-mirror claim aggregates: median(group) = max(median of contributing benches) and p99(group) = max(p99 of contributing benches). This preserves the "any single bench breaching the bracket fails the gate" semantics of the worker brief §"Composition" `Conj` over per-mirror claims.
+For mirrors with multiple bench names (computation), the per-mirror claim is the **conjunction over per-bench checks**, NOT a max-aggregated single value. Each contributing bench keeps its own `median_ns` / `p99_ns` baseline row in §4's `mirror_groups[*].benches[]`, and the Phase 2 gate checks each bench independently against its own row: `measured_median_i ≤ 2 × baseline_median_i` AND `measured_p99_i ≤ 5 × baseline_p99_i`, for every contributing bench `i`. The per-mirror claim passes only if **every** contributing bench's per-bench check passes. This is the only fail-closed semantics: aggregating to a group-level max baseline would let a small-budget bench regress arbitrarily within the group max's headroom while the group-level ratio still appears under bracket. Worker brief §"Composition" `Conj` over per-mirror claims composes downward into `Conj` over per-bench checks; there is no group-level numeric aggregation in the gate path.
 
 ---
 
