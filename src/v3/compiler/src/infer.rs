@@ -53,7 +53,7 @@ use crate::int_literal_ranges::{
     magnitude_out_of_range_for_interval, IntegerRangeLookup,
 };
 use crate::lower::{clone_predicate_body, outer_predicate_slots};
-use crate::operators::{ComparisonOp, LogicalOp, OperatorKind};
+use crate::operators::{LogicalOp, OperatorKind};
 use crate::types::TypeShape;
 
 /// Outcome of [`try_reconcile_int_literal_decision_set`].
@@ -4423,39 +4423,6 @@ fn div_total_result_output_shape(dag: &mut Dag, base_lhs: TypeShape) -> Option<T
     Some(TypeShape::new(id))
 }
 
-/// Comparison operators the host eager Transform evaluator
-/// ([`crate::evaluator::eval_transform_node`]) can interpret on literal
-/// carriers today: `Int` (full ordering), `Bool` (total order `false < true`,
-/// matching Rust `bool::lt` / `cmp`), and `String` limited to `Eq` / `Ne`
-/// (same contract as [`crate::lens_apply`] D1). Keep inference aligned so
-/// operator transforms do not type-check comparisons that always fail at E3
-/// evaluation.
-fn host_eager_comparison_operator_supported(
-    dag: &Dag,
-    lhs_base: &TypeShape,
-    op: ComparisonOp,
-) -> bool {
-    let Some(int_shape) = dag.int_shape() else {
-        return false;
-    };
-    if lhs_base == &int_shape {
-        return true;
-    }
-    let Some(bool_shape) = dag.bool_shape() else {
-        return false;
-    };
-    if lhs_base == &bool_shape {
-        return true;
-    }
-    let Some(string_shape) = dag.string_shape() else {
-        return false;
-    };
-    if lhs_base == &string_shape {
-        return matches!(op, ComparisonOp::Eq | ComparisonOp::Ne);
-    }
-    false
-}
-
 fn resolve_operator_arrow(
     dag: &mut Dag,
     op_kind: OperatorKind,
@@ -4489,11 +4456,6 @@ fn resolve_operator_arrow(
                 // name.
                 let field_name = crate::operators::algebra_field_name(op_kind);
                 if let Some(field) = children.iter().find(|f| f.label == field_name) {
-                    if let OperatorKind::Comparison(op) = op_kind {
-                        if !host_eager_comparison_operator_supported(dag, &base_lhs, op) {
-                            return None;
-                        }
-                    }
                     return read_algebra_field(dag, &decl, field.ty, source_id, op_kind, &base_lhs);
                 }
                 // Algebra doesn't declare this operator's field —
@@ -4554,12 +4516,7 @@ fn resolve_operator_arrow(
             div_total_result_output_shape(dag, base_lhs)?,
         ),
         OperatorKind::Arithmetic(_) => (vec![base_lhs, base_lhs], base_lhs),
-        OperatorKind::Comparison(op) => {
-            if !host_eager_comparison_operator_supported(dag, &base_lhs, op) {
-                return None;
-            }
-            (vec![base_lhs, base_lhs], dag.bool_shape()?)
-        }
+        OperatorKind::Comparison(_) => (vec![base_lhs, base_lhs], dag.bool_shape()?),
         OperatorKind::Logical(_) => {
             let bool_shape = dag.bool_shape()?;
             (vec![bool_shape, bool_shape], bool_shape)
@@ -5686,50 +5643,6 @@ mod bool_logical_operator_arrow_tests {
              logical fallback produced `(Bool,Bool)->Bool` regardless \
              of LHS, inventing a carrier the type does not declare"
         );
-    }
-
-    #[test]
-    fn string_ordering_comparison_fails_resolve_operator_arrow_until_host_eval_supports_it() {
-        let mut dag = Dag::new();
-        let string_shape = dag.string_shape().expect("bootstrap String");
-        assert!(
-            resolve_operator_arrow(
-                &mut dag,
-                OperatorKind::Comparison(ComparisonOp::Lt),
-                &string_shape,
-            )
-            .is_none(),
-            "host eager evaluator has no String `<`; inference must not admit it"
-        );
-        assert!(
-            resolve_operator_arrow(
-                &mut dag,
-                OperatorKind::Comparison(ComparisonOp::Eq),
-                &string_shape,
-            )
-            .is_some(),
-            "`==` on String must still resolve (Eq/Ne parity with lens_apply)"
-        );
-    }
-
-    #[test]
-    fn bool_comparison_operators_resolve_for_host_eval_total_order() {
-        let mut dag = Dag::new();
-        let bool_shape = dag.bool_shape().expect("bootstrap Bool");
-        for op in [
-            ComparisonOp::Eq,
-            ComparisonOp::Ne,
-            ComparisonOp::Lt,
-            ComparisonOp::Le,
-            ComparisonOp::Gt,
-            ComparisonOp::Ge,
-        ] {
-            assert!(
-                resolve_operator_arrow(&mut dag, OperatorKind::Comparison(op), &bool_shape,)
-                    .is_some(),
-                "Bool comparison {op:?} should resolve (Rust `bool` ordering)"
-            );
-        }
     }
 
     #[test]
