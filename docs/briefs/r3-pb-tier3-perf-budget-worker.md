@@ -65,7 +65,26 @@ After all four mirrors are dissolved, `criterion` benchmarks run against the **`
 - Median(eval) ≤ **2×** median(baseline)
 - p99(eval) ≤ **5×** p99(baseline)
 
-`tier3_mirror_dissolution_perf_within_budget` is a `.dag` `TestSuite` composing **four per-mirror `TestClaim` rows** authored against existing `BehavioralObservation` substrate at `src/v3/std/verification.dag` (per `feedback_compiler_is_dag_processor` — no new substrate variant; structural composition over existing carriers).
+`tier3_mirror_dissolution_perf_within_budget` is a `.dag` `TestSuite` composing **four per-mirror `TestClaim` rows**.
+
+**Substrate gap surfaced (codex BLOCKING on PR #1331 sha `62c20e9c` line 51):** the existing `BehavioralObservation` variant at `src/v3/std/verification.dag:126-130` carries only `{ subject: DeclarationRef, input_sample: DeclarationRef, expected_output: DeclarationRef }` — it is shaped for input/output equality, NOT for perf-budget-against-baseline. The prior brief draft claimed "no new substrate variant" without verifying. Two structural paths to resolve, Director/Substrate-Mgr decision at brief-finalization:
+
+- **Path (a) — author new `TestPredicate` variant** (Substrate Mgr territory; hard prerequisite for this lane). Suggested shape:
+
+  ```dag
+  | PerfWithinBaseline {
+      bench_subject: DeclarationRef    // which bench measurement (e.g., tier3_termination_eval_bench)
+      baseline_data: DeclarationRef    // which frozen baseline row (e.g., tier3_baseline_termination)
+      median_factor_max: Int           // 2 (median ≤ 2× baseline)
+      p99_factor_max: Int              // 5 (p99 ≤ 5× baseline)
+    }
+  ```
+
+  Lands as Substrate Mgr work IN the same wave as C1; Substrate authors the variant, C1 consumes it. Structurally cleanest — preserves "tests are data" facet 3 + structural-acceptance discipline.
+
+- **Path (b) — use existing `ExecuteCommand` variant** (`src/v3/std/verification.dag:147-151`). Bench harness becomes a subprocess invoked via `ExecuteCommand { command: "<perf-check-binary>", args: [...], expect_exit_code: 0 }`; binary parses `tier3_baseline.json` + measured timings + exits non-zero on budget breach. **Loses structural-acceptance precision** (the budget shape becomes opaque to the substrate; only exit code is observed) but requires no new substrate. Fallback if Substrate Mgr declines path (a).
+
+This brief assumes path (a) at finalization; STOP+PING if Substrate Mgr chooses (b) so the lane scope matches.
 
 ### Per-mirror claims
 
@@ -76,7 +95,7 @@ After all four mirrors are dissolved, `criterion` benchmarks run against the **`
 | `tier3_induction_mirror_perf_within_budget` | `RecursionShape`, `InductiveField`, `SubValueRelation` (was `dag.rs:916-980` per `r2-pure-bootstrap-manager.md:26`) | Representative sub-value-relation walk, evaluated through `.dag` body |
 | `tier3_effect_carrier_mirror_perf_within_budget` | `dag/effects.rs` (216 LOC) + `compose_operation_effects` (105 LOC) per `r2-pure-bootstrap-manager.md:27` | Representative effect-composition over workflow corpus, evaluated through `.dag` body |
 
-Each per-mirror claim is `BehavioralObservation { measured_median_ns ≤ 2 * baseline_median_ns AND measured_p99_ns ≤ 5 * baseline_p99_ns }` against the frozen `tier3_baseline.json` row for that mirror.
+Each per-mirror claim is `PerfWithinBaseline { bench_subject: <eval-bench-decl>, baseline_data: <frozen-row-decl>, median_factor_max: 2, p99_factor_max: 5 }` against the corresponding `tier3_baseline.json` row (path (a) above). If path (b), each claim is `ExecuteCommand { command: "tier3_perf_check", args: ["<mirror-name>"], expect_exit_code: 0 }` with the budget shape encoded inside the subprocess.
 
 ### Composition
 
@@ -104,7 +123,7 @@ This lane delivers **Phase 2** (post-dissolution gate). Phase 1 (pre-dissolution
 
 1. **Eval-path bench fixtures** at `src/v3/compiler/benches/tier3_eval_perf.rs` (new file) — `criterion` benchmarks invoking the **`.dag`-evaluator path only** (Tier 3 std bodies executed via Evaluator). Per-mirror bench groups using the same fixture corpus as Phase 1's mirror benchmarks for like-for-like comparison.
 2. **Stable benchmark inputs** — representative `DescentEvidence` / `SizeBound` / `SubValueRelation` / `EffectShape` fixtures committed under `src/v3/compiler/benches/tier3_fixtures/`. Inputs must be deterministic + version-pinned to avoid noise from corpus drift across PRs. Inputs are SHARED between Phase 1 and Phase 2 (so timings compare meaningfully).
-3. **`.dag` `TestClaim`** authored at `src/v3/std/verification.dag` (or sibling) — single suite + four sub-claims comparing measured Phase-2 timings against frozen `tier3_baseline.json` row per mirror; compose via existing `Conj` over `BehavioralObservation` per `feedback_compiler_is_dag_processor` (no new substrate variant).
+3. **`.dag` `TestClaim`** authored at `src/v3/std/verification.dag` (or sibling) — single suite + four sub-claims comparing measured Phase-2 timings against frozen `tier3_baseline.json` row per mirror. Predicate variant per Substrate-Mgr decision (path (a) `PerfWithinBaseline` preferred; path (b) `ExecuteCommand` fallback). Composes via `Conj` over the chosen variant per `feedback_compiler_is_dag_processor` — no new substrate variant ONLY if path (b); path (a) introduces a new variant authored by Substrate Mgr as hard prerequisite.
 4. **CI wiring** — Phase 2 bench runs on PRs touching the canonical `.dag` authorities + Evaluator path:
    - **`.dag` authorities** (canonical): `dsl/std/{termination,computation,induction,effects}.dag` (root authority for these std blocks)
    - **`src/v3/std/` substrate twins** (currently exist as v3-side files for these four blocks; verified live 2026-04-30): `src/v3/std/{termination,computation,induction,effects}.dag`
@@ -118,10 +137,11 @@ This lane delivers **Phase 2** (post-dissolution gate). Phase 1 (pre-dissolution
 
 Per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" + §"Dependency DAG":
 
-1. **Phase 1 baseline lands BEFORE T-Tier3-Dissolution mirror dissolution PRs.** Strict temporal ordering: Phase 1 captures hand-Rust timing data → mirror dissolution PRs land → Phase 2 fires gate against frozen baseline. Reverse order makes baseline capture impossible (mirror code is gone).
-2. **T-Tier3-Dissolution mirror dissolution PRs landed** before Phase 2 dispatches. Phase 2 measures the `.dag`-eval path; the Rust mirrors must already be retired so that benchmark scope is unambiguous (only one path exists).
-3. **R2-Evaluator landed.** Phase 2 measurement requires running `.dag` bodies via Evaluator. T-Evaluator close is the upstream gate.
-4. **No precondition on `criterion`** — adding the dev-dep is part of Phase 1 deliverable 0a above; not assumed as already-present.
+1. **Substrate-Mgr decision on `PerfWithinBaseline` TestPredicate variant** (per §"Acceptance gate" path (a) vs (b)). Path (a) requires Substrate Mgr to author the new variant in `src/v3/std/verification.dag` BEFORE Phase 2 dispatches; path (b) reuses existing `ExecuteCommand` and needs no substrate work but loses structural-acceptance precision. Hard prerequisite if path (a).
+2. **Phase 1 baseline lands BEFORE T-Tier3-Dissolution mirror dissolution PRs.** Strict temporal ordering: Phase 1 captures hand-Rust timing data → mirror dissolution PRs land → Phase 2 fires gate against frozen baseline. Reverse order makes baseline capture impossible (mirror code is gone).
+3. **T-Tier3-Dissolution mirror dissolution PRs landed** before Phase 2 dispatches. Phase 2 measures the `.dag`-eval path; the Rust mirrors must already be retired so that benchmark scope is unambiguous (only one path exists).
+4. **R2-Evaluator landed.** Phase 2 measurement requires running `.dag` bodies via Evaluator. T-Evaluator close is the upstream gate.
+5. **No precondition on `criterion`** — adding the dev-dep is part of Phase 1 deliverable 0a above; not assumed as already-present.
 
 ## Dispatch preconditions
 
@@ -139,10 +159,11 @@ Per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" + §"Depende
 
 Worker STOPs and PINGs (canonical output: docs-only audit PR, per `feedback_worker_stall_diagnosis` substrate-gap-stall pattern) if:
 
-1. **Phase 1 must precede dissolution; reverse order is impossible.** If T-Tier3-Dissolution mirror PRs land before Phase 1 baseline capture, baseline can no longer be measured (mirror code is gone). STOP and escalate to PB Manager + Substrate Mgr — the perf gate becomes unrecoverable without a re-author of the mirror or a structural reframe of the threshold (relative → absolute).
-2. **Phase 2 bench results are >10× over baseline** — likely indicates substrate gap (e.g., Evaluator runtime is missing critical optimization, NOT a perf-budget concern). Escalate to Substrate Mgr + Evaluator Mgr cross-program coordination.
-3. **Phase 1 captured but baseline JSON shape is unstable** (e.g., per-CI-machine variance >20% run-to-run) — tooling concern. Surface to Substrate Mgr; the CI machine question may need locking before Phase 2 measurement is meaningful.
-4. **Hand-Rust mirror has additional callers post-dissolution.** If T-Tier3-Dissolution leaves any consumer reaching the dissolved Rust path (e.g., a stale internal call site), Phase 2 measurement scope is ambiguous (parallel-implementation residue). STOP and route the leftover to T-Tier3-Dissolution before Phase 2.
+1. **`PerfWithinBaseline` TestPredicate variant not authored by Substrate Mgr** (path (a)) — Phase 2 has no `.dag` predicate to reach. STOP and route to Substrate Mgr; OR explicitly downshift to path (b) `ExecuteCommand` with Director sign-off on the structural-precision tradeoff.
+2. **Phase 1 must precede dissolution; reverse order is impossible.** If T-Tier3-Dissolution mirror PRs land before Phase 1 baseline capture, baseline can no longer be measured (mirror code is gone). STOP and escalate to PB Manager + Substrate Mgr — the perf gate becomes unrecoverable without a re-author of the mirror or a structural reframe of the threshold (relative → absolute).
+3. **Phase 2 bench results are >10× over baseline** — likely indicates substrate gap (e.g., Evaluator runtime is missing critical optimization, NOT a perf-budget concern). Escalate to Substrate Mgr + Evaluator Mgr cross-program coordination.
+4. **Phase 1 captured but baseline JSON shape is unstable** (e.g., per-CI-machine variance >20% run-to-run) — tooling concern. Surface to Substrate Mgr; the CI machine question may need locking before Phase 2 measurement is meaningful.
+5. **Hand-Rust mirror has additional callers post-dissolution.** If T-Tier3-Dissolution leaves any consumer reaching the dissolved Rust path (e.g., a stale internal call site), Phase 2 measurement scope is ambiguous (parallel-implementation residue). STOP and route the leftover to T-Tier3-Dissolution before Phase 2.
 
 ## Discipline
 
