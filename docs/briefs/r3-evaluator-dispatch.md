@@ -155,6 +155,8 @@ Implement the runner-extension workstreams only under the boundaries in
 - PR-B.4 / W3: `ForAllTargets` per-target dispatch, gated on structural
   observation carrier and target producer availability.
 
+**Continuation (Identity / Distributivity gates — audit):** [`r2-pr-e-e8-w2-algebraic-law-runner-continuation.md`](r2-pr-e-e8-w2-algebraic-law-runner-continuation.md).
+
 **STOP+PING:** no convention-only stdout parsing, no new `TestPredicate`
 variants, and no permanent expansion of `test_runner.rs` authority without a
 dissolution hook.

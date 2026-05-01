@@ -73,23 +73,18 @@ the PR-B.1 seed).
 ### W2 — `AlgebraicLaw` runner extension (Lane 1 / L7)
 
 **Today:** `eval_algebraic_law_for_claim_program` in `test_runner.rs`
-evaluates `AlgebraicLaw { law, lens_ref }` for `Associativity` only via
-the `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES` sample table; other
-`AlgebraicLawKind` variants are `NotYetImplemented` (`test_runner.rs:2189`).
+evaluates `AlgebraicLaw { law, lens_ref }` for **`Associativity`** and
+**`Commutativity`** via bounded witness tables (`lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`,
+`COMMUTATIVITY_WITNESS_PAIRS`). **`Identity`** remains blocked at the helper boundary
+(`UnsupportedLaw`) and at `TestRunner::eval_algebraic_law` (`NotYetImplemented`) until the
+identity-element extraction gate in
+[`r2-pr-e-e8-w2-algebraic-law-runner-continuation.md`](r2-pr-e-e8-w2-algebraic-law-runner-continuation.md)
+clears.
 
-**Bundle scope — W2 (provisional impl PR-B.3):** extend the runner to evaluate the two existing
-`AlgebraicLawKind` inhabitants the substrate already declares but the
-runner does not yet handle:
+**Bundle scope — W2 (provisional impl PR-B.3):** extend the runner to evaluate the remaining
+`AlgebraicLawKind` inhabitant the substrate declares but the runner does not yet handle end-to-end:
 
-- **`Commutativity`** — runner-side check: for the named lens, apply over
-  pairs `(a, b)` from a witness sample table analogous to
-  `ASSOCIATIVITY_WITNESS_TRIPLES`, assert `lens(a, b) == lens(b, a)`
-  pointwise via the **shared value-domain comparator helper** also
-  consumed by W3 (single authority — W2 must not fork its own copy; see
-  Sequencing table for the dependency edge). Sample table
-  identity / size lives in `lens_apply` alongside the associativity one;
-  W2 does not add new `TestPredicate` variants and does not propose
-  a generator strategy.
+- **`Commutativity`** — **LANDED** (bounded pair witness table + shared comparator; see **Today** above).
 - **`Identity`** — runner-side check: pick the lens's identity element
   (declared on the lens's algebra inhabitance, not local guesswork) and
   assert `lens(id, x) == x` and `lens(x, id) == x` over a single-arg
