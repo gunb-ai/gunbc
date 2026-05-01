@@ -48,6 +48,22 @@ type Value
   | NodeRef(NodeId)
   | CardinalityValue(LoopBound)
 
+// 🟡 SCAFFOLD at PR-B.2 observation-carrier scope. Comparable program
+// observations are producer-neutral: Rust emit+build+run and eager DAG eval
+// both target this same envelope, and neither lineage owns the carrier. The
+// generic `Carrier` is the typed observation domain; value-output differential
+// claims use `ProgramObservation<Value>`, while later lineages may introduce
+// other typed carriers without adding parallel observation records. This shape
+// intentionally carries only the observed value, not stdout/stderr strings,
+// exit status, target language, or evaluator strategy. Those are producer
+// evidence and diagnostics, not the comparable observation itself.
+// Dissolution trigger: PR-B.2 W1/W3 lands the first declared
+// `ProgramObservation<Value>` consumer/producer path for `DifferentialEquals`;
+// then this carrier graduates to terminal observation-envelope authority.
+type ProgramObservation<Carrier> {
+  observed: Carrier
+}
+
 // 🟢 TERMINAL at PR-A.2 evaluator-state scope. Per
 // docs/briefs/r2-pr-a-runtime-value-model.md §Substrate Targets and
 // docs/design-pb-runtime-interpreter.md §3.3, closed-over environments are
