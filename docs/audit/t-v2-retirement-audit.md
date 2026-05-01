@@ -46,7 +46,7 @@ v2-compiler        = { path = "../../v2/stage0" }
 v2-compiler-tests  = { path = "../../v2/tests" }
 ```
 
-These are the only Cargo edges from non-`src/v2/` crates into v2. **Both are gated by gate G-2** (§3.2).
+These are the only Cargo edges from non-`src/v2/` crates into v2. **Both edges drop with G-1** (§3.1) — they exist solely to support the two test consumers in §2.3, so once those dissolve the deps are dead and must be deleted as part of G-1 closure (§3.1 green criteria explicitly require this). G-2 then removes the `src/v2/stage0` and `src/v2/tests` workspace members themselves.
 
 ### 2.3 Tests / consumers that import or read v2
 
