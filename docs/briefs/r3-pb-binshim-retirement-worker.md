@@ -26,6 +26,8 @@ PB does **not** own and **must not** edit:
 
 Retirement-readiness checklist (owners, SG-0 / `REGEN_OUTPUTS`, STOP routing, dispatch row): [`r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
 
+Instance-declaration framework + naming convention (PB-owned authoring surface): [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md). Per-shim `.dag` files land here once the `BinShim` carrier is live on main; the README locks the `<bin_name>.dag` / `data <bin_name>_shim` convention so per-shim retirement workers have a consistent target.
+
 Per design doc §4.3 the dissolution path is:
 
 1. Author `data regen_lens_shim: BinShim = { name: "regen_lens", entry: regen_lens, ... }` in `dsl/std/runtime/bin_shims/regen_lens.dag`.
