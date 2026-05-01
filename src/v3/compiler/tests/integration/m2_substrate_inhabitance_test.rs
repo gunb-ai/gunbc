@@ -2671,3 +2671,80 @@ fn nat_resolves_to_semiring_over_magnitude() {
         ),
     }
 }
+
+/// T-Numeric-Construction Slice 3 — `Int = AbelianGroup<Nat>` resolves
+/// structurally to an `AbelianGroup` instantiation whose carrier argument
+/// is the `Nat` semiring landed by Slice 2.
+///
+/// The ratchet enforces:
+/// - `Int` lowers to a `TypeConnective::Instantiation` whose template is
+///   `AbelianGroup` (`dsl/std/algebra.dag`), not the legacy `Int64` storage
+///   alias. The default-alias pivot is the Slice 3 deliverable per
+///   `docs/design-numeric-construction.md` §3 Option 3.
+/// - The single carrier argument resolves to `Nat` (`dsl/std/nat.dag`,
+///   Slice 2) — the construction-chain layer-2 carrier — not to a `Word*`
+///   storage carrier or to `Int64`.
+#[test]
+fn int_default_alias_resolves_to_abelian_group_over_nat() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let int_default = dag
+        .declaration_by_name("Int")
+        .expect("`Int` default alias missing from full bootstrap (T-Numeric-Construction Slice 3)");
+    assert_eq!(
+        int_default.span.file, "dsl/std/integer.dag",
+        "Int default alias must live in dsl/std/integer.dag, not in a parallel authority"
+    );
+
+    let abelian_group = dag
+        .declaration_by_name("AbelianGroup")
+        .expect("`AbelianGroup` algebra must be loaded from dsl/std/algebra.dag");
+    let nat = dag
+        .declaration_by_name("Nat")
+        .expect("`Nat` carrier must be loaded from dsl/std/nat.dag (Slice 2)");
+
+    // `type Int = AbelianGroup<Nat>` lowers either as a direct
+    // `Instantiation { template: AbelianGroup, arguments: [Nat] }`,
+    // or as an `Atom(ResolvedByName)` chaining to that shape (alias chain).
+    // Walk the alias chain to the underlying instantiation and assert the
+    // template + carrier identities.
+    let mut current = int_default;
+    let mut hops: usize = 0;
+    let connective = loop {
+        match &current.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByName(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
+                assert!(hops < 8, "Int alias chain too deep (cycle?)");
+                hops += 1;
+                current = dag.declaration(*next);
+            }
+            other => break other,
+        }
+    };
+
+    match connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, abelian_group.id,
+                "Int must instantiate `AbelianGroup`, not `OrderedRing`/`Int64` (Slice 3 alias pivot)"
+            );
+            assert_eq!(
+                arguments.len(),
+                1,
+                "AbelianGroup takes exactly one carrier type parameter"
+            );
+            assert_eq!(
+                arguments[0].value, nat.id,
+                "Int's AbelianGroup carrier must be `Nat`, not a Word* storage carrier or `Int64`"
+            );
+        }
+        other => panic!(
+            "Int must lower to an AbelianGroup instantiation; got {other:?} — \
+             a non-Instantiation connective indicates a parallel algebra authority \
+             rather than the construction-chain `Int = AbelianGroup<Nat>` shape"
+        ),
+    }
+}
