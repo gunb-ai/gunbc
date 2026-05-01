@@ -391,8 +391,8 @@ pub mod evaluator {
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
-            ArithmeticOp, Behavior, BranchPattern, Dag, LiteralBits, LoopBound, NodeId, Path,
-            PortId, TransformTarget,
+            ArithmeticOp, Behavior, BranchPattern, ComparisonOp, Dag, LiteralBits, LogicalOp,
+            LoopBound, NodeId, OperatorKind, Path, PortId, TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
@@ -569,12 +569,12 @@ pub mod evaluator {
         }
 
         #[test]
-        fn transform_behavior_fails_closed() {
+        fn transform_arithmetic_add_evaluates() {
             let mut dag = Dag::new();
             let lhs = dag.push_value(LiteralBits::Int(1), span());
             let rhs = dag.push_value(LiteralBits::Int(2), span());
             let output = dag.push_transform(
-                TransformTarget::Operator(crate::dag::OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
                 vec![lhs, rhs],
                 span(),
             );
@@ -582,15 +582,129 @@ pub mod evaluator {
             let mut state = empty_state();
             let strategy = eager_strategy();
 
-            let err =
-                eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported transform");
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("transform evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(3)));
+        }
+
+        #[test]
+        fn transform_arithmetic_sub_evaluates() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(10), span());
+            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("sub");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        #[test]
+        fn transform_arithmetic_checked_overflow_fails_closed() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(i64::MAX), span());
+            let rhs = dag.push_value(LiteralBits::Int(1), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("overflow");
 
             assert_eq!(
                 err,
-                EvalError::UnsupportedBehavior {
-                    node: entry,
-                    behavior: "Transform"
+                EvalError::BadTransformOperands {
+                    reason: "integer overflow",
                 }
+            );
+        }
+
+        #[test]
+        fn transform_comparison_int_evaluates() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Int(2), span());
+            let rhs = dag.push_value(LiteralBits::Int(3), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Lt)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("cmp");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(true)));
+        }
+
+        #[test]
+        fn transform_logical_operator_unsupported_in_e3_slice() {
+            let mut dag = Dag::new();
+            let lhs = dag.push_value(LiteralBits::Bool(true), span());
+            let rhs = dag.push_value(LiteralBits::Bool(false), span());
+            let output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Logical(LogicalOp::And)),
+                vec![lhs, rhs],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("logical");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget { kind: "Logical" }
+            );
+        }
+
+        #[test]
+        fn transform_field_project_unsupported_in_e3_slice() {
+            let mut dag = Dag::new();
+            let v = dag.push_value(LiteralBits::Int(1), span());
+            let output = dag.push_transform(
+                TransformTarget::FieldProject {
+                    field_label: "x".to_string(),
+                    field_child: None,
+                },
+                vec![v],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("project");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget {
+                    kind: "FieldProject",
+                }
+            );
+        }
+
+        #[test]
+        fn transform_callable_unsupported_in_e3_slice() {
+            let mut dag = Dag::new();
+            let int_decl = dag.declaration_by_name("Int").expect("Int").id;
+            let output = dag.push_transform(TransformTarget::Callable(int_decl), vec![], span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("callable");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget { kind: "Callable" }
             );
         }
 
