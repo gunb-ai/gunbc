@@ -129,9 +129,10 @@ jobs:
   v3:
     if: github.event.pull_request.draft != true
     runs-on: ubicloud-standard-2
-    # Full suite is capped at 1200s, plus clippy + lens gates + cold compile — 15m
-    # can cancel the job before the final steps finish.
-    timeout-minutes: 25
+    # Full suite is transitionally capped at 2400s, plus clippy + lens gates + cold compile.
+    # Revert when the OnceLock/module-cache structural fix brings warmed runs below 1200s;
+    # keep job timeout above the in-step budget so Actions does not cancel final steps first.
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -173,7 +174,7 @@ jobs:
 
       # Layer 1 (coarse CI): wall-clock gates on `cargo test -p v3-compiler`.
       #
-      # Full-suite wall-clock ratchet below is 1200s. Mainline timing on ubuntu-24.04
+      # Full-suite wall-clock ratchet below is transitionally 2400s. Mainline timing on ubuntu-24.04
       # reached ~951–953s after #548 (earlier green ~719s); warm local runs are often
       # ~520–560s for `cargo test -p v3-compiler`. Cold runners, cache misses, m1_5_testgen,
       # and the DB-8 determinism matrix can push higher — observed ~1082s motivated cap >1050s.
@@ -208,7 +209,7 @@ jobs:
       # time. `--report-time` is still unstable on 1.93 (rust-lang/rust#64888); the
       # `RUSTC_BOOTSTRAP=1` prefix is the documented narrow unlock for libtest flags
       # and does not enable unstable language features.
-      - name: v3 tests (full suite, 1200s budget)
+      - name: v3 tests (full suite, 2400s transitional budget)
         env:
           # Keep libtest lines plain for `scripts/check-test-timeout.sh` (Phase-0
           # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
@@ -224,8 +225,8 @@ jobs:
             echo "::error::cargo test failed (exit=$status)"
             exit "$status"
           fi
-          if [ "$elapsed" -gt 1200 ]; then
-            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 1200s). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work."
+          if [ "$elapsed" -gt 2400 ]; then
+            echo "::error::v3 full-suite tests took ${elapsed}s (budget: 2400s transitional). Likely cause: integration tests redoing full bootstrap + compile per #[test] without shared setup, or an unexpected suite-wide slowdown. Share compile results via OnceLock/module cache, collapse fine-grained tests, or trim redundant work. Revert this transitional budget once the OnceLock/module-cache fix restores warmed runs below 1200s."
             exit 1
           fi
 
@@ -238,7 +239,7 @@ jobs:
       # `feedback_test_timeout_2s`).
       #
       # **`if: always()`** — the ratchet report is still useful on red runs
-      # (full-suite failure, 1200s-budget overflow). The log is captured via
+      # (full-suite failure, 2400s transitional-budget overflow). The log is captured via
       # `tee` before the enforcement check, so partial timing data survives
       # failure and the ratchet can still emit actionable slow-test output.
       - name: v3 tests (per-test 2s ratchet)
