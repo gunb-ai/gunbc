@@ -3370,6 +3370,20 @@ fn lower_record_to_structural(
         }
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
+    if let Some(record_field) = duplicate_record_field(record_fields) {
+        report_declaration_error(
+            dag,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "data `{data_name}` record body repeats field `{}`",
+                    record_field.name
+                ),
+                span: record_field.span.clone(),
+                fixes: Vec::new(),
+            },
+        );
+        return None;
+    }
     // Check no extra fields in the data body.
     for record_field in record_fields {
         if !type_fields
@@ -3435,6 +3449,13 @@ fn lower_record_to_structural(
     Some(crate::dag::ValueBody::Structural {
         fields: structural_fields,
     })
+}
+
+fn duplicate_record_field(
+    fields: &[crate::parse::SurfaceRecordField],
+) -> Option<&crate::parse::SurfaceRecordField> {
+    let mut seen = HashSet::new();
+    fields.iter().find(|field| !seen.insert(field.name.clone()))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -3596,6 +3617,20 @@ fn lower_structural_field_value(
             );
             return None;
         };
+        if let Some(field) = duplicate_record_field(fields) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` repeats nested field `{}`",
+                        field.name
+                    ),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
         let expected_fields: Vec<(String, DeclarationId)> =
             match &dag.declaration(conj_id).connective {
                 TypeConnective::Conj { children } => children
@@ -3801,6 +3836,20 @@ fn lower_structural_field_value(
                 )?);
             }
         } else if let Some(fields) = named_fields {
+            if let Some(field) = duplicate_record_field(fields) {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "data `{data_name}` field `{field_label}` constructor `{variant_name}` repeats payload field `{}`",
+                            field.name
+                        ),
+                        span: field.span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+                return None;
+            }
             for field in fields {
                 if !payload_fields.iter().any(|(label, _)| label == &field.name) {
                     report_declaration_error(
