@@ -1,10 +1,10 @@
 # T-Numeric-Construction — `GroupCompletion<M>` 6Q substrate-introduction audit
 
-**Lane:** R3 #6 (T-Numeric-Construction). **Authority:** [`docs/design-numeric-construction.md`](../design-numeric-construction.md). **Subject:** `GroupCompletion<M>` — a new algebra-surface declaring "the abelian group derived from a commutative monoid `M` via the Grothendieck construction." Prerequisite for the Slice 3 alias pivot `type Int = GroupCompletion<Nat>`.
+**Lane:** R3 #6 (T-Numeric-Construction). **Authority:** [`docs/design-numeric-construction.md`](../design-numeric-construction.md). **Subject:** `GroupCompletion<M>` — a new algebra-surface declaring "the abelian group derived from a commutative monoid `M` via the Grothendieck construction." Prerequisite for the Slice 3 alias pivot `type Int = AbelianGroup<GroupCompletion<Nat>>`.
 
 **Why this audit exists.** Slice 3's first attempt at `type Int = AbelianGroup<Nat>` ([#1422](https://github.com/gunb-ai/gunbc/pull/1422)) was reverted after two reviewers and Director ratified a sharp M9 finding: under the standard parametric reading of `AbelianGroup<T>`, `T` is the carrier of group operations including `inverse: fn(T) -> T`. With `T = Nat`, this asserts `inverse: fn(Nat) -> Nat` — denotationally false, since ℕ is a commutative monoid (not a group; no additive inverses). The Grothendieck construction creates ℤ *from* ℕ, but ℤ's carrier is *derived* (the quotient `(Nat, Nat) / ~` or the sign-magnitude representation `(Sign, Nat)`), not ℕ itself.
 
-Director's decision (inbox #1288 #4360232423): keep `AbelianGroup<T>` standard (group carrier is `T`); introduce a separate `GroupCompletion<M>` algebra-surface that is honest about taking a commutative monoid and producing the derived abelian group. Then Slice 3 honestly becomes `type Int = GroupCompletion<Nat>`.
+Director's decision (inbox #1288 #4360232423): keep `AbelianGroup<T>` standard (group carrier is `T`); introduce a separate `GroupCompletion<M>` algebra-surface that is honest about taking a commutative monoid and producing the derived abelian group. Then Slice 3 honestly becomes `type Int = AbelianGroup<GroupCompletion<Nat>>`.
 
 **Hard boundary (per dispatch):** "No quotient-of-pairs or sign-magnitude representation in this prerequisite unless the design explicitly chooses it." This audit captures the algebra surface, not the carrier representation. Carrier representation is per-target grounding (Rust `i128`, Python `int`, etc. — emission selects).
 
@@ -33,7 +33,7 @@ Type-correctness under the standard parametric reading:
 - `AbelianGroup<T>`'s structural shape `{ op: fn(T,T)->T, identity: T, inverse: fn(T)->T }` instantiates to `{ op, identity, inverse }` over `GroupCompletion<Nat>`. `inverse: fn(GroupCompletion<Nat>) -> GroupCompletion<Nat>` is honest — every element of the group-completion carrier has an additive inverse by construction.
 - The derivation rule (how `M`'s commutative-monoid structure produces the abelian group) lives in a future inhabitance lens, not in the substrate shape.
 
-**Q6 single-authority resolution.** The earlier draft of this audit floated an alternative compact form `type Int = GroupCompletion<Nat>` (collapsing carrier + algebra into a single named type). That admits two structurally distinct shapes for the same Slice 3 fact and would violate Q6 representation-duality. **Rejected.** Canonical form is the explicit two-step `AbelianGroup<GroupCompletion<Nat>>`: `GroupCompletion<M>` is **only** the carrier, and the algebra witness is **only** the standard `AbelianGroup<T>`. This keeps single authority for both surfaces (`GroupCompletion<M>` declares the derived carrier; `AbelianGroup<T>` declares the algebra structure) and prevents drift between "GroupCompletion as carrier" and "GroupCompletion as algebra-witness" readings.
+**Q6 single-authority resolution.** The earlier draft of this audit floated an alternative compact form `type Int = GroupCompletion<Nat>` (collapsing carrier + algebra into a single named type, treating `GroupCompletion<M>` as both the derived carrier and the implied AbelianGroup algebra witness). That admits two structurally distinct shapes for the same Slice 3 fact and would violate Q6 representation-duality. **Rejected.** Canonical form is the explicit two-step `AbelianGroup<GroupCompletion<Nat>>`: `GroupCompletion<M>` is **only** the carrier, and the algebra witness is **only** the standard `AbelianGroup<T>`. This keeps single authority for both surfaces (`GroupCompletion<M>` declares the derived carrier; `AbelianGroup<T>` declares the algebra structure) and prevents drift between "GroupCompletion as carrier" and "GroupCompletion as algebra-witness" readings.
 
 ## The 6 questions
 
@@ -56,7 +56,7 @@ Does Field A duplicate what's derivable from Field B?
 - `Word*` (storage carriers at `dsl/std/bit.dag`).
 - The existing `CommutativeMonoid<T>` and `Monoid<T>` algebras (these are the *input* algebra layers; `GroupCompletion<M>` is a derived-construction layer above them).
 
-The construction is named exactly once in std; future Slice 3 (`type Int = GroupCompletion<Nat>`) is the unique consumer for this slice.
+The construction is named exactly once in std; future Slice 3 (`type Int = AbelianGroup<GroupCompletion<Nat>>`) is the unique consumer for this slice.
 
 ### Q4 — Coproduct compression
 Does one variant compress N distinct causes that downstream needs to distinguish?
@@ -68,7 +68,7 @@ Does one variant compress N distinct causes that downstream needs to distinguish
 ### Q5 — Construction authority
 Are multiple call sites independently constructing the same fact?
 
-**Answer: PASS.** Single declaration in `dsl/std/algebra.dag` (or a new `dsl/std/group_completion.dag` for separation). No consumers in this prerequisite slice. Slice 3 (post-prerequisite) consumes via `type Int = GroupCompletion<Nat>` as the unique authority for ℤ-as-derived-from-ℕ.
+**Answer: PASS.** Single declaration in `dsl/std/algebra.dag` (or a new `dsl/std/group_completion.dag` for separation). No consumers in this prerequisite slice. Slice 3 (post-prerequisite) consumes via `type Int = AbelianGroup<GroupCompletion<Nat>>` as the unique authority for ℤ-as-derived-from-ℕ.
 
 ### Q6 — Representation duality
 Can the same fact be expressed in two structurally different shapes?
@@ -91,7 +91,7 @@ Recommend (1) for proximity to existing algebra surfaces and to keep the algebra
 
 1. **Slice 3's only consumer is `GroupCompletion<Nat>`.** `Nat = Semiring<Magnitude>` (Slice 2) carries `(Nat, +, 0)` as a commutative monoid by the Semiring algebra's structural definition (`add: fn(T, T) -> T` + `zero: T` + commutativity-on-add law). The single intended consumer denotationally satisfies the precondition. No other consumer in the construction-chain plan targets `GroupCompletion<M>` for arbitrary `M`.
 
-2. **Future constrained-inhabitance dissolves the gap.** When the substrate gains a parametric where-clause / inhabitance-constraint surface (this is a separate substrate-feature lane, not in T-Numeric-Construction's scope), `GroupCompletion<M>` tightens to `GroupCompletion<M> where M inhabits CommutativeMonoid` (or whatever the chosen syntax is). Existing call sites (`type Int = GroupCompletion<Nat>`) continue to type-check because `Nat` denotationally inhabits `CommutativeMonoid` already.
+2. **Future constrained-inhabitance dissolves the gap.** When the substrate gains a parametric where-clause / inhabitance-constraint surface (this is a separate substrate-feature lane, not in T-Numeric-Construction's scope), `GroupCompletion<M>` tightens to `GroupCompletion<M> where M inhabits CommutativeMonoid` (or whatever the chosen syntax is). Existing call sites (`type Int = AbelianGroup<GroupCompletion<Nat>>`) continue to type-check because `Nat` denotationally inhabits `CommutativeMonoid` already.
 
 **Dissolution trigger:** when constrained-inhabitance / parametric where-clause syntax lands in the substrate, sharpen `GroupCompletion<M>` to require `M : CommutativeMonoid` (or `M : Semiring`-with-commutative-add, depending on the chosen algebra-strength). No consumer migration needed.
 
@@ -101,7 +101,7 @@ Recommend (1) for proximity to existing algebra surfaces and to keep the algebra
 
 - **Carrier representation.** Per Director's hard boundary, no quotient-of-pairs or sign-magnitude facts. Per-target representation is emission's job.
 - **Algebra inhabitance proof.** Whether `GroupCompletion<M>` mechanically derives an `AbelianGroup` witness over its carrier is a follow-up modeling question; this audit pins the substrate shape, not the inhabitance lens.
-- **Slice 3 alias-pivot edit.** Authoring `type Int = GroupCompletion<Nat>` is the post-prerequisite slice; this audit gates that.
+- **Slice 3 alias-pivot edit.** Authoring `type Int = AbelianGroup<GroupCompletion<Nat>>` is the post-prerequisite slice; this audit gates that.
 - **Refinement syntax.** `Int<N>` refinements are gated on T-V2-Retirement per design doc §"path (a) coordination."
 - **Parametric where-clause / constrained inhabitance.** Required to structurally enforce `<M> : CommutativeMonoid`. Tracked above as a substrate-feature gap; Slice 3 lands `GroupCompletion<Nat>` as the only consumer in the meantime.
 
@@ -111,7 +111,7 @@ Recommend (1) for proximity to existing algebra surfaces and to keep the algebra
 
 - Sized: **S** — single new type declaration in `dsl/std/algebra.dag` (or new file). No fields, no algebra-inhabitance shape declared at this layer (left to future inhabitance lens). Bootstrap regen.
 - Hard boundaries: no carrier-representation facts; no migration of `Int = Int64` (still gated on this slice landing); no tokenizer/literal-grammar work.
-- Once landed, Slice 3 becomes a one-line edit (`type Int = GroupCompletion<Nat>`) plus structural ratchet — no further substrate-introduction work needed.
+- Once landed, Slice 3 becomes a one-line edit (`type Int = AbelianGroup<GroupCompletion<Nat>>`) plus structural ratchet — no further substrate-introduction work needed.
 
 ## Cross-refs
 
