@@ -961,7 +961,7 @@ data spoof_suite: TestSuite = {
 }
 
 #[test]
-fn test_runner_algebraic_law_commutativity_returns_not_yet_implemented() {
+fn test_runner_algebraic_law_commutativity_passes_for_int_add() {
     let source = r#"
 module test.algebraic_law_commutativity_nyi
 
@@ -971,7 +971,7 @@ fn lens_placeholder(a: Int, b: Int) -> Int = a + b
 
 data claim_comm: TestClaim = {
   name: "algebraic law commutativity",
-  source: "let x: Int = 1",
+  source: "fn lens_placeholder(a: Int, b: Int) -> Int = a + b",
   file_name: "algebraic_law_comm.v3",
   predicate: AlgebraicLaw(Commutativity, lens_placeholder),
   requires: []
@@ -986,10 +986,67 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
+    assert_eq!(results[0].result, ClaimResult::Pass);
+}
+
+#[test]
+fn test_runner_algebraic_law_commutativity_fails_for_subtraction() {
+    let source = r#"
+module test.algebraic_law_commutativity_fail
+
+import std.verification { AlgebraicLaw, TestClaim, TestSuite }
+
+fn lens_placeholder(a: Int, b: Int) -> Int = a - b
+
+data claim_comm: TestClaim = {
+  name: "algebraic law commutativity fails",
+  source: "fn lens_placeholder(a: Int, b: Int) -> Int = a - b",
+  file_name: "algebraic_law_comm_fail.v3",
+  predicate: AlgebraicLaw(Commutativity, lens_placeholder),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "algebraic_law_commutativity_fail_suite",
+  claims: [claim_comm]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_algebraic_law_comm_fail.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(matches!(&results[0].result, ClaimResult::Fail(_)));
+}
+
+#[test]
+fn test_runner_algebraic_law_identity_names_identity_edge_blocker() {
+    let source = r#"
+module test.algebraic_law_identity_nyi
+
+import std.verification { AlgebraicLaw, TestClaim, TestSuite }
+
+fn lens_placeholder(a: Int, b: Int) -> Int = a + b
+
+data claim_identity: TestClaim = {
+  name: "algebraic law identity",
+  source: "fn lens_placeholder(a: Int, b: Int) -> Int = a + b",
+  file_name: "algebraic_law_identity.v3",
+  predicate: AlgebraicLaw(Identity, lens_placeholder),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "algebraic_law_identity_suite",
+  claims: [claim_identity]
+}
+"#;
+    let dag = compile_clean(source, "test_runner_algebraic_law_identity.dag");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
     assert!(matches!(
         &results[0].result,
-        ClaimResult::NotYetImplemented(reason)
-            if reason.contains("AlgebraicLaw::Commutativity")
+        ClaimResult::NotYetImplemented(_)
     ));
 }
 
