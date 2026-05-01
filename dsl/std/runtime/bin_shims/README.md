@@ -16,27 +16,32 @@ Generalized carrier-shape evolution (e.g. additional fields, refining `entry`'s 
 
 ## Naming convention
 
-Per design-doc §4.2 (`data regen_lens_shim: BinShim = { name: "regen_lens", entry: regen_lens, ... }`):
+Per the live carrier at `src/v3/std/bin_shim.dag` (landed via #1361) and design-doc §4.2:
 
 - **File path:** `dsl/std/runtime/bin_shims/<bin_name>.dag` (one declaration per file; one file per existing hand-Rust bin under `src/v3/compiler/src/bin/`).
 - **Declaration name:** `data <bin_name>_shim: BinShim = { ... }` — `<bin_name>` matches the bin's existing hand-Rust filename without the `.rs` extension. Example: `regen_lens.rs` → `dsl/std/runtime/bin_shims/regen_lens.dag` declaring `data regen_lens_shim: BinShim = { ... }`.
 - **Module:** `module std.runtime.bin_shims.<bin_name>` (mirrors path).
-- **Imports:** `BinShim` carrier type from wherever Substrate Manager lands it (design-doc §4.2 sketches `dsl/std/runtime/bin_shim.dag` but final path is Substrate's call); `std.process.ProcessExit` from `dsl/std/process.dag:39` (live).
+- **Live carrier fields** (`src/v3/std/bin_shim.dag`): `entrypoint_name: NonEmptyStr`, `description: String`, `entry: DeclarationRef`. The `entry` field references a `.dag` `() -> std.process.ProcessExit` function declaration; per the carrier's own scaffold comment, "`entry` remains a plain `DeclarationRef` until the substrate can express `DeclarationRef<fn () -> std.process.ProcessExit>`" — the type-system constraint is by reviewer convention until that refinement lands.
+- **Imports a per-shim row needs:** `v3.std.bin_shim::BinShim` (live), `std.process::ProcessExit` (live at `dsl/std/process.dag:39`), and the `<bin_name>_main` entry-function declaration (see §"Substrate prerequisite (STOP+PING)" — *not* yet live for any existing PB-owned bin).
 
 The naming convention is locked here so per-shim retirement workers (per the sub-gate skeletons at [`docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md`](../../../../docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md) and forward) have a consistent target without re-deriving paths at dispatch time.
 
-## Substrate prerequisite (STOP+PING)
+## Substrate prerequisite (STOP+PING — refreshed post-#1361)
 
-**Verified on origin/main HEAD at framework-creation time:**
+**Verified on origin/main HEAD post-#1361 carrier landing:**
 
-- **`type BinShim { ... }`** — **NOT YET LIVE.** `grep -rn "type BinShim" src/v3/std/ dsl/std/` returns no match; the carrier sketched in design-doc §4.2 has not been authored as substrate. Substrate Manager is the owner of the carrier landing per design-doc §5.4 boundary.
-- **`std.process.ProcessExit`** — LIVE at `dsl/std/process.dag:39` (`type ProcessExit`).
-- **`dsl/std/runtime/`** — created by this PR (framework directory).
-- **`dsl/std/runtime/bin_shims/`** — created by this PR (framework directory containing this README).
+- **`type BinShim { ... }`** — **LIVE** at `src/v3/std/bin_shim.dag:18` (3 fields: `entrypoint_name: NonEmptyStr`, `description: String`, `entry: DeclarationRef`). Carrier-shape ratchet at `src/v3/compiler/tests/integration/bin_shim_carrier_test.rs` pins this exact shape.
+- **`std.process.ProcessExit`** — LIVE at `dsl/std/process.dag:39` (`type ProcessExit = ExitSuccess | ExitFailure { ... }`).
+- **`dsl/std/runtime/bin_shims/`** — LIVE (framework directory + this README, landed via PR #1347).
+- **`<bin_name>_main` `.dag` entry function for any PB-owned hand-Rust bin** — **NOT YET LIVE.** `grep -rn "^fn regen_lens_main\|^fn .*_main.*ProcessExit" src/v3/ dsl/` returns no match. Each shim's `entry: DeclarationRef` field needs a `.dag`-authored function `fn <bin_name>_main() -> std.process.ProcessExit` to point at; without that target, `data <bin_name>_shim: BinShim = { ... entry: <bin_name>_main, ... }` cannot resolve.
 
-Until the `BinShim` carrier lands on origin/main, **no per-shim `.dag` declaration files can be authored here without fabricating carrier fields**, which is explicitly forbidden by the dispatch guardrails (per inbox #1149: "do so only if it does not invent carrier fields or emit semantics. If carrier shape is not live/clear, STOP+PING with the exact missing substrate authority rather than fabricating fields"). The framework directory + this README record the canonical home; the per-shim rows wait on Substrate Manager.
+**Implication for first per-shim authoring (`regen_lens_shim`):** the `entrypoint_name` and `description` fields are trivially expressible (per Cargo `[[bin]] name = "regen_lens"` + the bin's docstring), but `entry` requires a live `fn regen_lens_main() -> ProcessExit` declaration that does NOT exist on main. Authoring a stub function locally would invent emit/runtime semantics for the future BinShim emitter — that crosses into emit/runtime work explicitly out of instance-declaration scope. **The `entry`-target gap is the new STOP+PING.**
 
-When the carrier lands, the first authoring slice is `regen_lens.dag` per the planning brief's "First slice — `regen_lens.rs`" path; subsequent shims (other `regen_*` drivers, `self_host_fixed_point.rs`-shaped bins per design-doc §4.1) follow the same template.
+Until a `<bin_name>_main` `.dag` entry function exists for a given bin, **its instance declaration cannot be authored without fabricating the entry target**. The framework directory + this README record the canonical home; per-shim rows wait on the entry-function authoring lane.
+
+The cleanest path forward (Director / Substrate Manager / PB Manager call): either (a) land each `<bin_name>_main` entry function as part of the BinShim emitter / per-shim runtime work that authors its body, OR (b) define a "trivial-entry" Substrate convention where a stub `() -> ExitSuccess` function is the explicit placeholder the emitter later replaces. (a) is the design-doc §4.3 dissolution path's natural flow; (b) is a substrate-convention extension that should follow §P1 if surfaced.
+
+When the entry-function gap closes for `regen_lens`, the first authoring slice is `regen_lens.dag` per the planning brief's "First slice — `regen_lens.rs`" path; subsequent shims (other `regen_*` drivers, `self_host_fixed_point.rs`-shaped bins per design-doc §4.1) follow the same template.
 
 ## What does NOT belong here
 
