@@ -36,7 +36,7 @@ GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenan
 - **Single editable authority** per corpus program row — second copies are either generated or read-only structural imports.
 - **Program identity** per row is **one binding** projecting to **`TestClaim.source` + `TestClaim.file_name` together** — see §Program identity binding (not two unrelated strings).
 - **CI-visible drift detection** — silent divergence between Lane 1 and Lane 2 rows is unacceptable (ratchet shape varies by mechanism below).
-- **DB-3 / DB-20 posture** for future harness code: assert typed outcomes (`Pass` / `Fail` / `NotYetImplemented(_)`) without brittle substring coupling on diagnostics.
+- **Harness assertion posture** for future integration code: pin **`ClaimResult` / typed outcomes** (`Pass` / `Fail` / `NotYetImplemented(_)`) structurally — **[INVARIANTS DB-1](../../INVARIANTS.md#db-1)** (typed diagnostic carriers, not ad hoc warning text) and **[C-5](../../INVARIANTS.md#c-5)** (no string-sentinel probing); operational examples in [**TESTING.md**](../../TESTING.md#dont-assert-on-implementation-details) §“Don’t assert on implementation details.”
 
 ---
 
