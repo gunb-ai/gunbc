@@ -101,7 +101,7 @@ These are **still** implemented only in Rust today; they are “Day-1” predica
 | `PortHasState` | Inspects `PortState` after compile | PR-A carriers + evaluator | Exposed as structural witness |
 | `DeclarationHasRefinement` | Checks lowered refinement edge | Substrate query | Same |
 | `CostBounded` | `cost_of` on bind vs bound | PR-E + `cost_of` via evaluator | No duplicate cost oracle |
-| `AlgebraicLaw` | `Associativity` + `Commutativity` via bounded witness tables; `Identity` blocked; no `Distributivity` enum arm | PR-D/E witness + substrate laws | Declared law metadata vs sample triples |
+| `AlgebraicLaw` | Currently `Associativity` only; witness triples | PR-D/E witness + substrate laws | Declared law metadata vs sample triples |
 | `MockBackedInvariant` | `apply_lens_declaration` ×2 + `requires` validation | T-TestGen / DB-15 | Full mock semantics in `.dag`; empty-`requires` stays `NotYetImplemented` by design today |
 
 ---
