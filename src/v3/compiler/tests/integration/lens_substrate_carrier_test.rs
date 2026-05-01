@@ -14,7 +14,9 @@
 //!   substrate gap receipt.
 
 use std::collections::HashSet;
-use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
+
+use crate::common::cached_compile_to_dag;
+use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
@@ -41,6 +43,13 @@ fn decl_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
     dag.declaration_by_name(name)
         .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"))
         .id
+}
+
+fn dag_shape_dag() -> Dag {
+    cached_compile_to_dag(
+        include_str!("../../../lenses/dag_shape.dag"),
+        "src/v3/lenses/dag_shape.dag",
+    )
 }
 
 #[test]
@@ -159,5 +168,42 @@ fn lens_instance_kind_witness_payload_intentionally_absent() {
          typing trigger in `diagnostics.dag` has actually closed before \
          landing it (do not pretend payload is enforced via a free \
          TypeShape coordinate; that is the Q6.5-rejected illegal state)."
+    );
+}
+
+#[test]
+fn dag_shape_report_reuses_reflected_dag_authority() {
+    let dag = dag_shape_dag();
+    let dag_decl = dag.declaration_by_name("Dag").expect("Dag carrier exists");
+    assert!(
+        dag.declaration_by_name("DagShapeReport").is_none(),
+        "raw Dag shape producer must not duplicate std.substrate.Dag as a second report record"
+    );
+    assert_arrow_output(&dag, "dag_shape_report", dag_decl.id);
+}
+
+#[test]
+fn dag_shape_report_public_producer_returns_raw_dag() {
+    let dag = dag_shape_dag();
+    let dag_decl = dag.declaration_by_name("Dag").expect("Dag carrier exists");
+
+    assert_arrow_output(&dag, "dag_shape_report", dag_decl.id);
+    assert!(
+        dag.declaration_by_name("dag_shape_lens").is_none(),
+        "do not author fake Dag shape lens data until whole-Dag lens contract is honest"
+    );
+}
+
+fn assert_arrow_output(dag: &Dag, name: &str, expected: DeclarationId) {
+    let decl = dag
+        .declaration_by_name(name)
+        .unwrap_or_else(|| panic!("{name} declaration exists"));
+    let TypeConnective::Arrow { output, body, .. } = &decl.connective else {
+        panic!("{name} must be an Arrow");
+    };
+    assert_eq!(*output, expected, "{name} output drifted");
+    assert!(
+        matches!(body, ArrowBody::UserDefined(_)),
+        "{name} should lower to a user-defined body"
     );
 }
