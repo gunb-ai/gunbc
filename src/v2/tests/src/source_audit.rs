@@ -3,7 +3,37 @@
 //! These tests read .dag source files and assert on textual content.
 //! No compilation needed — just file reads and string matching.
 
-use crate::helpers::read_v2_file;
+use std::path::{Path, PathBuf};
+
+use crate::helpers::{read_v2_file, workspace_root};
+
+const LEGACY_METHOD_TEMPLATE_AUTHORITIES: &[&str] = &[
+    "rust_simple_method_specs",
+    "rust_method_templates",
+    "rust_method_wraps_result",
+    "python_method_templates",
+    "go_method_templates",
+];
+
+const ALLOWED_LEGACY_READER_PREFIXES: &[(&str, &str)] = &[(
+    "src/v2/",
+    "v2-side stage0 emit surface is PB-Zero-walled and cannot read v3 substrate rows today",
+)];
+
+const ALLOWED_LEGACY_READER_PATHS: &[(&str, &str)] = &[
+    (
+        "dsl/extdeps/languages/rust/emit.dag",
+        "canonical Rust extdeps emit authority consumed by the v2 generator until PB-Zero unblocks migration",
+    ),
+    (
+        "dsl/extdeps/languages/python/emit.dag",
+        "canonical Python extdeps emit authority consumed by the v2 generator until PB-Zero unblocks migration",
+    ),
+    (
+        "dsl/extdeps/languages/go/emit.dag",
+        "canonical Go extdeps emit authority consumed by the v2 generator until PB-Zero unblocks migration",
+    ),
+];
 
 fn live_source(source: &str) -> String {
     source
@@ -19,6 +49,50 @@ fn assert_live_contains(source: &str, needle: &str, message: &str) {
 
 fn assert_live_not_contains(source: &str, needle: &str, message: &str) {
     assert!(!live_source(source).contains(needle), "{message}");
+}
+
+fn collect_source_files(root: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_source_files(&path, files);
+        } else if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("dag" | "rs")
+        ) {
+            files.push(path);
+        }
+    }
+}
+
+fn relative_display(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn allowed_legacy_reader_reason(rel: &str) -> Option<&'static str> {
+    ALLOWED_LEGACY_READER_PREFIXES
+        .iter()
+        .find_map(|(prefix, reason)| rel.starts_with(prefix).then_some(*reason))
+        .or_else(|| {
+            ALLOWED_LEGACY_READER_PATHS
+                .iter()
+                .find_map(|(path, reason)| (*path == rel).then_some(*reason))
+        })
+}
+
+fn legacy_method_template_violations(rel: &str, source: &str) -> Vec<String> {
+    let live = live_source(source);
+    LEGACY_METHOD_TEMPLATE_AUTHORITIES
+        .iter()
+        .filter(|authority| live.contains(**authority))
+        .map(|authority| format!("{rel}: live reference to `{authority}`"))
+        .collect()
 }
 
 #[test]
@@ -214,6 +288,62 @@ fn parse_supports_response_blocks() {
     assert!(
         source.contains("parse_optional_mock_response_block"),
         "02_parse.dag should contain parse_optional_mock_response_block"
+    );
+}
+
+#[test]
+fn no_new_non_v2_consumers_of_legacy_method_template_authorities() {
+    // Textual deferral ratchet, not structural enforcement. The structural
+    // replacement is a typed row consumer for
+    // `src/v3/std/*_method_template_contracts.dag`, but v2 cannot use that
+    // path until PB-Zero unblocks bootstrap-Dag consumers. As each v2
+    // consumer migrates, shrink the allow-list; delete this ratchet when it
+    // empties.
+    let root = workspace_root();
+    let mut files = Vec::new();
+    collect_source_files(&root.join("src"), &mut files);
+    collect_source_files(&root.join("dsl"), &mut files);
+
+    let mut violations = Vec::new();
+    for path in files {
+        let rel = relative_display(&path, &root);
+        if allowed_legacy_reader_reason(&rel).is_some() {
+            continue;
+        }
+
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        violations.extend(legacy_method_template_violations(&rel, &source));
+    }
+
+    assert!(
+        violations.is_empty(),
+        "legacy method-template authorities are PB-Zero-blocked v2-only deferrals; \
+         new consumers must read src/v3/std/*_method_template_contracts.dag rows:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
+fn legacy_method_template_ratchet_detects_live_non_v2_reader() {
+    let source = r#"
+module v3.std.synthetic_method_template_reader
+
+// rust_method_templates in comments should not trip the ratchet.
+data synthetic_old_reader: String = rust_method_templates
+"#;
+
+    let violations = legacy_method_template_violations(
+        "src/v3/std/synthetic_method_template_reader.dag",
+        source,
+    );
+
+    assert_eq!(
+        violations,
+        vec![
+            "src/v3/std/synthetic_method_template_reader.dag: live reference to `rust_method_templates`"
+                .to_string()
+        ]
     );
 }
 
