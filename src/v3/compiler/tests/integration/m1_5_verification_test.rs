@@ -240,6 +240,10 @@ fn bootstrap_loads_verification_authority_types() {
                     String::from("authority_doc"),
                 ],
             ),
+            (
+                String::from("BridgeLedgerZero"),
+                vec![String::from("ledger")],
+            ),
         ]
     );
 }
