@@ -1,0 +1,37 @@
+// v3.std.approximate_field - typed axes for approximate real arithmetic.
+//
+// Authority: docs/design-numeric-construction.md section 5 and
+// docs/audit/t-numeric-construction-approximate-field-6q.md. This file lands
+// only the independent axes precursor. The `ApproximateField<F>` carrier,
+// `SpecialValues` record, `Real = ApproximateField<Rational>` alias, Float
+// migration, target mirrors, and tolerance/equivalence behavior land in later
+// slices.
+
+module v3.std.approximate_field
+
+import std.types { PositiveInt }
+
+// Rounding behavior is a program-visible fact. Keep it as a closed sum so
+// target groundings cannot smuggle policy through strings or defaults.
+type RoundingMode
+  = ToNearestEven
+  | ToZero
+  | ToPositiveInfinity
+  | ToNegativeInfinity
+  | ToAwayFromZero
+
+// Precision is structural, not a target-name tag like "f64". Binary precision
+// names significand and exponent width separately; total IEEE width alone is
+// too compressed for later grounding and equivalence policy.
+type Precision
+  = Unbounded
+  | BinaryPrecision { significand_bits: PositiveInt, exponent_bits: PositiveInt }
+  | DecimalPrecision { digits: PositiveInt, exponent_digits: PositiveInt }
+
+// NaN, infinity, signed-zero, and subnormal/denormal behavior are independent
+// axes. They stay split here; the later carrier slice can aggregate them into
+// `SpecialValues` without introducing new policy vocabulary.
+type NanPolicy = NoNaN | QuietNaN | QuietAndSignalingNaN
+type InfinityPolicy = NoInfinity | SignedInfinity
+type SignedZeroPolicy = NoSignedZero | SignedZero
+type SubnormalPolicy = NoSubnormals | GradualUnderflow | FlushToZero
