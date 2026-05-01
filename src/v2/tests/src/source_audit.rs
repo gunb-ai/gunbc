@@ -31,7 +31,10 @@ fn collect_source_files(root: &Path, files: &mut Vec<PathBuf>) {
         let path = entry.path();
         if path.is_dir() {
             collect_source_files(&path, files);
-        } else if matches!(path.extension().and_then(|e| e.to_str()), Some("dag" | "rs")) {
+        } else if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("dag" | "rs")
+        ) {
             files.push(path);
         }
     }
