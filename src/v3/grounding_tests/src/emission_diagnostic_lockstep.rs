@@ -117,7 +117,7 @@ fn variant_header_from_line(line: &str) -> Option<String> {
     if line.is_empty() || line.starts_with("//") || line.starts_with("#[") {
         return None;
     }
-    let end = line.find(|c| c == '{' || c == ',')?;
+    let end = line.find(|c| ['{', ','].contains(&c))?;
     let head = line[..end].trim();
     let name = head.split_whitespace().next()?;
     let mut ch = name.chars();
