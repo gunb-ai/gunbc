@@ -1,0 +1,49 @@
+// std.r3_verification_l4_emit_eval_match — R3 Lane 1 skeleton: `DifferentialEquals` between
+// emit-shaped vs eval-shaped producers is authored structurally but intentionally returns
+// `NotYetImplemented` until `(rust_emit_output, dag_eval_output)` wiring lands (runner today
+// implements only `(v3_program_cost, v2_oracle_cost)` for Lane-E cost parity).
+
+module std.r3_verification_l4_emit_eval_match
+
+import std.list { List, cons, fold }
+import std.substrate { Dag, PortId }
+import std.types { Int }
+import std.verification {
+  DifferentialEquals,
+  ProgramOutputBind,
+  TestClaim,
+  TestSuite
+}
+import v3.std.lookup { Lookup, miss_int_lookup }
+
+fn rust_emit_output(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+fn dag_eval_output(d: Dag, port_id: PortId) -> Lookup<Int> =
+  miss_int_lookup()
+
+data l4_out: Int = 0
+
+data r3_l4_emit_eval_program_input: ProgramOutputBind = {
+  output_ref: l4_out
+}
+
+data r3_verification_l4_emit_eval_match_skeleton: TestClaim = {
+  name: "r3_verification_l4_emit_eval_match_skeleton",
+  source: "// R3 L4 skeleton — minimal branch + fold surface for `l4_out` bind wiring.\nimport std.list { List, cons, empty, fold }\n\nlet l4_pick: Bool = true\n\nlet l4_xs: List<Int> = cons(1, cons(2, empty()))\n\nlet l4_out: Int =\n  match l4_pick {\n    True => fold(l4_xs, 0, |acc, x| acc + x)\n    False => 0\n  }\n",
+  file_name: "r3_verification_l4_emit_eval_match_skeleton.v3",
+  predicate: DifferentialEquals(
+    rust_emit_output,
+    dag_eval_output,
+    r3_l4_emit_eval_program_input
+  ),
+  requires: []
+}
+
+// Declaration id is fixture-local and distinct from `r3_verification_l7_algebraic_laws.dag` so two
+// modules are never ambiguous under one loader. Lane 1 acceptance may later merge both claims into
+// one module under `r3_verification_l4_l7_direct_suite` (parent brief).
+data r3_verification_l4_emit_eval_skeleton_suite: TestSuite = {
+  name: "r3_verification_l4_emit_eval_skeleton_suite",
+  claims: [r3_verification_l4_emit_eval_match_skeleton]
+}
