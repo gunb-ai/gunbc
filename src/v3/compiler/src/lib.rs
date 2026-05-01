@@ -51,7 +51,10 @@ pub mod evaluator {
 
     use std::collections::HashMap;
 
-    use crate::dag::{Behavior, Dag, DeclarationId, LiteralBits, LoopBound, NodeId, PortId};
+    use crate::dag::{
+        ArithmeticOp, Behavior, ComparisonOp, Dag, DeclarationId, LiteralBits, LoopBound, NodeId,
+        OperatorKind, PortId, TransformNode, TransformTarget,
+    };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
     /// `src/v3/std/runtime.dag`.
