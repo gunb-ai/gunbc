@@ -370,8 +370,8 @@ pub mod evaluator {
     #[cfg(test)]
     mod tests {
         use super::{
-            eval_branch, eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame,
-            EvalFrameError, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
+            eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame, EvalFrameError,
+            EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
             ArithmeticOp, Behavior, BranchPattern, Dag, DeclarationId, LiteralBits, LoopBound,
