@@ -22,21 +22,28 @@
 
 ### Live-path + substrate verification receipt
 
-Re-run whenever **`main`** moves materially (paths deleted/renamed):
+Re-run whenever **`main`** moves materially (paths deleted/renamed). This loop lists **every repository-relative path hyperlinked from this brief** (fixtures, runner, `verification.dag`, numeric grounding docs, Director / semantic-lock docs, INVARIANTS / TESTING anchors). **Extend the list when adding new links.**
 
 ```bash
 git fetch origin
 for p in \
-  src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag \
+  INVARIANTS.md \
+  TESTING.md \
+  dsl/std/integer.dag \
+  docs/design-cross-target-equivalence.md \
+  docs/design-numeric-construction.md \
+  docs/r3-structure.md \
+  docs/thesis/r2-r3-thesis-mapping.md \
+  docs/briefs/r3-v-l5-corpus-readiness-audit.md \
+  docs/briefs/r3-v-l5-corpus-scaffold-notes.md \
+  docs/briefs/r3-v-l5-corpus-worker.md \
+  src/v3/compiler/src/test_runner.rs \
   src/v3/compiler/tests/fixtures/r3_l5_corpus/add_then_branch_seed.v3 \
   src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag \
+  src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag \
   src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag \
   src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs \
-  src/v3/std/verification.dag \
-  src/v3/compiler/src/test_runner.rs \
-  docs/briefs/r3-v-l5-corpus-worker.md \
-  docs/briefs/r3-v-l5-corpus-scaffold-notes.md \
-  docs/briefs/r3-v-l5-corpus-readiness-audit.md
+  src/v3/std/verification.dag
 do git cat-file -e "origin/main:$p" || exit 1; done
 ```
 
@@ -134,6 +141,8 @@ Ordered diagnostic stages (each must be **fail-closed** and **attributed** to th
 ---
 
 ## 6. P2 single-authority for program text (#1393 / bridge #1394)
+
+Parallel editable copies of program text violate **[INVARIANTS §P2](../../INVARIANTS.md#p2-boundary-discipline)** — every fact lives in exactly one authoritative place.
 
 Steady-state **must not** rely on hand-maintained duplicate `TestClaim.source` strings that diverge from Lane 1.
 
