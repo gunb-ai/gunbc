@@ -88,7 +88,7 @@ Preserve these gate names exactly from `r3-structure.md`:
 7. `auto_memoization_repeated_pure_call_cached`
 8. `auto_memoization_no_caching_for_one_shot`
 9. `cross_target_optimization_constant_fold_consistent`
-10. `cross_target_optimization_cost_proportional`
+10. `cross_target_optimization_cost_structurally_derived`
 
 ## Standby State
 
