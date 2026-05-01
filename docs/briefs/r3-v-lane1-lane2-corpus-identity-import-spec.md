@@ -1,6 +1,6 @@
 # Lane 1 → Lane 2 corpus identity import contract
 
-**Status:** PROPOSAL — research-only concrete import contract for **P2 single-authority** program text between Lane 1 (T-V-L4-L7-Direct) and Lane 2 (T-V-L5-Corpus). **Merged design/invariant anchors on `main`:** [`INVARIANTS.md`](../../INVARIANTS.md) §P2 (Boundary Discipline — no parallel editable authorities); [`r3-v-l5-corpus-readiness-audit.md`](r3-v-l5-corpus-readiness-audit.md) §4 ([§4 heading](r3-v-l5-corpus-readiness-audit.md#4-critical-path-consumption-from-lane-1-boundary)) — program-text import options + bridge **#4** posture; [`design-cross-target-equivalence.md`](../design-cross-target-equivalence.md) — L5 algebraic-equivalence lock; [`design-test-infra.md`](../design-test-infra.md) — `TestClaim` / DB-15 structural authority (no duplicate test-schema forks); [`r3-structure.md`](../r3-structure.md) — Verification gates including **`l5_cross_target_consistency`**. **Dispatch only (not merged authorities):** PR [**#1412**](https://github.com/gunb-ai/gunbc/pull/1412) (Lane 2 corpus extension spec — cite merged paths above for implementation contracts). Further context: P2 anchor PR **#1393**, bridge-retirement posture PR **#1394**, Lane 1 readiness audit ([`r3-v-l4-l7-direct-readiness-audit.md`](r3-v-l4-l7-direct-readiness-audit.md) / loyal-ibex **#1392** failure taxonomy), interim L5 skeleton (**#1408**, SG-0 bridge note **#1409**). **No substrate edits, no fixtures, no new `TestPredicate` variants** in this brief.
+**Status:** PROPOSAL — research-only concrete import contract for **P2 single-authority** program text between Lane 1 (T-V-L4-L7-Direct) and Lane 2 (T-V-L5-Corpus). **Merged design/invariant anchors on `main`:** **[INVARIANTS §P2](../../INVARIANTS.md#p2-boundary-discipline)** (Boundary Discipline — no parallel editable authorities); **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** (Modeling Faithfulness — substrate-fact introduction before new carriers); [`r3-v-l5-corpus-readiness-audit.md`](r3-v-l5-corpus-readiness-audit.md) §4 ([§4 heading](r3-v-l5-corpus-readiness-audit.md#4-critical-path-consumption-from-lane-1-boundary)) — program-text import options + bridge **#4** posture; [`design-cross-target-equivalence.md`](../design-cross-target-equivalence.md) — L5 algebraic-equivalence lock; [`design-test-infra.md`](../design-test-infra.md) — `TestClaim` / DB-15 structural authority (no duplicate test-schema forks); [`r3-structure.md`](../r3-structure.md) — Verification gates including **`l5_cross_target_consistency`**. **Dispatch only (not merged authorities):** PR [**#1412**](https://github.com/gunb-ai/gunbc/pull/1412) (Lane 2 corpus extension spec — cite merged paths above for implementation contracts). Further context: P2 anchor PR **#1393**, bridge-retirement posture PR **#1394**, Lane 1 readiness audit ([`r3-v-l4-l7-direct-readiness-audit.md`](r3-v-l4-l7-direct-readiness-audit.md) / loyal-ibex **#1392** failure taxonomy), interim L5 skeleton (**#1408**, SG-0 bridge note **#1409**). **No substrate edits, no fixtures, no new `TestPredicate` variants** in this brief.
 
 **Non-goals:** Steady-state **`include_str!`** corpus lifts in Rust (**#1394**); hand-maintained duplicate `TestClaim.source` strings; claiming L5 absorbs L4.
 
@@ -11,11 +11,30 @@
 GitHub PR numbers (**#1393**, **#1394**, **#1412**, …) are **dispatch provenance**, not a substitute for merged design text. This contract’s **in-tree** anchors (each path exists on `main`; verify with `git cat-file -e HEAD:<path>` when authoring):
 
 - **[INVARIANTS.md](../../INVARIANTS.md#p2-boundary-discipline) — §P2 Boundary Discipline** — “every fact lives in exactly one authoritative place”; parallel copies are the failure mode import mechanisms must prevent.
+- **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness) — Modeling Faithfulness** — substrate extensions (`CertifiedProgramText`, widening `TestClaim`, …) route through the §P1 substrate-fact introduction procedure; not ad hoc fixture forks.
 - **[r3-v-l5-corpus-readiness-audit.md](r3-v-l5-corpus-readiness-audit.md#4-critical-path-consumption-from-lane-1-boundary) §4** — P2 program-text options + bridge-retirement posture for certification corpus lifts (Verification lane narrative).
 - **[design-cross-target-equivalence.md](../design-cross-target-equivalence.md)** — corpus numeric policy, oracle policy, and algebraic equality domain L5 consumes.
 - **[design-test-infra.md](../design-test-infra.md)** — DB-15 posture: `TestClaim` in [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag) is the structural authority; duplicate prose/schema forks violate the same “single authority” discipline as P2 program text.
 - **[r3-structure.md](../r3-structure.md)** — R3 gate **`l5_cross_target_consistency`** and Verification lane placement.
-- **[modeling-discipline.md](../modeling-discipline.md)** — read alongside any future **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** carrier that merges `source` + `file_name` into one nominal.
+- **[modeling-discipline.md](../modeling-discipline.md)** — read alongside any future **§P1** carrier that merges `source` + `file_name` into one nominal.
+
+### In-tree anchor verification receipt
+
+Re-run whenever **`main`** moves materially:
+
+```bash
+git fetch origin
+for p in \
+  INVARIANTS.md \
+  docs/modeling-discipline.md \
+  docs/design-cross-target-equivalence.md \
+  docs/design-test-infra.md \
+  docs/r3-structure.md \
+  docs/briefs/r3-v-l5-corpus-readiness-audit.md \
+  docs/briefs/r3-v-l4-l7-direct-readiness-audit.md \
+  src/v3/std/verification.dag
+do git cat-file -e "origin/main:$p" || exit 1; done
+```
 
 ---
 
