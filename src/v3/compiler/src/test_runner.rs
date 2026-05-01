@@ -2408,11 +2408,12 @@ impl<'a> TestRunner<'a> {
             ),
         };
         if law_label == "Identity" {
-            return ClaimResult::NotYetImplemented(format!(
+            return ClaimResult::NotYetImplemented(
                 "AlgebraicLaw::Identity is blocked: no lens identity-element edge is exposed on \
                  the algebra inhabitance yet (PR-B.3 W2); leave fail-closed until that substrate \
                  fact exists"
-            ));
+                    .to_string(),
+            );
         }
         if law_label != "Associativity" && law_label != "Commutativity" {
             return ClaimResult::NotYetImplemented(format!(
