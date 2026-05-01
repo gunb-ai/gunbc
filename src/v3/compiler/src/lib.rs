@@ -126,13 +126,13 @@ pub mod evaluator {
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
         ensure_supported_strategy(strategy)?;
-        if let Ok(value) = state.lookup(port) {
-            return Ok(value.clone());
+        if let Some(producer) = dag.resolve_producer_opt(&port) {
+            return eval_node(dag, producer.id(), state, strategy);
         }
-        let producer = dag
-            .resolve_producer_opt(&port)
-            .ok_or(EvalError::UnboundPort { port })?;
-        eval_node(dag, producer.id(), state, strategy)
+        state
+            .lookup(port)
+            .cloned()
+            .map_err(|_| EvalError::UnboundPort { port })
     }
 
     pub fn eval_node(
@@ -346,9 +346,26 @@ pub mod evaluator {
         }
 
         #[test]
-        fn eval_port_prefers_innermost_frame_binding() {
+        fn eval_port_prefers_dag_producer_over_frame_binding() {
             let mut dag = Dag::new();
             let port = dag.push_value(LiteralBits::Int(1), span());
+            let frame = EvalFrame::from_bindings([(
+                port,
+                Value::LiteralValue(LiteralBits::String("shadow".to_string())),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_port(&dag, port, &mut state, &strategy).expect("producer wins");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(1)));
+        }
+
+        #[test]
+        fn eval_port_uses_innermost_frame_binding_for_producerless_port() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let port = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
             let outer = EvalFrame::from_bindings([(
                 port,
                 Value::LiteralValue(LiteralBits::String("outer".to_string())),
