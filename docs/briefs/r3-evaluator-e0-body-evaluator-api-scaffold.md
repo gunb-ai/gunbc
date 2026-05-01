@@ -133,6 +133,54 @@ After resolution, pattern-matches on `Behavior`, dispatches to
 `eval_value` (E1), `eval_transform` (E3), `eval_branch` (E4),
 `eval_loop` (E5), or `eval_bind` (E6).
 
+### Port-level evaluation contract
+
+```text
+fn eval_port(
+    dag: &Dag,
+    port: PortId,
+    stack: &mut EvalStateStack,
+    strategy: &EvalStrategy,
+) -> Result<Value, EvalDiagnostic>;
+```
+
+Runtime data dependencies in a body flow through `PortId` facts, not
+node ids. `Transform.inputs`, `Branch.input`, `Loop.source` / `init`
+are all `PortId` references; consumers need a `Value` for each cited
+port. `eval_port` is the **single port-level resolution authority**
+the per-`Behavior` evaluators consume:
+
+1. **Frame lookup first.** Call `frame_lookup(stack, port)`. If the
+   port is bound (parameter binding or upstream `Bind` /
+   producer-node write), return the `Value` immediately.
+2. **Producer demand-eval.** If the port is unbound, look up
+   `dag.port_opt(&port).and_then(|p| p.produced_by)` per the existing
+   Rust API at `src/v3/compiler/src/dag.rs:3237` (port lookup) and
+   `:3061` (Bind-chain producer follow). If a producer `NodeId`
+   exists, call `eval_node(dag, producer, stack, strategy)` to
+   compute it; the producer's body is responsible for `frame_bind`-ing
+   its `result_port`. After `eval_node` succeeds, **re-do**
+   `frame_lookup(stack, port)`; the value must now be bound (else
+   producer-side invariant violation, fail-closed
+   `EvalDiagnostic::FrameDepthInvariantViolation`-class).
+3. **Fail-closed otherwise.** Port absent from the DAG entirely is
+   `EvalDiagnostic::ResolveError`; port present but neither bound nor
+   producer-backed is `EvalDiagnostic::UnboundPort(port)`.
+
+Per-`Behavior` evaluators **must not** call `frame_lookup` directly
+for input-port resolution; they call `eval_port`, which keeps
+demand-evaluation centralized. Direct `frame_lookup` is reserved for
+internal frame-discipline (E2) helpers and for assertion-style
+checks. This separation is the single port-resolution authority the
+runtime data-flow facts (`PortId` everywhere) require — without it
+each `Behavior` evaluator would re-invent demand-eval and `Dag` port
+lookup, violating Facts-Flow-Forward and creating per-Behavior
+parallel resolution paths.
+
+`eval_port` is **not implemented in E0**; it is part of E2's
+contract (E2 owns frame + port discipline). The signature is locked
+here so E3/E4/E5/E6 can depend on it without redesign.
+
 ### Per-`Behavior` slice fills
 
 Each later slice fills exactly one of these signatures. None are
@@ -142,10 +190,12 @@ in the scaffold.
 - **E1 — `eval_value`:**
   `fn eval_value(node: &ValueNode) -> Result<Value, EvalDiagnostic>`
   per PR-B.1 §B.1.1.
-- **E2 — frame discipline helpers** (no `Behavior` dispatch; pure
-  state plumbing):
+- **E2 — frame + port discipline helpers** (no `Behavior` dispatch;
+  pure state + port-resolution plumbing):
   - `fn frame_lookup(stack: &EvalStateStack, port: PortId) -> Result<Value, EvalDiagnostic>`
     (innermost-first walk; unbound = `EvalDiagnostic::UnboundPort`).
+    Used internally by `eval_port`; **per-`Behavior` evaluators call
+    `eval_port`, not `frame_lookup`, for input resolution**.
   - `fn frame_bind(stack: &mut EvalStateStack, port: PortId, value: Value) -> Result<(), EvalDiagnostic>`
     (top-frame only; `map_get` pre-check; duplicate =
     `EvalDiagnostic::DuplicateBind`).
@@ -153,6 +203,10 @@ in the scaffold.
     `fn pop_frame(stack: &mut EvalStateStack) -> Result<(), EvalDiagnostic>`
     (paired discipline; pop on empty is an internal-invariant
     `Diagnostic`).
+  - `eval_port` (signature in §"Port-level evaluation contract"
+    above) — central demand-eval authority; combines `frame_lookup`
+    and producer-node `eval_node` recursion behind one port-level
+    boundary.
 - **E3 — `eval_transform`:**
   `fn eval_transform(dag, t: &TransformNode, stack, strategy) -> Result<Value, EvalDiagnostic>`
   per PR-B.1 §B.1.2 and §B.1.6 / §B.1.7. `t.inputs` is `Vec<PortId>`
