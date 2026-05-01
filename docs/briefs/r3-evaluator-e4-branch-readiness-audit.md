@@ -75,6 +75,19 @@ port-resolution authority. E4's scrutinee evaluation calls
 (parallel-authority debt) or cannot resolve the scrutinee at all.
 
 `eval_port`'s implementation depends on:
+- **Port membership check first.** Before any frame lookup,
+  `eval_port` must call `dag.port_opt(&port)`; if `None`, fail
+  closed with `EvalDiagnostic::ResolveError(port)` immediately.
+  This makes `Dag` port-membership a substrate fact at the
+  boundary, so a caller-supplied initial frame containing a
+  `PortId` not in the program cannot evaluate successfully (per
+  Fail-Closed and "Every Dependency Is A Substrate Fact"). The E0
+  brief's port-level contract said "frame lookup first" without
+  this prerequisite — E1's implementation must perform the
+  membership check ahead of frame lookup, and a follow-on docs
+  amendment should clarify E0's wording. Order is:
+  `dag.port_opt(&port)` → `frame_lookup(stack, port)` →
+  producer-node demand-eval via `produced_by`.
 - `EvalStateStack::lookup(port)` — already shipped in E2 as
   `evaluator::EvalStateStack<V>::lookup` (`lib.rs::evaluator` per
   #1374). Generic on `V`; needs to be instantiated at `Value`.
