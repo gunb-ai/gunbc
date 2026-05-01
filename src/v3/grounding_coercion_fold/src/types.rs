@@ -34,7 +34,9 @@ pub enum IntScratchExample {
 /// Unique target inhabitance for a binding (Examples 1–2 surface only).
 ///
 /// Practice 4 (`docs/modeling-discipline.md`): single-variant placeholder — N \< 2, so no 🟢/🟡/🔴
-/// coproduct checkpoint until a second inhabitant is introduced.
+/// coproduct checkpoint until a second inhabitant is introduced. When a second variant lands,
+/// classify this enum explicitly (substrate vs Rust mirror / dissolution) — do not grow ad hoc
+/// without the same checkpoint discipline as the projection carriers.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TargetInhabitance {
     RustU32,

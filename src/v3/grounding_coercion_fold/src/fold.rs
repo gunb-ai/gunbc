@@ -47,6 +47,10 @@ pub fn fold_program_to_target(
     match language_spec {
         LanguageSpecProjection::Undeclared => Err(EmissionDiagnostic::FoldNotImplemented),
         LanguageSpecProjection::ScratchIntExamples(example) => {
+            debug_assert!(
+                _lifetime_facts.is_empty(),
+                "ScratchIntExamples checkpoint: pass an empty LifetimeAnalysisReport until this body reads facts (#1133 / #1286)"
+            );
             let binding = BindingId(0);
             let inhabitance = match example {
                 IntScratchExample::DesignDocExample1UnrefinedInt => {
