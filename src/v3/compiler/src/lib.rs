@@ -150,7 +150,7 @@ pub mod evaluator {
     pub fn eval_node(
         dag: &Dag,
         node: NodeId,
-        _state: &mut EvalStateStack<Value>,
+        state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
         match strategy {
@@ -160,10 +160,115 @@ pub mod evaluator {
         }
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
+            Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
             behavior => Err(EvalError::UnsupportedBehavior {
                 node: behavior.id(),
                 behavior: behavior_label(behavior),
             }),
+        }
+    }
+
+    fn eval_transform_node(
+        dag: &Dag,
+        t: &TransformNode,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        let mut operands = Vec::with_capacity(t.inputs.len());
+        for port in &t.inputs {
+            operands.push(eval_port(dag, *port, state, strategy)?);
+        }
+        match &t.target {
+            TransformTarget::Operator(OperatorKind::Arithmetic(op)) => {
+                if operands.len() != 2 {
+                    return Err(EvalError::TransformArityMismatch {
+                        expected: 2,
+                        got: operands.len(),
+                    });
+                }
+                let a = expect_int_literal(&operands[0])?;
+                let b = expect_int_literal(&operands[1])?;
+                let n = apply_arithmetic_int(*op, a, b)?;
+                Ok(Value::LiteralValue(LiteralBits::Int(n)))
+            }
+            TransformTarget::Operator(OperatorKind::Comparison(op)) => {
+                if operands.len() != 2 {
+                    return Err(EvalError::TransformArityMismatch {
+                        expected: 2,
+                        got: operands.len(),
+                    });
+                }
+                let out = match (&operands[0], &operands[1]) {
+                    (Value::LiteralValue(LiteralBits::Int(a)), Value::LiteralValue(LiteralBits::Int(b))) => {
+                        match op {
+                            ComparisonOp::Eq => a == b,
+                            ComparisonOp::Ne => a != b,
+                            ComparisonOp::Lt => a < b,
+                            ComparisonOp::Le => a <= b,
+                            ComparisonOp::Gt => a > b,
+                            ComparisonOp::Ge => a >= b,
+                        }
+                    }
+                    (
+                        Value::LiteralValue(LiteralBits::String(a)),
+                        Value::LiteralValue(LiteralBits::String(b)),
+                    ) => match op {
+                        ComparisonOp::Eq => a == b,
+                        ComparisonOp::Ne => a != b,
+                        _ => {
+                            return Err(EvalError::BadTransformOperands {
+                                reason: "string comparison beyond Eq/Ne",
+                            });
+                        }
+                    },
+                    _ => {
+                        return Err(EvalError::BadTransformOperands {
+                            reason:
+                                "comparison operands must both be Int literals or both String literals",
+                        });
+                    }
+                };
+                Ok(Value::LiteralValue(LiteralBits::Bool(out)))
+            }
+            TransformTarget::Operator(OperatorKind::Logical(_)) => Err(
+                EvalError::UnsupportedTransformTarget {
+                    kind: "Logical",
+                },
+            ),
+            TransformTarget::FieldProject { .. } => Err(EvalError::UnsupportedTransformTarget {
+                kind: "FieldProject",
+            }),
+            TransformTarget::Callable(_) => Err(EvalError::UnsupportedTransformTarget {
+                kind: "Callable",
+            }),
+        }
+    }
+
+    fn expect_int_literal(value: &Value) -> Result<i64, EvalError> {
+        match value {
+            Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+            _ => Err(EvalError::BadTransformOperands {
+                reason: "expected Int literal",
+            }),
+        }
+    }
+
+    fn apply_arithmetic_int(op: ArithmeticOp, a: i64, b: i64) -> Result<i64, EvalError> {
+        const OVERFLOW: EvalError = EvalError::BadTransformOperands {
+            reason: "integer overflow",
+        };
+        match op {
+            ArithmeticOp::Add => a.checked_add(b).ok_or(OVERFLOW),
+            ArithmeticOp::Sub => a.checked_sub(b).ok_or(OVERFLOW),
+            ArithmeticOp::Mul => a.checked_mul(b).ok_or(OVERFLOW),
+            ArithmeticOp::Div => {
+                if b == 0 {
+                    return Err(EvalError::BadTransformOperands {
+                        reason: "division by zero",
+                    });
+                }
+                a.checked_div(b).ok_or(OVERFLOW)
+            }
         }
     }
 
