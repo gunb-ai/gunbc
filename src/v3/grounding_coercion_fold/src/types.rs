@@ -33,15 +33,27 @@ pub enum IntScratchExample {
     DesignDocExample5AmbiguousAlgebra,
     /// Example 6 — `Int(0..2^65)` exceeds the Rust Int128 family.
     DesignDocExample6NoInhabitant,
+    /// Example 8 — Rust target for `Int(-2^31..2^31)`.
+    ///
+    /// Kept as three flat variants rather than adding a scratch target coproduct: this matches
+    /// the existing per-example driver shape and keeps the transitional selector simple until
+    /// the declared LanguageSpec projection replaces it.
+    DesignDocExample8Rust,
+    /// Example 8 — Python target for `Int(-2^31..2^31)`.
+    DesignDocExample8Python,
+    /// Example 8 — Go target for `Int(-2^31..2^31)`.
+    DesignDocExample8Go,
 }
 
-/// Unique target inhabitance for a binding (Examples 1–2 surface only).
+/// Unique target inhabitance for a binding (scratch Int example surface only).
 ///
-/// Practice 4 (`docs/modeling-discipline.md`): single-variant placeholder — N \< 2, so no 🟢/🟡/🔴
-/// coproduct checkpoint until a second inhabitant is introduced. When a second variant lands,
-/// classify this enum explicitly (substrate vs Rust mirror / dissolution) — do not grow ad hoc
-/// without the same checkpoint discipline as the projection carriers.
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — lane-local output mirror for
+/// hardcoded scratch examples. It retires with `ScratchIntExamples` when the declared
+/// LanguageSpec projection can compute target inhabitance structurally.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TargetInhabitance {
     RustU32,
+    RustI32,
+    PythonInt,
+    GoInt32,
 }
