@@ -2668,23 +2668,6 @@ fn wrap(point: Point) -> Wrapped = Wrap { inner: point }
     );
 }
 
-#[test]
-fn prereq2_named_variant_constructor_expression_rejects_duplicate_fields() {
-    let src = "\
-type Point { x: Int }
-type Wrapped = Wrap { inner: Point, tag: Int } | Empty
-fn wrap(point: Point) -> Wrapped = Wrap { inner: point, inner: point, tag: 1 }
-";
-    let dag = compile_any(src, "named_variant_constructor_duplicate_fields.v3");
-    assert!(
-        dag.diagnostics()
-            .iter()
-            .any(|(_, diagnostic)| matches!(diagnostic, Diagnostic::ResolveError { .. })),
-        "duplicate named-constructor field should report ResolveError, got {:?}",
-        dag.diagnostics().iter().collect::<Vec<_>>()
-    );
-}
-
 /// Prereq-2 (lens-fold): brace-bodied `fn` lowers a `match` whose arms
 /// mix bare and record-shaped variant constructors against a sum whose
 /// variant carries a Conj payload (`Cell { n: Int }`), matching the

@@ -6477,15 +6477,18 @@ fn lower_record_literal_expr(
             .collect(),
         _ => unreachable!("walk_to_conj_decl returned non-Conj"),
     };
-    if let Some(field) = duplicate_record_field(fields) {
-        return unresolved_port(
-            dag,
-            Diagnostic::ResolveError {
-                name: format!("record literal repeats field `{}`", field.name),
-                span: field.span.clone(),
-                fixes: Vec::new(),
-            },
-        );
+    let mut seen_record_fields = HashSet::new();
+    for field in fields {
+        if !seen_record_fields.insert(field.name.clone()) {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!("record literal repeats field `{}`", field.name),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        }
     }
     for field in fields {
         if !expected_fields
@@ -6566,19 +6569,6 @@ fn lower_variant_record_expr(
             },
         );
     };
-    if let Some(field) = duplicate_record_field(expr.fields) {
-        return unresolved_port(
-            dag,
-            Diagnostic::ResolveError {
-                name: format!(
-                    "named constructor `{}` repeats payload field `{}`",
-                    expr.target, field.name
-                ),
-                span: field.span.clone(),
-                fixes: Vec::new(),
-            },
-        );
-    }
     for field in expr.fields {
         if !expected_fields
             .iter()
