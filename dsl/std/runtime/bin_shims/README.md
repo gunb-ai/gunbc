@@ -4,7 +4,7 @@ Canonical home for PB-owned per-shim `BinShim` instance declarations per [`docs/
 
 ## Status
 
-**FRAMEWORK ONLY.** No instance declarations on main yet — see §"Substrate prerequisite (STOP+PING)" below. This directory holds the README so future per-shim declarations have a canonical location, naming convention, and dependency contract once the substrate prerequisite lands.
+**FRAMEWORK ONLY — instance `.dag` files not yet on main.** The `BinShim` **carrier** is live at [`src/v3/std/bin_shim.dag`](../../../../src/v3/std/bin_shim.dag) (`module v3.std.bin_shim`; landed #1361). Per-shim `data <bin>_shim: BinShim = { … }` rows still wait on coordinated instance authoring (first slice: `regen_lens.dag` — neat-boar / PB ordering per [`docs/briefs/r3-pb-binshim-emitter-readiness.md`](../../../../docs/briefs/r3-pb-binshim-emitter-readiness.md)). This README locks paths + naming; see §"Emitter readiness" for the Rust emitter boundary.
 
 ## Ownership boundary (per design-doc §5.4)
 
@@ -16,27 +16,29 @@ Generalized carrier-shape evolution (e.g. additional fields, refining `entry`'s 
 
 ## Naming convention
 
-Per design-doc §4.2 (`data regen_lens_shim: BinShim = { name: "regen_lens", entry: regen_lens, ... }`):
+Per design-doc §4.2, aligned to the **live** carrier at `src/v3/std/bin_shim.dag` (`entrypoint_name`, `description`, `entry` — the design sketch historically used `name`; use `entrypoint_name` for instances):
+
+`data regen_lens_shim: BinShim = { entrypoint_name: "regen_lens", description: "…", entry: regen_lens_main, … }`
 
 - **File path:** `dsl/std/runtime/bin_shims/<bin_name>.dag` (one declaration per file; one file per existing hand-Rust bin under `src/v3/compiler/src/bin/`).
 - **Declaration name:** `data <bin_name>_shim: BinShim = { ... }` — `<bin_name>` matches the bin's existing hand-Rust filename without the `.rs` extension. Example: `regen_lens.rs` → `dsl/std/runtime/bin_shims/regen_lens.dag` declaring `data regen_lens_shim: BinShim = { ... }`.
 - **Module:** `module std.runtime.bin_shims.<bin_name>` (mirrors path).
-- **Imports:** `BinShim` carrier type from wherever Substrate Manager lands it (design-doc §4.2 sketches `dsl/std/runtime/bin_shim.dag` but final path is Substrate's call); `std.process.ProcessExit` from `dsl/std/process.dag:39` (live).
+- **Imports:** `BinShim` from `v3.std.bin_shim` / [`src/v3/std/bin_shim.dag`](../../../../src/v3/std/bin_shim.dag); `std.process.ProcessExit` from `dsl/std/process.dag:39` (live).
 
 The naming convention is locked here so per-shim retirement workers (per the sub-gate skeletons at [`docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md`](../../../../docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md) and forward) have a consistent target without re-deriving paths at dispatch time.
 
-## Substrate prerequisite (STOP+PING)
+## Carrier + instance authoring status
 
-**Verified on origin/main HEAD at framework-creation time:**
+- **`type BinShim`** — **LIVE** at [`src/v3/std/bin_shim.dag`](../../../../src/v3/std/bin_shim.dag) (`module v3.std.bin_shim`; landed #1361). **Generalized carrier-shape evolution** (extra fields, refining `entry` beyond the locked three-field record) remains Substrate Manager territory per design-doc §5.4 + `INVARIANTS.md` §P1 — PB does not edit the carrier from this directory.
+- **Per-shim `data <bin>_shim: BinShim` rows** — **not yet on main** here; first slice `regen_lens.dag` per [`docs/briefs/r3-pb-binshim-retirement-worker.md`](../../../../docs/briefs/r3-pb-binshim-retirement-worker.md) §"First slice" (coordinate instance authoring with neat-boar / PB Manager ordering).
+- **`std.process.ProcessExit`** — LIVE at [`dsl/std/process.dag`](../../process.dag) (see line 39; `type ProcessExit`).
 
-- **`type BinShim { ... }`** — **NOT YET LIVE.** `grep -rn "type BinShim" src/v3/std/ dsl/std/` returns no match; the carrier sketched in design-doc §4.2 has not been authored as substrate. Substrate Manager is the owner of the carrier landing per design-doc §5.4 boundary.
-- **`std.process.ProcessExit`** — LIVE at `dsl/std/process.dag:39` (`type ProcessExit`).
-- **`dsl/std/runtime/`** — created by this PR (framework directory).
-- **`dsl/std/runtime/bin_shims/`** — created by this PR (framework directory containing this README).
+## Emitter readiness
 
-Until the `BinShim` carrier lands on origin/main, **no per-shim `.dag` declaration files can be authored here without fabricating carrier fields**, which is explicitly forbidden by the dispatch guardrails (per inbox #1149: "do so only if it does not invent carrier fields or emit semantics. If carrier shape is not live/clear, STOP+PING with the exact missing substrate authority rather than fabricating fields"). The framework directory + this README record the canonical home; the per-shim rows wait on Substrate Manager.
+Handoff surface for the **Item 5 bin-shim Rust emitter** (`.dag` emitter program per [`docs/design-pb-runtime-interpreter.md`](../../../../docs/design-pb-runtime-interpreter.md) §4.2 + §6 anti-bridge invariant #4 — **not** stored in this directory; see §"What does NOT belong here"):
 
-When the carrier lands, the first authoring slice is `regen_lens.dag` per the planning brief's "First slice — `regen_lens.rs`" path; subsequent shims (other `regen_*` drivers, `self_host_fixed_point.rs`-shaped bins per design-doc §4.1) follow the same template.
+- **Planning brief:** [`docs/briefs/r3-pb-binshim-emitter-readiness.md`](../../../../docs/briefs/r3-pb-binshim-emitter-readiness.md) — prerequisite pins, ordering dependencies, **`regen_bootstrap` / `dsl/std/*.dag` glob does not include `dsl/std/runtime/**`** loader gap, STOP lines.
+- **§7.2 equivalence `TestClaim`:** authored only by a **PB-assigned §7.2 worker** under the BinShim retirement program ([`r3-pb-binshim-retirement-worker.md`](../../../../docs/briefs/r3-pb-binshim-retirement-worker.md) §"Acceptance"); do not route §7.2 work through this README or the emitter-readiness brief.
 
 ## What does NOT belong here
 
@@ -50,9 +52,10 @@ When the carrier lands, the first authoring slice is `regen_lens.dag` per the pl
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../../../../docs/design-pb-runtime-interpreter.md) §4 (Item 5 emit pattern), §4.2 (`type BinShim` sketch + emitter shape), §4.3 (dissolution path), §5.1 (sub-gate decomposition), §5.4 (PB / Substrate / Evaluator boundary), §6 (anti-bridge invariants), §7.2 (BinShim equivalence fixture), §7.3 (No-new-bin-shim-hand-Rust fixture).
 - Parent planning brief: [`docs/briefs/r3-pb-binshim-retirement-worker.md`](../../../../docs/briefs/r3-pb-binshim-retirement-worker.md).
+- Emitter readiness (Item 5 `.dag` emitter boundary): [`docs/briefs/r3-pb-binshim-emitter-readiness.md`](../../../../docs/briefs/r3-pb-binshim-emitter-readiness.md).
 - Sub-gate skeleton (consumer of this framework): [`docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md`](../../../../docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md).
 - Sibling LensProducer sub-gate skeletons (different mechanism): [`docs/briefs/r3-pb-t-lensproducer-sub1-lens-apply-retirement.md`](../../../../docs/briefs/r3-pb-t-lensproducer-sub1-lens-apply-retirement.md), [`docs/briefs/r3-pb-t-lensproducer-sub2-lens-testgen-retirement.md`](../../../../docs/briefs/r3-pb-t-lensproducer-sub2-lens-testgen-retirement.md).
-- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md`](../../../../INVARIANTS.md) §P1 — used when the `BinShim` carrier lands and an authoring decision needs Substrate Manager input.
+- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md`](../../../../INVARIANTS.md) §P1 — carrier-shape evolution, new `CensusListConstant` / filter dispositions, and related substrate questions escalate here (PB does not extend the carrier from this directory).
 - PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](../../../../docs/briefs/r2-pure-bootstrap-manager.md) line 37 (BinShim instances + emit pattern + retirement dispatch lane).
 - Live `ProcessExit`: [`dsl/std/process.dag`](../../process.dag) line 39.
 - Hand-Rust bins targeted for retirement (do not edit until dispatch): `src/v3/compiler/src/bin/regen_lens.rs` (first slice); other `regen_*` drivers per design-doc §4.1 (broader class).
