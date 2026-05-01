@@ -23,7 +23,7 @@ Magnitude                              (terminal substrate — unbounded countin
    ↓
 Nat = Semiring<Magnitude>              (ℕ — natural numbers; no neg, no div)
    ↓
-Int = AbelianGroup<Nat>                (ℤ via Grothendieck construction)
+Int                                   (ℤ via Grothendieck completion of Nat; AbelianGroup<Int> witness)
    ↓
 Rational = Field<Int>                  (ℚ — fractions)
    ↓
@@ -78,7 +78,7 @@ Three candidate encodings:
 
 If audit confirms structural completeness, **no new substrate** for this layer.
 
-### 3. Grothendieck construction for `Int = AbelianGroup<Nat>`
+### 3. Grothendieck construction for `Int`
 
 **Status:** Design-call. Two canonical encodings:
 
@@ -86,11 +86,13 @@ If audit confirms structural completeness, **no new substrate** for this layer.
 |---|---|---|
 | **Quotient of pairs** | `Int = (Nat, Nat) / ~` where `(a, b) ~ (c, d) iff a + d = c + b`; pair `(a, b)` represents `a - b` | Mathematically canonical; preserves construction-chain integrity. **Substrate cost**: equivalence-class quotient is heavy substrate machinery |
 | **Sign-magnitude** | `Int = (Sign, Nat)` where `Sign = Pos \| Neg` (with `Pos 0 == Neg 0` collapsed) | Same algebra as Grothendieck quotient (provably) without quotient machinery. Matches `feedback_naming_is_aliasing` cleanly |
-| **Abstract Int via algebra** | `Int = AbelianGroup<Nat>` declared as algebra-witness inhabitance directly (using existing `AbelianGroup<T>` from `algebra.dag`) — no explicit construction encoding | Most v3-substrate-friendly; the existing `AbelianGroup<T>` algebra wraps Nat directly without committing to quotient or sign-magnitude representation; emission selects representation per target |
+| **Abstract Int via algebra** | `Int` is an abstract Grothendieck-completion carrier over `Nat`, with `AbelianGroup<Int>` as its algebra witness — no explicit construction encoding | Most v3-substrate-friendly; it does not commit to quotient or sign-magnitude representation; emission selects representation per target. Requires a distinct completion carrier or carrier/witness syntax before declaration |
 
-**PM recommendation: Abstract Int via algebra (option 3).** The existing `AbelianGroup<T>` at `algebra.dag:132` already abstracts the construction; declaring `type Int = AbelianGroup<Nat>` consumes that algebra without committing to a specific encoding. Per-target grounding then picks: Rust `i128` is sign-magnitude internally; Python `int` is sign-magnitude with arbitrary-precision; Go `math/big.Int` is sign-magnitude. Substrate Mgr verifies this composition resolves at compile time.
+**PM recommendation, narrowed by 6Q audit: Abstract Int via algebra (option 3).** The existing `AbelianGroup<T>` at `algebra.dag:132` is the additive-group witness shape. It is not itself a carrier constructor, so `type Int = AbelianGroup<Nat>` is only shorthand for the design intent and is not a valid current substrate declaration. The valid target is an integer carrier completed from `Nat`, witnessed by `AbelianGroup<Int>`, once the substrate can express either a distinct completion carrier or carrier/witness syntax. Per-target grounding then picks concrete representations: Rust `i128` is two's-complement; Python `int` and Go `math/big.Int` use implementation-owned arbitrary-precision representations. Substrate Mgr verifies this composition resolves at compile time.
 
-**Sized**: S declaration in `integer.dag` if option 3; M-L if Substrate Mgr decides explicit construction is needed for cost-lens or refinement-composition reasoning.
+**6Q audit receipt:** [`docs/audit/t-numeric-construction-grothendieck-6q.md`](audit/t-numeric-construction-grothendieck-6q.md) accepts abstract-via-algebra as the encoding decision and rejects quotient-of-pairs plus sign-magnitude on Q3/Q6 grounds. The audit also narrows the declaration target: current `AbelianGroup<T>` is an algebra witness over an existing carrier, not a Grothendieck-completion carrier constructor, so `type Int = AbelianGroup<Nat>` is deferred until the substrate can express either a distinct completion carrier or carrier/witness syntax. Sign, magnitude, pair coordinates, quotient normalization, and zero-collapse rules are target/grounding details unless a later substrate consumer proves otherwise.
+
+**Sized**: docs-only for this audit; later declaration is S-M depending on whether carrier/witness syntax already exists or a distinct completion carrier must be introduced. M-L if Substrate Mgr decides explicit quotient machinery is needed for cost-lens or refinement-composition reasoning.
 
 ### 4. `Field<F>` — verify existing
 
@@ -140,7 +142,7 @@ type Precision = Unbounded | IEEE754Width<N>   // N = total bits (32 / 64 / 128)
 
 ### 6. Consumer migration of 8 types — mechanical cascade
 
-3 direct (Int, UInt, Float at `integer.dag` + `float.dag`) + 5 inherited (Char, EpochMs, Duration, Milliseconds, Seconds at `types.dag`). Once `Int` becomes `AbelianGroup<Nat>`, the inherited types automatically pick up the construction-chain `Int` — no per-type authoring needed.
+3 direct (Int, UInt, Float at `integer.dag` + `float.dag`) + 5 inherited (Char, EpochMs, Duration, Milliseconds, Seconds at `types.dag`). Once `Int` becomes the Grothendieck-completion carrier over `Nat`, with its `AbelianGroup<Int>` witness, the inherited types automatically pick up the construction-chain `Int` — no per-type authoring needed.
 
 **Sized**: M for direct (3 file edits); negligible for inherited (cascade).
 
@@ -244,7 +246,7 @@ The construction chain has different cost characteristics per layer that the cos
 | **Magnitude** | (opaque carrier; no operations directly) | N/A | Refinements consume; Magnitude itself has no algebraic operations |
 | **Nat = Semiring<Magnitude>** | `add(a, b)` | O(1) on the algebraic axiom; refinement determines target-realization cost | Per-target: O(1) for `Nat<64>` on hardware; O(max(a, b)) for unbounded `Nat` via BigUint |
 | **Nat** | `mul(a, b)` | O(1) algebraic; target: O(1) for fixed-width; O(n*m) for arbitrary-precision | |
-| **Int = AbelianGroup<Nat>** | `add(a, b)` (via Grothendieck) | O(1) algebraic; same target cost as Nat | Sign handling adds constant factor; doesn't change asymptotic |
+| **Int completion over Nat** | `add(a, b)` (via Grothendieck) | O(1) algebraic; same target cost as Nat | Sign handling adds constant factor; doesn't change asymptotic |
 | **Int** | `negate(a)` | O(1) algebraic; O(1) target | Sign flip |
 | **Rational = Field<Int>** | `mul(a, b)` (multiplying fractions) | O(1) algebraic; target: O(1) for fixed-width components; O(N) per gcd-reduction step | gcd dominates |
 | **Rational** | `add(a, b)` (LCD'ing) | O(N) for LCD computation + O(1) for sum + gcd-reduction | |
