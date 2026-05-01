@@ -6428,6 +6428,19 @@ fn lower_record_literal_expr(
             .collect(),
         _ => unreachable!("walk_to_conj_decl returned non-Conj"),
     };
+    let mut seen_record_fields = HashSet::new();
+    for field in fields {
+        if !seen_record_fields.insert(field.name.clone()) {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!("record literal repeats field `{}`", field.name),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        }
+    }
     for field in fields {
         if !expected_fields
             .iter()
