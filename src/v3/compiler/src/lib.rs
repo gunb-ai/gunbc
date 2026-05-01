@@ -209,7 +209,8 @@ pub mod evaluator {
         };
         let path = select_branch_path(&branch, tag)?;
         state.push_frame(EvalFrame::empty());
-        let body_result = eval_branch_body_in_pushed_frame(dag, &path, *payload, state, strategy);
+        let body_result =
+            eval_branch_body_in_pushed_frame(dag, branch.id, &path, *payload, state, strategy);
         let pop_result = state.pop_frame();
         // The body result is authoritative; only surface a frame
         // error if the body otherwise succeeded.
@@ -251,6 +252,7 @@ pub mod evaluator {
 
     fn eval_branch_body_in_pushed_frame(
         dag: &Dag,
+        branch_id: NodeId,
         path: &Path,
         payload: Value,
         state: &mut EvalStateStack<Value>,
@@ -259,16 +261,27 @@ pub mod evaluator {
         if let Some(binding) = &path.binding {
             state.bind_top(binding.payload_port, payload)?;
         }
-        // Evaluate the body for its frame-binding side effects, then
-        // read the arm's authoritative value at `path.output` via
-        // `eval_port`. The body's `eval_node` return is **not** the
-        // arm value: the substrate names `BranchPath.output: PortId`
-        // as the result-port edge, and an arm whose `output` is an
-        // existing or payload-bound port (e.g. the arm returns its
-        // payload directly) would drop that fact if the evaluator
-        // returned the body's local result instead. Any body
-        // diagnostic propagates through the `?`.
-        let _ = eval_node(dag, path.body, state, strategy)?;
+        // `lower.rs` uses `path.body == branch.id` as the
+        // **producerless-arm sentinel**: the arm's result port has no
+        // producer node (returns an existing or payload-bound port
+        // directly), so the lowerer points body back at the Branch
+        // node itself. Skip body evaluation in that case — recursing
+        // through `eval_node` would re-enter `eval_branch` on the
+        // same node and either loop forever or drop the authoritative
+        // `path.output` fact. The arm's value is read directly from
+        // `path.output` via `eval_port`.
+        if path.body != branch_id {
+            // Otherwise: evaluate the body for its frame-binding side
+            // effects (E6 Bind, future E3 Transform). Body diagnostic
+            // propagates through `?`. The body's local return value
+            // is intentionally discarded — the arm's authoritative
+            // value is at `path.output`, per
+            // `BranchPath.output: PortId` in the substrate; an arm
+            // whose `output` is an existing or payload-bound port
+            // would drop that fact if the evaluator returned the
+            // body's local result instead.
+            let _ = eval_node(dag, path.body, state, strategy)?;
+        }
         eval_port(dag, path.output, state, strategy)
     }
 
@@ -923,6 +936,64 @@ pub mod evaluator {
             let strategy = eager_strategy();
 
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, payload_value);
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        // E4 / Facts-Flow-Forward: producerless-arm sentinel.
+        // `lower.rs:6133-6134, 6265` lowers arms whose result port has
+        // no producer node by setting `path.body == branch.id` —
+        // there's no body to execute; the value is at `path.output`
+        // already (e.g. payload-bound or an existing port from outside
+        // the branch). `eval_branch` must detect this sentinel and
+        // skip body evaluation, otherwise it would re-enter
+        // `eval_branch` on the same node and either loop or drop the
+        // authoritative `path.output` fact. Constructed via
+        // crate-private `alloc_node_id` / `push_node` so `path.body`
+        // can equal the branch's own id (the public `push_branch`
+        // builder asserts body existence before allocating its id, so
+        // it cannot construct this sentinel directly).
+        #[test]
+        fn eval_branch_handles_producerless_arm_sentinel() {
+            use crate::dag::BranchNode;
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let payload_port = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            // Manual branch construction so `path.body == branch_id`,
+            // mirroring the `producer_of(...).unwrap_or(branch_id)`
+            // sentinel from `lower.rs`.
+            let branch_id = dag.alloc_node_id();
+            let branch_output = dag.alloc_port(Some(branch_id));
+            dag.push_node(Behavior::Branch(BranchNode {
+                id: branch_id,
+                input: scrutinee,
+                paths: vec![Path {
+                    body: branch_id, // sentinel: no producer for the arm result
+                    output: payload_port,
+                    pattern: BranchPattern::ResolvedVariant(some_tag),
+                    binding: Some(PayloadBinding {
+                        binding_name: "p".to_string(),
+                        payload_port,
+                    }),
+                }],
+                output: branch_output,
+                span: span(),
+                emit_participation: None,
+            }));
+            let payload_value = Value::LiteralValue(LiteralBits::Int(42));
+            let frame =
+                EvalFrame::from_bindings([(scrutinee, variant(some_tag, payload_value.clone()))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            // If eval_branch recursed into eval_node(branch_id), it would
+            // re-enter the same Branch infinitely; the test passing at
+            // all confirms the sentinel detection.
+            let value =
+                eval_node(&dag, branch_id, &mut state, &strategy).expect("branch evaluates");
 
             assert_eq!(value, payload_value);
             assert_eq!(state.frames_outer_to_inner().len(), 1);
