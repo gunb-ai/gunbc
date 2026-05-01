@@ -43,6 +43,8 @@ mod anthropic_messages_callable_test;
 mod anthropic_operations_test;
 #[path = "integration/anthropic_schema_lockstep_test.rs"]
 mod anthropic_schema_lockstep_test;
+#[path = "integration/bin_shim_carrier_test.rs"]
+mod bin_shim_carrier_test;
 #[path = "integration/bridge_ledger_carrier_test.rs"]
 mod bridge_ledger_carrier_test;
 #[path = "integration/bridge_lower_helpers_patch_zero_residual_test.rs"]
