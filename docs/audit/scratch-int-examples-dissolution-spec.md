@@ -44,10 +44,10 @@ with Substrate Manager / `#1130`.
 
 | Requirement | Present at HEAD | Gap / owner |
 |---|---:|---|
-| `Interval<D>` shared parent | Yes, in `src/v3/std/substrate.dag` | Parent exists, but it is not yet consumed by Coercion-Fold inhabitance selection. |
+| `Interval<D>` shared parent | Yes, in `src/v3/std/substrate.dag` | Generic `Interval<D>` exists as `BoundedInterval { lower: D, width: IntervalWidth } | Unbounded`; it is not a concrete `Interval<Int>` row and is not yet consumed by Coercion-Fold inhabitance selection. |
 | `BoundDeclaration = StaticBound(Interval<Int>) \| PlatformDependent` | No | Substrate amendment. Owner: Substrate Manager (`#1130`). Grounding should consume after it lands. |
 | Program syntax / lowering for `Int(lo..hi)` to `BoundDeclaration` | Partial / not declared for this fold | Needs substrate and parse/lower authority work before Grounding can read it structurally. |
-| Per-target integer inhabitance rows with algebra + bound facts | No for the required full family | `src/v3/spec/{rust,python,go}.dag` has broad `TypeRealization` rows such as `rust_int`, `python_int`, `go_int`, but not the design-doc family rows (`RustI32`, `RustU32`, `PythonInt`, `GoInt32`, etc.) carrying `BoundDeclaration` facts. Owner: Substrate / LanguageSpec population. |
+| Per-target integer inhabitance rows with algebra + bound facts | No for the required full family | `src/v3/spec/{rust,python,go}.dag` has broad `TypeRealization` rows such as `rust_int`, `python_int`, `go_int`. Rust also has a narrow `rust_uint8` / `UInt8` row. None of these rows carry the design-doc `BoundDeclaration` facts, and the needed family rows (`RustI32`, `RustU32`, `PythonInt`, `GoInt32`, etc.) are not declared. Owner: Substrate / LanguageSpec population. |
 | Algebra resolution facts for signedness ambiguity | Not enough for Example 5 | Need declared relationship between program Int aliases/refinements and algebra families before the fold can fail closed on algebra structurally. |
 | Inhabitance-search infrastructure | No production path | `fold_program_to_target` currently accepts a scratch projection and ignores the `Dag`. A real path needs typed extraction of LanguageSpec inhabitance rows and a pure candidate-filter pipeline. |
 | Diagnostic payload richness | Partial | Substrate has `UnderRefined` / `NoInhabitant`, but the lane-local mirror currently carries only the minimal fields used by scratch tests. Candidate lists and hints can follow after structural selection exists. |
