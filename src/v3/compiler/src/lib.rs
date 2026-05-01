@@ -53,8 +53,8 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        ArithmeticOp, Behavior, ComparisonOp, Dag, DeclarationId, LiteralBits, LoopBound, NodeId,
-        OperatorKind, PortId, TransformNode, TransformTarget,
+        ArithmeticOp, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag, DeclarationId,
+        LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode, TransformTarget,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -99,9 +99,16 @@ pub mod evaluator {
         LeftFirst,
     }
 
-    /// **Dissolution receipt: TERMINAL.** These are the E1/E2 body-evaluator miss
-    /// modes until later PR-E slices implement the remaining behavior arms, plus
-    /// E3 transform operand / arity diagnostics.
+    /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
+    /// the body evaluator: missing-substrate cases (`MissingNode`,
+    /// `UnboundPort`), behavior-not-yet-implemented stubs for arms still
+    /// owned by later PR-E slices (`UnsupportedBehavior`), E3 transform
+    /// operand / arity diagnostics (`TransformArityMismatch`,
+    /// `UnsupportedTransformTarget`, `BadTransformOperands`), Branch
+    /// resolution / shape / payload-frame errors (E4), and frame
+    /// discipline propagation (`FrameError`). Adding a new variant is a
+    /// STOP+PING per the E0 brief — either route the underlying gap
+    /// through P1 or extend PR-B.1's fail-closed catalog first.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalError {
         MissingNode {
@@ -124,6 +131,40 @@ pub mod evaluator {
         BadTransformOperands {
             reason: &'static str,
         },
+        /// E4 fail-closed: a `BranchPath.pattern` is still
+        /// `UnresolvedVariant` at evaluation time. Resolution must lower
+        /// `UnresolvedVariant` to `ResolvedVariant(DeclarationId)` before
+        /// the body evaluator runs. Reaching this variant is a resolution
+        /// gap, not a runtime case.
+        BranchUnresolvedVariant {
+            node: NodeId,
+            name: String,
+        },
+        /// E4 fail-closed: scrutinee `Value` is not `VariantValue`, so no
+        /// `BranchPattern::ResolvedVariant(tag)` can match. Substrate +
+        /// inference guarantee totality on well-typed programs; reaching
+        /// this is an invariant violation, not a runtime case.
+        BranchScrutineeShape {
+            node: NodeId,
+        },
+        /// E4 fail-closed: scrutinee is a `VariantValue { tag, .. }` but
+        /// no `BranchPath` carries `pattern: ResolvedVariant(decl)` with
+        /// `decl == tag`. Same invariant-violation framing.
+        BranchNoMatchingArm {
+            node: NodeId,
+            tag: DeclarationId,
+        },
+        /// E4 / E2 propagation: an `EvalFrameError` produced during
+        /// frame discipline (push/pop balance, duplicate bind, unbound
+        /// port). Carries the underlying `EvalFrameError` for
+        /// diagnostic locality.
+        FrameError(EvalFrameError),
+    }
+
+    impl From<EvalFrameError> for EvalError {
+        fn from(err: EvalFrameError) -> Self {
+            EvalError::FrameError(err)
+        }
     }
 
     pub fn eval_value(value: &crate::dag::ValueNode) -> Value {
@@ -162,11 +203,106 @@ pub mod evaluator {
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
             Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
+            Behavior::Branch(branch) => eval_branch(dag, branch.clone(), state, strategy),
             behavior => Err(EvalError::UnsupportedBehavior {
                 node: behavior.id(),
                 behavior: behavior_label(behavior),
             }),
         }
+    }
+
+    /// PR-E E4: evaluate a `Branch` node per PR-B.1 §B.1.3 — eager
+    /// scrutinee evaluation, exact `ResolvedVariant` tag match,
+    /// payload binding in a fresh frame, body evaluation through
+    /// `eval_node`. Frame push/pop is balanced on both success and
+    /// diagnostic paths so the stack invariant survives errors.
+    pub fn eval_branch(
+        dag: &Dag,
+        branch: BranchNode,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        let scrutinee = eval_port(dag, branch.input, state, strategy)?;
+        let (tag, payload) = match scrutinee {
+            Value::VariantValue { tag, payload } => (tag, payload),
+            _ => return Err(EvalError::BranchScrutineeShape { node: branch.id }),
+        };
+        let path = select_branch_path(&branch, tag)?;
+        state.push_frame(EvalFrame::empty());
+        let body_result =
+            eval_branch_body_in_pushed_frame(dag, branch.id, &path, *payload, state, strategy);
+        let pop_result = state.pop_frame();
+        // The body result is authoritative; only surface a frame
+        // error if the body otherwise succeeded.
+        match (body_result, pop_result) {
+            (Ok(value), Ok(_)) => Ok(value),
+            (Err(err), _) => Err(err),
+            (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+        }
+    }
+
+    fn select_branch_path(branch: &BranchNode, tag: DeclarationId) -> Result<Path, EvalError> {
+        // Pass 1 (Fail-Closed / C-8): every `BranchPath.pattern` must be
+        // `ResolvedVariant` before evaluation proceeds. Any
+        // `UnresolvedVariant` — even on a path that wouldn't have been
+        // selected — is a substrate-resolution invariant violation and
+        // surfaces before arm matching, so a matching early arm cannot
+        // mask a later unresolved arm.
+        for path in &branch.paths {
+            if let BranchPattern::UnresolvedVariant { name, .. } = &path.pattern {
+                return Err(EvalError::BranchUnresolvedVariant {
+                    node: branch.id,
+                    name: name.clone(),
+                });
+            }
+        }
+        // Pass 2: select the arm whose `ResolvedVariant.tag` matches.
+        for path in &branch.paths {
+            if let BranchPattern::ResolvedVariant(decl) = &path.pattern {
+                if *decl == tag {
+                    return Ok(path.clone());
+                }
+            }
+        }
+        Err(EvalError::BranchNoMatchingArm {
+            node: branch.id,
+            tag,
+        })
+    }
+
+    fn eval_branch_body_in_pushed_frame(
+        dag: &Dag,
+        branch_id: NodeId,
+        path: &Path,
+        payload: Value,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        if let Some(binding) = &path.binding {
+            state.bind_top(binding.payload_port, payload)?;
+        }
+        // `lower.rs` uses `path.body == branch.id` as the
+        // **producerless-arm sentinel**: the arm's result port has no
+        // producer node (returns an existing or payload-bound port
+        // directly), so the lowerer points body back at the Branch
+        // node itself. Skip body evaluation in that case — recursing
+        // through `eval_node` would re-enter `eval_branch` on the
+        // same node and either loop forever or drop the authoritative
+        // `path.output` fact. The arm's value is read directly from
+        // `path.output` via `eval_port`.
+        if path.body != branch_id {
+            // Otherwise: evaluate the body for its frame-binding side
+            // effects (E6 Bind, future E3 Transform). Body diagnostic
+            // propagates through `?`. The body's local return value
+            // is intentionally discarded — the arm's authoritative
+            // value is at `path.output`, per
+            // `BranchPath.output: PortId` in the substrate; an arm
+            // whose `output` is an existing or payload-bound port
+            // would drop that fact if the evaluator returned the
+            // body's local result instead.
+            let _ = eval_node(dag, path.body, state, strategy)?;
+        }
+        eval_port(dag, path.output, state, strategy)
     }
 
     fn eval_transform_node(
@@ -409,8 +545,9 @@ pub mod evaluator {
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
-            ArithmeticOp, Behavior, BranchPattern, ComparisonOp, Dag, LiteralBits, LogicalOp,
-            LoopBound, NodeId, OperatorKind, Path, PortId, TransformTarget,
+            ArithmeticOp, Behavior, BranchPattern, ComparisonOp, Dag, DeclarationId, LiteralBits,
+            LogicalOp, LoopBound, NodeId, OperatorKind, Path, PayloadBinding, PortId,
+            TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
 
@@ -646,6 +783,487 @@ pub mod evaluator {
             );
         }
 
+        // PR-E E4: branch helpers — bridge a tag declaration name into the
+        // bootstrap fixture so `Value::VariantValue { tag, .. }` carries an
+        // honest `DeclarationId`, not a hand-rolled stub. The branch
+        // evaluator only does `decl == tag` equality, so any two distinct
+        // real declarations (`Bool` / `Int`) are sufficient as tag stand-ins
+        // without introducing variant-discovery infrastructure that doesn't
+        // belong in this slice.
+        fn declaration_id_by_name(dag: &Dag, name: &str) -> DeclarationId {
+            dag.declaration_by_name(name)
+                .unwrap_or_else(|| panic!("declaration `{name}` missing from fixture"))
+                .id
+        }
+
+        fn variant(tag: DeclarationId, payload: Value) -> Value {
+            Value::VariantValue {
+                tag,
+                payload: Box::new(payload),
+            }
+        }
+
+        // E4 §B.1.3: caller-supplied `VariantValue` scrutinee at the
+        // branch input port matches the path whose `ResolvedVariant.tag`
+        // equals the runtime tag; the body's value is returned.
+        #[test]
+        fn eval_branch_selects_resolved_variant_by_tag() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let other_tag = declaration_id_by_name(&dag, "Int");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            // Bodies are `Behavior::Value` nodes (E1-supported); Bind /
+            // Transform bodies wait on E3 / E6.
+            let some_arm_output = dag.push_value(LiteralBits::Int(7), span());
+            let some_arm_body = node_for_port(&dag, some_arm_output);
+            let other_arm_output = dag.push_value(LiteralBits::Int(13), span());
+            let other_arm_body = node_for_port(&dag, other_arm_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    Path {
+                        body: some_arm_body,
+                        output: some_arm_output,
+                        pattern: BranchPattern::ResolvedVariant(some_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: other_arm_body,
+                        output: other_arm_output,
+                        pattern: BranchPattern::ResolvedVariant(other_tag),
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(some_tag, Value::LiteralValue(LiteralBits::Bool(true))),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        // E4 §B.1.3: payload binding registers on the freshly-pushed
+        // frame and does not leak past `pop_frame`. Bodies that *read*
+        // the bound payload (Bind / Transform forms) wait on E3 / E6;
+        // this test verifies the frame-discipline scaffolding the body
+        // would observe by checking pre/post stack state through a
+        // shadow-port outer binding that the inner frame's lookup chain
+        // walks past.
+        #[test]
+        fn eval_branch_binds_payload_in_fresh_frame_for_body() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let payload_port = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            // Body returns a literal — verifies the path body is
+            // dispatched through `eval_node` after the frame push and
+            // payload bind. Bodies that consume the payload via
+            // `eval_port` wait on E3 / E6 supporting Bind / Transform.
+            let arm_output = dag.push_value(LiteralBits::Int(0), span());
+            let arm_body = node_for_port(&dag, arm_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::ResolvedVariant(some_tag),
+                    binding: Some(PayloadBinding {
+                        binding_name: "p".to_string(),
+                        payload_port,
+                    }),
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(
+                    some_tag,
+                    Value::LiteralValue(LiteralBits::String("hello".to_string())),
+                ),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            // Body is a literal; the test's primary assertion is the
+            // post-evaluation frame discipline below. (Body return value
+            // is the literal, confirming `eval_node` dispatched into the
+            // path body.)
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(0)));
+            // After branch evaluation, the pushed frame is popped; only
+            // the original root frame remains, which never bound the
+            // payload port. Per Facts-Flow-Forward, the payload binding
+            // was scoped to the body frame and does not leak into the
+            // caller's stack.
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+            assert!(state.frames_outer_to_inner()[0]
+                .lookup_local(payload_port)
+                .is_none());
+        }
+
+        // E4 §B.1.3 fail-closed: `UnresolvedVariant` reaching evaluation
+        // is a resolution gap, not a runtime case — diagnose the path's
+        // declared name so a downstream consumer can repoint.
+        #[test]
+        fn eval_branch_fails_closed_on_unresolved_variant() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = node_for_port(&dag, arm_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::UnresolvedVariant {
+                        name: "Drift".to_string(),
+                        span: span(),
+                    },
+                    binding: None,
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(some_tag, Value::LiteralValue(LiteralBits::Bool(true))),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy)
+                .expect_err("unresolved variant rejected");
+
+            assert_eq!(
+                err,
+                EvalError::BranchUnresolvedVariant {
+                    node: entry,
+                    name: "Drift".to_string(),
+                }
+            );
+            // Stack invariant: balanced even on the diagnostic path.
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        // E4 §B.1.3 fail-closed: scrutinee must be `VariantValue` for
+        // `ResolvedVariant` matching to be well-defined.
+        #[test]
+        fn eval_branch_fails_closed_on_non_variant_scrutinee() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = node_for_port(&dag, arm_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::ResolvedVariant(some_tag),
+                    binding: None,
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame =
+                EvalFrame::from_bindings([(scrutinee, Value::LiteralValue(LiteralBits::Int(42)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy)
+                .expect_err("non-variant scrutinee rejected");
+
+            assert_eq!(err, EvalError::BranchScrutineeShape { node: entry });
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        // E4 §B.1.3 fail-closed: scrutinee tag with no matching path is
+        // an inference / substrate invariant violation at runtime.
+        #[test]
+        fn eval_branch_fails_closed_on_no_matching_arm() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let path_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee_tag = declaration_id_by_name(&dag, "Int");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = node_for_port(&dag, arm_output);
+            let output = dag.push_branch(
+                scrutinee,
+                // Only the `path_tag` (`Bool`) arm; scrutinee carries
+                // `scrutinee_tag` (`Int`) so no path matches and the
+                // evaluator must fail closed on no-matching-arm.
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::ResolvedVariant(path_tag),
+                    binding: None,
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(scrutinee_tag, Value::LiteralValue(LiteralBits::Bool(false))),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy)
+                .expect_err("no matching arm rejected");
+
+            assert_eq!(
+                err,
+                EvalError::BranchNoMatchingArm {
+                    node: entry,
+                    tag: scrutinee_tag,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        // E4 sanity: reachable through the public `evaluate_body` entry.
+        #[test]
+        fn evaluate_body_dispatches_branch_through_eval_node() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let arm_output = dag.push_value(LiteralBits::Int(99), span());
+            let arm_body = node_for_port(&dag, arm_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::ResolvedVariant(some_tag),
+                    binding: None,
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(some_tag, Value::LiteralValue(LiteralBits::Bool(true))),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = evaluate_body(&dag, entry, &mut state, strategy).expect("branch evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(99)));
+        }
+
+        // E4 / Facts-Flow-Forward: the arm value is the value at
+        // `BranchPath.output`, not the body's local return. When
+        // `path.output` is a payload-bound port (the arm "returns its
+        // payload"), the evaluator must read that port via `eval_port`
+        // after running the body for its side effects, not return the
+        // body node's own value. Constructed so the body is a Value
+        // node returning a *different* literal than the payload — if
+        // the evaluator returned the body's value the test would see
+        // the wrong literal.
+        #[test]
+        fn eval_branch_returns_value_at_path_output_not_body_value() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let payload_port = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            // Body returns a sentinel literal; if the evaluator wrongly
+            // returned this directly, the test would fail.
+            let body_output = dag.push_value(LiteralBits::Int(0xdead), span());
+            let arm_body = node_for_port(&dag, body_output);
+            let payload_value = Value::LiteralValue(LiteralBits::Int(7));
+            let output = dag.push_branch(
+                scrutinee,
+                vec![Path {
+                    body: arm_body,
+                    // Authoritative arm value comes from `payload_port`,
+                    // not from `body_output`.
+                    output: payload_port,
+                    pattern: BranchPattern::ResolvedVariant(some_tag),
+                    binding: Some(PayloadBinding {
+                        binding_name: "p".to_string(),
+                        payload_port,
+                    }),
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame =
+                EvalFrame::from_bindings([(scrutinee, variant(some_tag, payload_value.clone()))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, payload_value);
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        // E4 / Facts-Flow-Forward: producerless-arm sentinel.
+        // `lower.rs:6133-6134, 6265` lowers arms whose result port has
+        // no producer node by setting `path.body == branch.id` —
+        // there's no body to execute; the value is at `path.output`
+        // already (e.g. payload-bound or an existing port from outside
+        // the branch). `eval_branch` must detect this sentinel and
+        // skip body evaluation, otherwise it would re-enter
+        // `eval_branch` on the same node and either loop or drop the
+        // authoritative `path.output` fact. Constructed via
+        // crate-private `alloc_node_id` / `push_node` so `path.body`
+        // can equal the branch's own id (the public `push_branch`
+        // builder asserts body existence before allocating its id, so
+        // it cannot construct this sentinel directly).
+        #[test]
+        fn eval_branch_handles_producerless_arm_sentinel() {
+            use crate::dag::BranchNode;
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let some_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let payload_port = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            // Manual branch construction so `path.body == branch_id`,
+            // mirroring the `producer_of(...).unwrap_or(branch_id)`
+            // sentinel from `lower.rs`.
+            let branch_id = dag.alloc_node_id();
+            let branch_output = dag.alloc_port(Some(branch_id));
+            dag.push_node(Behavior::Branch(BranchNode {
+                id: branch_id,
+                input: scrutinee,
+                paths: vec![Path {
+                    body: branch_id, // sentinel: no producer for the arm result
+                    output: payload_port,
+                    pattern: BranchPattern::ResolvedVariant(some_tag),
+                    binding: Some(PayloadBinding {
+                        binding_name: "p".to_string(),
+                        payload_port,
+                    }),
+                }],
+                output: branch_output,
+                span: span(),
+                emit_participation: None,
+            }));
+            let payload_value = Value::LiteralValue(LiteralBits::Int(42));
+            let frame =
+                EvalFrame::from_bindings([(scrutinee, variant(some_tag, payload_value.clone()))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            // If eval_branch recursed into eval_node(branch_id), it would
+            // re-enter the same Branch infinitely; the test passing at
+            // all confirms the sentinel detection.
+            let value =
+                eval_node(&dag, branch_id, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, payload_value);
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        // E4 §B.1.3 fail-closed: every `BranchPath.pattern` must be
+        // `ResolvedVariant` before evaluation proceeds. A matching
+        // early arm cannot mask a later `UnresolvedVariant` —
+        // unresolved-substrate state is a Fail-Closed (C-8) violation
+        // regardless of which arm would have been selected.
+        #[test]
+        fn eval_branch_fails_closed_on_late_unresolved_arm_even_if_earlier_arm_matches() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let matching_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let early_output = dag.push_value(LiteralBits::Int(7), span());
+            let early_body = node_for_port(&dag, early_output);
+            let late_output = dag.push_value(LiteralBits::Int(13), span());
+            let late_body = node_for_port(&dag, late_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    // Early arm matches the scrutinee tag — without the
+                    // pre-pass this would be returned and the late
+                    // unresolved arm would slip through.
+                    Path {
+                        body: early_body,
+                        output: early_output,
+                        pattern: BranchPattern::ResolvedVariant(matching_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: late_body,
+                        output: late_output,
+                        pattern: BranchPattern::UnresolvedVariant {
+                            name: "LateDrift".to_string(),
+                            span: span(),
+                        },
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(matching_tag, Value::LiteralValue(LiteralBits::Bool(true))),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy)
+                .expect_err("late unresolved arm rejected");
+
+            assert_eq!(
+                err,
+                EvalError::BranchUnresolvedVariant {
+                    node: entry,
+                    name: "LateDrift".to_string(),
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn loop_behavior_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.push_value(LiteralBits::Int(3), span());
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let body = dag.push_bind("body", init, Vec::new(), span());
+            let output = dag.push_loop(
+                source,
+                init,
+                body,
+                LoopBound::Cardinality { count: source },
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported loop");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedBehavior {
+                    node: entry,
+                    behavior: "Loop"
+                }
+            );
+        }
+
+        // E3 Transform — preserved from main during merge.
+
         #[test]
         fn transform_arithmetic_div_unsupported_until_result_carrier_eval_lands() {
             let mut dag = Dag::new();
@@ -764,69 +1382,6 @@ pub mod evaluator {
             assert_eq!(
                 err,
                 EvalError::UnsupportedTransformTarget { kind: "Callable" }
-            );
-        }
-
-        #[test]
-        fn branch_behavior_fails_closed() {
-            let mut dag = Dag::new();
-            let input = dag.push_value(LiteralBits::Bool(true), span());
-            let arm_output = dag.push_value(LiteralBits::Int(1), span());
-            let arm_body = dag.push_bind("arm", arm_output, Vec::new(), span());
-            let output = dag.push_branch(
-                input,
-                vec![Path {
-                    body: arm_body,
-                    output: arm_output,
-                    pattern: BranchPattern::UnresolvedVariant {
-                        name: "True".to_string(),
-                        span: span(),
-                    },
-                    binding: None,
-                }],
-                span(),
-            );
-            let entry = node_for_port(&dag, output);
-            let mut state = empty_state();
-            let strategy = eager_strategy();
-
-            let err =
-                eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported branch");
-
-            assert_eq!(
-                err,
-                EvalError::UnsupportedBehavior {
-                    node: entry,
-                    behavior: "Branch"
-                }
-            );
-        }
-
-        #[test]
-        fn loop_behavior_fails_closed() {
-            let mut dag = Dag::new();
-            let source = dag.push_value(LiteralBits::Int(3), span());
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let body = dag.push_bind("body", init, Vec::new(), span());
-            let output = dag.push_loop(
-                source,
-                init,
-                body,
-                LoopBound::Cardinality { count: source },
-                span(),
-            );
-            let entry = node_for_port(&dag, output);
-            let mut state = empty_state();
-            let strategy = eager_strategy();
-
-            let err = eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported loop");
-
-            assert_eq!(
-                err,
-                EvalError::UnsupportedBehavior {
-                    node: entry,
-                    behavior: "Loop"
-                }
             );
         }
 
