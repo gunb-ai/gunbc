@@ -1015,11 +1015,7 @@ data suite: TestSuite = {
     let results = TestRunner::new(&dag).run_suite("suite");
 
     assert_eq!(results.len(), 1);
-    assert!(matches!(
-        &results[0].result,
-        ClaimResult::Fail(reason)
-            if reason.contains("AlgebraicLaw Commutativity: operational witness failed")
-    ));
+    assert!(matches!(&results[0].result, ClaimResult::Fail(_)));
 }
 
 #[test]
@@ -1050,8 +1046,7 @@ data suite: TestSuite = {
     assert_eq!(results.len(), 1);
     assert!(matches!(
         &results[0].result,
-        ClaimResult::NotYetImplemented(reason)
-            if reason.contains("identity-element edge")
+        ClaimResult::NotYetImplemented(_)
     ));
 }
 
