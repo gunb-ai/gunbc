@@ -236,7 +236,7 @@ pub mod evaluator {
                     _ => {
                         return Err(EvalError::BadTransformOperands {
                             reason:
-                                "comparison operands must both be Int literals or both String literals",
+                                "comparison operands must be Int literals, Bool literals, or String literals (Eq/Ne only for String)",
                         });
                     }
                 };
