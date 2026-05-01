@@ -120,10 +120,18 @@ fn eval_node(
 ) -> Result<Value, EvalDiagnostic>;
 ```
 
-Resolves `node` via `dag.declaration_by_id(node)` (or equivalent),
-pattern-matches on `Behavior`, dispatches to `eval_value` (E1),
-`eval_transform` (E3), `eval_branch` (E4), `eval_loop` (E5), or
-`eval_bind` (E6).
+Resolves `node` via `dag.node_opt(&node)` (the Rust Dag API for
+behavior lookup at `src/v3/compiler/src/dag.rs:3037`; `Dag::node(id) ->
+&Behavior` is the panicking variant at `:3025`). A `None` from
+`node_opt` is fail-closed `EvalDiagnostic::ResolveError` (missing
+node), not a panic. The evaluator must NOT call `dag.declaration(…)`
+to resolve a node — declarations and nodes are separate authorities
+in `Dag` (declarations are type-shape; nodes are `Behavior`
+inhabitants), and conflating them creates parallel-authority debt.
+
+After resolution, pattern-matches on `Behavior`, dispatches to
+`eval_value` (E1), `eval_transform` (E3), `eval_branch` (E4),
+`eval_loop` (E5), or `eval_bind` (E6).
 
 ### Per-`Behavior` slice fills
 
