@@ -147,7 +147,15 @@ Parallel chains exist for python and go targets (per `dsl/extdeps/languages/{pyt
 | Proposed migration | Once PB-Runtime trampoline is the live bootstrap (S-4) and v3-side `MethodTemplateContract` rows are consumed by the v3 emitter end-to-end, **delete `rust_simple_method_specs` + `rust_method_templates()` + `rust_method_wraps_result()` from `dsl/extdeps/languages/rust/emit.dag`** and the parallel python/go chains. The `MethodTemplateContract` rows under `src/v3/std/{rust,python,go}_method_template_contracts.dag` already exist as the single-authority replacement. |
 | Prerequisite | S-2 (T-FixedPoint) + S-3 (T-LensProducer-Retirement) + S-4 (PB-Runtime trampoline) + v3 emitter consumes `MethodTemplateContract` end-to-end **for every emitted target (Rust + Python + Go)**, not just one (this last is partly out-of-scope of T-V2-Retirement; flagged §6.2). |
 | STOP condition | Per-target gate. If the v3 emitter does not consume `MethodTemplateContract` rows end-to-end for **target T**, the **target-T** legacy authority (the `{rust\|python\|go}_*` chain in `dsl/extdeps/languages/T/emit.dag`) cannot be deleted. Targets are independent: it is NOT acceptable to delete all three legacy chains because end-to-end consumption is only proven for one. THESIS cross-target drift prevention + INVARIANTS §P2 (Boundary Discipline) forbid leaving any target's legacy authority load-bearing while its sibling is deleted. |
-| What green looks like | The legacy authority symbols are different per target; check **all three target families** explicitly. Rust: `rust_simple_method_specs`, `rust_method_templates`, `rust_method_wraps_result`. Python: `python_method_templates` (and any sibling `python_method_wraps_result` / `python_simple_method_specs` if introduced before deletion). Go: `go_method_templates` (and siblings if introduced). Verification command: `grep -rEn '\b(rust\|python\|go)_(simple_method_specs\|method_templates\|method_wraps_result)\b' dsl/ src/v3/` returns no matches under `dsl/extdeps/`. The v3 emitter's targets all compile + emit identical output (bit-identical artifacts ratchet from T-FixedPoint, applied per target). |
+| What green looks like | The legacy authority symbols are different per target; check **all three target families** explicitly. Rust: `rust_simple_method_specs`, `rust_method_templates`, `rust_method_wraps_result`. Python: `python_method_templates` (and any sibling `python_method_wraps_result` / `python_simple_method_specs` if introduced before deletion). Go: `go_method_templates` (and siblings if introduced). See verification command below the table. The v3 emitter's targets all compile + emit identical output (bit-identical artifacts ratchet from T-FixedPoint, applied per target). |
+
+Verification command (kept outside the table to avoid markdown pipe-escape pitfalls; in `grep -E`, `\|` is a literal `|`, not alternation, so the in-table form would silently match nothing):
+
+```sh
+grep -rEn '\b(rust|python|go)_(simple_method_specs|method_templates|method_wraps_result)\b' dsl/ src/v3/
+```
+
+Green: returns no matches under `dsl/extdeps/`.
 
 ---
 
