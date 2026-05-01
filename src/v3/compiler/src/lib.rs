@@ -98,8 +98,14 @@ pub mod evaluator {
         LeftFirst,
     }
 
-    /// **Dissolution receipt: TERMINAL.** These are the body-evaluator miss
-    /// modes until later PR-E slices implement the remaining behavior arms.
+    /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
+    /// the body evaluator: missing-substrate cases (`MissingNode`,
+    /// `UnboundPort`), behavior-not-yet-implemented stubs for arms still
+    /// owned by later PR-E slices (`UnsupportedBehavior`), Branch
+    /// resolution / shape / payload-frame errors (E4), and frame
+    /// discipline propagation (`FrameError`). Adding a new variant is a
+    /// STOP+PING per the E0 brief — either route the underlying gap
+    /// through P1 or extend PR-B.1's fail-closed catalog first.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalError {
         MissingNode {
