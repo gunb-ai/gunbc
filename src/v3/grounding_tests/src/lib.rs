@@ -22,6 +22,9 @@ pub use stratum_a::{
 mod emission_diagnostic_lockstep;
 
 #[cfg(test)]
+mod integer_diagnostic_order;
+
+#[cfg(test)]
 mod tests {
     use v3_compiler::dag::Dag;
     use v3_grounding_lifetime::{
