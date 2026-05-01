@@ -33,6 +33,7 @@ for p in \
   docs/design-cross-target-equivalence.md \
   docs/design-test-infra.md \
   docs/r3-structure.md \
+  docs/r2-closure-ledger.md \
   docs/briefs/r3-v-l5-corpus-readiness-audit.md \
   docs/briefs/r3-v-l4-l7-direct-readiness-audit.md \
   src/v3/compiler/src/test_runner.rs \
