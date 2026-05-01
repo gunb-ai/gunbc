@@ -2809,3 +2809,63 @@ fn nat_resolves_to_semiring_over_magnitude() {
         ),
     }
 }
+
+/// T-Numeric-Construction `GroupCompletion<M>` substrate-introduction —
+/// the Shape C opaque atom recommended by the Slice 3 prerequisite audit
+/// (`docs/audit/t-numeric-construction-group-completion-6q.md`).
+///
+/// The ratchet pins:
+/// - `GroupCompletion` lives in `dsl/std/algebra.dag` (audit's preferred home;
+///   Director-confirmed boundary).
+/// - It is a **bare opaque atom** — `TypeConnective::Conj { children: [] }`
+///   with no fields. No quotient-of-pairs / sign-magnitude / explicit-carrier
+///   structural facts admitted at this layer (per Director's hard boundary).
+/// - It carries exactly one type parameter `<M>` (the input commutative
+///   monoid; constraint is unenforced denotationally per the audit's
+///   constrained-inhabitance gap).
+///
+/// This is the carrier construction; the algebra witness for Slice 3 will be
+/// `AbelianGroup<GroupCompletion<Nat>>` — declared at the future `Int`
+/// alias-pivot site, not here.
+#[test]
+fn group_completion_is_bare_opaque_atom_with_one_type_parameter() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let group_completion = dag.declaration_by_name("GroupCompletion").expect(
+        "`GroupCompletion` substrate-introduction missing from full bootstrap \
+         (T-Numeric-Construction Slice 3 prerequisite per #1422 audit)",
+    );
+
+    assert_eq!(
+        group_completion.span.file, "dsl/std/algebra.dag",
+        "GroupCompletion must live in dsl/std/algebra.dag per the audit's \
+         preferred home (proximity to AbelianGroup<T>)"
+    );
+
+    match &group_completion.connective {
+        TypeConnective::Conj { children } => assert!(
+            children.is_empty(),
+            "GroupCompletion must be a bare opaque atom (no fields) — Shape C \
+             rejects quotient-of-pairs and sign-magnitude representation \
+             facts per the audit and Director's dispatch"
+        ),
+        other => panic!(
+            "GroupCompletion must lower as an opaque-atom Conj with no fields; \
+             got {other:?} — a non-empty Conj would admit structural \
+             representation facts (quotient/sign-magnitude) the audit rejects"
+        ),
+    }
+
+    assert_eq!(
+        group_completion.type_params.len(),
+        1,
+        "GroupCompletion takes exactly one type parameter `<M>` (the input \
+         commutative-monoid type)"
+    );
+
+    assert!(
+        group_completion.value_body.is_none(),
+        "GroupCompletion is an opaque type declaration, not a data declaration; \
+         no value_body should be present"
+    );
+}
