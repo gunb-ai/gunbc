@@ -1,20 +1,15 @@
-//! Structural fold entry — **algorithm stub only**.
+//! Structural fold entry — coercion = emission (incremental body).
 //!
 //! ## Design authority (`docs/design-emission-model.md`)
 //!
-//! The eventual fold reads **program intent** + **substrate facts** (LanguageSpec rows,
-//! algebra inhabitance, lifetime facts, …) and returns either a **unique** target
-//! inhabitance per binding or a typed [`EmissionDiagnostic`](crate::diagnostic::EmissionDiagnostic).
-//! Worked **Examples 1–7** in that doc (e.g. unrefined `Int` → `UnderRefined`, bounded
-//! refinement → `u32`, `String` ownership cases, algebra ambiguity, no-inhabitant,
-//! cross-target portability sketches) are the **behavioral targets** for the future
-//! implementation — **not** implemented in this crate yet.
+//! Worked **Examples 1–7** in that doc are behavioral targets. **Examples 1–2** are
+//! implemented for the [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples)
+//! checkpoint path only; other examples and `Undeclared` remain
+//! [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 //!
-//! ## Gates (dispatch)
-//!
-//! Full body is gated on T-Ground-LanguageSpec row work post-#1227 and lifetime /
-//! substrate boundary metadata (#1130). This module only enforces the **public
-//! signature** and **fail-closed** stub (`FoldNotImplemented`).
+//! **Call-site (ScratchIntExamples):** While the scratch body ignores `dag` / lifetime inputs and
+//! fixes [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`, production wiring must not treat
+//! returned map keys as evidence of real program bindings (#1133 / #1286).
 
 use std::collections::BTreeMap;
 
@@ -22,18 +17,54 @@ use v3_compiler::dag::Dag;
 use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
 use crate::diagnostic::EmissionDiagnostic;
-use crate::types::{LanguageSpecProjectionUndeclared, TargetInhabitance};
+use crate::types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance};
 
-/// Structural fold: program + lifetime analysis + (future) LanguageSpec projection →
+fn fold_design_doc_example_1_unrefined_int() -> Result<TargetInhabitance, EmissionDiagnostic> {
+    Err(EmissionDiagnostic::UnderRefined {
+        unspecified_axis: "bound".to_string(),
+    })
+}
+
+fn fold_design_doc_example_2_semiring_u32() -> Result<TargetInhabitance, EmissionDiagnostic> {
+    Ok(TargetInhabitance::RustU32)
+}
+
+/// Structural fold: program + lifetime analysis + LanguageSpec projection →
 /// per-binding target inhabitances, **or** a single typed diagnostic.
 ///
-/// Today: **always** [`EmissionDiagnostic::FoldNotImplemented`](EmissionDiagnostic::FoldNotImplemented)
-/// (C-8). Parameters are accepted so call sites compile against the eventual shape;
-/// they are intentionally unused until the fold body lands.
+/// - [`LanguageSpecProjection::Undeclared`](crate::types::LanguageSpecProjection::Undeclared): fail-closed
+///   [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
+/// - [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples): runs
+///   design-doc Examples 1–2 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`.
+///   **Checkpoint:** ignores `_dag` by design; on the scratch path, `lifetime_facts` must be
+///   empty in debug builds until this body reads real facts. Do not widen this arm to multiple
+///   bindings or real program facts without landing the declared projection / dissolution path
+///   first (#1133 / #1286).
 pub fn fold_program_to_target(
     _dag: &Dag,
-    _lifetime_facts: &LifetimeAnalysisReport,
-    _language_spec: &LanguageSpecProjectionUndeclared,
+    lifetime_facts: &LifetimeAnalysisReport,
+    language_spec: &LanguageSpecProjection,
 ) -> Result<BTreeMap<BindingId, TargetInhabitance>, EmissionDiagnostic> {
-    Err(EmissionDiagnostic::FoldNotImplemented)
+    match language_spec {
+        LanguageSpecProjection::Undeclared => {
+            let _ = lifetime_facts;
+            Err(EmissionDiagnostic::FoldNotImplemented)
+        }
+        LanguageSpecProjection::ScratchIntExamples(example) => {
+            debug_assert!(
+                lifetime_facts.is_empty(),
+                "ScratchIntExamples checkpoint: pass an empty LifetimeAnalysisReport until this body reads facts (#1133 / #1286)"
+            );
+            let binding = BindingId(0);
+            let inhabitance = match example {
+                IntScratchExample::DesignDocExample1UnrefinedInt => {
+                    fold_design_doc_example_1_unrefined_int()?
+                }
+                IntScratchExample::DesignDocExample2BoundedU32 => {
+                    fold_design_doc_example_2_semiring_u32()?
+                }
+            };
+            Ok(BTreeMap::from([(binding, inhabitance)]))
+        }
+    }
 }

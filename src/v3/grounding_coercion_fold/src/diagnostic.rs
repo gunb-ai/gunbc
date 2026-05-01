@@ -9,12 +9,26 @@
 //!
 //! **Lockstep discipline:** any new variant added to substrate
 //! `EmissionDiagnostic` MUST land here as a parallel Rust mirror update.
+//!
+//! **Example 1 (scratch path):** design-emission-model §Example 1 names richer
+//! diagnostic fields (candidates, hints). Until the substrate carrier carries
+//! those structurally, the fold surfaces the **substrate-shaped** `UnderRefined`
+//! with `unspecified_axis: "bound"` only (axis matches the worked example).
 
-/// Rust mirror of substrate `EmissionDiagnostic` (subset; this crate
-/// only emits `FoldNotImplemented`). Variant-name lockstep enforced
-/// socially until reflection codegen retires the mirror.
+/// Rust mirror of substrate `EmissionDiagnostic` (subset; grows with substrate).
+///
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — hand-maintained mirror until this
+/// lane consumes reflected substrate types (`.dag` → Rust enum codegen); dissolution aligns with
+/// #1216 / #1133 (no second authority for the same diagnostic facts — lockstep only).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EmissionDiagnostic {
+    /// Program intent or structural axis under-specified (substrate `UnderRefined`).
+    UnderRefined {
+        /// Mirrors substrate’s string axis payload for now. Scratch Example 1 only supplies
+        /// `"bound"`; when substrate grows structured axes (or this mirror gains a sum type),
+        /// replace free-form spelling here rather than widening implicit string conventions.
+        unspecified_axis: String,
+    },
     /// Full structural fold is not implemented; returning `Ok` would fabricate
     /// target choices (C-8 / `INVARIANTS.md`).
     FoldNotImplemented,
