@@ -20,7 +20,29 @@
 | Runner dispatch (`ForAllTargets` → NYI default arm today) | `src/v3/compiler/src/test_runner.rs` |
 | Lane 2 standby briefs | `docs/briefs/r3-v-l5-corpus-worker.md`, `docs/briefs/r3-v-l5-corpus-scaffold-notes.md`, `docs/briefs/r3-v-l5-corpus-readiness-audit.md` |
 
-Substrate **changes** (new carriers, new predicate variants) are **out of scope** for this PR — route via **INVARIANTS §P1** when implementation dispatch proposes them (§7).
+### Live-path + substrate verification receipt
+
+Re-run whenever **`main`** moves materially (paths deleted/renamed):
+
+```bash
+git fetch origin
+for p in \
+  src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag \
+  src/v3/compiler/tests/fixtures/r3_l5_corpus/add_then_branch_seed.v3 \
+  src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag \
+  src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag \
+  src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs \
+  src/v3/std/verification.dag \
+  src/v3/compiler/src/test_runner.rs \
+  docs/briefs/r3-v-l5-corpus-worker.md \
+  docs/briefs/r3-v-l5-corpus-scaffold-notes.md \
+  docs/briefs/r3-v-l5-corpus-readiness-audit.md
+do git cat-file -e "origin/main:$p" || exit 1; done
+```
+
+**`ForAllTargets` spot-check:** `rg -n '\\| ForAllTargets \\{' src/v3/std/verification.dag` — expects the scaffold sum arm `{ command: String, args: List<String>, expect_exit_code: Int }` (line numbers intentionally **not** pinned in prose).
+
+Substrate **changes** (new carriers, new predicate variants) are **out of scope** for this PR — route via **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** when implementation dispatch proposes them ([§7](#7-substrate-introduction-flag-invariants-p1)).
 
 ---
 
@@ -81,7 +103,7 @@ For each target **T** ∈ {Rust, Python, Go} and each corpus **program** **P** (
 5. **Parse to structural value:** Map captured material into Phase A/B domain (§2); mismatch is **observation parse failure**.
 6. **Algebraic equality:** After all targets succeed through step 5, compare normalized values; mismatch is **cross-target mismatch** even if each target “ran fine.”
 
-**`ForAllTargets` substrate (named element):** [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag) declares `type TestPredicate` including scaffold variant **`ForAllTargets { command: String, args: List<String>, expect_exit_code: Int }`** (search `ForAllTargets` in-file — line numbers drift across edits). That existing sum arm is the **substrate target** for L5 staging rows; this spec does **not** propose a new `TestPredicate` variant. The raw `(command, args, exit_code)` payload remains **insufficient** for strict cross-target **value** observation (readiness audit §2); runner extension should schedule the **six-step pipeline** §3 behind this variant (or an absorbed successor capability), reserving **INVARIANTS §P1** only for genuinely new substrate facts (e.g. a typed cross-target observation carrier), not for re-labeling `ForAllTargets`.
+**`ForAllTargets` substrate (named element):** [`src/v3/std/verification.dag`](../../src/v3/std/verification.dag) declares `type TestPredicate` including scaffold variant **`ForAllTargets { command: String, args: List<String>, expect_exit_code: Int }`** (search `ForAllTargets` in-file — line numbers drift across edits). That existing sum arm is the **substrate target** for L5 staging rows; this spec does **not** propose a new `TestPredicate` variant. The raw `(command, args, exit_code)` payload remains **insufficient** for strict cross-target **value** observation (readiness audit §2); runner extension should schedule the **six-step pipeline** §3 behind this variant (or an absorbed successor capability), reserving **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** only for genuinely new substrate facts (e.g. a typed cross-target observation carrier), not for re-labeling `ForAllTargets`.
 
 ---
 
@@ -127,7 +149,7 @@ Steady-state **must not** rely on hand-maintained duplicate `TestClaim.source` s
 
 ## 7. Substrate introduction flag (INVARIANTS §P1)
 
-If slice 2–3 requires a **new nominal carrier** for observations (e.g. typed `CrossTargetValue` in substrate), or extends comparators beyond closed algebraic types, that is **not** a fixture-level workaround — route **Director ratification** per **§P1** before landing enum/type edits.
+If slice 2–3 requires a **new nominal carrier** for observations (e.g. typed `CrossTargetValue` in substrate), or extends comparators beyond closed algebraic types, that is **not** a fixture-level workaround — route **Director ratification** per **[INVARIANTS §P1](../../INVARIANTS.md#p1-modeling-faithfulness)** before landing enum/type edits.
 
 ---
 
