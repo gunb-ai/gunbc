@@ -1,8 +1,13 @@
 // extdeps/languages/rust/primitives.dag -- Structural target-primitive
 // declarations for the Rust target.
 //
-// PILOT SCOPE (T-Ground-Pilot): {i8, i16, i32, i64, u8, u16, u32, u64,
+// PILOT SCOPE (T-Ground-Pilot): {i8, i16, i32, i64, i128, u8, u16, u32, u64,
 // bool, ()} only. No containers, no floats, no coercion paths.
+//
+// T-Int128 SLICE B1: signed i128 only. The unsigned u128 row is deferred to
+// Slice B2 because u128::MAX exceeds the host i128 representation used by
+// `IntervalInt::ExactInterval` for range-fact storage; B2 widens the
+// interval representation first, then adds the u128 row.
 //
 // PURPOSE: Each declaration says "Rust target type T is a target primitive
 // inhabiting algebra A over carrier C." Selection by algebra-homomorphism
@@ -70,7 +75,7 @@
 module extdeps.languages.rust.primitives
 
 import std.algebra { OrderedRing, Semiring, BooleanAlgebra }
-import std.bit { Bit, Byte, Word16, Word32, Word64 }
+import std.bit { Bit, Byte, Word16, Word32, Word64, Word128 }
 
 
 // =========================================================================
@@ -115,6 +120,7 @@ type NonIntegerAlgebra
 //   Word16Carrier  <-> std.bit.Word16      (Ring/Semiring value-domain over 2^16)
 //   Word32Carrier  <-> std.bit.Word32      (Ring/Semiring value-domain over 2^32)
 //   Word64Carrier  <-> std.bit.Word64      (Ring/Semiring value-domain over 2^64)
+//   Word128Carrier <-> std.bit.Word128     (Ring/Semiring value-domain over 2^128)
 //   TerminalCarrier<-> single inhabitant   (Unit; DB-11 -> Cardinality 1)
 //
 // NOT target storage layout. Rust's `bool` storage is 1 byte with only
@@ -134,6 +140,7 @@ type TargetCarrier
   | Word16Carrier
   | Word32Carrier
   | Word64Carrier
+  | Word128Carrier
   | TerminalCarrier
 
 
@@ -217,6 +224,14 @@ data rust_pilot_primitives: List<RustPrimitive> = [
 
   IntegerPrimitive { target_name: "i64", algebra: OrderedRingAlgebra, carrier: Word64Carrier,
     range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
+    is_copy: true, overflow: TwoComplementWrap },
+
+  // T-Int128 Slice B1: signed 128-bit. Range fits host i128 by definition;
+  // the symmetric u128 row is deferred to Slice B2 (interval-representation
+  // widening required first).
+  IntegerPrimitive { target_name: "i128", algebra: OrderedRingAlgebra, carrier: Word128Carrier,
+    range_min_inclusive: "-170141183460469231731687303715884105728",
+    range_max_inclusive: "170141183460469231731687303715884105727",
     is_copy: true, overflow: TwoComplementWrap },
 
 

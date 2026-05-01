@@ -49,7 +49,7 @@ Per THESIS §"Tier 2 — Runtime safety (proven safe or total)":
 |---|---|---|---|---|
 | **Division by zero — proven safe or total** | R2 | T-ImpossibleBugs Class 2 (unhandled-diagnostic-paths via DivError) | PR #969 iterating CI | 🟡 in flight |
 | **Integer overflow — proven safe at i64-bounded carrier** | R2 | T-Modeling int-lit + T-Substrate cardinality | PR #897 (i64-bounded consumer) | ✅ landed in R2 |
-| **Integer overflow — proven safe at full Int128/Word128** | R3 | T-Int128 (M-L) | r3-structure.md §T-Int128 | ⏳ R3 dispatch |
+| **Integer overflow — proven safe at full magnitude (any refinement, including unbounded)** | R3 | T-Numeric-Construction (L-XL; reframed 2026-05-01 from T-Int128 — absorbs the overflow claim into refinement-parametric form) | r3-structure.md §T-Numeric-Construction; design doc `docs/design-numeric-construction.md` | ⏳ R3 dispatch |
 | **Out-of-bounds — proven safe or total** | R2 | T-ImpossibleBugs Class 2 (unhandled-diagnostic-paths) | PR #969 iterating | 🟡 in flight |
 | **Force-unwrap — proven safe or total** | R2 | T-ImpossibleBugs Class 1 (nested-optional flatten) | PR #890 ✓; PR #962 follow-ups ✓ | ✅ landed in R2 |
 | **Partial functions — made total** | R2 + R3 | T-ImpossibleBugs (R2 partial) + T-Verification-L4-L7-Direct (R3 verifies totality via L4 emit/eval match — no failed evaluations) | R2 dissolves call sites; R3 harness verifies no partials remain | 🟡 R2 partial / R3 close |
@@ -172,7 +172,7 @@ Compromises being made by the R2 + R3 split:
 | Lens-producer file retirement (3 files) | Requires Evaluator + PB-1 generated bin-shim emit pattern | T-LensProducer-Retirement |
 | R3 verification harness ({L4, L5, L7}; L6 reclassified to R2) | Requires Evaluator + full Grounding (Rust + Python) | T-Verification-L4-L7-Direct + T-Verification-L5-Corpus (L6 lives in R2-T-Ground-CrossTarget-Meta) |
 | Self-hosting facet 2 fixed-point | Requires SG-0 = 0 (T-LensProducer-Retirement first) | T-FixedPoint |
-| Tier 2 Int128/Word128 substrate | Self-contained substrate work; sized to fit R3 cycle | T-Int128 |
+| Tier 2 Int128/Word128 substrate (subsumed by T-Numeric-Construction reframe 2026-05-01) | Reframed as one refinement (`Int<128>`) consuming abstract `Int = AbelianGroup<Nat>` per construction chain | T-Numeric-Construction (absorbs T-Int128 + post-R3 BigInt + Float widening + UInt widening + IntLit refinement) |
 | Shape B omni-emission demos (≥2) | Needs Evaluator + Shape B emitter `.dag` programs | T-Omni-Shape-B |
 | Anthropic typed wire | Held in R2 pending OpenAI #1028 stabilization | T-Anthropic-Wire |
 

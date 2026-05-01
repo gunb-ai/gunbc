@@ -1,0 +1,101 @@
+// std.r3_free_consequences_first_batch — T-Free-Consequences first-batch
+// author-now/fire-later consumers.
+//
+// Five gates from `r3-v-free-consequences-worker.md`:
+// - auto-parallelism x3
+// - auto-memoization x2
+//
+// The referenced report declarations lock the consumer shape for
+// `BinaryDimensionReportEquals`. Runner evaluation stays NotYetImplemented
+// until the relevant `Lens<C>` instances, R2-Evaluator witness construction,
+// and T-CostLens-Composition cost facts land.
+
+module std.r3_free_consequences_first_batch
+
+import std.dimensions { DimensionReport }
+import std.verification {
+  BinaryDimensionReportEquals,
+  TestClaim,
+  TestSuite
+}
+
+type AutoParallelismEvidence {}
+type AutoMemoizationEvidence {}
+
+type independent_binds_observed_report = DimensionReport<AutoParallelismEvidence>
+type independent_binds_expected_report = DimensionReport<AutoParallelismEvidence>
+type dependent_binds_observed_report = DimensionReport<AutoParallelismEvidence>
+type dependent_binds_expected_report = DimensionReport<AutoParallelismEvidence>
+type branch_arms_observed_report = DimensionReport<AutoParallelismEvidence>
+type branch_arms_expected_report = DimensionReport<AutoParallelismEvidence>
+
+type repeated_pure_call_observed_report = DimensionReport<AutoMemoizationEvidence>
+type repeated_pure_call_expected_report = DimensionReport<AutoMemoizationEvidence>
+type one_shot_call_observed_report = DimensionReport<AutoMemoizationEvidence>
+type one_shot_call_expected_report = DimensionReport<AutoMemoizationEvidence>
+
+data auto_parallelism_independent_binds_emit_parallel: TestClaim = {
+  name: "auto_parallelism_independent_binds_emit_parallel",
+  source: "// free-consequences fixture: independent binds may emit parallel schedule when independence, effect-commutativity, and cost witnesses land.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_parallelism_independent_binds.v3",
+  predicate: BinaryDimensionReportEquals(
+    independent_binds_observed_report,
+    independent_binds_expected_report
+  ),
+  requires: []
+}
+
+data auto_parallelism_dependent_binds_emit_sequential: TestClaim = {
+  name: "auto_parallelism_dependent_binds_emit_sequential",
+  source: "// free-consequences fixture: dependent binds must remain sequential.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_parallelism_dependent_binds.v3",
+  predicate: BinaryDimensionReportEquals(
+    dependent_binds_observed_report,
+    dependent_binds_expected_report
+  ),
+  requires: []
+}
+
+data auto_parallelism_branch_arms_serialize: TestClaim = {
+  name: "auto_parallelism_branch_arms_serialize",
+  source: "// free-consequences fixture: branch arms are exclusive alternatives, not parallel work.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_parallelism_branch_arms.v3",
+  predicate: BinaryDimensionReportEquals(
+    branch_arms_observed_report,
+    branch_arms_expected_report
+  ),
+  requires: []
+}
+
+data auto_memoization_repeated_pure_call_cached: TestClaim = {
+  name: "auto_memoization_repeated_pure_call_cached",
+  source: "// free-consequences fixture: repeated pure calls may be cached when purity and cost witnesses land.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_memoization_repeated_pure_call.v3",
+  predicate: BinaryDimensionReportEquals(
+    repeated_pure_call_observed_report,
+    repeated_pure_call_expected_report
+  ),
+  requires: []
+}
+
+data auto_memoization_no_caching_for_one_shot: TestClaim = {
+  name: "auto_memoization_no_caching_for_one_shot",
+  source: "// free-consequences fixture: one-shot calls do not emit memoization scaffolding.\nlet _: Int = 0\n",
+  file_name: "r3_free_consequences_auto_memoization_one_shot.v3",
+  predicate: BinaryDimensionReportEquals(
+    one_shot_call_observed_report,
+    one_shot_call_expected_report
+  ),
+  requires: []
+}
+
+data r3_free_consequences_first_batch_suite: TestSuite = {
+  name: "r3_free_consequences_first_batch_suite",
+  claims: [
+    auto_parallelism_independent_binds_emit_parallel,
+    auto_parallelism_dependent_binds_emit_sequential,
+    auto_parallelism_branch_arms_serialize,
+    auto_memoization_repeated_pure_call_cached,
+    auto_memoization_no_caching_for_one_shot
+  ]
+}

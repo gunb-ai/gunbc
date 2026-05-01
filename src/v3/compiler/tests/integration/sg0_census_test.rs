@@ -368,6 +368,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/r1c_e_emit_gates_omni_dag_test.rs",
     // R2 B5: Loop construction-closure structural gate (Tier 2 §5).
     "src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs",
+    // R3 T-Free-Consequences first batch: hand-Rust driver for five
+    // author-now/fire-later `BinaryDimensionReportEquals` TestClaims.
+    // Dissolves when generic DimensionReport<C> evaluation can execute
+    // the claims without a host-side integration harness.
+    "src/v3/compiler/tests/integration/r3_free_consequences_first_batch_test.rs",
     "src/v3/compiler/tests/integration/services_carrier_shape_test.rs",
     "src/v3/compiler/tests/integration/sg0_census_test.rs",
     "src/v3/compiler/tests/integration/sg1_tokenize_authority_test.rs",
