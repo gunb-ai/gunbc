@@ -221,18 +221,26 @@ pub mod evaluator {
     }
 
     fn select_branch_path(branch: &BranchNode, tag: DeclarationId) -> Result<Path, EvalError> {
+        // Pass 1 (Fail-Closed / C-8): every `BranchPath.pattern` must be
+        // `ResolvedVariant` before evaluation proceeds. Any
+        // `UnresolvedVariant` — even on a path that wouldn't have been
+        // selected — is a substrate-resolution invariant violation and
+        // surfaces before arm matching, so a matching early arm cannot
+        // mask a later unresolved arm.
         for path in &branch.paths {
-            match &path.pattern {
-                BranchPattern::UnresolvedVariant { name, .. } => {
-                    return Err(EvalError::BranchUnresolvedVariant {
-                        node: branch.id,
-                        name: name.clone(),
-                    });
-                }
-                BranchPattern::ResolvedVariant(decl) if *decl == tag => {
+            if let BranchPattern::UnresolvedVariant { name, .. } = &path.pattern {
+                return Err(EvalError::BranchUnresolvedVariant {
+                    node: branch.id,
+                    name: name.clone(),
+                });
+            }
+        }
+        // Pass 2: select the arm whose `ResolvedVariant.tag` matches.
+        for path in &branch.paths {
+            if let BranchPattern::ResolvedVariant(decl) = &path.pattern {
+                if *decl == tag {
                     return Ok(path.clone());
                 }
-                BranchPattern::ResolvedVariant(_) => {}
             }
         }
         Err(EvalError::BranchNoMatchingArm {
@@ -858,6 +866,66 @@ pub mod evaluator {
             let value = evaluate_body(&dag, entry, &mut state, strategy).expect("branch evaluates");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(99)));
+        }
+
+        // E4 §B.1.3 fail-closed: every `BranchPath.pattern` must be
+        // `ResolvedVariant` before evaluation proceeds. A matching
+        // early arm cannot mask a later `UnresolvedVariant` —
+        // unresolved-substrate state is a Fail-Closed (C-8) violation
+        // regardless of which arm would have been selected.
+        #[test]
+        fn eval_branch_fails_closed_on_late_unresolved_arm_even_if_earlier_arm_matches() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let matching_tag = declaration_id_by_name(&dag, "Bool");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let early_output = dag.push_value(LiteralBits::Int(7), span());
+            let early_body = node_for_port(&dag, early_output);
+            let late_output = dag.push_value(LiteralBits::Int(13), span());
+            let late_body = node_for_port(&dag, late_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    // Early arm matches the scrutinee tag — without the
+                    // pre-pass this would be returned and the late
+                    // unresolved arm would slip through.
+                    Path {
+                        body: early_body,
+                        output: early_output,
+                        pattern: BranchPattern::ResolvedVariant(matching_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: late_body,
+                        output: late_output,
+                        pattern: BranchPattern::UnresolvedVariant {
+                            name: "LateDrift".to_string(),
+                            span: span(),
+                        },
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                variant(matching_tag, Value::LiteralValue(LiteralBits::Bool(true))),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy)
+                .expect_err("late unresolved arm rejected");
+
+            assert_eq!(
+                err,
+                EvalError::BranchUnresolvedVariant {
+                    node: entry,
+                    name: "LateDrift".to_string(),
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
         #[test]
