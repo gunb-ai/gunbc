@@ -2378,6 +2378,49 @@ fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
 }
 
 #[test]
+fn program_observation_carrier_is_producer_neutral_typed_envelope() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let observation = dag
+        .declaration_by_name("ProgramObservation")
+        .expect("PR-B.2 ProgramObservation missing from full bootstrap");
+    assert_eq!(
+        observation.span.file, "src/v3/std/runtime.dag",
+        "ProgramObservation must live with the runtime observation authority"
+    );
+    let type_params = observation.type_params.clone();
+    assert_eq!(
+        type_params.len(),
+        1,
+        "ProgramObservation must have exactly one typed observation carrier"
+    );
+    assert_eq!(
+        dag.declaration(type_params[0]).name.as_deref(),
+        Some("Carrier"),
+        "ProgramObservation's type parameter should name the typed observation domain"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, observation.id, "observed"),
+        type_params[0],
+        "ProgramObservation must wrap the typed observed value directly"
+    );
+
+    let TypeConnective::Conj { children } = &observation.connective else {
+        panic!(
+            "ProgramObservation must lower as a single-field Conj, got {:?}",
+            observation.connective
+        );
+    };
+    let labels: Vec<&str> = children.iter().map(|field| field.label.as_str()).collect();
+    assert_eq!(
+        labels,
+        ["observed"],
+        "ProgramObservation must not bake producer evidence such as stdout, target, \
+         exit status, or evaluator strategy into the comparable carrier"
+    );
+}
+
+#[test]
 fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
