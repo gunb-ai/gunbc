@@ -90,6 +90,8 @@ If audit confirms structural completeness, **no new substrate** for this layer.
 
 **PM recommendation: Abstract Int via algebra (option 3).** The existing `AbelianGroup<T>` at `algebra.dag:132` already abstracts the construction; declaring `type Int = AbelianGroup<Nat>` consumes that algebra without committing to a specific encoding. Per-target grounding then picks: Rust `i128` is sign-magnitude internally; Python `int` is sign-magnitude with arbitrary-precision; Go `math/big.Int` is sign-magnitude. Substrate Mgr verifies this composition resolves at compile time.
 
+**6Q audit receipt:** [`docs/audit/t-numeric-construction-grothendieck-6q.md`](audit/t-numeric-construction-grothendieck-6q.md) accepts abstract-via-algebra and rejects quotient-of-pairs plus sign-magnitude on Q3/Q6 grounds. Sign, magnitude, pair coordinates, quotient normalization, and zero-collapse rules are target/grounding details unless a later substrate consumer proves otherwise.
+
 **Sized**: S declaration in `integer.dag` if option 3; M-L if Substrate Mgr decides explicit construction is needed for cost-lens or refinement-composition reasoning.
 
 ### 4. `Field<F>` — verify existing
