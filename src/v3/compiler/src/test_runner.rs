@@ -56,6 +56,17 @@ const INFER_HELPERS_SOURCE: &str = include_str!(concat!(
 const TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE: &str =
     "src/v3/compiler/tests/fixtures/tc1_substrate_lens_eta_equivalence_deferred.dag";
 
+/// `.dag` path for [`TestPredicate::ReleaseDeferredClaim`] (R1 release concession pattern).
+/// Single lock for release deferral validation (see
+/// [`docs/briefs/r2-evaluator-test-runner-authority-ratchet.md`](../../docs/briefs/r2-evaluator-test-runner-authority-ratchet.md) §2.2).
+const RELEASE_DEFERRAL_FIXTURE_PATH: &str =
+    "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
+
+/// Only compile-target / snapshot-ref pair accepted by `eval_fixed_point_converges_shape` until
+/// T-FixedPoint generalizes wiring (ratchet audit §2.6).
+const FIXED_POINT_SUPPORTED_COMPILE_TARGET: &str = "default_fixed_point_source";
+const FIXED_POINT_SUPPORTED_SNAPSHOT_REF: &str = "pipeline_stage_snapshots";
+
 /// Host-written forward fold for structural depth costs (see `src/v3/lenses/complexity.dag`).
 ///
 /// T-LaneE `DifferentialEquals` compares this receipt to [`crate::lens_cost::cost_of`] (emit output
@@ -2594,23 +2605,29 @@ impl<'a> TestRunner<'a> {
                 "FixedPointConverges payload should be (Path, SnapshotRef)".to_string(),
             );
         };
-        if compile_target != "default_fixed_point_source" {
+        if compile_target != FIXED_POINT_SUPPORTED_COMPILE_TARGET {
             return ClaimResult::Fail(format!(
-                "FixedPointConverges only supports `default_fixed_point_source` today, got `{compile_target}`"
+                "FixedPointConverges only supports `{FIXED_POINT_SUPPORTED_COMPILE_TARGET}` today, got `{compile_target}`"
             ));
         }
-        if expected != "pipeline_stage_snapshots" {
+        if expected != FIXED_POINT_SUPPORTED_SNAPSHOT_REF {
             return ClaimResult::Fail(format!(
-                "FixedPointConverges only supports `pipeline_stage_snapshots` today, got `{expected}`"
+                "FixedPointConverges only supports `{FIXED_POINT_SUPPORTED_SNAPSHOT_REF}` today, got `{expected}`"
             ));
         }
-        let pass1 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
+        let pass1 = match compile_stage_snapshots(
+            default_fixed_point_source(),
+            FIXED_POINT_SUPPORTED_COMPILE_TARGET,
+        ) {
             Ok(snapshots) => snapshots,
             Err(err) => {
                 return ClaimResult::Fail(format!("FixedPointConverges pass1 failed: {err:?}"))
             }
         };
-        let pass2 = match compile_stage_snapshots(default_fixed_point_source(), compile_target) {
+        let pass2 = match compile_stage_snapshots(
+            default_fixed_point_source(),
+            FIXED_POINT_SUPPORTED_COMPILE_TARGET,
+        ) {
             Ok(snapshots) => snapshots,
             Err(err) => {
                 return ClaimResult::Fail(format!("FixedPointConverges pass2 failed: {err:?}"))
@@ -2918,11 +2935,9 @@ impl<'a> TestRunner<'a> {
         claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        const RELEASE_ACCEPTANCE_FIXTURE: &str =
-            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
-        if claim.declaration_file != RELEASE_ACCEPTANCE_FIXTURE {
+        if claim.declaration_file != RELEASE_DEFERRAL_FIXTURE_PATH {
             return ClaimResult::Fail(format!(
-                "ReleaseDeferredClaim is only valid in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}`",
+                "ReleaseDeferredClaim is only valid in `{RELEASE_DEFERRAL_FIXTURE_PATH}`, got `{}`",
                 claim.declaration_file
             ));
         }
@@ -2949,9 +2964,9 @@ impl<'a> TestRunner<'a> {
                 Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
             };
             let decl = self.dag.declaration(id);
-            if decl.span.file != RELEASE_ACCEPTANCE_FIXTURE {
+            if decl.span.file != RELEASE_DEFERRAL_FIXTURE_PATH {
                 return ClaimResult::Fail(format!(
-                    "ReleaseDeferredClaim `{field_label}` must reference a marker declared in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}` from `{}`",
+                    "ReleaseDeferredClaim `{field_label}` must reference a marker declared in `{RELEASE_DEFERRAL_FIXTURE_PATH}`, got `{}` from `{}`",
                     decl_display_name(id, decl),
                     decl.span.file
                 ));
@@ -3053,19 +3068,18 @@ impl<'a> TestRunner<'a> {
     }
 
     fn release_fixture_local_role_id(&self, role_name: &str) -> Result<DeclarationId, String> {
-        const RELEASE_ACCEPTANCE_FIXTURE: &str =
-            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
         let mut matches = self.dag.declarations().iter().filter(|decl| {
-            decl.name.as_deref() == Some(role_name) && decl.span.file == RELEASE_ACCEPTANCE_FIXTURE
+            decl.name.as_deref() == Some(role_name)
+                && decl.span.file == RELEASE_DEFERRAL_FIXTURE_PATH
         });
         let Some(role) = matches.next() else {
             return Err(format!(
-                "release fixture role `{role_name}` is missing from `{RELEASE_ACCEPTANCE_FIXTURE}`"
+                "release fixture role `{role_name}` is missing from `{RELEASE_DEFERRAL_FIXTURE_PATH}`"
             ));
         };
         if matches.next().is_some() {
             return Err(format!(
-                "release fixture role `{role_name}` is declared more than once in `{RELEASE_ACCEPTANCE_FIXTURE}`"
+                "release fixture role `{role_name}` is declared more than once in `{RELEASE_DEFERRAL_FIXTURE_PATH}`"
             ));
         }
         Ok(role.id)
