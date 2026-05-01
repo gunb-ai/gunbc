@@ -46,16 +46,23 @@ changes.
 Witness-label readiness is separate from predicate readiness. Labels in the
 formulas below, such as `bind_independence.green`,
 `effect_commutativity.green`, `purity.green`, `strategy-order`, and
-`evaluation-step`, are conceptual witness roles unless this survey names a live
-declaration or runner surface beside them. Live anchors include
-`BridgeLedgerZero`, `LensOutputEquals`, `BinaryDimensionReportEquals`,
-`DifferentialEquals`, `ForAllTargets`, and `AlgebraicLaw` in
-`src/v3/std/verification.dag`; `DimensionReport<C>` in
-`src/v3/std/dimensions.dag`; `LanguageSpec` in `src/v3/std/emit_model.dag`; and
-the canonical bridge ledger in `src/v3/std/bridge_ledger.dag`. Missing role
-carriers stay in the Substrate-Introduction Catalog below and must route through
-`INVARIANTS.md` P1 / Substrate Manager before any future worker treats them as
-authority.
+`evaluation-step`, are pending conceptual witness roles unless they appear in
+the verified-anchor table below. Missing role carriers stay in the
+Substrate-Introduction Catalog and must route through `INVARIANTS.md` P1 /
+Substrate Manager before any future worker treats them as authority.
+
+Verified live anchors at this PR head:
+
+| Anchor | Current authority |
+|---|---|
+| `LensOutputEquals` | `src/v3/std/verification.dag:166-174`; runner dispatch at `src/v3/compiler/src/test_runner.rs:1579` |
+| `DifferentialEquals` | `src/v3/std/verification.dag:175-181`; runner dispatch at `src/v3/compiler/src/test_runner.rs:1580` |
+| `BinaryDimensionReportEquals` | `src/v3/std/verification.dag:183-194`; shape-valid runner dispatch at `src/v3/compiler/src/test_runner.rs:1581-1583` |
+| `AlgebraicLaw` | `src/v3/std/verification.dag:195-203`; runner dispatch at `src/v3/compiler/src/test_runner.rs:1584` |
+| `ForAllTargets` | `src/v3/std/verification.dag:153-161`; declared predicate, runner falls through to the generic unwired-predicate path today |
+| `BridgeLedgerZero` | `src/v3/std/verification.dag:276`; runner dispatch at `src/v3/compiler/src/test_runner.rs:1592`; carrier at `src/v3/std/bridge_ledger.dag` |
+| `DimensionReport<C>` | `src/v3/std/dimensions.dag:51` |
+| `LanguageSpec` | `src/v3/std/emit_model.dag:303` |
 
 ## Substrate-Fold Gates
 
@@ -148,16 +155,21 @@ structural comparison rather than shape-valid `NotYetImplemented`.
 
 Lane 1 and Lane 2 are runtime/corpus patterns, not `Lens<C>` instances.
 
-Lane 1 L4 uses `DifferentialEquals` over `rust_emit_output` and
-`dag_eval_output`; `dag_eval_output` requires real PR-B body evaluation, and the
-failure taxonomy is emit failure, target run failure, evaluator failure, and
-value mismatch. Lane 1 L7 uses `AlgebraicLaw`; `Associativity` and
+Lane 1 L4 and L7 are still pending R3 implementation work per
+`docs/v3-modeling-analysis.md:1774-1777` and
+`docs/thesis/r2-r3-thesis-mapping.md:65-68`. The live runner surfaces listed
+above are scaffolds, not closure claims. L4 is expected to use
+`DifferentialEquals` over `rust_emit_output` and `dag_eval_output`;
+`dag_eval_output` still requires real PR-B body evaluation, and the failure
+taxonomy is emit failure, target run failure, evaluator failure, and value
+mismatch. L7 is expected to use `AlgebraicLaw`; `Associativity` and
 `Commutativity` have runner surface, `Identity` waits on an identity-element
-edge, and `Distributivity` remains a P1 candidate. Lane 2 L5 uses
+edge, and `Distributivity` remains a P1 candidate. Lane 2 L5 is expected to use
 `ForAllTargets` plus a structural observation carrier: exit code is
-insufficient. Per target: emit -> compile/run -> parse observation -> compare
-algebraic values. PR #1412 sets Phase A to scalar `Int` / `Bool`, then Phase B
-to collections and richer records. No byte/string stdout equality as authority.
+insufficient, and `ForAllTargets` is declared but not runner-wired today. Per
+target: emit -> compile/run -> parse observation -> compare algebraic values.
+PR #1412 sets Phase A to scalar `Int` / `Bool`, then Phase B to collections and
+richer records. No byte/string stdout equality as authority.
 
 ## Substrate-Introduction Catalog
 
