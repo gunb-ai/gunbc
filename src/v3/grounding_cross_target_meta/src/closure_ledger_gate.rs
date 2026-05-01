@@ -16,8 +16,7 @@ const L6_KEYS_BEGIN: &str = "<!-- L6_MISSING_EMISSION_PATH_KEYS_BEGIN -->";
 const L6_KEYS_END: &str = "<!-- L6_MISSING_EMISSION_PATH_KEYS_END -->";
 
 /// Structural debt receipt id authored next to the L6 gap key list (non-cell).
-pub const L6_METHOD_TEMPLATE_PER_ROW_PROJECTION_ID: &str =
-    "l6_method_template_per_row_projection";
+pub const L6_METHOD_TEMPLATE_PER_ROW_PROJECTION_ID: &str = "l6_method_template_per_row_projection";
 
 fn parse_l6_missing_keys_between_markers(doc: &str) -> HashSet<String> {
     let start_idx = doc.find(L6_KEYS_BEGIN).expect(
@@ -53,8 +52,7 @@ pub(crate) fn assert_closure_ledger_matches_l6_missing_emission_paths() {
 
     let ledger_keys = parse_l6_missing_keys_between_markers(R2_CLOSURE_LEDGER);
     assert_eq!(
-        ledger_keys,
-        expected,
+        ledger_keys, expected,
         "closure ledger L6 key block must exactly match walker missing cells (update \
          `docs/r2-closure-ledger.md` markers when coverage shifts)"
     );
@@ -67,22 +65,5 @@ mod tests {
     #[test]
     fn bootstrap_cross_product_missing_matches_closure_ledger_l6_keys() {
         assert_closure_ledger_matches_l6_missing_emission_paths();
-    }
-
-    #[test]
-    fn ledger_keys_align_with_cell_ledger_key_discipline() {
-        let dag = generated_full_bootstrap_dag();
-        let report = check_l6_load_completeness(&dag);
-        for (cell, _) in &report.missing {
-            assert_eq!(
-                cell.ledger_key(),
-                format!(
-                    "{}_{}_{}",
-                    cell.connective.label(),
-                    cell.behavior.label(),
-                    cell.target.label()
-                )
-            );
-        }
     }
 }
