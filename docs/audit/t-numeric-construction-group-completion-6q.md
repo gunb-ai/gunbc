@@ -75,12 +75,27 @@ Two options:
 
 Recommend (1) for proximity to existing algebra surfaces and to keep the algebra-surface dependency story compact. The construction-chain `Magnitude → Nat → Int` lives in separate `dsl/std/{magnitude,nat,integer}.dag` files; the algebra surfaces stay in `algebra.dag`.
 
+## Constrained-inhabitance gap (tracked-scaffold note)
+
+`GroupCompletion<M>` is **denotationally** parameterized over "a commutative monoid `M`" — Grothendieck's construction is well-defined only when `M` carries the commutative-monoid laws. The current substrate has no parametric where-clause syntax to enforce this structurally (no `<M> where M : CommutativeMonoid<_>` form), so the recommended Shape C declaration accepts any type-reference for `<M>` at the parser/lower level. This is a known substrate-feature gap, not specific to this audit.
+
+**Two ways the gap is bounded in practice for this lane:**
+
+1. **Slice 3's only consumer is `GroupCompletion<Nat>`.** `Nat = Semiring<Magnitude>` (Slice 2) carries `(Nat, +, 0)` as a commutative monoid by the Semiring algebra's structural definition (`add: fn(T, T) -> T` + `zero: T` + commutativity-on-add law). The single intended consumer denotationally satisfies the precondition. No other consumer in the construction-chain plan targets `GroupCompletion<M>` for arbitrary `M`.
+
+2. **Future constrained-inhabitance dissolves the gap.** When the substrate gains a parametric where-clause / inhabitance-constraint surface (this is a separate substrate-feature lane, not in T-Numeric-Construction's scope), `GroupCompletion<M>` tightens to `GroupCompletion<M> where M inhabits CommutativeMonoid` (or whatever the chosen syntax is). Existing call sites (`type Int = GroupCompletion<Nat>`) continue to type-check because `Nat` denotationally inhabits `CommutativeMonoid` already.
+
+**Dissolution trigger:** when constrained-inhabitance / parametric where-clause syntax lands in the substrate, sharpen `GroupCompletion<M>` to require `M : CommutativeMonoid` (or `M : Semiring`-with-commutative-add, depending on the chosen algebra-strength). No consumer migration needed.
+
+**Mitigation in this slice:** the substrate-introduction PR for `GroupCompletion<M>` should land alongside a structural ratchet that pins `GroupCompletion<Nat>` (the only intended consumer) at bootstrap time — making the denotational precondition observable as a use-site fact rather than an unconstrained parametric admission. The same pattern as Slice 2's tracked scaffold for `Semiring → CommutativeSemiring`.
+
 ## What this audit does NOT cover
 
 - **Carrier representation.** Per Director's hard boundary, no quotient-of-pairs or sign-magnitude facts. Per-target representation is emission's job.
 - **Algebra inhabitance proof.** Whether `GroupCompletion<M>` mechanically derives an `AbelianGroup` witness over its carrier is a follow-up modeling question; this audit pins the substrate shape, not the inhabitance lens.
 - **Slice 3 alias-pivot edit.** Authoring `type Int = GroupCompletion<Nat>` is the post-prerequisite slice; this audit gates that.
 - **Refinement syntax.** `Int<N>` refinements are gated on T-V2-Retirement per design doc §"path (a) coordination."
+- **Parametric where-clause / constrained inhabitance.** Required to structurally enforce `<M> : CommutativeMonoid`. Tracked above as a substrate-feature gap; Slice 3 lands `GroupCompletion<Nat>` as the only consumer in the meantime.
 
 ## Verdict
 
