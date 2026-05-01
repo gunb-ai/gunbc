@@ -55,8 +55,9 @@ For `LoopBound::Cardinality { count }`, the allowed eager rule is:
 1. Evaluate `loop_node.init` through `eval_port`.
 2. Evaluate `count` through `eval_port`.
 3. Decode the count witness fail-closed. The first executable slice should
-   accept only a runtime integer literal count; missing or non-integer counts
-   must produce typed diagnostics rather than defaulting to zero.
+   accept only a non-negative runtime integer literal count. Missing,
+   non-integer, or negative counts must produce typed diagnostics rather than
+   defaulting to zero or wrapping into an unsigned iteration count.
 4. For each iteration, push a fresh top frame, bind the accumulator value for
    that iteration to the loop accumulator port, evaluate `loop_node.body`
    through `eval_node`, pop the frame on success or failure, and thread the
@@ -112,6 +113,7 @@ Required tests for the implementation PR:
   result;
 - `LoopBound::Cardinality` with missing count fails closed;
 - `LoopBound::Cardinality` with non-integer count fails closed;
+- `LoopBound::Cardinality` with negative integer count fails closed;
 - `LoopBound::Descent` returns the named residual;
 - stack depth is restored on success and on loop-body diagnostics.
 
