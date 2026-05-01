@@ -31,10 +31,11 @@ data auto_loop_parallelism_program_input: ProgramInput = {}
 // real DB-20 `WorkflowParallelismReport` producer for `Lens<Iteration-Independence>`.
 // Keep this scalar path out of `DimensionReport<C>`; replace the placeholder
 // lens and expected value together when the structural parallelism producer
-// lands.
+// lands. The mismatch keeps the gate fail-closed while the real producer is
+// pending.
 fn auto_loop_parallelism_pending_lens(_d: Dag) -> Int = 0
 
-data auto_loop_parallelism_pending_expected: Int = 0
+data auto_loop_parallelism_pending_expected: Int = 1
 
 type constant_fold_observed_report = DimensionReport<CrossTargetOptimizationEvidence>
 type constant_fold_expected_report = DimensionReport<CrossTargetOptimizationEvidence>

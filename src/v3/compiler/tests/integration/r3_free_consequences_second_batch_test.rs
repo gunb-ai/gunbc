@@ -51,10 +51,10 @@ fn r3_free_consequences_second_batch_reaches_expected_consumer_shapes() {
     for (idx, (result, expected_name)) in results.iter().zip(EXPECTED_CLAIMS).enumerate() {
         assert_eq!(result.claim_name, expected_name);
         if idx < 3 {
-            assert_eq!(
-                result.result,
-                ClaimResult::Pass,
-                "expected {expected_name} to exercise the ordinary loop-parallelism lens path"
+            assert!(
+                matches!(&result.result, ClaimResult::Fail(_)),
+                "expected {expected_name} to fail closed on the pending ordinary loop-parallelism lens, got {:?}",
+                result.result
             );
         } else {
             assert!(

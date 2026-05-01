@@ -66,11 +66,11 @@ loop parallelizer.
 This mirrors `Lens<Bind-Independence>` rather than creating a new dimension. The
 second-batch fixture therefore uses the same ordinary `LensOutputEquals` shape
 as auto-parallelism and explicitly keeps `LoopIterationEvidence` out of
-`DimensionReport<C>`. Its current scalar `0 == 0` placeholder is a
-consumer-shape anchor only: it proves the ordinary lens-output path is
-expressible, not that loop parallelism is implemented. The positive loop gate
-becomes substantive only when `src/v3/lenses/parallelism.dag` exposes the real
-DB-20 `WorkflowParallelismReport` producer for `Lens<Iteration-Independence>`.
+`DimensionReport<C>`. Its current scalar placeholder is intentionally
+mismatched (`0 != 1`), so the gates fail closed while still proving the ordinary
+lens-output path is expressible. The positive loop gate becomes substantive only
+when `src/v3/lenses/parallelism.dag` exposes the real DB-20
+`WorkflowParallelismReport` producer for `Lens<Iteration-Independence>`.
 
 **Testcase anchors:**
 
