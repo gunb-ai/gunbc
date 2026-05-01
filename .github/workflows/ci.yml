@@ -132,7 +132,7 @@ jobs:
     # Full suite is transitionally capped at 2400s, plus clippy + lens gates + cold compile.
     # Revert when the OnceLock/module-cache structural fix brings warmed runs below 1200s;
     # keep job timeout above the in-step budget so Actions does not cancel final steps first.
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
