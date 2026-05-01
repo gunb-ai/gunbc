@@ -5,29 +5,39 @@
 // - auto-parallelism x3
 // - auto-memoization x2
 //
-// The referenced report declarations lock the consumer shape for
-// `BinaryDimensionReportEquals`. Runner evaluation stays NotYetImplemented
-// until the relevant `Lens<C>` instances, R2-Evaluator witness construction,
-// and T-CostLens-Composition cost facts land.
+// The auto-parallelism gates use ordinary lens data, not `DimensionReport<C>`:
+// DB-3 explicitly keeps parallelism outside the Dimension abstraction, and
+// DB-20 models workflow parallelism through `WorkflowParallelismReport`.
+// The auto-memoization gates still lock the `BinaryDimensionReportEquals`
+// shape for the cost-related `DimensionReport<C>` half of `Lens<Purity>·Lens<Cost>`.
 
 module std.r3_free_consequences_first_batch
 
 import std.dimensions { DimensionReport }
+import std.substrate { Dag }
 import std.verification {
   BinaryDimensionReportEquals,
+  LensOutputEquals,
+  ProgramInput,
   TestClaim,
   TestSuite
 }
 
-type AutoParallelismEvidence {}
 type AutoMemoizationEvidence {}
 
-type independent_binds_observed_report = DimensionReport<AutoParallelismEvidence>
-type independent_binds_expected_report = DimensionReport<AutoParallelismEvidence>
-type dependent_binds_observed_report = DimensionReport<AutoParallelismEvidence>
-type dependent_binds_expected_report = DimensionReport<AutoParallelismEvidence>
-type branch_arms_observed_report = DimensionReport<AutoParallelismEvidence>
-type branch_arms_expected_report = DimensionReport<AutoParallelismEvidence>
+data auto_parallelism_program_input: ProgramInput = {}
+
+// Ordinary-lens placeholder until `src/v3/lenses/parallelism.dag` is ported from
+// its fail-closed stub to a `.dag` producer over DB-20 workflow parallelism data.
+// Keep this scalar and intentionally mismatched: current `LensOutputEquals`
+// evaluation can execute scalar demo lenses, while DB-20's full
+// `WorkflowParallelismReport` producer is still a follow-on ordinary-lens
+// surface. The mismatch keeps the gate fail-closed; replace the placeholder
+// lens and expected value together when `parallelism.dag` exposes the real
+// structural producer.
+fn auto_parallelism_pending_lens(_d: Dag) -> Int = 0
+
+data auto_parallelism_pending_expected: Int = 1
 
 type repeated_pure_call_observed_report = DimensionReport<AutoMemoizationEvidence>
 type repeated_pure_call_expected_report = DimensionReport<AutoMemoizationEvidence>
@@ -38,9 +48,10 @@ data auto_parallelism_independent_binds_emit_parallel: TestClaim = {
   name: "auto_parallelism_independent_binds_emit_parallel",
   source: "// free-consequences fixture: independent binds may emit parallel schedule when independence, effect-commutativity, and cost witnesses land.\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_parallelism_independent_binds.v3",
-  predicate: BinaryDimensionReportEquals(
-    independent_binds_observed_report,
-    independent_binds_expected_report
+  predicate: LensOutputEquals(
+    auto_parallelism_pending_lens,
+    auto_parallelism_program_input,
+    auto_parallelism_pending_expected
   ),
   requires: []
 }
@@ -49,9 +60,10 @@ data auto_parallelism_dependent_binds_emit_sequential: TestClaim = {
   name: "auto_parallelism_dependent_binds_emit_sequential",
   source: "// free-consequences fixture: dependent binds must remain sequential.\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_parallelism_dependent_binds.v3",
-  predicate: BinaryDimensionReportEquals(
-    dependent_binds_observed_report,
-    dependent_binds_expected_report
+  predicate: LensOutputEquals(
+    auto_parallelism_pending_lens,
+    auto_parallelism_program_input,
+    auto_parallelism_pending_expected
   ),
   requires: []
 }
@@ -60,9 +72,10 @@ data auto_parallelism_branch_arms_serialize: TestClaim = {
   name: "auto_parallelism_branch_arms_serialize",
   source: "// free-consequences fixture: branch arms are exclusive alternatives, not parallel work.\nlet _: Int = 0\n",
   file_name: "r3_free_consequences_auto_parallelism_branch_arms.v3",
-  predicate: BinaryDimensionReportEquals(
-    branch_arms_observed_report,
-    branch_arms_expected_report
+  predicate: LensOutputEquals(
+    auto_parallelism_pending_lens,
+    auto_parallelism_program_input,
+    auto_parallelism_pending_expected
   ),
   requires: []
 }

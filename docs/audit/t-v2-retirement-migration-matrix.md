@@ -45,14 +45,23 @@ src/v2/tests/src/sub_value_lattice_factor_test.rs
 
 **Migration disposition for Population A:** none individually. The crate retires as a unit when G-2's workspace-member removal fires. Per-test coverage migration (if any v2-tests-crate behavior is not already covered by v3-side tests) is the responsibility of the PM-authored worker brief — flagged as routing question §6.1.
 
-### 2.2 Population B — substantive G-1 consumers (2 files)
+### 2.2 Population B — substantive G-1 consumers (2 test files + 2 Cargo edges)
 
-These are the only test surfaces *outside* `src/v2/` that substantively reference v2 crates. Each is enumerated in §3 with disposition.
+These are the surfaces *outside* `src/v2/` that substantively reference v2 crates. Each is enumerated in §3 with disposition. **Per #1338 §3.1 green criteria, G-1 closure requires both the test-file dispositions AND deletion of the two Cargo edges below**; treating only the test files as Population B would let the matrix declare consumers "migrated" while `v2-compiler` / `v2-compiler-tests` remain live workspace dependencies of `src/v3/compiler` — exactly the parallel-authority residue INVARIANTS §P2 (Boundary Discipline / single authority) forbids.
 
+Test consumers (2 files):
 ```
 src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs
 src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs
 ```
+
+Cargo edges (2 lines):
+```
+src/v3/compiler/Cargo.toml:32  v2-compiler        = { path = "../../v2/stage0" }
+src/v3/compiler/Cargo.toml:33  v2-compiler-tests  = { path = "../../v2/tests" }
+```
+
+The Cargo edges have no other consumer in `src/v3/compiler` — they exist solely to support the two test files in §3.1 / §3.2. Their deletion is mechanical once both tests dissolve, but it is **part of G-1 closure, not a downstream cleanup**.
 
 ### 2.3 Population C — non-G-1 references (cosmetic at deletion)
 
@@ -97,6 +106,19 @@ Doc-comments, string literals, README mentions. **Not** G-1 consumers; cleaned u
 | STOP condition | S-1 unmet → no migration. Substrate-side authority migration not landed → parity test cannot be safely retired (would lose drift detection). |
 | What green looks like | `kernel_algebra_profile` has a single v3-side authority (under `dsl/std/algebra.dag` or named successor); `m2_substrate_inhabitance_test.rs` no longer matches `\bv2_compiler\b`; the rest of `m2_substrate_inhabitance_test.rs` (other tests in the file) continue to pass under `cargo test --workspace --exclude v2-compiler-tests`. |
 
+### 3.3 `src/v3/compiler/Cargo.toml:32-33` — `v2-compiler` + `v2-compiler-tests` path deps
+
+| Field | Value |
+|---|---|
+| Current dependency | `v2-compiler = { path = "../../v2/stage0" }` and `v2-compiler-tests = { path = "../../v2/tests" }`. |
+| Role | Workspace-internal Cargo edges; exist solely to support §3.1 + §3.2. No other consumer in `src/v3/compiler`. |
+| Counts against G-1? | **Yes** — per #1338 §3.1 green criteria, G-1 closure requires these edges deleted alongside the test-file dispositions. INVARIANTS §P2 (Boundary Discipline / single authority): leaving the deps live while the only callers are gone leaves a parallel-authority residue. |
+| Owner | PB Manager (per `docs/audit/t-v2-retirement-audit.md` §3.1; same lane as §3.1 + §3.2). |
+| Proposed migration | Mechanical deletion of both lines from `src/v3/compiler/Cargo.toml` once both §3.1 + §3.2 are green. No replacement; `src/v3/compiler` does not need v2 crates after the test consumers retire. |
+| Prerequisite | §3.1 green + §3.2 green. (Pre-emptive deletion would break the live tests.) |
+| STOP condition | Either §3.1 or §3.2 still has substantive `\bv2_compiler(_tests)?\b` references → cannot delete without breaking the build. |
+| What green looks like | `grep -n 'v2-compiler\|v2_compiler' src/v3/compiler/Cargo.toml` returns no matches; `cargo build -p v3-compiler` and `cargo test -p v3-compiler` both pass. The `src/v2/stage0` and `src/v2/tests` workspace members remain (G-2 owns their removal). |
+
 ---
 
 ## 4. Legacy emit chain — `rust_method_template_contracts.dag` header note
@@ -123,9 +145,17 @@ Parallel chains exist for python and go targets (per `dsl/extdeps/languages/{pyt
 | Counts against G-2? | **Yes** as a prerequisite — the chain consumes v2 emit infrastructure; deleting `src/v2/` requires that no surviving authority depends on v2-routable emit. |
 | Owner | PB Manager. Cross-ref `r3-pb-binshim-retirement-worker.md` and the T-Ground-LanguageSpec scope-E lineage. |
 | Proposed migration | Once PB-Runtime trampoline is the live bootstrap (S-4) and v3-side `MethodTemplateContract` rows are consumed by the v3 emitter end-to-end, **delete `rust_simple_method_specs` + `rust_method_templates()` + `rust_method_wraps_result()` from `dsl/extdeps/languages/rust/emit.dag`** and the parallel python/go chains. The `MethodTemplateContract` rows under `src/v3/std/{rust,python,go}_method_template_contracts.dag` already exist as the single-authority replacement. |
-| Prerequisite | S-2 (T-FixedPoint) + S-3 (T-LensProducer-Retirement) + S-4 (PB-Runtime trampoline) + v3 emitter consumes `MethodTemplateContract` end-to-end (this last is partly out-of-scope of T-V2-Retirement; flagged §6.2). |
-| STOP condition | If the v3 emitter does not yet consume `MethodTemplateContract` rows for at least one target, the legacy chain cannot be deleted. |
-| What green looks like | `grep -rln 'rust_simple_method_specs\|rust_method_templates\|rust_method_wraps_result' dsl/ src/v3/` returns no matches under `dsl/extdeps/`; the v3 emitter's targets compile + emit identical output (bit-identical artifacts ratchet from T-FixedPoint). |
+| Prerequisite | S-2 (T-FixedPoint) + S-3 (T-LensProducer-Retirement) + S-4 (PB-Runtime trampoline) + v3 emitter consumes `MethodTemplateContract` end-to-end **for every emitted target (Rust + Python + Go)**, not just one (this last is partly out-of-scope of T-V2-Retirement; flagged §6.2). |
+| STOP condition | Per-target gate. If the v3 emitter does not consume `MethodTemplateContract` rows end-to-end for **target T**, the **target-T** legacy authority (the `{rust\|python\|go}_*` chain in `dsl/extdeps/languages/T/emit.dag`) cannot be deleted. Targets are independent: it is NOT acceptable to delete all three legacy chains because end-to-end consumption is only proven for one. THESIS cross-target drift prevention + INVARIANTS §P2 (Boundary Discipline) forbid leaving any target's legacy authority load-bearing while its sibling is deleted. |
+| What green looks like | The legacy authority symbols are different per target; check **all three target families** explicitly. Rust: `rust_simple_method_specs`, `rust_method_templates`, `rust_method_wraps_result`. Python: `python_method_templates` (and any sibling `python_method_wraps_result` / `python_simple_method_specs` if introduced before deletion). Go: `go_method_templates` (and siblings if introduced). See verification command below the table. The v3 emitter's targets all compile + emit identical output (bit-identical artifacts ratchet from T-FixedPoint, applied per target). |
+
+Verification command (kept outside the table to avoid markdown pipe-escape pitfalls; in `grep -E`, `\|` is a literal `|`, not alternation, so the in-table form would silently match nothing):
+
+```sh
+grep -rEn '\b(rust|python|go)_(simple_method_specs|method_templates|method_wraps_result)\b' dsl/ src/v3/
+```
+
+Green: returns no matches under `dsl/extdeps/`.
 
 ---
 
@@ -136,7 +166,7 @@ Parallel chains exist for python and go targets (per `dsl/extdeps/languages/{pyt
 Per `docs/design-test-infra.md:10-14` and `src/v3/std/verification.dag` header comment:
 
 - **`dsl/std/verification.dag`** (v2-era): `AssertKind`, `TestClaim { kind, label }`, `TestCase { name, claims, ignored }`. Older behavioral-assertion model.
-- **`src/v3/std/verification.dag`** (v3, extended by DB-15): `TestPredicate`, `TestClaim { name, source, file_name, predicate }`, `TestSuite`. Structural authority for generated tests.
+- **`src/v3/std/verification.dag`** (v3, extended by DB-15): `TestPredicate`, `TestClaim { name, source, file_name, predicate, requires: List<ResourceReference> }`, `TestSuite`, `TestObligation { resources: List<ResourceReference> }`. Structural authority for generated tests. Per `src/v3/std/verification.dag:290`: **`TestClaim.requires` is the single authority for `ResourceReference` edges attached to a claim** — `claim_obligation_resources` (L325) and `materialize_test_obligations` (L333) walk this field for obligation materialization. Any convergence call (§5.2) MUST address whether v2-era `TestCase { name, claims, ignored }` carries an equivalent dependency-edge fact or whether v2 retirement strands the requires/obligation surface; INVARIANTS §P2 (Boundary Discipline) forbids silently dropping the edge during convergence (modeling-discipline Practice 3 — facts flow forward).
 
 The v3 file's own header reads: *"`dsl/std/verification.dag` remains the older v2-era behavioral-assertion model; it is not silently superseded here. Convergence trigger: once v2 retires and the shared std tree can host the v3 verification surface directly, dissolve the duplicate definitions back to one `std.verification`."*
 
@@ -160,7 +190,7 @@ These are NOT decisions — they are routing questions surfaced by the migration
 
 1. **Population A coverage migration (§2.1):** are any behaviors covered by the 13 internal `src/v2/tests/src/*.rs` files NOT already covered by v3-side tests? If yes, which ones, and where do they migrate? If no, the entire crate retires under G-2 with no per-test work. Quick-audit recommendation: spot-check `derive_bound_fail_closed_test.rs`, `int_pow_bounded_test.rs`, `peano_materialization_cap_test.rs`, `sub_value_lattice_factor_test.rs` (the named-property tests; the others are pipeline/parse coverage which v3 likely subsumes).
 2. **Legacy emit chain end-to-end consumer (§4.2):** does the v3 emitter currently consume `MethodTemplateContract` rows end-to-end for any target, or only at the row-population layer (Phase 1 per the header)? If end-to-end consumption is incomplete, that completion is a prerequisite for §4.2 migration and may be a sibling sub-lane rather than part of T-V2-Retirement.
-3. **`verification.dag` convergence (§5.2):** routed to Substrate Manager. Specifically: does v3's `TestPredicate`/`TestClaim { name, source, file_name, predicate }`/`TestSuite` cover all behavior expressible under v2's `AssertKind`/`TestClaim { kind, label }`/`TestCase`, or does any surviving authority require continuation of the v2 surface under a renamed module path?
+3. **`verification.dag` convergence (§5.2):** routed to Substrate Manager. Specifically: (a) does v3's `TestPredicate`/`TestClaim { name, source, file_name, predicate, requires }`/`TestSuite`/`TestObligation` cover all behavior expressible under v2's `AssertKind`/`TestClaim { kind, label }`/`TestCase`, or does any surviving authority require continuation of the v2 surface under a renamed module path? (b) Does v2's `TestCase { name, claims, ignored }` carry any equivalent of v3's `TestClaim.requires: List<ResourceReference>` dependency-edge fact? If not, the convergence must explicitly account for whether v2-side claims have implicit dependency edges that need promotion to `requires` before v2 retirement, or whether v2-side claims are dependency-free and the requires field simply does not apply on the v2 surface. INVARIANTS §P2 (Boundary Discipline) forbids silently dropping the edge.
 4. **Cosmetic Population C cleanup ordering (§2.3):** these are doc-comment / string-literal references to `src/v2/`. Cleanest moment to do the cleanup is alongside G-2 deletion, since rewording before deletion is wasted churn (the comments are accurate descriptions of current state). Recommendation: do not pre-empt; sweep at G-2.
 
 ---
@@ -169,8 +199,8 @@ These are NOT decisions — they are routing questions surfaced by the migration
 
 This matrix is intentionally bounded:
 
-- §2 enumerates **Population A** (13 internal files, fall with G-2), **Population B** (2 substantive G-1 consumers), **Population C** (cosmetic).
-- §3 gives per-file G-1 disposition for both Population B files (current dependency / role / G-1? / owner / proposed migration / prerequisite / STOP / green).
+- §2 enumerates **Population A** (13 internal files, fall with G-2), **Population B** (2 test files + 2 Cargo edges — all 4 surfaces are G-1 closure work per §2.2), **Population C** (cosmetic).
+- §3 gives per-surface G-1 disposition for all 4 Population B surfaces — §3.1 + §3.2 (test files) and §3.3 (Cargo edges) — each with current dependency / role / G-1? / owner / proposed migration / prerequisite / STOP / green.
 - §4 maps the legacy emit chain (G-2 prerequisite, not G-1).
 - §5 maps the dual `verification.dag` surface as routed to Substrate / Director — no convergence decision proposed.
 - §6 routes 4 open questions to the PM brief author.
