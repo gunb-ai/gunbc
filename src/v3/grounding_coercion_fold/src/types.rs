@@ -10,8 +10,8 @@
 /// (substrate / #1286 / manager #1133).
 ///
 /// **`ScratchIntExamples`** — **checkpoint only**: drives [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
-/// **Example 1** and **Example 2** without walking Phase 1 Dag rows. Remove or supersede when
-/// a declared projection replaces this scratch path.
+/// Int-family examples without walking Phase 1 Dag rows. Remove or supersede when a declared
+/// projection replaces this scratch path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum LanguageSpecProjection {
     #[default]
@@ -21,7 +21,7 @@ pub enum LanguageSpecProjection {
 
 /// Scratch selector aligned to design-emission-model §Worked examples (Int only).
 ///
-/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — bounded to Examples 1–2 only;
+/// Practice 4 (`docs/modeling-discipline.md`): **🟡 YELLOW** — bounded to Int-family examples;
 /// superseded when a declared projection generalizes Int examples (#1133 / #1286).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum IntScratchExample {
@@ -29,6 +29,10 @@ pub enum IntScratchExample {
     DesignDocExample1UnrefinedInt,
     /// Example 2 — `data count: Int(0..2^32) = 100` → unique Rust `u32`.
     DesignDocExample2BoundedU32,
+    /// Example 5 — `Int(0..2^32)` without algebra annotation → algebra under-refined.
+    DesignDocExample5AmbiguousAlgebra,
+    /// Example 6 — `Int(0..2^65)` exceeds the Rust Int128 family.
+    DesignDocExample6NoInhabitant,
 }
 
 /// Unique target inhabitance for a binding (Examples 1–2 surface only).
