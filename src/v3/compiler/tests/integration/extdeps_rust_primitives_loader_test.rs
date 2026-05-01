@@ -116,7 +116,8 @@ fn rust_pilot_primitives_value_body_is_structural_list() {
     let ValueBody::List(elements) = body else {
         panic!("rust_pilot_primitives.value_body must lower to ValueBody::List, got {body:?}");
     };
-    assert_eq!(elements.len(), 10);
+    // T-Int128 Slice B1: 9 IntegerPrimitive (i8..i64, i128, u8..u64) + 2 NonIntegerPrimitive (bool, ()).
+    assert_eq!(elements.len(), 11);
     let constructors: Vec<&str> = elements
         .iter()
         .map(|element| {
