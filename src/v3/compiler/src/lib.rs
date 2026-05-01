@@ -85,27 +85,53 @@ pub mod evaluator {
         MissingNode {
             node: NodeId,
         },
+        UnboundPort {
+            port: PortId,
+        },
         UnsupportedBehavior {
             node: NodeId,
             behavior: &'static str,
         },
     }
 
-    pub fn evaluate_body(
+    pub fn eval_value(value: &crate::dag::ValueNode) -> Value {
+        Value::LiteralValue(value.data.clone())
+    }
+
+    pub fn eval_port(
         dag: &Dag,
-        entry: NodeId,
+        port: PortId,
+        state: &EvalStateStack<Value>,
+    ) -> Result<Value, EvalError> {
+        if let Ok(value) = state.lookup(port) {
+            return Ok(value.clone());
+        }
+        let producer = dag
+            .resolve_producer_opt(&port)
+            .ok_or(EvalError::UnboundPort { port })?;
+        eval_node(dag, producer.id(), state)
+    }
+
+    pub fn eval_node(
+        dag: &Dag,
+        node: NodeId,
         _state: &EvalStateStack<Value>,
     ) -> Result<Value, EvalError> {
-        match dag
-            .node_opt(&entry)
-            .ok_or(EvalError::MissingNode { node: entry })?
-        {
-            Behavior::Value(value) => Ok(Value::LiteralValue(value.data.clone())),
+        match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
+            Behavior::Value(value) => Ok(eval_value(value)),
             behavior => Err(EvalError::UnsupportedBehavior {
                 node: behavior.id(),
                 behavior: behavior_label(behavior),
             }),
         }
+    }
+
+    pub fn evaluate_body(
+        dag: &Dag,
+        entry: NodeId,
+        state: &EvalStateStack<Value>,
+    ) -> Result<Value, EvalError> {
+        eval_node(dag, entry, state)
     }
 
     fn behavior_label(behavior: &Behavior) -> &'static str {
@@ -214,7 +240,10 @@ pub mod evaluator {
 
     #[cfg(test)]
     mod tests {
-        use super::{evaluate_body, EvalError, EvalFrame, EvalFrameError, EvalStateStack, Value};
+        use super::{
+            eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame, EvalFrameError,
+            EvalStateStack, Value,
+        };
         use crate::dag::{
             ArithmeticOp, Behavior, BranchPattern, Dag, LiteralBits, LoopBound, NodeId, Path,
             PortId, TransformTarget,
@@ -241,18 +270,94 @@ pub mod evaluator {
         }
 
         #[test]
-        fn value_behavior_evaluates_to_literal_runtime_value() {
+        fn eval_value_constructs_literal_runtime_value() {
             let mut dag = Dag::new();
             let output = dag.push_value(LiteralBits::String("ready".to_string()), span());
-            let entry = node_for_port(&dag, output);
-            let state = empty_state();
+            let value_node = dag
+                .resolve_producer_opt(&output)
+                .and_then(Behavior::as_value)
+                .expect("value producer");
 
-            let value = evaluate_body(&dag, entry, &state).expect("value evaluates");
+            let value = eval_value(value_node);
 
             assert_eq!(
                 value,
                 Value::LiteralValue(LiteralBits::String("ready".to_string()))
             );
+        }
+
+        #[test]
+        fn eval_node_dispatches_value_behavior_to_literal_runtime_value() {
+            let mut dag = Dag::new();
+            let output = dag.push_value(LiteralBits::String("ready".to_string()), span());
+            let entry = node_for_port(&dag, output);
+            let state = empty_state();
+
+            let value = eval_node(&dag, entry, &state).expect("value evaluates");
+
+            assert_eq!(
+                value,
+                Value::LiteralValue(LiteralBits::String("ready".to_string()))
+            );
+        }
+
+        #[test]
+        fn eval_port_prefers_innermost_frame_binding() {
+            let mut dag = Dag::new();
+            let port = dag.push_value(LiteralBits::Int(1), span());
+            let outer = EvalFrame::from_bindings([(
+                port,
+                Value::LiteralValue(LiteralBits::String("outer".to_string())),
+            )])
+            .expect("outer frame");
+            let inner = EvalFrame::from_bindings([(
+                port,
+                Value::LiteralValue(LiteralBits::String("inner".to_string())),
+            )])
+            .expect("inner frame");
+            let state = EvalStateStack::from_outer_to_inner(vec![outer, inner]);
+
+            let value = eval_port(&dag, port, &state).expect("bound port");
+
+            assert_eq!(
+                value,
+                Value::LiteralValue(LiteralBits::String("inner".to_string()))
+            );
+        }
+
+        #[test]
+        fn eval_port_falls_back_to_producer_value() {
+            let mut dag = Dag::new();
+            let port = dag.push_value(LiteralBits::Bool(true), span());
+            let state = empty_state();
+
+            let value = eval_port(&dag, port, &state).expect("producer value");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(true)));
+        }
+
+        #[test]
+        fn eval_port_reports_unbound_port_when_no_frame_or_producer_resolves() {
+            let mut source = Dag::new();
+            let stale_port = source.push_value(LiteralBits::Int(1), span());
+            let empty = Dag::new();
+            let state = empty_state();
+
+            let err = eval_port(&empty, stale_port, &state).expect_err("unbound port");
+
+            assert_eq!(err, EvalError::UnboundPort { port: stale_port });
+        }
+
+        #[test]
+        fn evaluate_body_delegates_to_eval_node_shell() {
+            let mut dag = Dag::new();
+            let output = dag.push_value(LiteralBits::Int(8), span());
+            let entry = node_for_port(&dag, output);
+            let state = empty_state();
+
+            let value = evaluate_body(&dag, entry, &state).expect("value evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(8)));
         }
 
         #[test]
