@@ -2,7 +2,7 @@
 //
 // Producer-first substrate slice for Verification shape/isomorphism work.
 // Downstream TC1 eta-equivalence, TC2 strategy-order, TC3 evaluation-step,
-// and RustDagIsomorphism consumers should compare `DagShapeReport` values
+// and RustDagIsomorphism consumers should compare raw reflected `Dag` values
 // structurally instead of introducing one-off predicates.
 //
 // This file deliberately does not author Verification `TestClaim`s and does
@@ -12,39 +12,22 @@
 
 module lenses.dag_shape
 
-import std.list { List }
 import std.substrate {
-  Dag,
-  Behavior,
-  Declaration,
-  DagPort,
-  Cluster
+  Dag
 }
 
-// Raw reflected-Dag shape carrier. This is intentionally a projection of the
-// existing reflected substrate authority, not a parallel hand-coded
-// isomorphism predicate. Normalization policies such as eta expansion,
-// evaluation strategy ordering, or id remapping belong to downstream producers
-// before they compare two reports.
-type DagShapeReport {
-  declarations: List<Declaration>
-  nodes: List<Behavior>
-  ports: List<DagPort>
-  clusters: List<Cluster>
-}
+// Raw reflected-Dag shape producer. The existing `std.substrate.Dag` product
+// remains the single authority for declarations, nodes, ports, and clusters;
+// this file must not restate that exact product as a second report record.
+// Normalization policies such as eta expansion, evaluation strategy ordering,
+// or id remapping belong to downstream producers before they compare reports.
+fn dag_shape_report(d: Dag) -> Dag =
+  d
 
-fn dag_shape_report(d: Dag) -> DagShapeReport =
-  {
-    declarations: d.declarations
-    nodes: d.nodes
-    ports: d.ports
-    clusters: d.clusters
-  }
-
-// Lens<DagShapeReport> is intentionally not part of this producer slice.
-// The live Lens<C> read contract is per-Behavior, while this carrier reports
-// whole-Dag facts (`declarations`, `nodes`, `ports`, and `clusters`). Forcing
-// this carrier through per-node helpers would drop reflected substrate facts.
-// A future lens surface needs either a separate behavior-only carrier or an
-// explicit framework contract for whole-Dag producers before `data
-// dag_shape_lens` can be authored honestly.
+// Lens-shaped Dag shape production is intentionally not part of this slice.
+// The live Lens<C> read contract is per-Behavior, while this raw producer
+// returns whole-Dag facts (`declarations`, `nodes`, `ports`, and `clusters`).
+// Forcing those facts through per-node helpers would drop reflected substrate
+// authority. A future lens surface needs either a separate behavior-only
+// carrier, an explicit framework contract for whole-Dag producers, or a named
+// normalized report carrier with invariants that differ from raw `Dag`.

@@ -172,43 +172,25 @@ fn lens_instance_kind_witness_payload_intentionally_absent() {
 }
 
 #[test]
-fn dag_shape_report_carrier_projects_reflected_dag_shape_lists() {
+fn dag_shape_report_reuses_reflected_dag_authority() {
     let dag = dag_shape_dag();
-    let report = dag
-        .declaration_by_name("DagShapeReport")
-        .expect("DagShapeReport carrier exists");
-    let TypeConnective::Conj { children } = &report.connective else {
-        panic!("DagShapeReport must be a record carrier");
-    };
-    let labels: Vec<&str> = children.iter().map(|field| field.label.as_str()).collect();
-    assert_eq!(labels, ["declarations", "nodes", "ports", "clusters"]);
-
-    for field in children {
-        let TypeConnective::Instantiation { template, .. } = &dag.declaration(field.ty).connective
-        else {
-            panic!("DagShapeReport.{} must be a List<...>", field.label);
-        };
-        assert_eq!(
-            dag.declaration(*template).name.as_deref(),
-            Some("List"),
-            "DagShapeReport.{} must be list-shaped",
-            field.label
-        );
-    }
+    let dag_decl = dag.declaration_by_name("Dag").expect("Dag carrier exists");
+    assert!(
+        dag.declaration_by_name("DagShapeReport").is_none(),
+        "raw Dag shape producer must not duplicate std.substrate.Dag as a second report record"
+    );
+    assert_arrow_output(&dag, "dag_shape_report", dag_decl.id);
 }
 
 #[test]
-fn dag_shape_report_public_producer_returns_shape_report() {
+fn dag_shape_report_public_producer_returns_raw_dag() {
     let dag = dag_shape_dag();
-    let report = dag
-        .declaration_by_name("DagShapeReport")
-        .expect("DagShapeReport carrier exists")
-        .id;
+    let dag_decl = dag.declaration_by_name("Dag").expect("Dag carrier exists");
 
-    assert_arrow_output(&dag, "dag_shape_report", report);
+    assert_arrow_output(&dag, "dag_shape_report", dag_decl.id);
     assert!(
         dag.declaration_by_name("dag_shape_lens").is_none(),
-        "do not author fake Lens<DagShapeReport> data until whole-Dag lens contract is honest"
+        "do not author fake Dag shape lens data until whole-Dag lens contract is honest"
     );
 }
 
