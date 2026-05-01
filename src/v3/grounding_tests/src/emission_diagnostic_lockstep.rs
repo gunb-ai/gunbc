@@ -27,9 +27,7 @@ fn substrate_emission_diagnostic_variant_labels(dag: &Dag) -> BTreeSet<String> {
         .declaration_by_name("EmissionDiagnostic")
         .expect("bootstrap Dag must declare EmissionDiagnostic (diagnostics.dag)");
     match &decl.connective {
-        TypeConnective::Disj { variants } => {
-            variants.iter().map(|v| v.label.clone()).collect()
-        }
+        TypeConnective::Disj { variants } => variants.iter().map(|v| v.label.clone()).collect(),
         other => panic!("EmissionDiagnostic must be a Disj sum; got {other:?}"),
     }
 }
