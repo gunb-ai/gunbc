@@ -50,7 +50,7 @@ When the entry-function gap closes for `regen_lens`, the first authoring slice i
 
 Handoff surface for the **Item 5 bin-shim Rust emitter** (`.dag` emitter program per [`docs/design-pb-runtime-interpreter.md`](../../../../docs/design-pb-runtime-interpreter.md) §4.2 + §6 anti-bridge invariant #4 — **not** stored in this directory; see §"What does NOT belong here"):
 
-- **Planning brief:** [`docs/briefs/r3-pb-binshim-emitter-readiness.md`](../../../../docs/briefs/r3-pb-binshim-emitter-readiness.md) — prerequisite pins, ordering dependencies, **`regen_bootstrap` / `dsl/std/*.dag` glob does not include `dsl/std/runtime/**`** loader gap, STOP lines.
+- **Planning brief:** [`docs/briefs/r3-pb-binshim-emitter-readiness.md`](../../../../docs/briefs/r3-pb-binshim-emitter-readiness.md) — prerequisite pins, ordering dependencies, **`regen_bootstrap` / `dsl/std/*.dag` glob does not include `dsl/std/runtime/**`** loader gap, STOP lines, plus §**Implementation slice STOP** (emitter / entry-function — honest blocker + smallest next-unblock PR shapes).
 - **§7.2 equivalence `TestClaim`:** authored only by a **PB-assigned §7.2 worker** under the BinShim retirement program ([`r3-pb-binshim-retirement-worker.md`](../../../../docs/briefs/r3-pb-binshim-retirement-worker.md) §"Acceptance"); do not route §7.2 work through this README or the emitter-readiness brief.
 
 ## What does NOT belong here
