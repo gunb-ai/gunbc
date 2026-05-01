@@ -14,13 +14,13 @@ use v3_compiler::CompileError;
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
 const L4_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag";
-const L4_SUITE: &str = "r3_verification_l4_l7_direct_suite";
+const L4_SUITE: &str = "r3_verification_l4_emit_eval_skeleton_suite";
 const L4_CLAIM: &str = "r3_verification_l4_emit_eval_match_skeleton";
 
 const L7_FIXTURE: &str = include_str!("../fixtures/r3_verification_l7_algebraic_laws.dag");
 const L7_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag";
-const L7_SUITE: &str = "r3_verification_l4_l7_direct_suite";
+const L7_SUITE: &str = "r3_verification_l7_algebra_skeleton_suite";
 const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
 
 const L5_FIXTURE: &str = include_str!("../fixtures/r3_verification_l5_corpus.dag");

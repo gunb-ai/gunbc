@@ -40,7 +40,10 @@ data r3_verification_l4_emit_eval_match_skeleton: TestClaim = {
   requires: []
 }
 
-data r3_verification_l4_l7_direct_suite: TestSuite = {
-  name: "r3_verification_l4_l7_direct_suite",
+// Declaration id is fixture-local and distinct from `r3_verification_l7_algebraic_laws.dag` so two
+// modules are never ambiguous under one loader. Lane 1 acceptance may later merge both claims into
+// one module under `r3_verification_l4_l7_direct_suite` (parent brief).
+data r3_verification_l4_emit_eval_skeleton_suite: TestSuite = {
+  name: "r3_verification_l4_emit_eval_skeleton_suite",
   claims: [r3_verification_l4_emit_eval_match_skeleton]
 }
