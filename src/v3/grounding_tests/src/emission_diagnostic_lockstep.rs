@@ -159,4 +159,32 @@ mod tests {
              substrate labels: {substrate:?}"
         );
     }
+
+    /// Negative control: mirror-side label absent from substrate must surface via the same
+    /// `difference` path as production drift (proves the ratchet bites).
+    #[test]
+    fn subset_ratchet_detects_synthetic_mirror_only_variant() {
+        const SYNTHETIC_MIRROR: &str = r"
+// Synthesized — never ship; proves stray-label detection for lockstep reviews.
+pub enum EmissionDiagnostic {
+    MirrorOnlySyntheticVariantRatchetTest,
+}
+";
+
+        let dag = generated_full_bootstrap_dag();
+        let substrate = substrate_emission_diagnostic_variant_labels(&dag);
+        let body = extract_pub_enum_emission_diagnostic_body(SYNTHETIC_MIRROR);
+        let parsed = variant_labels_from_enum_body(body);
+        let stray: Vec<_> = parsed.difference(&substrate).cloned().collect();
+
+        assert!(
+            stray.contains(&"MirrorOnlySyntheticVariantRatchetTest".to_string()),
+            "expected synthetic mirror-only variant in stray set; got {stray:?}"
+        );
+        assert_eq!(
+            stray.len(),
+            1,
+            "synthetic mirror must declare exactly one variant for this negative control"
+        );
+    }
 }
