@@ -8,7 +8,11 @@
 
 ## 1. STOP conditions for implementation
 
-Implementation MUST NOT begin until all of the following are green. This audit treats them as hard preconditions.
+STOP conditions are hard preconditions, but they do **not** all gate the same work. Per-gate authority — single source for "may this work begin?":
+
+- **G-1 (test-consumer dissolution) implementation may begin once S-1 is green.** S-2/S-3/S-4 are NOT prerequisites for G-1: replacing the two v2-oracle test consumers (§2.3) with v3 evaluator equivalents — or deleting them as redundant — needs only the PM-authored disposition (S-1). The v3 evaluator already exists; no FixedPoint/LensProducer/PB-Runtime work is structurally required to retire those two tests.
+- **G-2 (workspace-member deletion + `src/v2/` removal) implementation may not begin until S-1 + S-2 + S-3 + S-4 + G-1 are all green** (per §3.2 prerequisites).
+- **Audit work** (this doc, refinements, consumer-list updates) is unblocked at all times.
 
 | # | STOP condition | State at audit time |
 |---|---|---|
@@ -17,7 +21,7 @@ Implementation MUST NOT begin until all of the following are green. This audit t
 | S-3 | T-LensProducer-Retirement closed (all 3 sub-gates: `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs`) | NOT MET (R3 in flight; sub-gates per `r2-pure-bootstrap-manager.md` row T-LensProducer-Retirement + `design-pb-runtime-interpreter.md` §5.1). |
 | S-4 | PB-Runtime trampoline lands such that bootstrap no longer routes through `src/v2/stage0` | NOT MET (PB-Runtime interpreter-as-data is the gate per `design-pb-runtime-interpreter.md` §3). |
 
-Per dispatch: violation of any STOP-condition row blocks T-V2-Retirement implementation work. Audit work (this doc, refinements, consumer-list updates) is unblocked.
+The §3 gate rows (G-1.STOP, G-2.STOP) are the single authority for which STOP rows block which work; this section's table records state only.
 
 ---
 
@@ -50,7 +54,7 @@ These are the only Cargo edges from non-`src/v2/` crates into v2. **Both edges d
 
 ### 2.3 Tests / consumers that import or read v2
 
-Search: `grep -rln 'src/v2/\|v2_compiler\b' src/ tests/` excluding `src/v2/` itself. After filtering doc-comment-only matches, **substantive consumers are**:
+Search: `grep -rEln 'src/v2/|\bv2_compiler(_tests)?\b' src/ tests/` excluding `src/v2/` itself. (Earlier drafts used `v2_compiler\b`, which fails to match `v2_compiler_tests` because `_` is a word character; the corrected pattern covers both crates explicitly.) After filtering doc-comment-only matches, **substantive consumers are**:
 
 | Consumer | Kind of dependency | Removal class |
 |---|---|---|
