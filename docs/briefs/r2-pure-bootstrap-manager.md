@@ -124,6 +124,7 @@ Authored:
 - [`r3-pb-t-lensproducer-sub1-lens-apply-retirement.md`](r3-pb-t-lensproducer-sub1-lens-apply-retirement.md) — T-LensProducer-Retirement sub-gate 1 (`lens_apply_dot_rs_retired`) skeleton (PROPOSAL; dispatch-gated on R2-Evaluator + Item 4 PB-Runtime + convergence-matrix Row 4 green + canonical-lens-bridge dependency surface migrated).
 - [`r3-pb-t-lensproducer-sub2-lens-testgen-retirement.md`](r3-pb-t-lensproducer-sub2-lens-testgen-retirement.md) — T-LensProducer-Retirement sub-gate 2 (`lens_testgen_dot_rs_retired`) skeleton (PROPOSAL; dispatch-gated on same Item 4 chain as sub-gate 1; testgen consumer surface mapped).
 - [`r3-pb-t-lensproducer-sub3-regen-lens-retirement.md`](r3-pb-t-lensproducer-sub3-regen-lens-retirement.md) — T-LensProducer-Retirement sub-gate 3 (`regen_lens_dot_rs_retired`) skeleton (PROPOSAL; dispatch-gated on Item 5 bin-shim emit pattern + `BinShim` carrier + `regen_lens_shim` instance authored via the BinShim retirement program).
+- [`r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md) — first BinShim target (`regen_lens.rs`) retirement-readiness checklist (PROPOSAL; planning artifact only; owners + STOP + SG-0 / `REGEN_OUTPUTS`).
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map` consumer plumbing)
