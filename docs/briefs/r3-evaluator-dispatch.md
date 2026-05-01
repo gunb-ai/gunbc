@@ -170,6 +170,12 @@ Consume [`../design-cross-target-equivalence.md`](../design-cross-target-equival
 for R3 L5 planning and strict receipts after LanguageSpec, Shape A grounding,
 L4/L7 corpus, and structural observation prerequisites are live.
 
+**Readiness receipt:** [`r3-pr-e9-cross-target-harness-consumption-readiness.md`](r3-pr-e9-cross-target-harness-consumption-readiness.md)
+records the current implementation blocker: PR-D slice 0 + slice 1 are live,
+but strict `ForAllTargets` consumption still waits on LanguageSpec, all Shape A
+target grounding, L4/L7 corpus seed availability, and typed structural
+observation.
+
 **Acceptance:** PR-D slice 2 may wire existing `ForAllTargets` claims only when
 all dependencies are cited together. Until then, only docs/audit updates or
 blocked-row authoring are allowed.
