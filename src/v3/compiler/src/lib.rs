@@ -78,6 +78,24 @@ pub mod evaluator {
         pub value: Value,
     }
 
+    /// Rust mirror of the PR-A.3 eager-baseline strategy carrier.
+    ///
+    /// **Dissolution receipt: 🟡 SCAFFOLD.** The public evaluator boundary must
+    /// carry strategy now so downstream slices cannot erase it. Only
+    /// `ApplicativeOrder / LeftFirst` is executable in E1; additional
+    /// inhabitants land with their evaluator rules.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum EvalStrategy {
+        ApplicativeOrder { input_order: InputEvaluationOrder },
+        Unsupported { label: &'static str },
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum InputEvaluationOrder {
+        LeftFirst,
+        Unsupported { label: &'static str },
+    }
+
     /// **Dissolution receipt: TERMINAL.** These are the E1 body-evaluator miss
     /// modes until later PR-E slices implement the remaining behavior arms.
     #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,6 +105,9 @@ pub mod evaluator {
         },
         UnboundPort {
             port: PortId,
+        },
+        UnsupportedStrategy {
+            strategy: EvalStrategy,
         },
         UnsupportedBehavior {
             node: NodeId,
@@ -101,22 +122,26 @@ pub mod evaluator {
     pub fn eval_port(
         dag: &Dag,
         port: PortId,
-        state: &EvalStateStack<Value>,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
+        ensure_supported_strategy(strategy)?;
         if let Ok(value) = state.lookup(port) {
             return Ok(value.clone());
         }
         let producer = dag
             .resolve_producer_opt(&port)
             .ok_or(EvalError::UnboundPort { port })?;
-        eval_node(dag, producer.id(), state)
+        eval_node(dag, producer.id(), state, strategy)
     }
 
     pub fn eval_node(
         dag: &Dag,
         node: NodeId,
-        _state: &EvalStateStack<Value>,
+        _state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
+        ensure_supported_strategy(strategy)?;
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
             behavior => Err(EvalError::UnsupportedBehavior {
@@ -129,9 +154,21 @@ pub mod evaluator {
     pub fn evaluate_body(
         dag: &Dag,
         entry: NodeId,
-        state: &EvalStateStack<Value>,
+        state: &mut EvalStateStack<Value>,
+        strategy: EvalStrategy,
     ) -> Result<Value, EvalError> {
-        eval_node(dag, entry, state)
+        eval_node(dag, entry, state, &strategy)
+    }
+
+    fn ensure_supported_strategy(strategy: &EvalStrategy) -> Result<(), EvalError> {
+        match strategy {
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::LeftFirst,
+            } => Ok(()),
+            _ => Err(EvalError::UnsupportedStrategy {
+                strategy: strategy.clone(),
+            }),
+        }
     }
 
     fn behavior_label(behavior: &Behavior) -> &'static str {
@@ -242,7 +279,7 @@ pub mod evaluator {
     mod tests {
         use super::{
             eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame, EvalFrameError,
-            EvalStateStack, Value,
+            EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
             ArithmeticOp, Behavior, BranchPattern, Dag, LiteralBits, LoopBound, NodeId, Path,
@@ -269,6 +306,12 @@ pub mod evaluator {
             EvalStateStack::with_root_frame(EvalFrame::empty())
         }
 
+        fn eager_strategy() -> EvalStrategy {
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::LeftFirst,
+            }
+        }
+
         #[test]
         fn eval_value_constructs_literal_runtime_value() {
             let mut dag = Dag::new();
@@ -291,9 +334,10 @@ pub mod evaluator {
             let mut dag = Dag::new();
             let output = dag.push_value(LiteralBits::String("ready".to_string()), span());
             let entry = node_for_port(&dag, output);
-            let state = empty_state();
+            let mut state = empty_state();
+            let strategy = eager_strategy();
 
-            let value = eval_node(&dag, entry, &state).expect("value evaluates");
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("value evaluates");
 
             assert_eq!(
                 value,
@@ -315,9 +359,10 @@ pub mod evaluator {
                 Value::LiteralValue(LiteralBits::String("inner".to_string())),
             )])
             .expect("inner frame");
-            let state = EvalStateStack::from_outer_to_inner(vec![outer, inner]);
+            let mut state = EvalStateStack::from_outer_to_inner(vec![outer, inner]);
+            let strategy = eager_strategy();
 
-            let value = eval_port(&dag, port, &state).expect("bound port");
+            let value = eval_port(&dag, port, &mut state, &strategy).expect("bound port");
 
             assert_eq!(
                 value,
@@ -329,9 +374,10 @@ pub mod evaluator {
         fn eval_port_falls_back_to_producer_value() {
             let mut dag = Dag::new();
             let port = dag.push_value(LiteralBits::Bool(true), span());
-            let state = empty_state();
+            let mut state = empty_state();
+            let strategy = eager_strategy();
 
-            let value = eval_port(&dag, port, &state).expect("producer value");
+            let value = eval_port(&dag, port, &mut state, &strategy).expect("producer value");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Bool(true)));
         }
@@ -341,9 +387,11 @@ pub mod evaluator {
             let mut source = Dag::new();
             let stale_port = source.push_value(LiteralBits::Int(1), span());
             let empty = Dag::new();
-            let state = empty_state();
+            let mut state = empty_state();
+            let strategy = eager_strategy();
 
-            let err = eval_port(&empty, stale_port, &state).expect_err("unbound port");
+            let err =
+                eval_port(&empty, stale_port, &mut state, &strategy).expect_err("unbound port");
 
             assert_eq!(err, EvalError::UnboundPort { port: stale_port });
         }
@@ -353,11 +401,30 @@ pub mod evaluator {
             let mut dag = Dag::new();
             let output = dag.push_value(LiteralBits::Int(8), span());
             let entry = node_for_port(&dag, output);
-            let state = empty_state();
+            let mut state = empty_state();
 
-            let value = evaluate_body(&dag, entry, &state).expect("value evaluates");
+            let value =
+                evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("value evaluates");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(8)));
+        }
+
+        #[test]
+        fn unsupported_strategy_fails_closed_before_dispatch() {
+            let mut dag = Dag::new();
+            let output = dag.push_value(LiteralBits::Int(8), span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+            let strategy = EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::Unsupported {
+                    label: "RightFirst",
+                },
+            };
+
+            let err = evaluate_body(&dag, entry, &mut state, strategy.clone())
+                .expect_err("unsupported strategy");
+
+            assert_eq!(err, EvalError::UnsupportedStrategy { strategy });
         }
 
         #[test]
@@ -366,9 +433,10 @@ pub mod evaluator {
             let output = source.push_value(LiteralBits::Int(1), span());
             let stale_entry = node_for_port(&source, output);
             let empty = Dag::new();
-            let state = empty_state();
+            let mut state = empty_state();
 
-            let err = evaluate_body(&empty, stale_entry, &state).expect_err("missing node");
+            let err = evaluate_body(&empty, stale_entry, &mut state, eager_strategy())
+                .expect_err("missing node");
 
             assert_eq!(err, EvalError::MissingNode { node: stale_entry });
         }
@@ -384,9 +452,11 @@ pub mod evaluator {
                 span(),
             );
             let entry = node_for_port(&dag, output);
-            let state = empty_state();
+            let mut state = empty_state();
+            let strategy = eager_strategy();
 
-            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported transform");
+            let err =
+                eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported transform");
 
             assert_eq!(
                 err,
@@ -417,9 +487,11 @@ pub mod evaluator {
                 span(),
             );
             let entry = node_for_port(&dag, output);
-            let state = empty_state();
+            let mut state = empty_state();
+            let strategy = eager_strategy();
 
-            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported branch");
+            let err =
+                eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported branch");
 
             assert_eq!(
                 err,
@@ -444,9 +516,10 @@ pub mod evaluator {
                 span(),
             );
             let entry = node_for_port(&dag, output);
-            let state = empty_state();
+            let mut state = empty_state();
+            let strategy = eager_strategy();
 
-            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported loop");
+            let err = eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported loop");
 
             assert_eq!(
                 err,
@@ -462,9 +535,10 @@ pub mod evaluator {
             let mut dag = Dag::new();
             let value = dag.push_value(LiteralBits::Bool(false), span());
             let entry = dag.push_bind("flag", value, Vec::new(), span());
-            let state = empty_state();
+            let mut state = empty_state();
+            let strategy = eager_strategy();
 
-            let err = evaluate_body(&dag, entry, &state).expect_err("unsupported bind");
+            let err = eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported bind");
 
             assert_eq!(
                 err,
