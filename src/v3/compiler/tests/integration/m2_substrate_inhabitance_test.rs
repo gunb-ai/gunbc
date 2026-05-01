@@ -2365,9 +2365,10 @@ fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
         .declaration_by_name(name)
         .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
     match &decl.connective {
-        TypeConnective::Disj { variants } => {
-            variants.iter().map(|variant| variant.label.clone()).collect()
-        }
+        TypeConnective::Disj { variants } => variants
+            .iter()
+            .map(|variant| variant.label.clone())
+            .collect(),
         other => panic!("`{name}` must be a Disj, got {other:?}"),
     }
 }
@@ -2381,11 +2382,13 @@ fn variant_payload_field_types(
         .declaration_by_name(type_name)
         .unwrap_or_else(|| panic!("`{type_name}` missing from full bootstrap"));
     let variant_ty = match &decl.connective {
-        TypeConnective::Disj { variants } => variants
-            .iter()
-            .find(|variant| variant.label == variant_name)
-            .unwrap_or_else(|| panic!("`{type_name}` missing variant `{variant_name}`"))
-            .ty,
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|variant| variant.label == variant_name)
+                .unwrap_or_else(|| panic!("`{type_name}` missing variant `{variant_name}`"))
+                .ty
+        }
         other => panic!("`{type_name}` must be a Disj, got {other:?}"),
     };
     match &dag.declaration(variant_ty).connective {
@@ -2426,8 +2429,14 @@ fn rounding_mode_axis_is_closed_sum() {
 
     assert_eq!(
         disj_variant_labels(&dag, "RoundingMode"),
-        ["ToNearestEven", "ToZero", "ToPositiveInfinity", "ToNegativeInfinity", "ToAwayFromZero"]
-            .map(String::from),
+        [
+            "ToNearestEven",
+            "ToZero",
+            "ToPositiveInfinity",
+            "ToNegativeInfinity",
+            "ToAwayFromZero"
+        ]
+        .map(String::from),
         "`RoundingMode` must remain a typed closed sum, not a string tag"
     );
 }
