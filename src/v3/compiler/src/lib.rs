@@ -53,6 +53,8 @@ pub mod evaluator {
 
     use crate::dag::PortId;
 
+    /// **Dissolution receipt: TERMINAL.** The three variants are distinct
+    /// fail-closed outcomes for the E2 frame boundary.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalFrameError {
         EmptyStateStack,
