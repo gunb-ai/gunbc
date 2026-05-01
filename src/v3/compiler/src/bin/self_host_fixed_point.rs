@@ -184,6 +184,10 @@ fn run() -> Result<(), String> {
         json_string(exit_status)
     ));
 
+    receipt_p0::validate_receipt_json_always_emitted_keys(&receipt).map_err(|e| {
+        format!("self_host_fixed_point: receipt contract (P0 always-emitted keys): {e}")
+    })?;
+
     write_receipt(&receipt_path, &receipt);
     writeln!(
         io::stdout(),

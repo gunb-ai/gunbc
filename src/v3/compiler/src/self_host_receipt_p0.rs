@@ -21,6 +21,42 @@ pub const ALWAYS_EMITTED_TOP_LEVEL_KEYS: &[&str] = &[
     K_STATUS,
 ];
 
+/// `self_host_fixed_point` emits each top-level field as `  "key":` (two spaces, JSON string key, colon).
+/// This checks that every [`ALWAYS_EMITTED_TOP_LEVEL_KEYS`] entry appears at least once that way so
+/// the serialized receipt cannot drift from the P0 pin without failing closed before `write_receipt`.
+pub fn receipt_json_contains_always_emitted_key_properties(json_body: &str) -> bool {
+    ALWAYS_EMITTED_TOP_LEVEL_KEYS.iter().all(|key| {
+        let mut needle = String::with_capacity(key.len() + 8);
+        needle.push_str("  \"");
+        needle.push_str(key);
+        needle.push_str("\":");
+        json_body.contains(&needle)
+    })
+}
+
+/// [`receipt_json_contains_always_emitted_key_properties`] with a stable error listing missing keys.
+pub fn validate_receipt_json_always_emitted_keys(json_body: &str) -> Result<(), String> {
+    let missing: Vec<&str> = ALWAYS_EMITTED_TOP_LEVEL_KEYS
+        .iter()
+        .copied()
+        .filter(|key| {
+            let mut needle = String::with_capacity(key.len() + 8);
+            needle.push_str("  \"");
+            needle.push_str(key);
+            needle.push_str("\":");
+            !json_body.contains(&needle)
+        })
+        .collect();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "receipt.json missing always-emitted P0 keys: {}",
+            missing.join(", ")
+        ))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -32,5 +68,41 @@ mod tests {
             assert!(!key.is_empty(), "empty key");
             assert!(seen.insert(*key), "duplicate key {key}");
         }
+    }
+
+    #[test]
+    fn validate_accepts_minimal_receipt_shape() {
+        let body = r#"{
+  "pipeline_fixed_point_default_source": "ok",
+  "compiler_dag_v3_parse": "ok",
+  "status": "completed"
+}
+"#;
+        super::validate_receipt_json_always_emitted_keys(body).unwrap();
+        assert!(super::receipt_json_contains_always_emitted_key_properties(
+            body
+        ));
+    }
+
+    #[test]
+    fn validate_rejects_missing_pipeline_key() {
+        let body = r#"{
+  "compiler_dag_v3_parse": "ok",
+  "status": "completed"
+}
+"#;
+        let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+        assert!(err.contains("pipeline_fixed_point_default_source"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_missing_status_key() {
+        let body = r#"{
+  "pipeline_fixed_point_default_source": "ok",
+  "compiler_dag_v3_parse": "x",
+}
+"#;
+        let err = super::validate_receipt_json_always_emitted_keys(body).unwrap_err();
+        assert!(err.contains("status"), "{err}");
     }
 }
