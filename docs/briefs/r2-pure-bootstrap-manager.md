@@ -127,6 +127,7 @@ Authored:
 - [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md) — PB-owned BinShim instance declaration framework (canonical home + naming convention + STOP+PING for the missing `BinShim` carrier substrate authority). Per-shim `.dag` files land here once Substrate Manager lands the carrier.
 - [`r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md) — first BinShim target (`regen_lens.rs`) retirement-readiness checklist (PROPOSAL; planning artifact only; owners + STOP + SG-0 / `REGEN_OUTPUTS`).
 - [`r3-pb-regen-lens-consumer-audit.md`](r3-pb-regen-lens-consumer-audit.md) — carrier-independent consumer / build / SG-0 / `REGEN_OUTPUTS` / call-surface audit for `regen_lens.rs` + per-handoff rows for the future `BinShim` carrier + instance + emitter + §7.2 equivalence fixture. Docs-only; no carrier or schema invention.
+- [`r3-pb-binshim-7-2-claim-shape.md`](r3-pb-binshim-7-2-claim-shape.md) — locked §7.2 BinShim equivalence `TestClaim` shape (`regen_lens_bin_shim_emits_behaviorally_equivalent_to_hand_rust`). Predicate locked as `ExecuteCommand` Mechanism (1) canonicalize-then-diff; live substrate verified; STOP+PING for the comparison script + emitted-Rust + hand-Rust snapshot that gate landing as a real `.dag` fixture.
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map` consumer plumbing)
