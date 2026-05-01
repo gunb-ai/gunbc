@@ -123,7 +123,7 @@ The §7.2 claim shape locked in this PR is the artifact step (6) consumes. It wi
 - Sub-gate skeleton (consumer of this shape at retirement time): [`docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md`](r3-pb-t-lensproducer-sub3-regen-lens-retirement.md).
 - Consumer audit (per-handoff atomic deltas): [`docs/briefs/r3-pb-regen-lens-consumer-audit.md`](r3-pb-regen-lens-consumer-audit.md).
 - PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md).
-- `ExecuteCommand` host-receipt fixture precedent (the live shape this lane mirrors): `src/v3/compiler/tests/fixtures/r1_gates.dag:95-109` (`p0_no_fabrication_sentinel` + `p0_rest_ops_aligned`).
+- `ExecuteCommand` host-receipt fixture precedent (the live shape this lane mirrors): `src/v3/compiler/tests/fixtures/r1_gates.dag:94-108` (`p0_no_fabrication_sentinel` + `p0_rest_ops_aligned`).
 - Live `TestPredicate` variants and `TestClaim` / `TestSuite` carriers: `src/v3/std/verification.dag` (origin/main HEAD at audit time: `type TestPredicate` at `:109`, `ExecuteCommand` at `:148-152`, `type TestClaim` at `:299`, `type TestSuite` at `:307` — line numbers drift; grep for the type/variant name to re-anchor).
 - Live `BinShim` carrier: `src/v3/std/bin_shim.dag:19`.
 - Live `ExecuteCommand` variant: `src/v3/std/verification.dag:148-152`.
