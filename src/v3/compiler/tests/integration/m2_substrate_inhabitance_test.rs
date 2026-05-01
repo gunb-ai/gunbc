@@ -2297,6 +2297,69 @@ fn runtime_mirror_snapshots_are_fresh() {
     );
 }
 
+fn bin_shim_fields(dag: &Dag) -> Vec<(&str, v3_compiler::dag::DeclarationId)> {
+    let decl = dag
+        .declaration_by_name("BinShim")
+        .expect("`BinShim` missing from full bootstrap");
+    match &decl.connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|field| (field.label.as_str(), field.ty))
+            .collect(),
+        other => panic!("`BinShim` must be a record carrier, got {other:?}"),
+    }
+}
+
+#[test]
+fn bin_shim_carrier_lives_in_v3_std_authority() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name("BinShim")
+        .expect("`BinShim` missing from full bootstrap");
+
+    assert_eq!(
+        decl.span.file, "src/v3/std/bin_shim.dag",
+        "`BinShim` carrier authority must stay in the staged v3 std surface; \
+         concrete shim rows belong under `dsl/std/runtime/bin_shims/`"
+    );
+}
+
+#[test]
+fn bin_shim_carrier_has_locked_three_field_shape() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let labels: Vec<&str> = bin_shim_fields(&dag)
+        .into_iter()
+        .map(|(label, _)| label)
+        .collect();
+
+    assert_eq!(
+        labels,
+        ["entrypoint_name", "description", "entry"],
+        "`BinShim` must remain metadata plus entry declaration; adding a \
+         pipeline-step DSL or extra emitter state requires a substrate \
+         amendment"
+    );
+}
+
+#[test]
+fn bin_shim_field_types_match_design_lock() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+    let fields = bin_shim_fields(&dag);
+
+    let expected = [
+        ("entrypoint_name", find_named(&dag, "NonEmptyStr")),
+        ("description", find_named(&dag, "String")),
+        ("entry", find_named(&dag, "DeclarationRef")),
+    ];
+
+    assert_eq!(
+        fields, expected,
+        "`BinShim.entry` stays a DeclarationRef to a .dag `() -> \
+         std.process.ProcessExit` function until DeclarationRef signature \
+         refinement lands"
+    );
+}
+
 #[test]
 fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
