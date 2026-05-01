@@ -23,7 +23,12 @@
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum EmissionDiagnostic {
     /// Program intent or structural axis under-specified (substrate `UnderRefined`).
-    UnderRefined { unspecified_axis: String },
+    UnderRefined {
+        /// Mirrors substrate’s string axis payload for now. Scratch Example 1 only supplies
+        /// `"bound"`; when substrate grows structured axes (or this mirror gains a sum type),
+        /// replace free-form spelling here rather than widening implicit string conventions.
+        unspecified_axis: String,
+    },
     /// Full structural fold is not implemented; returning `Ok` would fabricate
     /// target choices (C-8 / `INVARIANTS.md`).
     FoldNotImplemented,
