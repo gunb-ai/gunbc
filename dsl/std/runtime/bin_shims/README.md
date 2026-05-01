@@ -4,7 +4,7 @@ Canonical home for PB-owned per-shim `BinShim` instance declarations per [`docs/
 
 ## Status
 
-**FRAMEWORK ONLY.** No instance declarations on main yet — see §"Substrate prerequisite (STOP+PING)" below. This directory holds the README so future per-shim declarations have a canonical location, naming convention, and dependency contract once the substrate prerequisite lands.
+**FRAMEWORK ONLY.** No instance declarations on main yet — see §"Substrate prerequisite (STOP+PING)" below. The `BinShim` carrier is now live (post-#1361); the remaining gate for per-shim row authoring is the `<bin_name>_main` entry-function declaration each shim's `entry: DeclarationRef` field needs to point at. This directory holds the README so future per-shim declarations have a canonical location, naming convention, and dependency contract once that gap closes.
 
 ## Ownership boundary (per design-doc §5.4)
 
@@ -30,7 +30,7 @@ The naming convention is locked here so per-shim retirement workers (per the sub
 
 **Verified on origin/main HEAD post-#1361 carrier landing:**
 
-- **`type BinShim { ... }`** — **LIVE** at `src/v3/std/bin_shim.dag:18` (3 fields: `entrypoint_name: NonEmptyStr`, `description: String`, `entry: DeclarationRef`). Carrier-shape ratchet at `src/v3/compiler/tests/integration/bin_shim_carrier_test.rs` pins this exact shape.
+- **`type BinShim { ... }`** — **LIVE** at `src/v3/std/bin_shim.dag:19` (3 fields: `entrypoint_name: NonEmptyStr`, `description: String`, `entry: DeclarationRef`). Carrier-shape ratchet at `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs::bin_shim_carrier_has_locked_three_field_shape` pins this exact shape.
 - **`std.process.ProcessExit`** — LIVE at `dsl/std/process.dag:39` (`type ProcessExit = ExitSuccess | ExitFailure { ... }`).
 - **`dsl/std/runtime/bin_shims/`** — LIVE (framework directory + this README, landed via PR #1347).
 - **`<bin_name>_main` `.dag` entry function for any PB-owned hand-Rust bin** — **NOT YET LIVE.** `grep -rn "^fn regen_lens_main\|^fn .*_main.*ProcessExit" src/v3/ dsl/` returns no match. Each shim's `entry: DeclarationRef` field needs a `.dag`-authored function `fn <bin_name>_main() -> std.process.ProcessExit` to point at; without that target, `data <bin_name>_shim: BinShim = { ... entry: <bin_name>_main, ... }` cannot resolve.
