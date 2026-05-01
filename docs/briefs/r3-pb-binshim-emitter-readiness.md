@@ -1,6 +1,6 @@
 # R3 PB — BinShim Rust emitter readiness (PB-owned planning slice)
 
-**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-05-01 by PB Manager continuation per inbox #1150 / #1134 — **emitter boundary** after `BinShim` carrier landing (#1361), **before** `regen_lens_shim` instance merge is required and **without** authoring the §7.2 equivalence `TestClaim` (owned by quick-newt).
+**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-05-01 by PB Manager continuation per inbox #1150 / #1134 — **emitter boundary** after `BinShim` carrier landing (#1361), **before** `regen_lens_shim` instance merge is required and **without** authoring the §7.2 equivalence `TestClaim` (PB-assigned §7.2 worker under the BinShim retirement dispatch — not this readiness slice).
 
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation per `docs/r3-structure.md` §"Manager structure" Item 1).
 
@@ -22,7 +22,7 @@ These are **readiness pins**, not dispatch greens:
 
 1. **`data regen_lens_shim: BinShim = { … }`** in `dsl/std/runtime/bin_shims/regen_lens.dag` — **neat-boar** / coordinated instance slice; emitter **consumes** field values + `entry` `DeclarationRef`, it does not invent them.
 2. **Item 4 (PB-Runtime interpreter-as-data)** — per [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md) §"Dependencies" + design doc §5.4: the `.dag` entry body (`regen_lens_main` shape in §4.2) must be evaluable/foldable under the locked PB-Runtime emit pattern **before** emitted Rust can be trusted as behaviorally equivalent (§7.2 ultimately consumes this).
-3. **§7.2 `TestClaim`** — **quick-newt**; this slice **must not** author it.
+3. **§7.2 `TestClaim`** — **PB-assigned §7.2 worker** (replacement for archived session routing); this readiness slice **must not** author it.
 4. **`REGEN_OUTPUTS` + SG-0** — retirement PR concern per BinShim brief; not opened here.
 
 Until (1)–(2) are at least **named on main**, a merge-blocking `.dag` emitter wired into `cargo run` / `build.rs` would be **fabricating** integration. **STOP** there; use this brief + [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md) §"Emitter readiness" for handoff.
@@ -30,7 +30,7 @@ Until (1)–(2) are at least **named on main**, a merge-blocking `.dag` emitter 
 ## STOP / escalation
 
 - **Carrier shape pressure** — `INVARIANTS.md` §P1 to Substrate Manager; PB does not edit `src/v3/std/bin_shim.dag`.
-- **Need new `TestPredicate` for §7.2** — §P1; not in emitter slice.
+- **Need new `TestPredicate` for §7.2** — §P1; not in emitter slice. **§7.2 `TestClaim` text** is authored only by the **PB-assigned §7.2 worker** under BinShim retirement dispatch (see parent brief §"Acceptance"), not this readiness brief.
 - **Emitter diverges from `extdeps.languages.rust.emit` shape** — design doc §6 #4; STOP and realign with PB Manager + Substrate.
 
 ## Cross-refs
