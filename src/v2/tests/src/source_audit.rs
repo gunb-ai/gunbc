@@ -3,7 +3,9 @@
 //! These tests read .dag source files and assert on textual content.
 //! No compilation needed — just file reads and string matching.
 
-use crate::helpers::read_v2_file;
+use std::path::{Path, PathBuf};
+
+use crate::helpers::{read_v2_file, workspace_root};
 
 fn live_source(source: &str) -> String {
     source
@@ -19,6 +21,27 @@ fn assert_live_contains(source: &str, needle: &str, message: &str) {
 
 fn assert_live_not_contains(source: &str, needle: &str, message: &str) {
     assert!(!live_source(source).contains(needle), "{message}");
+}
+
+fn collect_source_files(root: &Path, files: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(root) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_source_files(&path, files);
+        } else if matches!(path.extension().and_then(|e| e.to_str()), Some("dag" | "rs")) {
+            files.push(path);
+        }
+    }
+}
+
+fn relative_display(path: &Path, root: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 #[test]
@@ -214,6 +237,54 @@ fn parse_supports_response_blocks() {
     assert!(
         source.contains("parse_optional_mock_response_block"),
         "02_parse.dag should contain parse_optional_mock_response_block"
+    );
+}
+
+#[test]
+fn no_new_non_v2_consumers_of_legacy_method_template_authorities() {
+    let root = workspace_root();
+    let mut files = Vec::new();
+    collect_source_files(&root.join("src"), &mut files);
+    collect_source_files(&root.join("dsl"), &mut files);
+
+    let legacy_authorities = [
+        "rust_simple_method_specs",
+        "rust_method_templates",
+        "rust_method_wraps_result",
+        "python_method_templates",
+        "go_method_templates",
+    ];
+
+    let mut violations = Vec::new();
+    for path in files {
+        let rel = relative_display(&path, &root);
+        if rel.starts_with("src/v2/") {
+            continue;
+        }
+        if matches!(
+            rel.as_str(),
+            "dsl/extdeps/languages/rust/emit.dag"
+                | "dsl/extdeps/languages/python/emit.dag"
+                | "dsl/extdeps/languages/go/emit.dag"
+        ) {
+            continue;
+        }
+
+        let source = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+        let live = live_source(&source);
+        for authority in legacy_authorities {
+            if live.contains(authority) {
+                violations.push(format!("{rel}: live reference to `{authority}`"));
+            }
+        }
+    }
+
+    assert!(
+        violations.is_empty(),
+        "legacy method-template authorities are PB-Zero-blocked v2-only deferrals; \
+         new consumers must read src/v3/std/*_method_template_contracts.dag rows:\n{}",
+        violations.join("\n")
     );
 }
 
