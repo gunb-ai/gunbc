@@ -26,6 +26,7 @@ use std::process::{Command, Stdio};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::emit::{emit, EmitTarget};
+use v3_compiler::self_host_receipt_p0 as receipt_p0;
 use v3_compiler::{
     compare_stage_snapshots, compile_stage_snapshots, default_fixed_point_source, CompileError,
 };
@@ -89,11 +90,17 @@ fn run() -> Result<(), String> {
 
     let mut receipt = String::new();
     receipt.push_str("{\n");
-    receipt.push_str("  \"pipeline_fixed_point_default_source\": \"ok\",\n");
+    receipt.push_str(&format!(
+        "  \"{}\": \"ok\",\n",
+        receipt_p0::K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE
+    ));
 
     match compiler_parse {
         Ok(dag) => {
-            receipt.push_str("  \"compiler_dag_v3_parse\": \"ok\",\n");
+            receipt.push_str(&format!(
+                "  \"{}\": \"ok\",\n",
+                receipt_p0::K_COMPILER_DAG_V3_PARSE
+            ));
             let stage1 =
                 emit(&dag, EmitTarget::Rust).map_err(|e| format!("emit compiler.dag: {e:?}"))?;
             let stage1_path = out_dir.join("stage1.rs");

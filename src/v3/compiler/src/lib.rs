@@ -33,6 +33,7 @@ pub mod generated_files {
 }
 
 pub mod emit;
+pub mod self_host_receipt_p0;
 pub mod emit_rust;
 pub mod evaluator {
     //! E2 evaluator frame helpers.
