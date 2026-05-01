@@ -98,8 +98,9 @@ pub mod evaluator {
         LeftFirst,
     }
 
-    /// **Dissolution receipt: TERMINAL.** These are the E1 body-evaluator miss
-    /// modes until later PR-E slices implement the remaining behavior arms.
+    /// **Dissolution receipt: TERMINAL.** These are the E1/E2 body-evaluator miss
+    /// modes until later PR-E slices implement the remaining behavior arms, plus
+    /// E3 transform operand / arity diagnostics.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalError {
         MissingNode {
@@ -111,6 +112,16 @@ pub mod evaluator {
         UnsupportedBehavior {
             node: NodeId,
             behavior: &'static str,
+        },
+        TransformArityMismatch {
+            expected: usize,
+            got: usize,
+        },
+        UnsupportedTransformTarget {
+            kind: &'static str,
+        },
+        BadTransformOperands {
+            reason: &'static str,
         },
     }
 
