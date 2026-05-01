@@ -8,6 +8,20 @@
 
 **Test harness discipline (defaults for future worker code):** integration receipts should follow **OnceLock + `cached_compile`** amortization where appropriate; assert **`ClaimResult` variants by shape** (`Pass` / `Fail` / `NotYetImplemented(_)`) without pinning raw diagnostic strings (**DB-3 / DB-20** posture — avoid message substring coupling).
 
+**Live-repo anchors (`main`):** This document is **research-only** and lands as a single `.md` file, but its claims are grounded in **already-merged** artifacts — not hypothetical paths. Present on `main` (verify with `git cat-file -e origin/main:<path>`):
+
+| Role | Path |
+|------|------|
+| L5 skeleton `.dag` fixture | `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` |
+| Sidecar seed program | `src/v3/compiler/tests/fixtures/r3_l5_corpus/add_then_branch_seed.v3` |
+| L4 / L7 sibling skeleton fixtures | `src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag`, `src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag` |
+| NYI integration receipts | `src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs` |
+| `TestClaim` / `TestPredicate::ForAllTargets` substrate | `src/v3/std/verification.dag` |
+| Runner dispatch (`ForAllTargets` → NYI default arm today) | `src/v3/compiler/src/test_runner.rs` |
+| Lane 2 standby briefs | `docs/briefs/r3-v-l5-corpus-worker.md`, `docs/briefs/r3-v-l5-corpus-scaffold-notes.md`, `docs/briefs/r3-v-l5-corpus-readiness-audit.md` |
+
+Substrate **changes** (new carriers, new predicate variants) are **out of scope** for this PR — route via **INVARIANTS §P1** when implementation dispatch proposes them (§7).
+
 ---
 
 ## 1. Corpus seed-to-extension audit (coverage progression)
