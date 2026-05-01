@@ -124,6 +124,12 @@ Deepen `fold_lens_over_reflected_program` beyond reflect-then-apply into the
 full `Lens<C>` / `DimensionReport<C>` fold once E1-E5 provide enough body
 execution semantics.
 
+**Readiness receipt:** [`r3-pr-e6-lens-fold-readiness-audit.md`](r3-pr-e6-lens-fold-readiness-audit.md)
+records the current implementation blocker: E1/E2 are live, E3/E4 are in
+flight, and E5 is readiness-only, so the generic lens fold cannot yet execute
+`Lens<C>` function fields or produce `DimensionReport<C>` without duplicating
+body-evaluator semantics.
+
 **Inputs:** PR-C complete reflection, PR-E reflect/apply slice, PR-B evaluator
 execution, and `docs/design-lens-framework.md`.
 
