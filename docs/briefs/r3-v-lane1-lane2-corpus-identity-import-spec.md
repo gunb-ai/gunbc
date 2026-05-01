@@ -117,13 +117,18 @@ do git cat-file -e "origin/main:$p" || exit 1; done
 
 Use when **(a)** or **(b)** is blocked by a genuine toolchain limitation **and** Director documents the exception.
 
+This hatch is **scaffold-class** relief, not exempt steady-state. **[INVARIANTS §P5 — Progress Is Dissolution](../../INVARIANTS.md#p5-progress-is-dissolution)** applies: scaffolds need explicit dissolution paths — in particular the §P5 *Scaffold without dissolution trigger* shape resolves only when every scaffold lands with a **named dissolution trigger** (a specific, checkable condition that closes it). Director approval that adds only a ledger hook **without** bounded scope **and** such a trigger blesses **untracked bridge debt** and does **not** meet INVARIANTS Dispatch-Discipline for scaffold introductions (paired dispatch: dissolution trigger + adjacent debt visibility).
+
 ### Acceptable patterns
 
 - **Single** programmatic owner (generator or substrate-adjacent template) with **read-only** consumption elsewhere.
-- **Explicit** ledger entry tying the exception to bridge-retirement / P2 posture (no silent carve-outs).
+- **Bounded scope** in the Director record: which lanes, fixtures, row classes, or claim identities the exception covers — **no** open-ended waiver over arbitrary corpus rows.
+- **Named dissolution trigger**: the checkable event that **retires** this exception (e.g. a §P1 substrate carrier lands; mechanism **(a)** / **(b)** becomes implementable and is scheduled). The trigger must be **machine-checkable or audit-checkable** in principle (merge milestone, issue/PR closure criterion, ledger row completion), not prose-only “eventually.”
+- **Explicit ledger entry** tying the exception to bridge-retirement / **§P2** posture — e.g. [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md) row, **ROADMAP** debt bullet, or owning brief §Acceptance naming the same scope + trigger (no silent carve-outs). **Ledger without scope + trigger is insufficient.**
 
 ### Anti-patterns
 
+- Director records that cite “ledger” or bridge posture **only**, omitting **bounded scope** or **dissolution trigger**.
 - Independently edited **duplicate** `TestClaim.source` blobs between Lane 1 and Lane 2 fixtures.
 - **Serialized** copy/paste text with informal “keep in sync” comments but **no** CI equality ratchet.
 - **Locale-sensitive** or **stdout-shaped** comparisons as stand-ins for source equality.
