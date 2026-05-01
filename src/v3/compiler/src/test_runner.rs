@@ -2935,9 +2935,11 @@ impl<'a> TestRunner<'a> {
         claim: &TestClaimValue,
         payload: &[FieldValue],
     ) -> ClaimResult {
-        if claim.declaration_file != RELEASE_DEFERRAL_FIXTURE_PATH {
+        const RELEASE_ACCEPTANCE_FIXTURE: &str =
+            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
+        if claim.declaration_file != RELEASE_ACCEPTANCE_FIXTURE {
             return ClaimResult::Fail(format!(
-                "ReleaseDeferredClaim is only valid in `{RELEASE_DEFERRAL_FIXTURE_PATH}`, got `{}`",
+                "ReleaseDeferredClaim is only valid in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}`",
                 claim.declaration_file
             ));
         }
@@ -2964,9 +2966,9 @@ impl<'a> TestRunner<'a> {
                 Err(reason) => return ClaimResult::Fail(format!("ReleaseDeferredClaim: {reason}")),
             };
             let decl = self.dag.declaration(id);
-            if decl.span.file != RELEASE_DEFERRAL_FIXTURE_PATH {
+            if decl.span.file != RELEASE_ACCEPTANCE_FIXTURE {
                 return ClaimResult::Fail(format!(
-                    "ReleaseDeferredClaim `{field_label}` must reference a marker declared in `{RELEASE_DEFERRAL_FIXTURE_PATH}`, got `{}` from `{}`",
+                    "ReleaseDeferredClaim `{field_label}` must reference a marker declared in `{RELEASE_ACCEPTANCE_FIXTURE}`, got `{}` from `{}`",
                     decl_display_name(id, decl),
                     decl.span.file
                 ));
@@ -3068,18 +3070,19 @@ impl<'a> TestRunner<'a> {
     }
 
     fn release_fixture_local_role_id(&self, role_name: &str) -> Result<DeclarationId, String> {
+        const RELEASE_ACCEPTANCE_FIXTURE: &str =
+            "src/v3/compiler/tests/fixtures/r1_release_acceptance.dag";
         let mut matches = self.dag.declarations().iter().filter(|decl| {
-            decl.name.as_deref() == Some(role_name)
-                && decl.span.file == RELEASE_DEFERRAL_FIXTURE_PATH
+            decl.name.as_deref() == Some(role_name) && decl.span.file == RELEASE_ACCEPTANCE_FIXTURE
         });
         let Some(role) = matches.next() else {
             return Err(format!(
-                "release fixture role `{role_name}` is missing from `{RELEASE_DEFERRAL_FIXTURE_PATH}`"
+                "release fixture role `{role_name}` is missing from `{RELEASE_ACCEPTANCE_FIXTURE}`"
             ));
         };
         if matches.next().is_some() {
             return Err(format!(
-                "release fixture role `{role_name}` is declared more than once in `{RELEASE_DEFERRAL_FIXTURE_PATH}`"
+                "release fixture role `{role_name}` is declared more than once in `{RELEASE_ACCEPTANCE_FIXTURE}`"
             ));
         }
         Ok(role.id)
