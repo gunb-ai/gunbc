@@ -21,10 +21,11 @@ Author `tier3_mirror_dissolution_perf_within_budget` `.dag` `TestClaim` as a sub
 
 Resolves R3 design challenge #7 ("Tier 3 mirror dissolution mechanics") per [`docs/r3-structure.md`](../r3-structure.md) §"Design challenges" by authoring the `.dag` TestClaim path. The narrative "≤2x slower acceptable" was Director-rejected as ambiguous; this brief commits to **enforced budget** with concrete thresholds.
 
-The lane delivers:
-1. Cargo bench fixtures comparing hand-Rust mirror invocation vs Evaluator-backed `.dag` invocation for each of the four retired mirrors.
-2. The `.dag` TestClaim `tier3_mirror_dissolution_perf_within_budget` composing four per-mirror perf claims (one each for termination / computation / induction / effect-carrier).
-3. CI integration so the gate fires on every PR touching T-Tier3-Dissolution surface.
+The lane delivers (two-phase pattern per §"Acceptance gate"; no simultaneous dual paths — INVARIANTS §P2):
+1. **Phase 1** (sibling PR, pre-dissolution): cargo bench fixtures invoking the hand-Rust mirrors; results frozen as `tier3_baseline.json` (median + p99 in fixed ns per mirror). Phase 1 bench harness deletes alongside the mirror dissolution PRs.
+2. **Phase 2** (post-dissolution): cargo bench fixtures invoking the `.dag`-evaluator path only; gate compares measured timings against the frozen Phase 1 baseline JSON. The hand-Rust path no longer exists at this point — only timing data survives as fixture.
+3. The `.dag` TestClaim `tier3_mirror_dissolution_perf_within_budget` composing four per-mirror perf claims (one each for termination / computation / induction / effect-carrier), each comparing Phase 2 measurements against the corresponding Phase 1 baseline row.
+4. CI integration so the gate fires on every PR touching the `.dag`-evaluator path or the canonical std authorities; the dissolved Rust mirror sites no longer exist as gate triggers.
 
 ## Out of scope
 
