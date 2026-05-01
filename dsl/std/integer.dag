@@ -44,3 +44,13 @@ type UInt128 = Semiring<Word128>
 // Default aliases
 type Int = Int64
 type UInt = UInt64
+
+// ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
+//
+// **Substrate-declared ordering authority** for diagnostic enumeration (narrow→wide).
+// Not emission policy — fail-closed UX only. The ordered `List<DeclarationRef>`
+// rows live in `src/v3/std/integer_diagnostic_order.dag` because `DeclarationRef`
+// is defined in `v3.spec.v3_l1` (not loaded in the dsl-only std bootstrap seed).
+//
+// **Dissolution:** when typed `width_bits` (or equivalent) lands on word carriers
+// (`dsl/std/bit.dag`), derive order from carriers and remove these lists.
