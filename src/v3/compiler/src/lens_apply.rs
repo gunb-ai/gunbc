@@ -982,6 +982,22 @@ pub const ASSOCIATIVITY_WITNESS_TRIPLES: &[(i64, i64, i64)] = &[
     (100, 200, 300),
 ];
 
+/// Fixed `(a, b)` pairs for PR-B.3 `AlgebraicLaw(Commutativity, …)` operational checks.
+///
+/// These are runner witnesses, not substrate law proofs. The sample table lives next to the
+/// associativity table so law-runner scaffolds share one bounded Int witness authority until
+/// first-class substrate law witnesses dissolve the runner-side sample checks.
+pub const COMMUTATIVITY_WITNESS_PAIRS: &[(i64, i64)] = &[
+    (2, 3),
+    (0, 99),
+    (-3, 7),
+    (-1, 0),
+    (1, 1),
+    (5, 0),
+    (10, -4),
+    (100, 200),
+];
+
 /// Evaluate `(a ⊕ b) ⊕ c` vs `a ⊕ (b ⊕ c)` for a binary `Int` lens using [`apply_lens_declaration`].
 pub fn int_associativity_holds(
     program_dag: &Dag,
