@@ -746,6 +746,46 @@ data suite: TestSuite = {
 }
 
 #[test]
+fn binary_dimension_report_equals_accepts_same_report_carrier_shape() {
+    let source = r#"
+module test.binary_dimension_report_equals_same_carrier
+
+import std.dimensions { DimensionReport }
+import std.verification { BinaryDimensionReportEquals, TestClaim, TestSuite }
+
+type left_report = DimensionReport<Int>
+type right_report = DimensionReport<Int>
+
+data claim: TestClaim = {
+  name: "same report carrier passes shape validation",
+  source: "let _: Int = 0",
+  file_name: "binary_dimension_report_same_carrier.v3",
+  predicate: BinaryDimensionReportEquals(left_report, right_report),
+  requires: []
+}
+
+data suite: TestSuite = {
+  name: "s",
+  claims: [claim]
+}
+"#;
+    let dag = compile_clean(source, "binary_dimension_report_same_carrier_harness.v3");
+    let results = TestRunner::new(&dag).run_suite("suite");
+
+    assert_eq!(results.len(), 1);
+    assert!(
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("BinaryDimensionReportEquals")
+                    && reason.contains("structural shape is valid")
+        ),
+        "expected same report carrier shape to reach NYI evaluation path, got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
 fn binary_dimension_report_equals_accepts_structurally_equivalent_report_carriers() {
     let source = r#"
 module test.binary_dimension_report_equals_structural_carriers
