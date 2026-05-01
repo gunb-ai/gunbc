@@ -84,7 +84,9 @@ runner does not yet handle:
 - **`Commutativity`** — runner-side check: for the named lens, apply over
   pairs `(a, b)` from a witness sample table analogous to
   `ASSOCIATIVITY_WITNESS_TRIPLES`, assert `lens(a, b) == lens(b, a)`
-  pointwise via the value-domain comparison from W3. Sample table
+  pointwise via the **shared value-domain comparator helper** also
+  consumed by W3 (single authority — W2 must not fork its own copy; see
+  Sequencing table for the dependency edge). Sample table
   identity / size lives in `lens_apply` alongside the associativity one;
   W2 does not add new `TestPredicate` variants and does not propose
   a generator strategy.
@@ -168,6 +170,10 @@ that carrier lands, W3's structural-value-domain runner work is
 docs-only design — no implementation worker may extract a structured
 value through an ad-hoc stdout-pattern path silently parallel to
 `ExecuteCommand` / `ForAllTargets`.**
+
+Value-domain comparison is the **same shared comparator helper** W2's
+`Commutativity` check consumes — single authority across the bundle, not
+a per-workstream copy.
 
 **Initial value-domain coverage (sequential ship order):**
 
