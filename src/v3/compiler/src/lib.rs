@@ -121,8 +121,11 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        if let Some(producer) = dag.resolve_producer_opt(&port) {
-            return eval_node(dag, producer.id(), state, strategy);
+        let Some(port_ref) = dag.port_opt(&port) else {
+            return Err(EvalError::UnboundPort { port });
+        };
+        if let Some(producer) = port_ref.produced_by {
+            return eval_node(dag, producer, state, strategy);
         }
         state
             .lookup(port)
@@ -393,6 +396,25 @@ pub mod evaluator {
             let stale_port = source.push_value(LiteralBits::Int(1), span());
             let empty = Dag::new();
             let mut state = empty_state();
+            let strategy = eager_strategy();
+
+            let err =
+                eval_port(&empty, stale_port, &mut state, &strategy).expect_err("unbound port");
+
+            assert_eq!(err, EvalError::UnboundPort { port: stale_port });
+        }
+
+        #[test]
+        fn eval_port_rejects_frame_binding_for_port_absent_from_dag() {
+            let mut source = Dag::new();
+            let stale_port = source.push_value(LiteralBits::Int(1), span());
+            let empty = Dag::new();
+            let frame = EvalFrame::from_bindings([(
+                stale_port,
+                Value::LiteralValue(LiteralBits::String("stale".to_string())),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
             let strategy = eager_strategy();
 
             let err =
