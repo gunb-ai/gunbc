@@ -4,7 +4,7 @@ Canonical home for PB-owned per-shim `BinShim` instance declarations per [`docs/
 
 ## Status
 
-**FRAMEWORK ONLY.** No instance declarations on main yet — see §"Substrate prerequisite (STOP+PING)" below. This directory holds the README so future per-shim declarations have a canonical location, naming convention, and dependency contract once the substrate prerequisite lands.
+**FRAMEWORK ONLY — instance `.dag` files not yet on main.** The `BinShim` **carrier** is live at [`src/v3/std/bin_shim.dag`](../../../../src/v3/std/bin_shim.dag) (`module v3.std.bin_shim`; landed #1361). Per-shim `data <bin>_shim: BinShim = { … }` rows still wait on coordinated instance authoring (first slice: `regen_lens.dag` — neat-boar / PB ordering per [`docs/briefs/r3-pb-binshim-emitter-readiness.md`](../../../../docs/briefs/r3-pb-binshim-emitter-readiness.md)). This README locks paths + naming; see §"Emitter readiness" for the Rust emitter boundary.
 
 ## Ownership boundary (per design-doc §5.4)
 
