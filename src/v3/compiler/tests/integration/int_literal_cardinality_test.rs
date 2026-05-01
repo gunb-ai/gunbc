@@ -422,8 +422,8 @@ fn rust_pilot_primitives_integer_witnesses_are_unique() {
     }
     assert_eq!(
         witnesses.len(),
-        8,
-        "pilot carries eight distinct integer primitive witnesses"
+        9,
+        "pilot carries nine distinct integer primitive witnesses (i8..i64, i128, u8..u64; T-Int128 Slice B1)"
     );
 }
 

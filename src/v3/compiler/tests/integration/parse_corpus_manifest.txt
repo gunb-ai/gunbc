@@ -6,6 +6,7 @@ dsl/std/bit.dag	9	7787	09279906a3939377
 dsl/std/float.dag	6	3350	3c45f61f17751329
 dsl/std/integer.dag	15	11459	a2942a0768114c3f
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
+dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
 dsl/std/types.dag	108	210361	bbadc5e63d8d4d2a
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
@@ -25,7 +26,8 @@ src/v3/std/algebra.dag	42	303630	8be5b86cc9520bc3
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
 src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	8	20682	cdd44a074743988b
-src/v3/std/bridge_ledger.dag	7	27382	fdcd9c26dc2b70b0
+src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
+src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
 src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
@@ -43,7 +45,7 @@ src/v3/std/methods.dag	3	1388	48f145b21c115326
 src/v3/std/parse_surface.dag	18	99510	b73114d5b178303d
 src/v3/std/python_method_template_contracts.dag	5	142882	3086daf4cf293650
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
-src/v3/std/runtime.dag	11	12982	5c33129ecfa1e0a4
+src/v3/std/runtime.dag	12	13724	61e250b2c0a425e9
 src/v3/std/rust_method_template_contracts.dag	5	109753	7b10fcd0d9079900
 src/v3/std/services.dag	8	5791	840c901943fce7bf
 src/v3/std/substrate.dag	59	128989	46e2b8316f0d8ae9

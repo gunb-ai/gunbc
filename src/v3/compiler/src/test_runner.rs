@@ -11,7 +11,7 @@ use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
     apply_lens_declaration, field_value_from_value_body, int_associativity_holds_all_triples,
-    reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES,
+    reflect_program_dag_nodes_in_file, ASSOCIATIVITY_WITNESS_TRIPLES, COMMUTATIVITY_WITNESS_PAIRS,
 };
 use crate::lens_cost::{cost_of, CostLookup};
 use crate::types::TypeShape;
@@ -238,17 +238,17 @@ pub enum AlgebraicLawProgramError {
 
 /// Hermetic `AlgebraicLaw` evaluation against a compiled claim program (`program_dag`).
 ///
-/// **`Associativity` — bounded operational witness (T-LensAPI D3), not substrate law proof:**
+/// **`Associativity` / `Commutativity` — bounded operational witnesses, not substrate law proof:**
 /// uses [`int_associativity_holds_all_triples`](crate::lens_apply::int_associativity_holds_all_triples)
 /// over [`ASSOCIATIVITY_WITNESS_TRIPLES`](crate::lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES) so a
-/// single lucky `(a,b,c)` cannot certify a false law. This path does **not** consume quantified
-/// associativity facts declared on `OrderedRing` / semigroup
-/// carriers in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here
-/// as full algebraic law evidence would be weaker than a substrate-backed law check — the R1
-/// gate is intentionally a **regression harness** that the witness lens behaves associatively on
-/// the full witness set, not a proof for all `Int`. **Dissolution:** wire `AlgebraicLaw` to declared law
-/// metadata / witnesses on disk and reserve sample-only checks to explicit testgen predicates, or
-/// return [`ClaimResult::NotYetImplemented`] until that substrate surface exists.
+/// single lucky `(a,b,c)` cannot certify a false law; `Commutativity` uses
+/// [`COMMUTATIVITY_WITNESS_PAIRS`](crate::lens_apply::COMMUTATIVITY_WITNESS_PAIRS) the same way.
+/// These paths do **not** consume quantified facts declared on `OrderedRing` / semigroup carriers
+/// in `std.algebra` (those are not yet first-class runner inputs). Treating `Pass` here as full
+/// algebraic law evidence would be weaker than a substrate-backed law check. **Dissolution:** wire
+/// `AlgebraicLaw` to declared law metadata / witnesses on disk and reserve sample-only checks to
+/// explicit testgen predicates, or return [`ClaimResult::NotYetImplemented`] until that substrate
+/// surface exists.
 ///
 /// `lens_ref` is a [`FieldValue::Reference`] into `fixture_dag`; the runner resolves the **name**
 /// and looks up the same name in `program_dag`.
@@ -259,26 +259,86 @@ pub fn eval_algebraic_law_for_claim_program(
 ) -> Result<bool, AlgebraicLawProgramError> {
     let (law, lens_ref) = algebraic_law_payload_fields(payload)?;
     let (law_label, law_payload) = variant_fields(fixture_dag, law)?;
-    if law_label != "Associativity" {
-        return Err(AlgebraicLawProgramError::UnsupportedLaw { law_label });
-    }
-    if !law_payload.is_empty() {
-        return Err(AlgebraicLawProgramError::MalformedPayload(
-            "Associativity should be payload-free".to_string(),
-        ));
+    match law_label.as_str() {
+        "Associativity" | "Commutativity" => {}
+        "Identity" => return Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }),
+        // `Distributivity` is intentionally absent from AlgebraicLawKind. If a future substrate
+        // enum extension adds it, route implementation through INVARIANTS P1 first instead of
+        // encoding it through another predicate or overloading an existing law.
+        other => {
+            return Err(AlgebraicLawProgramError::UnsupportedLaw {
+                law_label: other.to_string(),
+            });
+        }
     }
     let lens_name = declaration_ref_name(fixture_dag, lens_ref)?;
     let Some(target) = program_dag.declaration_by_name(&lens_name) else {
         return Ok(false);
     };
-    int_associativity_holds_all_triples(program_dag, target.id, ASSOCIATIVITY_WITNESS_TRIPLES)
-        .map_err(|e| AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}")))
+    match law_label.as_str() {
+        "Associativity" => {
+            if !law_payload.is_empty() {
+                return Err(AlgebraicLawProgramError::MalformedPayload(
+                    "Associativity should be payload-free".to_string(),
+                ));
+            }
+            int_associativity_holds_all_triples(
+                program_dag,
+                target.id,
+                ASSOCIATIVITY_WITNESS_TRIPLES,
+            )
+            .map_err(|e| {
+                AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}"))
+            })
+        }
+        "Commutativity" => {
+            if !law_payload.is_empty() {
+                return Err(AlgebraicLawProgramError::MalformedPayload(
+                    "Commutativity should be payload-free".to_string(),
+                ));
+            }
+            int_commutativity_holds_all_pairs(program_dag, target.id, COMMUTATIVITY_WITNESS_PAIRS)
+                .map_err(|e| {
+                    AlgebraicLawProgramError::MalformedPayload(format!("lens apply error: {e:?}"))
+                })
+        }
+        _ => unreachable!("unsupported AlgebraicLawKind returned before lens resolution"),
+    }
 }
 
 /// Compile-time ratchet (PR #741 / codex P1): `Associativity` must not regress to checking one
 /// lucky `(a, b, c)` triple — the gate is a correctness signal only when the witness set has
 /// material breadth (see `lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES`).
 const _: () = assert!(ASSOCIATIVITY_WITNESS_TRIPLES.len() > 1);
+
+/// Shared structural-value comparator for runner-side value-domain checks.
+///
+/// PR-B.3 uses this for `AlgebraicLaw::Commutativity`; PR-B.4 should reuse this authority when
+/// per-target structural-output normalization lands instead of introducing a second comparator.
+pub fn runner_structural_values_equal(left: &FieldValue, right: &FieldValue) -> bool {
+    left == right
+}
+
+/// Transitional PR-B.3 runner scaffold: evaluate `a ⊕ b == b ⊕ a` over the bounded Int witness
+/// table. Dissolution hook: replace sample-table checks with first-class substrate law witnesses
+/// consumed by PR-B evaluator / PB-Runtime once lens algebra facts are declared.
+fn int_commutativity_holds_all_pairs(
+    program_dag: &Dag,
+    lens_decl_id: DeclarationId,
+    pairs: &[(i64, i64)],
+) -> Result<bool, crate::lens_apply::LensApplyError> {
+    let int = |n: i64| FieldValue::Literal(LiteralBits::Int(n));
+    for &(a, b) in pairs {
+        let left = apply_lens_declaration(program_dag, lens_decl_id, &[int(a), int(b)])?;
+        let right = apply_lens_declaration(program_dag, lens_decl_id, &[int(b), int(a)])?;
+        if !runner_structural_values_equal(&left, &right) {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+const _: () = assert!(COMMUTATIVITY_WITNESS_PAIRS.len() > 1);
 
 // --- `TestPredicate::ExecuteCommand` (PB-Runtime) — shared by `TestRunner` and M1.5 testgen ---
 
@@ -2314,10 +2374,10 @@ impl<'a> TestRunner<'a> {
     }
 
     fn eval_algebraic_law(&self, claim: &TestClaimValue, payload: &[FieldValue]) -> ClaimResult {
-        // Only `Associativity` is wired via D3 multi-triple operational witness (see
-        // `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
-        // Other `AlgebraicLawKind` variants are `NotYetImplemented` (runner cannot evaluate yet),
-        // not `Fail` (claim false).
+        // `Associativity` and `Commutativity` are wired via bounded operational witness tables
+        // (see `eval_algebraic_law_for_claim_program` — not substrate law-fact evaluation).
+        // `Identity` remains `NotYetImplemented` until the substrate exposes the lens identity
+        // element edge required by the PR-B.3 runner-extension brief.
         let (law, _) = match algebraic_law_payload_fields(payload) {
             Ok(parts) => parts,
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => {
@@ -2336,13 +2396,22 @@ impl<'a> TestRunner<'a> {
                 "variant_fields only yields MalformedPayload (got UnsupportedLaw({law_label:?}))"
             ),
         };
-        if law_label != "Associativity" {
+        if law_label == "Identity" {
+            return ClaimResult::NotYetImplemented(
+                "AlgebraicLaw::Identity is blocked: no lens identity-element edge is exposed on \
+                 the algebra inhabitance yet (PR-B.3 W2); leave fail-closed until that substrate \
+                 fact exists"
+                    .to_string(),
+            );
+        }
+        if law_label != "Associativity" && law_label != "Commutativity" {
             return ClaimResult::NotYetImplemented(format!(
-                "AlgebraicLaw::{law_label} is not wired in the Rust runner yet"
+                "AlgebraicLaw::{law_label} is not wired in the Rust runner; Distributivity must \
+                 route through INVARIANTS P1 as an AlgebraicLawKind substrate enum extension"
             ));
         }
         if !law_payload.is_empty() {
-            return ClaimResult::Fail("Associativity should be payload-free".to_string());
+            return ClaimResult::Fail(format!("{law_label} should be payload-free"));
         }
 
         let program_dag = match compile_to_dag(&claim.source, &claim.file_name) {
@@ -2362,15 +2431,16 @@ impl<'a> TestRunner<'a> {
         match eval_algebraic_law_for_claim_program(self.dag, &program_dag, payload) {
             Ok(true) => ClaimResult::Pass,
             Ok(false) => ClaimResult::Fail(format!(
-                "AlgebraicLaw Associativity: operational witness failed (must pass all {} fixed \
-                 Int triples in lens_apply::ASSOCIATIVITY_WITNESS_TRIPLES; D1 apply — not a \
-                 substrate declared-law check; see eval_algebraic_law_for_claim_program)",
-                ASSOCIATIVITY_WITNESS_TRIPLES.len()
+                "AlgebraicLaw {law_label}: operational witness failed (must pass all fixed Int \
+                 samples in lens_apply; D1 apply — not a substrate declared-law check; see \
+                 eval_algebraic_law_for_claim_program)"
             )),
             Err(AlgebraicLawProgramError::MalformedPayload(message)) => ClaimResult::Fail(message),
-            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => unreachable!(
-                "eval_algebraic_law gated on Associativity; helper cannot return UnsupportedLaw({law_label:?})"
-            ),
+            Err(AlgebraicLawProgramError::UnsupportedLaw { law_label }) => {
+                ClaimResult::NotYetImplemented(format!(
+                    "AlgebraicLaw::{law_label} is not implemented by the Rust runner"
+                ))
+            }
         }
     }
 
