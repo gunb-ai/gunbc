@@ -33,9 +33,13 @@ heuristics as guarantees.
 
 ## Lens Algebra Framing
 
-- **Auto-parallelism** = `Lens<Bind-Independence>·Lens<Cost>`. Independent
-  binds may emit parallel structure when the independence lens witnesses the
-  dependency relation and the cost lens makes parallelization meaningful.
+- **Auto-parallelism** = `Lens<Bind-Independence>·Lens<Effect-Commutativity>·Lens<Cost>`.
+  Independent binds may emit parallel structure only when the independence
+  lens witnesses the dependency relation, effect/commutativity evidence proves
+  the effects commute or are absent, and the cost lens makes parallelization
+  meaningful. `docs/v3-modeling-analysis.md` §"Parallelism safety" makes the
+  effect lens load-bearing, and `src/v3/std/effects.dag` keeps concurrent-write
+  commutativity fail-closed until a value/merge witness exists.
 - **Auto-memoization** = `Lens<Purity>·Lens<Cost>`. Repeated pure work may be
   cached when purity and cost jointly witness benefit. Runtime memoization of
   lens fold is one instance of this same primitive, not a separate framework
@@ -52,10 +56,12 @@ heuristics as guarantees.
 ## Loop-Iteration Parallelism
 
 Director-ratified design call: sequential default, opt-in only through
-`Lens<Iteration-Independence>`. There is no heuristic loop parallelization
-path. The shape mirrors `Lens<Bind-Independence>`: the compiler may emit
-parallel loop-iteration structure only when the lens produces a witness that
-iterations are independent under the relevant substrate facts.
+`Lens<Iteration-Independence>` plus the same effect/commutativity evidence
+required for bind parallelism. There is no heuristic loop parallelization path.
+The shape mirrors `Lens<Bind-Independence>`: the compiler may emit parallel
+loop-iteration structure only when the lens produces a witness that iterations
+are independent under the relevant substrate facts and the effect lens proves
+parallel execution is observationally safe.
 
 This design call anchors three gates:
 
@@ -125,9 +131,10 @@ the lane.
   `Lens<DagShapeReport>` producer + `BinaryDimensionReportEquals` consumer,
   and BridgeLedger pair work.
 - If `Lens<Bind-Independence>`, `Lens<Iteration-Independence>`,
-  `Lens<Purity>`, or `Lens<Cost>` reveal shared `DimensionReport<C>` framing
-  questions with TC1/TC2/TC3 unified-predicate authoring, surface that to the
-  Verification Manager / Director before proposing a substrate shape.
+  `Lens<Effect-Commutativity>`, `Lens<Purity>`, or `Lens<Cost>` reveal shared
+  `DimensionReport<C>` framing questions with TC1/TC2/TC3 unified-predicate
+  authoring, surface that to the Verification Manager / Director before
+  proposing a substrate shape.
 
 ## Explicitly Out Of Scope
 
