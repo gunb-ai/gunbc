@@ -153,6 +153,8 @@ mod r2_b5_loop_construction_closure_test;
 mod r3_free_consequences_first_batch_test;
 #[path = "integration/r3_free_consequences_second_batch_test.rs"]
 mod r3_free_consequences_second_batch_test;
+#[path = "integration/r3_verification_l4_l7_l5_skeleton_test.rs"]
+mod r3_verification_l4_l7_l5_skeleton_test;
 #[path = "integration/services_carrier_shape_test.rs"]
 mod services_carrier_shape_test;
 #[path = "integration/sg0_census_test.rs"]
@@ -581,6 +583,7 @@ mod parse_stage4_prep {
             "dsl/std/integer.dag".to_string(),
             "dsl/std/logic.dag".to_string(),
             "dsl/std/magnitude.dag".to_string(),
+            "dsl/std/nat.dag".to_string(),
             "dsl/std/string_type.dag".to_string(),
             "dsl/std/types.dag".to_string(),
         ];
@@ -709,6 +712,14 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/magnitude.dag"),
             "dsl/std/magnitude.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_nat_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/nat.dag"),
+            "dsl/std/nat.dag",
         );
     }
 
