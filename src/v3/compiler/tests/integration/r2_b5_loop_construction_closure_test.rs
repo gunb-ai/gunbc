@@ -82,10 +82,14 @@ fn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)
                         saw_cardinality_fixture = true;
                     }
                 }
-                LoopBound::Descent { cluster } => {
+                LoopBound::Descent { cluster, measure } => {
                     assert!(
                         (cluster.raw() as usize) < dag.clusters().len(),
                         "descent cluster id must resolve into `dag.clusters()`"
+                    );
+                    assert_eq!(
+                        *measure, lp.source,
+                        "descent-bound loops carry the same runtime measure as source"
                     );
                     if lp.span.file == file {
                         saw_descent_fixture = true;

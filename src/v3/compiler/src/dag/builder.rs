@@ -143,14 +143,20 @@ impl Dag {
             LoopBound::Cardinality { count } => {
                 self.assert_port_exists(count, "push_loop(bound.count)");
             }
-            LoopBound::Descent { cluster } => {
+            LoopBound::Descent { cluster, measure } => {
                 assert!(
                     self.clusters.get(cluster.index()).is_some(),
                     "push_loop(bound.cluster): unknown cluster {:?}",
                     cluster
                 );
+                self.assert_port_exists(measure, "push_loop(bound.measure)");
             }
         }
+        assert_eq!(
+            source,
+            bound.measure_port(),
+            "push_loop(source) must match loop_bound_measure(bound)"
+        );
         let node_id = self.alloc_node_id();
         let output = self.alloc_port(Some(node_id));
         let output_shape = self.resolved_port_shape(init);

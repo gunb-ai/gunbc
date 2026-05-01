@@ -335,13 +335,22 @@ type Cluster {
 
 // 🟢 TERMINAL. `LoopBound` records the irreducible witness that makes a
 // reflected `LoopNode` honest: either an explicit runtime count port or
-// a proved mutual-recursion descent cluster. Collapsing the variants
-// would either fabricate a count fact or erase the structural proof.
-// See `docs/design-mutual-recursion-lowering.md` for the full
-// dissolution receipt and named trigger rationale.
+// a proved mutual-recursion descent cluster plus the runtime measure
+// port whose size bounds that descent. Collapsing the variants would
+// either fabricate a count fact or erase the structural proof. The
+// shared `loop_bound_measure` accessor projects the cost/iteration
+// measure while keeping cluster topology on `Dag.clusters`. See
+// `docs/design-mutual-recursion-lowering.md` for the full dissolution
+// receipt and named trigger rationale.
 type LoopBound
   = Cardinality { count: PortId }
-  | Descent { cluster: ClusterId }
+  | Descent { cluster: ClusterId, measure: PortId }
+
+fn loop_bound_measure(bound: LoopBound) -> PortId =
+  match bound {
+    Cardinality(payload) => payload.count
+    Descent(payload) => payload.measure
+  }
 
 type ValueNode {
   id: NodeId

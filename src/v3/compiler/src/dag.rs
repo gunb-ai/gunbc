@@ -1796,6 +1796,13 @@ impl LoopBound {
             Self::Descent { .. } => None,
         }
     }
+
+    pub fn measure_port(&self) -> PortId {
+        match self {
+            Self::Cardinality { count } => *count,
+            Self::Descent { measure, .. } => *measure,
+        }
+    }
 }
 
 include!("dag_lookup_generated.rs");
