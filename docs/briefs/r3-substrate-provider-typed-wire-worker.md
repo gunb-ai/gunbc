@@ -5,7 +5,7 @@ lane: T-Anthropic-Wire (scope expansion per PR #1319)
 authored: 2026-04-30 (PM deep-wolf-155 per PR #1319 Director ratification)
 ---
 
-# R3 ProviderTypedWire<P> Carrier Extraction Worker Brief
+# R3 Provider Wire — Mirror Dissolution + T-Ground-Services Consumption Worker Brief
 
 **Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-04-30 by PM (deep-wolf-155) per PR #1319 ratification ask 4 ([gunbc#828 escalation](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4356314413)).
 
@@ -159,15 +159,15 @@ Worker STOPs and PINGs (canonical output: docs-only audit PR, per `feedback_work
 
 **Per `feedback_audit_adjacent_authority_first`:** before authoring `ProviderTypedWire<P>`, audit existing `services.dag` carriers, `extdeps_bootstrap_fixtures.dag`, `anthropic_messages.dag` for adjacent authority. Cite existing parents in PR description; don't restate.
 
-**Per `feedback_isomorphism_or_generation_for_mirrors` (newly canonicalized 2026-04-30):** the existence of `anthropic_schema.dag` + the lockstep-test ratchet is canonical evidence the mirror wants to dissolve. Carrier extraction IS the dissolution; the lockstep test should not survive the migration unless it transforms into "carrier is the single authority" assertion.
+**Per `feedback_isomorphism_or_generation_for_mirrors` (newly canonicalized 2026-04-30):** the existence of `anthropic_schema.dag` + the lockstep-test ratchet is canonical evidence the mirror wants to dissolve. The dissolution mechanism is option (a) from that memory — generation/parsing from the canonical authority — implemented here via T-Ground-Services parsing the canonical extdeps. The lockstep test should not survive the migration unless it transforms into "service block parses + lowers consistent with expected operation reach" assertion.
 
-**Per `feedback_substrate_principle_audit`:** apply the 6-question audit before declaring the carrier:
-1. What problem are we solving? (Parallel-authority risk between OpenAI + Anthropic + future providers)
-2. Is this an enumerable terminal? (Yes — provider identity is a phantom-tag namespace)
-3. What structural recovery pattern? (Track 9 — parametric substrate primitive consumed by per-instance rows)
-4. What dissolves? (`anthropic_schema.dag` mirror; future provider mirrors prevented from existing)
-5. What's the C-checkpoint signal? (Carrier landed; parallel mirrors deleted)
-6. What's the ratchet? (`provider_wire_no_per_provider_duplication` gate)
+**Per `feedback_substrate_principle_audit`:** apply the 6-question audit before this lane dispatches:
+1. What problem are we solving? (Parallel-authority risk between OpenAI + Anthropic + future providers — the v3-side `anthropic_schema.dag` mirror is the concrete instance)
+2. Is this an enumerable terminal? (Yes — provider identity is a phantom-tag namespace; service blocks are a finite grammar parsed by T-Ground-Services)
+3. What structural recovery pattern? (Track 9 + `feedback_isomorphism_or_generation_for_mirrors` option (a) — canonical authority preserved; parser eliminates the parallel mirror)
+4. What dissolves? (`src/v3/std/anthropic_schema.dag` v3-side parallel mirror; future provider mirrors prevented from existing because the canonical extdeps IS the single authority)
+5. What's the C-checkpoint signal? (T-Ground-Services parses service blocks; v3-side mirror deleted; no `.dag` declaration in `src/v3/std/` re-encodes service-block facts)
+6. What's the ratchet? (`provider_wire_no_fact_re_encoding` gate — name matches §"Acceptance gates" table verbatim)
 
 **Per `feedback_construction_over_ratchets`:** the gates are structural-acceptance, not heuristic perf-warnings. If migration can't satisfy a gate, the design is wrong — not the gate threshold.
 
