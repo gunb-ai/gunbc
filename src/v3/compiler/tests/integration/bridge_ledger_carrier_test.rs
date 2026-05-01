@@ -259,13 +259,12 @@ fn bridge_ledger_zero_predicate_carries_only_ledger_bridge_ledger_ref() {
 
 #[test]
 fn bridge_ledger_zero_runner_fails_with_named_open_rows_at_head() {
-    // At HEAD the canonical ledger has three Open rows
-    // (source_span_file_participation, include_str_side_channels,
-    // exact_string_patching_residual). The runner must `Fail` and name
-    // every Open row in the diagnostic; do NOT pretend ledger-zero is
-    // already true. Once an `Open` row flips to `Retired` upstream the
-    // diagnostic narrows to the remaining open names; once all five are
-    // `Retired` this test re-arms as a `Pass` ratchet.
+    // At HEAD the canonical ledger still has Open rows. The runner must
+    // `Fail` and name every Open row in the diagnostic; do NOT pretend
+    // ledger-zero is already true. Once an `Open` row flips to
+    // `Retired` upstream the diagnostic narrows to the remaining open
+    // names; once all rows are `Retired` this test re-arms as a `Pass`
+    // ratchet.
     let source = r#"
 data ledger_zero_claim: TestClaim = {
   name: "bridge_ledger_zero_at_head",
