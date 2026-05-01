@@ -80,20 +80,19 @@ pub mod evaluator {
 
     /// Rust mirror of the PR-A.3 eager-baseline strategy carrier.
     ///
-    /// **Dissolution receipt: 🟡 SCAFFOLD.** The public evaluator boundary must
-    /// carry strategy now so downstream slices cannot erase it. Only
-    /// `ApplicativeOrder / LeftFirst` is executable in E1; additional
-    /// inhabitants land with their evaluator rules.
+    /// **Dissolution receipt: TERMINAL at PR-A.3 eager-baseline scope.** The
+    /// public evaluator boundary carries strategy now so downstream slices
+    /// cannot erase it, but the mirror stays identical to `runtime.dag`:
+    /// exactly `ApplicativeOrder / LeftFirst`. Additional inhabitants must land
+    /// with substrate carriers and executable evaluator rules.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalStrategy {
         ApplicativeOrder { input_order: InputEvaluationOrder },
-        Unsupported { label: &'static str },
     }
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum InputEvaluationOrder {
         LeftFirst,
-        Unsupported { label: &'static str },
     }
 
     /// **Dissolution receipt: TERMINAL.** These are the E1 body-evaluator miss
@@ -105,9 +104,6 @@ pub mod evaluator {
         },
         UnboundPort {
             port: PortId,
-        },
-        UnsupportedStrategy {
-            strategy: EvalStrategy,
         },
         UnsupportedBehavior {
             node: NodeId,
@@ -125,7 +121,6 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        ensure_supported_strategy(strategy)?;
         if let Some(producer) = dag.resolve_producer_opt(&port) {
             return eval_node(dag, producer.id(), state, strategy);
         }
@@ -141,7 +136,11 @@ pub mod evaluator {
         _state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        ensure_supported_strategy(strategy)?;
+        match strategy {
+            EvalStrategy::ApplicativeOrder {
+                input_order: InputEvaluationOrder::LeftFirst,
+            } => {}
+        }
         match dag.node_opt(&node).ok_or(EvalError::MissingNode { node })? {
             Behavior::Value(value) => Ok(eval_value(value)),
             behavior => Err(EvalError::UnsupportedBehavior {
@@ -158,17 +157,6 @@ pub mod evaluator {
         strategy: EvalStrategy,
     ) -> Result<Value, EvalError> {
         eval_node(dag, entry, state, &strategy)
-    }
-
-    fn ensure_supported_strategy(strategy: &EvalStrategy) -> Result<(), EvalError> {
-        match strategy {
-            EvalStrategy::ApplicativeOrder {
-                input_order: InputEvaluationOrder::LeftFirst,
-            } => Ok(()),
-            _ => Err(EvalError::UnsupportedStrategy {
-                strategy: strategy.clone(),
-            }),
-        }
     }
 
     fn behavior_label(behavior: &Behavior) -> &'static str {
@@ -424,24 +412,6 @@ pub mod evaluator {
                 evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("value evaluates");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(8)));
-        }
-
-        #[test]
-        fn unsupported_strategy_fails_closed_before_dispatch() {
-            let mut dag = Dag::new();
-            let output = dag.push_value(LiteralBits::Int(8), span());
-            let entry = node_for_port(&dag, output);
-            let mut state = empty_state();
-            let strategy = EvalStrategy::ApplicativeOrder {
-                input_order: InputEvaluationOrder::Unsupported {
-                    label: "RightFirst",
-                },
-            };
-
-            let err = evaluate_body(&dag, entry, &mut state, strategy.clone())
-                .expect_err("unsupported strategy");
-
-            assert_eq!(err, EvalError::UnsupportedStrategy { strategy });
         }
 
         #[test]
