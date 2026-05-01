@@ -700,6 +700,14 @@ mod parse_stage4_prep {
     }
 
     #[test]
+    fn handwritten_parser_accepts_magnitude_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/magnitude.dag"),
+            "dsl/std/magnitude.dag",
+        );
+    }
+
+    #[test]
     fn handwritten_parser_accepts_float_dag() {
         parse_file(
             include_str!("../../../../dsl/std/float.dag"),
