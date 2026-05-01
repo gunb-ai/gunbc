@@ -83,7 +83,9 @@ This framing anchors:
 
 ## 10-Gate TestClaim Suite
 
-Preserve these gate names exactly from `r3-structure.md`:
+Preserve these gate names from `r3-structure.md`, with gate 10 following the
+`cross_target_optimization_cost_structurally_derived` rename queued in PR #1341
+until that structure-doc update merges:
 
 1. `auto_parallelism_independent_binds_emit_parallel`
 2. `auto_parallelism_dependent_binds_emit_sequential`
