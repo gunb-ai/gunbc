@@ -394,10 +394,12 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
-    // R3 L4/L7/L5 skeleton: hand-Rust receipt that Lane 1 `DifferentialEquals` emit/eval pairing,
-    // Lane 2 `AlgebraicLaw::Identity`, and L5 `ForAllTargets` compile but defer as
-    // `NotYetImplemented`. Dissolves when `TestRunner` can evaluate these claims directly without
-    // this host-side NYI harness (same dissolution class as the R3 Free-Consequences batches).
+    // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
+    // `DifferentialEquals` emit/eval pairing, Lane 2 `AlgebraicLaw::Identity`, and L5
+    // `ForAllTargets` compile but defer as `NotYetImplemented`; matrix rows pin current
+    // `Associativity` / `Commutativity` wired receipts plus `Identity` NYI receipts without adding
+    // missing-law enum variants. Dissolves when `TestRunner` can evaluate these claims directly
+    // without this host-side harness (same dissolution class as the R3 Free-Consequences batches).
     // Retirement must also fold the L5 program-text bridge (`fixtures/r3_l5_corpus/add_then_branch_seed.v3`
     // vs embedded `TestClaim.source` — byte equality ratchet lives only in this harness today).
     "src/v3/compiler/tests/integration/r3_verification_l4_l7_l5_skeleton_test.rs",
