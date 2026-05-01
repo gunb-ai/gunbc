@@ -8,7 +8,7 @@
 
 ## Scope (this lane)
 
-L5 cross-target equivalence corpus — algebraic equivalence of computational results across Rust / Python / Go on the certification corpus. **Not byte identity**; algebraic equivalence per [`docs/r3-structure.md`](../r3-structure.md) L11.
+L5 cross-target equivalence corpus — algebraic equivalence of computational results across Rust / Python / Go on the certification corpus. **Not byte identity**; algebraic equivalence per [`docs/r3-structure.md`](../r3-structure.md) L11 and the PR-D semantic lock at [`docs/design-cross-target-equivalence.md`](../design-cross-target-equivalence.md).
 
 L6 form coverage is **explicitly out of scope** — moved to R2-T-Ground-CrossTarget-Meta per [`r3-structure.md`](../r3-structure.md) L92-93 (different input space: per-(form × target) vs per-Behavior; lives as its own substrate-load-time completeness primitive per codex BLOCKING `90220bd97`).
 
@@ -48,6 +48,7 @@ Per [`r3-structure.md`](../r3-structure.md) L56 authority — for every `.dag` p
 - Parent manager: [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md)
 - R3 lane row: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-Verification-L5-Corpus (L93)
 - Upstream Lane 1: [`docs/briefs/r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md)
+- Upstream PR-D semantic lock: [`docs/design-cross-target-equivalence.md`](../design-cross-target-equivalence.md)
 - Upstream PR-D scaffold: [`docs/briefs/r2-pr-d-cross-target-equivalence-harness-primitives.md`](r2-pr-d-cross-target-equivalence-harness-primitives.md)
 - L6 reclassification: [`docs/r3-structure.md`](../r3-structure.md) L92-93
 - THESIS surface: [`THESIS.md`](../../THESIS.md) §"Tier 3 — Verification from structure" (L5 claim)
