@@ -1,23 +1,20 @@
 //! L6 cross-product walker. Pure function over the bootstrap [`Dag`];
-//! reports per-cell coverage against the LanguageSpec emission-path
-//! table.
+//! reports per-cell coverage against landed LanguageSpec **row**
+//! authorities (Phase 1 `MethodTemplateContract` lists — see
+//! [`crate::coverage`]).
 //!
 //! ## Coverage lookup
 //!
-//! Today's `LanguageSpec` (`src/v3/std/emit_model.dag:303`) does NOT
-//! yet carry an `emission_paths: Map<(FormAxis, BehaviorAxis), ...>`
-//! table. The intended substrate authority for that table lands as
-//! part of `T-Ground-LanguageSpec` Phase 1.5+. Until it lands, every
-//! cell resolves to "not covered" and the walker reports 90/90
-//! `MissingEmissionPath` diagnostics. The lookup itself is wired
-//! structurally so that when the table lands, this walker's coverage
-//! check grows without test rewrite — the intended `lookup_coverage`
-//! signature stays the same; only its body grows from "always
-//! `None`" to "consult the LanguageSpec table per cell."
+//! Coverage is derived from substrate-loaded `List<MethodTemplateContract>`
+//! declarations per Shape A target (`*_method_template_contracts.dag`), not
+//! from a dedicated `emission_paths` map. [`walk_cross_product`] builds the
+//! covered-cell set via [`crate::coverage::language_spec_emission_cells_covered`],
+//! then partitions [`crate::cells::Cell::all`] with `covered.contains(&cell)`.
 
 use v3_compiler::dag::Dag;
 
 use crate::cells::Cell;
+use crate::coverage::language_spec_emission_cells_covered;
 use crate::diagnostic::EmissionDiagnostic;
 
 /// Per-cell coverage report produced by the L6 walker.
@@ -44,26 +41,15 @@ impl CrossProductReport {
 ///
 /// **Pure function** — no mutation, no side effects, no panics.
 pub fn walk_cross_product(dag: &Dag) -> CrossProductReport {
+    let covered = language_spec_emission_cells_covered(dag);
     let mut present = Vec::new();
     let mut missing = Vec::new();
     for cell in Cell::all() {
-        if cell_covered_by_language_spec(dag, &cell) {
+        if covered.contains(&cell) {
             present.push(cell);
         } else {
             missing.push((cell, EmissionDiagnostic::missing_emission_path(&cell)));
         }
     }
     CrossProductReport { present, missing }
-}
-
-/// Cell-coverage probe against `LanguageSpec`. Today's substrate
-/// has no per-cell emission-paths table, so this returns `false` for
-/// all cells. When `T-Ground-LanguageSpec` Phase 1.5+ adds the
-/// table, this body grows to consult it without changing the public
-/// signature or the walker.
-fn cell_covered_by_language_spec(_dag: &Dag, _cell: &Cell) -> bool {
-    // Structural placeholder — LanguageSpec.emission_paths table not
-    // yet declared (Phase 1.5+ Substrate slice). All cells report
-    // missing until the table lands; gaps are tracked, not silent.
-    false
 }
