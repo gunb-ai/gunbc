@@ -217,18 +217,24 @@ shape (if/when one is needed) is a separate Substrate-routed slice.
 This brief authorizes — but does **not** require — a sub-tiny code
 slice that adds:
 
-1. `src/v3/compiler/src/body_evaluator.rs` containing only:
-   - The `EvalDiagnostic` enum (above).
-   - A `pub fn evaluate_body` signature whose body is
-     `Err(EvalDiagnostic::NotYetImplemented("body evaluator skeleton — see r3-evaluator-e0-body-evaluator-api-scaffold.md"))`.
+1. `src/v3/compiler/src/body_evaluator.rs` containing only the
+   `EvalDiagnostic` enum (above) — **no `evaluate_body` signature**,
+   because that signature names `Value` / `EvalStateStack` /
+   `EvalStrategy`, none of which have Rust mirrors today and the
+   companion is required to be carrier-neutral.
 2. `pub mod body_evaluator;` line in `src/v3/compiler/src/lib.rs`.
 
-That code is **carrier-neutral**: it adds zero mirror types for `Value`
-/ `EvalFrame` / `EvalStateStack` / `EvalStrategy`. The skeleton only
-exists so E1's PR can land its `Value` mirror + `eval_value` body
-without also having to invent the module and lib wiring. If even this
-much code feels like scope creep, E0 stays docs-only and E1 absorbs
-the module-creation overhead.
+That code is **strictly carrier-neutral**: it adds zero mirror types
+for `Value` / `EvalFrame` / `EvalStateStack` / `EvalStrategy`. The
+`evaluate_body` signature shipped above is the **API contract**, not
+production Rust — it lands inside the E1 PR alongside the first
+carrier mirror (`Value`) so the function can actually compile. Until
+then, the optional companion gives only the typed `EvalDiagnostic`
+enum and an empty module so E1 doesn't have to create the file and
+`lib.rs` wiring at the same time as its first behavior body.
+
+If even this much code feels like scope creep, E0 stays docs-only and
+E1 absorbs the module-creation overhead.
 
 The companion is gated on reviewer comfort: if the api-review bots
 flag it as scope expansion, drop it and ship docs-only.
