@@ -1632,7 +1632,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
                 value_body: None,
                 refinement: None,
                 nominal_opacity: None,
-                span: SourceSpan::new("dsl/std/nat.dag", 1497, 1527),
+                span: SourceSpan::new("dsl/std/nat.dag", 3009, 3039),
             },
             Declaration {
                 id: DeclarationId(65),
