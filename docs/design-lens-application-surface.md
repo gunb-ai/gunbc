@@ -122,7 +122,7 @@ The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) parametrizes lenses 
 
 ```dag
 // src/v3/lenses/complexity.dag
-data complexity_lens: Lens<ComplexitySummary> = ...   // rich output: work/span/class/certainty
+data complexity_lens: Lens<ComplexitySummary> = ...   // rich output: work/span/asymptotic_class/work_certainty/span_certainty
 data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
   project: |summary| summary.asymptotic_class           // budget compares against class only
   violates: |declared, observed|                         // per-lens violation relation
@@ -149,7 +149,7 @@ data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode> 
 }
 ```
 
-**Why the projection rather than a single carrier**: the lens output for complexity is rich (`ComplexitySummary { work, span, asymptotic_class, certainty }`) — required by the lens-fold composition (per `compose_summary_*` in complexity-lens §3.1). The budget is the user's contract — typically a single class, not a full summary. Forcing budget = output would make users author `Enforce { budget: ComplexitySummary { ... } }` — over-constrained for the common "function should be O(log n)" case. Forcing output = budget would drop work/span/certainty facts the lens-fold composition needs. The projection separates the two concerns: lens output stays rich (load-bearing for composition); budget stays simple (load-bearing for user authoring).
+**Why the projection rather than a single carrier**: the lens output for complexity is rich (`ComplexitySummary { work, span, asymptotic_class, work_certainty, span_certainty }` — per complexity-lens §1.7, certainty is per-coordinate to avoid collapsing per-dimension proof-tightness facts) — required by the lens-fold composition (per `compose_summary_*` in complexity-lens §3.1). The budget is the user's contract — typically a single class, not a full summary. Forcing budget = output would make users author `Enforce { budget: ComplexitySummary { ... } }` — over-constrained for the common "function should be O(log n)" case. Forcing output = budget would drop work/span/per-coordinate-certainty facts the lens-fold composition needs. The projection separates the two concerns: lens output stays rich (load-bearing for composition); budget stays simple (load-bearing for user authoring).
 
 Lens-output / projection / budget compatibility is **structural by construction**: an `Enforce<Output, Budget>(EnforcedApplication<Output, Budget>)` variant ties lens / enforcement / budget via two shared type parameters. A `Lens<ComplexitySummary>` can only pair with a `LensEnforcement<ComplexitySummary, B>` (some Budget B) and a `budget: B` of the same B. Mismatched triples (e.g., complexity-lens with a `SymbolicCost` budget; complexity-lens with cost's identity projection) are unrepresentable in the carrier — the type system rejects them at parse/inference time, not via a separate type-checker rule. (No `budget_type: DeclarationId` field on `Lens<C>` is needed; the type parameters `Output` and `Budget` ARE the structural authority.) The `Introspect<Output>(IntrospectApplication<Output>)` variant carries only `Output` — no budget, no enforcement projection — so introspection-mode applications cannot accidentally carry irrelevant enforcement metadata.
 
