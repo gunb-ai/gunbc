@@ -438,8 +438,12 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 // outcome. NO meet across dimensions — the result keeps work_certainty
 // and span_certainty independent on the output ComplexitySummary.
 // Sequential: work composes additively (sum), span composes additively.
-// Branch: work composes additively across arms (sum), span composes via
-// max_path. Both honor per-dimension surviving-contributor accounting
+// Branch: work composes via max_path (worst-case arm — only one arm
+// executes at runtime, so the arm with maximum work dominates the cost
+// for that branch); span composes via max_path (same reasoning — span
+// is critical-path, branch's worst-case-arm sets the path). This is
+// the "branch-max per SymbolicCost semantics" referenced at §1.4. Both
+// dimensions honor per-dimension surviving-contributor accounting
 // AND per-coordinate certainty independence.
 fn compose_summary_sequential(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary = ...
 fn compose_summary_branch(arms: List<ComplexitySummary>) -> ComplexitySummary = ...
@@ -586,7 +590,7 @@ The corpus covers each `AsymptoticClass` variant at least once, with at least on
 The dependency chain (per §2 cascade-gate sequence) drives a strict ordering:
 
 1. **T-E-P-Producer-Broadening lands** (separate lane; cascade prerequisite).
-2. **Substrate carriers land** in one PR per §1: renderer-side InternTable name wiring (§1.2 — no substrate change to `SizeVariable`), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` 2-variant sum **without** an associated lattice instance (§1.5 — composition is cost-aware via `compose_summary_*` per §3.1, not lattice-fold), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
+2. **Substrate carriers land** in one PR per §1: `SizeVariable.display_name: String?` field add (per cost-lens §1.2; v3 has no PortId-to-authored-name InternTable query, so the substrate-field path is the single authority), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` 2-variant sum **without** an associated lattice instance (§1.5 — composition is cost-aware via `compose_summary_*` per §3.1, not lattice-fold), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
 3. **Lens consumer rewrite** in one PR per §3.
 4. **Cementing test + fixture corpus** in one PR per §4.
 5. **Register update** to `BEHAVIORALLY COMPLETE` in the same PR as the cementing test.
