@@ -19,7 +19,7 @@ Re-stated from parent audit §1 + §3.2; this plan adds nothing new. Verified at
 | S-2 | T-FixedPoint closed | `pb_self_compile_fixed_point` predicate green under R3 elevated bar; closure ledger receipt. |
 | S-3 | T-LensProducer-Retirement closed | All three sub-gates green (`lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` retired); files do not exist under `src/v3/compiler/src/`. |
 | S-4 | PB-Runtime trampoline live as bootstrap | `cargo build --workspace` succeeds without `src/v2/stage0` invocation in the bootstrap chain. Verified by removing **both** `src/v2/stage0` AND `src/v2/tests` from `Cargo.toml` workspace `members` in a *throw-away* check (NOT committed) and confirming compile + run works through PB-Runtime alone. **Both must be removed**: `src/v2/tests/Cargo.toml:9` path-depends on `../stage0` (`v2-compiler = { path = "../stage0" }`), so removing only stage0 leaves tests pulling it in transitively (fail-open). |
-| G-1 | `v2_oracle_no_remaining_test_consumers` green | Per migration matrix §3 (single authority): `grep -rEn '\bv2_compiler(_tests)?\b' src/ tests/` excluding `src/v2/` returns zero substantive matches; Cargo edges in `src/v3/compiler/Cargo.toml:32-33` deleted (§3.3). G-1 closure does NOT include the legacy emit chain or verification.dag convergence — those are separate G-2 prerequisites tracked in the next two rows. |
+| G-1 | `v2_oracle_no_remaining_test_consumers` green | Per migration matrix §3 (single authority): `grep -rEn 'v2[_-]compiler(_tests|-tests)?' src/` excluding `src/v2/` returns zero substantive matches; Cargo edges in `src/v3/compiler/Cargo.toml:32-33` deleted (§3.3). G-1 closure does NOT include the legacy emit chain or verification.dag convergence — those are separate G-2 prerequisites tracked in the next two rows. |
 | G-2-prereq-emit | Legacy emit chain retired (G-2 prerequisite per migration matrix §4.2) | `{rust,python,go}_simple_method_specs` / `*_method_templates` / `*_method_wraps_result` deleted from `dsl/extdeps/languages/{rust,python,go}/emit.dag` — per-target, all three families. Per matrix §4.2 STOP/green criteria. |
 | G-2-prereq-verif | `verification.dag` convergence landed (G-2 prerequisite per migration matrix §5) | Substrate-led design call ratified; v2-era `dsl/std/verification.dag` surface either dissolved into v3's `src/v3/std/verification.dag` (`TestPredicate`/`TestClaim { ..., requires: List<ResourceReference> }`/`TestSuite`/`TestObligation`) or moved to a renamed module path; no surviving authority depends on the v2-era surface. Routed to Substrate Manager per matrix §5.2. |
 | G-2-prereq-ci | CI workflow no longer invokes v2-compiler (G-2 prerequisite, surfaced 2026-05-02) | `.github/workflows/ci.yml` has no `v2-compiler` references. At HEAD the `ci` job currently runs `cargo build -p v2-compiler --release` (line 120) and `cargo run -p v2-compiler --release -- run --source-root dsl --function run_ci_pipeline` (line 123), and the cache key hashes `src/v2/stage0/src/**` (line 114). All three must be retired or replaced (with v3-side equivalents under PB-Runtime) in a **separate prior PR** before the deletion PR opens — otherwise the deletion PR's `ci` job fails on "package `v2-compiler` not found". Verified: `grep -n 'v2\|stage0' .github/workflows/ci.yml` returns zero matches. |
@@ -81,7 +81,7 @@ These checks MUST hold on the deletion PR before merge. Two enforcement classes:
 
 | # | Guardrail | Verification |
 |---|---|---|
-| Gd-1 | No remaining v2 references in `src/`, `tests/`, `dsl/extdeps/` | See verification command below the table; returns zero matches that aren't already in the PR's deletion diff. |
+| Gd-1 | No remaining v2 references in `src/`, `dsl/`, `.github/` | See verification command below the table; returns zero matches that aren't already in the PR's deletion diff. (Repo has no top-level `tests/` dir; v3 tests live under `src/v3/compiler/tests/` and are reached via the recursive `src/` scan.) |
 | Gd-2 | Workspace builds | `cargo build --workspace` exit 0; `cargo test --workspace` exit 0. (No more `--exclude v2-compiler-tests` flag needed; the crate is gone.) |
 | Gd-3 | `Cargo.lock` no longer references v2 | `grep -n 'v2-compiler' Cargo.lock` returns zero matches. |
 | Gd-4 | SG-0 census still passes | `cargo test -p v3-compiler --test integration sg0_census_test` green; the census root `src/v3/compiler` is unchanged by this PR. |
@@ -92,12 +92,14 @@ These checks MUST hold on the deletion PR before merge. Two enforcement classes:
 Gd-1 verification command (kept outside the table to avoid markdown pipe-escape pitfalls; in `grep -E`, `\|` is a literal `|` not alternation, so the in-table form silently misses one of the alternatives):
 
 ```sh
-# Scan all live source/test/dsl trees. Catches both Rust path-style
+# Scan live source / dsl / workflow trees (no `tests/` — repo has no
+# top-level tests dir; tests live under src/v3/compiler/tests/ which
+# is reached via the recursive src/ scan). Catches both Rust path-style
 # (v2_compiler / v2_compiler_tests, underscore) AND Cargo dep-style
 # (v2-compiler / v2-compiler-tests, hyphen). Catches src/v2 whether
 # followed by `/`, `"`, or word-boundary (e.g. `path: "src/v2"` in
 # dsl/gunbc/compiler.dag:53 — no trailing slash).
-grep -rEn 'v2[_-]compiler(_tests|-tests)?|src/v2($|/|"|[^a-zA-Z0-9_])' src/ tests/ dsl/ .github/
+grep -rEn 'v2[_-]compiler(_tests|-tests)?|src/v2($|/|"|[^a-zA-Z0-9_])' src/ dsl/ .github/
 ```
 
 Green: returns zero matches that aren't already in the PR's deletion diff. **Live authorities the prior pattern would have missed** (verified at HEAD): `dsl/gunbc/compiler.dag:53` (`path: "src/v2"`); `dsl/gunbc/compiler.dag:266` (`"v2-compiler-tests"` hyphenated); `dsl/std/node.dag:9`, `dsl/std/syntax.dag:79`, `dsl/std/constructors.dag:52`, `dsl/extdeps/llm/openai.dag:90`, `dsl/extdeps/languages/python/syntax.dag:43`, `dsl/tools/purity_check.dag:157`, `dsl/gunbc/tools/review_codex.dag:75`, `dsl/gunbc/tools/ci_runner.dag:16`. These each need their own disposition before Gd-1 can pass — most are doc-comments or string literals (Population C cleanup per §2.3); `dsl/gunbc/compiler.dag` is live authority and gets retired/repointed via the v3 compiler-source migration before deletion.
