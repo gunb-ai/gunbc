@@ -52,20 +52,26 @@ type TargetIntegerTypeInhabitance {
   type_realization: DeclarationRef
 }
 
-// Coproduct dissolution receipt — 🟢 TERMINAL (both variants).
-// LanguageSpec-side taxonomy for how an integer inhabitance row attaches bound facts.
+// 🟢 TERMINAL — coproduct dissolution receipt (`feedback_coproduct_dissolution` / four-pattern check).
+// LanguageSpec carrier: how an integer inhabitance row attaches static bound facts vs leaving them
+// under-refined for Slice C grounding.
 //
-// - `BoundUnspecified` — 🟢 TERMINAL: kernel integer + algebra are declared with no fixed
-//   static `Interval<Int>` witness on this row (under-refinement allowed at fold time until
-//   Slice C reads program + substrate facts).
-// - `StaticBoundFact(IntInterval)` — 🟢 TERMINAL: closed interval (or `Unbounded` via substrate
-//   `Interval<Int>`) is asserted inline; lowers as `ValueBody::Structural` without top-level
-//   `BoundDeclaration` data bodies (DB-10 top-level sum gap — see `lower_data_item`).
+// **Pattern 1 — Fact placement.** Variants name the same field (`TargetIntegerTypeInhabitance.bound`);
+// the discriminant is KIND of bound attachment, not competing DAG slots. ✓ does not apply.
 //
-// Pattern 1 (optional interval fields on `TargetIntegerTypeInhabitance`) would erase the
-// explicit “bound unspecified vs bound present” axis at row type granularity. Pattern 2
-// (parallel top-level `BoundDeclaration` data per row) hits the DB-10 unparsed gap for those
-// bodies. No dissolution trigger beyond Slice C teaching emitters/grounding to read these variants.
+// **Pattern 2 — Variant-is-data.** `BoundUnspecified` is unit; `StaticBoundFact(IntInterval)` carries
+// substrate `Interval<Int>`. Distinct payloads — not label-only. ✓ does not apply.
+//
+// **Pattern 3 — Algebraic form.** Unspecified vs closed/static interval witness are different emission
+// authorities (defer vs inline Q1 interval); no shared intro/elim form. ✓ does not apply.
+//
+// **Pattern 4 — Dimensional.** Not a coordinate record with `Option` axes per variant; `IntInterval`
+// is the shared substrate bound parent when present. ✓ does not apply.
+//
+// **Conclusion:** irreducible coproduct for Slice B rows; emitters/grounding learn this sum in Slice C.
+// Design rationale (why not optional interval fields on `TargetIntegerTypeInhabitance`, why not parallel
+// top-level `BoundDeclaration` bodies): Pattern 1 at row level would erase the explicit axis; Pattern 2
+// hits DB-10 unparsed gap for those top-level data bodies (`lower_data_item`).
 type TargetIntegerInhabitanceBound
   = BoundUnspecified
   | StaticBoundFact(IntInterval)
