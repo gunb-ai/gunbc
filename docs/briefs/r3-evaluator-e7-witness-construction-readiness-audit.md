@@ -103,9 +103,17 @@ dimension until the substrate can instantiate `AnalysisDimension` records.
 E7 will start with three concrete implementations (one per representative
 lens):
 
-- `ComplexityDimension` — wraps the existing `cost_of` / `compute_costs`
-  path; converts `CostLookup::Hit(_)` → `Inhabits(SymbolicCost)`,
-  `CostLookup::Miss` → `Violates`.
+- `ComplexityDimension` — wraps the existing **symbolic-cost** path
+  (`crate::lens_cost_symbolic::symbolic_cost_of` →
+  `Lookup<SymbolicCost>` per `lens_cost_symbolic_generated.rs:9`,
+  exposed as `SymbolicCostLookup` per `dimension.rs:22`). Converts
+  `SymbolicCostLookup::Hit(cost)` → `Witness::Inhabits(cost)` and
+  `SymbolicCostLookup::Miss` → `Witness::Violates` exactly as the
+  existing `analyze_symbolic_cost_dimension` (`dimension.rs:158-215`)
+  already does. The integer-domain `cost_of` / `CostLookup<i64>`
+  path returns `i64` not `SymbolicCost` and is **not** the carrier
+  authority for `DimensionReport<SymbolicCost>`; `ComplexityDimension`
+  must consume the symbolic-cost authority, not the integer-cost one.
 - `TenantFlowDimension` — **not live today**. The first executable slice must
   either consume a landed evaluator-side carrier or stay readiness-only; it
   must not use `()` as a silent stand-in for tenant flow.
