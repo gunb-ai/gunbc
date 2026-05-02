@@ -38,23 +38,24 @@ type Precision
   | DecimalPrecision { digits: PositiveInt, exponent_digits: PositiveInt }
 
 // 🟢 TERMINAL at special-value policy scope. NaN support is an independent
-// closed policy axis; the later carrier slice can aggregate it without adding
-// new policy vocabulary.
+// closed policy axis; `ApproximateField<F>` aggregates it through `SpecialValues`
+// without adding policy vocabulary beyond these terminals.
 type NanPolicy = NoNaN | QuietNaN | QuietAndSignalingNaN
 
 // 🟢 TERMINAL at special-value policy scope. Infinity support is an independent
-// closed policy axis; the later carrier slice can aggregate it without adding
-// new policy vocabulary.
+// closed policy axis; `ApproximateField<F>` aggregates it through `SpecialValues`
+// without adding policy vocabulary beyond these terminals.
 type InfinityPolicy = NoInfinity | SignedInfinity
 
 // 🟢 TERMINAL at special-value policy scope. Signed-zero support is an
-// independent closed policy axis; the later carrier slice can aggregate it
-// without adding new policy vocabulary.
+// independent closed policy axis; `ApproximateField<F>` aggregates it through
+// `SpecialValues` without adding policy vocabulary beyond these terminals.
 type SignedZeroPolicy = NoSignedZero | SignedZero
 
 // 🟢 TERMINAL at subnormal/denormal policy scope. Underflow behavior is an
-// independent closed policy axis; the later carrier slice can aggregate it
-// without adding new policy vocabulary.
+// independent closed policy axis; `ApproximateField<F>` carries it as
+// `subnormal_policy` — separate from `SpecialValues` per 6Q (denormal policy
+// is underflow semantics, not merely “admits subnormals”).
 type SubnormalPolicy = NoSubnormals | GradualUnderflow | FlushToZero
 
 // Closed record aggregating the three orthogonal special-value policy axes (NaN,

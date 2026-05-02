@@ -20704,7 +20704,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 1929, 1985),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 1967, 2023),
         });
         declarations.push(Declaration {
             id: DeclarationId(807),
@@ -20729,7 +20729,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2175, 2224),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2251, 2300),
         });
         declarations.push(Declaration {
             id: DeclarationId(808),
@@ -20754,7 +20754,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2417, 2466),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2531, 2580),
         });
         declarations.push(Declaration {
             id: DeclarationId(809),
@@ -20783,7 +20783,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2663, 2731),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2875, 2943),
         });
         declarations.push(Declaration {
             id: DeclarationId(810),
@@ -20812,7 +20812,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3007, 3105),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3219, 3317),
         });
         declarations.push(Declaration {
             id: DeclarationId(811),
@@ -20849,7 +20849,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3341, 3502),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3553, 3714),
         });
         declarations.push(Declaration {
             id: DeclarationId(812),
@@ -20863,7 +20863,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3341, 3502),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3553, 3714),
         });
         declarations.push(Declaration {
             id: DeclarationId(813),
@@ -52045,7 +52045,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 1946, 1951),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 1984, 1989),
         });
         declarations.push(Declaration {
             id: DeclarationId(1766),
@@ -52059,7 +52059,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 1954, 1962),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 1992, 2000),
         });
         declarations.push(Declaration {
             id: DeclarationId(1767),
@@ -52073,7 +52073,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 1965, 1985),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2003, 2023),
         });
         declarations.push(Declaration {
             id: DeclarationId(1768),
@@ -52087,7 +52087,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2197, 2207),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2273, 2283),
         });
         declarations.push(Declaration {
             id: DeclarationId(1769),
@@ -52101,7 +52101,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2210, 2224),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2286, 2300),
         });
         declarations.push(Declaration {
             id: DeclarationId(1770),
@@ -52115,7 +52115,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2441, 2453),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2555, 2567),
         });
         declarations.push(Declaration {
             id: DeclarationId(1771),
@@ -52129,7 +52129,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2456, 2466),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2570, 2580),
         });
         declarations.push(Declaration {
             id: DeclarationId(1772),
@@ -52143,7 +52143,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2686, 2698),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2898, 2910),
         });
         declarations.push(Declaration {
             id: DeclarationId(1773),
@@ -52157,7 +52157,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2701, 2717),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2913, 2929),
         });
         declarations.push(Declaration {
             id: DeclarationId(1774),
@@ -52171,7 +52171,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2720, 2731),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 2932, 2943),
         });
         declarations.push(Declaration {
             id: DeclarationId(1775),
@@ -52191,7 +52191,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3376, 3384),
+            span: SourceSpan::new("src/v3/std/approximate_field.dag", 3588, 3596),
         });
         declarations.push(Declaration {
             id: DeclarationId(1776),
