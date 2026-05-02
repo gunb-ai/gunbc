@@ -1385,8 +1385,7 @@ pub mod evaluator {
             // doesn't drift with future numeric-substrate edits.
             let mut dag = Dag::new();
             let target_decl = dag.declaration_by_name("Bool").expect("Bool").id;
-            let output =
-                dag.push_transform(TransformTarget::Callable(target_decl), vec![], span());
+            let output = dag.push_transform(TransformTarget::Callable(target_decl), vec![], span());
             let entry = node_for_port(&dag, output);
             let mut state = empty_state();
 
