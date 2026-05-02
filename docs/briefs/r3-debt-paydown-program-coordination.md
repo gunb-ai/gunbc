@@ -27,12 +27,22 @@ Three load-bearing mechanisms (lifted from P5 layered-discipline shape, scoped t
 
 ## Definition — tracked-debt row (canonical)
 
-A **tracked-debt row** is any ROADMAP entry under any of the following heading shapes, current or future:
+A **tracked-debt row** is a ROADMAP entry that satisfies the following predicate:
+
+> The entry enumerates a specific item (a bug, scaffold, dissolution trigger, deferral, or follow-up) **and** carries at least one of: a named owner, a named dissolution mechanism, a retirement-PR pointer, or a "remove once X" condition. Preamble / framing / classification / lane-overview sections that describe categories without enumerating specific items are **not** tracked-debt rows.
+
+The current ROADMAP heading shapes that satisfy this predicate (enumerated explicitly so the manager has a concrete starting set, not an inferential one):
 
 - `### Post-merge debt (...)` sections.
 - `## Tracked debts — <period> analyses` section, including its `### PR #<N>` ship-with-debt-receipt sub-rows.
 - `### P0` / `### P1` / `### P2` / `### P3` / `### P4` priority-category sections (real bugs / fabrication boundaries / structural compression / modeling gaps / type refinement — currently at ROADMAP lines 350-379).
-- Any other tracked-debt heading current or future.
+- `## Active deferrals — follow-up work from merged PRs` (`DB-*` deferral ledger; currently at ROADMAP line 276 with one-line entries pointing at `docs/db-history/db-<N>.md`).
+- `## Scheduled deletions — scaffolds with named dissolution triggers` (currently at ROADMAP line 298; pointer to external table at `docs/history/roadmap-scheduled-deletions.md`).
+- `### §6a MethodContract per-field dissolution triggers (R2 Release follow-through)` (currently at ROADMAP line 431).
+
+**Explicitly excluded** (predicate-fails): `### Debt classification — framing` (currently at ROADMAP line 328 — preamble explaining categories, not a debt-row container); `### Goals / Lanes / Lane acceptance / Dependency DAG / Principles / Sketch vs Oracle framing / Status at a glance / Architecture / What NOT to build yet / Open design questions` and similar lane-overview / framing headings; any heading whose body is prose explanation rather than enumerated items.
+
+**Future tracked-debt headings** must satisfy the predicate above to count; the manager amends this canonical definition section in a tracked PR when the ROADMAP grows a new debt-bearing heading shape (the predicate is the authority, not the enumeration — the enumeration is a concrete starting set that gets extended in lockstep with ROADMAP growth).
 
 This definition is the canonical scope for the per-PR rule, the Slice 1 ledger inventory, and the Acceptance closure gate below; downstream sections refer back here rather than re-enumerating, so the union cannot drift between sites.
 
