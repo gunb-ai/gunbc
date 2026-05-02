@@ -28,7 +28,7 @@ This index documents the cross-doc edges that the coherence audit (2026-05-02) v
 | `QuantifiedTestClaim` / `ProgramGenerator` / `ForAll`/`Exists` quantifiers | tests-as-data §2.2 | cementing tests in cost/complexity/effect-enumeration |
 | `AsymptoticClass` lattice | complexity-lens §1.4 | lens-application's `ComplexityBudget` (= `AsymptoticClass`) |
 | `SymbolicCost` algebra (DB-7 carrier; semiring fix in cost-lens §4) | algebra.dag (DB-7) — not authored here | complexity-lens (consumes for symbolic-cost dimension); cost-lens (extends with semiring inhabitance + product-zero fix) |
-| `SizeExpr` value-semantics carrier | cost-lens §1.2 | (replaces `SizeVariable`; cost lens internal) |
+| `SizeVariable { source_port: PortId }` | algebra.dag (DB-7) | unchanged; both lenses consume DB-7 carrier; renderer reads name via `intern_table::name_of(source_port)` (single authority for names — see cost-lens §1.2 + complexity-lens §1.2) |
 | `per_call_pattern_at(d, call_site) → CallPattern?` typed query | cost-lens §3.2 + §8.4 | complexity-lens §2 (single shared producer query — no parallel authority) |
 | Resource-threaded callable signatures | effect-enumeration §2.4 | cost-lens §3.3 (consumption is signature-shape-agnostic) |
 | `Operation` (replaces `OperationEffect` post-migration) | effect-enumeration §4 | DB-18 `WorkflowEffect.LinearEffect.ops` (element-type refinement) |

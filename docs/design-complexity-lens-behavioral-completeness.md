@@ -41,24 +41,21 @@ v2's `SizeExpr` carries `SizeVar { name: String }` — a *named* size variable t
 **Substrate change:**
 
 ```dag
-// src/v3/std/algebra.dag — refine SizeVariable
+// src/v3/std/algebra.dag — SizeVariable stays UNCHANGED (no display_name field)
 
 type SizeVariable {
   source_port: PortId           // structural backing — which port's runtime size
-  display_name: String?         // user-facing name, optional (Some when authored, None when inferred)
 }
 
-// Equality: two SizeVariables are equal iff source_port matches.
-// display_name is a presentation slot, NOT identity — same source_port with
-// different names is the same size variable. (P2 single-authority: source_port
-// is the structural identity; display_name is a derived presentation fact.)
+// Equality on source_port (the only field).
+// User-facing name comes from intern_table::name_of(source_port) — single authority.
 fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
   port_id_eq(a.source_port, b.source_port)
 ```
 
-**Why `display_name` is `String?`, not `String`:** per [`../INVARIANTS.md`](../INVARIANTS.md) C-9 *no fabrication*, when no user-authored name exists the field is `None` — the renderer derives a fresh name (e.g., `"|port_42|"`) from `source_port`. We never invent a fake name and stash it in the field.
+**Why no `display_name` field on the carrier** (resolved per gpt-5-5-pro BLOCKING at sha ef21e1a0): the InternTable already keys user-authored binding names by `port_id` (populated at parse time). Adding a `display_name: String?` field on `SizeVariable` creates two sources of truth — both `display_name` and InternTable would carry names; consumers could disagree. Single-authority discipline (P2) requires picking one. **InternTable is the canonical name authority** — `SizeVariable` stays as a structural reference. The renderer reads names via `intern_table::name_of(source_port)`. Aligned with [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md) §1.2.
 
-**Why this is not a separate `SizeExpr` carrier:** `SizeExpr` in v2 was a coproduct (`SizeConst | SizeVar | SizeLen | SizeAdd | SizeMax`). In v3, `SymbolicCost` already covers `SizeConst` (`ConstantCost(Int)`), `SizeAdd` (`SumCost`), `SizeMax` (the dominance ordering), and `SizeLen` (`LinearCost(SizeVariable)`). The only fact left to carry is the `name` slot on `SizeVariable`. Reusing `SymbolicCost` for both cost and size dissolves v2's parallel `SizeExpr` ↔ `CostExpr` authorities into one — same fact-flow-forward shape. (Sustainability invariant: cost-of-change=1 when one type subsumes two.)
+**Why this is not a separate `SizeExpr` carrier:** `SizeExpr` in v2 was a coproduct (`SizeConst | SizeVar | SizeLen | SizeAdd | SizeMax`). In v3, `SymbolicCost` already covers `SizeConst` (`ConstantCost(Int)`), `SizeAdd` (`SumCost`), `SizeMax` (the dominance ordering), and `SizeLen` (`LinearCost(SizeVariable)`). The only "missing fact" the capability register names is the user-facing-name surface — closed by InternTable wiring (above), not by adding a new carrier. Reusing `SymbolicCost` for both cost and size dissolves v2's parallel `SizeExpr` ↔ `CostExpr` authorities into one — same fact-flow-forward shape. (Sustainability invariant: cost-of-change=1 when one type subsumes two.)
 
 ### §1.3 Work/span dimension split
 
@@ -479,7 +476,7 @@ The corpus covers each `AsymptoticClass` variant at least once, with at least on
 The dependency chain (per §2 cascade-gate sequence) drives a strict ordering:
 
 1. **T-E-P-Producer-Broadening lands** (separate lane; cascade prerequisite).
-2. **Substrate carriers land** in one PR per §1: `SizeVariable.display_name` enrichment (§1.2), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` + lattice declaration (§1.5), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
+2. **Substrate carriers land** in one PR per §1: renderer-side InternTable name wiring (§1.2 — no substrate change to `SizeVariable`), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` + lattice declaration (§1.5), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
 3. **Lens consumer rewrite** in one PR per §3.
 4. **Cementing test + fixture corpus** in one PR per §4.
 5. **Register update** to `BEHAVIORALLY COMPLETE` in the same PR as the cementing test.
@@ -505,9 +502,9 @@ Per `feedback_design_before_implement` — resolve all design questions before i
 
 (Resolved in §1.3.) At the *Dimension* layer they are two instances with different `compose` monoids (sum-on-Branch for work; max-on-Branch for span). At the *Summary output* layer they are coordinates of `ComplexitySummary`. Both framings are honest because the relationship is "two dimensions feed one summary" — same shape as DB-3 §"Dimension evaluation" describes for `DimensionReport`.
 
-### §7.2 Should `SizeVariable` carry `name: String` or `display_name: String?`? — RESOLVED: optional
+### §7.2 Should `SizeVariable` carry a name field? — RESOLVED: no; InternTable is single name authority
 
-(Resolved in §1.2.) Per [`../INVARIANTS.md`](../INVARIANTS.md) C-9 *no fabricated empty strings* — when no user-authored name exists, `None` is the structurally honest carrier; the renderer derives a fresh name from `source_port` (e.g., `"|port_42|"`). Equality is on `source_port` (structural identity), not name (presentation slot).
+(Resolved in §1.2.) Per gpt-5-5-pro BLOCKING at sha ef21e1a0 + P2 single-authority discipline: adding a `display_name: String?` field on `SizeVariable` would create two name authorities (the field + InternTable), letting consumers diverge on the user-facing label for the same `source_port`. Resolution: InternTable is the single canonical name source (already populated at parse time); the renderer reads via `intern_table::name_of(source_port)`. No substrate change to `SizeVariable`. Equality stays on `source_port` (the only field).
 
 ### §7.3 Should `Certainty` promote to `std/algebra.dag`? — RESOLVED: stays lens-local until a second consumer needs it
 
