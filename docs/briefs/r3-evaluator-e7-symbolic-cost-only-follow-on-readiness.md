@@ -29,9 +29,13 @@ The parent E7 readiness audit framed implementation around an
 because lens fold over recursive programs traverses `Loop` nodes.
 
 **Symbolic-cost-only does not need that path.** The existing
-`analyze_symbolic_cost_dimension` already walks
-`behavior_spine_in_node_order(d)` directly (`dimension.rs:163-178`)
-and consumes `symbolic_cost_of` for each behavior's result port. The
+`analyze_symbolic_cost_dimension` iterates the reachable behaviors
+from `workflow_root` in `d.nodes()` order, filtered by
+`workflow_reachable_behavior_ids(d, workflow_root)` (`dimension.rs:163-178`),
+and consumes `symbolic_cost_of` for each behavior's result port.
+This is the same traversal pattern `behavior_spine_in_node_order`
+documents, but the implementation is the inline `d.nodes()` loop
+rather than a call to that helper. The
 generated symbolic-cost lens itself (`lens_cost_symbolic_generated.rs`)
 walks the program DAG structurally — it is **not** the body
 evaluator and does **not** dispatch through `eval_node`. So programs
