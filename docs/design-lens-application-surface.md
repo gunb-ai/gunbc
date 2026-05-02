@@ -2,7 +2,7 @@
 
 > Part of: [`docs/lens-library-design.md`](lens-library-design.md), [`docs/r3-structure.md`](r3-structure.md), [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md), [`../INVARIANTS.md`](../INVARIANTS.md)
 >
-> **Purpose:** specify the substrate shape and authoring surface for applying lenses to arbitrary `.dag` sections. This design extends [`docs/lens-library-design.md`](lens-library-design.md) §3 (file-glob `LensApplication`) to function / module / expression / declaration scope, and resolves the `violation_policy` semantics under fail-closed discipline.
+> **Purpose:** specify the substrate shape and authoring surface for applying lenses to arbitrary `.dag` sections. This design extends [`docs/lens-library-design.md`](lens-library-design.md) §3 (file-glob `LensApplication`) to function / module / expression / declaration scope, and resolves the violation-policy semantics under fail-closed discipline (resolved as a sum-type `ApplicationConfig = Enforce { budget, ... } | Introspect` — illegal states unrepresentable; see §2 + §3).
 >
 > **Authority discipline:** this is a R3 design doc; the implementation lane is **T-Lens-Application-Surface** (see [`docs/r3-structure.md`](r3-structure.md) lane table). This doc resolves the design questions that block lane dispatch.
 
@@ -63,13 +63,12 @@ type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope        { declaration: DeclarationId, node: NodeId }
 
-type ApplicationConfig {
-  budget: LensBudget?         // lens-specific budget (optional — None means introspection-only)
-  violation_policy: ViolationPolicy
-}
-
-type ViolationPolicy
-  = Enforce { diagnostic_severity: DiagnosticSeverity }
+// ApplicationConfig is a sum, not a record-with-Optional. This makes
+// "Enforce without budget" and "Introspect with budget" UNREPRESENTABLE
+// at the type level — illegal states cannot exist (per
+// feedback_state_space_vs_behavioral_invariants + modeling principles 2/6).
+type ApplicationConfig
+  = Enforce { budget: LensBudget, diagnostic_severity: DiagnosticSeverity }
   | Introspect
 
 type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error is admitted
@@ -100,7 +99,7 @@ type CostBudget = SymbolicCost              // already declared; this is the exi
 type ParallelismBudget = ParallelismMode    // Sequential | OptInIndependent
 ```
 
-**Why `LensBudget` is not a single union here**: each lens's budget shape is part of its own authority. A central `LensBudget = ComplexityBudget | CostBudget | ParallelismBudget | ...` would create a roster (same failure class as `kernel_lens_set`, per [`docs/lens-library-design.md`](lens-library-design.md) §1.5). The lens-application substrate therefore carries `LensBudget?` as an *opaque* refinement keyed by the `lens: DeclarationId` — the lens declaration itself names the budget type, and the type-checker enforces compatibility at lens-application authoring time.
+**Why `LensBudget` is not a single union here**: each lens's budget shape is part of its own authority. A central `LensBudget = ComplexityBudget | CostBudget | ParallelismBudget | ...` would create a roster (same failure class as `kernel_lens_set`, per [`docs/lens-library-design.md`](lens-library-design.md) §1.5). The `Enforce.budget` field is an *opaque* refinement keyed by the `lens: DeclarationId` — the lens declaration itself names the budget type, and the type-checker enforces compatibility at lens-application authoring time.
 
 Implementation sketch for the keyed compatibility:
 
@@ -113,28 +112,25 @@ type Lens<C> {
 }
 ```
 
-The lens declaration names its `budget_type`. When the type-checker sees a `SectionedLensApplication` with `config.budget = b`, it verifies `b inhabits lens.budget_type`. Any mismatch is a fail-closed diagnostic at authoring time.
+The lens declaration names its `budget_type`. When the type-checker sees a `SectionedLensApplication` with `config = Enforce { budget: b, ... }`, it verifies `b inhabits lens.budget_type`. Any mismatch is a fail-closed diagnostic at authoring time. (No type-checking is needed for the `Introspect` variant — there is no budget to compatibility-check; introspection runs the lens and emits its value, no comparison.)
 
 ## §3. Violation policy under fail-closed discipline
 
-The user reframe named `violation_policy: CompileError | Warning | Silent`. Under [`../INVARIANTS.md`](../INVARIANTS.md) C-8 (fail-closed compilation) and `feedback_fail_closed_discipline`:
+The user reframe initially named the violation-policy axis as `CompileError | Warning | Silent`. Under [`../INVARIANTS.md`](../INVARIANTS.md) C-8 (fail-closed compilation) and `feedback_fail_closed_discipline`:
 
 - **CompileError**: every detected violation is a Diagnostic at compile time. *Admitted.*
 - **Warning**: violations are logged but compilation succeeds. *Forbidden* — C-8 prohibits warnings as a steady state; the only legitimate "non-blocking detection" is introspection (no enforcement at all).
 - **Silent**: violations are silently dropped. *Forbidden* — same C-8 violation; "silent None" is named in `feedback_fail_closed_discipline` as exactly the pattern banned.
 
-The fail-closed-compatible enumeration is therefore binary, not ternary:
+The fail-closed-compatible enumeration is therefore binary, not ternary — and the budget is bundled INTO the `Enforce` variant by construction (per §2 above), making "Enforce without budget" and "Introspect with budget" structurally unrepresentable:
 
 ```dag
-type ViolationPolicy
-  = Enforce { diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
-  | Introspect                                            // computes lens value; no budget; no diagnostic
+type ApplicationConfig
+  = Enforce { budget: LensBudget, diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
+  | Introspect                                                                  // computes lens value; no budget; no diagnostic
 ```
 
-`Enforce` requires a budget (the lens-application is meaningless without one); `Introspect` forbids a budget (introspection is "what is the lens value here?", no comparison). The type-checker enforces both invariants:
-
-- `config.violation_policy = Enforce { ... }` ⟹ `config.budget != None`
-- `config.violation_policy = Introspect` ⟹ `config.budget = None`
+The pairing of `budget` with `Enforce` (and its absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no `Enforce + None` or `Introspect + Some(...)` combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`).
 
 `DiagnosticSeverity` is a single-variant nominal carrier (only `Error`). It exists as a refinement-extension point so future *non-fail-closed* surfaces (if ever added — none currently planned) can extend without changing the `Enforce` carrier shape. Per `feedback_no_annotations` and `feedback_no_metadata_markers`, the single-variant carrier is structurally honest: there is exactly one severity, named.
 
@@ -166,7 +162,7 @@ data my_function_complexity_waiver: ComplexityBudgetWaiver = {
 
 This is a `.dag` declaration, not an annotation (per `feedback_no_annotations`). The waiver is itself subject to the same lens infrastructure — `lens_unused_parameters` could (eventually) flag stale waivers, `lens_structural_duplicates` flags duplicate waivers, etc.
 
-**Why a separate `ComplexityBudgetWaiver` carrier, not just `SectionedLensApplication { violation_policy: Introspect }`**: a waiver is *not* "the user wants introspection" — it is "the user accepts a known violation, with justification". The justification is load-bearing (per `feedback_reason_not_label` — encode the stable reason, not the volatile label). Conflating waivers with introspection would lose the justification.
+**Why a separate `ComplexityBudgetWaiver` carrier, not just `SectionedLensApplication { config: Introspect }`**: a waiver is *not* "the user wants introspection" — it is "the user accepts a known violation, with justification". The justification is load-bearing (per `feedback_reason_not_label` — encode the stable reason, not the volatile label). Conflating waivers with introspection would lose the justification.
 
 ## §4. Worked examples (the 4 demonstrations per Director ratification)
 
@@ -181,9 +177,9 @@ The lens-application surface ships with four worked examples covering orthogonal
 ```dag
 // in user .dag source
 
-apply_lens(complexity, my_search_function, ApplicationConfig {
+apply_lens(complexity, my_search_function, Enforce {
   budget: O_log_n
-  violation_policy: Enforce { diagnostic_severity: Error }
+  diagnostic_severity: Error
 })
 ```
 
@@ -193,10 +189,7 @@ apply_lens(complexity, my_search_function, ApplicationConfig {
 data __apply_lens_my_search_function: SectionedLensApplication = {
   lens: complexity                                     // DeclarationId of the complexity lens
   section: DeclarationScope { declaration: my_search_function }
-  config: ApplicationConfig {
-    budget: Some(O_log_n)
-    violation_policy: Enforce { diagnostic_severity: Error }
-  }
+  config: Enforce { budget: O_log_n, diagnostic_severity: Error }
   span: <user-authored span>
 }
 ```
@@ -210,9 +203,9 @@ data __apply_lens_my_search_function: SectionedLensApplication = {
 **User intent**: "this CRDT data declaration has a per-write cost basis of O(log replicas); cost lens reads this when composing."
 
 ```dag
-apply_lens(cost, my_crdt_field, ApplicationConfig {
+apply_lens(cost, my_crdt_field, Enforce {
   budget: SymbolicCost { per_op: O_log_replicas }
-  violation_policy: Enforce { diagnostic_severity: Error }
+  diagnostic_severity: Error
 })
 ```
 
@@ -227,12 +220,9 @@ apply_lens(cost, my_crdt_field, ApplicationConfig {
 **User intent**: "this function's memory peak is O(input size); cost lens with the memory dimension reads this."
 
 ```dag
-apply_lens(cost, my_memory_intensive_function, ApplicationConfig {
-  budget: SymbolicCost {
-    dimension: Memory
-    per_call: O_input_size
-  }
-  violation_policy: Enforce { diagnostic_severity: Error }
+apply_lens(cost, my_memory_intensive_function, Enforce {
+  budget: SymbolicCost { dimension: Memory, per_call: O_input_size }
+  diagnostic_severity: Error
 })
 ```
 
@@ -247,9 +237,9 @@ apply_lens(cost, my_memory_intensive_function, ApplicationConfig {
 **User intent**: "this loop's iterations are independence-provable; opt in to parallel emission."
 
 ```dag
-apply_lens(parallelism, my_loop_expression, ApplicationConfig {
+apply_lens(parallelism, my_loop_expression, Enforce {
   budget: ParallelismMode::OptInIndependent
-  violation_policy: Enforce { diagnostic_severity: Error }
+  diagnostic_severity: Error
 })
 ```
 
@@ -270,15 +260,12 @@ The new step is structurally identical to the existing fold — same `Lens<C>` r
 
 ### §5.1 Default-policy default-application synthesis
 
-For the *default* application of the complexity lens (per §3.2), the compiler synthesizes `SectionedLensApplication` records implicitly during the lens fold — one per function declaration, with `violation_policy: Enforce { diagnostic_severity: Error }` and `budget: <inferred from body>`. These synthesized records are not stored in the `.dag` source; they exist only during the fold pass.
+For the *default* application of the complexity lens (per §3.2), the compiler synthesizes `SectionedLensApplication` records implicitly during the lens fold — one per function declaration, with `config: Enforce { budget: <inferred from body>, diagnostic_severity: Error }`. These synthesized records are not stored in the `.dag` source; they exist only during the fold pass.
 
 **Why synthesized rather than authored**: writing a default complexity application for every function would inflate the source. The synthesis is structural (every Declaration of arrow-connective shape gets one) and can be turned off per-declaration via an explicit user-authored introspection-mode application:
 
 ```dag
-apply_lens(complexity, my_function, ApplicationConfig {
-  budget: None
-  violation_policy: Introspect
-})
+apply_lens(complexity, my_function, Introspect)
 ```
 
 This explicit application overrides the synthesized default for `my_function`. The "explicit overrides synthesized" rule resolves at the lens-fold layer (look up explicit applications first; synthesize only if absent).
