@@ -243,6 +243,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // workspace root. T-PB-B owns shrinking this subset toward the
 // TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
 // rely on this list moving.
+// Slice 1 census reconciliation (2026-05-02): this list matches the current
+// tree exactly; no additions or removals were needed.
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
