@@ -540,10 +540,7 @@ mod e7_analyze_complexity_integration {
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
     use v3_compiler::{analyze_complexity, analyze_symbolic_cost_dimension, DimensionReport};
 
-    fn find_bind_root(
-        dag: &v3_compiler::dag::Dag,
-        name: &str,
-    ) -> v3_compiler::dag::NodeId {
+    fn find_bind_root(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
         dag.nodes()
             .iter()
             .find(|behavior| {
