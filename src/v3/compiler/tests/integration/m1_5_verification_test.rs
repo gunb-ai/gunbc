@@ -498,6 +498,7 @@ fn rust_dag_isomorphism_dag() -> &'static Dag {
 }
 
 static BRIDGE_LEDGER_OPEN_ROW_NAMES: OnceLock<Vec<String>> = OnceLock::new();
+const BRIDGE_LEDGER_OPEN_ROW_HEAD_BASELINE: usize = 4;
 
 fn bridge_ledger_open_row_names() -> &'static [String] {
     BRIDGE_LEDGER_OPEN_ROW_NAMES.get_or_init(|| {
@@ -541,6 +542,10 @@ fn bridge_ledger_open_row_names() -> &'static [String] {
     })
 }
 
+fn bridge_ledger_open_row_count() -> usize {
+    bridge_ledger_open_row_names().len()
+}
+
 fn record_field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> &'a FieldValue {
     fields
         .iter()
@@ -578,6 +583,19 @@ fn r3_bridge_retirement_ledger_zero_fixture_reports_open_rows_at_head() {
             "BridgeLedgerZero diagnostic must name open row `{row}`; got: {reason}"
         );
     }
+}
+
+#[test]
+fn r3_bridge_retirement_ledger_zero_open_row_count_does_not_grow_from_head_baseline() {
+    let open_row_count = bridge_ledger_open_row_count();
+    assert!(
+        open_row_count <= BRIDGE_LEDGER_OPEN_ROW_HEAD_BASELINE,
+        "BridgeLedgerZero decreasing-open-count ratchet: current open-row count {} \
+         exceeds recorded head baseline {}; open rows: [{}]",
+        open_row_count,
+        BRIDGE_LEDGER_OPEN_ROW_HEAD_BASELINE,
+        bridge_ledger_open_row_names().join(", ")
+    );
 }
 
 #[test]
