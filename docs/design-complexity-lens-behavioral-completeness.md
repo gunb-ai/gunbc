@@ -258,13 +258,16 @@ type ComplexitySummary {
   work: SymbolicCost              // total operation count (sequential cost)
   span: SymbolicCost              // critical path length (parallel cost)
   asymptotic_class: AsymptoticClass    // projection of `work` for diagnostic display
-  certainty: Certainty            // proof tightness
+  work_certainty: Certainty       // proof tightness OF the work bound
+  span_certainty: Certainty       // proof tightness OF the span bound
 }
 
 fn complexity_of(d: Dag, port_id: PortId) -> Lookup<ComplexitySummary> = ...
 ```
 
-**Why these are coordinates of one record:** every port has all four facts simultaneously. Confirmed record (not sum type). Per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 2 — single inhabitant carries values for all coordinates.
+**Why per-coordinate certainty, not a single global field**: per cursor BLOCKING on PR #1488 sha 75a6ab57 — collapsing per-dimension certainties into one global `certainty` field loses the fact that work might be Proven while span is Conservative (or vice versa). Downstream display/enforcement consumers need to know per-coordinate proof tightness independently. Per dimension has its own dominance (different inputs to composition) and therefore its own certainty; storing them separately preserves all the proof-tightness facts the lens computes.
+
+**Why these are coordinates of one record:** every port has all five facts simultaneously. Confirmed record (not sum type). Per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 2 — single inhabitant carries values for all coordinates. The `asymptotic_class` is a projection of `work`; its certainty is `work_certainty`. (No separate `class_certainty` — the class is derived from work, not an independent fact.)
 
 ## §2. Producer wiring — gated on T-E-P-Producer-Broadening
 
