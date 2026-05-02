@@ -280,7 +280,7 @@ The lens consumer reads `SymbolicCost`/`Certainty`/`AsymptoticClass` per port. T
 
 **This design depends on T-E-P-Producer-Broadening landing first.** Per [`docs/r3-structure.md`](r3-structure.md) row 146, T-Lens-Behavioral-Parity gates on T-E-P-Producer-Broadening. The complexity-lens-consumer rewrite reads producer-wired facts; without producer coverage, the rewrite has nothing to consume.
 
-The producer-broadening work itself does not extend the substrate (per the register's E-P partial receipt — `TransformNode` stays unwidened); it broadens the *side-table producer* `v3_compiler::dag::per_call_descent_evidence` in `src/v3/compiler/src/dag.rs` to cover every `ExprCall` site. The lens reads from that side table at consumption time, not from a widened substrate carrier.
+The producer-broadening work itself does not extend the substrate (per the register's E-P partial receipt — `TransformNode` stays unwidened); it broadens the *side-table producer* `v3_compiler::dag::per_call_descent_evidence` in `src/v3/compiler/src/dag.rs` to cover every `ExprCall` site. The lens reads through the typed query surface `per_call_pattern_at(d: Dag, call_site: NodeId) -> CallPattern?` exposed from `std.computation` (per [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md) §3.2 + §8.4 — single-authority for cost+complexity per P2; the lens does *not* reach into `per_call_descent_evidence` storage directly).
 
 **Cascade-gate sequence:**
 
@@ -350,7 +350,7 @@ fn loop_entry(
   acc: List<ComplexityEntry>,
   l: LoopNode
 ) -> ComplexityEntry = {
-  let cost_bound = recurrence_bound_for(d, l)              // reads per_call_descent_evidence
+  let cost_bound = recurrence_bound_for(d, l)              // reads via per_call_pattern_at typed query (wraps per_call_descent_evidence side-table)
   let work = cost_bound_to_symbolic(cost_bound)
   let body_summary = body_complexity_at(d, acc, l.body)
   ComplexityEntry {

@@ -172,6 +172,8 @@ This is a `.dag` declaration, not an annotation (per `feedback_no_annotations`).
 
 The lens-application surface ships with four worked examples covering orthogonal axes (per Director ratification 2026-05-02 — these are the 4 demonstrations the lane closure-gate enumerates).
 
+**TestClaim shape for all four demonstrations**: each closure-gate test is a `TestClaim` per DB-15 ([`docs/design-test-infra.md`](design-test-infra.md)) — *enumerated, not quantified*. The demonstrations exercise specific, named programs (one per closure gate) with specific predicates (compile-error firing / lens-output equality / emission-shape matching). Property-based `QuantifiedTestClaim` form (per [`docs/design-tests-as-data-completeness.md`](design-tests-as-data-completeness.md) §2.2) is *not* used here — the closure gates test concrete demonstration programs, not universally-quantified properties. (Property tests over the lens-application substrate itself live in T-Tests-As-Data-Completeness scope, not T-Lens-Application-Surface scope.)
+
 ### §4.1 Complexity-contract compile error
 
 **User intent**: "this function should be O(log n); fail compilation if it isn't."

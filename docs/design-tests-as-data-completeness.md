@@ -420,6 +420,17 @@ The markdown table at `docs/v3-lens-capability-register.md` becomes a *rendering
 
 **Lane scope**: the register migration (markdown → `.dag` declaration) is in scope for this lane (specifically step 5 — cementing dispatch port). The migration is small (one register declaration ~20 rows) and unblocks the cementing dispatch closure gate.
 
+**Cross-lane sequencing — dependent docs**: the following 4 sibling design docs reference the lens-capability register and depend on this migration landing first for their *register-row update* steps (the substrate work in those lanes does NOT depend on this migration; only the closure-gate "register row updates from PROXY/STUB/PARTIAL → COMPLETE" step does):
+
+| Sibling design | Affected closure step | Sequencing |
+|---|---|---|
+| [`docs/design-complexity-lens-behavioral-completeness.md`](design-complexity-lens-behavioral-completeness.md) | "complexity.dag row → COMPLETE" | After this lane's step 5 lands |
+| [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md) | "cost.dag row → COMPLETE" | After this lane's step 5 lands |
+| [`docs/design-effect-enumeration-resource-threading.md`](design-effect-enumeration-resource-threading.md) | "effect_enumeration.dag row → COMPLETE" | After this lane's step 5 lands |
+| [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) | (no register row affected — this design adds a new substrate carrier, doesn't change a lens row) | None |
+
+This sequencing constraint is one-way: T-Tests-As-Data-Completeness step 5 must land before any lens row in the register flips from PROXY/STUB/PARTIAL to COMPLETE. The substrate carriers + lens consumer rewrites in those sibling lanes do not block on this migration; only the closure-gate row update does.
+
 ### §8.4 What about `m1_5_testgen_test.rs` — does the meta-harness migrate? — RESOLVED: yes, recursive applicability of facet 3
 
 **Question:** `m1_5_testgen_test.rs` is the meta-harness that materializes generated TestClaims and validates them. Does facet 3's "tests are data" apply to itself — does the meta-harness port?

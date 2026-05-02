@@ -239,6 +239,8 @@ Transform(t) =>
 
 This is exactly the pattern row 146 names: "same producer foundation as complexity." Both lenses are `Lens<C>` instances per R2-T-Substrate-Lens-Primitive — complexity with `C = AsymptoticClass`, cost with `C = SymbolicCost` — folding over the same Behavior structure with the same per-call evidence. The ergonomic move: factor the per-call query into `std.computation::per_call_pattern_at` (already implied by the staged producer side-table); both lenses become consumers.
 
+**Cross-design compatibility — resource-threaded signatures**: per [`docs/design-effect-enumeration-resource-threading.md`](design-effect-enumeration-resource-threading.md) §2.4, callable signatures thread their resources explicitly (e.g., `read(fs: Filesystem, path) → (fs: Filesystem, content)`). `per_call_pattern_at` reads its evidence from the *threaded arrow signature* (not retired ambient transport metadata). The producer broadening per T-E-P-Producer-Broadening covers both pre-resource-threading signatures (current state) and post-threading signatures (post-effect-enumeration migration); the cost lens's consumption of `CallPattern` is signature-shape-agnostic — it reads only the descent-evidence facts, which derive from substrate-level recursion structure rather than transport identity.
+
 Per [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) §1.2 (the section-ref pattern): each lens has its own budget type (`AsymptoticClass` vs `SymbolicCost`) but consumes the same structural facts. The substrate authority is the per-call query surface; the per-lens algebra is private.
 
 ## §4. SymbolicCost commutative-semiring discipline (product-zero bug class)
@@ -320,16 +322,20 @@ Per `project_algebra_operator_dispatch` (memory): "BinOp emission reads operand 
 
 Per row 146 closure language ("cementing test against v2 oracle on same source") and per [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) discipline ("Every claim of 'v3 replaces v2 X' requires a behavioral cementing test"), the cost slice ships:
 
+Per [`docs/design-tests-as-data-completeness.md`](design-tests-as-data-completeness.md) §2.2, `ForAll` quantification belongs on the *claim* (`QuantifiedTestClaim`), not inside a predicate. The cementing test therefore takes the `QuantifiedTestClaim` shape:
+
 ```dag
 // gate: cost_lens_v2_oracle_equivalence_demonstrated
-test cost_lens_v2_oracle_equivalence: TestClaim {
-  // a corpus of source programs spanning the semiring laws + non-trivial recurrences
-  programs: List<SourceProgram>
-
-  expectation: ForAll { p: SourceProgram in programs }
-    let v3_cost = analyze_symbolic_cost_dimension(compile_v3(p))
-    let v2_cost = v2_complexity_oracle(compile_v2(p))
-    structural_equivalent(v3_cost, v2_cost)
+data cost_lens_v2_oracle_equivalence: QuantifiedTestClaim {
+  name: "cost_lens_v2_oracle_equivalence"
+  generator: cost_lens_corpus_generator     // ProgramGenerator producing List<SourceProgram>
+  quantifier: ForAll
+  predicate: DifferentialEquals {           // per DB-15 — the canonical cementing predicate
+    v3_oracle: analyze_symbolic_cost_dimension_compose_compile_v3
+    v2_oracle: v2_complexity_oracle_compose_compile_v2
+    equivalence: structural_equivalent_v3_v2
+  }
+  requires: [...]                            // E-P producer + SizeExpr substrate landed
 }
 ```
 
@@ -347,7 +353,7 @@ fn structural_equivalent(v3: SymbolicCost, v2: CostExpr) -> Bool =
   }
 ```
 
-The TestClaim runs the v3 lens on `compile_v3(p)` and the v2 oracle on `compile_v2(p)` (where `compile_v2` invokes `src/v2/complexity.dag::analyze`) and asserts structural equivalence on the asymptotic class.
+The `QuantifiedTestClaim` runs the v3 lens on `compile_v3(p)` and the v2 oracle on `compile_v2(p)` (where `compile_v2` invokes `src/v2/complexity.dag::analyze`) for every program produced by `cost_lens_corpus_generator`, asserting structural equivalence on the asymptotic class. Stop-at-first-failure semantics per tests-as-data §8.1.
 
 ### §5.2 Corpus shape
 
