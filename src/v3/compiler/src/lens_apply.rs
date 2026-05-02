@@ -2122,9 +2122,12 @@ mod substrate_reflection {
             LoopBound::Cardinality { count } => {
                 sum_variant_payload(dag, "LoopBound", "Cardinality", vec![port_fv(*count)])
             }
-            LoopBound::Descent { cluster } => {
-                sum_variant_payload(dag, "LoopBound", "Descent", vec![cluster_fv(*cluster)])
-            }
+            LoopBound::Descent { cluster, measure } => sum_variant_payload(
+                dag,
+                "LoopBound",
+                "Descent",
+                vec![cluster_fv(*cluster), port_fv(*measure)],
+            ),
         }
     }
 

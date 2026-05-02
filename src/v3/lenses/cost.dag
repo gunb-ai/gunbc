@@ -334,25 +334,24 @@ fn lookup_cost(acc: List<SymbolicCostEntry>, port_id: PortId) -> Lookup<Symbolic
 //
 // Forward Lens<SymbolicCost> note: current cost semantics still read
 // `LoopNode.source`, but R3 cost-lens composition should not carry that
-// shortcut forward. The substrate-prep audit in
-// `docs/audit/t-costlens-composition-substrate-prep.md` names the next
-// required fact: `LoopBound::Descent` needs its own runtime `measure:
-// PortId`, plus a shared `loop_bound_measure(LoopBound) -> PortId`
-// accessor, before a source-less `Lens<C>.iterate: fn(C, LoopBound) -> C`
-// can be honest. Current mapping:
+// shortcut forward. `LoopBound::Descent` now carries its own runtime
+// `measure: PortId`, plus the shared `loop_bound_measure(LoopBound) ->
+// PortId` accessor, so a source-less `Lens<C>.iterate: fn(C, LoopBound)
+// -> C` can read the bound honestly once the lens fold lands. Current
+// mapping:
 //
 //   - `Cardinality { count }` -> `LinearCost({ source_port: count })`
-//   - `Descent { cluster }` -> currently
+//   - `Descent { cluster, measure }` -> currently
 //     `LinearCost({ source_port: l.source })` through the enclosing
-//     `LoopNode`; target shape is `Descent { cluster, measure }` and
-//     `LinearCost({ source_port: loop_bound_measure(l.bound) })`. The
-//     cluster sidecar carries termination witness topology, not a
-//     replacement cost carrier.
+//     `LoopNode`, with a ratchet that `l.source ==
+//     loop_bound_measure(l.bound)` until direct `LoopNode.source` cost
+//     reads retire. The cluster sidecar carries termination witness
+//     topology, not a replacement cost carrier.
 //
 // Do not choose `UnknownCost("mutual recursion descent cluster")` as a
 // local migration convenience. `UnknownCost` is an algebra top, not a
 // failure channel; if a future lens fold wants a different Descent cost
 // policy, that must be named as the authoritative substrate decision.
-// Until the class-5 data declaration and the LoopBound measure accessor
-// are honest, preserve `compute_symbolic_costs` / `symbolic_cost_of` as
-// the primary API and do not author `data cost_lens`.
+// Until the class-5 data declaration and direct `LoopNode.source` cost
+// reads retire, preserve `compute_symbolic_costs` / `symbolic_cost_of`
+// as the primary API and do not author `data cost_lens`.
