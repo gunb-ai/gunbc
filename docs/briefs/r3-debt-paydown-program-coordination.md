@@ -25,11 +25,37 @@ Three load-bearing mechanisms (lifted from P5 layered-discipline shape, scoped t
 2. **Standing manager territory** (the steady-state capacity). Owns systemic debt that doesn't fit organic per-PR cleanup; spawns workers for retirement work as needed; reports cadence-aligned to Director's autonomous-loop pattern.
 3. **Velocity tripwire** (the late warning, window grain). Per P5(c): introduction:dissolution PR ratio ≥3:1 in any 7-day window puts ad-hoc lane dispatch under Director review. Manager surfaces tripwire readings to Director on cadence; this is **reporting**, not new gate authoring.
 
+## Definition — tracked-debt row (canonical)
+
+A **tracked-debt row** is an entry that satisfies the following predicate:
+
+> The entry enumerates a specific item (a bug, scaffold, dissolution trigger, deferral, or follow-up) **and** carries at least one of: a named owner, a named dissolution mechanism, a retirement-PR pointer, or a "remove once X" condition. Preamble / framing / classification / lane-overview sections that describe categories without enumerating specific items are **not** tracked-debt rows.
+
+**Authoritative location** is ROADMAP.md by default. When ROADMAP.md contains a *delegating pointer* — a non-enumerative section that explicitly forwards the row inventory to a named external file (e.g. `## Scheduled deletions` forwards to `docs/history/roadmap-scheduled-deletions.md`; `## Active deferrals` forwards the full ledger to `docs/history/roadmap-active-deferrals.md` while keeping summary lines inline) — the predicate-passing rows in the *delegate file* count as tracked-debt rows. Both the ROADMAP pointer-section and the delegate file's row container are cited together so the manager's ledger reaches the actual rows, not the redirect.
+
+The current ROADMAP heading shapes that satisfy this predicate (enumerated explicitly so the manager has a concrete starting set, not an inferential one):
+
+- `### Post-merge debt (...)` sections.
+- `## Tracked debts — <period> analyses` section's predicate-passing sub-rows only — currently:
+  - `### PR #<N>` ship-with-debt-receipt sub-rows.
+  - [`### P0 — real bugs (silent wrong execution)`](../../ROADMAP.md#p0--real-bugs-silent-wrong-execution) / [`### P1 — fabrication / fail-open boundaries`](../../ROADMAP.md#p1--fabrication--fail-open-boundaries) / [`### P2 — structural compression (biggest ROI)`](../../ROADMAP.md#p2--structural-compression-biggest-roi) / [`### P3 — modeling gaps`](../../ROADMAP.md#p3--modeling-gaps) / [`### P4 — type refinement / modeling faithfulness`](../../ROADMAP.md#p4--type-refinement--modeling-faithfulness) priority-category sections (real bugs / fabrication boundaries / structural compression / modeling gaps / type refinement), nested under this `## Tracked debts` parent.
+
+  The parent `## Tracked debts` container is **not itself** a debt row, and predicate-failing sub-rows under it (e.g. [`### Debt classification — framing`](../../ROADMAP.md#debt-classification--framing), or any future "practice, not a debt" / "reviewer-noise class" / similar non-enumerative subheading) are excluded per the predicate above even though they sit under a debt-bearing parent.
+- [`## Active deferrals — follow-up work from merged PRs`](../../ROADMAP.md#active-deferrals--follow-up-work-from-merged-prs) (`DB-*` deferral ledger — `DB-1` through `DB-20` summary lines are inline in ROADMAP; full deferral ledger at [`docs/history/roadmap-active-deferrals.md`](../history/roadmap-active-deferrals.md). Per-DB design notes at `docs/db-history/db-<N>.md`).
+- ROADMAP delegating pointer [`## Scheduled deletions — scaffolds with named dissolution triggers`](../../ROADMAP.md#scheduled-deletions--scaffolds-with-named-dissolution-triggers) → predicate-passing rows live in [`docs/history/roadmap-scheduled-deletions.md` `### Table`](../history/roadmap-scheduled-deletions.md) (the markdown row table is the actual debt-row container — `ArrowBody::Pending`, `ArrowBody::Unparsed` cases, `ValueBody::Unparsed`, `TransformTarget::Operator`, `LogicalOp` / `OperatorKind::Logical`, `ResolvedByName` AtomPayload, compiler-internal `declaration_by_name` call sites, `Node.name` field, and any future scaffold rows added to the table). The ROADMAP section by itself is non-enumerative; the ledger inventory must reach into the delegate file to enumerate rows, not stop at the pointer.
+- [`### §6a MethodContract per-field dissolution triggers (R2 Release follow-through)`](../../ROADMAP.md#6a-methodcontract-per-field-dissolution-triggers-r2-release-follow-through).
+
+**Explicitly excluded** (predicate-fails): [`### Debt classification — framing`](../../ROADMAP.md#debt-classification--framing) (preamble explaining categories, not a debt-row container); `### Goals / Lanes / Lane acceptance / Dependency DAG / Principles / Sketch vs Oracle framing / Status at a glance / Architecture / What NOT to build yet / Open design questions` and similar lane-overview / framing headings; any heading whose body is prose explanation rather than enumerated items.
+
+**Future tracked-debt headings** must satisfy the predicate above to count; the manager amends this canonical definition section in a tracked PR when the ROADMAP grows a new debt-bearing heading shape (the predicate is the authority, not the enumeration — the enumeration is a concrete starting set that gets extended in lockstep with ROADMAP growth).
+
+This definition is the canonical scope for the per-PR rule, the Slice 1 ledger inventory, and the Acceptance closure gate below; downstream sections refer back here rather than re-enumerating, so the union cannot drift between sites.
+
 ## Per-PR debt-receipt rule (load-bearing deliverable)
 
-**Every R3 PR's description includes a "Debt receipt" section** with **exactly one** checkable disposition of any tracked-debt row the PR touches. Three valid dispositions, one of which must be picked:
+**Every R3 PR's description includes a "Debt receipt" section** with **exactly one** checkable disposition of any tracked-debt row the PR touches (per the canonical definition above). Three valid dispositions, one of which must be picked:
 
-1. **Debt paid** — the PR retires a specific tracked-debt row. Cite the row by repo-relative path + heading/anchor or permalink to the ROADMAP `### Post-merge debt (...)` entry, AND name the dissolution mechanism (deleted file, dissolved scaffold, structural-test landing, etc.). Reviewer must be able to open the cited row in one hop and confirm it disappears (or is marked RESOLVED) post-merge.
+1. **Debt paid** — the PR retires a specific tracked-debt row. Cite the row by repo-relative path + heading/anchor or permalink to the ROADMAP entry, AND name the dissolution mechanism (deleted file, dissolved scaffold, structural-test landing, etc.). Reviewer must be able to open the cited row in one hop and confirm it disappears (or is marked RESOLVED) post-merge.
 2. **Debt found, routed** — the PR introduces or surfaces a tracked-debt row but does not retire it. Cite the new ROADMAP row (path + anchor) AND name the **paydown-lane retirement PR** (issue/PR number + brief title) that owns the retirement. The retirement PR must exist or be filed in this same author session.
 3. **No debt touched** — the PR neither pays down nor introduces tracked debt. Affirmative statement: *"No tracked-debt row touched in this PR; no debt-receipt entry required."* This disposition is rejected if any reviewer surfaces a debt row the PR actually touched — the author re-routes to (1) or (2).
 
@@ -63,7 +89,7 @@ Per `feedback_standing_managers_need_owned_deliverables`, the manager's spawn Sl
 
 1. **Slice 1 (spawn-PR; M-sized)** — Debt-Paydown Mgr authors:
    - **PR-template extension** at `.github/PULL_REQUEST_TEMPLATE.md` (the `## Debt receipt (R3 standing program)` section per the rule above).
-   - **Initial debt-row inventory ledger** at `docs/debt/r3-paydown-ledger.md` (or similar — manager picks final path) — enumeration of every tracked-debt row in ROADMAP `### Post-merge debt (...)` sections at spawn time, each with: row name, current state (open / routed / retired), routed-lane (if applicable), retirement-PR number (if applicable). The ledger is the manager's primary owned-deliverable surface.
+   - **Initial debt-row inventory ledger** at `docs/debt/r3-paydown-ledger.md` (or similar — manager picks final path) — enumeration of every tracked-debt row in ROADMAP per the canonical definition above (§"Definition — tracked-debt row"). Each row carries: row name, source heading + line/anchor, current state (open / routed / retired), routed-lane (if applicable), retirement-PR number (if applicable). The ledger is the manager's primary owned-deliverable surface; its scope is the canonical union, so the closure gate cannot false-green by ledger-scope drift.
    - **Cadence cron** — recurring routine (per `/schedule` discipline) for tripwire reading + ledger sweep + Director cadence report. Frequency: aligned to Director autonomous-loop (30min per `feedback_director_30min_cadence`) for ledger sweep; weekly for tripwire window report.
 2. **Slice 2+ (standing-capacity; ongoing)** — Debt-Paydown Mgr dispatches retirement workers per ledger row, files cross-manager queue items per debt row needing a lane-owning Mgr's worker, escalates substrate-gap rows to Director. Each retired row updates the ledger; closure gate `r3_debt_paydown_zero_remaining` flips when the ledger has zero open rows.
 
@@ -72,7 +98,7 @@ Per `feedback_standing_managers_need_owned_deliverables`, the manager's spawn Sl
 - [ ] PR-template extension landed at `.github/PULL_REQUEST_TEMPLATE.md` (Slice 1).
 - [ ] Initial debt-row inventory ledger landed at the manager-picked path under `docs/debt/` (Slice 1).
 - [ ] Cadence cron created (Slice 1).
-- [ ] Every tracked-debt row in ROADMAP `### Post-merge debt (...)` reaches **retirement-PR-merged + ledger row marks RETIRED**. Substrate-gap escalation to a named R3 lane is an **interim state only** — the row remains OPEN in the ledger until the named lane's retirement PR merges and lands a debt-receipt citing the row. Per `docs/r3-structure.md` line 173 + §P5 Progress Is Dissolution, routing is not dissolution; a routed row that has not been retired by R3 close is the same forbidden post-R3 deferral pattern under a different label. **Zero rows survive R3 close** means zero open ledger rows, including zero routed-but-not-retired rows.
+- [ ] Every tracked-debt row in ROADMAP per the canonical definition above (§"Definition — tracked-debt row") reaches **retirement-PR-merged + ledger row marks RETIRED**. Substrate-gap escalation to a named R3 lane is an **interim state only** — the row remains OPEN in the ledger until the named lane's retirement PR merges and lands a debt-receipt citing the row. Per `docs/r3-structure.md` line 173 + §P5 Progress Is Dissolution, routing is not dissolution; a routed row that has not been retired by R3 close is the same forbidden post-R3 deferral pattern under a different label. **Zero rows survive R3 close** means zero open ledger rows, including zero routed-but-not-retired rows.
 - [ ] Velocity tripwire reading falls below 3:1 introduction:dissolution ratio at R3 close (or, if above, Director-review escalation is active and cited).
 - [ ] R3 close gate `r3_debt_paydown_zero_remaining` flips green — the ledger has zero open rows and the close-gate test (owned by R3 Release Manager) reads the manager's ledger as zero-open.
 
