@@ -22,6 +22,25 @@ type TypeRealization {
   cost: Int
 }
 
+// Per-target integer inhabitance for Coercion-Fold structural selection (dissolution
+// spec §Slice B). Rows are declared as `data` in `src/v3/spec/{rust,python,go}.dag`.
+// `kernel_integer` / `algebra` are declaration refs into `std.integer` carriers
+// (e.g. Int32, UInt32); `type_realization` names the existing `TypeRealization`
+// carrier row for emission strings; `bound` either fails closed on the bound axis
+// until refined (`BoundUnspecified`) or references a substrate `BoundDeclaration`
+// value (`BoundDeclarationRef`).
+type TargetIntegerTypeInhabitance {
+  language: DeclarationRef
+  kernel_integer: DeclarationRef
+  algebra: DeclarationRef
+  bound: TargetIntegerInhabitanceBound
+  type_realization: DeclarationRef
+}
+
+type TargetIntegerInhabitanceBound
+  = BoundUnspecified
+  | BoundDeclarationRef { decl: DeclarationRef }
+
 type FieldBinding {
   dag_name: String
   access: FieldAccess

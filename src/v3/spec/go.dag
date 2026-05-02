@@ -10,27 +10,13 @@ import v3.std.emit_model {
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
-  CollectionOps, ValueConstructionSyntax, LanguageSpec
+  CollectionOps, ValueConstructionSyntax, LanguageSpec,
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
-import v3.std.computation_model {
-  TargetExecutionModel, GarbageCollected, LexicalScoping,
-  ShapeATargetSourceFiltering, ExecutionModelRequirement,
-  internal_source_filtering
-}
-import v3.std.clean_emission {
-  CleanEmissionContract,
-  TargetCleanEmissionBinding,
-  ExpressionWrappingRule, WrapOnlyInOperandPosition,
-  PatternBindingRule, EmitUnderscoreWhenUnused,
-  ImportRule, IncludeOnlyReferenced,
-  BlockReturnRule, ExplicitReturnKeyword,
-  VariableBindingRule, EmitLetUnderscoreWhenUnused,
-  MatchArmBodyRule, NotApplicableMatchArmBody,
-  CorrectionStyle, PostEmitVerifier,
-  VerifierOutputPolicy, RequireEmptyStdout
-}
+import v3.std.substrate { BoundDeclaration }
 import std.algebra { BooleanAlgebra }
 import std.list { List }
+import std.integer { Int32 }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMapEntry, SurfaceMatchArm,

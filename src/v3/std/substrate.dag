@@ -88,6 +88,12 @@ type AtomPayload
 type PositiveIntervalWidth
   = OneUnit
   | AdditionalUnit { previous: PositiveIntervalWidth }
+  // Authoring shorthand for large fixed-width ranges: semantically the same
+  // unary `AdditionalUnit` chain of length `units` atop `OneUnit` over `Int`
+  // (inclusive discrete span `units` above `lower` in `BoundedInterval<Int>`).
+  // Peano spines remain valid for small cardinalities; Coercion-Fold rows use
+  // `UnitCount` so Examples 2 / 6 / 8 intervals fit in spec files.
+  | UnitCount { units: Int }
 
 type IntervalWidth
   = ZeroWidth

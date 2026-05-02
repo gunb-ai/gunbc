@@ -63,9 +63,11 @@ import v3.std.emit_model {
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
-  CollectionOps, ValueConstructionSyntax, RenderingModel, LanguageSpec
+  CollectionOps, ValueConstructionSyntax, RenderingModel, LanguageSpec,
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
 import v3.std.substrate {
+  BoundDeclaration,
   SubstrateAccessorRealization, SubstrateAccessorBinding,
   port, node, resolve_producer, lane2_workflow_at, declaration_by_id
 }
@@ -82,7 +84,7 @@ import v3.std.clean_emission {
   VerifierOutputPolicy, IgnoreVerifierOutput
 }
 import std.algebra { BooleanAlgebra }
-import std.integer { UInt8 }
+import std.integer { Int, UInt8, Int32, UInt32, Int128 }
 import v3.std.lookup { Lookup }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
@@ -122,6 +124,89 @@ data rust_uint8: TypeRealization = {
   is_copy: true
   fields: []
   cost: 1
+}
+
+data rust_i32: TypeRealization = {
+  language: rust_language
+  target: Int32
+  carrier: "i32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_u32: TypeRealization = {
+  language: rust_language
+  target: UInt32
+  carrier: "u32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data rust_i128: TypeRealization = {
+  language: rust_language
+  target: Int128
+  carrier: "i128"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+// Shared `BoundDeclaration` substrate for Coercion-Fold Examples 2, 6, 8 (cross-target same refs).
+data coercion_fold_bound_u32_0_to_max: BoundDeclaration = StaticBound(BoundedInterval {
+  lower: 0
+  width: PositiveWidth(UnitCount { units: 4294967295 })
+})
+
+data coercion_fold_bound_i32_full: BoundDeclaration = StaticBound(BoundedInterval {
+  lower: -2147483648
+  width: PositiveWidth(UnitCount { units: 4294967295 })
+})
+
+// Example-family: arbitrary-precision value domain (distinct from any fixed-width row).
+data coercion_fold_bound_int_unbounded: BoundDeclaration = StaticBound(Unbounded)
+
+// ── TargetIntegerTypeInhabitance rows (design-emission-model Examples 1, 2, 5, 6, 8 family) ──
+
+data rust_integer_inhabit_u32_at_program_bound: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: UInt32
+  algebra: UInt32
+  bound: BoundDeclarationRef { decl: coercion_fold_bound_u32_0_to_max }
+  type_realization: rust_u32
+}
+
+data rust_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int32
+  algebra: Int32
+  bound: BoundDeclarationRef { decl: coercion_fold_bound_i32_full }
+  type_realization: rust_i32
+}
+
+data rust_integer_inhabit_i32_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int32
+  algebra: Int32
+  bound: BoundUnspecified
+  type_realization: rust_i32
+}
+
+data rust_integer_inhabit_int64_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int
+  algebra: Int
+  bound: BoundUnspecified
+  type_realization: rust_int
+}
+
+data rust_integer_inhabit_i128_bound_unspecified: TargetIntegerTypeInhabitance = {
+  language: rust_language
+  kernel_integer: Int128
+  algebra: Int128
+  bound: BoundUnspecified
+  type_realization: rust_i128
 }
 
 data rust_bool: TypeRealization = {
