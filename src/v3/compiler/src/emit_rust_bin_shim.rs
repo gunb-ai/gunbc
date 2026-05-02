@@ -46,7 +46,9 @@ fn main() -> ExitCode {
         ProcessExit::ExitSuccess => ExitCode::SUCCESS,
         ProcessExit::ExitFailure { code, reason } => {
             let _ = writeln!(std::io::stderr(), "{reason}");
-            ExitCode::from(code.clamp(0, 255) as u8)
+            // Fail-closed: `ExitFailure` must not map to a successful host exit.
+            // Non-positive or out-of-range codes remap into 1..=255 (see dsl/std/process.dag).
+            ExitCode::from((code.max(1).min(255)) as u8)
         }
     }
 }
@@ -71,6 +73,8 @@ mod tests {
         ));
         assert!(out.contains("// Unified lens-regen driver."));
         assert!(out.contains("use v3_compiler::process_exit::ProcessExit;"));
+        assert!(out.contains("code.max(1).min(255)"));
+        assert!(!out.contains("code.clamp(0, 255)"));
         assert!(out.contains("std::runtime::bin_shims::regen_lens::regen_lens_main(&Dag::new())"));
     }
 
