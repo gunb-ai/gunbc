@@ -310,7 +310,8 @@ type ComplexitySummary {
   work: SymbolicCost
   span: SymbolicCost
   asymptotic_class: AsymptoticClass
-  certainty: Certainty
+  work_certainty: Certainty       // per-coordinate per §1.7
+  span_certainty: Certainty
 }
 
 type ComplexityEntry {
@@ -356,7 +357,8 @@ fn loop_entry(
     work: work
     span: work
     asymptotic_class: classify(work)
-    certainty: bound_cert
+    work_certainty: bound_cert
+    span_certainty: bound_cert         // outer's span = work, so same cert
   }
   ComplexityEntry {
     port: l.result_port
@@ -376,44 +378,54 @@ fn compose_summary_iterate(outer: ComplexitySummary, body: ComplexitySummary) ->
   let composed_work = iterate(outer.work, body.work)
   let composed_span = iterate(outer.work, body.span)            // span uses outer's work for iteration count
   let composed_class = classify(composed_work)
-  // Cost-aware certainty across BOTH published dimensions (work + span).
-  // Span has independent dominance from work (different inputs to iterate);
-  // certainty must account for surviving contributors per dimension.
-  let work_cert = certainty_of_surviving_per_dim(outer, body, outer.work, body.work, composed_work)
-  let span_cert = certainty_of_surviving_per_dim(outer, body, outer.work, body.span, composed_span)
-  // Both dimensions survive in ComplexitySummary; any unproven dimension
-  // makes the whole result unproven (meet across dimensions).
-  let composed_certainty = meet_pair(work_cert, span_cert)
+  // Per-coordinate cost-aware certainty. Each dimension's surviving-
+  // contributor certainty stays on that dimension; no global collapse
+  // (per cursor BLOCKING on PR #1488 sha 75a6ab57 — collapsing loses
+  // proof-tightness facts when work is Proven but span Conservative).
+  let work_cert = certainty_of_surviving_per_dim(outer.work, body.work,
+                                                  outer.work_certainty, body.work_certainty,
+                                                  composed_work)
+  let span_cert = certainty_of_surviving_per_dim(outer.work, body.span,
+                                                  outer.work_certainty, body.span_certainty,
+                                                  composed_span)
   ComplexitySummary {
     work: composed_work
     span: composed_span
     asymptotic_class: composed_class
-    certainty: composed_certainty
+    work_certainty: work_cert
+    span_certainty: span_cert
   }
 }
 
 // Per-dimension surviving certainty: walks the dominance outcome on a
 // specific cost dimension (work, span, or future dimensions per DB-3),
-// identifies which input contributors survived, meets their certainties.
-// Contributors dropped by dominance on this dimension do not enter the
-// per-dimension certainty (but may enter another dimension's certainty
-// if they survived there).
+// identifies which input contributors survived, meets their per-dimension
+// certainties. Contributors dropped by dominance on this dimension do
+// not enter this dimension's certainty (but stay on their own dimension
+// in the composed result).
+//
+// Takes the per-dimension certainty INPUTS explicitly (outer_cert,
+// body_cert) — the caller passes in `outer.work_certainty`,
+// `body.span_certainty`, etc., depending on which dimension is being
+// composed. No global `outer.certainty` lookup; dimensions are
+// independent.
 fn certainty_of_surviving_per_dim(
-  outer: ComplexitySummary,
-  body: ComplexitySummary,
   outer_dim: SymbolicCost,
   body_dim: SymbolicCost,
+  outer_cert: Certainty,
+  body_cert: Certainty,
   composed_dim: SymbolicCost
 ) -> Certainty =
   match dominance_outcome(outer_dim, body_dim, composed_dim) {
-    BothSurvive => meet_pair(outer.certainty, body.certainty)
-    OuterDominates => outer.certainty
-    BodyDominates => body.certainty
+    BothSurvive => meet_pair(outer_cert, body_cert)
+    OuterDominates => outer_cert
+    BodyDominates => body_cert
   }
 
 // Inline pairwise meet — used ONLY when both contributions survive cost
-// composition. NOT a free-standing lattice operation (no certainty_lattice
-// instance per §1.5 — see that section for why).
+// composition for a specific dimension. NOT a free-standing lattice
+// operation (no certainty_lattice instance per §1.5 — see that section
+// for why).
 fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
   match a {
     Proven => b               // any Conservative contribution makes the result Conservative
@@ -423,10 +435,12 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
 // Same per-dimension cost-aware certainty pattern for sequential and
 // branch composition: each computes work_cert + span_cert via
 // certainty_of_surviving_per_dim against the per-dimension dominance
-// outcome, then meets across dimensions for the result certainty.
+// outcome. NO meet across dimensions — the result keeps work_certainty
+// and span_certainty independent on the output ComplexitySummary.
 // Sequential: work composes additively (sum), span composes additively.
 // Branch: work composes additively across arms (sum), span composes via
-// max_path. Both honor per-dimension surviving-contributor accounting.
+// max_path. Both honor per-dimension surviving-contributor accounting
+// AND per-coordinate certainty independence.
 fn compose_summary_sequential(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary = ...
 fn compose_summary_branch(arms: List<ComplexitySummary>) -> ComplexitySummary = ...
 ```
