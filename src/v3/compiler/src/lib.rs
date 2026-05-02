@@ -235,8 +235,10 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        let scrutinee =
-            reify_bool_literal_for_branch_scrutinee(dag, eval_port(dag, branch.input, state, strategy)?);
+        let scrutinee = reify_bool_literal_for_branch_scrutinee(
+            dag,
+            eval_port(dag, branch.input, state, strategy)?,
+        );
         let (tag, payload) = match scrutinee {
             Value::VariantValue { tag, payload } => (tag, payload),
             _ => return Err(EvalError::BranchScrutineeShape { node: branch.id }),
