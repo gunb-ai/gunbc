@@ -19,6 +19,7 @@ type TokenKind
   | KwElse
   | KwFn
   | KwType
+  | KwService
   | KwModule
   | KwImport
   | KwMatch
@@ -78,6 +79,7 @@ type KeywordTokenKind
   | KwElse
   | KwFn
   | KwType
+  | KwService
   | KwModule
   | KwImport
   | KwMatch

@@ -17,6 +17,8 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::diagnostics::Diagnostic;
+use v3_compiler::parse_for_test;
 use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
 use v3_compiler::tokenize_for_test;
@@ -362,10 +364,17 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
     // collected below). This literal exists as an explicit crash-on-edit pin:
     // extending `parse_item` match arms alone does **not** update `got`; you
     // must author matching rows first (then regen fills `top_level_item_dispatch`).
-    let expected: std::collections::BTreeSet<&'static str> =
-        ["KwLet", "KwFn", "KwType", "KwModule", "KwImport", "KwData"]
-            .into_iter()
-            .collect();
+    let expected: std::collections::BTreeSet<&'static str> = [
+        "KwLet",
+        "KwFn",
+        "KwType",
+        "KwService",
+        "KwModule",
+        "KwImport",
+        "KwData",
+    ]
+    .into_iter()
+    .collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
@@ -397,11 +406,32 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
 }
 
 #[test]
+fn service_top_level_item_dispatch_fails_closed_until_service_block_ast_lands() {
+    let tokens = tokenize_for_test("service Llm {}", "top_level_service_anchor.v3")
+        .expect("tokenize service anchor");
+    let err = parse_for_test(&tokens, "top_level_service_anchor.v3")
+        .expect_err("service should fail closed until the ServiceBlock AST/lowerer slice lands");
+    let Diagnostic::ParseError { message, span, .. } = err else {
+        panic!("expected ParseError for top-level service anchor, got {err:?}");
+    };
+    assert!(
+        message.contains("ServiceBlock parser scaffold"),
+        "service parse failure should name the ServiceBlock anchor explicitly, got: {message}"
+    );
+    assert_eq!(
+        span.file, "top_level_service_anchor.v3",
+        "service parse failure should be anchored to the service keyword span",
+    );
+}
+
+#[test]
 fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_names() {
-    // `parse_field_label` and `parse_variant` currently accept exactly one
-    // soft-keyword alias as a bare name: `KwType -> "type"`. Keep the
+    // `parse_field_label` and `parse_variant` currently accept exactly two
+    // soft-keyword aliases as bare names: `KwType -> "type"` and
+    // `KwService -> "service"`. Keep the
     // generated parser-name alias table fail-closed.
-    let expected: std::collections::BTreeSet<&'static str> = ["KwType"].into_iter().collect();
+    let expected: std::collections::BTreeSet<&'static str> =
+        ["KwType", "KwService"].into_iter().collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
@@ -429,6 +459,20 @@ fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_n
         expected, got_ref,
         "soft_keyword_ident_* rows in parse_tables.dag do not cover exactly the keyword aliases \
          the parser accepts as bare names"
+    );
+}
+
+#[test]
+fn soft_keyword_ident_service_still_parses_in_name_position() {
+    let source = "fn demo() -> Int = { service: 1 }";
+    let tokens = tokenize_for_test(source, "soft_keyword_ident_service.v3")
+        .expect("tokenize soft keyword service");
+    let parsed = parse_for_test(&tokens, "soft_keyword_ident_service.v3")
+        .expect("parse soft keyword service");
+    let item = parsed.items.into_iter().next().expect("expected one item");
+    assert!(
+        matches!(item, v3_compiler::parse_surface::SurfaceItem::Fn { .. }),
+        "service should stay parseable in name position without weakening the top-level service anchor"
     );
 }
 
