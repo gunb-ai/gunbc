@@ -3239,7 +3239,8 @@ pub use workflow_parallelism::analyze_parallelism;
 /// Lane 2 Stage 2f — DB-3 dimension abstraction (`std/dimensions.dag` types;
 /// `analyze_symbolic_cost_dimension` is the first migrated lens path).
 pub use dimension::{
-    analyze_symbolic_cost_dimension, behavior_spine_in_node_order, DimensionReport, Witness,
+    analyze_complexity, analyze_symbolic_cost_dimension, behavior_spine_in_node_order,
+    DimensionReport, Witness,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
