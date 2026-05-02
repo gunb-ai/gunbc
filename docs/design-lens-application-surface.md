@@ -305,7 +305,12 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 **Cascade gate:** this resolution depends on T-Lens-Behavioral-Parity being COMPLETE for the complexity lens (asymptotic-class computation is reliable). Until that lane closes, the default complexity application is `Introspect`-mode only — the compiler records the lens value without enforcement, and surfaces it for inspection. When T-Lens-Behavioral-Parity COMPLETE lands, the default flips from `Introspect` to `Enforce { regression_baseline: <computed class> }`.
 
-**Implementation note:** the cascade-flip is itself substrate work — a `LensApplication` field `regression_baseline_pinned: AsymptoticClass?` records the at-synthesis baseline; when present, regressions fire. When absent (pre-cascade), the application is introspection-only.
+**Implementation note:** the cascade-flip is purely synthesizer-side, NOT substrate-side. The synthesizer constructs different `ApplicationConfig<AsymptoticClass>` variants depending on T-Lens-Behavioral-Parity status:
+
+- Pre-cascade (T-Lens-Behavioral-Parity not COMPLETE): synthesizer emits `Introspect` for every default complexity application.
+- Post-cascade (T-Lens-Behavioral-Parity COMPLETE): synthesizer emits `Enforce { budget: <computed class>, diagnostic_severity: Error }` — the computed class IS the budget, captured at synthesis time so subsequent code changes that increase the class fire a regression diagnostic.
+
+No optional `regression_baseline_pinned: AsymptoticClass?` field on `SectionedLensApplication` (which would re-create the illegal-states-representable pattern that the §2 sum-type fix dissolved — absence = introspection, presence = enforcement). The variant choice carries the same fact structurally: `Enforce.budget` IS the regression baseline; `Introspect` has no baseline because there is no enforcement. The cascade just changes which variant the synthesizer constructs.
 
 ### §8.4 Waiver lifecycle — RESOLVED: separate-lens future scope, dissolution-trigger named
 
