@@ -9,7 +9,11 @@ This receipt records the honest precursor requested after the STOP on per-target
 
 ## Authority audit receipt
 
-1. **Substrate exists?** Yes for axis vocabulary, no for row host. `src/v3/std/emit_model.dag` already owns `StringOwnershipAxis`, `StringLifetimeAxis`, `StringGrowabilityAxis`, and `StringEncodingAxis` at HEAD (`src/v3/std/emit_model.dag:141-172`).
+1. **Substrate exists?** Yes for axis vocabulary, no for row host. `src/v3/std/emit_model.dag` already owns the four landed declarations at HEAD:
+   - `type StringOwnershipAxis = Owned | Borrowed` (`src/v3/std/emit_model.dag:141-149`)
+   - `type StringLifetimeAxis = SelfContained | Caller` (`src/v3/std/emit_model.dag:151-157`)
+   - `type StringGrowabilityAxis = Growable | Fixed | NotApplicable` (`src/v3/std/emit_model.dag:159-165`)
+   - `type StringEncodingAxis = Utf8FreeMonoidChar` (`src/v3/std/emit_model.dag:167-172`)
 2. **Existing brief?** Yes for adjacent readiness and vocabulary. `docs/audit/lifetime-axes-canonical-vocabulary-spec.md` and `docs/audit/grounding-tests-stratum-b-scaffold-readiness.md` already hold the #1465 axis split and the “rows later, reader later” boundary, but neither one defines a row host/schema contract for string-family diagnostic ordering.
 3. **Design-doc recommendation matches?** Yes. The live audit prose says string-family rows should reference `String*Axis` structurally and that `LanguageSpec` / row authority is the place to attach future candidate facts (`docs/audit/lifetime-axes-canonical-vocabulary-spec.md:104-126`, `:180-203`). No shared non-namespaced layer is required in this slice.
 4. **Citations live?** Yes at current `origin/main` / HEAD. `TypeRealization` is the existing carrier authority at `src/v3/std/emit_model.dag:8-24`. `LanguageSpec` is the existing target-spec carrier at `src/v3/std/emit_model.dag:390-405`. The string-family axis sums are declared at `src/v3/std/emit_model.dag:141-172`.
@@ -23,6 +27,7 @@ Proposed shape:
 
 ```text
 type StringFamilyInhabitanceRow {
+  language: DeclarationRef
   target_type: DeclarationRef
   type_realization: DeclarationRef
   ownership: DeclarationRef
@@ -34,6 +39,7 @@ type StringFamilyInhabitanceRow {
 
 The exact field names can still be refined, but the authority split should not change:
 
+- `language` pins the owning `LanguageSpec` declaration.
 - `LanguageSpec` stays the host container.
 - `StringFamilyInhabitanceRow` stays a sibling row carrier.
 - `TypeRealization` remains the realization carrier for target primitives and their field bindings.
@@ -56,7 +62,7 @@ No `Ownership` / `LifetimeScope` / `Growability` shared layer is introduced here
 
 ## How rows reference the canonical axes
 
-Row values should be structural references, not lowercase strings.
+Row values should be structural references, not lowercase strings, and the row should be typed to a specific `LanguageSpec` via `language`.
 
 The row fields above should point at the named axis declarations by `DeclarationRef`, using the landed `String*Axis` values:
 
