@@ -171,6 +171,19 @@ pub mod evaluator {
         Value::LiteralValue(value.data.clone())
     }
 
+    fn reify_bool_literal_for_branch_scrutinee(dag: &Dag, value: Value) -> Value {
+        match value {
+            Value::LiteralValue(LiteralBits::Bool(b)) => dag
+                .bool_runtime_variant_id(b)
+                .map(|tag| Value::VariantValue {
+                    tag,
+                    payload: Box::new(Value::RecordValue(Vec::new())),
+                })
+                .unwrap_or(Value::LiteralValue(LiteralBits::Bool(b))),
+            other => other,
+        }
+    }
+
     pub fn eval_port(
         dag: &Dag,
         port: PortId,
@@ -222,7 +235,8 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        let scrutinee = eval_port(dag, branch.input, state, strategy)?;
+        let scrutinee =
+            reify_bool_literal_for_branch_scrutinee(dag, eval_port(dag, branch.input, state, strategy)?);
         let (tag, payload) = match scrutinee {
             Value::VariantValue { tag, payload } => (tag, payload),
             _ => return Err(EvalError::BranchScrutineeShape { node: branch.id }),
