@@ -46,10 +46,20 @@ type TargetIntegerTypeInhabitance {
   type_realization: DeclarationRef
 }
 
-// 🟢 TERMINAL at LanguageSpec axis taxonomy (coproduct of bound-refinement states).
-// `StaticBoundFact` carries the shared `Interval<Int>` substrate shape inline so
-// inhabitance rows lower as `ValueBody::Structural` without top-level
-// `BoundDeclaration` data bodies (DB-10 top-level sum gap — see `lower_data_item`).
+// Coproduct dissolution receipt — 🟢 TERMINAL (both variants).
+// LanguageSpec-side taxonomy for how an integer inhabitance row attaches bound facts.
+//
+// - `BoundUnspecified` — 🟢 TERMINAL: kernel integer + algebra are declared with no fixed
+//   static `Interval<Int>` witness on this row (under-refinement allowed at fold time until
+//   Slice C reads program + substrate facts).
+// - `StaticBoundFact(IntInterval)` — 🟢 TERMINAL: closed interval (or `Unbounded` via substrate
+//   `Interval<Int>`) is asserted inline; lowers as `ValueBody::Structural` without top-level
+//   `BoundDeclaration` data bodies (DB-10 top-level sum gap — see `lower_data_item`).
+//
+// Pattern 1 (optional interval fields on `TargetIntegerTypeInhabitance`) would erase the
+// explicit “bound unspecified vs bound present” axis at row type granularity. Pattern 2
+// (parallel top-level `BoundDeclaration` data per row) hits the DB-10 unparsed gap for those
+// bodies. No dissolution trigger beyond Slice C teaching emitters/grounding to read these variants.
 type TargetIntegerInhabitanceBound
   = BoundUnspecified
   | StaticBoundFact(IntInterval)
