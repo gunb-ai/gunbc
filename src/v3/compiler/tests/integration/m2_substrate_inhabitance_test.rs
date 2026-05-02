@@ -2928,8 +2928,15 @@ fn approximate_field_carrier_record_shape_ratchets() {
                 "`Field<F>` carries exactly one type argument"
             );
             assert_eq!(
-                arguments[0].parameter, approx_decl.type_params[0],
-                "`Field`'s argument must bind `ApproximateField`'s `<F>` carrier parameter"
+                arguments[0].parameter,
+                field_template.type_params[0],
+                "`Field` instantiation must fill `Field`'s formal `<T>` slot"
+            );
+            assert_eq!(
+                arguments[0].value,
+                approx_decl.type_params[0],
+                "`base: Field<F>` must pass ApproximateField's carrier `<F>` as the `Field` argument \
+                 (parameter = template slot; value = argument binding)"
             );
         }
         other => panic!("`base` must lower to a Field instantiation; got {other:?}"),
