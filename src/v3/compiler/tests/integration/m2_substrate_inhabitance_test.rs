@@ -1552,33 +1552,42 @@ fn bound_declaration_static_bound_wraps_interval_int() {
 
 #[test]
 fn target_integer_type_inhabitance_rows_are_structural_slice_b_receipt() {
-    let dag = Dag::new();
-    assert!(
-        dag.diagnostics().is_empty(),
-        "bootstrap diagnostics: {:?}",
-        dag.diagnostics()
-    );
-    let meta = dag
-        .declaration_by_name("TargetIntegerTypeInhabitance")
-        .expect("TargetIntegerTypeInhabitance meta");
-    let mut rows: Vec<&str> = Vec::new();
-    for decl in dag.declarations() {
-        if decl.meta_tag != Some(meta.id) {
-            continue;
-        }
-        let name = decl.name.as_deref().expect("named inhabitance data row");
-        rows.push(name);
-        assert!(
-            matches!(&decl.value_body, Some(ValueBody::Structural { .. })),
-            "`{name}` must lower as ValueBody::Structural (Coercion-Fold Slice B); got {:?}",
-            decl.value_body
-        );
-    }
-    assert!(
-        rows.len() >= 8,
-        "expected Rust/Python/Go TargetIntegerTypeInhabitance population; got {:?}",
-        rows
-    );
+    // Full-bootstrap `infer` can overflow the default test thread stack on some hosts;
+    // mirror `positive_interval_width_unit_count_rejects_negative_units_literal`.
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let dag = Dag::new();
+            assert!(
+                dag.diagnostics().is_empty(),
+                "bootstrap diagnostics: {:?}",
+                dag.diagnostics()
+            );
+            let meta = dag
+                .declaration_by_name("TargetIntegerTypeInhabitance")
+                .expect("TargetIntegerTypeInhabitance meta");
+            let mut rows: Vec<&str> = Vec::new();
+            for decl in dag.declarations() {
+                if decl.meta_tag != Some(meta.id) {
+                    continue;
+                }
+                let name = decl.name.as_deref().expect("named inhabitance data row");
+                rows.push(name);
+                assert!(
+                    matches!(&decl.value_body, Some(ValueBody::Structural { .. })),
+                    "`{name}` must lower as ValueBody::Structural (Coercion-Fold Slice B); got {:?}",
+                    decl.value_body
+                );
+            }
+            assert!(
+                rows.len() >= 8,
+                "expected Rust/Python/Go TargetIntegerTypeInhabitance population; got {:?}",
+                rows
+            );
+        })
+        .expect("spawn structural slice B receipt test thread")
+        .join()
+        .expect("structural slice B receipt test thread panicked");
 }
 
 #[test]
