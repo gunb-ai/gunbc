@@ -75,7 +75,7 @@ fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
     assert_eq!(results[0].claim_name, L4_CLAIM);
     assert!(
         matches!(results[0].result, ClaimResult::Pass),
-        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (fold(1,2,0)=3); got {:?}",
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
         results[0].result
     );
 }
@@ -86,10 +86,19 @@ fn r3_verification_l4_emit_eval_mixed_lineage_stays_not_yet_implemented() {
     let results = TestRunner::new(dag).run_suite(L4_MIXED_SUITE);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].claim_name, L4_MIXED_CLAIM);
+    let ClaimResult::NotYetImplemented(msg) = &results[0].result else {
+        panic!(
+            "expected mixed (rust_emit_output, v3_program_cost) pairing to stay deferred, got {:?}",
+            results[0].result
+        );
+    };
     assert!(
-        matches!(results[0].result, ClaimResult::NotYetImplemented(_)),
-        "expected mixed (rust_emit_output, v3_program_cost) pairing to stay deferred, got {:?}",
-        results[0].result
+        msg.contains("unsupported producer pairing"),
+        "NYI receipt should name unsupported producer pairing (producer-identity gate); got {msg}"
+    );
+    assert!(
+        msg.contains("#1495"),
+        "NYI receipt should cite #1495 rebase / ratchet coordination; got {msg}"
     );
 }
 

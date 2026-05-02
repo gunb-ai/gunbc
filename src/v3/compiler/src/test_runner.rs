@@ -256,6 +256,23 @@ fn w1_parse_single_int_stdout_carve_out(stdout: &str) -> Result<i64, String> {
     })
 }
 
+/// RAII guard: delete the W1 rustc scratch directory on return or panic (best-effort `remove_dir_all`).
+struct W1RustEmitScratchGuard {
+    dir: std::path::PathBuf,
+}
+
+impl W1RustEmitScratchGuard {
+    fn new(dir: std::path::PathBuf) -> Self {
+        Self { dir }
+    }
+}
+
+impl Drop for W1RustEmitScratchGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
 fn w1_rust_emit_output_int(
     program_dag: &Dag,
     output_bind: &BindNode,
@@ -281,10 +298,19 @@ fn w1_rust_emit_output_int(
             output_bind.name
         ));
     }
-    let rust_src = crate::emit_rust::emit_rust(program_dag).map_err(|e| {
-        format!(
-            "W1 rust_emit_output: emit_rust failed (use #1485-approved `emit_rust` / `emit_rust_with_mode` path only; dissolution: PB-Runtime-generated tests): {e:?}"
-        )
+    let rust_src = std::thread::scope(|s| -> Result<String, String> {
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn_scoped(s, || crate::emit_rust::emit_rust(program_dag))
+            .map_err(|e| format!("W1 rust_emit_output: spawn emit worker: {e}"))?;
+        let joined = handle
+            .join()
+            .map_err(|_| "W1 rust_emit_output: emit worker panicked".to_string())?;
+        joined.map_err(|e| {
+            format!(
+                "W1 rust_emit_output: emit_rust failed (use #1485-approved `emit_rust` / `emit_rust_with_mode` path only; dissolution: PB-Runtime-generated tests): {e:?}"
+            )
+        })
     })?;
     let stamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -301,6 +327,7 @@ fn w1_rust_emit_output_int(
             scratch.display()
         )
     })?;
+    let _scratch_guard = W1RustEmitScratchGuard::new(scratch.clone());
     let src_path = scratch.join("main.rs");
     let bin_path = scratch.join("w1_emit_eval_out");
     let mut file = std::fs::File::create(&src_path)
@@ -310,20 +337,28 @@ fn w1_rust_emit_output_int(
 
     let mut rustc = Command::new("rustc");
     // Same stable-toolchain contract as boundary rustc harnesses (strip bootstrap leakage).
+    // Use `output()` (not `status()`) while stderr is piped: otherwise rustc can fill the pipe
+    // and block; bounded stderr is surfaced in the failure string below.
     rustc
         .env_remove("RUSTC_BOOTSTRAP")
         .arg("--edition=2021")
         .arg(&src_path)
         .arg("-o")
         .arg(&bin_path)
-        .stdout(Stdio::null())
+        .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let status = rustc
-        .status()
+    let compile_out = rustc
+        .output()
         .map_err(|e| format!("W1 rust_emit_output: failed to spawn rustc: {e}"))?;
-    if !status.success() {
+    if !compile_out.status.success() {
+        let stderr = String::from_utf8_lossy(&compile_out.stderr);
+        let stdout = String::from_utf8_lossy(&compile_out.stdout);
         return Err(format!(
-            "W1 rust_emit_output: rustc failed (exit {status}); dissolution: PB-Runtime owns compilation policy for generated tests"
+            "W1 rust_emit_output: rustc failed (exit {:?}); rustc stdout:\n{}\nrustc stderr:\n{}; \
+             dissolution: PB-Runtime owns compilation policy for generated tests",
+            compile_out.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end(),
         ));
     }
     let run = Command::new(&bin_path)
@@ -332,9 +367,14 @@ fn w1_rust_emit_output_int(
         .output()
         .map_err(|e| format!("W1 rust_emit_output: failed to run emitted binary: {e}"))?;
     if !run.status.success() {
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        let stdout = String::from_utf8_lossy(&run.stdout);
         return Err(format!(
-            "W1 rust_emit_output: emitted Rust binary exited with {:?}; dissolution: PB-Runtime-generated tests own exit-status policy",
-            run.status.code()
+            "W1 rust_emit_output: emitted Rust binary exited with {:?}; stdout:\n{}\nstderr:\n{}; \
+             dissolution: PB-Runtime-generated tests own exit-status / stdio policy",
+            run.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end(),
         ));
     }
     w1_parse_single_int_stdout_carve_out(&String::from_utf8_lossy(&run.stdout))
@@ -2554,8 +2594,14 @@ impl<'a> TestRunner<'a> {
                 && oracle_lineage.as_str() == "v3_program_cost");
         if !pairing_ok {
             return ClaimResult::NotYetImplemented(format!(
-                "DifferentialEquals: unsupported lineage pairing; implemented: (v3_program_cost, v2_oracle_cost) cost parity \
-                 and (rust_emit_output, dag_eval_output) W1 emit/eval Int slice per `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md` / #1485 — got ({subject_lineage}, {oracle_lineage})"
+                "DifferentialEquals: unsupported producer pairing ({subject_lineage}, {oracle_lineage}); \
+                 implemented: (v3_program_cost, v2_oracle_cost) Lane-E cost parity and \
+                 (rust_emit_output, dag_eval_output) W1 emit/eval Int slice per #1485 / \
+                 `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`. \
+                 This path stays NotYetImplemented (fail-closed unsupported-pair receipt, not Pass) until \
+                 an approved producer + observation contract matches; after #1495 lands, rebase this \
+                 branch and preserve the stronger unsupported-pair ratchet / producer-identity gates vs \
+                 substrate-owned dissolution (`r2-pr-b-2-runner-extension-bundle.md`)."
             ));
         }
 

@@ -1,6 +1,7 @@
 // std.r3_verification_l4_emit_eval_mixed_lineage — negative control for W1 `DifferentialEquals`
-// dispatch: pairs `rust_emit_output` with a non-W1 oracle so the runner must stay deferred
-// (`NotYetImplemented`) rather than silently comparing unrelated producers.
+// dispatch: pairs `rust_emit_output` with a non-W1 oracle so `eval_differential_equals` returns
+// `NotYetImplemented` with an explicit unsupported-producer-pair receipt (producer-identity /
+// observation gates per #1485; coordinate with #1495 ratchet when it lands — do not weaken to Pass).
 
 module std.r3_verification_l4_emit_eval_mixed_lineage
 
