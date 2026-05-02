@@ -179,6 +179,39 @@ type AbelianGroup<T> {
 //     parametric carrier; the inhabitance lens is a follow-up.
 type GroupCompletion<M>
 
+// FieldOfFractions<R>: opaque atom denoting the **carrier** of "the field of
+// fractions derived from an integral domain R" via localization. Strictly a
+// derived-carrier construction — NOT an algebra-with-derived-carrier and NOT
+// a numerator/denominator pair at this layer. The algebra witness is named
+// separately at each use site as `Field<FieldOfFractions<R>>` (standard
+// parametric reading: `T = FieldOfFractions<R>` is the carrier; `Field<T>`
+// carries add/zero/negate/mul/one/reciprocal/compare over that carrier).
+//
+// Authority: `docs/audit/t-numeric-construction-field-of-fractions-6q.md`
+// (Shape C — opaque atom; carrier representation deferred to per-target
+// emission; Slice 4 will land `type Rational = Field<FieldOfFractions<Int>>`).
+//
+// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
+//   Denotationally `<R>` must be an integral domain for localization to be
+//   well-defined. The current substrate has no parametric where-clause syntax
+//   (`<R> where R : IntegralDomain<_>`), so this declaration accepts any
+//   type-reference for `<R>` at the parser/lower level. Slice 4's only intended
+//   consumer is `FieldOfFractions<Int>`, and `Int = AbelianGroup<GroupCompletion<Nat>>`
+//   (Slice 3) denotationally yields a commutative ring with no zero divisors —
+//   the integral-domain precondition holds for that sole consumer.
+//
+//   **Dissolution trigger:** when constrained-inhabitance / parametric
+//   where-clause syntax lands in the substrate (separate substrate-feature
+//   lane), tighten this declaration to require `<R> : IntegralDomain`. Existing
+//   call sites `Field<FieldOfFractions<Int>>` continue to type-check.
+//
+// HARD BOUNDARIES (Director dispatch + audit):
+//   - Opaque atom only — no pair/quotient representation, no NonZero/Result
+//     reciprocal plumbing at this prerequisite slice.
+//   - No mechanical Field-witness derivation declared here — same substrate gap
+//     as `GroupCompletion<M>`; inhabitance lens is follow-up.
+type FieldOfFractions<R>
+
 // =========================================================================
 // Ring-like structures (two operations: additive + multiplicative)
 // =========================================================================
