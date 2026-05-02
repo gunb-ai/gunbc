@@ -916,6 +916,141 @@ pub mod evaluator {
             assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
+        #[test]
+        fn eval_branch_reifies_true_bool_literal_scrutinee_to_true_arm() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let true_tag = dag
+                .bool_runtime_variant_id(true)
+                .expect("Bool.True variant id");
+            let false_tag = dag
+                .bool_runtime_variant_id(false)
+                .expect("Bool.False variant id");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let true_output = dag.push_value(LiteralBits::Int(11), span());
+            let true_body = node_for_port(&dag, true_output);
+            let false_output = dag.push_value(LiteralBits::Int(22), span());
+            let false_body = node_for_port(&dag, false_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    Path {
+                        body: true_body,
+                        output: true_output,
+                        pattern: BranchPattern::ResolvedVariant(true_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: false_body,
+                        output: false_output,
+                        pattern: BranchPattern::ResolvedVariant(false_tag),
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                Value::LiteralValue(LiteralBits::Bool(true)),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_branch_reifies_false_bool_literal_scrutinee_to_false_arm() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let true_tag = dag
+                .bool_runtime_variant_id(true)
+                .expect("Bool.True variant id");
+            let false_tag = dag
+                .bool_runtime_variant_id(false)
+                .expect("Bool.False variant id");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let true_output = dag.push_value(LiteralBits::Int(1), span());
+            let true_body = node_for_port(&dag, true_output);
+            let false_output = dag.push_value(LiteralBits::Int(0), span());
+            let false_body = node_for_port(&dag, false_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    Path {
+                        body: true_body,
+                        output: true_output,
+                        pattern: BranchPattern::ResolvedVariant(true_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: false_body,
+                        output: false_output,
+                        pattern: BranchPattern::ResolvedVariant(false_tag),
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                Value::LiteralValue(LiteralBits::Bool(false)),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(0)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_branch_fails_closed_when_bool_reification_authority_is_missing() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let true_tag = dag
+                .bool_runtime_variant_id(true)
+                .expect("Bool.True variant id");
+            let bool_decl = dag
+                .declaration_by_name("Bool")
+                .expect("Bool declaration")
+                .id;
+            dag.declaration_mut(bool_decl).name = Some("TruthValue".to_string());
+
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let arm_output = dag.push_value(LiteralBits::Int(1), span());
+            let arm_body = node_for_port(&dag, arm_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![Path {
+                    body: arm_body,
+                    output: arm_output,
+                    pattern: BranchPattern::ResolvedVariant(true_tag),
+                    binding: None,
+                }],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                Value::LiteralValue(LiteralBits::Bool(true)),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let err = eval_node(&dag, entry, &mut state, &strategy)
+                .expect_err("missing Bool reification authority rejected");
+
+            assert_eq!(err, EvalError::BranchScrutineeShape { node: entry });
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
         // E4 §B.1.3: payload binding registers on the freshly-pushed
         // frame and does not leak past `pop_frame`. Bodies that *read*
         // the bound payload (Bind / Transform forms) wait on E3 / E6;
