@@ -24,19 +24,26 @@ This index documents the cross-doc edges that the coherence audit (2026-05-02) v
 
 | Authority | Owning doc | Consumer docs |
 |---|---|---|
-| `SectionRef` / `SectionedLensApplication` / `ApplicationConfig` | lens-application-surface §2 | (used by future user-authored lens applications) |
+| `SectionRef` / `EnforceableLens<Output, Budget>` / `EnforcedApplication<Output, Budget>` / `IntrospectApplication<Output>` / `LensEnforcement<Output, Budget>` | lens-application-surface §2 | (`EnforceableLens` packages lens + enforcement into ONE bundled authority per P2 single-authority — apply_lens references the bundle, not lens + enforcement separately; **two separate top-level application carriers** — sidesteps per-variant generics not currently expressible in v3 `.dag` sums; Introspect has no Budget axis; per-lens `EnforceableLens` declarations co-located with each lens — complexity → AsymptoticClass projection, cost / parallelism → identity) |
 | `QuantifiedTestClaim` / `ProgramGenerator` / `ForAll`/`Exists` quantifiers | tests-as-data §2.2 | cementing tests in cost/complexity/effect-enumeration |
 | `AsymptoticClass` lattice | complexity-lens §1.4 | lens-application's `ComplexityBudget` (= `AsymptoticClass`) |
 | `SymbolicCost` algebra (DB-7 carrier; semiring fix in cost-lens §4) | algebra.dag (DB-7) — not authored here | complexity-lens (consumes for symbolic-cost dimension); cost-lens (extends with semiring inhabitance + product-zero fix) |
-| `SizeVariable { source_port: PortId }` | algebra.dag (DB-7) | unchanged; both lenses consume DB-7 carrier; renderer reads name via `intern_table::name_of(source_port)` (single authority for names — see cost-lens §1.2 + complexity-lens §1.2) |
+| `SizeVariable { source_port: PortId, display_name: String? }` | algebra.dag (DB-7) | one field added (`display_name: String?`); both lenses consume DB-7 carrier; user-facing name carried by `display_name` field (single substrate authority — see cost-lens §1.2 + complexity-lens §1.2; v3 has no `intern_table::name_of` query landed, so the structural-field path is what's currently supported) |
 | `per_call_pattern_at(d, call_site) → CallPattern?` typed query | cost-lens §3.2 + §8.4 | complexity-lens §2 (single shared producer query — no parallel authority) |
 | Resource-threaded callable signatures | effect-enumeration §2.4 | cost-lens §3.3 (consumption is signature-shape-agnostic) |
 | `Operation` (replaces `OperationEffect` post-migration) | effect-enumeration §4 | DB-18 `WorkflowEffect.LinearEffect.ops` (element-type refinement) |
 | `LensCapabilityRegister` (`.dag` declaration replacing markdown) | tests-as-data §8.3 | all 4 lens design docs (closure-gate "row → COMPLETE" steps depend on this migration) |
 
-### Cementing-test format
+### Cementing-test format (staged)
 
-All v2-oracle cementing tests use the same DB-15 `DifferentialEquals` predicate inside a `QuantifiedTestClaim` (per tests-as-data §2.2). Complexity-lens §4, cost-lens §5, effect-enumeration §5 all instantiate this shape. Different shapes would be parallel-test-infrastructure debt; the index confirms they are unified.
+All three behavioral-parity lens designs (complexity §4, cost §5, effect-enumeration §6 step 5) ship **Rust cementing tests** at `src/v3/compiler/tests/integration/cementing/` per TESTING.md Band-C discipline as the today-form, with **explicit dissolution trigger** to T-Tests-As-Data-Completeness step 5 (per tests-as-data §6 step 5 — *cementing dispatch port*) where each Rust test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration.
+
+| Stage | Form | Authority | Dissolution trigger |
+|---|---|---|---|
+| Today (per-lens slice closure) | Rust cementing test in `src/v3/compiler/tests/integration/cementing/` | TESTING.md Band-C | tests-as-data step 5 lands |
+| Post-migration (after tests-as-data step 5) | `.dag` `TestClaim`/`QuantifiedTestClaim` consuming the lens register | tests-as-data §2.2 + §8.3 | n/a (terminal form) |
+
+This staging avoids blocking lens-slice closures on the tests-as-data migration (which has its own cascade). All three behavioral-parity lenses align on the same staged format; per-lens shipping does not require waiting on the migration. The migration when it lands ports all three Rust tests in one wave per the cross-lane sequencing in tests-as-data §8.3. Per-lens divergence (using `.dag` form for one lens but Rust for another) is forbidden — would be parallel-test-infrastructure debt.
 
 ### Cross-cutting invariants (held by all 5 docs)
 
