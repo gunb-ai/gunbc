@@ -901,7 +901,7 @@ fn emit_tokenize_fn(
     s.push_str("            }\n");
     s.push_str("            let literal = &source[pos + 1..end];\n");
     s.push_str(
-        "            let magnitude: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+        "            let magnitude: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
     );
     s.push_str(&format!(
         "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
@@ -910,15 +910,21 @@ fn emit_tokenize_fn(
     s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
     s.push_str("                fixes: Vec::new(),\n");
     s.push_str("            })?;\n");
+    s.push_str("            const SIGNED_DECIMAL_I64_ABS_MIN: u128 = 9223372036854775808;\n");
+    s.push_str("            let value: i64 = match magnitude {\n");
+    s.push_str("                0 => 0,\n");
+    s.push_str("                m if m <= i64::MAX as u128 => -(m as i64),\n");
+    s.push_str("                m if m == SIGNED_DECIMAL_I64_ABS_MIN => i64::MIN,\n");
+    s.push_str("                _ => {\n");
+    s.push_str("                    return Err(Diagnostic::TokenizerError {\n");
     s.push_str(
-        "            let value = magnitude.checked_neg().ok_or_else(|| Diagnostic::TokenizerError {\n",
+        "                        message: format!(\"integer literal out of range for i64: `-{}`\", literal),\n",
     );
-    s.push_str(
-        "                message: format!(\"integer literal out of range for i64: `-{}`\", literal),\n",
-    );
-    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
-    s.push_str("                fixes: Vec::new(),\n");
-    s.push_str("            })?;\n");
+    s.push_str("                        span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("                        fixes: Vec::new(),\n");
+    s.push_str("                    });\n");
+    s.push_str("                }\n");
+    s.push_str("            };\n");
     s.push_str("            tokens.push(Token {\n");
     s.push_str("                kind: TokenKind::IntLit(value),\n");
     s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");

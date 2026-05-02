@@ -3191,6 +3191,22 @@ mod signed_decimal_int_literal_tests {
     }
 
     #[test]
+    fn minus_digits_lexes_as_single_int_lit_i64_min() {
+        let tokens =
+            tokenize("-9223372036854775808", "signed_decimal_i64_min.v3").expect("tokenize");
+        assert!(
+            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if *n == i64::MIN),
+            "expected i64::MIN as one token; got {:?}",
+            tokens.first().map(|t| &t.kind)
+        );
+        assert!(
+            matches!(tokens.get(1).map(|t| &t.kind), Some(TokenKind::Eof)),
+            "expected EOF after literal; got {:?}",
+            tokens.get(1).map(|t| &t.kind)
+        );
+    }
+
+    #[test]
     fn infix_minus_without_whitespace_stays_binary_minus() {
         let tokens = tokenize("1-1", "infix_minus.v3").expect("tokenize");
         assert!(tokens.len() >= 4, "expected literal, minus, literal, EOF");
