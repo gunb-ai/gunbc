@@ -46,6 +46,8 @@ Re-dispatch the row-#2 convention packet after **all** of:
 2. Director / Substrate Manager record the §P1 disposition (chosen shape + module path + placeholder-rejection-window OR loader-allow-list shape OR Item-4 milestone gate) per the recommended-next-unblock step in PR #1511.
 3. PB Manager confirms the recorded disposition is sufficient to make the row-#2-specific convention questions answerable without further authority calls.
 
+**Important — row-#1 merge alone is insufficient.** Merging PR #1511 only lands the *decision packet*, not the *decision*. Row #2 does **not** become independently authorable on row-#1 merge; it still depends on the §P1 record of (a) the chosen shape (A vs B vs C) and (b) the module-path decision that follows from that shape. A row-#2 packet authored on the strength of row-#1 merge alone — without the recorded shape + module-path disposition — would re-introduce the same unilateral commitment this STOP+PING is preventing.
+
 If any of (1)–(3) are missing at re-dispatch time, the row-#2 packet remains STOP+PING.
 
 ## What this packet does NOT do
