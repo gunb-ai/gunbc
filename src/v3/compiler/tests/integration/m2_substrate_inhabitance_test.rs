@@ -1217,7 +1217,10 @@ fn substrate_coproducts_match_runtime_carriers() {
         sum_variants(&dag, "LoopBound"),
         vec![
             (String::from("Cardinality"), vec![String::from("count")]),
-            (String::from("Descent"), vec![String::from("cluster")]),
+            (
+                String::from("Descent"),
+                vec![String::from("cluster"), String::from("measure")],
+            ),
         ]
     );
     assert_eq!(
