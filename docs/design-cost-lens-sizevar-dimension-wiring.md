@@ -393,11 +393,13 @@ Six design questions surfaced during authoring. Per `feedback_design_before_impl
 
 **Question:** how should `SizeVariable` carry user-facing names for diagnostic rendering?
 
-**Resolved:** no. Names are aliases for declarations (per `feedback_naming_is_aliasing`); render-time consumers look up the name from the InternTable keyed by `source_port`. The fact lives in one place.
+**Resolved:** add `display_name: String?` field to `SizeVariable`; the field is the single substrate authority for the user-facing name. Single-authority discipline (P2): one carrier, one source.
 
-**Why:** v2's `SizeVar { name: String }` carried the name as a structural field because v2 did not yet have an InternTable; v3 does (per `project_intern_table` memory). Repeating the v2 mistake in v3 would be wholly redundant authority.
+**Why `display_name: String?`, not InternTable lookup**: v3 does NOT have a `intern_table::name_of(port_id) -> String` query landed (per `src/v3/std/algebra.dag:143` "InternTable lookup the lens doesn't yet run"). v3 has some InternTable machinery (per `project_intern_table` memory + PR #367 Phase 1) but the port-id-to-authored-name query specifically is not wired. Assuming an unlanded query would lock substrate-target discipline. The structural-field path is what v3 currently supports.
 
-**Implementation note:** the renderer always calls `intern_table::name_of(source_port) -> String` for the user-facing label. The InternTable was populated at parse time with the user-authored binding name keyed by `port_id`, so no separate substrate field is needed. Equality on `SizeVariable` is on `source_port` (the only field).
+**Why `String?`, not `String`**: per [`../INVARIANTS.md`](../INVARIANTS.md) C-9 (no fabrication), when no user-authored name exists the field is `None`; the renderer derives a fresh label (e.g., `"|port_42|"`) from `source_port`. Never invent a fake name and stash it in the field.
+
+**Implementation note:** the renderer reads `display_name` directly from the carrier; equality on `SizeVariable` is on `source_port` only (`display_name` is a presentation slot, not identity — same `source_port` with different authored names is the same size variable).
 
 ### §8.3 `Dimension<SymbolicCost>` declaration scope for slice 2 — RESOLVED: Path A, declaration deferred to grammar lane
 
@@ -447,15 +449,15 @@ All six questions resolved. Implementation can proceed without further Director 
 
 This design doc extends:
 
-- [`docs/design-symbolic-cost-algebra.md`](design-symbolic-cost-algebra.md) (DB-7) — the SymbolicCost coproduct shape. **No payload changes**: `LinearCost`/`PolynomialCost`/`LogCost` continue to carry `SizeVariable` (DB-7 lock preserved). This design wires renderer-side InternTable lookup for the user-facing name (no substrate change to `SizeVariable`) and adds the `Semiring<SymbolicCost>` inhabitance declaration.
+- [`docs/design-symbolic-cost-algebra.md`](design-symbolic-cost-algebra.md) (DB-7) — the SymbolicCost coproduct shape. **No payload changes**: `LinearCost`/`PolynomialCost`/`LogCost` continue to carry `SizeVariable` (DB-7 lock preserved). This design adds one field to `SizeVariable` (`display_name: String?` per §1.2) and adds the `Semiring<SymbolicCost>` inhabitance declaration.
 - [`docs/design-dimension-abstraction.md`](design-dimension-abstraction.md) (DB-3) — the `Dimension<C>` framework. **No changes to existing carrier**; this doc names how `AnalysisDimension<SymbolicCost>` instantiates and the deferral discipline for the `data` value.
-- [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) — the lens-capability register tracking PROXY/STUB/PARTIAL/COMPLETE status per lens. **Updates**: `cost.dag` row "What v2 has that v3 drops" column collapses on landing of slice 2 (named SizeVar surface label: rendered via `intern_table::name_of(source_port)` — single authority, no separate substrate field; producer wiring: consumed via `per_call_pattern_at`; cementing test: shipped per §5). The "Dimension<SymbolicCost> wiring deferred on grammar gaps" remainder gets a named dissolution trigger pointing to the class-5 grammar lane.
+- [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) — the lens-capability register tracking PROXY/STUB/PARTIAL/COMPLETE status per lens. **Updates**: `cost.dag` row "What v2 has that v3 drops" column collapses on landing of slice 2 (named SizeVar surface label: now carried by `SizeVariable.display_name: String?` per §1.2 — single substrate-field authority; producer wiring: consumed via `per_call_pattern_at`; cementing test: shipped per §5). The "Dimension<SymbolicCost> wiring deferred on grammar gaps" remainder gets a named dissolution trigger pointing to the class-5 grammar lane.
 - [`../INVARIANTS.md`](../INVARIANTS.md) C-8 (fail-closed compilation) — load-bearing for §4 (the product-zero fix removes a fabrication-shaped behavior; v3 was not failing closed on the annihilation-law violation, it was returning a wrong-but-plausible cost).
 - [`../INVARIANTS.md`](../INVARIANTS.md) P1 (modeling faithfulness) — load-bearing for §4.2 (the fix declares the algebra structure rather than special-casing the helper).
 - [`../INVARIANTS.md`](../INVARIANTS.md) P2 (boundary discipline) — load-bearing for §3.2 (the `per_call_pattern_at` query surface as single authority).
 - [`../INVARIANTS.md`](../INVARIANTS.md) P5 (progress is dissolution) — load-bearing for §8.1 (atomic SizeVariable retirement, no bridge), §8.3 (named dissolution trigger for the trampoline), §8.6 (no parallel corpus).
 - `feedback_lenses_not_passes` — load-bearing for §3 (zero heuristics; the lens is a fold over substrate facts, never derives them).
-- `feedback_state_space_vs_behavioral_invariants` — load-bearing for §1.2 (single name authority via InternTable rather than two parallel sources; consumers cannot disagree on the user-facing label for a given `source_port`).
+- `feedback_state_space_vs_behavioral_invariants` — load-bearing for §1.2 (single name authority via `SizeVariable.display_name: String?` field; consumers cannot disagree on the user-facing label for a given `source_port`).
 - `project_lattice_consolidation` (memory) — this slice's declaration of `Semiring<SymbolicCost>` is one of the named ad-hoc lattices/algebras the project memory tracks; declaring inhabitance is the consolidation move.
 - `project_algebra_operator_dispatch` (memory) — Semiring declaration enables `+`/`*` operator dispatch over `SymbolicCost`.
 
