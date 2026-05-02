@@ -590,6 +590,36 @@ mod e7_analyze_complexity_integration {
                 assert_eq!(cn, dn);
                 assert_eq!(cc, dc);
                 assert_eq!(cw.len(), dw.len());
+                // Strengthen length-equality to per-witness content
+                // equality on the typed Inhabits arm (the only arm
+                // reachable on a well-typed program through the
+                // public surface). SymbolicCost derives PartialEq, so
+                // structural equality on the carrier is honest;
+                // Violates would need Behavior PartialEq which it
+                // does not derive — fail-arm equality stays in the
+                // in-module unit tests where ghost-port DAGs are
+                // constructible.
+                for (cw_i, dw_i) in cw.iter().zip(dw.iter()) {
+                    match (cw_i, dw_i) {
+                        (
+                            v3_compiler::Witness::Inhabits(cc),
+                            v3_compiler::Witness::Inhabits(dc),
+                        ) => assert_eq!(cc, dc),
+                        (
+                            v3_compiler::Witness::Violates { .. },
+                            v3_compiler::Witness::Violates { .. },
+                        ) => {
+                            panic!(
+                                "well-typed program produced Violates witnesses on both arms; \
+                                 the symbolic-cost analyzer should not emit Violates here, \
+                                 so the test must be revisited (likely a regression)."
+                            );
+                        }
+                        other => panic!(
+                            "wrapper and direct analyzer produced different witness arms: {other:?}"
+                        ),
+                    }
+                }
             }
             other => panic!(
                 "expected both DimensionOk with matching content via the public API, got {other:?}",
