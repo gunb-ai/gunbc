@@ -13,16 +13,12 @@
 // TRACKED SCAFFOLD (algebra-strength sharpening) — P5 dissolution trigger:
 //   The denotational note at `dsl/std/algebra.dag:54` says
 //     "Nat inhabits CommutativeSemiring  (because (Nat, *, 1) is a commutative monoid)"
-//   but `dsl/std/algebra.dag` declares only `type Semiring<T>` (no
-//   `type CommutativeSemiring<T>`). `Semiring<Magnitude>` is the closest
-//   honest algebra surface available today; multiplicative commutativity
-//   of ℕ is true denotationally but not yet pinned structurally in the
-//   substrate. Precedent for the sharpening is already in algebra.dag:
-//   `Monoid → CommutativeMonoid` is the same shape (`algebra.dag:111-122`).
+//   Slice C-Semiring introduced `type CommutativeSemiring<T>` in
+//   `dsl/std/algebra.dag`, but this `Nat` declaration intentionally remains
+//   `Semiring<Magnitude>` for the algebra-type-first PR boundary. The next
+//   Nat-sharpening slice changes the alias and ratchet together.
 //
-//   **Dissolution trigger:** when an algebra-strength sharpening slice
-//   introduces `type CommutativeSemiring<T>` to `dsl/std/algebra.dag`,
-//   change this declaration to
+//   **Dissolution trigger:** change this declaration to
 //     `type Nat = CommutativeSemiring<Magnitude>`
 //   and update the structural ratchet
 //   `nat_resolves_to_semiring_over_magnitude` in

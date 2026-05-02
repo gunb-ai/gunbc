@@ -1,7 +1,8 @@
 # R3 PR-E E5 Loop Readiness Audit
 
-**Status:** E5 readiness / implementation blocker. This is a docs-only receipt;
-it does not implement `eval_loop`, change substrate carriers, widen strategy
+**Status:** **Cardinality** `Behavior::Loop` execution is live on **`main`**;
+**`LoopBound::Descent`** execution remains deferred. This is a docs-only receipt;
+it does not implement descent execution, change substrate carriers, widen strategy
 carriers, or add runner behavior.
 
 **Parent authorities:** [`r3-evaluator-dispatch.md`](r3-evaluator-dispatch.md)
@@ -69,40 +70,24 @@ For `LoopBound::Descent { cluster }`, E5 must return a named fail-closed
 residual. Descent execution stays deferred to a later slice that consumes
 `std.termination` evidence.
 
-## Current Blocker
+## Remaining gaps (post-cardinality landing)
 
-E1 and E2 are live on main, but E5 cannot yet meet the dispatch acceptance bar
-without absorbing work owned by other PR-E slices.
+- **`LoopBound::Descent`:** execution stays a named **`LoopBoundDescentResidual`**
+  until a later slice consumes `std.termination` evidence (per E5 **STOP+PING**
+  in [`r3-evaluator-dispatch.md`](r3-evaluator-dispatch.md)).
 
-- The live `eval_node` executes only `Behavior::Value`; `Transform`, `Branch`,
-  `Loop`, and `Bind` still fail closed. A loop body that can consume the current
-  accumulator and produce the next accumulator requires additional body
-  behavior, not just the E1 literal path.
-- The B.1.4 rule says to bind the accumulator for each iteration, but the
-  executable binding port must be used consistently by later body evaluation.
-  The candidate binding authority is `LoopNode.source`: it is the loop input /
-  accumulator port and is already validated by `Dag::push_loop`. The first
-  implementation PR should cite this audit and either use `source` as that
-  binding port or STOP+PING if lowering authority says another port owns the
-  accumulator.
-- Count decoding needs a typed local diagnostic surface. The design allows
-  "missing / non-integer count" to fail closed, but E1's current `EvalError`
-  does not yet contain loop-specific variants. Adding those variants is
-  implementation-local and allowed in E5, but it should happen with executable
-  loop tests, not as dead API in this readiness PR.
-
-A partial implementation that only handles zero iterations or a fixed literal
-body would not prove accumulator threading. It would also create a misleading
-`eval_loop` surface before the body evaluator can execute the body shapes loops
-need. This slice therefore records the blocker instead of landing fake progress.
+- **Generic lens fold / full `Lens.iterate` honesty** over every `LoopBound`
+  inhabitant is **E6** scope and still depends on **`Behavior::Bind`** and other
+  items in [`r3-pr-e6-lens-fold-readiness-audit.md`](r3-pr-e6-lens-fold-readiness-audit.md)—not
+  additional cardinality-loop work in this receipt.
 
 ## Resume Gate
 
-E5 implementation may resume when the body evaluator has enough behavior
-coverage to run a loop body that reads the accumulator binding and returns a
-new accumulator value without adding Transform, Branch, or Bind behavior inside
-the E5 PR itself. The implementation PR should keep scope to `eval_loop`,
-loop-specific diagnostics, and focused tests.
+**Cardinality E5** has met its dispatch bar on **`main`** (`evaluator::eval_loop`
+with accumulator binding per B.1.4). Further **E5** work resumes for
+**`LoopBound::Descent`** when a slice can execute descent against termination
+evidence without widening loop-bound substrate in that same PR. Keep **Bind**
+and generic lens-fold concerns in **E6**, not mixed into the descent slice.
 
 Required tests for the implementation PR:
 

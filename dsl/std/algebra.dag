@@ -17,12 +17,12 @@
 //                            ┌──────────────┼──────────────┐
 //                            │              │              │
 //                        Semiring      Lattice      FreeMonoid<T>
-//                            │              │
-//                          Ring      BoundedLattice
-//                            │              │
-//                      OrderedRing   BooleanAlgebra
-//                            │
-//                         Field
+//                       ╱       ╲          │
+//        CommutativeSemiring   Ring   BoundedLattice
+//                                │          │
+//                           OrderedRing BooleanAlgebra
+//                                │
+//                              Field
 //
 // Each level adds axioms. A type that inhabits Ring automatically gets
 // all Monoid, Semigroup, and Magma operations.
@@ -36,6 +36,7 @@
 //   Monoid              | identity: op(identity, a) == a
 //   CommutativeMonoid    | commutativity: op(a, b) == op(b, a)
 //   Semiring            | add (CommMonoid) + mul (Monoid) + distribution
+//   CommutativeSemiring | Semiring + commutative multiplication
 //   Ring                | add inverse (negate, subtract)
 //   OrderedRing         | total order (compare, <, >, min, max, abs)
 //   Field               | mul inverse (reciprocal, divide)
@@ -188,6 +189,18 @@ type GroupCompletion<M>
 // mul distributes over add: a * (b + c) == a*b + a*c
 // zero annihilates: a * zero == zero
 type Semiring<T> {
+  add: fn(T, T) -> T
+  zero: T
+  mul: fn(T, T) -> T
+  one: T
+}
+
+// CommutativeSemiring: semiring whose multiplicative monoid is commutative.
+// Adds only the law `mul(a, b) == mul(b, a)`; signatures stay identical to
+// Semiring. This is the algebra-strength surface for Nat. Sibling follow-ups
+// may add `CommutativeRing<T>` and `OrderedCommutativeRing<T>` when a consumer
+// needs those strengths; this slice intentionally lands only the semiring step.
+type CommutativeSemiring<T> {
   add: fn(T, T) -> T
   zero: T
   mul: fn(T, T) -> T

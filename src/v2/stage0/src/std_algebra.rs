@@ -61,6 +61,14 @@ pub struct Semiring<T> {
 }
 
 #[derive(Clone)]
+pub struct CommutativeSemiring<T> {
+    pub add: Rc<dyn Fn(T, T) -> T>,
+    pub zero: Box<T>,
+    pub mul: Rc<dyn Fn(T, T) -> T>,
+    pub one: Box<T>,
+}
+
+#[derive(Clone)]
 pub struct Ring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
     pub zero: Box<T>,
