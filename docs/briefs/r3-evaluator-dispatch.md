@@ -166,6 +166,12 @@ Implement the runner-extension workstreams only under the boundaries in
 - PR-B.4 / W3: `ForAllTargets` per-target dispatch, gated on structural
   observation carrier and target producer availability.
 
+**Continuation readiness:** [`r3-pr-e8-runner-extensions-continuation-readiness.md`](r3-pr-e8-runner-extensions-continuation-readiness.md)
+records the current post-bundle state: `AlgebraicLaw::Associativity` and
+`AlgebraicLaw::Commutativity` are already wired, while W1/W3 still lack
+declared producer identity / observation-channel authority for executable
+runner work.
+
 **STOP+PING:** no convention-only stdout parsing, no new `TestPredicate`
 variants, and no permanent expansion of `test_runner.rs` authority without a
 dissolution hook.

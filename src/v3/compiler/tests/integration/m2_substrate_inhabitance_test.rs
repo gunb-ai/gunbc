@@ -1064,6 +1064,13 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "BoundDeclaration"),
+        vec![
+            (String::from("StaticBound"), vec![String::from("_0")]),
+            (String::from("PlatformDependent"), Vec::new()),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "PositiveIntervalWidth"),
         vec![
             (String::from("OneUnit"), Vec::new()),
@@ -1491,6 +1498,47 @@ fn cardinality_bound_projects_to_interval_parent() {
         }
     );
     assert_eq!(CardinalityBound::Unbounded.interval(), Interval::Unbounded);
+}
+
+#[test]
+fn bound_declaration_static_bound_wraps_interval_int() {
+    let dag = Dag::new();
+    let bound_declaration = dag
+        .declaration_by_name("BoundDeclaration")
+        .expect("BoundDeclaration missing from substrate bootstrap");
+    assert_eq!(
+        bound_declaration.span.file, "src/v3/std/substrate.dag",
+        "BoundDeclaration is the substrate carrier consumed by Coercion-Fold; \
+         parser/lowerer and target-row population land in later slices"
+    );
+
+    let variants = match &bound_declaration.connective {
+        TypeConnective::Disj { variants } => variants,
+        other => panic!("BoundDeclaration must be a Disj, got {other:?}"),
+    };
+    let static_bound = variants
+        .iter()
+        .find(|variant| variant.label == "StaticBound")
+        .expect("BoundDeclaration missing StaticBound variant");
+    let platform_dependent = variants
+        .iter()
+        .find(|variant| variant.label == "PlatformDependent")
+        .expect("BoundDeclaration missing PlatformDependent variant");
+
+    assert_runtime_value_instantiation(
+        &dag,
+        positional_payload(&dag, static_bound.ty),
+        "Interval",
+        "Int",
+    );
+    assert!(
+        matches!(
+            &dag.declaration(platform_dependent.ty).connective,
+            TypeConnective::Conj { children } if children.is_empty()
+        ),
+        "PlatformDependent must remain a distinct no-payload kind, not an \
+         Interval<Int> value"
+    );
 }
 
 #[test]
