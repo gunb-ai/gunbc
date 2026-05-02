@@ -59,6 +59,8 @@ Per `docs/r3-structure.md` line 178: *"Debt-Paydown Mgr coordinates with all 8 o
 
 Per `feedback_standing_managers_need_owned_deliverables`, the manager's spawn Slice 1 is the per-PR-rule lockdown. Subsequent slices are standing capacity.
 
+**Read this brief as policy/coordination only.** The Slice 1 entries below describe **manager-owned post-spawn deliverables** — they are not authoring instructions already in motion, and this brief does not pre-author the template extension, the ledger, or the cadence cron. Each Slice 1 deliverable lands under manager identity in a separate PR after manager spawn.
+
 1. **Slice 1 (spawn-PR; M-sized)** — Debt-Paydown Mgr authors:
    - **PR-template extension** at `.github/PULL_REQUEST_TEMPLATE.md` (the `## Debt receipt (R3 standing program)` section per the rule above).
    - **Initial debt-row inventory ledger** at `docs/debt/r3-paydown-ledger.md` (or similar — manager picks final path) — enumeration of every tracked-debt row in ROADMAP `### Post-merge debt (...)` sections at spawn time, each with: row name, current state (open / routed / retired), routed-lane (if applicable), retirement-PR number (if applicable). The ledger is the manager's primary owned-deliverable surface.
