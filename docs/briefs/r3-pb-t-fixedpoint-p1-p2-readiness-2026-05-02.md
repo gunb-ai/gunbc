@@ -19,7 +19,7 @@
 | `src/v3/compiler/src/self_host_receipt_p0.rs` | P0 receipt contract (unchanged relevance) |
 | `src/v3/compiler/tests/integration/sg0_census_test.rs` | SG-0 hand-authored non-test census (P2 proxy) |
 
-**Live path inventory (repo root, all present in-tree at authoring):** same paths as the first column above, plus `docs/briefs/r3-pb-t-fixedpoint-p1-p2-readiness-2026-05-02.md` (this file). No file-relative markdown URLs — every path is written from the workspace root for copy-paste verification.
+**Live path inventory (repo root, verified present in-tree at authoring):** `docs/briefs/r3-pb-t-fixedpoint-worker.md`, `docs/briefs/r3-pb-t-fixedpoint-p1-p2-readiness-2026-05-02.md` (this file), `docs/r3-structure.md`, `.github/workflows/ci.yml`, `src/v3/compiler/src/bin/self_host_fixed_point.rs`, `src/v3/compiler/src/self_host_receipt_p0.rs`, `src/v3/compiler/tests/integration/sg0_census_test.rs` — duplicates the table’s first column so each path is spelled literally once here (avoids tooling that skips table cells). No file-relative markdown URLs.
 
 Incremental Evaluator substrate landings (e.g. PR-E lineage called out in program mail) were **not** treated as a substitute for the brief’s **ledger-level** “R2-Evaluator landed” gate; see P1 conclusion.
 
