@@ -636,11 +636,8 @@ mod e7_analyze_complexity_integration {
     /// more nodes than the first.
     #[test]
     fn analyze_complexity_public_api_honors_supplied_workflow_root() {
-        let dag = compile_to_dag(
-            "let a = 1 + 2\nlet b = a + 3 + 4",
-            "e7_int_two_binds.v3",
-        )
-        .expect("compiles");
+        let dag = compile_to_dag("let a = 1 + 2\nlet b = a + 3 + 4", "e7_int_two_binds.v3")
+            .expect("compiles");
 
         let root_a = find_bind_root(&dag, "a");
         let root_b = find_bind_root(&dag, "b");
