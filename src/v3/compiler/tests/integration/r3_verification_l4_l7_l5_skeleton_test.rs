@@ -67,39 +67,55 @@ fn cached_compile(
     })
 }
 
+fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
+where
+    T: Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(32 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn larger-stack integration thread")
+        .join()
+        .expect("larger-stack integration thread panicked")
+}
+
 #[test]
 fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
-    let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
-    let results = TestRunner::new(dag).run_suite(L4_SUITE);
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].claim_name, L4_CLAIM);
-    assert!(
-        matches!(results[0].result, ClaimResult::Pass),
-        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
-        results[0].result
-    );
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
+        let results = TestRunner::new(dag).run_suite(L4_SUITE);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].claim_name, L4_CLAIM);
+        assert!(
+            matches!(results[0].result, ClaimResult::Pass),
+            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
+            results[0].result
+        );
+    });
 }
 
 #[test]
 fn r3_verification_l4_emit_eval_mixed_lineage_stays_not_yet_implemented() {
-    let dag = cached_compile(L4_MIXED_FIXTURE, L4_MIXED_FIXTURE_PATH, &L4_MIXED_DAG);
-    let results = TestRunner::new(dag).run_suite(L4_MIXED_SUITE);
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].claim_name, L4_MIXED_CLAIM);
-    let ClaimResult::NotYetImplemented(msg) = &results[0].result else {
-        panic!(
-            "expected mixed (rust_emit_output, v3_program_cost) pairing to stay deferred, got {:?}",
-            results[0].result
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L4_MIXED_FIXTURE, L4_MIXED_FIXTURE_PATH, &L4_MIXED_DAG);
+        let results = TestRunner::new(dag).run_suite(L4_MIXED_SUITE);
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].claim_name, L4_MIXED_CLAIM);
+        let ClaimResult::NotYetImplemented(msg) = &results[0].result else {
+            panic!(
+                "expected mixed (rust_emit_output, v3_program_cost) pairing to stay deferred, got {:?}",
+                results[0].result
+            );
+        };
+        assert!(
+            msg.contains("unsupported producer pairing"),
+            "NYI receipt should name unsupported producer pairing (producer-identity gate); got {msg}"
         );
-    };
-    assert!(
-        msg.contains("unsupported producer pairing"),
-        "NYI receipt should name unsupported producer pairing (producer-identity gate); got {msg}"
-    );
-    assert!(
-        msg.contains("#1495"),
-        "NYI receipt should cite #1495 rebase / ratchet coordination; got {msg}"
-    );
+        assert!(
+            msg.contains("#1495"),
+            "NYI receipt should cite #1495 rebase / ratchet coordination; got {msg}"
+        );
+    });
 }
 
 #[test]

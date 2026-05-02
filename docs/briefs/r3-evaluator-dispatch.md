@@ -127,12 +127,14 @@ full `Lens<C>` / `DimensionReport<C>` fold once E1-E5 provide enough body
 execution semantics.
 
 **Readiness receipt:** [`r3-pr-e6-lens-fold-readiness-audit.md`](r3-pr-e6-lens-fold-readiness-audit.md)
-records the current **E6** blocker: on **`main`**, **E3**, **E4**, and
-**cardinality E5** are live in `src/v3/compiler/src/lib.rs`, but
-**`Behavior::Bind`** (callable entry), **`LoopBound::Descent`** execution, and
-the monoid / fold-scope items in that audit still prevent an honest generic
-`fold_lens` / `DimensionReport<C>` path without duplicating body-evaluator
-semantics.
+records the current **E6** blocker after **E3**, **E4**, **cardinality E5**,
+and **Bind callable entry** landed on `main`: the evaluator can execute the
+five L1 program behaviors, but generic `Lens<C>` still lacks live
+function-field execution (`TransformTarget::Callable` / field projection),
+declared lens-instance data, report/witness lifting, descent execution, and a
+structural fold-scope decision. E6 must not duplicate `lens_apply.rs`'s
+`FieldValue` interpreter or fabricate `DimensionReport<C>` values to keep
+moving.
 
 **Inputs:** PR-C complete reflection, PR-E reflect/apply slice, PR-B evaluator
 execution, and `docs/design-lens-framework.md`.
