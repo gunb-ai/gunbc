@@ -11,9 +11,11 @@ This audit prepares the Grounding-owned Slice C named in
 `LanguageSpecProjection::ScratchIntExamples` test driver with a declared
 projection reader after Substrate lands the remaining bound parse/lower,
 algebra-intent, and per-target integer inhabitance prerequisites. Substrate
-landed the `BoundDeclaration` carrier in #1449, but that PR was carrier-only:
-it did not add parser/lowerer syntax for `Int(lo..hi)`, a Grounding projection
-reader, scratch-driver removal, or per-target integer inhabitance rows.
+landed the `BoundDeclaration` carrier in #1449 and the first per-target integer
+inhabitance rows in #1459. The #1459 rows are enough to implement a partial
+Example 8 declared-projection reader, but not enough to dissolve the whole
+`ScratchIntExamples` surface: program-bound parse/lower and algebra intent facts
+are still missing, and Examples 1/2/5/6 remain scratch-gated.
 
 The implementation slice should be mechanical: read target inhabitance facts from
 the `Dag`, run a pure candidate-search pipeline, and preserve the outcomes of
@@ -42,7 +44,7 @@ pub struct TargetTypeInhabitance<'dag> {
     pub row_decl: DeclarationId,
     pub source_type: DeclarationId,
     pub algebra: DeclarationId,
-    pub bound: BoundDeclarationView<'dag>,
+    pub bound: TargetIntegerInhabitanceBoundView<'dag>,
     pub realization: TargetRealizationRef,
 }
 
@@ -63,9 +65,13 @@ Field intent:
 - `row_decl`, `source_type`, and `algebra` stay DeclarationRef-keyed. They point
   back to substrate rows and algebra/type declarations; they are not copied into
   string keys.
-- `bound` should borrow or view the substrate `BoundDeclaration` payload. If the
-  compiler representation cannot borrow nested payloads safely, copy the small
-  normalized value into `BoundDeclarationView`; do not copy the target decision.
+- `bound` should borrow or view the row-level
+  `TargetIntegerInhabitanceBound` payload landed in #1459:
+  `BoundUnspecified | StaticBoundFact(IntInterval)`. `StaticBoundFact` carries
+  the same shared `Interval<Int>` payload shape used by `BoundDeclaration` after
+  #1449. If the compiler representation cannot borrow nested payloads safely,
+  copy the small normalized value into `TargetIntegerInhabitanceBoundView`; do
+  not copy the target decision.
 - `realization` points at the target realization row and carries only the render
   handle needed after a unique candidate is found.
 
@@ -88,8 +94,10 @@ second authority.
 
 ## Bound Match Predicate
 
-After #1449, Grounding can implement one cross-target predicate once program and
-target rows actually carry `BoundDeclaration` facts:
+After #1449 and #1459, Grounding can implement one cross-target predicate for
+rows whose target side carries `TargetIntegerInhabitanceBound::StaticBoundFact`.
+The program side still needs `BoundDeclaration` parse/lower before the general
+predicate can run over real source programs:
 
 ```rust
 pub enum BoundMatch {
@@ -98,24 +106,32 @@ pub enum BoundMatch {
     DiffersKind,
 }
 
-pub fn match_bound(program: &BoundDeclarationView, target: &BoundDeclarationView) -> BoundMatch
+pub fn match_bound(
+    program: &BoundDeclarationView,
+    target: &TargetIntegerInhabitanceBoundView,
+) -> BoundMatch
 ```
 
 Expected structural body:
 
-1. `StaticBound(Unbounded)` on the target side is universal for static program
-   bounds of the same algebra family. It matches any `StaticBound(_)` program
-   bound. It does not match `PlatformDependent`.
-2. `StaticBound(BoundedInterval { lower, width })` matches only if the program
-   is also `StaticBound(BoundedInterval { lower, width })` with exact structural
-   equality. #1449 did not land an `ExactInterval { lo, hi }` carrier; the
-   design-doc `(lo..hi)` interval must lower into the shared
-   `BoundedInterval { lower, width }` representation before this predicate can
-   read it. There is no wider/narrower target selection for emission; ordering
-   remains diagnostic-only.
-3. `PlatformDependent` is kind-only. It matches only a program bound that is also
-   `PlatformDependent`. It must not be silently interpreted as the host's current
-   integer width and must not match a static interval.
+1. `StaticBoundFact(Unbounded)` on the target side is universal for static
+   program bounds of the same algebra family. It matches any program
+   `BoundDeclaration::StaticBound(_)`. It does not match
+   `BoundDeclaration::PlatformDependent`.
+2. `StaticBoundFact(BoundedInterval { lower, width })` matches only if the
+   program is `BoundDeclaration::StaticBound(BoundedInterval { lower, width })`
+   with exact structural equality. #1449/#1459 did not land an
+   `ExactInterval { lo, hi }` carrier; the design-doc `(lo..hi)` interval must
+   lower into the shared `BoundedInterval { lower, width }` representation before
+   this predicate can read it. There is no wider/narrower target selection for
+   emission; ordering remains diagnostic-only.
+3. `BoundUnspecified` is under-refined for exact-bound selection. It is useful
+   evidence for Example 1-style missing-bound diagnostics, but it should not
+   satisfy Example 8.
+4. `PlatformDependent` is kind-only on the program side. It must not be silently
+   interpreted as the host's current integer width and must not match a static
+   target interval unless Substrate later declares an explicit platform-dependent
+   target-side row shape.
 
 This function is intentionally independent of Rust/Python/Go. Example 8's
 cross-target behavior is the proof obligation: Rust `i32`, Python `int`, and Go
@@ -135,7 +151,7 @@ TargetTypeInhabitance {
   row_decl,
   source_type: std.Int,
   algebra: std.algebra.Semiring | std.algebra.OrderedRing,
-  bound: BoundDeclaration,
+  bound: TargetIntegerInhabitanceBound,
   realization: TypeRealization row,
 }
 ```
@@ -148,9 +164,9 @@ Translation table:
 | `design_doc_example_2_bounded_int_emits_rust_u32` | Rust target projection with unsigned Semiring rows including `RustU32` at `StaticBound(Interval<Int>(0..2^32))`; program bound is the same static interval. | `candidates_for_type_and_algebra(Int, Semiring)` plus `match_bound` yields one candidate: the `RustU32` realization row. |
 | `fold_dag_int_ambiguous_algebra_fails_closed` | Projection contains both signed OrderedRing and unsigned Semiring candidate families for the program type/bound; program facts do not determine which algebra family applies. | Fold fails before target selection with `UnderRefined { unspecified_axis: "algebra" }`. |
 | `fold_dag_int_bound_exceeds_max_no_inhabitant` | Rust target projection has signed Int rows up to the largest declared static bound; program bound is outside all declared static rows, or has no exact match. | Candidate search returns zero matching rows and emits `NoInhabitant`. |
-| `fold_dag_int_refined_cross_target_consistent_rust` | Rust target projection includes `RustI32` with `StaticBound(Interval<Int>(-2^31..2^31))`. | Unique candidate is the `RustI32` realization row. |
-| `fold_dag_int_refined_cross_target_consistent_python` | Python target projection includes `PythonInt` with a compatible static/unbounded declaration as defined by Substrate Slice B. | Same `match_bound` predicate selects the `PythonInt` realization row. |
-| `fold_dag_int_refined_cross_target_consistent_go` | Go target projection includes `GoInt32` with `StaticBound(Interval<Int>(-2^31..2^31))`. | Unique candidate is the `GoInt32` realization row. |
+| `fold_dag_int_refined_cross_target_consistent_rust` | **Landed in #1459:** `rust_integer_inhabit_i32_at_program_bound` points at `rust_i32` and carries `StaticBoundFact(BoundedInterval { lower: -2147483648, width: PositiveWidth(UnitCount { units: 4294967295 }) })`. | Partial Slice C can read this declared row and select the Rust `i32` realization for the Example 8 synthetic program bound. |
+| `fold_dag_int_refined_cross_target_consistent_python` | **Landed in #1459:** `python_integer_inhabit_at_i32_program_bound` points at `python_int` and carries the same static i32-range bound. | Partial Slice C can read this declared row and select the Python `int` realization for the Example 8 synthetic program bound. |
+| `fold_dag_int_refined_cross_target_consistent_go` | **Landed in #1459:** `go_integer_inhabit_i32_at_program_bound` points at `go_int32` and carries the same static i32-range bound. | Partial Slice C can read this declared row and select the Go `int32` realization for the Example 8 synthetic program bound. |
 
 The tests should assert declaration identity for the selected realization, not
 the current `TargetInhabitance` enum variant.
@@ -197,19 +213,22 @@ by fabricating payload fields locally.
 
 ## Substrate-Prerequisite Checklist
 
-Slice C cannot start until the non-carrier substrate landings below are present:
+Full Slice C cannot start until the non-carrier substrate landings below are
+present. The Example 8-only partial Slice C can start from the #1459 rows by
+using a synthetic program bound that matches the design-doc i32 interval.
 
 | Prerequisite | Required shape | Owner |
 |---|---|---|
 | Bound carrier | **DONE in #1449.** `src/v3/std/substrate.dag` declares `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`. `Interval<D>` remains the shared parent and still has shape `BoundedInterval { lower: D, width: IntervalWidth } | Unbounded`; there is no `ExactInterval { lo, hi }` carrier at HEAD. | Substrate Manager (`#1130`) |
 | Program-bound parse/lower | Parsed/lowered program `Int(lo..hi)`, `Int(any)`, and platform-dependent forms expose a `BoundDeclaration` fact the fold can read. The design-doc `(lo..hi)` surface must lower into `StaticBound(BoundedInterval { lower, width })`. #1449 explicitly did not add this syntax/lowering. | Substrate / parse-lower owner, coordinated by Substrate Manager |
-| Per-target integer inhabitance rows | Rust, Python, and Go LanguageSpec rows declare source type, algebra, target realization, and `BoundDeclaration` facts for the Int-family examples. #1449 explicitly did not populate these rows. | Substrate / LanguageSpec population |
+| Per-target integer inhabitance rows | **PARTIAL in #1459.** `TargetIntegerTypeInhabitance` rows now declare `language`, `kernel_integer`, `algebra`, `bound: TargetIntegerInhabitanceBound`, and `type_realization`. Example 8's Rust/Python/Go i32-range rows are present. Rust also has `u32` and unspecified signed rows, and Python has an unbounded row, but Examples 1/2/5/6 are not fully dispatchable because program-bound parse/lower and algebra intent remain missing. | Substrate / LanguageSpec population |
 | Algebra intent facts | Program type/refinement analysis can distinguish Semiring vs OrderedRing, or fail closed when ambiguous. This remains required for Examples 2 and 5 and was not part of #1449. | Substrate Manager, consumed by Grounding |
 | Projection extraction path | Grounding can walk the `Dag` and extract declared inhabitance rows without string-name authority. | Grounding after the rows above land |
 
-No additional substrate prerequisite surfaced from the #1449 ground-truth walk.
-The remaining blocker set is now narrower: parse/lower a program
-`BoundDeclaration`, populate per-target inhabitance rows carrying that carrier,
-and expose algebra intent facts. If later Substrate work lands inhabitance rows
+The #1459 ground-truth walk narrows Slice C only for Example 8: the target-side
+rows exist and carry exact i32-range facts through `TargetIntegerInhabitanceBound`.
+The remaining blocker set for full dissolution is still: parse/lower a program
+`BoundDeclaration`, complete row coverage for the other examples as needed, and
+expose algebra intent facts. If later Substrate work lands more inhabitance rows
 without a readable program-bound projection, Grounding should STOP+PING `#1130`
 rather than adding a local parser or string convention.
