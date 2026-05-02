@@ -471,7 +471,7 @@ This document does NOT modify:
 
 Within T-Lens-Behavioral-Parity slice 2 (cost) per [`docs/r3-structure.md`](r3-structure.md) closure gates:
 
-1. **Renderer-side InternTable name wiring** (`renderer_intern_table_name_wiring_landed`). No substrate change to `SizeVariable`. Update render-side surfaces (`Display` impls; `compute_symbolic_costs` rendering) to call `intern_table::name_of(source_port)` for user-facing labels. Atomic at the renderer layer.
+1. **`SizeVariable.display_name` field add** (`sizevariable_displayname_landed`). Add `display_name: String?` field to `SizeVariable` in `src/v3/std/algebra.dag` (per §1.2); update Rust mirror in `src/v3/compiler/src/dag.rs` (single field add); wire parser to populate from authored binding names. Single substrate authority for the user-facing name. Atomic.
 2. **Semiring<SymbolicCost> declaration + product-zero fix** (`symbolic_cost_semiring_inhabitance_landed`). Declare the `Semiring<SymbolicCost>` instance; add `collapse_on_multiplicative_zero`; update `reduce_product`. Atomic with the dispatch.
 3. **`per_call_pattern_at` substrate query surface** (`per_call_pattern_query_surface_landed`). Expose `per_call_pattern_at(d, call_site) -> CallPattern?` from `std.computation`; the query reads `v3_compiler::dag::per_call_descent_evidence`. Co-owned with complexity slice 1 (same query).
 4. **Cost lens producer consumption** (`cost_lens_consumes_per_call_pattern`). Extend `entry_for` to dispatch on `per_call_pattern_at`; add `recursive_transform_cost`; add `call_pattern_to_iter_bound`. Depends on steps 1–3.
