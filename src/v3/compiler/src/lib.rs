@@ -1371,9 +1371,22 @@ pub mod evaluator {
 
         #[test]
         fn transform_callable_unsupported_in_e3_slice() {
+            // The subject is `eval_node`'s rejection of `Callable` transform
+            // targets — the specific declaration is incidental; the test
+            // just needs *some* declaration whose `callable_runtime_arity`
+            // resolves to `None` (so the 0-input form is accepted at builder
+            // time). T-Numeric-Construction Slice 3 pivoted `Int` to
+            // `AbelianGroup<GroupCompletion<Nat>>` (direct Instantiation,
+            // arity = 3 from AbelianGroup's Conj children), and `Int64` is
+            // an Instantiation too (`OrderedRing<Word64>`). `Bool` is a
+            // `Disj` declaration — `callable_runtime_arity(Bool)` returns
+            // `None`, so the builder accepts the 0-input form regardless of
+            // the numeric construction-chain shape. Stable choice that
+            // doesn't drift with future numeric-substrate edits.
             let mut dag = Dag::new();
-            let int_decl = dag.declaration_by_name("Int").expect("Int").id;
-            let output = dag.push_transform(TransformTarget::Callable(int_decl), vec![], span());
+            let target_decl = dag.declaration_by_name("Bool").expect("Bool").id;
+            let output =
+                dag.push_transform(TransformTarget::Callable(target_decl), vec![], span());
             let entry = node_for_port(&dag, output);
             let mut state = empty_state();
 
