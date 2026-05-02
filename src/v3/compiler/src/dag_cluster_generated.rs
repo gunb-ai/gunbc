@@ -24,5 +24,6 @@ pub enum LoopBound {
     },
     Descent {
         cluster: ClusterId,
+        measure: PortId,
     },
 }

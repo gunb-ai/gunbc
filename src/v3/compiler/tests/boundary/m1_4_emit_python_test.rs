@@ -471,6 +471,7 @@ class LoopBound_Cardinality(LoopBound):
 @dataclass
 class LoopBound_Descent(LoopBound):
     cluster: str
+    measure: PortId
 
 @dataclass
 class ValueNode:
@@ -717,8 +718,12 @@ fn serialize_loop_bound(bound: &LoopBound) -> String {
         LoopBound::Cardinality { count } => {
             format!("LoopBound_Cardinality(count={})", py_debug(count))
         }
-        LoopBound::Descent { cluster } => {
-            format!("LoopBound_Descent(cluster={})", py_debug(cluster))
+        LoopBound::Descent { cluster, measure } => {
+            format!(
+                "LoopBound_Descent(cluster={}, measure={})",
+                py_debug(cluster),
+                py_debug(measure)
+            )
         }
     }
 }
