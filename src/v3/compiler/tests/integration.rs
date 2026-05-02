@@ -525,6 +525,170 @@ mod lane2_stage_2f_dimension_test {
     }
 }
 
+/// PR-E E7 symbolic-cost-only — public-API integration coverage.
+///
+/// `analyze_complexity` is the named E7 entrypoint authorized by #1471
+/// and landed in #1484. These tests pin that the **public crate API**
+/// (`v3_compiler::analyze_complexity`) is reachable from outside the
+/// `dimension` module, delegates to the existing symbolic-cost
+/// analyzer, and preserves the typed `DimensionReport` /
+/// `Diagnostic` partition without parsing `Witness::Violates.reason`.
+mod e7_analyze_complexity_integration {
+    use v3_compiler::compile_to_dag;
+    use v3_compiler::dag::Behavior;
+    use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
+    use v3_compiler::{analyze_complexity, analyze_symbolic_cost_dimension, DimensionReport};
+
+    fn find_bind_root(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
+        dag.nodes()
+            .iter()
+            .find(|behavior| {
+                behavior
+                    .as_bind()
+                    .map(|bind| bind.name == name)
+                    .unwrap_or(false)
+            })
+            .map(|behavior| behavior.id())
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+    }
+
+    fn find_bind_port(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::PortId {
+        dag.nodes()
+            .iter()
+            .filter_map(Behavior::as_bind)
+            .find(|bind| bind.name == name)
+            .unwrap_or_else(|| panic!("bind `{name}` not found"))
+            .value
+    }
+
+    /// E7 §test 1 (integration form): the public `analyze_complexity`
+    /// API delegates to the live `analyze_symbolic_cost_dimension` —
+    /// pinned by structural equality of the resulting `DimensionOk`
+    /// fields. Single-authority via the public crate surface.
+    #[test]
+    fn analyze_complexity_public_api_delegates_to_symbolic_cost_dimension() {
+        let dag = compile_to_dag("let y = 3 + 4", "e7_int_match.v3").expect("compiles");
+        let root = find_bind_root(&dag, "y");
+
+        let via_complexity = analyze_complexity(&dag, root);
+        let via_dimension = analyze_symbolic_cost_dimension(&dag, root);
+
+        match (&via_complexity, &via_dimension) {
+            (
+                DimensionReport::DimensionOk {
+                    dimension_name: cn,
+                    composed: cc,
+                    witnesses: cw,
+                },
+                DimensionReport::DimensionOk {
+                    dimension_name: dn,
+                    composed: dc,
+                    witnesses: dw,
+                },
+            ) => {
+                assert_eq!(cn, dn);
+                assert_eq!(cc, dc);
+                assert_eq!(cw.len(), dw.len());
+                // Strengthen length-equality to per-witness content
+                // equality on the typed Inhabits arm (the only arm
+                // reachable on a well-typed program through the
+                // public surface). SymbolicCost derives PartialEq, so
+                // structural equality on the carrier is honest;
+                // Violates would need Behavior PartialEq which it
+                // does not derive — fail-arm equality stays in the
+                // in-module unit tests where ghost-port DAGs are
+                // constructible.
+                for (cw_i, dw_i) in cw.iter().zip(dw.iter()) {
+                    match (cw_i, dw_i) {
+                        (
+                            v3_compiler::Witness::Inhabits(cc),
+                            v3_compiler::Witness::Inhabits(dc),
+                        ) => assert_eq!(cc, dc),
+                        (
+                            v3_compiler::Witness::Violates { .. },
+                            v3_compiler::Witness::Violates { .. },
+                        ) => {
+                            panic!(
+                                "well-typed program produced Violates witnesses on both arms; \
+                                 the symbolic-cost analyzer should not emit Violates here, \
+                                 so the test must be revisited (likely a regression)."
+                            );
+                        }
+                        other => panic!(
+                            "wrapper and direct analyzer produced different witness arms: {other:?}"
+                        ),
+                    }
+                }
+            }
+            other => panic!(
+                "expected both DimensionOk with matching content via the public API, got {other:?}",
+            ),
+        }
+    }
+
+    /// E7 §test 1 (cross-check): `analyze_complexity.composed` matches
+    /// the lens authority `symbolic_cost_of` at the workflow root.
+    /// Confirms the wrapper preserves the lens contract.
+    #[test]
+    fn analyze_complexity_composed_matches_lens_at_workflow_root() {
+        let dag = compile_to_dag("let z = 5 + 6", "e7_int_lens.v3").expect("compiles");
+        let root = find_bind_root(&dag, "z");
+
+        let SymbolicCostLookup::Hit(lens_cost) = symbolic_cost_of(&dag, &find_bind_port(&dag, "z"))
+        else {
+            panic!("lens authority must produce a Hit on a well-typed program");
+        };
+
+        let DimensionReport::DimensionOk {
+            composed,
+            dimension_name,
+            ..
+        } = analyze_complexity(&dag, root)
+        else {
+            panic!("expected DimensionOk on a well-typed program");
+        };
+        assert_eq!(composed, lens_cost);
+        assert_eq!(dimension_name, "symbolic_cost");
+    }
+
+    /// E7 §test 6 (integration form, success-path scope): the public
+    /// API preserves the typed `Witness<SymbolicCost>` envelope on
+    /// the `DimensionOk` arm — every witness is a typed enum
+    /// inhabitant the test pattern-matches without inspecting the
+    /// `reason` string. Typed-diagnostic discipline on the `Fail`
+    /// arm is pinned by the in-module `analyze_complexity_tests`
+    /// (`src/v3/compiler/src/dimension.rs`), which constructs
+    /// ghost-port DAGs via crate-private builders that the public
+    /// API surface here cannot reach (the surface compiler always
+    /// wires its outputs). This integration test confirms the public
+    /// API does not lose the typed envelope on the success path.
+    #[test]
+    fn analyze_complexity_public_api_preserves_typed_witness_envelope_on_ok() {
+        let dag = compile_to_dag("let w = 7 + 8", "e7_int_typed.v3").expect("compiles");
+        let root = find_bind_root(&dag, "w");
+
+        let DimensionReport::DimensionOk { witnesses, .. } = analyze_complexity(&dag, root) else {
+            panic!("expected DimensionOk for well-typed program");
+        };
+        // Each witness is a typed enum inhabitant; the test
+        // pattern-matches without ever inspecting the `reason` string
+        // (which is only present on the `Violates` arm anyway).
+        for witness in &witnesses {
+            // Exhaustive match on the typed Witness enum; both arms
+            // are acceptable inhabitants. `Violates.reason` is never
+            // string-parsed by this test.
+            match witness {
+                v3_compiler::Witness::Inhabits(_) => {}
+                v3_compiler::Witness::Violates { at, .. } => {
+                    // Only structural assertions on `at`; never on
+                    // `reason`.
+                    let _ = at;
+                }
+            }
+        }
+    }
+}
+
 mod parse_stage4_prep {
     use std::fs;
     use std::path::{Path, PathBuf};
