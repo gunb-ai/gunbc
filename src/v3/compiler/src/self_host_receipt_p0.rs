@@ -28,6 +28,13 @@ pub const ALWAYS_EMITTED_TOP_LEVEL_KEYS: &[&str] = &[
 /// parse-error branch). If the emitter changes indentation or switches to `serde_json` pretty-print
 /// with different spacing, update this needle in the same change.
 ///
+/// **Emitter anchors in `run` (search for `receipt_p0::K_` on `receipt`):**
+/// 1. **Pipeline** — first field after `{`: `format!(..., K_PIPELINE_FIXED_POINT_DEFAULT_SOURCE)` with
+///    a string literal value (`"ok"`).
+/// 2. **`compiler_dag_v3_parse`** — `match` `Ok`: `format!(..., K_COMPILER_DAG_V3_PARSE)` + `"ok"`; `Err`:
+///    `format!(..., K_COMPILER_DAG_V3_PARSE, json_string(&msg))`.
+/// 3. **`status`** — last field before closing `}`: `format!(..., K_STATUS, json_string(exit_status))`.
+///
 /// **False positives:** a `contains` needle could match inside a quoted JSON value; the fixed
 /// snake_case P0 key names and the receipt's flat object shape keep that risk negligible for this
 /// bounded DB-8 trend surface.
@@ -47,14 +54,9 @@ fn missing_always_emitted_key_properties(json_body: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// True iff [`validate_receipt_json_always_emitted_keys`] would succeed — single matching rule.
-pub fn receipt_json_contains_always_emitted_key_properties(json_body: &str) -> bool {
-    validate_receipt_json_always_emitted_keys(json_body).is_ok()
-}
-
 /// Every [`ALWAYS_EMITTED_TOP_LEVEL_KEYS`] entry must appear as a top-level JSON property using
 /// [`top_level_property_needle`]'s shape so the serialized receipt cannot drift from the P0 pin
-/// without failing closed before `write_receipt`.
+/// without failing closed before `write_receipt`. Sole public entry point for this contract check.
 pub fn validate_receipt_json_always_emitted_keys(json_body: &str) -> Result<(), String> {
     let missing = missing_always_emitted_key_properties(json_body);
     if missing.is_empty() {
@@ -89,36 +91,6 @@ mod tests {
 }
 "#;
         super::validate_receipt_json_always_emitted_keys(body).unwrap();
-        assert!(super::receipt_json_contains_always_emitted_key_properties(
-            body
-        ));
-    }
-
-    #[test]
-    fn contains_tracks_validate_on_accepting_receipt() {
-        let ok = r#"{
-  "pipeline_fixed_point_default_source": "ok",
-  "compiler_dag_v3_parse": "ok",
-  "status": "completed"
-}
-"#;
-        assert_eq!(
-            super::receipt_json_contains_always_emitted_key_properties(ok),
-            super::validate_receipt_json_always_emitted_keys(ok).is_ok()
-        );
-    }
-
-    #[test]
-    fn contains_tracks_validate_on_missing_pipeline() {
-        let bad = r#"{
-  "compiler_dag_v3_parse": "ok",
-  "status": "completed"
-}
-"#;
-        assert_eq!(
-            super::receipt_json_contains_always_emitted_key_properties(bad),
-            super::validate_receipt_json_always_emitted_keys(bad).is_ok()
-        );
     }
 
     #[test]

@@ -2548,6 +2548,30 @@ impl Dag {
         self.primitives.bool
     }
 
+    /// Runtime/substrate Bool reification authority for branch dispatch.
+    ///
+    /// Bool remains a scalar [`LiteralBits::Bool`] for ordinary literal data,
+    /// comparisons, and spec fields. When a Bool value is used as a Branch
+    /// scrutinee, however, the runtime must compare against the same
+    /// declaration-id identity that inference resolved for `True` / `False`
+    /// patterns. This helper is the transitional single lookup point for that
+    /// reification.
+    ///
+    /// Retirement trigger: delete this helper once Bool runtime production is
+    /// uniformly represented as `VariantValue { tag: True/False, .. }` at the
+    /// producer boundary instead of at branch consumers.
+    pub fn bool_runtime_variant_id(&self, value: bool) -> Option<DeclarationId> {
+        let bool_decl = self.declaration_by_name("Bool")?;
+        let TypeConnective::Disj { variants } = &bool_decl.connective else {
+            return None;
+        };
+        let label = if value { "True" } else { "False" };
+        variants
+            .iter()
+            .find(|variant| variant.label == label)
+            .map(|variant| variant.ty)
+    }
+
     /// Typed accessor for the cached `String` primitive `TypeShape`. Same
     /// bootstrap-failure semantics as `int_shape`.
     pub fn string_shape(&self) -> Option<TypeShape> {

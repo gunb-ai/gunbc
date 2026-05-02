@@ -830,20 +830,9 @@ fn variant_matches(
     match value {
         FieldValue::Variant { constructor, .. } => Ok(*constructor == variant_ty),
         FieldValue::Literal(LiteralBits::Bool(b)) => {
-            // P2: Bool must stay `Literal` in D1 (same as `Behavior::Value`); match arms still
-            // use resolved variant `DeclarationId` keys from the Bool disj.
-            let bool_decl = dag
-                .declaration_by_name("Bool")
-                .ok_or(LensApplyError::MissingType("Bool"))?;
-            let TypeConnective::Disj { variants } = &bool_decl.connective else {
-                return Err(LensApplyError::MissingType("Bool shape"));
-            };
-            let label = if *b { "True" } else { "False" };
-            let expected_ty = variants
-                .iter()
-                .find(|v| v.label == label)
-                .ok_or(LensApplyError::MissingType("Bool variant"))?
-                .ty;
+            let expected_ty = dag
+                .bool_runtime_variant_id(*b)
+                .ok_or(LensApplyError::MissingType("Bool variant"))?;
             Ok(expected_ty == variant_ty)
         }
         _ => Ok(false),
