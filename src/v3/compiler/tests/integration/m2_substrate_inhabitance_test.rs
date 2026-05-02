@@ -2864,16 +2864,88 @@ fn approximate_field_axes_live_in_v3_std_authority() {
         "InfinityPolicy",
         "SignedZeroPolicy",
         "SubnormalPolicy",
+        "SpecialValues",
+        "ApproximateField",
     ] {
         let decl = dag
             .declaration_by_name(name)
             .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
         assert_eq!(
             decl.span.file, "src/v3/std/approximate_field.dag",
-            "`{name}` must stay in the approximate-field axes precursor; the \
-             full ApproximateField carrier and Float migration land later"
+            "`{name}` must stay in the single approximate-field authority module"
         );
     }
+}
+
+/// T-Numeric-Construction — `ApproximateField<F>` carrier introduction per 6Q audit
+/// (`SpecialValues` + `ApproximateField<F>` slice). Pins `base: Field<F>` with `F`
+/// as the carrier parameter matching `dsl/std/algebra.dag`'s `Field<T>`.
+///
+/// **Does not** assert `Real = …` — see `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`.
+#[test]
+fn approximate_field_carrier_record_shape_ratchets() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let approx_id = find_named(dag, "ApproximateField");
+    let field_template = dag
+        .declaration_by_name("Field")
+        .expect("`Field` must load from dsl/std/algebra.dag");
+
+    let mut labels = record_fields(dag, "ApproximateField");
+    labels.sort();
+    assert_eq!(
+        labels,
+        vec![
+            "base".to_string(),
+            "precision".to_string(),
+            "rounding".to_string(),
+            "special_values".to_string(),
+            "subnormal_policy".to_string(),
+        ],
+        "`ApproximateField<F>` must carry exactly the five 6Q axes"
+    );
+
+    let approx_decl = dag.declaration(approx_id);
+    assert_eq!(
+        approx_decl.type_params.len(),
+        1,
+        "ApproximateField<F> takes exactly one carrier type parameter"
+    );
+
+    let base_ty = conj_field_by_id(dag, approx_id, "base");
+    match &dag.declaration(base_ty).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, field_template.id,
+                "`base` must instantiate `Field<F>`, not an ad hoc record"
+            );
+            assert_eq!(
+                arguments.len(),
+                1,
+                "`Field<F>` carries exactly one type argument"
+            );
+            assert_eq!(
+                arguments[0].parameter, approx_decl.type_params[0],
+                "`Field`'s argument must bind `ApproximateField`'s `<F>` carrier parameter"
+            );
+        }
+        other => panic!("`base` must lower to a Field instantiation; got {other:?}"),
+    }
+
+    let mut sv_labels = record_fields(dag, "SpecialValues");
+    sv_labels.sort();
+    assert_eq!(
+        sv_labels,
+        vec![
+            "infinity".to_string(),
+            "nan".to_string(),
+            "signed_zero".to_string(),
+        ],
+        "`SpecialValues` aggregates nan / infinity / signed-zero policy only"
+    );
 }
 
 #[test]

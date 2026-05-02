@@ -1,14 +1,21 @@
-// v3.std.approximate_field - typed axes for approximate real arithmetic.
+// v3.std.approximate_field - typed axes + parametric carrier for approximate reals.
 //
-// Authority: docs/design-numeric-construction.md section 5 and
-// docs/audit/t-numeric-construction-approximate-field-6q.md. This file lands
-// only the independent axes precursor. The `ApproximateField<F>` carrier,
-// `SpecialValues` record, `Real = ApproximateField<Rational>` alias, Float
-// migration, target mirrors, and tolerance/equivalence behavior land in later
-// slices.
+// Authority: docs/design-numeric-construction.md §5 and
+// docs/audit/t-numeric-construction-approximate-field-6q.md (slice plan).
+//
+// Landed axes precursor (#1427): rounding / precision / special-value policy
+// terminals. **Carrier slice (this file):** `SpecialValues` + `ApproximateField<F>`
+// per 6Q §“Recommended substrate shape” — still **no** `Real` alias, Float
+// migration, target mirrors, or tolerance/equivalence behavior.
+//
+// **Real alias gate:** `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`
+// — `Rational` (#1508) names `Field<FieldOfFractions<Int>>`, so `F` in
+// `ApproximateField<F>` / `base: Field<F>` cannot honestly be spelled `Rational`
+// without a design convention fix (carrier vs witness naming).
 
 module v3.std.approximate_field
 
+import std.algebra { Field }
 import std.types { PositiveInt }
 
 // 🟢 TERMINAL at approximate-arithmetic policy scope. Rounding behavior is a
@@ -49,3 +56,25 @@ type SignedZeroPolicy = NoSignedZero | SignedZero
 // independent closed policy axis; the later carrier slice can aggregate it
 // without adding new policy vocabulary.
 type SubnormalPolicy = NoSubnormals | GradualUnderflow | FlushToZero
+
+// Closed record aggregating the three orthogonal special-value policy axes (NaN,
+// infinity, signed zero). Subnormal/denormal policy stays a separate field on
+// `ApproximateField<F>` per 6Q — it affects underflow behavior, not merely
+// presence of exceptional values.
+type SpecialValues {
+  nan: NanPolicy
+  infinity: InfinityPolicy
+  signed_zero: SignedZeroPolicy
+}
+
+// Approximate field over an **exact** field algebra `Field<F>` where `F` is the
+// same carrier type parameter as in `dsl/std/algebra.dag`'s `Field<T>`.
+//
+// Observable approximation policies are structural (no target-string tags).
+type ApproximateField<F> {
+  base: Field<F>
+  rounding: RoundingMode
+  precision: Precision
+  special_values: SpecialValues
+  subnormal_policy: SubnormalPolicy
+}
