@@ -3,7 +3,8 @@
 //! R3 Lane 1 + Lane 2 + L5 harness receipts: Lane 1 L4 now exercises the wired W1
 //! `DifferentialEquals(rust_emit_output, dag_eval_output)` path (plus a mixed-lineage
 //! `NotYetImplemented` control), and Lane 1 L7 now exercises the wired `Associativity`
-//! operational witness. Lane 2 / L5 rows remain intentionally deferred where noted.
+//! and `Commutativity` operational witnesses. Lane 2 / L5 rows remain intentionally deferred
+//! where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
@@ -32,6 +33,7 @@ const L7_FIXTURE_PATH: &str =
 const L7_SUITE: &str = "r3_verification_l7_algebra_skeleton_suite";
 const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
 const L7_SEMIGROUP_ASSOCIATIVITY_CLAIM: &str = "r3_l7_semigroup_associativity";
+const L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM: &str = "r3_l7_commutative_monoid_commutativity";
 const L7_MATRIX_SUITE: &str = "r3_verification_l7_algebra_matrix_suite";
 const L7_MATRIX_WIRED_COUNT: usize = 8;
 const L7_MATRIX_IDENTITY_NYI_COUNT: usize = 8;
@@ -138,6 +140,29 @@ fn r3_verification_l7_semigroup_associativity_passes_wired_associativity() {
             matches!(result.result, ClaimResult::Pass),
             "expected L7 Associativity wire-up to pass for `{}`; got {:?}",
             L7_SEMIGROUP_ASSOCIATIVITY_CLAIM,
+            result.result
+        );
+    });
+}
+
+#[test]
+fn r3_verification_l7_commutative_monoid_commutativity_passes_wired_commutativity() {
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
+        let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
+        let result = results
+            .iter()
+            .find(|result| result.claim_name == L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing `{}` in {}",
+                    L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM, L7_FIXTURE_PATH
+                )
+            });
+        assert!(
+            matches!(result.result, ClaimResult::Pass),
+            "expected L7 Commutativity wire-up to pass for `{}`; got {:?}",
+            L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM,
             result.result
         );
     });
