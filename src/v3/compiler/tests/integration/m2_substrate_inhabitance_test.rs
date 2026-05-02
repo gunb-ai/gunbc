@@ -18,6 +18,19 @@ use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
+fn with_full_bootstrap_stack<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R + Send + 'static,
+    R: Send + 'static,
+{
+    std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(f)
+        .expect("spawn bootstrap-stack integration thread")
+        .join()
+        .expect("bootstrap-stack integration thread panicked")
+}
+
 fn find_named(dag: &Dag, name: &str) -> v3_compiler::dag::DeclarationId {
     dag.declaration_by_name(name)
         .unwrap_or_else(|| panic!("declaration `{name}` not found"))
@@ -3091,6 +3104,89 @@ fn group_completion_is_bare_opaque_atom_with_one_type_parameter() {
         "GroupCompletion is an opaque type declaration, not a data declaration; \
          no value_body should be present"
     );
+}
+
+/// T-Numeric-Construction `FieldOfFractions<R>` substrate-introduction —
+/// Shape C opaque atom per `docs/audit/t-numeric-construction-field-of-fractions-6q.md`.
+///
+/// Mirrors the `GroupCompletion<M>` ratchet: single declaration in
+/// `dsl/std/algebra.dag`, bare `Conj {{ children: [] }}`, exactly one type parameter `<R>`.
+///
+/// Also scans bootstrap for `FieldOfFractions<…>` instantiations: Slice 4 must keep
+/// `Int` as the sole specialization (`Field<FieldOfFractions<Int>>`). Vacuous until the
+/// Rational alias-pivot lands.
+#[test]
+fn field_of_fractions_substrate_introduction_ratchets() {
+    with_full_bootstrap_stack(|| {
+        let dag = v3_compiler::generated_full_bootstrap_dag();
+
+        let fof = dag.declaration_by_name("FieldOfFractions").expect(
+            "`FieldOfFractions` substrate-introduction missing from full bootstrap \
+         (T-Numeric-Construction Slice 4 prerequisite per field-of-fractions 6Q audit)",
+        );
+
+        assert_eq!(
+            fof.span.file, "dsl/std/algebra.dag",
+            "FieldOfFractions must live in dsl/std/algebra.dag per the audit's preferred home"
+        );
+
+        match &fof.connective {
+            TypeConnective::Conj { children } => assert!(
+                children.is_empty(),
+                "FieldOfFractions must be a bare opaque atom (no fields) — Shape C rejects \
+             numerator/denominator pair and quotient representation at this layer"
+            ),
+            other => panic!(
+                "FieldOfFractions must lower as an opaque-atom Conj with no fields; got {other:?}"
+            ),
+        }
+
+        assert_eq!(
+            fof.type_params.len(),
+            1,
+            "FieldOfFractions takes exactly one type parameter `<R>` (the input integral-domain type)"
+        );
+
+        assert!(
+            fof.value_body.is_none(),
+            "FieldOfFractions is an opaque type declaration, not a data declaration; \
+         no value_body should be present"
+        );
+
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("`Int` must be present for Slice 4 integral-domain consumer");
+
+        for decl in dag.declarations() {
+            let TypeConnective::Instantiation {
+                template,
+                arguments,
+            } = &decl.connective
+            else {
+                continue;
+            };
+            if *template != fof.id {
+                continue;
+            }
+            assert_eq!(
+                arguments.len(),
+                1,
+                "FieldOfFractions<R> instantiates with exactly one template argument"
+            );
+            assert_eq!(
+                arguments[0].parameter, fof.type_params[0],
+                "FieldOfFractions template argument must bind the `<R>` parameter"
+            );
+            assert_eq!(
+                arguments[0].value,
+                int_decl.id,
+                "FieldOfFractions<R> instantiations must specialize `Int` only per \
+             docs/audit/t-numeric-construction-field-of-fractions-6q.md; got argument {:?} on {}",
+                arguments,
+                decl.name.as_deref().unwrap_or("<anonymous>")
+            );
+        }
+    });
 }
 
 /// T-Numeric-Construction Slice 3 — `Int = AbelianGroup<GroupCompletion<Nat>>`
