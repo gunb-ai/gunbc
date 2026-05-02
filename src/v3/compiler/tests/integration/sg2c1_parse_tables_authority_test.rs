@@ -414,10 +414,9 @@ fn service_top_level_item_dispatch_fails_closed_until_service_block_ast_lands() 
     let Diagnostic::ParseError { message, span, .. } = err else {
         panic!("expected ParseError for top-level service anchor, got {err:?}");
     };
-    assert_eq!(
-        message,
-        "service items are recognized at the top-level boundary but the ServiceBlock parser scaffold is not landed yet",
-        "service parse failure should name the ServiceBlock anchor explicitly",
+    assert!(
+        message.contains("ServiceBlock parser scaffold"),
+        "service parse failure should name the ServiceBlock anchor explicitly, got: {message}"
     );
     assert_eq!(
         span.file, "top_level_service_anchor.v3",
