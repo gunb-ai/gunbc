@@ -105,9 +105,11 @@ threading. `LoopBound::Descent` remains a named fail-closed residual until a
 descent-execution slice consumes `std.termination` evidence.
 
 **Readiness receipt:** [`r3-pr-e5-loop-readiness-audit.md`](r3-pr-e5-loop-readiness-audit.md)
-records the current implementation blocker: E1/E2 are live, but E5 cannot
-honestly prove accumulator threading until the body evaluator can execute a loop
-body that consumes the iteration accumulator binding.
+records historical prep and the remaining **`LoopBound::Descent`** gap. **Live
+`main`:** `evaluator::eval_loop` executes **`LoopBound::Cardinality`** loops with
+accumulator threading; **`LoopBound::Descent`** remains
+**`LoopBoundDescentResidual`** until a descent slice consumes `std.termination`
+evidence.
 
 **Inputs:** PR-B.1 Loop rule, `LoopBound`, runtime `Value`, and frame discipline.
 
@@ -125,10 +127,12 @@ full `Lens<C>` / `DimensionReport<C>` fold once E1-E5 provide enough body
 execution semantics.
 
 **Readiness receipt:** [`r3-pr-e6-lens-fold-readiness-audit.md`](r3-pr-e6-lens-fold-readiness-audit.md)
-records the current implementation blocker: E1/E2 are live, E3/E4 are in
-flight, and E5 is readiness-only, so the generic lens fold cannot yet execute
-`Lens<C>` function fields or produce `DimensionReport<C>` without duplicating
-body-evaluator semantics.
+records the current **E6** blocker: on **`main`**, **E3**, **E4**, and
+**cardinality E5** are live in `src/v3/compiler/src/lib.rs`, but
+**`Behavior::Bind`** (callable entry), **`LoopBound::Descent`** execution, and
+the monoid / fold-scope items in that audit still prevent an honest generic
+`fold_lens` / `DimensionReport<C>` path without duplicating body-evaluator
+semantics.
 
 **Inputs:** PR-C complete reflection, PR-E reflect/apply slice, PR-B evaluator
 execution, and `docs/design-lens-framework.md`.
