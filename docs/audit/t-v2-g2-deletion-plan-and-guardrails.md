@@ -92,10 +92,15 @@ These checks MUST hold on the deletion PR before merge. Two enforcement classes:
 Gd-1 verification command (kept outside the table to avoid markdown pipe-escape pitfalls; in `grep -E`, `\|` is a literal `|` not alternation, so the in-table form silently misses one of the alternatives):
 
 ```sh
-grep -rEn '\bv2_compiler(_tests)?\b|src/v2/' src/ tests/ dsl/extdeps/
+# Scan all live source/test/dsl trees. Catches both Rust path-style
+# (v2_compiler / v2_compiler_tests, underscore) AND Cargo dep-style
+# (v2-compiler / v2-compiler-tests, hyphen). Catches src/v2 whether
+# followed by `/`, `"`, or word-boundary (e.g. `path: "src/v2"` in
+# dsl/gunbc/compiler.dag:53 — no trailing slash).
+grep -rEn 'v2[_-]compiler(_tests|-tests)?|src/v2($|/|"|[^a-zA-Z0-9_])' src/ tests/ dsl/ .github/
 ```
 
-Green: returns zero matches that aren't already in the PR's deletion diff.
+Green: returns zero matches that aren't already in the PR's deletion diff. **Live authorities the prior pattern would have missed** (verified at HEAD): `dsl/gunbc/compiler.dag:53` (`path: "src/v2"`); `dsl/gunbc/compiler.dag:266` (`"v2-compiler-tests"` hyphenated); `dsl/std/node.dag:9`, `dsl/std/syntax.dag:79`, `dsl/std/constructors.dag:52`, `dsl/extdeps/llm/openai.dag:90`, `dsl/extdeps/languages/python/syntax.dag:43`, `dsl/tools/purity_check.dag:157`, `dsl/gunbc/tools/review_codex.dag:75`, `dsl/gunbc/tools/ci_runner.dag:16`. These each need their own disposition before Gd-1 can pass — most are doc-comments or string literals (Population C cleanup per §2.3); `dsl/gunbc/compiler.dag` is live authority and gets retired/repointed via the v3 compiler-source migration before deletion.
 
 ---
 
