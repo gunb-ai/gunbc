@@ -102,7 +102,7 @@ The decider drops one of the following lines into `docs/r3-structure.md` (or a s
 
 ### 5.1 If Option A chosen
 
-> **Canonical bench host for C1 Phase 1 0c (R-3 satisfied 2026-MM-DD per PB Manager):** `ubicloud-standard-2` (the existing CI runner label; see `.github/workflows/ci.yml`). Phase 1 0c capture and all Phase 2 perf measurements MUST run on this label. Multi-run capture discipline per `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` §4 (N≥3). Hardware-spec drift triggers Director-approved recapture.
+> **Canonical bench host for C1 Phase 1 0c (R-3 satisfied 2026-MM-DD per PB Manager):** `ubicloud-standard-2` (the existing CI runner label; see `.github/workflows/ci.yml`). Phase 1 0c capture and all Phase 2 perf measurements MUST run on this label. Multi-run capture discipline per `docs/audit/c1-r3-canonical-bench-host-decision-matrix.md` §4 (N≥3). **Recapture triggers (any of, Director-approved):** hardware-spec change (vCPU model / RAM size); runner-image change (Ubicloud `ubicloud-standard-2` image bump per <https://www.ubicloud.com/docs/github-actions-integration/runner-types>); OS / kernel change; toolchain change (rustc minor bump per `actions-rust-lang/setup-rust-toolchain` `toolchain` field).
 
 ### 5.2 If Option B chosen (then operator action follows)
 
