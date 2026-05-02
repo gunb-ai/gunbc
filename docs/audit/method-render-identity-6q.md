@@ -11,9 +11,10 @@ Keep `MethodTemplateContract.dag_method: MethodRef` as the render-row identity f
 The flat `MethodRef` is semantically unique enough for render templates because it identifies the target operation name the renderer must spell. Algebra/profile semantics are already owned elsewhere:
 
 - `dsl/std/methods.dag` declares the flat closed method-name registry. Its module comment explicitly says profile-specific semantics stay in `AlgebraFieldTemplate` and `MethodContract`.
+- `src/v3/std/methods.dag` declares `type MethodRef { decl: DeclarationRef }` as the typed handle into that registry.
 - `src/v3/std/algebra.dag` declares `MethodContract { algebra_id, method_id, ... }` for target-agnostic cost/complexity metadata.
-- `src/v3/std/emit_model.dag` declares `MethodTemplateContract` as the target-specific render sibling keyed by `dag_method: MethodRef`.
-- `method_template_contract_per_target_dag_method_unique` already enforces one row per `MethodRef` inside each target row list.
+- `src/v3/std/emit_model.dag` declares `type MethodTemplateContract { dag_method: MethodRef, ... }` as the target-specific render sibling keyed by that handle.
+- `src/v3/compiler/tests/integration/method_template_contract_test.rs::method_template_contract_per_target_dag_method_unique` enforces one row per `MethodRef.decl` inside each target row list.
 
 Adding `(algebra_id, method_id)` now would move algebra/profile semantics into the render row before a concrete render conflict exists. That would reintroduce the duplicate-fact problem the CollectionOps/StringOps/MapOps audit is trying to retire, just under a more structural name.
 
