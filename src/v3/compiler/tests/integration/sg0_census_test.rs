@@ -1002,4 +1002,8 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
         list.contains("\"rust_target.rs\""),
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
     );
+    assert!(
+        list.contains("\"emit_rust_bin_shim.rs\""),
+        "hand_maintained_src should exclude emit_rust_bin_shim.rs (PB-1 shell helper) from recursive freshness drift"
+    );
 }
