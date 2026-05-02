@@ -52,10 +52,17 @@ has the `EvalStateStack` / `eval_port` frame discipline (`src/v3/compiler/src/li
 `ResolvedVariant` arms and scrutinee discipline) are also live on `main` in the
 same module** — see PR-E ordering in [`r3-evaluator-dispatch.md`](r3-evaluator-dispatch.md).
 
-**Still not live on the eager body-evaluator spine:** `Behavior::Loop` (PR-E
-E5 — [`r3-pr-e5-loop-readiness-audit.md`](r3-pr-e5-loop-readiness-audit.md)) and
-`Behavior::Bind` (callable / parameter binding into user bodies). Both remain
-fail-closed as `UnsupportedBehavior` until their PR-E slices land, which blocks
+**`Behavior::Bind`** (callable / parameter binding into user bodies) **remains
+fail-closed** as `UnsupportedBehavior` on the eager spine until its PR-E slice
+lands.
+
+**`Behavior::Loop` (PR-E E5 — [`r3-pr-e5-loop-readiness-audit.md`](r3-pr-e5-loop-readiness-audit.md)):**
+**Cardinality**-bounded loops (`LoopBound::Cardinality`) **execute on `main`**
+(`eval_loop` in the same module). **`LoopBound::Descent`** remains fail-closed
+(`LoopBoundDescentResidual`) until a descent-execution slice consumes termination
+evidence.
+
+**Bind** (and any fold that depends on Descent-backed loop bounds) still blocks
 executing typical `Lens<C>` function fields (`read`, monoid `op` / `identity`,
 `validate`, …) through the shared `eval_node` / `eval_port` boundary without
 reviving parallel `lens_apply.rs` frame machinery.
@@ -97,9 +104,10 @@ The algorithmic shape is:
 ## Current Blockers
 
 E6 cannot honestly implement the full `fold_lens` / `DimensionReport` path yet,
-even after E3/E4: the fold algorithm still requires **Bind + callable entry**
-and **Loop iteration** through the same `eval_node` authority, plus monoid
-projection and report lifting rules below.
+even after E3/E4 and **cardinality** loop execution on `main`: the fold algorithm
+still requires **Bind + callable entry** through the same `eval_node` authority
+(and, where relevant, **Descent** loop evidence), plus monoid projection and
+report lifting rules below.
 
 - **Body-evaluator coverage (lens function fields):** `Lens.read`,
   `Lens.sequential.op`, `Lens.sequential.identity`, `branch`, `iterate`, and
@@ -112,9 +120,11 @@ projection and report lifting rules below.
   they do **not** by themselves satisfy `Lens<C>.branch` / monoid composition:
   those are **calls into lens-declared function values**, still blocked on Bind.
 - **Loop / `Lens<C>.iterate` (E5):** `iterate` composes along `LoopBound` and
-  requires executed loop semantics. **`Behavior::Loop` is still fail-closed** —
-  this is a **hard dependency on PR-E E5** before `Lens.iterate` can participate
-  in a generic fold without a second interpreter.
+  requires executed loop semantics matching the substrate. **Cardinality loops
+  run on `main`**, but **`LoopBound::Descent` is still fail-closed**, and
+  faithfully running lens-declared iterate bodies still **hard-depends on Bind**
+  before `Lens.iterate` can participate in a generic fold without a second
+  interpreter.
 - **Sequential Monoid projection:** `Lens<C>.sequential` is a `Monoid<C>`, not
   a direct Rust callback. E6 must be able to project the declared monoid
   identity and composition operation, then execute that operation through the
@@ -142,9 +152,10 @@ of landing a misleading partial fold.
 E6 implementation may resume when:
 
 - **E3 and E4** have landed (done on `main` for program `Transform` / `Branch`);
-  **E5** has landed for **loop iteration** through the shared evaluator boundary;
-  **Bind + callable entry** has landed so lens function fields execute through
-  `eval_node` / `eval_port` without local `FieldValue` frames;
+  **E5** has landed for **cardinality** loop iteration through the shared
+  evaluator boundary (done on `main`); **Descent** loop execution and **Bind +
+  callable entry** have landed where the fold needs them so lens function fields
+  execute through `eval_node` / `eval_port` without local `FieldValue` frames;
 - sequential composition consumes the declared `Lens.sequential` monoid witness:
   `identity` for empty/unit structure and `op` for Bind sequencing, with no
   host-fabricated unit or per-lens Rust sequencing;
