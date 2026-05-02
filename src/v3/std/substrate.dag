@@ -89,19 +89,27 @@ type AtomPayload
 type PositiveIntervalWidth
   = OneUnit
   | AdditionalUnit { previous: PositiveIntervalWidth }
-  // Authoring shorthand for large fixed-width ranges: semantically the same
-  // unary `AdditionalUnit` chain of length `units` atop `OneUnit` over `Int`
-  // (inclusive discrete span `units` above `lower` in `BoundedInterval<Int>`).
-  // Peano spines remain valid for small cardinalities; Coercion-Fold rows use
-  // `UnitCount` so Examples 2 / 6 / 8 intervals fit in spec files.
+  // 🟡 SCAFFOLD (substrate authoring sugar — explicit bridge, not a second width axiom).
   //
-  // Carrier is `Nat` (`Semiring<Magnitude>` per `dsl/std/nat.dag`): negative
-  // decimal literals are rejected as out-of-range for `Nat` via
-  // `integer_range_for_decl` / `lower_scalar_literal_for_type` (not merely a
-  // bespoke lower gate). `enforce_non_negative_unit_count_payload` remains a
-  // fail-closed witness on the structural lowering path.
-  // Peano `OneUnit` / `AdditionalUnit` remains the proof-carrying spine where a
-  // unary encoding is required; `UnitCount` is decimal shorthand under that gate.
+  // **Canonical semantic witness:** `OneUnit` / `AdditionalUnit` — inductive proof-carrying
+  // encoding for positive interval width already consumed by structural passes.
+  //
+  // **`UnitCount` role:** decimal/spec authoring shorthand denoting the **same** discrete span as a
+  // unary `AdditionalUnit` chain of length `units` atop `OneUnit` over `Int` (inclusive span above
+  // `lower` in `BoundedInterval<Int>`). Large fixed-width rows (Coercion-Fold examples) use this so
+  // specs stay compact; Peano spines remain valid everywhere small unary witnesses are preferred.
+  //
+  // **Same-PR structural consumers (fail-closed):** `integer_range_for_decl` /
+  // `lower_scalar_literal_for_type` reject negative decimals for `Nat`; `enforce_non_negative_unit_count_payload`
+  // witnesses nonnegative payloads when lowering bypasses those gates.
+  //
+  // **Dissolution trigger:** add a substrate normalizer or shared query that expands every
+  // `UnitCount { units: N }` **value** to an equivalent Peano spine **before** consumers that require
+  // an explicit unary witness for induction-shaped reasoning — until then, treat both variants as
+  // denotationally equivalent via this bridge (single interval-width fact; no competing lattices).
+  //
+  // **INVARIANTS.md P5** (Progress Is Dissolution): parallel surface shapes land only under tracked
+  // scaffold + named exit; Peano remains the durable unary carrier where proof structure matters.
   | UnitCount { units: Nat }
 
 type IntervalWidth
