@@ -189,7 +189,8 @@ type GroupCompletion<M>
 //
 // Authority: `docs/audit/t-numeric-construction-field-of-fractions-6q.md`
 // (Shape C — opaque atom; carrier representation deferred to per-target
-// emission; Slice 4 will land `type Rational = Field<FieldOfFractions<Int>>`).
+// emission; Slice 4 introduces `type Rational = Field<FieldOfFractions<Int>>` in
+// `dsl/std/rational.dag` as the canonical Q6 form).
 //
 // CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
 //   Denotationally `<R>` must be an integral domain for localization to be
