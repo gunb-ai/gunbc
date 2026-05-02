@@ -65,39 +65,68 @@ type SectionRef
 
 type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error is admitted
 
-// ApplicationConfig<C> ties the budget type C to the lens type C structurally.
-// Both Enforce/Introspect partition AND lens-budget compatibility are
-// enforced by the type system — no behavioral type-checker rule.
-type ApplicationConfig<C>
-  = Enforce { budget: C, diagnostic_severity: DiagnosticSeverity }
+// ApplicationConfig<Budget> is parametric in the budget type ONLY.
+// Both Enforce/Introspect partition AND budget unrepresentability for
+// Introspect are enforced structurally — no behavioral type-checker rule.
+type ApplicationConfig<Budget>
+  = Enforce { budget: Budget, diagnostic_severity: DiagnosticSeverity }
   | Introspect
 
-// SectionedLensApplication<C> is parametric in the lens carrier C.
-// The `lens: Lens<C>` and `config: ApplicationConfig<C>` share the same C —
-// so a complexity-lens (C = AsymptoticClass) cannot be paired with a cost
-// budget (C = SymbolicCost). Mismatch is unrepresentable, not type-checker-rejected.
-type SectionedLensApplication<C> {
-  lens: Lens<C>                 // typed reference; C is the lens's carrier
+// LensEnforcement<Output, Budget> is the per-lens projection from the
+// (potentially rich) lens output type to the budget-comparable type.
+// For lenses where Output = Budget (cost: SymbolicCost), the projection
+// is identity. For lenses where they differ (complexity: Output =
+// ComplexitySummary, Budget = AsymptoticClass), the projection extracts
+// the budget-comparable coordinate from the rich output.
+type LensEnforcement<Output, Budget> {
+  project: Output -> Budget
+}
+
+// SectionedLensApplication<Output, Budget> is parametric in BOTH the lens
+// output type and the budget type. The shared parameters tie the carriers:
+//   - lens: Lens<Output> — must match the lens's declared output type
+//   - enforcement: LensEnforcement<Output, Budget> — must project that
+//     specific Output to that specific Budget
+//   - config: ApplicationConfig<Budget> — budget must match the projection target
+// Mismatched triples (e.g., a complexity-lens with a SymbolicCost budget)
+// are structurally unrepresentable; the type system rejects them at parse
+// time, not via a separate type-checker rule.
+type SectionedLensApplication<Output, Budget> {
+  lens: Lens<Output>                            // typed reference; Output is lens carrier
+  enforcement: LensEnforcement<Output, Budget>  // projection tying Output to Budget
   section: SectionRef
-  config: ApplicationConfig<C>  // budget type tied to lens via shared C
-  span: SourceSpan              // user-authored site for diagnostic attribution
+  config: ApplicationConfig<Budget>             // budget matches projection target
+  span: SourceSpan                              // user-authored site for diagnostic attribution
 }
 ```
 
-Per `feedback_state_space_vs_behavioral_invariants` + modeling principles 2/6: both **Enforce-without-budget / Introspect-with-budget** AND **lens/budget-type-mismatch** are illegal states; both are unrepresentable in the carrier shape, not deferred to type-checker rules.
+Per `feedback_state_space_vs_behavioral_invariants` + modeling principles 2/6: **Enforce-without-budget / Introspect-with-budget** AND **lens/projection/budget mismatch** are all illegal states; all unrepresentable in the carrier shape.
 
-The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) already parametrizes lenses by their carrier `C`. Per-lens `C` instantiations are documented at the lens declaration site:
+The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) parametrizes lenses by their **lens-output carrier** `C` — the type returned by `read(d) -> Lookup<C>`. Per-lens carriers + their enforcement projections:
 
 ```dag
-// src/v3/lenses/complexity.dag — Lens<AsymptoticClass>
-// src/v3/lenses/cost.dag — Lens<SymbolicCost>
-// src/v3/lenses/parallelism.dag — Lens<ParallelismMode>
-// (each lens's existing carrier IS the budget type — no separate ComplexityBudget / CostBudget needed)
+// src/v3/lenses/complexity.dag
+data complexity_lens: Lens<ComplexitySummary> = ...   // rich output: work/span/class/certainty
+data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
+  project: |summary| summary.asymptotic_class           // budget compares against class only
+}
+
+// src/v3/lenses/cost.dag
+data cost_lens: Lens<SymbolicCost> = ...              // output IS the budget type
+data cost_enforcement: LensEnforcement<SymbolicCost, SymbolicCost> = {
+  project: |c| c                                        // identity projection
+}
+
+// src/v3/lenses/parallelism.dag
+data parallelism_lens: Lens<ParallelismMode> = ...    // output IS the budget type
+data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode> = {
+  project: |m| m                                        // identity projection
+}
 ```
 
-Each lens's existing carrier (per the `Lens<C>` framework) is also the budget type for `apply_lens` — the application surface inherits the structural typing without adding new carriers per lens.
+**Why the projection rather than a single carrier**: the lens output for complexity is rich (`ComplexitySummary { work, span, asymptotic_class, certainty }`) — required by the lens-fold composition (per `compose_summary_*` in complexity-lens §3.1). The budget is the user's contract — typically a single class, not a full summary. Forcing budget = output would make users author `Enforce { budget: ComplexitySummary { ... } }` — over-constrained for the common "function should be O(log n)" case. Forcing output = budget would drop work/span/certainty facts the lens-fold composition needs. The projection separates the two concerns: lens output stays rich (load-bearing for composition); budget stays simple (load-bearing for user authoring).
 
-Lens-budget compatibility is **structural by construction**: `SectionedLensApplication<C>` and `ApplicationConfig<C>` share the type parameter `C`, so a lens of type `Lens<AsymptoticClass>` can only pair with `Enforce { budget: AsymptoticClass, ... }`. Mismatched pairs (e.g., complexity-lens with a `SymbolicCost` budget) are unrepresentable in the carrier — the type system rejects them at parse/inference time, not via a separate type-checker rule on a `budget_type` field. (No `budget_type: DeclarationId` field on `Lens<C>` is needed; the parameter `C` IS the structural authority.) For the `Introspect` variant there is no budget to compatibility-check — introspection runs the lens and emits its value, no comparison.
+Lens-output / projection / budget compatibility is **structural by construction**: `SectionedLensApplication<Output, Budget>` ties three carriers via two type parameters. A lens of type `Lens<ComplexitySummary>` can only pair with a `LensEnforcement<ComplexitySummary, B>` (some Budget B) and an `ApplicationConfig<B>` (the same B). Mismatched triples (e.g., complexity-lens with a `SymbolicCost` budget, or complexity-lens with cost's identity projection) are unrepresentable in the carrier — the type system rejects them at parse/inference time, not via a separate type-checker rule. (No `budget_type: DeclarationId` field on `Lens<C>` is needed; the type parameters `Output` and `Budget` ARE the structural authority.) For the `Introspect` variant there is no budget to compatibility-check — introspection runs the lens and emits its full output, no projection or comparison.
 
 ## §3. Violation policy under fail-closed discipline
 
@@ -110,12 +139,12 @@ The user reframe initially named the violation-policy axis as `CompileError | Wa
 The fail-closed-compatible enumeration is therefore binary, not ternary — and the budget is bundled INTO the `Enforce` variant by construction (per §2 above), making "Enforce without budget" and "Introspect with budget" structurally unrepresentable:
 
 ```dag
-type ApplicationConfig<C>
+type ApplicationConfig<Budget>
   = Enforce { budget: C, diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
   | Introspect                                                         // computes lens value; no budget; no diagnostic
 ```
 
-The pairing of `budget` with `Enforce` (and its absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no `Enforce + None` or `Introspect + Some(...)` combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`). Equally, the type parameter `C` ties `Enforce.budget`'s type to the `Lens<C>` it pairs with at the `SectionedLensApplication<C>` site (per §2) — lens/budget mismatch is also unrepresentable.
+The pairing of `budget` with `Enforce` (and its absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no `Enforce + None` or `Introspect + Some(...)` combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`). Equally, the parameters `Output` and `Budget` of `SectionedLensApplication<Output, Budget>` (per §2) tie `Enforce.budget`'s type to the lens's declared output type via `LensEnforcement<Output, Budget>` projection — lens/projection/budget mismatch is also unrepresentable.
 
 `DiagnosticSeverity` is a single-variant nominal carrier (only `Error`). It exists as a refinement-extension point so future *non-fail-closed* surfaces (if ever added — none currently planned) can extend without changing the `Enforce` carrier shape. Per `feedback_no_annotations` and `feedback_no_metadata_markers`, the single-variant carrier is structurally honest: there is exactly one severity, named.
 
@@ -259,7 +288,7 @@ User-authored `apply_lens(complexity, my_function, Introspect)` is functionally 
 
 This lane is **cross-program** between Substrate Manager and Verification Manager (per [`docs/r3-structure.md`](r3-structure.md) lane 16):
 
-- **Substrate Manager owns**: the `SectionedLensApplication<C>` / `SectionRef` / `ApplicationConfig<C>` parametric carriers in `src/v3/std/lens_application.dag`; the compiler-side lens-fold integration. (No `Lens<C>.budget_type` field — the type parameter `C` is the structural authority for budget compatibility.)
+- **Substrate Manager owns**: the `SectionedLensApplication<Output, Budget>` / `SectionRef` / `ApplicationConfig<Budget>` / `LensEnforcement<Output, Budget>` parametric carriers in `src/v3/std/lens_application.dag`; the compiler-side lens-fold integration; per-lens `LensEnforcement` declarations co-located with each lens (one per lens — complexity, cost, parallelism, effect_enumeration). (No `Lens<C>.budget_type` field — the type parameters Output + Budget are the structural authority.)
 - **Verification Manager owns**: the closure-gate TestClaims (`complexity_violation_compile_error_demonstrated`, `crdt_cost_basis_demonstrated`, `memory_peak_cost_basis_demonstrated`, `opt_in_iteration_parallelism_via_lens_application_demonstrated`); cross-target equivalence on lens-application semantics (does Rust-emitted code respect the budget in the same way Python-emitted does?).
 
 The split mirrors the existing T-CostLens-Composition split: substrate authors carriers + fold semantics, Verification asserts the demonstrations.
