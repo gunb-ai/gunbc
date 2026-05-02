@@ -145,10 +145,15 @@ func read(fs: Filesystem, path: TextFilePath) -> { fs: Filesystem, content: Stri
 // reads structurally: same Filesystem in / same Filesystem out → no mutation observable in signature.
 
 func write(fs: Filesystem, path: FilePath, content: String) -> { fs: Filesystem, written: Bool }
-// writes structurally: Filesystem in, *modified* Filesystem out (same type, different value).
+// writes thread the Filesystem resource through; kind (read vs write) declared via
+// algebra inhabitance — see §2.4 + §8.1.
 ```
 
-The discipline that makes this load-bearing: **read operations return the *same-value* Filesystem; write operations return a *modified* Filesystem.** Per [`feedback_closed_system_effects`](../README.md#) — *"a function 'is effectful' iff its body composes operations with write-shaped type signatures (return modified resource)."* The lens reads this directly off the signature; no ambient block, no taxonomy.
+The structural fact the signature carries is the **effect set** — the set of resource types involved in the operation (here, `Filesystem`). The signature does NOT structurally distinguish read from write — `R in / R out` and `R in / R' out` (same type, different value) have the *same typed signature* unless value-preservation is itself a substrate-level fact, which `.dag` does not encode at the type level.
+
+**The read/write distinction is declared via algebra inhabitance on the callable**, not derived from signature shape. Per [`docs/design-composed-effect-reshape.md`](design-composed-effect-reshape.md) (PR #529 R3), `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` is the existing partition that captures this distinction structurally. The post-retirement substrate retains this carrier as an algebra-inhabitance declaration on the callable: `inhabits IdempotentRead<Filesystem>` (commutes, repeatable) vs `inhabits Mutating<Filesystem>` (non-commuting, observable side-effect). The lens reads inhabitance for kind classification; the signature reads only for the effect set. Two structural carriers, two orthogonal facts — neither convention-level.
+
+See [§5.1](#51-readwrite-distinction-substrate-authority) for the full algebra-inhabitance shape and [§8.1](#81-readwrite-distinction-substrate-authority) for the resolved design question.
 
 ### §2.2 Before vs after — service operation
 
@@ -193,23 +198,36 @@ func github_token(
 { ... }
 ```
 
-The `uses net: Network` clause disappears. The function's *type* declares its effect dependency. `Network` in the return position is the same value (a read does not mutate the network resource the way a write does the filesystem) — but it is structurally present, so the lens sees the function as composing a `Network`-shaped operation. Future authorities for `Network` may distinguish read-only from connection-state-mutating operations; the threading shape supports that without a parallel record.
+The `uses net: Network` clause disappears. The function's *type* declares its effect dependency: `Network` in input ∩ output identifies the effect set. The kind (this `github_token` is a read against the secrets-API service; it does not mutate Network state) is declared via algebra inhabitance: `inhabits IdempotentRead<Network>`. The lens reads both — the signature for set, the inhabitance for kind — per §2.4.
 
 ### §2.4 The unified rule
 
-> A callable's effect set is exactly the set of resource types appearing in its inputs that also appear in its output. Read operations: `R` in / `R` out (same value). Write operations: `R` in / `R'` out (modified value, same type). Pure operations: no resource type in either position.
+**The unified rule** (split into two structural facts, addressing the cursor BLOCKING finding 2026-05-02 at line 151):
 
-This is a structural property of the arrow signature. The `effect_enumeration.dag` lens *already* has the scaffolding for this — `callable_arrow_effect` walks `inputs / output / body` per `src/v3/lenses/effect_enumeration.dag:152-164`, and *already* checks whether an input declaration matches the output declaration:
+> **(a) Effect SET — derived from signature**: a callable's effect set is exactly the set of resource types appearing in *both* its inputs *and* its output. (Pure operations: no resource type in either position.)
+>
+> **(b) Effect KIND — declared via algebra inhabitance**: each callable in the effect set declares its kind per resource via an `inhabits` clause: `inhabits IdempotentRead<R>` (read), `inhabits Mutating<R>` (write), or `inhabits Append<R>` (append). The kind is a structural fact (algebra inhabitance), not a signature-shape inference.
+
+The two facts are orthogonal: the signature carries which resources are involved; the inhabitance carries how each is touched. Neither is convention-level; both are structural.
+
+**Lens implementation**: the `effect_enumeration.dag` lens walks `inputs / output / body` per `src/v3/lenses/effect_enumeration.dag:152-164` for the effect set, and looks up the callable's `EffectShape` inhabitance for the kind:
 
 ```dag
-// src/v3/lenses/effect_enumeration.dag:160-163
-if payload.head == output then
-  WriteShaped         // structural recognition
-else
-  callable_arrow_effect(payload.tail, output, body)
+// pseudocode (post-migration shape)
+fn classify_effect(callable: Callable, resource: ResourceType) -> EffectShape =
+  if callable_inhabits(callable, idempotent_read_for(resource)) then
+    IsIdempotent(ReadShape)
+  else if callable_inhabits(callable, mutating_for(resource)) then
+    IsBreaking(WriteShape)
+  else if callable_inhabits(callable, append_for(resource)) then
+    IsIdempotent(AppendShape)         // appends are idempotent under merge
+  else
+    Diagnostic::EffectKindUndeclared { callable, resource }
 ```
 
-The lens code is correct; the **substrate has not yet been migrated** to make every effectful primitive thread its resource. Today's `read` capability returns `String` not `(Filesystem, String)`, so the structural check finds no match and falls through to `body_default_effect(body)`. Once the substrate threading lands, the existing lens fold becomes BEHAVIORALLY COMPLETE without any additional logic.
+The signature alone is insufficient — the lens MUST consult algebra inhabitance to classify reads vs writes. A callable with the resource in input and output but no kind inhabitance is a fail-closed Diagnostic (`EffectKindUndeclared`), not a silent default.
+
+The substrate migration is correspondingly two parts: (a) thread resources through signatures (covered in §2.1-§2.3 above; structurally identifies the effect set); (b) declare `inhabits IdempotentRead<R>` / `inhabits Mutating<R>` on each effectful callable (declares the kind structurally).
 
 ## §3. Caller-side effect-set pinning
 
@@ -279,7 +297,7 @@ Per [`feedback_parallel_representation_debt`](../README.md#) and [`../INVARIANTS
 
 ### §4.3 The four-variant `EffectShape` partition (kept)
 
-[`docs/design-composed-effect-reshape.md`](design-composed-effect-reshape.md) R2 partitioned `EffectShape` into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`. **That partition is kept** — the post-retirement shape derives `EffectShape` from the arrow signature (read/write/append/create discrimination via signature shape) and the partition still classifies the result. What changes is the *source* of the shape: today it's `derive_effect_shape(method, path)` walking ambient metadata; after migration it's a structural read off the threaded signature. The downstream algebra (`compose_effects`, `is_idempotent_effect`, `BoundedLattice` composition over `IdempotentShape` per `src/v3/std/effects.dag:55`) is unchanged.
+[`docs/design-composed-effect-reshape.md`](design-composed-effect-reshape.md) R2 partitioned `EffectShape` into `IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)`. **That partition is kept** — the post-retirement shape reads `EffectShape` from the callable's *algebra inhabitance* (per §2.4 + §8.1: `inhabits IdempotentRead<R>` → `IsIdempotent(ReadShape)`; `inhabits Mutating<R>` → `IsBreaking(WriteShape)`) and the partition still classifies the result. What changes is the *source* of the shape: today it's `derive_effect_shape(method, path)` walking ambient metadata; after migration it's a structural read off the declared algebra inhabitance on the callable. (The signature is consulted separately for the effect *set*; kind classification reads inhabitance.) The downstream algebra (`compose_effects`, `is_idempotent_effect`, `BoundedLattice` composition over `IdempotentShape` per `src/v3/std/effects.dag:55`) is unchanged.
 
 ### §4.4 The replacement signature
 
@@ -289,7 +307,8 @@ fn compose_effects(ops: List<Operation>) -> CompositionVerdict {
   // For each op:
   //   - Resolve op.callable.decl
   //   - Read the arrow signature
-  //   - Apply §2.4 rule (resource in inputs ∩ output) to derive EffectShape
+  //   - Apply §2.4(a) (resource in inputs ∩ output) for effect set
+  //   - Apply §2.4(b) (algebra inhabitance lookup) for effect kind → EffectShape
   //   - Project through IsIdempotent / IsBreaking partition
   // Same lattice composition as today; same verdict shape.
 }
@@ -380,13 +399,25 @@ Pre-cascade *design-doc* work is permitted (this doc); pre-cascade *substrate wo
 
 Per [`feedback_design_before_implement`](../README.md#) — resolve all design questions before implementation; audit code in design phase.
 
-### §8.1 Read-shaped operations: same-value or read-tagged resource? — RESOLVED: same-value
+### §8.1 Read/write distinction substrate authority — RESOLVED: algebra inhabitance, not signature shape
 
-**Question:** Should `read(fs, path) → (fs, content)` return the *same* `fs` value, or a `fs_after_read` value distinct from `fs_before_read`?
+**Question:** Cursor BLOCKING finding 2026-05-02 (PR #1480 sha ef21e1a0): `read(fs: R, path) → (fs: R, content)` and `write(fs: R, ...) → (fs: R, ...)` have *the same typed signature* unless value-preservation is itself a substrate fact. The signature alone cannot distinguish read from write — `ReadShaped` vs `WriteShaped` would remain convention-level. Where does the structural distinction live?
 
-**Resolved:** same value. Per [`feedback_closed_system_effects`](../README.md#): a read does not mutate. The lens recognizes "same-resource in / same-resource out" as `ReadShaped`. If a future authority needs to track read history (e.g., for audit purposes), that is a *different* lens reading a *different* property; the resource-threading discipline doesn't bake audit history into the signature.
+**Resolved:** the read/write distinction is declared via **algebra inhabitance on the callable**, not derived from signature shape.
 
-**Implementation note:** the lens already handles this — `callable_arrow_effect` returns `WriteShaped` when an input declaration matches the output declaration; per §2.1 same-value reads inherit the same structural recognition because the resource type appears in both positions. This is the existing fold body, applied to richer signatures.
+- The signature carries the **effect set** (which resources are involved) — structurally, from input ∩ output.
+- Each callable declares its **kind** per resource via algebra inhabitance: `inhabits IdempotentRead<R>` (read), `inhabits Mutating<R>` (write), `inhabits Append<R>` (append).
+- The lens reads inhabitance for kind classification; absence of any kind inhabitance with the resource in the effect set is a fail-closed Diagnostic (`EffectKindUndeclared`), not a silent default.
+
+This preserves the existing `EffectShape = IsIdempotent(IdempotentShape) | IsBreaking(BreakingShape)` partition from [`docs/design-composed-effect-reshape.md`](design-composed-effect-reshape.md) (PR #529 R3) — the partition continues to classify effects, but its source is the declared inhabitance carrier rather than `derive_effect_shape(method, path)` walking ambient metadata.
+
+**Why algebra inhabitance, not a field on `Operation`**: keeping the kind on the callable's *algebra* (rather than on each per-call `Operation`) preserves single-authority — every call site of the same callable has the same kind, and the kind is a property of *what the callable does* (read or write), not *how it's invoked at this site*. This is the same pattern as `Semiring`/`BoundedLattice` inhabitance on type declarations.
+
+**Why algebra inhabitance, not a phantom marker on the resource type** (`Filesystem<Read>` vs `Filesystem<Write>`): a single `Filesystem` value is used in both read and write contexts (a typical use case). Phantom-marking the resource would force a cast at every read↔write boundary, which is annotation-style noise per `feedback_no_annotations`.
+
+**Implementation note:** every effectful primitive in `dsl/std/primitives.dag` and `dsl/std/resources.dag` declares its inhabitance explicitly. The migration is mechanical: each existing capability declaration (currently named `read` or `write`) gains an explicit `inhabits IdempotentRead<R>` or `inhabits Mutating<R>` clause. The lens consumer dispatches on the inhabitance lookup; no signature-shape parsing for kind classification.
+
+**Cross-link**: see §2.1 (where the cursor finding was anchored) and §2.4 (the unified rule split into effect-set-from-signature + effect-kind-from-inhabitance).
 
 ### §8.2 Acquisition primitives: how does `Filesystem` enter scope? — RESOLVED: typed acquisition primitive
 
