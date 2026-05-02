@@ -143,11 +143,16 @@ impl Dag {
             LoopBound::Cardinality { count } => {
                 self.assert_port_exists(count, "push_loop(bound.count)");
             }
-            LoopBound::Descent { cluster } => {
+            LoopBound::Descent { cluster, measure } => {
                 assert!(
                     self.clusters.get(cluster.index()).is_some(),
                     "push_loop(bound.cluster): unknown cluster {:?}",
                     cluster
+                );
+                self.assert_port_exists(measure, "push_loop(bound.measure)");
+                assert_eq!(
+                    source, measure,
+                    "push_loop(source) must match LoopBound::Descent.measure during migration"
                 );
             }
         }
@@ -1190,9 +1195,10 @@ mod tests {
     fn push_loop_reuses_init_shape_for_output() {
         let mut dag = Dag::new();
         let source = dag.push_value(LiteralBits::Int(4), span());
+        let count = dag.push_value(LiteralBits::Int(8), span());
         let init = dag.push_value(LiteralBits::Int(0), span());
         let body = dag.push_bind("loop_body", init, Vec::new(), span());
-        let bound = LoopBound::Cardinality { count: source };
+        let bound = LoopBound::Cardinality { count };
 
         let output = dag.push_loop(source, init, body, bound, span());
 
@@ -1201,6 +1207,7 @@ mod tests {
         assert_eq!(loop_node.source, source);
         assert_eq!(loop_node.init, init);
         assert_eq!(loop_node.body, body);
+        assert_eq!(loop_node.bound, LoopBound::Cardinality { count });
         assert_eq!(
             dag.port(output).state(),
             &PortState::Resolved(dag.int_shape().expect("bootstrap Int"))
