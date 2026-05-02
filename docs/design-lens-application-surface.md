@@ -382,7 +382,7 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 **Why:** reading computed class would mean a refactor of `f` that lowers its complexity (e.g., O(n log n) → O(n)) would propagate into `g`'s lens result *automatically*. That makes `g`'s emission silently dependent on `f`'s implementation choices. The declared budget is the abstraction barrier — `g` reads "f's contract is O(log n)" and composes against that. If `f`'s implementation diverges from its declared budget, that is `f`'s own Diagnostic (the lens application on `f` fires), not `g`'s.
 
-**Implementation note:** the lens-fold pass, when computing `g`'s complexity composition, looks up `f`'s `SectionedLensApplication` (if any) and reads `config.budget`. If `f` has no enforced application, the lens-fold reads the computed class as fallback (the absence of a contract means there is no abstraction barrier).
+**Implementation note:** the lens-fold pass, when computing `g`'s complexity composition, looks up `f`'s `SectionedLensApplication` (if any) and matches on `Enforce(EnforcedApplication { budget, ... })` to read the declared budget. If `f`'s application is `Introspect(IntrospectApplication { ... })` or absent, the lens-fold reads the computed class as fallback (the absence of an enforced contract means there is no abstraction barrier; introspection-only carries the lens value but no budget).
 
 **Bridge-as-steady-state avoidance:** this resolution preserves the cost-of-change=1 principle (changing `f`'s implementation does not require re-checking every caller's lens result) and keeps abstraction-barrier semantics consistent with the rest of the substrate (a function's *signature* is what callers depend on; the body is private detail).
 
