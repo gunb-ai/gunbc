@@ -202,7 +202,7 @@ type Certainty = Proven | Conservative
   - If `c₁` dominates `c₂` (e.g., branch-max picks `c₁` as worst-case): the result's certainty is `k₁` — `k₂` does not enter, because the bound being qualified is `c₁`'s bound.
   - Symmetric for `c₂` dominating `c₁`.
 
-This is the `certainty_of_surviving` projection in §3.1 (`compose_summary` family). A `BoundedLattice<Certainty>` declaration would suggest certainty composes independently of cost — exactly the bug the §3.1 design rejects. Certainty stays a 2-variant sum without an associated lattice instance; the composition lives at `ComplexitySummary` level via the cost-aware `compose_summary_*` functions.
+This is the `certainty_of_surviving_per_dim` projection in §3.1 (`compose_summary` family), applied per-dimension across both work and span (and any future dimensions per DB-3). A `BoundedLattice<Certainty>` declaration would suggest certainty composes independently of cost — exactly the bug the §3.1 design rejects. Certainty stays a 2-variant sum without an associated lattice instance; the composition lives at `ComplexitySummary` level via the cost-aware, per-dimension `compose_summary_*` functions.
 
 **Tightness ordering**: `Certainty` does have a natural ordering (`Proven ≥ Conservative` under tightness). That ordering is implicit when projecting to a single certainty value, but it is NOT a composition operation. Composition consumes cost-and-certainty pairs jointly per §3.1.
 
@@ -373,11 +373,14 @@ fn compose_summary_iterate(outer: ComplexitySummary, body: ComplexitySummary) ->
   let composed_work = iterate(outer.work, body.work)
   let composed_span = iterate(outer.work, body.span)            // span uses outer's work for iteration count
   let composed_class = classify(composed_work)
-  // Cost-aware certainty: if dominance dropped a component, that
-  // component's certainty does NOT enter the result. The result's
-  // certainty is the meet of the certainties of the SURVIVING
-  // components only.
-  let composed_certainty = certainty_of_surviving(outer, body, composed_work)
+  // Cost-aware certainty across BOTH published dimensions (work + span).
+  // Span has independent dominance from work (different inputs to iterate);
+  // certainty must account for surviving contributors per dimension.
+  let work_cert = certainty_of_surviving_per_dim(outer, body, outer.work, body.work, composed_work)
+  let span_cert = certainty_of_surviving_per_dim(outer, body, outer.work, body.span, composed_span)
+  // Both dimensions survive in ComplexitySummary; any unproven dimension
+  // makes the whole result unproven (meet across dimensions).
+  let composed_certainty = meet_pair(work_cert, span_cert)
   ComplexitySummary {
     work: composed_work
     span: composed_span
@@ -386,14 +389,20 @@ fn compose_summary_iterate(outer: ComplexitySummary, body: ComplexitySummary) ->
   }
 }
 
-// Walks composed_work, identifies which input components survived dominance,
-// and meets their certainties. Components that were dominated do not contribute.
-fn certainty_of_surviving(
+// Per-dimension surviving certainty: walks the dominance outcome on a
+// specific cost dimension (work, span, or future dimensions per DB-3),
+// identifies which input contributors survived, meets their certainties.
+// Contributors dropped by dominance on this dimension do not enter the
+// per-dimension certainty (but may enter another dimension's certainty
+// if they survived there).
+fn certainty_of_surviving_per_dim(
   outer: ComplexitySummary,
   body: ComplexitySummary,
-  composed: SymbolicCost
+  outer_dim: SymbolicCost,
+  body_dim: SymbolicCost,
+  composed_dim: SymbolicCost
 ) -> Certainty =
-  match dominance_outcome(outer.work, body.work, composed) {
+  match dominance_outcome(outer_dim, body_dim, composed_dim) {
     BothSurvive => meet_pair(outer.certainty, body.certainty)
     OuterDominates => outer.certainty
     BodyDominates => body.certainty
@@ -408,8 +417,13 @@ fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
     Conservative => Conservative
   }
 
-// Same joint composition for sequential / parallel composition (different
-// outcome rules but the same coordination pattern).
+// Same per-dimension cost-aware certainty pattern for sequential and
+// branch composition: each computes work_cert + span_cert via
+// certainty_of_surviving_per_dim against the per-dimension dominance
+// outcome, then meets across dimensions for the result certainty.
+// Sequential: work composes additively (sum), span composes additively.
+// Branch: work composes additively across arms (sum), span composes via
+// max_path. Both honor per-dimension surviving-contributor accounting.
 fn compose_summary_sequential(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary = ...
 fn compose_summary_branch(arms: List<ComplexitySummary>) -> ComplexitySummary = ...
 ```
