@@ -3114,8 +3114,8 @@ fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
     }
 }
 
-/// T-Numeric-Construction Slice 2 — `Nat = Semiring<Magnitude>` resolves
-/// structurally to a `Semiring` instantiation whose carrier argument is the
+/// T-Numeric-Construction Slice 2 — `Nat = CommutativeSemiring<Magnitude>` resolves
+/// structurally to a `CommutativeSemiring` instantiation whose carrier argument is the
 /// `Magnitude` opaque atom landed by Slice 1.
 ///
 /// The ratchet enforces both authorities at once:
@@ -3136,9 +3136,9 @@ fn nat_resolves_to_semiring_over_magnitude() {
         "Nat must live in the canonical std/nat.dag module, not in a parallel authority"
     );
 
-    let semiring = dag
-        .declaration_by_name("Semiring")
-        .expect("`Semiring` algebra must be loaded from dsl/std/algebra.dag");
+    let commutative_semiring = dag
+        .declaration_by_name("CommutativeSemiring")
+        .expect("`CommutativeSemiring` algebra must be loaded from dsl/std/algebra.dag");
     let magnitude = dag
         .declaration_by_name("Magnitude")
         .expect("`Magnitude` opaque carrier must be loaded from dsl/std/magnitude.dag (Slice 1)");
@@ -3149,39 +3149,35 @@ fn nat_resolves_to_semiring_over_magnitude() {
             arguments,
         } => {
             assert_eq!(
-                *template, semiring.id,
-                "Nat must instantiate `Semiring`, not an alternate algebra record"
+                *template, commutative_semiring.id,
+                "Nat must instantiate `CommutativeSemiring`, not an alternate algebra record"
             );
             assert_eq!(
                 arguments.len(),
                 1,
-                "Semiring takes exactly one carrier type parameter"
+                "CommutativeSemiring takes exactly one carrier type parameter"
             );
             assert_eq!(
                 arguments[0].value, magnitude.id,
-                "Nat's Semiring carrier argument must be `Magnitude`, not a Word* storage carrier"
+                "Nat's CommutativeSemiring carrier argument must be `Magnitude`, not a Word* storage carrier"
             );
         }
         other => panic!(
-            "Nat must lower to a Semiring instantiation; got {other:?} — \
+            "Nat must lower to a CommutativeSemiring instantiation; got {other:?} — \
              a non-Instantiation connective indicates a parallel algebra authority \
-             rather than a clean Semiring<Magnitude> alias"
+             rather than a clean CommutativeSemiring<Magnitude> alias"
         ),
     }
 }
 
 /// T-Numeric-Construction algebra-strength sharpening — `CommutativeSemiring<T>`
 /// exists as the stronger algebra surface for semirings whose multiplication is
-/// commutative. This PR lands only the algebra type; `Nat` remains
-/// `Semiring<Magnitude>` until the follow-up alias-sharpening slice updates the
-/// Nat ratchet at the same time.
+/// commutative. Nat consumes that stronger algebra surface in
+/// `nat_resolves_to_semiring_over_magnitude`.
 #[test]
-fn commutative_semiring_declares_semiring_shape_without_sharpening_nat() {
+fn commutative_semiring_declares_semiring_shape_for_nat_sharpening() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
-    let semiring = dag
-        .declaration_by_name("Semiring")
-        .expect("Semiring must remain in std.algebra");
     let commutative = dag
         .declaration_by_name("CommutativeSemiring")
         .expect("CommutativeSemiring must be declared in std.algebra");
@@ -3195,18 +3191,6 @@ fn commutative_semiring_declares_semiring_shape_without_sharpening_nat() {
         record_fields(&dag, "Semiring"),
         "CommutativeSemiring adds the multiplicative-commutativity law, not a parallel field shape"
     );
-
-    let nat = dag
-        .declaration_by_name("Nat")
-        .expect("Nat remains loaded from std.nat");
-    match &nat.connective {
-        TypeConnective::Instantiation { template, .. } => assert_eq!(
-            *template, semiring.id,
-            "This slice intentionally does not sharpen Nat to CommutativeSemiring; \
-             the follow-up alias PR must update this ratchet with the Nat declaration"
-        ),
-        other => panic!("Nat must remain an algebra instantiation in this slice, got {other:?}"),
-    }
 }
 
 /// T-Numeric-Construction `GroupCompletion<M>` substrate-introduction —
@@ -3276,8 +3260,7 @@ fn group_completion_is_bare_opaque_atom_with_one_type_parameter() {
 /// `dsl/std/algebra.dag`, bare `Conj {{ children: [] }}`, exactly one type parameter `<R>`.
 ///
 /// Also scans bootstrap for `FieldOfFractions<…>` instantiations: Slice 4 must keep
-/// `Int` as the sole specialization (`Field<FieldOfFractions<Int>>`). Vacuous until the
-/// Rational alias-pivot lands.
+/// `Int` as the sole specialization (`Field<FieldOfFractions<Int>>` via `dsl/std/rational.dag`).
 #[test]
 fn field_of_fractions_substrate_introduction_ratchets() {
     with_full_bootstrap_stack(|| {
@@ -3348,6 +3331,99 @@ fn field_of_fractions_substrate_introduction_ratchets() {
                 arguments,
                 decl.name.as_deref().unwrap_or("<anonymous>")
             );
+        }
+    });
+}
+
+/// T-Numeric-Construction Slice 4 — `Rational = Field<FieldOfFractions<Int>>` per
+/// `docs/audit/t-numeric-construction-field-of-fractions-6q.md` (canonical Q6 form;
+/// rejects compact `FieldOfFractions<Int>` alone).
+///
+/// Pins `Rational` authority to `dsl/std/rational.dag` and the two-step witness:
+/// outer `Field<T>`, inner carrier `FieldOfFractions<Int>`.
+#[test]
+fn rational_default_alias_resolves_to_field_over_field_of_fractions_of_int() {
+    with_full_bootstrap_stack(|| {
+        let dag = v3_compiler::generated_full_bootstrap_dag();
+
+        let rational = dag
+            .declaration_by_name("Rational")
+            .expect("`Rational` default alias missing from full bootstrap (Slice 4)");
+        assert_eq!(
+            rational.span.file, "dsl/std/rational.dag",
+            "Rational must live in dsl/std/rational.dag (single authority)"
+        );
+
+        let field = dag
+            .declaration_by_name("Field")
+            .expect("`Field` algebra must be loaded from dsl/std/algebra.dag");
+        let fof = dag
+            .declaration_by_name("FieldOfFractions")
+            .expect("`FieldOfFractions` carrier must be present (Slice 4 prerequisite)");
+        let int_decl = dag
+            .declaration_by_name("Int")
+            .expect("`Int` must be present for FieldOfFractions<Int>");
+
+        let mut current = rational;
+        let mut hops: usize = 0;
+        let connective = loop {
+            match &current.connective {
+                TypeConnective::Atom(AtomPayload::ResolvedByName(next))
+                | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
+                    assert!(hops < 8, "Rational alias chain too deep (cycle?)");
+                    hops += 1;
+                    current = dag.declaration(*next);
+                }
+                other => break other,
+            }
+        };
+
+        let inner_carrier = match connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                assert_eq!(
+                    *template, field.id,
+                    "Rational's outer witness must be `Field<T>`, not a compact \
+                     `FieldOfFractions<Int>`-only form (Q6 single-authority)"
+                );
+                assert_eq!(
+                    arguments.len(),
+                    1,
+                    "Field<T> takes exactly one carrier type parameter"
+                );
+                arguments[0].value
+            }
+            other => panic!("Rational must lower to a Field instantiation; got {other:?}"),
+        };
+
+        let carrier_decl = dag.declaration(inner_carrier);
+        match &carrier_decl.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                assert_eq!(
+                    *template, fof.id,
+                    "Rational's Field carrier must be `FieldOfFractions<…>` — \
+                     the localization-derived carrier, not `Int` directly \
+                     (reject `Field<Int>` as dishonest reciprocal story)"
+                );
+                assert_eq!(
+                    arguments.len(),
+                    1,
+                    "FieldOfFractions<R> takes exactly one integral-domain parameter"
+                );
+                assert_eq!(
+                    arguments[0].value, int_decl.id,
+                    "Slice 4 pins `FieldOfFractions<Int>` as the sole specialization — \
+                     ℚ as field of fractions of ℤ"
+                );
+            }
+            other => panic!(
+                "Rational's Field carrier must be a FieldOfFractions instantiation; got {other:?}"
+            ),
         }
     });
 }

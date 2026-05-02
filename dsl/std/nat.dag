@@ -5,32 +5,21 @@
 //
 //   Magnitude → Nat → Int → Rational → Real
 //
-// `Nat = Semiring<Magnitude>` says "ℕ is the algebra of addition + multiplication
-// (with identities 0 and 1) over the unbounded counting carrier `Magnitude`."
-// No additive inverse — `Semiring` is the right algebra layer for ℕ; `Int`
-// extends to `AbelianGroup<Nat>` in a later slice (Grothendieck construction).
+// `Nat = CommutativeSemiring<Magnitude>` says "ℕ is the algebra of addition +
+// multiplication (with identities 0 and 1) over the unbounded counting carrier
+// `Magnitude`, and multiplication is commutative." No additive inverse —
+// `CommutativeSemiring` is the right algebra layer for ℕ; `Int` extends to
+// `AbelianGroup<Nat>` in a later slice (Grothendieck construction).
 //
-// TRACKED SCAFFOLD (algebra-strength sharpening) — P5 dissolution trigger:
-//   The denotational note at `dsl/std/algebra.dag:54` says
-//     "Nat inhabits CommutativeSemiring  (because (Nat, *, 1) is a commutative monoid)"
-//   Slice C-Semiring introduced `type CommutativeSemiring<T>` in
-//   `dsl/std/algebra.dag`, but this `Nat` declaration intentionally remains
-//   `Semiring<Magnitude>` for the algebra-type-first PR boundary. The next
-//   Nat-sharpening slice changes the alias and ratchet together.
-//
-//   **Dissolution trigger:** change this declaration to
-//     `type Nat = CommutativeSemiring<Magnitude>`
-//   and update the structural ratchet
+// T-Nat-Sharpening stack-overflow receipt:
+//   The direct alias pivot originally overflowed the default Rust test thread
+//   inside `bootstrap_generated::bootstrapped_fixture_dag()`, before runtime
+//   finalization, cloning, declaration lookup, or instantiation traversal.
+//   The committed bootstrap emitter now splits generated snapshot construction
+//   into helper functions; `generated_full_bootstrap_dag()` loads this sharpened
+//   alias on the default test stack, ratcheted by
 //   `nat_resolves_to_semiring_over_magnitude` in
-//   `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`
-//   to match the new template id. No consumer migration needed —
-//   `CommutativeSemiring<T>` extends `Semiring<T>` at the algebra layer;
-//   downstream callers see no signature change.
-//
-//   The construction-chain progression in `docs/design-numeric-construction.md`
-//   sequences concept-layer introduction first (this slice + Slices 3+);
-//   algebra-strength sharpening is a parallel lane (see PR #1399 inbox
-//   discussion at #1130).
+//   `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`.
 //
 // CONSUMERS: none in this slice. Refinements `Nat<N>` (later slices, gated
 // on T-V2-Retirement per design doc §"path (a) coordination") parameterize
@@ -49,7 +38,7 @@
 
 module std.nat
 
-import std.algebra { Semiring }
+import std.algebra { CommutativeSemiring }
 import std.magnitude { Magnitude }
 
-type Nat = Semiring<Magnitude>
+type Nat = CommutativeSemiring<Magnitude>
