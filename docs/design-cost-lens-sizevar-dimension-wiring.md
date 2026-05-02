@@ -2,7 +2,7 @@
 
 > Part of: [`docs/r3-structure.md`](r3-structure.md) row 146 (T-Lens-Behavioral-Parity slice 2 — cost), [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) `cost.dag` row, [`docs/design-symbolic-cost-algebra.md`](design-symbolic-cost-algebra.md) (DB-7), [`docs/design-dimension-abstraction.md`](design-dimension-abstraction.md) (DB-3), [`../INVARIANTS.md`](../INVARIANTS.md)
 >
-> **Purpose:** specify the substrate-shape upgrades that take `src/v3/lenses/cost.dag` from BEHAVIORALLY PROXY to BEHAVIORALLY COMPLETE. Three moves: (1) renderer-side wiring — `SizeVariable { source_port }` rendering reads the user-facing name via `intern_table::name_of(source_port)` (InternTable is the single authority for binding names; no new substrate field); (2) `data symbolic_cost_dimension: AnalysisDimension<SymbolicCost>` materializes per DB-3 once grammar gaps close; (3) lens consumes the same per-call `DescentEvidence` / `CallPattern` / `SubValueRelation` producer foundation as complexity, with a cementing TestClaim against the v2 oracle.
+> **Purpose:** specify the substrate-shape upgrades that take `src/v3/lenses/cost.dag` from BEHAVIORALLY PROXY to BEHAVIORALLY COMPLETE. Three moves: (1) `SizeVariable.display_name: String?` field add — single substrate authority for the user-facing name (per §1.2; v3 has no InternTable name-lookup query, so the substrate-field path is the single authority); (2) `data symbolic_cost_dimension: AnalysisDimension<SymbolicCost>` materializes per DB-3 once grammar gaps close; (3) lens consumes the same per-call `DescentEvidence` / `CallPattern` / `SubValueRelation` producer foundation as complexity, with a cementing TestClaim against the v2 oracle.
 >
 > **Authority discipline:** this is an R3 design doc; the implementation lane is **T-Lens-Behavioral-Parity slice 2 (cost)** under Substrate Manager + Verification Manager (cross-program). This doc resolves the design questions blocking that slice's worker dispatch.
 
@@ -158,11 +158,11 @@ The grammar gaps the deferral receipt names are not blockers for the *cost* slic
 - **Path A (uniform-grammar-first)**: wait for class-5 record-body lowering across all `data` declarations. Then every dimension lands its `data` value at once.
 - **Path B (cost-slice-first)**: declare a narrow dispatch surface inside `lenses/cost.dag` that constructs the `AnalysisDimension<SymbolicCost>` value via fn-level builders (no record literal in `data` body), and migrate when class-5 lands.
 
-Path B is the bridge-as-steady-state pattern (per [`../INVARIANTS.md`](../INVARIANTS.md) P5 + `feedback_dissolve_bridges`). **This design selects Path A** with a sequencing constraint: cost slice 2 ships its substrate carriers (renderer-side InternTable name wiring + producer-consumption rewiring) and the closure-gate cementing test, but the `data symbolic_cost_dimension` declaration itself lands as part of T-Tests-As-Data-Completeness's grammar-gap retirement (since the grammar gap is shared across multiple lanes — record literals in `data` bodies block Dimension instances for parallelism, idempotency, effect_enumeration, AND user-declared dimensions per Lane 2 Stage 2f).
+Path B is the bridge-as-steady-state pattern (per [`../INVARIANTS.md`](../INVARIANTS.md) P5 + `feedback_dissolve_bridges`). **This design selects Path A** with a sequencing constraint: cost slice 2 ships its substrate carriers (SizeVariable.display_name field add + producer-consumption rewiring) and the closure-gate cementing test, but the `data symbolic_cost_dimension` declaration itself lands as part of T-Tests-As-Data-Completeness's grammar-gap retirement (since the grammar gap is shared across multiple lanes — record literals in `data` bodies block Dimension instances for parallelism, idempotency, effect_enumeration, AND user-declared dimensions per Lane 2 Stage 2f).
 
 The cost lane's closure gate `cost_lens_behaviorally_complete` is therefore satisfied by:
 
-1. renderer-side InternTable name wiring landed.
+1. SizeVariable.display_name field add landed.
 2. Producer-foundation consumption landed (per §3 below).
 3. Cementing TestClaim against v2 oracle landed (per §5 below).
 4. **Not** the `data symbolic_cost_dimension` declaration landing — that landing is `cost_dimension_data_declaration_landed`, scoped to the grammar lane, and tracked separately. The Rust trampoline `analyze_symbolic_cost_dimension` remains the dispatch surface in the interim *with a named dissolution trigger* (per [`../INVARIANTS.md`](../INVARIANTS.md) P5 scaffold-discipline): "when class-5 record-body grammar lands, this trampoline retires."
@@ -362,7 +362,7 @@ This avoids the parallel-representation debt named in `feedback_parallel_represe
 
 This slice is **cross-program** between Substrate Manager and Verification Manager (per [`docs/r3-structure.md`](r3-structure.md) row 146):
 
-- **Substrate Manager owns**: the renderer-side InternTable name wiring in `src/v3/std/algebra.dag` (per §1.2; aligned single-authority with complexity-lens design); the `Semiring<SymbolicCost>` declaration and `collapse_on_multiplicative_zero` fix; the `per_call_pattern_at` typed query surface (or its equivalent — already implied by the E-P side table); the consumer rewiring inside `src/v3/lenses/cost.dag`.
+- **Substrate Manager owns**: the SizeVariable.display_name field add in `src/v3/std/algebra.dag` (per §1.2; aligned single-authority with complexity-lens design); the `Semiring<SymbolicCost>` declaration and `collapse_on_multiplicative_zero` fix; the `per_call_pattern_at` typed query surface (or its equivalent — already implied by the E-P side table); the consumer rewiring inside `src/v3/lenses/cost.dag`.
 - **Verification Manager owns**: the `cost_lens_v2_oracle_equivalence_demonstrated` TestClaim corpus + structural-equivalence harness; coordination with T-V-L4-L7-Direct on the per-(algebra, inhabitant, law) witness coverage that catches the product-zero class of bugs structurally.
 
 The split mirrors slice 1 (complexity) — Substrate authors carriers + lens consumption; Verification authors the cementing TestClaim.
@@ -372,7 +372,7 @@ The split mirrors slice 1 (complexity) — Substrate authors carriers + lens con
 Per [`docs/r3-structure.md`](r3-structure.md):
 
 - **Internal cascade (within T-Lens-Behavioral-Parity)**: cost slice 2 cannot dispatch until T-E-P-Producer-Broadening (the foundational lane that broadens producer coverage from the first narrow slice to full `ExprCall.descent_evidence` parity) is COMPLETE. Reason: per-call `CallPattern` lookups must be authoritative for every recursive call site, not just the first slice. If the producer is partial, the lens consumer falls back to `UnknownCost` for uncovered call sites, the cementing test against v2 fails on those programs, and slice 2 cannot close.
-- **Internal cascade (within slice 2)**: renderer-side InternTable name wiring lands first; producer-consumption rewiring lands second (consumes the `SizeVariable` shape); cementing test lands third (depends on both). The §4 product-zero fix is ordering-independent and can land in parallel.
+- **Internal cascade (within slice 2)**: SizeVariable.display_name field add lands first; producer-consumption rewiring lands second (consumes the `SizeVariable` shape); cementing test lands third (depends on both). The §4 product-zero fix is ordering-independent and can land in parallel.
 - **External cascade**: R2-Evaluator landed (per the standard R3 worker-dispatch precondition); R2-T-Substrate-Lens-Primitive landed (the `Lens<C>` framework cost.dag inhabits).
 
 Pre-cascade design-doc work is permitted (this doc); pre-cascade substrate work waits.
@@ -385,11 +385,11 @@ Six design questions surfaced during authoring. Per `feedback_design_before_impl
 
 **Question:** introduce a parallel `SizeExpr` coproduct (5 variants: SizePort/SizeConst/SizeAdd/SizeMax/SizeShrink) alongside the existing `SymbolicCost`, or stay with the unified `SymbolicCost` algebra without the parallel coproduct?
 
-**Resolved:** unified `SymbolicCost` (DB-7 lock); no parallel `SizeExpr`. Single-authority discipline (P2). `SizeVariable` substrate is unchanged; the missing user-facing-name fact lives in InternTable (per §1.2), not as a parallel field on `SizeVariable`.
+**Resolved:** unified `SymbolicCost` (DB-7 lock); no parallel `SizeExpr`. Single-authority discipline (P2). The user-facing-name fact lives on `SizeVariable.display_name: String?` (per §1.2 — v3 has no InternTable name-lookup query, so the substrate-field path is the single authority); no parallel `SizeExpr` carrier.
 
 **Why:** v2's `SizeExpr ↔ CostExpr` distinction was a v2 design accident. v3's `SymbolicCost` already covers SizeAdd (via `SumCost`) and SizeMax (via the `dominates` ordering). Descent semantics like `n - 1` live in `std.computation::CallPattern` (the canonical E-C site per existing substrate), not in size expressions — a `SizeShrink` variant would duplicate that fact in a parallel carrier. Asymptotically `O(n - 1) ≡ O(n)`; the descent fact is a call-site property, not a size-shape property. Per `feedback_parallel_representation_debt` and DB-7 lock: don't ship two algebras for the same fact-flow.
 
-### §8.2 Names on `SizeVariable` — RESOLVED: InternTable lookup via `source_port`, no name field on the carrier
+### §8.2 Names on `SizeVariable` — RESOLVED: `display_name: String?` field; single substrate authority
 
 **Question:** how should `SizeVariable` carry user-facing names for diagnostic rendering?
 
