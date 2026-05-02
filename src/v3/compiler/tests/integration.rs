@@ -626,6 +626,104 @@ mod e7_analyze_complexity_integration {
         }
     }
 
+    /// E7 §test 1 (root-arg observable): a two-bind program makes the
+    /// `workflow_root` argument structurally observable. The wrapper
+    /// must agree with `analyze_symbolic_cost_dimension` on the
+    /// non-default root specifically — a wrapper that ignored the
+    /// supplied root and always picked "the only bind" or "the first
+    /// bind" would diverge here on **witness-spine size**, since the
+    /// reachable-behaviors filter for the second bind covers strictly
+    /// more nodes than the first.
+    #[test]
+    fn analyze_complexity_public_api_honors_supplied_workflow_root() {
+        let dag = compile_to_dag("let a = 1 + 2\nlet b = a + 3 + 4", "e7_int_two_binds.v3")
+            .expect("compiles");
+
+        let root_a = find_bind_root(&dag, "a");
+        let root_b = find_bind_root(&dag, "b");
+        assert_ne!(root_a, root_b, "two-bind fixture must distinguish roots");
+
+        // For each root the public wrapper agrees with the underlying
+        // analyzer on the same root.
+        for selected_root in [root_a, root_b] {
+            let via_complexity = analyze_complexity(&dag, selected_root);
+            let via_dimension = analyze_symbolic_cost_dimension(&dag, selected_root);
+
+            match (&via_complexity, &via_dimension) {
+                (
+                    DimensionReport::DimensionOk {
+                        composed: cc,
+                        witnesses: cw,
+                        ..
+                    },
+                    DimensionReport::DimensionOk {
+                        composed: dc,
+                        witnesses: dw,
+                        ..
+                    },
+                ) => {
+                    assert_eq!(cc, dc, "wrapper must honor selected root {selected_root:?}");
+                    assert_eq!(
+                        cw.len(),
+                        dw.len(),
+                        "wrapper must produce the same witness-spine count for root {selected_root:?}",
+                    );
+                    // Strengthen length-equality to per-witness
+                    // content equality on the typed `Inhabits` arm.
+                    // SymbolicCost has PartialEq; Behavior on the
+                    // Violates arm does not, so fail-arm content
+                    // equality stays in the in-module unit tests.
+                    for (cw_i, dw_i) in cw.iter().zip(dw.iter()) {
+                        match (cw_i, dw_i) {
+                            (
+                                v3_compiler::Witness::Inhabits(cc),
+                                v3_compiler::Witness::Inhabits(dc),
+                            ) => assert_eq!(
+                                cc, dc,
+                                "wrapper must produce identical Inhabits content for root {selected_root:?}",
+                            ),
+                            (
+                                v3_compiler::Witness::Violates { .. },
+                                v3_compiler::Witness::Violates { .. },
+                            ) => panic!(
+                                "well-typed two-bind fixture should not emit Violates witnesses; \
+                                 likely regression for root {selected_root:?}",
+                            ),
+                            other => panic!(
+                                "wrapper and direct analyzer produced different witness arms for \
+                                 root {selected_root:?}: {other:?}",
+                            ),
+                        }
+                    }
+                }
+                other => panic!(
+                    "expected both DimensionOk for selected root {selected_root:?}, got {other:?}",
+                ),
+            }
+        }
+
+        // The two roots reach different sets of behaviors via
+        // `workflow_reachable_behavior_ids`: `b`'s slice contains
+        // `a`'s slice plus the additional adds. A wrapper that
+        // ignored the supplied root would return the same witness
+        // count for both — this assertion catches that regression.
+        let witnesses_a = match analyze_complexity(&dag, root_a) {
+            DimensionReport::DimensionOk { witnesses, .. } => witnesses,
+            other => panic!("expected Ok at root_a, got {other:?}"),
+        };
+        let witnesses_b = match analyze_complexity(&dag, root_b) {
+            DimensionReport::DimensionOk { witnesses, .. } => witnesses,
+            other => panic!("expected Ok at root_b, got {other:?}"),
+        };
+        assert!(
+            witnesses_a.len() < witnesses_b.len(),
+            "root `a`'s reachable spine ({}) must be strictly smaller than root `b`'s ({}); \
+             a wrapper that ignored the supplied root would return equal counts here",
+            witnesses_a.len(),
+            witnesses_b.len(),
+        );
+    }
+
     /// E7 §test 1 (cross-check): `analyze_complexity.composed` matches
     /// the lens authority `symbolic_cost_of` at the workflow root.
     /// Confirms the wrapper preserves the lens contract.
