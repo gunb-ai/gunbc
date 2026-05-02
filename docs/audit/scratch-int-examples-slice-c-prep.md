@@ -9,8 +9,11 @@
 This audit prepares the Grounding-owned Slice C named in
 `docs/audit/scratch-int-examples-dissolution-spec.md`: replace the transitional
 `LanguageSpecProjection::ScratchIntExamples` test driver with a declared
-projection reader after Substrate lands Slice A (`BoundDeclaration`) and Slice B
-(per-target integer inhabitance rows).
+projection reader after Substrate lands the remaining bound parse/lower,
+algebra-intent, and per-target integer inhabitance prerequisites. Substrate
+landed the `BoundDeclaration` carrier in #1449, but that PR was carrier-only:
+it did not add parser/lowerer syntax for `Int(lo..hi)`, a Grounding projection
+reader, scratch-driver removal, or per-target integer inhabitance rows.
 
 The implementation slice should be mechanical: read target inhabitance facts from
 the `Dag`, run a pure candidate-search pipeline, and preserve the outcomes of
@@ -85,8 +88,8 @@ second authority.
 
 ## Bound Match Predicate
 
-After Substrate Slice A lands, Grounding should implement one cross-target
-predicate:
+After #1449, Grounding can implement one cross-target predicate once program and
+target rows actually carry `BoundDeclaration` facts:
 
 ```rust
 pub enum BoundMatch {
@@ -105,7 +108,10 @@ Expected structural body:
    bound. It does not match `PlatformDependent`.
 2. `StaticBound(BoundedInterval { lower, width })` matches only if the program
    is also `StaticBound(BoundedInterval { lower, width })` with exact structural
-   equality. There is no wider/narrower target selection for emission; ordering
+   equality. #1449 did not land an `ExactInterval { lo, hi }` carrier; the
+   design-doc `(lo..hi)` interval must lower into the shared
+   `BoundedInterval { lower, width }` representation before this predicate can
+   read it. There is no wider/narrower target selection for emission; ordering
    remains diagnostic-only.
 3. `PlatformDependent` is kind-only. It matches only a program bound that is also
    `PlatformDependent`. It must not be silently interpreted as the host's current
@@ -191,17 +197,19 @@ by fabricating payload fields locally.
 
 ## Substrate-Prerequisite Checklist
 
-Slice C cannot start until these substrate landings are present:
+Slice C cannot start until the non-carrier substrate landings below are present:
 
 | Prerequisite | Required shape | Owner |
 |---|---|---|
-| Bound carrier | `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`, where `Interval<D>` remains the shared parent already present in `src/v3/std/substrate.dag`. | Substrate Manager (`#1130`) |
-| Program-bound projection | Parsed/lowered program `Int(...)` refinements expose a `BoundDeclaration` fact the fold can read. | Substrate / parse-lower owner, coordinated by Substrate Manager |
-| Per-target integer inhabitance rows | Rust, Python, and Go LanguageSpec rows declare source type, algebra, target realization, and bound facts for the Int-family examples. | Substrate / LanguageSpec population |
-| Algebra intent facts | Program type/refinement analysis can distinguish Semiring vs OrderedRing, or fail closed when ambiguous. | Substrate Manager, consumed by Grounding |
+| Bound carrier | **DONE in #1449.** `src/v3/std/substrate.dag` declares `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`. `Interval<D>` remains the shared parent and still has shape `BoundedInterval { lower: D, width: IntervalWidth } | Unbounded`; there is no `ExactInterval { lo, hi }` carrier at HEAD. | Substrate Manager (`#1130`) |
+| Program-bound parse/lower | Parsed/lowered program `Int(lo..hi)`, `Int(any)`, and platform-dependent forms expose a `BoundDeclaration` fact the fold can read. The design-doc `(lo..hi)` surface must lower into `StaticBound(BoundedInterval { lower, width })`. #1449 explicitly did not add this syntax/lowering. | Substrate / parse-lower owner, coordinated by Substrate Manager |
+| Per-target integer inhabitance rows | Rust, Python, and Go LanguageSpec rows declare source type, algebra, target realization, and `BoundDeclaration` facts for the Int-family examples. #1449 explicitly did not populate these rows. | Substrate / LanguageSpec population |
+| Algebra intent facts | Program type/refinement analysis can distinguish Semiring vs OrderedRing, or fail closed when ambiguous. This remains required for Examples 2 and 5 and was not part of #1449. | Substrate Manager, consumed by Grounding |
 | Projection extraction path | Grounding can walk the `Dag` and extract declared inhabitance rows without string-name authority. | Grounding after the rows above land |
 
-No additional substrate prerequisite surfaced beyond the queued A/B family plus
-the program-bound/algebra projection details implied by those slices. If
-Substrate lands A/B without a readable program-bound projection, Grounding should
-STOP+PING `#1130` rather than adding a local parser or string convention.
+No additional substrate prerequisite surfaced from the #1449 ground-truth walk.
+The remaining blocker set is now narrower: parse/lower a program
+`BoundDeclaration`, populate per-target inhabitance rows carrying that carrier,
+and expose algebra intent facts. If later Substrate work lands inhabitance rows
+without a readable program-bound projection, Grounding should STOP+PING `#1130`
+rather than adding a local parser or string convention.
