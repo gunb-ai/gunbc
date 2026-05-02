@@ -2338,8 +2338,13 @@ impl<'a> TestRunner<'a> {
             || (subject_lineage.as_str() == "v2_oracle_cost"
                 && oracle_lineage.as_str() == "v3_program_cost");
         if !pairing_ok {
+            // E8/W1: unsupported output producers must stay fail-closed until
+            // producer identity and typed observation normalization are declared.
+            // Dissolution targets: `rust_emit_output` -> PB-Runtime generated
+            // target-language tests; `dag_eval_output` -> PR-B eager evaluator
+            // plus witness construction.
             return ClaimResult::NotYetImplemented(format!(
-                "DifferentialEquals(cost): only the (v3_program_cost, v2_oracle_cost) lineage pairing is implemented; got ({subject_lineage}, {oracle_lineage})"
+                "DifferentialEquals: only the (v3_program_cost, v2_oracle_cost) cost lineage pairing is implemented; got ({subject_lineage}, {oracle_lineage}). Output producers such as (rust_emit_output, dag_eval_output) remain gated on explicit producer identity plus typed observation normalization; dissolution targets are PB-Runtime generated target-language tests for rust_emit_output and PR-B eager evaluator plus witness construction for dag_eval_output"
             ));
         }
 
