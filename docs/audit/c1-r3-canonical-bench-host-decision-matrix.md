@@ -76,17 +76,19 @@ Each option below has: description, hardware-stability characterization, what au
 
 The decision is PB Manager authority; this matrix does NOT pick. But to make the call actionable:
 
-- **If the decider wants the smallest authority surface and accepts the `±N`-run capture discipline of §4** → Option A (`ubicloud-standard-2`). Repo-derivable; no infra change; landed by a one-line edit. Recommended unless variance during 0c capture exceeds bracket.
-- **If the decider wants Phase 2 to be mechanically tight** → Option B (dedicated `bench-canonical-1`). Requires operator action outside repo state; budget, provisioning, runner token; flagged here as the option to escalate to Director if Phase 2 measurement variance becomes the binding concern.
+- **Recommended candidate, pending PB Manager designation: Option A (`ubicloud-standard-2`)** — smallest authority surface; repo-derivable; no infra change; landed by a one-line edit per §5.1. Also pending the §4 multi-run capture addendum being accepted into the procedure document. **This matrix does NOT satisfy R-3 by recommending A**; R-3 remains unsatisfied until the designation line lands.
+- **Escalation candidate, pending Director / operator action: Option B (dedicated `bench-canonical-1`)** — tightest variance; requires operator action outside repo state (budget, provisioning, runner token). Recommended escalation if Phase 2 measurement variance becomes the binding concern.
 - **Options C and D are recorded only to demonstrate the decision space; not recommended.**
 
 This matrix takes no position between A and B; A is the only one a docs-only PR can stand up without operator action.
 
 ---
 
-## 4. Capture-discipline addendum (Option A only)
+## 4. Capture-discipline addendum (Option A only) — *Proposed; not active until the Option A designation line lands*
 
-If Option A is chosen, the capture procedure (`docs/audit/c1-tier3-baseline-capture-procedure.md` §2) must be amended with one paragraph before the Phase-1 0c PR opens:
+The text below is a **proposal** authored by this matrix; it is not active discipline until PB Manager (i) chooses Option A via §5.1 and (ii) accepts this addendum into `docs/audit/c1-tier3-baseline-capture-procedure.md` §2 (either by editing the procedure document or by ratifying this matrix as the §2 amendment authority). Until both happen, the capture procedure §2 single-run wording stands and Phase-1 0c capture is not authorized.
+
+If Option A is chosen, the capture procedure must be amended with one paragraph before the Phase-1 0c PR opens:
 
 > **Multi-run baseline capture (Option A only).** On `ubicloud-standard-2`, capture N independent runs of `cargo bench --bench tier3_mirror_perf -p v3-compiler` (N=3 minimum, N=5 preferred) within a single calendar day to bound calendar-time hardware drift. For each bench, `median_ns` in `tier3_baseline.json` is the median across the N runs' per-run median estimates; `p99_ns` is the maximum across the N runs' per-run p99 derivations (per §2.1 path). The capture PR description records the N value chosen, the per-run JSON paths, and a one-paragraph variance receipt (max/min ratio across runs per bench). Runs are independent CI invocations on `ubicloud-standard-2`, not multiple iterations within one invocation.
 
@@ -130,4 +132,4 @@ This matrix is intentionally bounded:
 - §5 gives drop-in wording for `docs/r3-structure.md`.
 - §6 routes STOP+PING shapes if the call cannot land.
 
-**No host claimed. No CI wiring added. No runner labels added. No baseline JSON captured.** The R-3 designation remains PB Manager authority.
+**No host claimed. No CI wiring added. No runner labels added. No baseline JSON captured.** The R-3 designation remains PB Manager authority. **R-3 remains unsatisfied until a designation line per §5 lands** — this matrix recommends and routes; it does not satisfy R-3 by itself.
