@@ -2994,6 +2994,45 @@ fn nat_resolves_to_semiring_over_magnitude() {
     }
 }
 
+/// T-Numeric-Construction algebra-strength sharpening — `CommutativeSemiring<T>`
+/// exists as the stronger algebra surface for semirings whose multiplication is
+/// commutative. This PR lands only the algebra type; `Nat` remains
+/// `Semiring<Magnitude>` until the follow-up alias-sharpening slice updates the
+/// Nat ratchet at the same time.
+#[test]
+fn commutative_semiring_declares_semiring_shape_without_sharpening_nat() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let semiring = dag
+        .declaration_by_name("Semiring")
+        .expect("Semiring must remain in std.algebra");
+    let commutative = dag
+        .declaration_by_name("CommutativeSemiring")
+        .expect("CommutativeSemiring must be declared in std.algebra");
+    assert_eq!(
+        commutative.span.file, "dsl/std/algebra.dag",
+        "CommutativeSemiring must live beside the algebra hierarchy authority"
+    );
+
+    assert_eq!(
+        record_fields(&dag, "CommutativeSemiring"),
+        record_fields(&dag, "Semiring"),
+        "CommutativeSemiring adds the multiplicative-commutativity law, not a parallel field shape"
+    );
+
+    let nat = dag
+        .declaration_by_name("Nat")
+        .expect("Nat remains loaded from std.nat");
+    match &nat.connective {
+        TypeConnective::Instantiation { template, .. } => assert_eq!(
+            *template, semiring.id,
+            "This slice intentionally does not sharpen Nat to CommutativeSemiring; \
+             the follow-up alias PR must update this ratchet with the Nat declaration"
+        ),
+        other => panic!("Nat must remain an algebra instantiation in this slice, got {other:?}"),
+    }
+}
+
 /// T-Numeric-Construction `GroupCompletion<M>` substrate-introduction —
 /// the Shape C opaque atom recommended by the Slice 3 prerequisite audit
 /// (`docs/audit/t-numeric-construction-group-completion-6q.md`).
