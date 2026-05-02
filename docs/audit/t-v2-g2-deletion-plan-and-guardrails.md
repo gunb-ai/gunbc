@@ -82,7 +82,7 @@ These checks are not new tests — they are existing CI/grep invocations that MU
 | Gd-3 | `Cargo.lock` no longer references v2 | `grep -n 'v2-compiler' Cargo.lock` returns zero matches. |
 | Gd-4 | SG-0 census still passes | `cargo test -p v3-compiler --test integration sg0_census_test` green; the census root `src/v3/compiler` is unchanged by this PR. |
 | Gd-5 | `fmt`, `ci`, `v3`, `self_host_ratchet` all green | Standard CI matrix on the deletion PR. |
-| Gd-6 | PR description includes the §1 STOP-condition green-receipt table | Each S-1..S-4 + G-1 row links to the merged PR or closure-ledger receipt that took it green. Reviewer rejects the PR if any row is unevidenced. |
+| Gd-6 | PR description includes the §1 STOP-condition green-receipt table | Each of the 7 §1 rows — S-1, S-2, S-3, S-4, G-1, G-2-prereq-emit, G-2-prereq-verif — links to the merged PR or closure-ledger receipt that took it green. Reviewer rejects the PR if any row is unevidenced. |
 | Gd-7 | No `--no-verify` push, no force-push to deletion branch | Standard repo discipline. |
 
 Gd-1 verification command (kept outside the table to avoid markdown pipe-escape pitfalls; in `grep -E`, `\|` is a literal `|` not alternation, so the in-table form silently misses one of the alternatives):
@@ -117,7 +117,7 @@ Green: returns zero matches that aren't already in the PR's deletion diff.
 
 ## 6. Routing question (single, for PB Manager)
 
-**Who signs off on Gd-6?** Standing review cadence (CI + scheduled-review providers) covers Gd-1..Gd-5 and Gd-7. Gd-6 (STOP-condition green-receipt table) requires a human sign-off that all 5 receipts are valid. **Single-reviewer rule: PB Manager owns Gd-6 sign-off** on the deletion PR; ambiguous-ownership reviews are not acceptable. Director involvement is escalation-only — if PB Manager finds the receipt-table *format itself* under-specified at deletion time, escalate format ratification to Director once and apply the ratified format on subsequent reviews; Gd-6 sign-off authority remains PB Manager.
+**Who signs off on Gd-6?** Standing review cadence (CI + scheduled-review providers) covers Gd-1..Gd-5 and Gd-7. Gd-6 (STOP-condition green-receipt table) requires a human sign-off that all 7 receipts (S-1, S-2, S-3, S-4, G-1, G-2-prereq-emit, G-2-prereq-verif) are valid. **Single-reviewer rule: PB Manager owns Gd-6 sign-off** on the deletion PR; ambiguous-ownership reviews are not acceptable. Director involvement is escalation-only — if PB Manager finds the receipt-table *format itself* under-specified at deletion time, escalate format ratification to Director once and apply the ratified format on subsequent reviews; Gd-6 sign-off authority remains PB Manager.
 
 ---
 
@@ -125,7 +125,7 @@ Green: returns zero matches that aren't already in the PR's deletion diff.
 
 This plan is intentionally minimal:
 
-- §1: STOP conditions re-stated; deletion PR may not open until all 5 are green (verified at HEAD).
+- §1: STOP conditions re-stated; deletion PR may not open until all 7 (S-1..S-4 + G-1 + G-2-prereq-emit + G-2-prereq-verif) are green (verified at HEAD).
 - §2: Deletion PR shape — single atomic PR, three structural file-system operations, explicit out-of-scope list, bounded Population C sweep.
 - §3: 7 fail-closed CI guardrails (Gd-1…Gd-7).
 - §4: 7-day rollback window via `git revert`; beyond that, treat as fresh reintroduction.
