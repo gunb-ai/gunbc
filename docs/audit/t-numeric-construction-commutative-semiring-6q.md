@@ -1,7 +1,7 @@
 # T-Numeric-Construction — CommutativeSemiring 6Q
 
 **Date:** 2026-05-02
-**Authority:** `docs/design-numeric-construction.md` and #1399 review follow-up.
+**Authority:** [`docs/design-numeric-construction.md`](../design-numeric-construction.md) and #1399 review follow-up.
 **Scope:** substrate algebra-strength declaration only. No `Nat` alias sharpening in this PR.
 
 ## Decision
