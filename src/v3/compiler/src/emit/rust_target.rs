@@ -2648,6 +2648,20 @@ fn callable_input_disposition_for_target(
 
 pub(crate) type EmitRustMode = EmitMode;
 
+/// Top-level value `Bind` nodes that participate in Rust program-mode emission, in `Dag::nodes`
+/// order. **Single selector** for `emit_rust_with_mode` and W1 (`last_emit_rust_program_top_level_value_bind_name`).
+fn program_mode_top_level_value_binds<'a>(
+    dag: &'a Dag,
+    indexes: &RealizationIndexes,
+) -> Vec<&'a crate::dag::BindNode> {
+    dag.nodes()
+        .iter()
+        .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
+        .filter(|b| b.params.is_empty())
+        .collect()
+}
+
 pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<String, EmitError> {
     let indexes = RealizationIndexes::build(dag)?;
     if !indexes.execution.is_lexically_scoped() {
@@ -2703,13 +2717,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
             )
         })
         .collect();
-    let top_level_binds: Vec<&crate::dag::BindNode> = dag
-        .nodes()
-        .iter()
-        .filter_map(Behavior::as_bind)
-        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
-        .filter(|b| b.params.is_empty())
-        .collect();
+    let top_level_binds = program_mode_top_level_value_binds(dag, &indexes);
 
     if mode == EmitRustMode::Program && top_level_binds.is_empty() {
         return Err(EmitError::UnsupportedBehavior(
@@ -2851,6 +2859,18 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
         sections.push(main_program);
     }
     Ok(join_rendered(&sections, " "))
+}
+
+/// Name of the last top-level **value** `Bind` that `emit_rust` program-mode `main` prints — uses
+/// `program_mode_top_level_value_binds` (same vector construction as `emit_rust_with_mode`). W1
+/// `rust_emit_output` consults this so the runner cannot drift from emission.
+pub(crate) fn last_emit_rust_program_top_level_value_bind_name(
+    dag: &Dag,
+) -> Result<Option<String>, EmitError> {
+    let indexes = RealizationIndexes::build(dag)?;
+    Ok(program_mode_top_level_value_binds(dag, &indexes)
+        .last()
+        .map(|b| b.name.clone()))
 }
 
 /// Bundled emission context. Carries the typed indexes, substrate
