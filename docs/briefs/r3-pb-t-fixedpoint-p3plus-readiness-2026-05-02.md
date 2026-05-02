@@ -43,7 +43,7 @@ Expect **no** `MISSING` lines. If any path is absent on your checkout, **STOP** 
 
 ## Joint ledger + staging preconditions (authoritative STOP)
 
-Per `docs/briefs/r3-pb-t-fixedpoint-worker.md` §Dispatch preconditions (same numbering as `docs/r3-structure.md` §"R3 worker dispatch precondition"), **T-FixedPoint worker dispatch** still requires a **single** R2 Release Manager closure-ledger read showing **(1)–(4)** simultaneously (R2 close, R2-Evaluator landed and stable, T-LensProducer-Retirement / SG-0 = 0, **R2-Grounding-Rust and R2-Grounding-Python both closed**).
+Per `docs/briefs/r3-pb-t-fixedpoint-worker.md` §Dispatch preconditions **(1)–(4)** (PB Manager ledger read), aligned with the **Evaluator + Rust + Python** floor in `docs/r3-structure.md` §"R3 worker dispatch precondition", **T-FixedPoint worker dispatch** still requires a **single** R2 Release Manager closure-ledger read showing **(1)–(4)** simultaneously (R2 close, R2-Evaluator landed and stable, T-LensProducer-Retirement / SG-0 = 0, **R2-Grounding-Rust and R2-Grounding-Python both closed**).
 
 The P1/P2 readiness note already concluded **P1** and **P2** are **not** clear for T-FixedPoint-owned promotion work. The worker brief explicitly states **P3 does not start** while P1 or P2 is incomplete. This P3+ slice therefore **inherits** those STOP gates: the **ledger preconditions (1)–(4)** are still **unmet** for purposes of authorizing a bounded **P3 implementation** cadence.
 
