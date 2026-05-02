@@ -84,6 +84,39 @@ type ParameterDisposition
   = Borrowed
   | Consumed
 
+// 🟢 TERMINAL at string-family diagnostic-ordering axis scope. Ownership is a
+// target-row property for string-family candidates, distinct from callable
+// `ParameterDisposition`: it classifies the candidate carrier itself, not how a
+// callee receives one argument. Rows land in target specs later; this slice
+// only provides canonical structural values so consumers do not normalize
+// strings locally.
+type StringOwnershipAxis
+  = Owned
+  | Borrowed
+
+// 🟢 TERMINAL at string-family diagnostic-ordering axis scope. These are the R2
+// lifetime roles shared by lifetime analyzer facts and future target rows.
+// `SelfContained` avoids leaking Rust's `Self_` identifier escaping into the
+// substrate vocabulary; `Caller` names the call-frame-bounded role.
+type StringLifetimeAxis
+  = SelfContained
+  | Caller
+
+// 🟢 TERMINAL at string-family diagnostic-ordering axis scope. `NotApplicable`
+// is an explicit value, not absence: borrowed candidates and returns can say
+// the growability axis does not apply without becoming unknown.
+type StringGrowabilityAxis
+  = Growable
+  | Fixed
+  | NotApplicable
+
+// 🟢 TERMINAL at R2 string-family encoding scope. The design-doc correction
+// makes `.dag` `String` the `FreeMonoid<Char>` family; this value names the
+// UTF-8 target-row semantics consumed by the analyzer/fold bridge. Additional
+// byte or target-specific encodings belong in later LanguageSpec rows.
+type StringEncodingAxis
+  = Utf8FreeMonoidChar
+
 type TypeInstantiationRealization {
   language: DeclarationRef
   target: DeclarationRef
