@@ -3048,9 +3048,9 @@ fn int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat() {
 fn rational_resolves_to_field_over_int() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
-    let rational = dag.declaration_by_name("Rational").expect(
-        "`Rational` missing from full bootstrap (T-Numeric-Construction Slice 4)",
-    );
+    let rational = dag
+        .declaration_by_name("Rational")
+        .expect("`Rational` missing from full bootstrap (T-Numeric-Construction Slice 4)");
     assert_eq!(
         rational.span.file, "dsl/std/rational.dag",
         "Rational must live in dsl/std/rational.dag, not in a parallel authority"
@@ -3099,8 +3099,6 @@ fn rational_resolves_to_field_over_int() {
                  or fixed-width row"
             );
         }
-        other => panic!(
-            "Rational must lower to a Field instantiation; got {other:?}"
-        ),
+        other => panic!("Rational must lower to a Field instantiation; got {other:?}"),
     }
 }
