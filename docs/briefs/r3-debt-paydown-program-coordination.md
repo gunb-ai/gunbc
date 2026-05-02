@@ -34,7 +34,7 @@ A **tracked-debt row** is a ROADMAP entry that satisfies the following predicate
 The current ROADMAP heading shapes that satisfy this predicate (enumerated explicitly so the manager has a concrete starting set, not an inferential one):
 
 - `### Post-merge debt (...)` sections.
-- `## Tracked debts — <period> analyses` section, including its `### PR #<N>` ship-with-debt-receipt sub-rows.
+- `## Tracked debts — <period> analyses` section's predicate-passing sub-rows only (currently `### PR #<N>` ship-with-debt-receipt sub-rows + `### P0` through `### P4` priority-category sections nested under it). The parent `## Tracked debts` container is **not itself** a debt row, and predicate-failing sub-rows under it (e.g. `### Debt classification — framing` at line 328, or any future "practice, not a debt" / "reviewer-noise class" / similar non-enumerative subheading) are excluded per the predicate above even though they sit under a debt-bearing parent.
 - `### P0` / `### P1` / `### P2` / `### P3` / `### P4` priority-category sections (real bugs / fabrication boundaries / structural compression / modeling gaps / type refinement — currently at ROADMAP lines 350-379).
 - `## Active deferrals — follow-up work from merged PRs` (`DB-*` deferral ledger; currently at ROADMAP line 276 with one-line entries pointing at `docs/db-history/db-<N>.md`).
 - `## Scheduled deletions — scaffolds with named dissolution triggers` (currently at ROADMAP line 298; pointer to external table at `docs/history/roadmap-scheduled-deletions.md`).
