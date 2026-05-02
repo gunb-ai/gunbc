@@ -97,7 +97,7 @@ The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) already parametrizes
 
 Each lens's existing carrier (per the `Lens<C>` framework) is also the budget type for `apply_lens` — the application surface inherits the structural typing without adding new carriers per lens.
 
-The lens declaration names its `budget_type`. When the type-checker sees a `SectionedLensApplication` with `config = Enforce { budget: b, ... }`, it verifies `b inhabits lens.budget_type`. Any mismatch is a fail-closed diagnostic at authoring time. (No type-checking is needed for the `Introspect` variant — there is no budget to compatibility-check; introspection runs the lens and emits its value, no comparison.)
+Lens-budget compatibility is **structural by construction**: `SectionedLensApplication<C>` and `ApplicationConfig<C>` share the type parameter `C`, so a lens of type `Lens<AsymptoticClass>` can only pair with `Enforce { budget: AsymptoticClass, ... }`. Mismatched pairs (e.g., complexity-lens with a `SymbolicCost` budget) are unrepresentable in the carrier — the type system rejects them at parse/inference time, not via a separate type-checker rule on a `budget_type` field. (No `budget_type: DeclarationId` field on `Lens<C>` is needed; the parameter `C` IS the structural authority.) For the `Introspect` variant there is no budget to compatibility-check — introspection runs the lens and emits its value, no comparison.
 
 ## §3. Violation policy under fail-closed discipline
 
@@ -110,12 +110,12 @@ The user reframe initially named the violation-policy axis as `CompileError | Wa
 The fail-closed-compatible enumeration is therefore binary, not ternary — and the budget is bundled INTO the `Enforce` variant by construction (per §2 above), making "Enforce without budget" and "Introspect with budget" structurally unrepresentable:
 
 ```dag
-type ApplicationConfig
-  = Enforce { budget: LensBudget, diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
-  | Introspect                                                                  // computes lens value; no budget; no diagnostic
+type ApplicationConfig<C>
+  = Enforce { budget: C, diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
+  | Introspect                                                         // computes lens value; no budget; no diagnostic
 ```
 
-The pairing of `budget` with `Enforce` (and its absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no `Enforce + None` or `Introspect + Some(...)` combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`).
+The pairing of `budget` with `Enforce` (and its absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no `Enforce + None` or `Introspect + Some(...)` combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`). Equally, the type parameter `C` ties `Enforce.budget`'s type to the `Lens<C>` it pairs with at the `SectionedLensApplication<C>` site (per §2) — lens/budget mismatch is also unrepresentable.
 
 `DiagnosticSeverity` is a single-variant nominal carrier (only `Error`). It exists as a refinement-extension point so future *non-fail-closed* surfaces (if ever added — none currently planned) can extend without changing the `Enforce` carrier shape. Per `feedback_no_annotations` and `feedback_no_metadata_markers`, the single-variant carrier is structurally honest: there is exactly one severity, named.
 
@@ -259,7 +259,7 @@ This explicit application overrides the synthesized default for `my_function`. T
 
 This lane is **cross-program** between Substrate Manager and Verification Manager (per [`docs/r3-structure.md`](r3-structure.md) lane 16):
 
-- **Substrate Manager owns**: the `SectionedLensApplication` / `SectionRef` / `ApplicationConfig` carriers in `src/v3/std/lens_application.dag`; the compiler-side lens-fold integration; the per-lens `budget_type` declaration extension.
+- **Substrate Manager owns**: the `SectionedLensApplication<C>` / `SectionRef` / `ApplicationConfig<C>` parametric carriers in `src/v3/std/lens_application.dag`; the compiler-side lens-fold integration. (No `Lens<C>.budget_type` field — the type parameter `C` is the structural authority for budget compatibility.)
 - **Verification Manager owns**: the closure-gate TestClaims (`complexity_violation_compile_error_demonstrated`, `crdt_cost_basis_demonstrated`, `memory_peak_cost_basis_demonstrated`, `opt_in_iteration_parallelism_via_lens_application_demonstrated`); cross-target equivalence on lens-application semantics (does Rust-emitted code respect the budget in the same way Python-emitted does?).
 
 The split mirrors the existing T-CostLens-Composition split: substrate authors carriers + fold semantics, Verification asserts the demonstrations.
@@ -348,13 +348,13 @@ This document does NOT modify:
 
 - The existing `Lens<C>` carrier shape (per T-Substrate-Lens-Primitive — that is R2 work already complete).
 - The existing file-glob `LensApplication` carrier (per [`docs/lens-library-design.md`](lens-library-design.md) §3 — sibling, not replacement).
-- Per-lens budget types (each lens owns its own `LensBudget` definition; this doc only specifies the dispatch carrier `ApplicationConfig`).
+- Per-lens budget types — each lens's existing `Lens<C>` carrier IS the budget type; this doc only specifies the parametric dispatch carrier `ApplicationConfig<C>`. No new per-lens budget carriers.
 
 ## §10. Implementation order (sketch)
 
 Within T-Lens-Application-Surface lane (per [`docs/r3-structure.md`](r3-structure.md) closure gates):
 
-1. **Substrate carriers landing** (`lens_application_carrier_landed`, `section_ref_substrate_landed`). Author `src/v3/std/lens_application.dag` per §2. Type-checker integration: `Lens<C>.budget_type` field added; `(lens, section)` single-authority enforcement at parse time.
+1. **Substrate carriers landing** (`lens_application_carrier_landed`, `section_ref_substrate_landed`). Author `src/v3/std/lens_application.dag` per §2 — `SectionedLensApplication<C>` + `SectionRef` + `ApplicationConfig<C>` parametric in lens carrier `C`. Type-checker integration: `(lens, section)` single-authority enforcement at parse time. (Lens-budget compatibility is structural via the shared `C`; no `budget_type` field on `Lens<C>`.)
 2. **Fold-pass integration** (`application_config_violation_policy_routing`). Extend the lens-fold pass to walk `SectionedLensApplication` declarations + emit Diagnostics on `Enforce`-mode budget violations + record lens values on `Introspect`-mode. Synthesized default-application per §5.1.
 3. **Worked example #1: complexity contract** (`complexity_violation_compile_error_demonstrated`). TestClaim per §4.1.
 4. **Worked example #2: CRDT cost basis** (`crdt_cost_basis_demonstrated`). TestClaim per §4.2.
