@@ -1034,14 +1034,15 @@ fn field_value_contains_undischarged_scalar_literal(
         crate::dag::FieldValue::Variant {
             constructor,
             payload,
-        } => variant_payload_fields_for_lowering(dag, *constructor).is_some_and(|fields| {
-            payload
-                .iter()
-                .zip(fields.iter())
-                .any(|(value, (_, field_type))| {
-                    field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
-                })
-        }),
+        } => variant_payload_fields_for_lowering(dag, *constructor, Some(expected_type))
+            .is_some_and(|fields| {
+                payload
+                    .iter()
+                    .zip(fields.iter())
+                    .any(|(value, (_, field_type))| {
+                        field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
+                    })
+            }),
     }
 }
 
@@ -3837,7 +3838,11 @@ fn lower_structural_field_value(
                     return None;
                 }
             };
-        let payload_fields = match variant_payload_fields_for_lowering(dag, variant_decl_id) {
+        let payload_fields = match variant_payload_fields_for_lowering(
+            dag,
+            variant_decl_id,
+            Some(expected_type),
+        ) {
             Some(fields) => fields,
             other => {
                 report_declaration_error(
@@ -5810,11 +5815,36 @@ fn lower_field_projection_from_port(
     output
 }
 
+/// Pushes template argument frames from any outer `Instantiation` chain (outer → inner template)
+/// so payload fields that use type parameters from the instantiated outer type resolve correctly.
+fn push_lower_subst_instantiation_prefix(
+    dag: &Dag,
+    mut ty: DeclarationId,
+    subst: &mut LowerSubstStack,
+) {
+    for _ in 0..32 {
+        match &dag.declaration(ty).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                ty = *template;
+            }
+            _ => break,
+        }
+    }
+}
+
 fn variant_payload_fields_for_lowering(
     dag: &Dag,
     variant_decl: DeclarationId,
+    outer_instantiated_type: Option<DeclarationId>,
 ) -> Option<Vec<(String, DeclarationId)>> {
     let mut subst = LowerSubstStack::default();
+    if let Some(outer) = outer_instantiated_type {
+        push_lower_subst_instantiation_prefix(dag, outer, &mut subst);
+    }
     let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
     let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
         return None;
@@ -6608,7 +6638,9 @@ fn lower_variant_record_expr(
             },
         );
     };
-    let Some(expected_fields) = variant_payload_fields_for_lowering(dag, variant_decl) else {
+    let Some(expected_fields) =
+        variant_payload_fields_for_lowering(dag, variant_decl, expected_decl)
+    else {
         return unresolved_port(
             dag,
             Diagnostic::ResolveError {
