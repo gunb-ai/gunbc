@@ -47,7 +47,7 @@ with Substrate Manager / `#1130`.
 | `Interval<D>` shared parent | Yes, in `src/v3/std/substrate.dag` | Generic `Interval<D>` exists as `BoundedInterval { lower: D, width: IntervalWidth } | Unbounded`; it is not a concrete `Interval<Int>` row and is not yet consumed by Coercion-Fold inhabitance selection. |
 | `BoundDeclaration = StaticBound(Interval<Int>) \| PlatformDependent` | **Yes, landed in #1449** | `src/v3/std/substrate.dag` declares the carrier. Ground-truth at HEAD: `StaticBound` wraps the shared `Interval<Int>` parent; `Interval<D>` remains `BoundedInterval { lower: D, width: IntervalWidth } \| Unbounded`. #1449 did not introduce an `ExactInterval { lo, hi }` shape. |
 | Program syntax / lowering for `Int(lo..hi)` to `BoundDeclaration` | No for this fold | #1449 explicitly did not add parser/lowerer syntax for `Int(lo..hi)`, `Int(any)`, or `Int(platform)`. Design-doc `(lo..hi)` syntax must lower into `StaticBound(BoundedInterval { lower, width })` before Grounding can read it structurally. |
-| Per-target integer inhabitance rows with algebra + bound facts | No for the required full family | `src/v3/spec/{rust,python,go}.dag` has broad `TypeRealization` rows such as `rust_int`, `python_int`, `go_int`. Rust also has a narrow `rust_uint8` / `UInt8` row. None of these rows carry the design-doc `BoundDeclaration` facts, and the needed family rows (`RustI32`, `RustU32`, `PythonInt`, `GoInt32`, etc.) are not declared. Owner: Substrate / LanguageSpec population. |
+| Per-target integer inhabitance rows with algebra + bound facts | Partial, landed in #1459 | `src/v3/std/emit_model.dag` declares `TargetIntegerTypeInhabitance { language, kernel_integer, algebra, bound, type_realization }` and `TargetIntegerInhabitanceBound = BoundUnspecified | StaticBoundFact(IntInterval)`. `src/v3/spec/{rust,python,go}.dag` includes Example 8 i32-range rows for Rust/Python/Go. Rust also has `u32` and unspecified signed rows, and Python has an unbounded row. Full dissolution remains blocked on program-bound parse/lower and algebra intent; Examples 1/2/5/6 are not all dispatchable from real program facts yet. Owner: Substrate / LanguageSpec population for remaining rows as needed. |
 | Algebra resolution facts for signedness ambiguity | Not enough for Example 5 | Need declared relationship between program Int aliases/refinements and algebra families before the fold can fail closed on algebra structurally. |
 | Inhabitance-search infrastructure | No production path | `fold_program_to_target` currently accepts a scratch projection and ignores the `Dag`. A real path needs typed extraction of LanguageSpec inhabitance rows and a pure candidate-filter pipeline. |
 | Diagnostic payload richness | Partial | Substrate has `UnderRefined` / `NoInhabitant`, but the lane-local mirror currently carries only the minimal fields used by scratch tests. Candidate lists and hints can follow after structural selection exists. |
@@ -66,7 +66,7 @@ pub struct DeclaredLanguageSpecProjection {
 pub struct TargetTypeInhabitance {
     pub target_type: DeclarationRef,
     pub algebra: DeclarationRef,
-    pub bound: Option<BoundDeclarationRef>,
+    pub bound: TargetIntegerInhabitanceBoundRef,
     pub realization: TargetInhabitanceRef,
 }
 ```
@@ -77,7 +77,10 @@ The exact Rust API can differ, but the authority shape should be:
 - `type_inhabitances` is extracted from `src/v3/spec/{target}.dag` LanguageSpec
   data, not authored in Rust.
 - `algebra` identifies the algebra family used for candidate selection.
-- `bound` carries the `BoundDeclaration` fact when the inhabitance is bounded.
+- `bound` carries the #1459 row-level `TargetIntegerInhabitanceBound` fact:
+  `BoundUnspecified` or `StaticBoundFact(IntInterval)`. The static-bound payload
+  uses the same `Interval<Int>` shape as `BoundDeclaration`; the row does not
+  embed `BoundDeclaration` directly.
 - `realization` is the target carrier emitted after a unique candidate is found.
 
 This projection is a read model over substrate rows. It should not invent target
@@ -88,24 +91,30 @@ choices or fallback defaults.
 Example 8 requires a single predicate:
 
 ```text
-match_bound(program_bound: BoundDeclaration, target_bound: BoundDeclaration) -> MatchResult
+match_bound(
+  program_bound: BoundDeclaration,
+  target_bound: TargetIntegerInhabitanceBound
+) -> MatchResult
 ```
 
 Expected semantics:
 
-- `StaticBound(Interval<Int>)` matches only the same static interval for emission.
-  At HEAD this means exact equality on `BoundedInterval { lower, width }` or the
-  shared `Unbounded` variant; there is no `ExactInterval { lo, hi }` carrier.
+- `StaticBoundFact(Interval<Int>)` on a target row matches only the same program
+  `BoundDeclaration::StaticBound(Interval<Int>)` for emission. At HEAD this
+  means exact equality on `BoundedInterval { lower, width }` or the shared
+  `Unbounded` variant; there is no `ExactInterval { lo, hi }` carrier.
+- `BoundUnspecified` is evidence for missing-bound diagnostics; it must not
+  satisfy exact-bound Example 8 selection.
 - `PlatformDependent` is distinct from static intervals; it cannot be silently
   treated as unbounded or as a host-machine integer.
 - ordering / nearest-wider relations are diagnostic-only and must not select an
   emission target.
 
-This predicate shape is now implementable over the carrier landed in #1449, but
-it is not yet dispatchable end-to-end: program bounds are not lowered into
-`BoundDeclaration`, and per-target inhabitance rows do not carry bound
-declarations. Grounding can implement the fold body only after those remaining
-facts land.
+This predicate shape is now implementable for a synthetic Example 8 program
+bound over the carriers landed in #1449 and #1459. It is not yet dispatchable
+end-to-end for real source programs: program bounds are not lowered into
+`BoundDeclaration`, and algebra intent remains unavailable for the other
+examples.
 
 ## Slice Sequencing
 
@@ -119,8 +128,10 @@ facts land.
    Owner: Substrate / LanguageSpec population. Add Rust, Python, and Go integer
    inhabitance rows carrying algebra and `BoundDeclaration` facts. Include the
    rows needed by Examples 1, 2, 5, 6, and 8 first. This is also outside
-   Grounding's authority unless explicitly delegated by Substrate. Still open
-   after #1449.
+   Grounding's authority unless explicitly delegated by Substrate. **Partial in
+   #1459:** target rows use `TargetIntegerInhabitanceBound`, not
+   `BoundDeclaration` directly, and Example 8's cross-target i32-range rows are
+   present.
 
 3. **Slice B.5: program-bound parse/lower and algebra intent projection.**  
    Owner: Substrate / parse-lower, coordinated by Substrate Manager. Lower
@@ -129,11 +140,13 @@ facts land.
    ambiguity diagnostic. Still open after #1449.
 
 4. **Slice C: declared projection reader.**  
-   Owner: Grounding after the remaining Slice B/B.5 prerequisites land. Replace
-   `ScratchIntExamples` with a declared projection extracted from the `Dag`.
-   Keep `Undeclared` fail-closed. Add tests that construct or load the minimal
-   LanguageSpec rows and assert the same outputs currently covered by scratch
-   examples.
+   Owner: Grounding after the remaining Slice B/B.5 prerequisites land. A
+   partial Example 8-only Slice C is unblocked by #1459 because its target rows
+   now exist; it should keep Examples 1/2/5/6 on the scratch path. Full Slice C
+   replaces `ScratchIntExamples` with a declared projection extracted from the
+   `Dag`, keeps `Undeclared` fail-closed, and adds tests that construct or load
+   the minimal LanguageSpec rows and assert the same outputs currently covered
+   by scratch examples.
 
 5. **Slice D: remove scratch driver.**  
    Owner: Grounding. Delete `IntScratchExample`, the hardcoded
@@ -152,9 +165,10 @@ Unblocked today:
 Blocked on Substrate:
 
 - Program-bound parse/lower into the landed `BoundDeclaration` carrier.
-- Per-target integer inhabitance row population.
+- Remaining per-target integer inhabitance row population beyond the #1459
+  Example 8 set.
 - Real algebra disambiguation for Example 5.
-- Cross-target Example 8 selection as a single structural predicate.
+- Full cross-target selection from real lowered program facts.
 
 Grounding should STOP+PING `#1130` rather than self-authoring substrate facts if
 an implementation slice needs any of the blocked items above.
