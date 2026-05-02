@@ -240,15 +240,16 @@ pub fn analyze_symbolic_cost_dimension(
 /// `analyze_tenant_flow` / `analyze_ifc`) without introducing a
 /// parallel analyzer.
 ///
-/// **Pre-E5.** This entrypoint does **not** depend on `eval_node` /
-/// `evaluate_body` Loop coverage (E5) or Bind coverage. The
+/// **Lens-spine, not body-evaluator-driven.** This entrypoint does
+/// **not** depend on `eval_node` / `evaluate_body` at all — the
 /// symbolic-cost lens (`lens_cost_symbolic_generated.rs`) walks the
-/// program DAG structurally; programs containing `Behavior::Loop`
-/// produce `SymbolicCostLookup::Hit(cost)` through the lens-spine path
-/// even while `eval_node` would fail-closed `UnsupportedBehavior` on
-/// the same node. Switch to `analyze_with_evaluator` (post-E5) when
-/// that path lands; until then this lens-spine wrapper is the
-/// single-authority entrypoint.
+/// program DAG structurally and produces `SymbolicCostLookup::Hit(cost)`
+/// for every reachable behavior including `Loop`. Even now that
+/// `eval_node` dispatches `Behavior::Loop` (E5 landed), this wrapper
+/// remains the single-authority complexity entrypoint until
+/// `analyze_with_evaluator` (the body-evaluator-driven form) lands;
+/// at that point this lens-spine wrapper either dissolves or stays as
+/// the not-evaluator-driven path for cost specifically.
 ///
 /// **Diagnostics.** `DimensionFail.violations` carries typed
 /// [`Diagnostic`] entries; tests must assert by typed pattern match,
