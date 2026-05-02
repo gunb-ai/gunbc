@@ -2593,6 +2593,11 @@ impl<'a> TestRunner<'a> {
             || (subject_lineage.as_str() == "v2_oracle_cost"
                 && oracle_lineage.as_str() == "v3_program_cost");
         if !pairing_ok {
+            // E8/W1: unsupported output producers must stay fail-closed until
+            // producer identity and typed observation normalization are declared.
+            // Dissolution targets: `rust_emit_output` -> PB-Runtime generated
+            // target-language tests; `dag_eval_output` -> PR-B eager evaluator
+            // plus witness construction.
             return ClaimResult::NotYetImplemented(format!(
                 "DifferentialEquals: unsupported producer pairing ({subject_lineage}, {oracle_lineage}); \
                  implemented: (v3_program_cost, v2_oracle_cost) Lane-E cost parity and \
