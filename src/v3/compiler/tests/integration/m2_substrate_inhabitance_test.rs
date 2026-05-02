@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
@@ -7,15 +7,17 @@ use v3_compiler::dag::{
     merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
     promote_to_strict, size_bound_param, sub_value_relation_to_call_pattern, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
-    CardinalityBound, DescentEvidence, FieldValue, Interval, IntervalWidth, IterationDimension,
-    IterationPrimitive, LoweringTarget, PositiveDescentAmount, PositiveIntervalWidth,
-    ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation, TypeConnective, ValueBody,
+    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
+    IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget, PositiveDescentAmount,
+    PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
+    TypeConnective, ValueBody,
 };
 use v3_compiler::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
 use v3_compiler::parse_surface;
 use v3_compiler::CompileError;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
+use v3_compiler::SourceSpan;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
 fn with_full_bootstrap_stack<F, R>(f: F) -> R
@@ -1701,6 +1703,108 @@ fn substrate_coproducts_match_runtime_carriers() {
                 ],
             ),
         ]
+    );
+}
+
+// ValueBody mirror audit: on-disk `src/v3/std/substrate.dag` `type ValueBody` vs `dag::ValueBody`
+// (Evaluator retirement / R3 debt paydown #1531). Complements `sum_variants(…, "ValueBody")` above.
+const SUBSTRATE_VALUEBODY_SOURCE: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../std/substrate.dag");
+
+fn substrate_value_body_constructors_from_source() -> Vec<String> {
+    let substrate = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/substrate.dag"));
+    let start = substrate
+        .find("type ValueBody")
+        .unwrap_or_else(|| panic!("{SUBSTRATE_VALUEBODY_SOURCE}: missing `type ValueBody`"));
+    let tail = &substrate[start..];
+    let end = tail.find("\n// Type substrate.").unwrap_or_else(|| {
+        panic!("{SUBSTRATE_VALUEBODY_SOURCE}: missing `// Type substrate.` after ValueBody")
+    });
+    let block = &tail[..end];
+    let mut out = Vec::new();
+    for line in block.lines() {
+        let t = line.trim_start();
+        if !(t.starts_with('=') || t.starts_with('|')) {
+            continue;
+        }
+        let rest = t.trim_start_matches(['=', '|']).trim_start();
+        let name = rest
+            .split(|c: char| c == '(' || c == '{' || c.is_whitespace())
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                panic!("{SUBSTRATE_VALUEBODY_SOURCE}: malformed ValueBody variant line: {line:?}")
+            });
+        out.push(name.to_string());
+    }
+    out
+}
+
+fn rust_value_body_variant_tag(body: &ValueBody) -> &'static str {
+    match body {
+        ValueBody::Unparsed(_) => "Unparsed",
+        ValueBody::Structural { .. } => "Structural",
+        ValueBody::Scalar(_) => "Scalar",
+        ValueBody::List(_) => "List",
+        ValueBody::Map(_) => "Map",
+    }
+}
+
+fn sample_value_body_instances_covering_all_rust_variants() -> Vec<ValueBody> {
+    let span = SourceSpan::new("m2_value_body_mirror_audit.v3", 0, 1);
+    vec![
+        ValueBody::Unparsed(span),
+        ValueBody::Structural { fields: Vec::new() },
+        ValueBody::Scalar(LiteralBits::Int(0)),
+        ValueBody::List(Vec::new()),
+        ValueBody::Map(FieldMap::from_entries(Vec::new()).expect("empty FieldMap")),
+    ]
+}
+
+#[test]
+fn substrate_value_body_sum_matches_parsed_constructors() {
+    let parsed = substrate_value_body_constructors_from_source();
+    assert_eq!(
+        parsed,
+        vec![
+            "ValueBodyUnparsed".to_string(),
+            "ValueBodyStructural".to_string(),
+            "ValueBodyMap".to_string(),
+        ],
+        "`{SUBSTRATE_VALUEBODY_SOURCE}` `type ValueBody` must expose exactly these three constructors until substrate regen adds Scalar/List; update this ratchet when the sum changes"
+    );
+}
+
+#[test]
+fn rust_value_body_runtime_variants_are_exhaustively_tagged() {
+    let tags: HashSet<&str> = sample_value_body_instances_covering_all_rust_variants()
+        .iter()
+        .map(|b| rust_value_body_variant_tag(b))
+        .collect();
+    assert_eq!(
+        tags,
+        HashSet::from(["Unparsed", "Structural", "Scalar", "List", "Map"]),
+        "dag::ValueBody gained/lost a variant — update rust_value_body_variant_tag + this test"
+    );
+}
+
+#[test]
+fn value_body_substrate_rust_mirror_audit_documents_known_gap() {
+    let substrate_constructors = substrate_value_body_constructors_from_source();
+    let rust_tags: HashSet<&str> = sample_value_body_instances_covering_all_rust_variants()
+        .iter()
+        .map(|b| rust_value_body_variant_tag(b))
+        .collect();
+
+    assert_eq!(substrate_constructors.len(), 3);
+    assert_eq!(rust_tags.len(), 5);
+
+    // Missing generation surface (Disposition #1 debt paid target / Evaluator retirement):
+    // extend `substrate.dag` + bootstrap/regen when `ValueBodyScalar` / `ValueBodyList` (and
+    // refined map carrier) are generated from the Rust mirror — see `dag.rs` ValueBody docs.
+    assert!(
+        rust_tags.contains("Scalar") && rust_tags.contains("List"),
+        "Rust carries Scalar/List top-level bodies; substrate sum must eventually reflect them"
     );
 }
 
