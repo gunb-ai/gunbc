@@ -18,7 +18,7 @@
 |---|---|
 | Tested behavior | `derive_bound(param, branches, factor, work_exponent) -> CostBound`: P3 fail-closed; rejects non-positive branch counts (`0`, `-3`), invalid work exponents, plus `master_theorem` boundary cases. From v2 `std_induction`. |
 | v3-side substrate analog | **LIVE** — `fn derive_bound(...)` declared at `src/v3/std/induction.dag:897`; `fn master_theorem(form: RecurrenceForm) -> CostBound` at `:823`. |
-| v3-side test coverage | **MISSING** — `grep -rn "fn derive_bound\|fn master_theorem" src/v3/compiler/tests/` returns no test invocations. Substrate is live; behavior tests are not. |
+| v3-side test coverage | **MISSING** — call-site-capable grep `grep -rnE '\b(derive_bound\|master_theorem)\b' src/v3/compiler/tests/` (matches both Rust call sites like `derive_bound(...)` and `.dag` test invocations without an `fn` prefix) returns zero. Substrate is live; behavior tests are not. |
 | Disposition recommendation for S-1 | Before G-2 deletes `src/v2/tests`: PB Manager dispatches a v3-side property-test worker that asserts the fail-closed semantics on `src/v3/std/induction.dag::derive_bound` + `master_theorem` (parallel `Int`-input cases: 0 branches → `ErrorBound`; negative branches → `ErrorBound`; etc.). Without that v3-side coverage, G-2 silently drops the fail-closed receipt for the `Int`-input cost-algebra boundary. |
 | Counter-default cost | Skipping the migration would let `derive_bound`/`master_theorem` regress on those boundary inputs without a test ratchet. |
 
@@ -28,7 +28,7 @@
 |---|---|
 | Tested behavior | `int_pow_bounded(base, exp) -> Int?`: negative exponent → `None`; non-negative matches `pow`; overflow at `2^63` → `None`. Plus degenerate-base cap (`0`, `1`, `-1`) doesn't deep-recurse. Also `ceil_log`. From v2 `std_induction`. |
 | v3-side substrate analog | **LIVE** — `fn int_pow_bounded(base: Int, exp: Int) -> Int?` at `src/v3/std/induction.dag:767`; `fn ceil_log` at `:802`; `fn ceil_log_iter` at `:808`. |
-| v3-side test coverage | **MISSING** — same grep returns nothing. |
+| v3-side test coverage | **MISSING** — `grep -rnE '\b(int_pow_bounded\|ceil_log)\b' src/v3/compiler/tests/` (call-site-capable; matches Rust + `.dag` invocations) returns zero. |
 | Disposition recommendation for S-1 | Same shape as A.1: v3-side property-test worker re-asserts negative-exp / overflow / degenerate-base / `ceil_log` semantics against `src/v3/std/induction.dag` directly. The semantic surface is identical (both versions take `Int` / `Int?`); the v3 fixture is a near-mechanical port of the v2 test body. |
 | Counter-default cost | Skipping migration loses the Int-overflow / negative-exp boundary ratchet; v3 currently has no test coverage of these edge cases despite the substrate being live. |
 
@@ -38,7 +38,7 @@
 |---|---|
 | Tested behavior | M9 / P4: Peano literal bridges cap at 256 (oversize `Int` inputs → `none`, not deep-recurse / wrap). `positive_descent_amount_from_positive_int(k)` rejects > 256; `proportional_divisor_from_int_at_least_two(k)` rejects > 256; `master_theorem` work_exponent capped before `int_pow_bounded`. From v2 `std_induction` + `std_termination`. |
 | v3-side substrate analog | **LIVE with the cap declared** — `fn peano_literal_materialization_cap() -> Int { 256 }` at `src/v3/std/termination.dag:140`; `fn positive_descent_amount_from_positive_int` at `:146`; `fn proportional_divisor_from_int_at_least_two` at `:162`. The cap value (256) is a single-source v3 declaration. |
-| v3-side test coverage | **MISSING** — same grep. |
+| v3-side test coverage | **MISSING** — `grep -rnE '\b(peano_literal_materialization_cap\|positive_descent_amount_from_positive_int\|proportional_divisor_from_int_at_least_two)\b' src/v3/compiler/tests/` (call-site-capable) returns zero. |
 | Disposition recommendation for S-1 | v3-side property-test worker asserts `positive_descent_amount_from_positive_int(257) == None`, `… (256) != None`, `… (1) != None`, plus parallel `proportional_divisor_from_int_at_least_two` cases. Substrate is live; just needs test wiring. **Bonus benefit**: a v3-side test would bind `peano_literal_materialization_cap()` as the cap source-of-truth (currently a magic 256 in v2 test bodies); v3 already has the named constant, so the v3 test cites `peano_literal_materialization_cap()` and the cap is grep-clean across the codebase. |
 | Counter-default cost | Skipping migration loses fail-closed receipt for the 256-cap; the cap function itself stays live but un-tested at the boundary. |
 
@@ -48,7 +48,7 @@
 |---|---|
 | Tested behavior | P2 / single-authority: `meet_sub_value` and `join_sub_value` must not drop cost-relevant `ShrinkFactor` when field/param keys align. Tests strict + non-strict aligned-key cases on `SubValueRelation`. From v2 `std_induction`. |
 | v3-side substrate analog | **LIVE** — `fn meet_sub_value` at `src/v3/std/induction.dag:281`; `fn join_sub_value` at `:329`. Same `SubValueRelation` / `RecursionShape` / `InductiveField` substrate carriers (also live in `src/v3/std/induction.dag`; ratchet at `m2_substrate_inhabitance_test.rs`). |
-| v3-side test coverage | **MISSING** — same grep. |
+| v3-side test coverage | **MISSING** — `grep -rnE '\b(meet_sub_value\|join_sub_value)\b' src/v3/compiler/tests/` (call-site-capable) returns zero. |
 | Disposition recommendation for S-1 | v3-side property-test worker ports the meet/join cases against `src/v3/std/induction.dag::{meet_sub_value, join_sub_value}` with v3 `SubValueRelation` / `InductiveField` / `RecursionShape` constructors. The `ShrinkFactor`-preservation invariant is identical between versions; the test body is a near-mechanical port. |
 | Counter-default cost | Skipping migration loses the lattice-factor-preservation receipt; without it the meet/join behavior could silently regress without a test catching it. |
 
