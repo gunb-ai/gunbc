@@ -3181,7 +3181,7 @@ fn field_of_fractions_substrate_introduction_ratchets() {
                 arguments[0].value,
                 int_decl.id,
                 "FieldOfFractions<R> instantiations must specialize `Int` only per \
-             docs/audit/t-numeric-construction-field-of-fractions-6Q.md; got argument {:?} on {}",
+             docs/audit/t-numeric-construction-field-of-fractions-6q.md; got argument {:?} on {}",
                 arguments,
                 decl.name.as_deref().unwrap_or("<anonymous>")
             );
