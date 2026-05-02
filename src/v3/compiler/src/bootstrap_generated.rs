@@ -27,6 +27,7 @@ pub(crate) fn bootstrapped_fixture_dag() -> Dag {
     }
 }
 
+#[allow(clippy::vec_init_then_push)]
 fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
     {
         let mut nodes = Vec::with_capacity(275);
@@ -3640,6 +3641,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
     }
 }
 
+#[allow(clippy::vec_init_then_push)]
 fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
     {
         let mut declarations = Vec::with_capacity(2257);

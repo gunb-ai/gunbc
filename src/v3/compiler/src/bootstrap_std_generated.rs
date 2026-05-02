@@ -27,10 +27,12 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
     }
 }
 
+#[allow(clippy::vec_init_then_push)]
 fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
     Vec::new()
 }
 
+#[allow(clippy::vec_init_then_push)]
 fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
     {
         let mut declarations = Vec::with_capacity(602);

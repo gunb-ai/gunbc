@@ -107,11 +107,11 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
     out.push_str("    }\n");
     out.push_str("}\n");
     out.push_str(&format!(
-        "\nfn {nodes_fn}() -> Vec<Behavior> {{\n    {}\n}}\n",
+        "\n#[allow(clippy::vec_init_then_push)]\nfn {nodes_fn}() -> Vec<Behavior> {{\n    {}\n}}\n",
         render_behaviors(dag.nodes())
     ));
     out.push_str(&format!(
-        "\nfn {declarations_fn}() -> Vec<Declaration> {{\n    {}\n}}\n",
+        "\n#[allow(clippy::vec_init_then_push)]\nfn {declarations_fn}() -> Vec<Declaration> {{\n    {}\n}}\n",
         render_declarations(dag.declarations())
     ));
     out.push_str(&format!(
