@@ -26,26 +26,6 @@ const SHARED_SYNTAX_FILE: &str = "dsl/extdeps/languages/dag/syntax.dag";
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
      // `regen_tokenize`. Regenerate instead of hand-editing.\n\n";
 
-/// Signed `-` + digit merge only in unary positions so infix `-` stays `Minus`
-/// (`1-1`, `x-1`). Inserted before `tokenize` in generated output.
-const MINUS_PREFIX_INT_HELPER: &str = r#"fn minus_prefixed_decimal_allowed(prev: Option<&TokenKind>) -> bool {
-    !matches!(
-        prev,
-        Some(
-            TokenKind::Ident(_)
-                | TokenKind::IntLit(_)
-                | TokenKind::StringLit(_)
-                | TokenKind::KwTrue
-                | TokenKind::KwFalse
-                | TokenKind::RParen
-                | TokenKind::RBracket
-                | TokenKind::RBrace
-        )
-    )
-}
-
-"#;
-
 fn main() {
     // Single-authority gate: the output path this driver writes must
     // be registered in `REGEN_OUTPUTS` (surfaced as
@@ -147,6 +127,7 @@ fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
     let diag_int_pre = string_data_named(dag, "diagnostic_invalid_integer_literal_prefix");
     let diag_int_suf = string_data_named(dag, "diagnostic_invalid_integer_literal_suffix");
     let escapes = collect_string_escape_rows(dag);
+    let minus_infix_labels = collect_minus_infix_only_after_token_kinds(dag);
 
     let mut out = String::new();
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
@@ -171,9 +152,86 @@ pub struct Token {
         &diag_int_suf,
         &escapes,
         &ascii_scan_order,
+        &minus_infix_labels,
     ));
     out.push_str(&emit_punctuation_token(&puncts));
     out
+}
+
+fn collect_minus_infix_only_after_token_kinds(dag: &Dag) -> Vec<String> {
+    let decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("minus_infix_only_after_token_kinds"))
+        .unwrap_or_else(|| {
+            panic!(
+                "missing `minus_infix_only_after_token_kinds` data in `{TOKENIZE_AUTHORITY_FILE}`"
+            )
+        });
+    let Some(ValueBody::List(values)) = decl.value_body.as_ref() else {
+        panic!(
+            "`minus_infix_only_after_token_kinds` in `{TOKENIZE_AUTHORITY_FILE}` must be a list"
+        );
+    };
+    let mut out = Vec::new();
+    for value in values {
+        match value {
+            FieldValue::Literal(LiteralBits::String(s)) => out.push(s.clone()),
+            other => panic!(
+                "`minus_infix_only_after_token_kinds`: expected string literal elements, got {other:?}"
+            ),
+        }
+    }
+    assert!(
+        !out.is_empty(),
+        "`minus_infix_only_after_token_kinds` must not be empty"
+    );
+    out
+}
+
+fn token_kind_pattern_for_minus_disambiguation(label: &str) -> &'static str {
+    match label {
+        "Ident" => "TokenKind::Ident(_)",
+        "IntLit" => "TokenKind::IntLit(_)",
+        "StringLit" => "TokenKind::StringLit(_)",
+        "KwTrue" => "TokenKind::KwTrue",
+        "KwFalse" => "TokenKind::KwFalse",
+        "RParen" => "TokenKind::RParen",
+        "RBracket" => "TokenKind::RBracket",
+        "RBrace" => "TokenKind::RBrace",
+        other => panic!(
+            "unsupported `{other}` in `minus_infix_only_after_token_kinds`; \
+             add a `TokenKind` arm to `token_kind_pattern_for_minus_disambiguation` \
+             in `regen_tokenize.rs`"
+        ),
+    }
+}
+
+fn emit_minus_prefixed_decimal_allowed(labels: &[String]) -> String {
+    assert!(
+        !labels.is_empty(),
+        "`minus_infix_only_after_token_kinds` must name at least one variant"
+    );
+    let mut inner = String::new();
+    for (idx, label) in labels.iter().enumerate() {
+        let pat = token_kind_pattern_for_minus_disambiguation(label);
+        if idx == 0 {
+            inner.push_str(pat);
+        } else {
+            inner.push_str("\n                | ");
+            inner.push_str(pat);
+        }
+    }
+    format!(
+        "fn minus_prefixed_decimal_allowed(prev: Option<&TokenKind>) -> bool {{\n\
+    !matches!(\n\
+        prev,\n\
+        Some(\n\
+            {inner}\n\
+        )\n\
+    )\n\
+}}\n\n"
+    )
 }
 
 fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
@@ -785,6 +843,7 @@ fn emit_tokenize_fn(
     diag_int_suf: &str,
     escapes: &[(u8, i64)],
     ascii_scan_order: &[String],
+    minus_infix_only_after: &[String],
 ) -> String {
     let ensure_classes = |required: &[&str]| {
         for name in required {
@@ -819,7 +878,7 @@ fn emit_tokenize_fn(
     }
 
     let mut s = String::new();
-    s.push_str(MINUS_PREFIX_INT_HELPER);
+    s.push_str(&emit_minus_prefixed_decimal_allowed(minus_infix_only_after));
     s.push_str("pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {\n");
     s.push_str("    let bytes = source.as_bytes();\n");
     s.push_str("    let mut pos: usize = 0;\n");

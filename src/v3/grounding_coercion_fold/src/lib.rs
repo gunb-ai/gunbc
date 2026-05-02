@@ -42,25 +42,44 @@ mod tests {
 
     use super::*;
 
+    /// Bootstrap `Dag::new()` inference can overflow the default test thread stack after deep std
+    /// construction chains (e.g. post–#1466 `Int = AbelianGroup<GroupCompletion<Nat>>`).
+    fn with_bootstrap_stack<F, R>(f: F) -> R
+    where
+        F: FnOnce() -> R + Send + 'static,
+        R: Send + 'static,
+    {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(f)
+            .expect("spawn bootstrap stack test thread")
+            .join()
+            .expect("bootstrap stack test thread panicked")
+    }
+
     fn assert_single_binding_inhabitance(example: IntScratchExample, expected: TargetInhabitance) {
-        let dag = Dag::new();
-        let lifetime: LifetimeAnalysisReport = Default::default();
-        let spec = LanguageSpecProjection::ScratchIntExamples(example);
-        let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
-        assert_eq!(got.len(), 1);
-        assert_eq!(
-            got.get(&v3_grounding_lifetime::BindingId(0)),
-            Some(&expected)
-        );
+        with_bootstrap_stack(move || {
+            let dag = Dag::new();
+            let lifetime: LifetimeAnalysisReport = Default::default();
+            let spec = LanguageSpecProjection::ScratchIntExamples(example);
+            let got = fold_program_to_target(&dag, &lifetime, &spec).expect("ok");
+            assert_eq!(got.len(), 1);
+            assert_eq!(
+                got.get(&v3_grounding_lifetime::BindingId(0)),
+                Some(&expected)
+            );
+        });
     }
 
     #[test]
     fn fold_undeclared_projection_stays_fold_not_implemented() {
-        let dag = Dag::new();
-        let lifetime: LifetimeAnalysisReport = Default::default();
-        let spec = LanguageSpecProjection::Undeclared;
-        let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("undeclared");
-        assert_eq!(err, EmissionDiagnostic::FoldNotImplemented);
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let lifetime: LifetimeAnalysisReport = Default::default();
+            let spec = LanguageSpecProjection::Undeclared;
+            let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("undeclared");
+            assert_eq!(err, EmissionDiagnostic::FoldNotImplemented);
+        });
     }
 
     #[test]
@@ -81,18 +100,20 @@ mod tests {
 
     #[test]
     fn design_doc_example_1_unrefined_int_under_refined() {
-        let dag = Dag::new();
-        let lifetime: LifetimeAnalysisReport = Default::default();
-        let spec = LanguageSpecProjection::ScratchIntExamples(
-            IntScratchExample::DesignDocExample1UnrefinedInt,
-        );
-        let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("under-refined");
-        assert_eq!(
-            err,
-            EmissionDiagnostic::UnderRefined {
-                unspecified_axis: "bound".to_string(),
-            }
-        );
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let lifetime: LifetimeAnalysisReport = Default::default();
+            let spec = LanguageSpecProjection::ScratchIntExamples(
+                IntScratchExample::DesignDocExample1UnrefinedInt,
+            );
+            let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("under-refined");
+            assert_eq!(
+                err,
+                EmissionDiagnostic::UnderRefined {
+                    unspecified_axis: "bound".to_string(),
+                }
+            );
+        });
     }
 
     #[test]
@@ -105,29 +126,33 @@ mod tests {
 
     #[test]
     fn fold_dag_int_ambiguous_algebra_fails_closed() {
-        let dag = Dag::new();
-        let lifetime: LifetimeAnalysisReport = Default::default();
-        let spec = LanguageSpecProjection::ScratchIntExamples(
-            IntScratchExample::DesignDocExample5AmbiguousAlgebra,
-        );
-        let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("under-refined");
-        assert_eq!(
-            err,
-            EmissionDiagnostic::UnderRefined {
-                unspecified_axis: "algebra".to_string(),
-            }
-        );
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let lifetime: LifetimeAnalysisReport = Default::default();
+            let spec = LanguageSpecProjection::ScratchIntExamples(
+                IntScratchExample::DesignDocExample5AmbiguousAlgebra,
+            );
+            let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("under-refined");
+            assert_eq!(
+                err,
+                EmissionDiagnostic::UnderRefined {
+                    unspecified_axis: "algebra".to_string(),
+                }
+            );
+        });
     }
 
     #[test]
     fn fold_dag_int_bound_exceeds_max_no_inhabitant() {
-        let dag = Dag::new();
-        let lifetime: LifetimeAnalysisReport = Default::default();
-        let spec = LanguageSpecProjection::ScratchIntExamples(
-            IntScratchExample::DesignDocExample6NoInhabitant,
-        );
-        let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("no inhabitant");
-        assert_eq!(err, EmissionDiagnostic::NoInhabitant);
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let lifetime: LifetimeAnalysisReport = Default::default();
+            let spec = LanguageSpecProjection::ScratchIntExamples(
+                IntScratchExample::DesignDocExample6NoInhabitant,
+            );
+            let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("no inhabitant");
+            assert_eq!(err, EmissionDiagnostic::NoInhabitant);
+        });
     }
 
     #[test]
