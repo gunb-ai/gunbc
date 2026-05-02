@@ -32,6 +32,9 @@ mod emission_diagnostic_lockstep;
 mod integer_diagnostic_order;
 
 #[cfg(test)]
+mod string_axes_lockstep;
+
+#[cfg(test)]
 mod tests {
     use v3_compiler::dag::Dag;
     use v3_grounding_lifetime::{
