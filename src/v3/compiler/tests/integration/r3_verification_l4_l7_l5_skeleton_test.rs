@@ -17,6 +17,12 @@ const L4_FIXTURE_PATH: &str =
 const L4_SUITE: &str = "r3_verification_l4_emit_eval_skeleton_suite";
 const L4_CLAIM: &str = "r3_verification_l4_emit_eval_match_skeleton";
 
+const L4_MIXED_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag");
+const L4_MIXED_FIXTURE_PATH: &str =
+    "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag";
+const L4_MIXED_SUITE: &str = "r3_verification_l4_emit_eval_mixed_lineage_suite";
+const L4_MIXED_CLAIM: &str = "r3_verification_l4_emit_eval_mixed_lineage_claim";
+
 const L7_FIXTURE: &str = include_str!("../fixtures/r3_verification_l7_algebraic_laws.dag");
 const L7_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag";
@@ -33,6 +39,7 @@ const L5_CLAIM: &str = "r3_verification_l5_cross_target_skeleton";
 const L5_AUTHORITY_PROGRAM: &str = include_str!("../fixtures/r3_l5_corpus/add_then_branch_seed.v3");
 
 static L4_DAG: OnceLock<Dag> = OnceLock::new();
+static L4_MIXED_DAG: OnceLock<Dag> = OnceLock::new();
 static L7_DAG: OnceLock<Dag> = OnceLock::new();
 static L5_DAG: OnceLock<Dag> = OnceLock::new();
 
@@ -59,14 +66,27 @@ fn cached_compile(
 }
 
 #[test]
-fn r3_verification_l4_emit_eval_match_skeleton_is_nyi() {
+fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
     let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
     let results = TestRunner::new(dag).run_suite(L4_SUITE);
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].claim_name, L4_CLAIM);
     assert!(
+        matches!(results[0].result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (fold(1,2,0)=3); got {:?}",
+        results[0].result
+    );
+}
+
+#[test]
+fn r3_verification_l4_emit_eval_mixed_lineage_stays_not_yet_implemented() {
+    let dag = cached_compile(L4_MIXED_FIXTURE, L4_MIXED_FIXTURE_PATH, &L4_MIXED_DAG);
+    let results = TestRunner::new(dag).run_suite(L4_MIXED_SUITE);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].claim_name, L4_MIXED_CLAIM);
+    assert!(
         matches!(results[0].result, ClaimResult::NotYetImplemented(_)),
-        "expected deferred DifferentialEquals lineage for emit/eval pairing, got {:?}",
+        "expected mixed (rust_emit_output, v3_program_cost) pairing to stay deferred, got {:?}",
         results[0].result
     );
 }

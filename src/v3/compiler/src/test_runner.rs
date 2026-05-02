@@ -1,10 +1,11 @@
 use std::collections::BTreeSet;
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    AtomPayload, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId,
-    PortState, TypeConnective, ValueBody,
+    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path,
+    PortId, PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::generated_files::GENERATED_FILES;
@@ -208,6 +209,179 @@ fn eval_lane_e_differential_cost_lineage(
         "v2_oracle_cost" => Ok(cost_of(program_dag, &bind_port)),
         _ => Err(format!(
             "unsupported lineage `{lineage_name}` for T-LaneE `DifferentialEquals` cost (expected `v3_program_cost` or `v2_oracle_cost`)"
+        )),
+    }
+}
+
+/// Last top-level **value** bind (empty `params`) in `claim_file`, in `Dag::nodes` order.
+///
+/// **W1 transitional coupling:** `emit_rust` program mode prints the **last** such bind from
+/// `emit_rust_with_mode` (`rust_target.rs`). `rust_emit_output` therefore requires
+/// `ProgramOutputBind.output_ref` to name that same bind until PB-Runtime owns observation layout
+/// (`docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md` §Typed Observation normalization).
+fn w1_last_top_level_value_bind_name(dag: &Dag, claim_file: &str) -> Option<String> {
+    dag.nodes()
+        .iter()
+        .filter_map(|node| match node {
+            Behavior::Bind(bind)
+                if bind.span.file == claim_file && bind.params.is_empty() =>
+            {
+                Some(bind.name.clone())
+            }
+            _ => None,
+        })
+        .last()
+}
+
+fn w1_parse_single_int_stdout_carve_out(stdout: &str) -> Result<i64, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Err(
+            "W1 rust_emit_output: empty stdout after trim (transitional Int-only stdout parse \
+             carve-out authorized for slice-1 only; dissolution: substrate `ProgramObservation<Value>` \
+             + observation-channel / `ValueKind` per `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`)"
+                .to_string(),
+        );
+    }
+    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    if parts.len() != 1 {
+        return Err(format!(
+            "W1 rust_emit_output: stdout must be exactly one integer token (transitional carve-out); \
+             got {parts:?} (dissolution: typed observation channel + `ValueKind`)"
+        ));
+    }
+    parts[0].parse::<i64>().map_err(|_| {
+        format!(
+            "W1 rust_emit_output: stdout token `{}` is not a valid i64 (transitional Int-only carve-out)",
+            parts[0]
+        )
+    })
+}
+
+fn w1_rust_emit_output_int(program_dag: &Dag, output_bind: &BindNode, claim_file: &str) -> Result<i64, String> {
+    // **Transitional producer identity (contract 1):** only the spelling `rust_emit_output` is
+    // accepted at the `DifferentialEquals` subject/oracle `DeclarationRef` site, fail-closed
+    // elsewhere in `eval_differential_equals`. **Dissolution:** substrate producer-role markers
+    // replace name-keyed recognition (`docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`).
+    let Some(last_bind) = w1_last_top_level_value_bind_name(program_dag, claim_file) else {
+        return Err(
+            "W1 rust_emit_output: compiled program has no top-level value binds (emit_rust program \
+             mode requires at least one); dissolution: PB-Runtime-generated target-language tests"
+                .to_string(),
+        );
+    };
+    if last_bind != output_bind.name {
+        return Err(format!(
+            "W1 rust_emit_output: `ProgramOutputBind.output_ref` must name the **last** top-level \
+             value bind in `{claim_file}` so emitted `main` prints the same bind `emit_rust` selects \
+             as final — expected bind `{last_bind}`, got `{}` (transitional coupling; dissolution: \
+             PB-Runtime harness + typed observation channel)",
+            output_bind.name
+        ));
+    }
+    let rust_src = crate::emit_rust::emit_rust(program_dag).map_err(|e| {
+        format!(
+            "W1 rust_emit_output: emit_rust failed (use #1485-approved `emit_rust` / `emit_rust_with_mode` path only; dissolution: PB-Runtime-generated tests): {e}"
+        )
+    })?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let scratch = std::env::temp_dir().join(format!(
+        "gunbc_w1_rust_emit_{}_{}",
+        std::process::id(),
+        stamp
+    ));
+    std::fs::create_dir_all(&scratch)
+        .map_err(|e| format!("W1 rust_emit_output: create scratch dir {}: {e}", scratch.display()))?;
+    let src_path = scratch.join("main.rs");
+    let bin_path = scratch.join("w1_emit_eval_out");
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("W1 rust_emit_output: create {}: {e}", src_path.display()))?;
+    file.write_all(rust_src.as_bytes())
+        .map_err(|e| format!("W1 rust_emit_output: write {}: {e}", src_path.display()))?;
+
+    let mut rustc = Command::new("rustc");
+    // Same stable-toolchain contract as boundary rustc harnesses (strip bootstrap leakage).
+    rustc
+        .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    let status = rustc
+        .status()
+        .map_err(|e| format!("W1 rust_emit_output: failed to spawn rustc: {e}"))?;
+    if !status.success() {
+        return Err(format!(
+            "W1 rust_emit_output: rustc failed (exit {status}); dissolution: PB-Runtime owns compilation policy for generated tests"
+        ));
+    }
+    let run = Command::new(&bin_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .map_err(|e| format!("W1 rust_emit_output: failed to run emitted binary: {e}"))?;
+    if !run.status.success() {
+        return Err(format!(
+            "W1 rust_emit_output: emitted Rust binary exited with {:?}; dissolution: PB-Runtime-generated tests own exit-status policy",
+            run.status.code()
+        ));
+    }
+    w1_parse_single_int_stdout_carve_out(&String::from_utf8_lossy(&run.stdout))
+}
+
+fn w1_dag_eval_output_int(program_dag: &Dag, output_bind: &BindNode) -> Result<i64, String> {
+    // **Dissolution:** `dag_eval_output` collapses into PR-B eager evaluation + witness construction
+    // (`docs/briefs/r2-pr-b-2-runner-extension-bundle.md`); this arm is the first runner bridge only.
+    if !output_bind.params.is_empty() {
+        return Err(format!(
+            "W1 dag_eval_output: bind `{}` must be a top-level value bind (empty `params`); got callable-shaped bind",
+            output_bind.name
+        ));
+    }
+    let producer = program_dag.resolve_producer_opt(&output_bind.value).ok_or_else(|| {
+        format!(
+            "W1 dag_eval_output: bind `{}` value port has no producer node in compiled program Dag",
+            output_bind.name
+        )
+    })?;
+    let entry = producer.id();
+    let strategy = crate::evaluator::EvalStrategy::ApplicativeOrder {
+        input_order: crate::evaluator::InputEvaluationOrder::LeftFirst,
+    };
+    let mut state =
+        crate::evaluator::EvalStateStack::with_root_frame(crate::evaluator::EvalFrame::empty());
+    let value = crate::evaluator::evaluate_body(program_dag, entry, &mut state, strategy)
+        .map_err(|e| {
+            format!(
+                "W1 dag_eval_output: `evaluate_body` / `eval_node` error on bind `{}` (no-memo eager `ApplicativeOrder` / `LeftFirst` at call site per #1485 fire criteria): {e:?}",
+                output_bind.name
+            )
+        })?;
+    match &value {
+        crate::evaluator::Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+        other => Err(format!(
+            "W1 dag_eval_output: only `Value::LiteralValue(Int)` is supported for slice-1 Int parity \
+             (transitional debt; dissolution: substrate `ValueKind` widening + observation normalization): {other:?}"
+        )),
+    }
+}
+
+fn w1_differential_equals_lineage_int(
+    lineage: &str,
+    program_dag: &Dag,
+    output_bind: &BindNode,
+    claim_file: &str,
+) -> Result<i64, String> {
+    match lineage {
+        "rust_emit_output" => w1_rust_emit_output_int(program_dag, output_bind, claim_file),
+        "dag_eval_output" => w1_dag_eval_output_int(program_dag, output_bind),
+        _ => Err(format!(
+            "W1 internal error: unknown lineage `{lineage}` (expected rust_emit_output or dag_eval_output)"
         )),
     }
 }
@@ -2333,13 +2507,50 @@ impl<'a> TestRunner<'a> {
             );
         }
 
+        let w1_emit_eval_pair = (
+            subject_lineage.as_str(),
+            oracle_lineage.as_str(),
+        );
+        if matches!(
+            w1_emit_eval_pair,
+            ("rust_emit_output", "dag_eval_output") | ("dag_eval_output", "rust_emit_output")
+        ) {
+            let subject_int = match w1_differential_equals_lineage_int(
+                subject_lineage.as_str(),
+                &program_dag,
+                bind,
+                &claim.file_name,
+            ) {
+                Ok(v) => v,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
+            let oracle_int = match w1_differential_equals_lineage_int(
+                oracle_lineage.as_str(),
+                &program_dag,
+                bind,
+                &claim.file_name,
+            ) {
+                Ok(v) => v,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
+            return if subject_int == oracle_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "DifferentialEquals(W1): `{subject_lineage}` int {subject_int} != `{oracle_lineage}` int {oracle_int} \
+                     (emit vs eager eval parity; dissolution: PB-Runtime tests + PR-B witness-shaped `ProgramObservation<Value>`)"
+                ))
+            };
+        }
+
         let pairing_ok = (subject_lineage.as_str() == "v3_program_cost"
             && oracle_lineage.as_str() == "v2_oracle_cost")
             || (subject_lineage.as_str() == "v2_oracle_cost"
                 && oracle_lineage.as_str() == "v3_program_cost");
         if !pairing_ok {
             return ClaimResult::NotYetImplemented(format!(
-                "DifferentialEquals(cost): only the (v3_program_cost, v2_oracle_cost) lineage pairing is implemented; got ({subject_lineage}, {oracle_lineage})"
+                "DifferentialEquals: unsupported lineage pairing; implemented: (v3_program_cost, v2_oracle_cost) cost parity \
+                 and (rust_emit_output, dag_eval_output) W1 emit/eval Int slice per `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md` / #1485 — got ({subject_lineage}, {oracle_lineage})"
             ));
         }
 

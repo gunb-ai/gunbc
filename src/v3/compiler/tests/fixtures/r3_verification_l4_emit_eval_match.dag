@@ -1,7 +1,7 @@
-// std.r3_verification_l4_emit_eval_match — R3 Lane 1 skeleton: `DifferentialEquals` between
-// emit-shaped vs eval-shaped producers is authored structurally but intentionally returns
-// `NotYetImplemented` until `(rust_emit_output, dag_eval_output)` wiring lands (runner today
-// implements only `(v3_program_cost, v2_oracle_cost)` for Lane-E cost parity).
+// std.r3_verification_l4_emit_eval_match — R3 Lane 1: `DifferentialEquals(rust_emit_output,
+// dag_eval_output, ProgramOutputBind)` W1 slice (transitional name + Int stdout carve-out per
+// `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md` / #1485). Fixture stubs
+// `rust_emit_output` / `dag_eval_output` are not executed — the runner implements both sides.
 
 module std.r3_verification_l4_emit_eval_match
 
