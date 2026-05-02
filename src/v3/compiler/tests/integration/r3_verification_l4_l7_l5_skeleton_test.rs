@@ -65,8 +65,16 @@ fn r3_verification_l4_emit_eval_match_skeleton_is_nyi() {
     assert_eq!(results.len(), 1);
     assert_eq!(results[0].claim_name, L4_CLAIM);
     assert!(
-        matches!(results[0].result, ClaimResult::NotYetImplemented(_)),
-        "expected deferred DifferentialEquals lineage for emit/eval pairing, got {:?}",
+        matches!(
+            &results[0].result,
+            ClaimResult::NotYetImplemented(reason)
+                if reason.contains("(rust_emit_output, dag_eval_output)")
+                    && reason.contains("producer identity")
+                    && reason.contains("typed observation normalization")
+                    && reason.contains("PB-Runtime generated target-language tests")
+                    && reason.contains("PR-B eager evaluator plus witness construction")
+        ),
+        "expected deferred DifferentialEquals emit/eval pairing to name W1 gates and dissolution targets, got {:?}",
         results[0].result
     );
 }
