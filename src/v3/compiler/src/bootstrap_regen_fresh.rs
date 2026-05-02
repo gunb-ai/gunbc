@@ -28,7 +28,6 @@ const ALGEBRA_DAG: &str = include_str!("../../../../dsl/std/algebra.dag");
 const MAGNITUDE_DAG: &str = include_str!("../../../../dsl/std/magnitude.dag");
 const NAT_DAG: &str = include_str!("../../../../dsl/std/nat.dag");
 const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
-const RATIONAL_DAG: &str = include_str!("../../../../dsl/std/rational.dag");
 const FLOAT_DAG: &str = include_str!("../../../../dsl/std/float.dag");
 const STRING_TYPE_DAG: &str = include_str!("../../../../dsl/std/string_type.dag");
 const TYPES_DAG: &str = include_str!("../../../../dsl/std/types.dag");
@@ -142,7 +141,6 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
         ("dsl/std/magnitude.dag", MAGNITUDE_DAG),
         ("dsl/std/nat.dag", NAT_DAG),
         ("dsl/std/integer.dag", INTEGER_DAG),
-        ("dsl/std/rational.dag", RATIONAL_DAG),
         ("dsl/std/float.dag", FLOAT_DAG),
         ("dsl/std/types.dag", TYPES_DAG),
         ("dsl/std/string_type.dag", STRING_TYPE_DAG),
