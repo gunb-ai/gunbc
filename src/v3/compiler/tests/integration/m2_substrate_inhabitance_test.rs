@@ -11,6 +11,7 @@ use v3_compiler::dag::{
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
+use v3_compiler::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
 use v3_compiler::parse_surface;
 use v3_compiler::CompileError;
 use v3_compiler::Dag;
@@ -1594,11 +1595,12 @@ type Holder {\n\
 }\n\n\
 data bad: Holder = { w: UnitCount { units: -1 } }\n";
             let dag = semantic_dag_for(source, "positive_interval_unit_count_negative.v3");
+            let expected =
+                positive_interval_width_unit_count_requires_nonnegative_units_literal_message(-1);
             let hit = dag.diagnostics().iter().any(|(_, diagnostic)| {
                 matches!(
                     diagnostic,
-                    Diagnostic::ResolveError { name, .. }
-                        if name.contains("nonnegative") && name.contains("UnitCount")
+                    Diagnostic::ResolveError { name, .. } if name == &expected
                 )
             });
             hit

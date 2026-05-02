@@ -66,6 +66,17 @@ use crate::types::TypeShape;
 // adopts the shared std diagnostic record directly.
 include!("diagnostics_generated.rs");
 
+/// Stable `ResolveError.name` for a negative `PositiveIntervalWidth.UnitCount.units` literal.
+///
+/// Wording is centralized so integration tests assert equality against this helper instead of
+/// substring-matching on [`Diagnostic::ResolveError`] prose (see repo `TESTING.md`, behavior-driven).
+#[doc(hidden)]
+pub fn positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
+    units: i64,
+) -> String {
+    format!("PositiveIntervalWidth.UnitCount requires nonnegative `units` literal; got {units}")
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CorrectionApplyError {
     FileMismatch {

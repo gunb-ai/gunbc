@@ -3490,9 +3490,7 @@ fn enforce_non_negative_unit_count_payload(
     match first {
         crate::dag::FieldValue::Literal(LiteralBits::Int(n)) if *n >= 0 => Ok(()),
         crate::dag::FieldValue::Literal(LiteralBits::Int(n)) => Err(Diagnostic::ResolveError {
-            name: format!(
-                "PositiveIntervalWidth.UnitCount requires nonnegative `units` literal; got {n}"
-            ),
+            name: crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message(*n),
             span: span.clone(),
             fixes: Vec::new(),
         }),
@@ -7693,7 +7691,10 @@ fn collect_recursive_callees(
 mod tests {
     use super::*;
     use crate::dag::Declaration;
-    use crate::diagnostics::SourceSpan;
+    use crate::dag::Field;
+    use crate::dag::LiteralBits;
+    use crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
+    use crate::diagnostics::{Diagnostic, SourceSpan};
     use std::collections::HashMap;
 
     fn test_span() -> SourceSpan {
@@ -7722,6 +7723,84 @@ mod tests {
             span: test_span(),
         });
         id
+    }
+
+    #[test]
+    fn enforce_non_negative_unit_count_payload_rejects_negative_literal() {
+        let mut dag = Dag::empty();
+        let int_ty = push_test_declaration(
+            &mut dag,
+            "Int",
+            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier("Int".to_string())),
+            None,
+        );
+        let unit_count_payload_ty = {
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Conj {
+                    children: vec![Field {
+                        label: "units".to_string(),
+                        ty: int_ty,
+                    }],
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: test_span(),
+            });
+            id
+        };
+        let dummy_ty = push_test_declaration(
+            &mut dag,
+            "DummyUnitPayload",
+            TypeConnective::Conj {
+                children: vec![Field {
+                    label: "_".to_string(),
+                    ty: int_ty,
+                }],
+            },
+            None,
+        );
+        push_test_declaration(
+            &mut dag,
+            "PositiveIntervalWidth",
+            TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "OneUnit".to_string(),
+                        ty: dummy_ty,
+                    },
+                    Field {
+                        label: "AdditionalUnit".to_string(),
+                        ty: dummy_ty,
+                    },
+                    Field {
+                        label: "UnitCount".to_string(),
+                        ty: unit_count_payload_ty,
+                    },
+                ],
+            },
+            None,
+        );
+        let span = test_span();
+        let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(-1))];
+        let err =
+            enforce_non_negative_unit_count_payload(&dag, unit_count_payload_ty, &payload, &span)
+                .expect_err("negative units must be rejected");
+        let Diagnostic::ResolveError { name, .. } = err else {
+            panic!("expected ResolveError; got {err:?}");
+        };
+        assert_eq!(
+            name,
+            positive_interval_width_unit_count_requires_nonnegative_units_literal_message(-1)
+        );
     }
 
     fn surface_named_type(name: &str) -> SurfaceType {
