@@ -190,26 +190,21 @@ v2's `Certainty = Proven | Conservative` annotates a `ComplexitySummary` with wh
 // poisons the chain to Conservative.) Lattice-shaped, like DescentEvidence.
 
 type Certainty = Proven | Conservative
-
-data certainty_lattice: BoundedLattice<Certainty> = {
-  meet: meet_certainty                  // conservative wins under composition
-  join: join_certainty                  // proven wins under alternative
-  top: Proven                            // identity for meet
-  bottom: Conservative                   // identity for join
-}
-
-fn meet_certainty(a: Certainty, b: Certainty) -> Certainty =
-  match a {
-    Proven => b
-    Conservative => Conservative
-  }
-
-fn join_certainty(a: Certainty, b: Certainty) -> Certainty =
-  match a {
-    Conservative => b
-    Proven => Proven
-  }
 ```
+
+**No `BoundedLattice<Certainty>` declaration**. Earlier drafts proposed a lattice with `meet = "conservative wins under composition"` and `join = "proven wins under alternative"`. Both semantics are **cost-unaware** and would let a `Proven` arm hide a `Conservative` arm that carries the actual worst-case bound — violating P1 (modeling faithfulness): the result's certainty would no longer faithfully describe the bound it qualifies.
+
+**Certainty composition is cost-aware, not lattice-fold.** When two cost-and-certainty pairs `(c₁, k₁)` and `(c₂, k₂)` compose:
+
+- The cost composes structurally (sequential / iterate / branch-max per `SymbolicCost` semantics).
+- The certainty of the result depends on **which input dominated the cost**:
+  - If both contributions survive composition: certainty is `meet(k₁, k₂)` (any unproven contribution makes the whole result unproven).
+  - If `c₁` dominates `c₂` (e.g., branch-max picks `c₁` as worst-case): the result's certainty is `k₁` — `k₂` does not enter, because the bound being qualified is `c₁`'s bound.
+  - Symmetric for `c₂` dominating `c₁`.
+
+This is the `certainty_of_surviving` projection in §3.1 (`compose_summary` family). A `BoundedLattice<Certainty>` declaration would suggest certainty composes independently of cost — exactly the bug the §3.1 design rejects. Certainty stays a 2-variant sum without an associated lattice instance; the composition lives at `ComplexitySummary` level via the cost-aware `compose_summary_*` functions.
+
+**Tightness ordering**: `Certainty` does have a natural ordering (`Proven ≥ Conservative` under tightness). That ordering is implicit when projecting to a single certainty value, but it is NOT a composition operation. Composition consumes cost-and-certainty pairs jointly per §3.1.
 
 **Why declare it in `lenses/complexity.dag`, not promote to `std/algebra.dag`:** per MODELING.md M10, new concepts get proper homes. `Certainty` is a complexity-analysis fact today; if other lenses (effects, parallelism) later need bound-tightness, it promotes to std/. Premature promotion couples unrelated consumers. Lens-local for now; promotion trigger named in the file header.
 
@@ -399,9 +394,18 @@ fn certainty_of_surviving(
   composed: SymbolicCost
 ) -> Certainty =
   match dominance_outcome(outer.work, body.work, composed) {
-    BothSurvive => meet_certainty(outer.certainty, body.certainty)
+    BothSurvive => meet_pair(outer.certainty, body.certainty)
     OuterDominates => outer.certainty
     BodyDominates => body.certainty
+  }
+
+// Inline pairwise meet — used ONLY when both contributions survive cost
+// composition. NOT a free-standing lattice operation (no certainty_lattice
+// instance per §1.5 — see that section for why).
+fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
+  match a {
+    Proven => b               // any Conservative contribution makes the result Conservative
+    Conservative => Conservative
   }
 
 // Same joint composition for sequential / parallel composition (different
@@ -601,7 +605,7 @@ Internal cascade (for this slice 1 work):
 1. **T-E-P-Producer-Broadening COMPLETE** — full per-call descent evidence available via `per_call_descent_evidence` side table.
 2. **R2-Evaluator landed** — lens runtime execution available.
 3. **R2-T-Substrate-Lens-Primitive landed** — `Lens<C>` shape available (already done).
-4. **Class-5 record bodies in `data` declarations** — required for `data work_dimension` / `data span_dimension` / `data asymptotic_class_lattice` / `data certainty_lattice`. This is *not* a hard cascade gate (the Rust execution authority bridges via `analyze_symbolic_cost_dimension` per existing pattern); when class-5 lands, the data declarations replace the Rust bridges. Dissolution trigger named per [`../INVARIANTS.md`](../INVARIANTS.md) P5.
+4. **Class-5 record bodies in `data` declarations** — required for `data work_dimension` / `data span_dimension` / `data asymptotic_class_lattice`. (No `data certainty_lattice` — `Certainty` does NOT have an associated lattice instance per §1.5; composition is cost-aware via `compose_summary_*` per §3.1, not lattice-fold.) This is *not* a hard cascade gate (the Rust execution authority bridges via `analyze_symbolic_cost_dimension` per existing pattern); when class-5 lands, the data declarations replace the Rust bridges. Dissolution trigger named per [`../INVARIANTS.md`](../INVARIANTS.md) P5.
 
 External cascade: standard R3 worker-dispatch precondition (R2-Evaluator landed).
 
