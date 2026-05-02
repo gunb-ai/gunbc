@@ -15,7 +15,7 @@ Re-stated from parent audit §1 + §3.2 with two G-2 prerequisites surfaced by t
 
 | # | Prereq | What "green" looks like at deletion time |
 |---|---|---|
-| S-1 | PM-authored T-V2-Retirement worker brief | File exists under `docs/briefs/`; references `T-V2-Retirement`; `gh pr view --state merged` for the brief PR. |
+| S-1 | PM-authored T-V2-Retirement worker brief | File exists under `docs/briefs/`; references `T-V2-Retirement`; brief PR merged — verified via `gh pr view <pr-number> --json state,mergedAt --jq '.state == "MERGED"'` returning `true` (the `--state` flag belongs to `gh pr list`, not `gh pr view` — use the JSON form to make the check executable). |
 | S-2 | T-FixedPoint closed | `pb_self_compile_fixed_point` predicate green under R3 elevated bar; closure ledger receipt. |
 | S-3 | T-LensProducer-Retirement closed | All three sub-gates green (`lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` retired); files do not exist under `src/v3/compiler/src/`. |
 | S-4 | PB-Runtime trampoline live as bootstrap | `cargo build --workspace` succeeds without `src/v2/stage0` invocation in the bootstrap chain. Verified by removing **both** `src/v2/stage0` AND `src/v2/tests` from `Cargo.toml` workspace `members` in a *throw-away* check (NOT committed) and confirming compile + run works through PB-Runtime alone. **Both must be removed**: `src/v2/tests/Cargo.toml:9` path-depends on `../stage0` (`v2-compiler = { path = "../stage0" }`), so removing only stage0 leaves tests pulling it in transitively (fail-open). |
