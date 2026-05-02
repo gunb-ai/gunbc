@@ -11,7 +11,7 @@ This artifact captures the bounded shape the eventual G-2 deletion PR must take 
 
 ## 1. STOP conditions (deletion may not begin until ALL green)
 
-Re-stated from parent audit §1 + §3.2; this plan adds nothing new. Verified at HEAD before deletion PR opens:
+Re-stated from parent audit §1 + §3.2 with two G-2 prerequisites surfaced by this plan: G-2-prereq-emit (legacy emit chain retirement, derived from migration matrix §4.2) and G-2-prereq-ci (CI workflow no longer invoking v2-compiler, surfaced 2026-05-02 by this plan). Verified at HEAD before deletion PR opens:
 
 | # | Prereq | What "green" looks like at deletion time |
 |---|---|---|
