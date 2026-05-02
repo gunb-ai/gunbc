@@ -12,7 +12,7 @@ dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
 dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
 dsl/std/types.dag	108	210361	bbadc5e63d8d4d2a
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
-src/v3/compiler/parse_tables.dag	45	96740	272d707c238d5a07
+src/v3/compiler/parse_tables.dag	45	96740	7b753207e886ab43
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
 src/v3/compiler/regen.dag	12	34377	2ea9e99e1b34fd0b
 src/v3/compiler/tests/four_fixture_pressure/drop.v3	2	2517	00953bc6b6d8c811
