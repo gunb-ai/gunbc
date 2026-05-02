@@ -10,16 +10,28 @@ runtime `Value`, or introduce a parallel lens/report shape.
 `dsl/std/algebra.dag` (`Monoid<T>` authority), and the body evaluator in
 `src/v3/compiler/src/lib.rs`.
 
-## Next Gate
+## Next Gates
 
-The smallest actionable gate is **E6-G1: lens field projection + report lifting
-over existing carriers**.
+The smallest actionable implementation sequence is:
+
+- **E6-G0: evaluator field/call API gate.** The live evaluator entry points are
+  `evaluate_body`, `eval_node`, and `eval_port` in
+  `src/v3/compiler/src/lib.rs`. E6-G0 makes `TransformTarget::FieldProject` and
+  `TransformTarget::Callable` execute through those existing entry points for
+  projected lens fields. This gate must not add a second callable interpreter
+  or bypass `EvalStateStack`.
+- **E6-G1: lens field projection + report lifting over existing carriers.**
+  Once E6-G0 exists, E6-G1 consumes one declared `Lens<C>` value as data,
+  projects its fields and `Lens.sequential: Monoid<C>` subfields through the
+  evaluator, and lifts returned `Witness<C>` / `OptionalDiagnostic` values into
+  the existing `DimensionReport<C>` carrier.
 
 E6-G1 is not a new substrate carrier. It is an implementation/API fact:
 
 > The evaluator can consume one declared `Lens<C>` value as data, project its
 > fields and `Lens.sequential: Monoid<C>` subfields, execute those projected
-> function values through the shared `eval_node` / `eval_port` callable boundary,
+> function values through the live `evaluate_body` / `eval_node` / `eval_port`
+> entry points after E6-G0 lands callable and field-projection support,
 > and lift the returned `Witness<C>` / `OptionalDiagnostic` values into the
 > existing `DimensionReport<C>` carrier without fabricating a carrier on failure.
 
@@ -33,8 +45,8 @@ the empty/unit or single-behavior cases until it can:
 
 - project `Lens.name`, `Lens.read`, `Lens.sequential`, and `Lens.validate`;
 - project `Monoid<C>.identity` and `Monoid<C>.op` from `Lens.sequential`;
-- execute projected function values through the same evaluator authority as
-  ordinary program bodies;
+- execute projected function values through the same evaluator entry points as
+  ordinary program bodies after the E6-G0 callable/field API gate lands;
 - distinguish `Witness::Inhabits(c)` from `Witness::Violates {..}`;
 - distinguish `OptionalDiagnostic::NoDiagnostic` from
   `OptionalDiagnostic::SomeDiagnostic { value }`;
@@ -108,11 +120,11 @@ not compile a local MiniLens or MiniReport fixture.
    - Assert `DimensionOk` carries `dimension_name` from `Lens.name`, the
      composed carrier, and the full witness list.
 
-6. **Callable and field projection gaps fail closed.**
+6. **Callable and field projection gaps fail closed before E6-G0.**
    - Before `TransformTarget::Callable` and `FieldProject` are live, invoking
      the fold should return a typed evaluator diagnostic naming the unsupported
      target.
-   - After those gates land, this test should be replaced by the positive
+   - After E6-G0 lands, this test should be replaced by the positive
      projection/call tests above.
 
 7. **Descent is explicitly residual in the first fold scope.**
@@ -138,8 +150,9 @@ Recommended next dispatch order:
 
 1. **Substrate/API:** land the smallest honest way to author or reference one
    `Lens<C>` value with function-valued fields and `Monoid<C>` witness fields.
-2. **Evaluator:** land `FieldProject` and `Callable` execution for those fields
-   through `eval_node` / `eval_port`.
+2. **E6-G0 evaluator API:** land `FieldProject` and `Callable` execution for
+   those fields through the existing `evaluate_body` / `eval_node` /
+   `eval_port` entry points.
 3. **E6-G1:** implement report lifting and the empty/single/small sequential
    generic fold tests above.
 4. **Descent follow-on:** extend the fold to Descent only after termination
