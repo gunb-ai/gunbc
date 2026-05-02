@@ -17,7 +17,9 @@
 //!   and **§Example 6** (`Int(0..2^65)` → [`EmissionDiagnostic::NoInhabitant`](diagnostic::EmissionDiagnostic::NoInhabitant))
 //!   and **§Example 8** (`Int(-2^31..2^31)` → Rust `i32`, Python `int`, Go `int32`)
 //!   for a single synthetic binding — checkpoint until a real LanguageSpec projection replaces
-//!   the scratch carrier (manager #1133 / #1286).
+//!   the scratch carrier (manager #1133 / #1286). **Slice B:** before scratch outcomes run,
+//!   the fold counts declared `TargetIntegerTypeInhabitance` rows in the bootstrap `dag`
+//!   (**INVARIANTS.md E-6** same-PR consumer).
 //!
 //! ## SG-0 / discipline
 //!

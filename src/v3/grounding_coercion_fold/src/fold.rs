@@ -7,9 +7,10 @@
 //! checkpoint path only; other examples and `Undeclared` remain
 //! [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 //!
-//! **Call-site (ScratchIntExamples):** While the scratch body ignores `dag` / lifetime inputs and
-//! fixes [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`, production wiring must not treat
-//! returned map keys as evidence of real program bindings (#1133 / #1286).
+//! **Call-site (`ScratchIntExamples`):** counts declared `TargetIntegerTypeInhabitance` rows in `dag`
+//! (**INVARIANTS.md E-6** witness) before applying scratch outcomes; payload interpretation stays
+//! deferred until Slice C. Still fixes [`BindingId`](v3_grounding_lifetime::BindingId)`(0)` only;
+//! production wiring must not treat returned map keys as evidence of real program bindings (#1133 / #1286).
 
 use std::collections::BTreeMap;
 
@@ -31,6 +32,7 @@ fn declared_target_integer_type_inhabitance_row_count(dag: &Dag) -> usize {
         return 0;
     };
     dag.declarations()
+        .iter()
         .filter(|decl| decl.meta_tag == Some(meta.id))
         .count()
 }
@@ -73,8 +75,9 @@ fn fold_design_doc_example_8_go() -> Result<TargetInhabitance, EmissionDiagnosti
 /// - [`LanguageSpecProjection::Undeclared`](crate::types::LanguageSpecProjection::Undeclared): fail-closed
 ///   [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 /// - [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples): runs
-///   design-doc Int Examples 1, 2, 5, 6, and 8 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`.
-///   **Checkpoint:** ignores `_dag` by design; on the scratch path, `lifetime_facts` must be
+///   design-doc Int Examples 1, 2, 5, 6, and 8 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`
+///   after verifying the bootstrap `dag` carries at least eight `TargetIntegerTypeInhabitance` meta-tagged rows (**E-6**).
+///   **Checkpoint:** on the scratch path, `lifetime_facts` must be
 ///   empty in debug builds until this body reads real facts. Do not widen this arm to multiple
 ///   bindings or real program facts without landing the declared projection / dissolution path
 ///   first (#1133 / #1286).
