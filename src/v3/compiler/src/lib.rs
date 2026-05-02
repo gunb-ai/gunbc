@@ -171,6 +171,19 @@ pub mod evaluator {
         Value::LiteralValue(value.data.clone())
     }
 
+    fn reify_bool_literal_for_branch_scrutinee(dag: &Dag, value: Value) -> Value {
+        match value {
+            Value::LiteralValue(LiteralBits::Bool(b)) => dag
+                .bool_runtime_variant_id(b)
+                .map(|tag| Value::VariantValue {
+                    tag,
+                    payload: Box::new(Value::RecordValue(Vec::new())),
+                })
+                .unwrap_or(Value::LiteralValue(LiteralBits::Bool(b))),
+            other => other,
+        }
+    }
+
     pub fn eval_port(
         dag: &Dag,
         port: PortId,
@@ -222,7 +235,10 @@ pub mod evaluator {
         state: &mut EvalStateStack<Value>,
         strategy: &EvalStrategy,
     ) -> Result<Value, EvalError> {
-        let scrutinee = eval_port(dag, branch.input, state, strategy)?;
+        let scrutinee = reify_bool_literal_for_branch_scrutinee(
+            dag,
+            eval_port(dag, branch.input, state, strategy)?,
+        );
         let (tag, payload) = match scrutinee {
             Value::VariantValue { tag, payload } => (tag, payload),
             _ => return Err(EvalError::BranchScrutineeShape { node: branch.id }),
@@ -848,6 +864,56 @@ pub mod evaluator {
             let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
+        }
+
+        // E4 Bool alignment: Bool literal scrutinees are reified through
+        // `Dag::bool_runtime_variant_id`, so branch dispatch compares the same
+        // `True` / `False` declaration ids that inference resolved on patterns.
+        #[test]
+        fn eval_branch_reifies_bool_literal_scrutinee_to_disj_variant_id() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let true_tag = dag
+                .bool_runtime_variant_id(true)
+                .expect("Bool.True variant id");
+            let false_tag = dag
+                .bool_runtime_variant_id(false)
+                .expect("Bool.False variant id");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let true_output = dag.push_value(LiteralBits::Int(1), span());
+            let true_body = node_for_port(&dag, true_output);
+            let false_output = dag.push_value(LiteralBits::Int(0), span());
+            let false_body = node_for_port(&dag, false_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    Path {
+                        body: true_body,
+                        output: true_output,
+                        pattern: BranchPattern::ResolvedVariant(true_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: false_body,
+                        output: false_output,
+                        pattern: BranchPattern::ResolvedVariant(false_tag),
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                Value::LiteralValue(LiteralBits::Bool(true)),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(1)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
         }
 
         // E4 §B.1.3: payload binding registers on the freshly-pushed
