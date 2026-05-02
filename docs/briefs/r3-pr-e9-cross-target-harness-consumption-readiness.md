@@ -15,6 +15,11 @@ side-effect normalization for strict L5 evidence.
 records slice 0 (`Compiles`) and slice 1 (`DifferentialEquals`) as landed, and
 keeps strict `ForAllTargets` receipts gated.
 
+**Post-W1 delta:** [`r3-pr-e9-post-w1-lane1-consumption-readiness.md`](r3-pr-e9-post-w1-lane1-consumption-readiness.md)
+records the #1499 state: the first post-W1 unblocked consumption slice is
+Lane 1 / L4 direct Rust-Int `DifferentialEquals` evidence, not E9/L5
+`ForAllTargets` execution.
+
 ## Current State
 
 PR-D provides a structural import surface, not an executable cross-target
@@ -27,6 +32,10 @@ harness:
   exercises the existing `DifferentialEquals` predicate on a fixture-local
   subject/oracle pair. This proves the fixture home and runner-visible shape; it
   does not prove multi-target emission or L5 corpus behavior.
+- W1 `DifferentialEquals(rust_emit_output, dag_eval_output, ProgramOutputBind)`
+  is now wired for the current Rust / Int slice. This narrows the Lane 1
+  blocker, but it remains a transitional single-target producer path and does
+  not supply LanguageSpec, Shape A, or L5 observation authority.
 - `src/v3/compiler/tests/fixtures/r3_verification_l5_corpus.dag` already contains
   an R3 L5 skeleton using the existing `ForAllTargets` scaffold. Its file-level
   comment records the current runner state: `ForAllTargets` is not wired in the
@@ -58,6 +67,9 @@ not runner code.
 Before the gates are live:
 
 - Keep this readiness note and the cadence matrix current.
+- Consume #1499 only through Lane 1 / L4 direct Rust-Int
+  `DifferentialEquals` rows that stay inside the current W1 producer and
+  evaluator surface.
 - Add blocked-row wording for specific L5 skeletons only when the blocker is
   exact and traceable to the table above.
 - Tighten cross-links from R3 Verification planning to the PR-D fixture and the
@@ -85,7 +97,8 @@ After the gates are live:
 ## Readiness Verdict
 
 E9 is **not implementation-ready** on current main. The strict cross-target
-receipt remains gated on LanguageSpec, all Shape A target grounding, L4/L7 corpus
-seed availability, and a typed structural observation path. The landed PR-D
-surface is sufficient for planning and blocked-row authoring, but not for
-`ForAllTargets` execution.
+receipt remains gated on LanguageSpec, all Shape A target grounding, corpus-home
+approval, and a typed structural observation path. #1499 makes a narrow
+Lane 1 / L4 Rust-Int consumption slice available, but that is not
+`ForAllTargets` execution and must not be generalized into L5 target
+enumeration or stdout equality.
