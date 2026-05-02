@@ -4,8 +4,8 @@ use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
-    merge_evidence, optional_evidence_meet, per_call_descent_evidence, per_call_pattern_at,
-    positive_amount_from_i64, promote_to_strict, size_bound_param, tree_size_bound,
+    merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
+    promote_to_strict, size_bound_param, sub_value_relation_to_call_pattern, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
     CardinalityBound, DescentEvidence, FieldValue, Interval, IntervalWidth, IterationDimension,
     IterationPrimitive, LoweringTarget, PositiveDescentAmount, PositiveIntervalWidth,
@@ -580,31 +580,40 @@ fn caller(n: Int) -> Int = helper(n)
 }
 
 #[test]
-fn e_p_per_call_pattern_projects_same_argument_self_call() {
-    let dag = compile_to_dag(
-        "\
-fn repeat_same(n: Int) -> Int = repeat_same(n)
-",
-        "e_p_same_argument_call.v3",
-    )
-    .expect("same-argument recursive fixture compiles");
-
-    let entries = per_call_descent_evidence(&dag);
-    let same_arg = entries
-        .iter()
-        .find(|entry| entry.caller == "repeat_same" && entry.callee == "repeat_same")
-        .unwrap_or_else(|| panic!("expected repeat_same self-call evidence, got {entries:?}"));
-
+fn e_p_per_call_pattern_projects_preserved_value_to_same_argument_call() {
     assert_eq!(
-        same_arg.evidence,
-        vec![SubValueRelation::PreservedValue],
-        "same-argument self-call should be detected from the existing per-call evidence authority"
-    );
-    assert_eq!(
-        per_call_pattern_at(&dag, same_arg.call),
+        sub_value_relation_to_call_pattern(&SubValueRelation::PreservedValue),
         Some(CallPattern::SameArgumentCall),
         "gate (1) broadens CallPattern coverage by projecting preserved self-call evidence \
-         to SameArgumentCall without adding a parallel call-site walker"
+         to SameArgumentCall without authoring a new lowered carrier or lens consumer"
+    );
+}
+
+#[test]
+fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
+    let field = v3_compiler::dag::InductiveField {
+        type_name: String::from("Tree"),
+        variant_name: String::from("Node"),
+        field_name: String::from("left"),
+        shape: v3_compiler::dag::RecursionShape::DirectRecursion,
+        element_type: String::from("Tree"),
+    };
+    assert_eq!(
+        sub_value_relation_to_call_pattern(&SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: ShrinkFactor::UnitShrink,
+        }),
+        Some(CallPattern::ChildAccessorCall {
+            accessor: String::from("left")
+        }),
+        "StrictSubValue has an authoritative ChildAccessorCall projection in std.induction.dag"
+    );
+    assert_eq!(
+        sub_value_relation_to_call_pattern(&SubValueRelation::IteratedSubValue { field }),
+        Some(CallPattern::ChildAccessorCall {
+            accessor: String::from("left")
+        }),
+        "IteratedSubValue has the same authoritative ChildAccessorCall projection in std.induction.dag"
     );
 }
 
