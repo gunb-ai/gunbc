@@ -846,6 +846,7 @@ mod parse_stage4_prep {
             "dsl/std/logic.dag".to_string(),
             "dsl/std/magnitude.dag".to_string(),
             "dsl/std/nat.dag".to_string(),
+            "dsl/std/rational.dag".to_string(),
             "dsl/std/string_type.dag".to_string(),
             "dsl/std/types.dag".to_string(),
         ];
@@ -966,6 +967,14 @@ mod parse_stage4_prep {
         parse_file(
             include_str!("../../../../dsl/std/integer.dag"),
             "dsl/std/integer.dag",
+        );
+    }
+
+    #[test]
+    fn handwritten_parser_accepts_rational_dag() {
+        parse_file(
+            include_str!("../../../../dsl/std/rational.dag"),
+            "dsl/std/rational.dag",
         );
     }
 
