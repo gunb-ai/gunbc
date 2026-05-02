@@ -30,6 +30,14 @@ type TypeRealization {
 // today; Grounding still uses `ScratchIntExamples` until Slice C lands a
 // LanguageSpec projection reader — dissolution trigger: replace scratch driver
 // with a pure read of these declarations + `BoundDeclaration` program facts.
+//
+// **INVARIANTS.md E-6 (bounded exception — docs/invariants/e-6-no-target-spec-field-without-a-same-pr-consumer.md):**
+// emitters do not consult these rows yet. **Dissolution ratchet:** Coercion-Fold
+// Slice C / declared LanguageSpec projection (#1133 / #1286 / PR #1459 lane).
+// **Same-PR consumer:** `v3-grounding-coercion-fold` `fold_program_to_target`
+// (`ScratchIntExamples` arm) counts bootstrap `TargetIntegerTypeInhabitance` meta-tagged
+// rows before running scratch examples — CI fails if spec rows disappear or stop lowering.
+// **Structural receipt:** `m2_substrate_inhabitance_test::target_integer_type_inhabitance_rows_are_structural_slice_b_receipt`.
 type TargetIntegerTypeInhabitance {
   language: DeclarationRef
   kernel_integer: DeclarationRef

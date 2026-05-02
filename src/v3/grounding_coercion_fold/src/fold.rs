@@ -19,6 +19,22 @@ use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 use crate::diagnostic::EmissionDiagnostic;
 use crate::types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance};
 
+/// Same-PR consumer for `TargetIntegerTypeInhabitance` spec rows (`emit_model.dag`, **E-6**).
+///
+/// Counts declarations meta-tagged with the template; emitters still ignore payloads until
+/// Slice C. Coercion-Fold requires this count before scratch examples run so deleting or
+/// failing to lower inhabitance `data` breaks CI.
+const MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS: usize = 8;
+
+fn declared_target_integer_type_inhabitance_row_count(dag: &Dag) -> usize {
+    let Some(meta) = dag.declaration_by_name("TargetIntegerTypeInhabitance") else {
+        return 0;
+    };
+    dag.declarations()
+        .filter(|decl| decl.meta_tag == Some(meta.id))
+        .count()
+}
+
 fn fold_design_doc_example_1_unrefined_int() -> Result<TargetInhabitance, EmissionDiagnostic> {
     Err(EmissionDiagnostic::UnderRefined {
         unspecified_axis: "bound".to_string(),
@@ -63,7 +79,7 @@ fn fold_design_doc_example_8_go() -> Result<TargetInhabitance, EmissionDiagnosti
 ///   bindings or real program facts without landing the declared projection / dissolution path
 ///   first (#1133 / #1286).
 pub fn fold_program_to_target(
-    _dag: &Dag,
+    dag: &Dag,
     lifetime_facts: &LifetimeAnalysisReport,
     language_spec: &LanguageSpecProjection,
 ) -> Result<BTreeMap<BindingId, TargetInhabitance>, EmissionDiagnostic> {
@@ -73,6 +89,12 @@ pub fn fold_program_to_target(
             Err(EmissionDiagnostic::FoldNotImplemented)
         }
         LanguageSpecProjection::ScratchIntExamples(example) => {
+            let declared_rows = declared_target_integer_type_inhabitance_row_count(dag);
+            if declared_rows < MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS {
+                return Err(EmissionDiagnostic::UnderRefined {
+                    unspecified_axis: "declared_TargetIntegerTypeInhabitance_rows".to_string(),
+                });
+            }
             debug_assert!(
                 lifetime_facts.is_empty(),
                 "ScratchIntExamples checkpoint: pass an empty LifetimeAnalysisReport until this body reads facts (#1133 / #1286)"
