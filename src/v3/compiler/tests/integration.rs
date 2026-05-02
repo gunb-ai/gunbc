@@ -536,7 +536,6 @@ mod lane2_stage_2f_dimension_test {
 mod e7_analyze_complexity_integration {
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Behavior;
-    use v3_compiler::diagnostics::Diagnostic;
     use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
     use v3_compiler::{analyze_complexity, analyze_symbolic_cost_dimension, DimensionReport};
 
@@ -687,11 +686,6 @@ mod e7_analyze_complexity_integration {
                 }
             }
         }
-        // Sanity: `Diagnostic` is a typed enum the public API exposes;
-        // a `DimensionFail` would carry these. We don't construct
-        // such a program here, but we document the type relationship
-        // by making the import exercised:
-        let _: fn(&Diagnostic) -> () = |_| {};
     }
 }
 
