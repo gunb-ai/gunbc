@@ -283,7 +283,7 @@ fn w1_rust_emit_output_int(
     }
     let rust_src = crate::emit_rust::emit_rust(program_dag).map_err(|e| {
         format!(
-            "W1 rust_emit_output: emit_rust failed (use #1485-approved `emit_rust` / `emit_rust_with_mode` path only; dissolution: PB-Runtime-generated tests): {e}"
+            "W1 rust_emit_output: emit_rust failed (use #1485-approved `emit_rust` / `emit_rust_with_mode` path only; dissolution: PB-Runtime-generated tests): {e:?}"
         )
     })?;
     let stamp = std::time::SystemTime::now()

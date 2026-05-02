@@ -1,8 +1,9 @@
 //! **Layer:** integration
 //!
-//! R3 Lane 1 + Lane 2 + L5 **implementation skeleton** pre-authoring: fixtures compile cleanly and
-//! `TestRunner` receipts show intentionally deferred predicates (`NotYetImplemented`), not silent
-//! structural failure. Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
+//! R3 Lane 1 + Lane 2 + L5 harness receipts: Lane 1 L4 now exercises the wired W1
+//! `DifferentialEquals(rust_emit_output, dag_eval_output)` path (plus a mixed-lineage
+//! `NotYetImplemented` control). Lane 2 / L5 rows remain intentionally deferred where noted.
+//! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
 
