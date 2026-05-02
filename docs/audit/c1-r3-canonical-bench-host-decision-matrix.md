@@ -40,7 +40,7 @@ Each option below has: description, hardware-stability characterization, what au
 | Hardware stability | **Approximate.** `ubicloud-standard-2` is an Ubicloud-managed shared runner type — same instance specification (2 vCPU, fixed RAM, fixed Linux kernel image), but each CI job spins a fresh VM. Co-tenancy and VM-placement jitter contribute run-to-run variance. The brief's `≤5× p99` bracket absorbs typical shared-VM tail latency; `≤2× median` is tighter and may flag when a noisy run lands. |
 | Authority needed | **PB Manager designation** (one-line addition to `docs/r3-structure.md` or sibling). No CI / infra / billing change. **Smallest authority surface.** |
 | Phase 1 0c viability | **Yes**, with capture discipline: capture across N runs (suggest N=3 or N=5), record median-of-medians as `median_ns`, and the highest p99 across runs as `p99_ns` (conservative pin). Discipline must be written into the capture-procedure §2 before 0c PR opens. |
-| Drift recovery | Cheap. Hardware-spec, runner-image, OS / kernel, or toolchain drift (vCPU model swap, Ubicloud image bump per <https://www.ubicloud.com/docs/github-actions-integration/runner-types>, kernel bump, rustc minor bump) triggers Director-approved recapture. Recapture cost: one CI run. |
+| Drift recovery | Cheap. Hardware-spec, runner-image, OS / kernel, or toolchain drift (vCPU model swap, Ubicloud image bump per <https://www.ubicloud.com/docs/github-actions-integration/runner-types>, kernel bump, rustc minor bump) triggers Director-approved recapture. Recapture cost: N independent CI invocations per §4 multi-run discipline (N≥3, suggested 5). |
 
 ### Option B — Dedicated bench runner (new label, e.g. `bench-canonical-1`)
 
