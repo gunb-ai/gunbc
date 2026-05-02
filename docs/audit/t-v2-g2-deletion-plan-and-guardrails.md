@@ -107,7 +107,7 @@ These checks are not new tests — they are existing CI/grep invocations that MU
 
 ## 6. Routing question (single, for PB Manager)
 
-**Which reviewer signs off on the deletion PR?** Standing review cadence (CI + scheduled-review providers) covers most of the gates, but Gd-6 (STOP-condition green-receipt table) requires a human sign-off that all 5 receipts are valid. Suggest: PB Manager confirms `Gd-6` directly in the PR review; Director sign-off on the receipt table format if `Gd-6` becomes ambiguous.
+**Who signs off on Gd-6?** Standing review cadence (CI + scheduled-review providers) covers Gd-1..Gd-5 and Gd-7. Gd-6 (STOP-condition green-receipt table) requires a human sign-off that all 5 receipts are valid. **Single-reviewer rule: PB Manager owns Gd-6 sign-off** on the deletion PR; ambiguous-ownership reviews are not acceptable. Director involvement is escalation-only — if PB Manager finds the receipt-table *format itself* under-specified at deletion time, escalate format ratification to Director once and apply the ratified format on subsequent reviews; Gd-6 sign-off authority remains PB Manager.
 
 ---
 
