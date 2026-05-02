@@ -528,23 +528,46 @@ fn complexity_v2_v3_oracle_equivalent_on_corpus() {
 /// semantically-equivalent forms. The asymptotic projection is the published
 /// behavioral contract per the register's "what v2 has that v3 drops" column.
 fn assert_summaries_equivalent(v2: &V2Summary, v3: &V3Summary, fixture: &str) {
+    // Asymptotic-class equivalence per dimension (v3 publishes one
+    // class derived from work; v3_classify_span derives span class
+    // from v3.span structurally — same projection v2_classify applies
+    // to v2.span).
     let v2_class = v2_classify(&v2.work);
     let v3_class = v3.asymptotic_class;
     assert_eq!(v2_class, v3_class, "{fixture}: work asymptotic class mismatch");
-    
+
     let v2_span_class = v2_classify(&v2.span);
     let v3_span_class = v3_classify_span(&v3);
     assert_eq!(v2_span_class, v3_span_class, "{fixture}: span asymptotic class mismatch");
-    
-    assert_eq!(v2.certainty, v3.certainty, "{fixture}: certainty mismatch");
+
+    // Per-coordinate certainty equivalence per §1.7's
+    // ComplexitySummary { ..., work_certainty, span_certainty } —
+    // global v2.certainty applies to both work and span (v2's
+    // certainty was a single field at the summary level), so we
+    // compare v2.certainty against EACH v3 per-coordinate certainty.
+    // This is the documented projection: v2.certainty := the meet of
+    // v3.work_certainty and v3.span_certainty (any unproven dimension
+    // makes the v2-equivalent global certainty unproven). Both
+    // dimensions individually must match v2's tightness for the test
+    // to pass; this preserves v3's stronger per-coordinate claim
+    // while validating v2-equivalence on both dimensions.
+    assert_eq!(v2.certainty, v3.work_certainty,
+               "{fixture}: work_certainty mismatch (v3 stronger or weaker than v2 baseline)");
+    assert_eq!(v2.certainty, v3.span_certainty,
+               "{fixture}: span_certainty mismatch (v3 stronger or weaker than v2 baseline)");
 }
 ```
 
 ### §4.2 What the test pins
 
-Per TESTING.md *"behavior-driven, not implementation-driven"*: the test pins **asymptotic-class equivalence and certainty equivalence**, not raw `CostExpr`/`SymbolicCost` structural equality. v2's normalization may produce a syntactically different `CostExpr` than v3's `SymbolicCost` for the same program (e.g., `SumCost([LinearCost, ConstantCost(1)])` vs `LinearCost`). Both project to `ClassLinear`. The behavioral contract is the projection, not the syntax.
+Per TESTING.md *"behavior-driven, not implementation-driven"*: the test pins **asymptotic-class equivalence (per dimension) and per-coordinate certainty equivalence**, not raw `CostExpr`/`SymbolicCost` structural equality. v2's normalization may produce a syntactically different `CostExpr` than v3's `SymbolicCost` for the same program (e.g., `SumCost([LinearCost, ConstantCost(1)])` vs `LinearCost`). Both project to `ClassLinear`. The behavioral contract is the projection, not the syntax.
 
-This is a *documented projection* per TESTING.md *"or assert a documented, reviewed projection when the types differ but the claim is about a specific homomorphism"*. The homomorphism is `cost → AsymptoticClass`, and equivalence is asserted at that level.
+This is a *documented projection* per TESTING.md *"or assert a documented, reviewed projection when the types differ but the claim is about a specific homomorphism"*. The homomorphisms:
+- `v2.work → AsymptoticClass` ↔ `v3.work → v3.asymptotic_class` (the lens's own projection)
+- `v2.span → AsymptoticClass` ↔ `v3.span → v3_classify_span(v3.span)`
+- `v2.certainty (single global)` ↔ `v3.work_certainty` AND `v3.span_certainty` (per-coordinate; v2's single field maps to both v3 per-dimension certainties — both must match)
+
+The certainty mapping is asymmetric: v2's single `certainty` field is one fact applying to the whole summary; v3 carries per-coordinate `work_certainty` + `span_certainty` (per §1.7). The cementing test asserts v2's certainty matches BOTH v3 per-coordinate certainties — preserving v3's stronger per-coordinate claim while validating v2-equivalence on both dimensions. If v3 were to claim `work_certainty = Proven` while `span_certainty = Conservative` (or vice versa), the test fails on the dimension that diverges from v2's baseline; the failure surface is which dimension diverged.
 
 ### §4.3 Anti-pattern guard
 
