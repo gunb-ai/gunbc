@@ -73,7 +73,10 @@ For each match, decide: keep (historical reference), delete (rotted comment), or
 
 ## 3. Pre-merge guardrails (verified inside the deletion PR's CI)
 
-These checks are not new tests — they are existing CI/grep invocations that MUST be green on the deletion PR before merge. Each is a fail-closed gate:
+These checks MUST hold on the deletion PR before merge. Two enforcement classes:
+
+- **Gd-1..Gd-5: mechanical CI / grep gates.** Existing CI invocations + scriptable greps; fail-closed by construction (no human discretion required).
+- **Gd-6..Gd-7: human / process guardrails.** Gd-6 requires PB Manager reviewer sign-off on the receipt-table (per §6); Gd-7 is standard repo discipline enforced by the operator running `git push`. Neither is a CI check; both are reviewer-enforced.
 
 | # | Guardrail | Verification |
 |---|---|---|
@@ -127,7 +130,7 @@ This plan is intentionally minimal:
 
 - §1: STOP conditions re-stated; deletion PR may not open until all 7 (S-1..S-4 + G-1 + G-2-prereq-emit + G-2-prereq-verif) are green (verified at HEAD).
 - §2: Deletion PR shape — single atomic PR, three structural file-system operations, explicit out-of-scope list, bounded Population C sweep.
-- §3: 7 fail-closed CI guardrails (Gd-1…Gd-7).
+- §3: 7 guardrails total — Gd-1..Gd-5 mechanical CI/grep gates; Gd-6..Gd-7 human/process guardrails (PB Manager sign-off and repo discipline).
 - §4: 7-day rollback window via `git revert`; beyond that, treat as fresh reintroduction.
 - §5: Explicit non-goals.
 - §6: Single PB-Manager routing question (reviewer for Gd-6).
