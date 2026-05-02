@@ -545,33 +545,39 @@ fn assert_summaries_equivalent(v2: &V2Summary, v3: &V3Summary, fixture: &str) {
     assert_eq!(v2_span_class, v3_span_class, "{fixture}: span asymptotic class mismatch");
 
     // Per-coordinate certainty equivalence per §1.7's
-    // ComplexitySummary { ..., work_certainty, span_certainty } —
-    // global v2.certainty applies to both work and span (v2's
-    // certainty was a single field at the summary level), so we
-    // compare v2.certainty against EACH v3 per-coordinate certainty.
-    // This is the documented projection: v2.certainty := the meet of
-    // v3.work_certainty and v3.span_certainty (any unproven dimension
-    // makes the v2-equivalent global certainty unproven). Both
-    // dimensions individually must match v2's tightness for the test
-    // to pass; this preserves v3's stronger per-coordinate claim
-    // while validating v2-equivalence on both dimensions.
-    assert_eq!(v2.certainty, v3.work_certainty,
-               "{fixture}: work_certainty mismatch (v3 stronger or weaker than v2 baseline)");
-    assert_eq!(v2.certainty, v3.span_certainty,
-               "{fixture}: span_certainty mismatch (v3 stronger or weaker than v2 baseline)");
+    // ComplexitySummary { ..., work_certainty, span_certainty }.
+    // v2.certainty is a single global field; v3 carries per-coordinate
+    // facts. The documented projection is:
+    //
+    //     v2.certainty := meet_pair(v3.work_certainty, v3.span_certainty)
+    //
+    // (any unproven dimension makes the v2-equivalent global certainty
+    // unproven; if both v3 dimensions are Proven, v2 is Proven).
+    //
+    // The test asserts the projection equality — NOT v2.certainty ==
+    // each per-coordinate fact independently. Asserting independent
+    // equality would reject legitimate per-coordinate divergence
+    // (work_certainty=Proven, span_certainty=Conservative is a
+    // structurally-valid v3 summary that projects to v2.certainty=
+    // Conservative; a legitimate stronger-on-work claim would fail
+    // a per-coordinate-equality test against v2's coarser global field).
+    let v3_global_certainty = meet_pair(v3.work_certainty, v3.span_certainty);
+    assert_eq!(v2.certainty, v3_global_certainty,
+               "{fixture}: certainty projection mismatch (v3.work={:?}, v3.span={:?}, projected meet={:?}, v2.certainty={:?})",
+               v3.work_certainty, v3.span_certainty, v3_global_certainty, v2.certainty);
 }
 ```
 
 ### §4.2 What the test pins
 
-Per TESTING.md *"behavior-driven, not implementation-driven"*: the test pins **asymptotic-class equivalence (per dimension) and per-coordinate certainty equivalence**, not raw `CostExpr`/`SymbolicCost` structural equality. v2's normalization may produce a syntactically different `CostExpr` than v3's `SymbolicCost` for the same program (e.g., `SumCost([LinearCost, ConstantCost(1)])` vs `LinearCost`). Both project to `ClassLinear`. The behavioral contract is the projection, not the syntax.
+Per TESTING.md *"behavior-driven, not implementation-driven"*: the test pins **asymptotic-class equivalence (per dimension) and certainty-projection equivalence**, not raw `CostExpr`/`SymbolicCost` structural equality. v2's normalization may produce a syntactically different `CostExpr` than v3's `SymbolicCost` for the same program (e.g., `SumCost([LinearCost, ConstantCost(1)])` vs `LinearCost`). Both project to `ClassLinear`. The behavioral contract is the projection, not the syntax.
 
 This is a *documented projection* per TESTING.md *"or assert a documented, reviewed projection when the types differ but the claim is about a specific homomorphism"*. The homomorphisms:
 - `v2.work → AsymptoticClass` ↔ `v3.work → v3.asymptotic_class` (the lens's own projection)
 - `v2.span → AsymptoticClass` ↔ `v3.span → v3_classify_span(v3.span)`
-- `v2.certainty (single global)` ↔ `v3.work_certainty` AND `v3.span_certainty` (per-coordinate; v2's single field maps to both v3 per-dimension certainties — both must match)
+- `v2.certainty (single global)` ↔ `meet_pair(v3.work_certainty, v3.span_certainty)` (homomorphism: v2's coarser global certainty IS the meet of v3's per-coordinate certainties — any unproven v3 dimension makes the projection Conservative)
 
-The certainty mapping is asymmetric: v2's single `certainty` field is one fact applying to the whole summary; v3 carries per-coordinate `work_certainty` + `span_certainty` (per §1.7). The cementing test asserts v2's certainty matches BOTH v3 per-coordinate certainties — preserving v3's stronger per-coordinate claim while validating v2-equivalence on both dimensions. If v3 were to claim `work_certainty = Proven` while `span_certainty = Conservative` (or vice versa), the test fails on the dimension that diverges from v2's baseline; the failure surface is which dimension diverged.
+The certainty mapping is the meet projection: v2's single `certainty` field IS the meet of v3's per-coordinate `work_certainty` + `span_certainty`. The cementing test asserts v2.certainty matches the v3-meet (NOT v2.certainty == each v3 coordinate independently — that would reject legitimate per-coordinate divergence like `work_certainty=Proven, span_certainty=Conservative`, which validly projects to `v2.certainty=Conservative`). The test's failure surface names both v3 per-coordinate facts plus their meet, so the divergence is debuggable: v3 might have a stronger per-coordinate claim than v2 (e.g., v3 proved one dimension, v2 didn't) — that surfaces as a meet-equivalence pass with per-coordinate richness, NOT as a test failure.
 
 ### §4.3 Anti-pattern guard
 
