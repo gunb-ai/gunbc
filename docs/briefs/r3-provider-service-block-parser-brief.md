@@ -30,14 +30,17 @@ Those files already carry the full shared service grammar we want the first
 implementation slice to parse and lower: service config, operations, typed
 inputs, typed outputs, REST transport, response mappings, and mock responses.
 
-Existing shared substrate facts that should receive those parsed facts live in:
+Design context and authority pointers for that future implementation live in:
+
+- `docs/r3-structure.md`
+- `docs/briefs/r3-provider-typed-wire-c2-scope-audit.md`
+
+Existing shared substrate targets that should receive those parsed facts live in:
 
 - `src/v3/std/services.dag`
 - `src/v3/std/anthropic_messages.dag`
 - `src/v3/std/anthropic_operations.dag`
 - `src/v3/std/anthropic_schema.dag`
-- `docs/r3-structure.md`
-- `docs/briefs/r3-provider-typed-wire-c2-scope-audit.md`
 
 Current shared carriers already in the tree:
 
