@@ -2481,6 +2481,18 @@ impl Dag {
         (*BOOTSTRAPPED_DAG).clone()
     }
 
+    /// Declaration graph with **no** embedded bootstrap fixture.
+    ///
+    /// Cross-crate **tests** only (e.g. E-6 witnesses that compare bootstrap-full vs empty graphs).
+    /// Production paths must use [`Dag::new`].
+    ///
+    /// Gated behind feature `empty-substrate-for-tests` so normal library builds do not expose a
+    /// public constructor for substrate-invalid empty graphs ([`Dag::new`] remains the production entry).
+    #[cfg(feature = "empty-substrate-for-tests")]
+    pub fn new_empty_for_testing() -> Self {
+        Self::empty()
+    }
+
     /// First [`DeclarationId::raw`] reserved for declarations appended after
     /// embedded bootstrap construction. Values strictly below this bound index
     /// bootstrap fixture rows; values at or above were allocated afterward
