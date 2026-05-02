@@ -7727,80 +7727,43 @@ mod tests {
 
     #[test]
     fn enforce_non_negative_unit_count_payload_rejects_negative_literal() {
-        let mut dag = Dag::empty();
-        let int_ty = push_test_declaration(
-            &mut dag,
-            "Int",
-            TypeConnective::Atom(AtomPayload::UnresolvedIdentifier("Int".to_string())),
-            None,
-        );
-        let unit_count_payload_ty = {
-            let id = dag.alloc_declaration_id();
-            dag.push_declaration(Declaration {
-                id,
-                name: None,
-                connective: TypeConnective::Conj {
-                    children: vec![Field {
-                        label: "units".to_string(),
-                        ty: int_ty,
-                    }],
-                },
-                type_params: Vec::new(),
-                phantom_params: Vec::new(),
-                meta_tag: None,
-                specialization_parent: None,
-                inhabits: None,
-                value_body: None,
-                refinement: None,
-                nominal_opacity: None,
-                span: test_span(),
-            });
-            id
-        };
-        let dummy_ty = push_test_declaration(
-            &mut dag,
-            "DummyUnitPayload",
-            TypeConnective::Conj {
-                children: vec![Field {
-                    label: "_".to_string(),
-                    ty: int_ty,
-                }],
-            },
-            None,
-        );
-        push_test_declaration(
-            &mut dag,
-            "PositiveIntervalWidth",
-            TypeConnective::Disj {
-                variants: vec![
-                    Field {
-                        label: "OneUnit".to_string(),
-                        ty: dummy_ty,
-                    },
-                    Field {
-                        label: "AdditionalUnit".to_string(),
-                        ty: dummy_ty,
-                    },
-                    Field {
-                        label: "UnitCount".to_string(),
-                        ty: unit_count_payload_ty,
-                    },
-                ],
-            },
-            None,
-        );
-        let span = test_span();
-        let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(-1))];
-        let err =
-            enforce_non_negative_unit_count_payload(&dag, unit_count_payload_ty, &payload, &span)
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let dag = Dag::new();
+                let piw = dag
+                    .declaration_by_name("PositiveIntervalWidth")
+                    .expect("bootstrap PositiveIntervalWidth");
+                let TypeConnective::Disj { variants } = &piw.connective else {
+                    panic!("PositiveIntervalWidth must be a sum");
+                };
+                let unit_count_payload_ty = variants
+                    .iter()
+                    .find(|v| v.label == "UnitCount")
+                    .expect("UnitCount variant")
+                    .ty;
+                let span = test_span();
+                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(-1))];
+                let err = enforce_non_negative_unit_count_payload(
+                    &dag,
+                    unit_count_payload_ty,
+                    &payload,
+                    &span,
+                )
                 .expect_err("negative units must be rejected");
-        let Diagnostic::ResolveError { name, .. } = err else {
-            panic!("expected ResolveError; got {err:?}");
-        };
-        assert_eq!(
-            name,
-            positive_interval_width_unit_count_requires_nonnegative_units_literal_message(-1)
-        );
+                let Diagnostic::ResolveError { name, .. } = err else {
+                    panic!("expected ResolveError; got {err:?}");
+                };
+                assert_eq!(
+                    name,
+                    positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
+                        -1
+                    )
+                );
+            })
+            .expect("spawn enforce_non_negative_unit_count_payload test")
+            .join()
+            .expect("enforce_non_negative_unit_count_payload test panicked");
     }
 
     fn surface_named_type(name: &str) -> SurfaceType {

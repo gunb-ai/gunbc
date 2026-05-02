@@ -1606,18 +1606,23 @@ data bad: Holder = { w: UnitCount { units: -1 } }\n";
             let dag = semantic_dag_for(source, "positive_interval_unit_count_negative.v3");
             let expected =
                 positive_interval_width_unit_count_requires_nonnegative_units_literal_message(-1);
-            let hit = dag.diagnostics().iter().any(|(_, diagnostic)| {
-                matches!(
-                    diagnostic,
-                    Diagnostic::ResolveError { name, .. } if name == &expected
-                )
-            });
+            let hit = dag
+                .diagnostics()
+                .iter()
+                .any(|(_, diagnostic)| match diagnostic {
+                    Diagnostic::MagnitudeOutOfRange { literal, .. } => literal == "-1",
+                    Diagnostic::ResolveError { name, .. } => name == &expected,
+                    _ => false,
+                });
             hit
         })
         .expect("spawn unit_count negative test thread")
         .join()
         .expect("unit_count negative test thread panicked");
-    assert!(hit, "expected nonnegative UnitCount.units ResolveError");
+    assert!(
+        hit,
+        "expected UnitCount.units=-1 to fail (Nat magnitude gate or enforce fallback)"
+    );
 }
 
 #[test]

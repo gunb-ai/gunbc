@@ -94,12 +94,15 @@ type PositiveIntervalWidth
   // (inclusive discrete span `units` above `lower` in `BoundedInterval<Int>`).
   // Peano spines remain valid for small cardinalities; Coercion-Fold rows use
   // `UnitCount` so Examples 2 / 6 / 8 intervals fit in spec files.
-  // Invariant: `units` must be a nonnegative `Int` literal — enforced at lower
-  // time in `lower_structural_field_value` (`enforce_non_negative_unit_count_payload`
-  // in `lower.rs`); negative literals fail closed before `ValueBody::Structural`.
+  //
+  // Carrier is `Nat` (`Semiring<Magnitude>` per `dsl/std/nat.dag`): negative
+  // decimal literals are rejected as out-of-range for `Nat` via
+  // `integer_range_for_decl` / `lower_scalar_literal_for_type` (not merely a
+  // bespoke lower gate). `enforce_non_negative_unit_count_payload` remains a
+  // fail-closed witness on the structural lowering path.
   // Peano `OneUnit` / `AdditionalUnit` remains the proof-carrying spine where a
   // unary encoding is required; `UnitCount` is decimal shorthand under that gate.
-  | UnitCount { units: Int }
+  | UnitCount { units: Nat }
 
 type IntervalWidth
   = ZeroWidth

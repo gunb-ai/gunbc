@@ -66,10 +66,12 @@ use crate::types::TypeShape;
 // adopts the shared std diagnostic record directly.
 include!("diagnostics_generated.rs");
 
-/// Stable `ResolveError.name` for a negative `PositiveIntervalWidth.UnitCount.units` literal.
+/// Stable `ResolveError.name` for a negative `PositiveIntervalWidth.UnitCount.units` payload when
+/// lowering bypasses the normal `Nat` literal gate (e.g. tests calling `enforce_non_negative_unit_count_payload` directly).
 ///
-/// Wording is centralized so integration tests assert equality against this helper instead of
-/// substring-matching on [`Diagnostic::ResolveError`] prose (see repo `TESTING.md`, behavior-driven).
+/// Wording is centralized for tests that assert on [`Diagnostic::ResolveError`] directly (see repo
+/// `TESTING.md`, behavior-driven). Primary authoring rejects `-1` via [`Diagnostic::MagnitudeOutOfRange`]
+/// against `Nat`'s decimal range facts.
 #[doc(hidden)]
 pub fn positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
     units: i64,
