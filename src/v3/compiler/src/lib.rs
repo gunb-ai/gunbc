@@ -106,9 +106,12 @@ pub mod evaluator {
     /// operand / arity diagnostics (`TransformArityMismatch`,
     /// `UnsupportedTransformTarget`, `BadTransformOperands`), Branch
     /// resolution / shape / payload-frame errors (E4), and frame
-    /// discipline propagation (`FrameError`). Adding a new variant is a
-    /// STOP+PING per the E0 brief — either route the underlying gap
-    /// through P1 or extend PR-B.1's fail-closed catalog first.
+    /// discipline propagation (`FrameError`). E5 adds loop-bound
+    /// diagnostics from the readiness audit: descent residual,
+    /// non-integer cardinality, and negative cardinality. Adding any
+    /// further variant is a STOP+PING per the E0 brief — either route the
+    /// underlying gap through P1 or extend PR-B.1's fail-closed catalog
+    /// first.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum EvalError {
         MissingNode {
@@ -153,6 +156,34 @@ pub mod evaluator {
         BranchNoMatchingArm {
             node: NodeId,
             tag: DeclarationId,
+        },
+        /// E5 fail-closed: `LoopBound::Descent` execution requires
+        /// termination evidence and is explicitly deferred by the E5
+        /// readiness audit. The `measure` port is carried so diagnostics
+        /// identify the runtime value that would need descent evidence.
+        LoopBoundDescentResidual {
+            node: NodeId,
+            cluster: crate::dag::ClusterId,
+            measure: PortId,
+        },
+        /// E5 fail-closed: cardinality loops accept only a non-negative
+        /// runtime `Int` literal as the bounded iteration witness.
+        LoopCardinalityNonInteger {
+            node: NodeId,
+            count: PortId,
+        },
+        /// E5 fail-closed: negative counts are not cardinality witnesses.
+        LoopCardinalityNegative {
+            node: NodeId,
+            count: PortId,
+            value: i64,
+        },
+        /// E5 fail-closed: count is non-negative but cannot fit in the
+        /// host iteration counter without truncation.
+        LoopCardinalityTooLarge {
+            node: NodeId,
+            count: PortId,
+            value: i64,
         },
         /// E4 / E2 propagation: an `EvalFrameError` produced during
         /// frame discipline (push/pop balance, duplicate bind, unbound
@@ -217,6 +248,7 @@ pub mod evaluator {
             Behavior::Value(value) => Ok(eval_value(value)),
             Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
             Behavior::Branch(branch) => eval_branch(dag, branch.clone(), state, strategy),
+            Behavior::Loop(loop_node) => eval_loop(dag, loop_node.clone(), state, strategy),
             behavior => Err(EvalError::UnsupportedBehavior {
                 node: behavior.id(),
                 behavior: behavior_label(behavior),
@@ -319,6 +351,77 @@ pub mod evaluator {
             let _ = eval_node(dag, path.body, state, strategy)?;
         }
         eval_port(dag, path.output, state, strategy)
+    }
+
+    /// PR-E E5: bounded eager loop execution for
+    /// `LoopBound::Cardinality`. `LoopBound::Descent` remains a named
+    /// residual until a descent-execution slice consumes termination
+    /// evidence.
+    pub fn eval_loop(
+        dag: &Dag,
+        loop_node: crate::dag::LoopNode,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        let mut acc = eval_port(dag, loop_node.init, state, strategy)?;
+        let count = match loop_node.bound {
+            LoopBound::Cardinality { count } => {
+                decode_loop_cardinality_count(dag, loop_node.id, count, state, strategy)?
+            }
+            LoopBound::Descent { cluster, measure } => {
+                return Err(EvalError::LoopBoundDescentResidual {
+                    node: loop_node.id,
+                    cluster,
+                    measure,
+                });
+            }
+        };
+        for _ in 0..count {
+            state.push_frame(EvalFrame::empty());
+            let body_result = eval_loop_iteration_body(dag, &loop_node, acc, state, strategy);
+            let pop_result = state.pop_frame();
+            match (body_result, pop_result) {
+                (Ok(next), Ok(_)) => acc = next,
+                (Err(err), _) => return Err(err),
+                (Ok(_), Err(frame_err)) => return Err(EvalError::from(frame_err)),
+            }
+        }
+        Ok(acc)
+    }
+
+    fn eval_loop_iteration_body(
+        dag: &Dag,
+        loop_node: &crate::dag::LoopNode,
+        acc: Value,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        state.bind_top(loop_node.source, acc)?;
+        eval_node(dag, loop_node.body, state, strategy)
+    }
+
+    fn decode_loop_cardinality_count(
+        dag: &Dag,
+        node: NodeId,
+        count: PortId,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<usize, EvalError> {
+        match eval_port(dag, count, state, strategy)? {
+            Value::LiteralValue(LiteralBits::Int(n)) if n >= 0 => {
+                usize::try_from(n).map_err(|_| EvalError::LoopCardinalityTooLarge {
+                    node,
+                    count,
+                    value: n,
+                })
+            }
+            Value::LiteralValue(LiteralBits::Int(n)) => Err(EvalError::LoopCardinalityNegative {
+                node,
+                count,
+                value: n,
+            }),
+            _ => Err(EvalError::LoopCardinalityNonInteger { node, count }),
+        }
     }
 
     fn eval_transform_node(
@@ -561,8 +664,9 @@ pub mod evaluator {
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
-            ArithmeticOp, Behavior, BranchPattern, ComparisonOp, Dag, DeclarationId, LiteralBits,
-            LogicalOp, LoopBound, NodeId, OperatorKind, Path, PayloadBinding, PortId,
+            ArithmeticOp, Behavior, BranchPattern, Cluster, ComparisonOp, Dag, DeclarationId,
+            IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent, NodeId,
+            NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
             TransformTarget,
         };
         use crate::diagnostics::SourceSpan;
@@ -1436,30 +1540,271 @@ pub mod evaluator {
         }
 
         #[test]
-        fn loop_behavior_fails_closed() {
+        fn eval_loop_zero_iterations_returns_init_without_body_eval() {
             let mut dag = Dag::new();
-            let source = dag.push_value(LiteralBits::Int(3), span());
-            let init = dag.push_value(LiteralBits::Int(0), span());
-            let body = dag.push_bind("body", init, Vec::new(), span());
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(9), span());
+            let zero = dag.push_value(LiteralBits::Int(0), span());
+            let one = dag.push_value(LiteralBits::Int(1), span());
+            let bad_body_output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                vec![source, one],
+                span(),
+            );
+            let bad_body = node_for_port(&dag, bad_body_output);
             let output = dag.push_loop(
                 source,
                 init,
-                body,
-                LoopBound::Cardinality { count: source },
+                bad_body,
+                LoopBound::Cardinality { count: zero },
                 span(),
             );
             let entry = node_for_port(&dag, output);
             let mut state = empty_state();
             let strategy = eager_strategy();
 
-            let err = eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported loop");
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("zero loop");
+
+            assert_eq!(
+                value,
+                Value::LiteralValue(LiteralBits::Int(9)),
+                "zero iterations must not evaluate the unsupported body"
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_cardinality_threads_accumulator_through_body() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let count = dag.push_value(LiteralBits::Int(3), span());
+            let one = dag.push_value(LiteralBits::Int(1), span());
+            let body_output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![source, one],
+                span(),
+            );
+            let body = node_for_port(&dag, body_output);
+            let output =
+                dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let value =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect("loop evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(3)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+            assert_eq!(
+                state.lookup(source),
+                Err(EvalFrameError::UnboundPort { port: source }),
+                "iteration accumulator binding must not leak"
+            );
+        }
+
+        #[test]
+        fn eval_loop_cardinality_missing_count_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let missing_count = dag.alloc_port(None);
+            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body = node_for_port(&dag, body_output);
+            let output = dag.push_loop(
+                source,
+                init,
+                body,
+                LoopBound::Cardinality {
+                    count: missing_count,
+                },
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("missing count");
 
             assert_eq!(
                 err,
-                EvalError::UnsupportedBehavior {
-                    node: entry,
-                    behavior: "Loop"
+                EvalError::UnboundPort {
+                    port: missing_count
                 }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_cardinality_non_integer_count_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let count = dag.push_value(LiteralBits::String("three".to_string()), span());
+            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body = node_for_port(&dag, body_output);
+            let output =
+                dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy())
+                .expect_err("non-integer count");
+
+            assert_eq!(
+                err,
+                EvalError::LoopCardinalityNonInteger { node: entry, count }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_cardinality_negative_count_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let count = dag.push_value(LiteralBits::Int(-1), span());
+            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body = node_for_port(&dag, body_output);
+            let output =
+                dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("negative count");
+
+            assert_eq!(
+                err,
+                EvalError::LoopCardinalityNegative {
+                    node: entry,
+                    count,
+                    value: -1,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[cfg(target_pointer_width = "32")]
+        #[test]
+        fn eval_loop_cardinality_count_too_large_for_usize_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let too_large = i64::from(u32::MAX) + 1;
+            let count = dag.push_value(LiteralBits::Int(too_large), span());
+            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body = node_for_port(&dag, body_output);
+            let output =
+                dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("count too large");
+
+            assert_eq!(
+                err,
+                EvalError::LoopCardinalityTooLarge {
+                    node: entry,
+                    count,
+                    value: too_large,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_descent_bound_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body = node_for_port(&dag, body_output);
+            let bind = dag.push_bind("descent_member", init, vec![source, init], span());
+            let param0 = dag.param_of(bind, 0).expect("param 0");
+            let param1 = dag.param_of(bind, 1).expect("param 1");
+            let transform_output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![source, init],
+                span(),
+            );
+            let transform = dag
+                .as_transform_ref(node_for_port(&dag, transform_output))
+                .expect("transform ref");
+            let cluster = dag.push_cluster(Cluster {
+                members: NonSingletonList::from_vec(vec![
+                    MemberDescent { param: param0 },
+                    MemberDescent { param: param1 },
+                ])
+                .expect("non-singleton"),
+                intra_cluster_calls: NonEmptyList::from_vec(vec![IntraClusterCall { transform }])
+                    .expect("non-empty"),
+            });
+            let output = dag.push_loop(
+                source,
+                init,
+                body,
+                LoopBound::Descent {
+                    cluster,
+                    measure: source,
+                },
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err = eval_node(&dag, entry, &mut state, &eager_strategy())
+                .expect_err("descent residual");
+
+            assert_eq!(
+                err,
+                EvalError::LoopBoundDescentResidual {
+                    node: entry,
+                    cluster,
+                    measure: source,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_loop_restores_stack_after_body_diagnostic() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let count = dag.push_value(LiteralBits::Int(1), span());
+            let one = dag.push_value(LiteralBits::Int(1), span());
+            let bad_body_output = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                vec![source, one],
+                span(),
+            );
+            let bad_body = node_for_port(&dag, bad_body_output);
+            let output = dag.push_loop(
+                source,
+                init,
+                bad_body,
+                LoopBound::Cardinality { count },
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("body diagnostic");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget {
+                    kind: "ArithmeticDiv",
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+            assert_eq!(
+                state.lookup(source),
+                Err(EvalFrameError::UnboundPort { port: source }),
+                "failed iteration frame must be popped"
             );
         }
 
