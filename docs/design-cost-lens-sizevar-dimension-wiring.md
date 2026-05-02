@@ -43,35 +43,40 @@ The other v2 facets (size arithmetic, size-max across branches) are NOT lost —
 
 This is the load-bearing single-authority discipline (P2 + DB-7 lock): `SymbolicCost` is the unified algebra; `CallPattern` is the descent-evidence carrier; `SizeVariable` is the size-identity carrier. Three orthogonal facts, three orthogonal carriers — no parallel `SizeExpr` algebra.
 
-### §1.2 Target shape — InternTable as single name authority (no substrate change to `SizeVariable`)
+### §1.2 Target shape — `SizeVariable.display_name: String?` enrichment (single authority on substrate field)
 
-The reviewer-flagged single-authority concern (gpt-5-5-pro at sha ef21e1a0): a `display_name: String?` field on `SizeVariable` PLUS an InternTable name lookup creates two sources of truth for the user-facing name. Resolved by collapsing to one authority — **InternTable**.
+Two iterations of reviewer feedback shaped this resolution:
+
+1. **First wave** (gpt-5-5-pro at sha ef21e1a0): a `display_name: String?` field PLUS an InternTable name lookup would create two sources of truth.
+2. **Second wave** (codex BLOCKING at sha 37f3bc62): the doc previously assumed an `intern_table::name_of(port_id) -> String` query that does NOT exist in v3 substrate. `src/v3/std/algebra.dag:143` explicitly says "InternTable lookup the lens doesn't yet run". v3 has InternTable machinery (per PR #367 Phase 1) but the port-id-to-authored-name query is not wired. Assuming a query that doesn't exist is "lock substrate assumptions the current .dag/v3 surface cannot express".
+
+**Resolution: `SizeVariable.display_name: String?` substrate field is the single authority.** No InternTable lookup query is assumed.
 
 ```dag
-// target shape — src/v3/std/algebra.dag (UNCHANGED from current)
+// target shape — src/v3/std/algebra.dag (single field addition)
 
 // 🟢 TERMINAL. Names the runtime size of a DAG port's value.
-// Equality is on `source_port` (structural identity).
-//
-// Render note: user-facing name comes from `intern_table::name_of(source_port)`.
-// No parallel `display_name` field; InternTable is the single authority.
+// Equality is on `source_port` (structural identity); `display_name`
+// is a presentation slot (NOT identity — same source_port with
+// different authored names is the same size variable).
 type SizeVariable {
   source_port: PortId
+  display_name: String?         // user-facing name; populated by parser at authoring sites
 }
 
 fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
   port_id_eq(a.source_port, b.source_port)
 ```
 
-`SymbolicCost` (DB-7 locked) is unchanged — it continues to carry `SizeVariable` in `LinearCost`/`PolynomialCost`/`LogCost` payloads. **No substrate change.**
+`SymbolicCost` (DB-7 locked) is unchanged — it continues to carry `SizeVariable` in `LinearCost`/`PolynomialCost`/`LogCost` payloads. The change is a single field addition.
 
-The "Named SizeVar value semantics" gap from the capability register is closed by wiring the **renderer** (not the substrate). Today's diagnostic-surface code that renders `O(...)` reads only `port_id` for the label; it should call `intern_table::name_of(port_id)` instead. Per single-authority (P2): InternTable owns the name keyed by `port_id`; `SizeVariable` is just a structural reference.
+**Why `String?`, not `String`**: per [`../INVARIANTS.md`](../INVARIANTS.md) C-9 (no fabrication), when no user-authored name exists the field is `None`; the renderer derives a fresh label (e.g., `"|port_42|"`) from `source_port`. We never invent a fake name and stash it in the field.
 
-**Why no `display_name` field**: a parallel-authority bug pattern per `feedback_parallel_representation_debt`. If both `display_name` and InternTable were sources, two consumers could derive different labels for the same `source_port` (one reads the field, the other looks up InternTable; they could disagree if InternTable were updated post-construction). Single authority dissolves the question.
+**Single authority preserved**: `display_name` is the only authority. There is no parallel InternTable lookup at this surface; the diagnostic renderer reads `display_name` directly. Future intern-table-query work (when v3 lands `intern_table::name_of`) is a separate concern; this slice does not depend on it.
 
 ### §1.3 Why the unified `SymbolicCost` algebra is correct (not a parallel `SizeExpr`)
 
-Per `feedback_parallel_representation_debt` and [`../INVARIANTS.md`](../INVARIANTS.md) P2/P5: don't ship two algebras for the same fact-flow. `SymbolicCost` is the unified expression algebra (DB-7 lock); the v2 `SizeExpr ↔ CostExpr` distinction was v2's design accident, not a structural necessity. v3's substrate is correct as-is for the algebra; only the renderer-side InternTable name lookup is the missing wiring.
+Per `feedback_parallel_representation_debt` and [`../INVARIANTS.md`](../INVARIANTS.md) P2/P5: don't ship two algebras for the same fact-flow. `SymbolicCost` is the unified expression algebra (DB-7 lock); the v2 `SizeExpr ↔ CostExpr` distinction was v2's design accident, not a structural necessity. v3's substrate is correct as-is for the algebra; only the `display_name` field on `SizeVariable` is the missing fact.
 
 A `SizeExpr` coproduct would:
 - Duplicate the SumCost/ProductCost/dominance facts already in `SymbolicCost`.
@@ -80,15 +85,16 @@ A `SizeExpr` coproduct would:
 
 The descent-semantics question is answered by the existing `CallPattern` query surface (per §3.2 below): the lens dispatches on `per_call_pattern_at(d, call_site)` to read the recurrence shape; size expressions never need to carry descent.
 
-### §1.4 Migration shape — renderer-only, no substrate change
+### §1.4 Migration shape — additive field, no carrier rename
 
-The migration is purely renderer-side; no substrate change to `SizeVariable`:
+The migration is a single field addition (per §1.2):
 
-1. NO substrate change to `SizeVariable` — the carrier stays at `{ source_port: PortId }` per §1.2.
-2. NO Rust mirror change in `src/v3/compiler/src/dag.rs` — same struct.
-3. Wire render-side surfaces (`Display` impls; `compute_symbolic_costs` rendering) to call `intern_table::name_of(source_port)` for the user-facing label. (Parser already populates InternTable with binding names at parse time — no parser change either.)
+1. Add `display_name: String?` to `SizeVariable` in `src/v3/std/algebra.dag`.
+2. Update the Rust mirror in `src/v3/compiler/src/dag.rs` (single field add).
+3. Wire the parser to populate `display_name` from authored binding names where present (`Some(...)`); leave `None` for inferred sizes.
+4. Update render-side surfaces (`Display` impls; `compute_symbolic_costs` rendering) to prefer `display_name` over `port_id`-derived labels.
 
-No new types. No parallel carriers. No deletion.
+No new types. No parallel carriers. No deletion. No assumed-but-unlanded substrate queries.
 
 ## §2. Dimension<SymbolicCost> wiring — closing the deferred declaration
 
