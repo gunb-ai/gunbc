@@ -140,8 +140,8 @@ The fail-closed-compatible enumeration is therefore binary, not ternary — and 
 
 ```dag
 type ApplicationConfig<Budget>
-  = Enforce { budget: C, diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
-  | Introspect                                                         // computes lens value; no budget; no diagnostic
+  = Enforce { budget: Budget, diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
+  | Introspect                                                              // computes lens value; no budget; no diagnostic
 ```
 
 The pairing of `budget` with `Enforce` (and its absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no `Enforce + None` or `Introspect + Some(...)` combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`). Equally, the parameters `Output` and `Budget` of `SectionedLensApplication<Output, Budget>` (per §2) tie `Enforce.budget`'s type to the lens's declared output type via `LensEnforcement<Output, Budget>` projection — lens/projection/budget mismatch is also unrepresentable.
