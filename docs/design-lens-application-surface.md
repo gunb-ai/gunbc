@@ -2,7 +2,7 @@
 
 > Part of: [`docs/lens-library-design.md`](lens-library-design.md), [`docs/r3-structure.md`](r3-structure.md), [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md), [`../INVARIANTS.md`](../INVARIANTS.md)
 >
-> **Purpose:** specify the substrate shape and authoring surface for applying lenses to arbitrary `.dag` sections. This design extends [`docs/lens-library-design.md`](lens-library-design.md) §3 (file-glob `LensApplication`) to function / module / expression / declaration scope, and resolves the violation-policy semantics under fail-closed discipline (resolved as a sum-type `ApplicationConfig = Enforce { budget, ... } | Introspect` — illegal states unrepresentable; see §2 + §3).
+> **Purpose:** specify the substrate shape and authoring surface for applying lenses to arbitrary `.dag` sections. This design extends [`docs/lens-library-design.md`](lens-library-design.md) §3 (file-glob `LensApplication`) to function / module / expression / declaration scope, and resolves the violation-policy semantics under fail-closed discipline (resolved as **two separate top-level carriers** — `EnforcedApplication<Output, Budget>` and `IntrospectApplication<Output>` — sidestepping per-variant generics that v3's `.dag` substrate cannot currently express; see §2 + §3).
 >
 > **Authority discipline:** this is a R3 design doc; the implementation lane is **T-Lens-Application-Surface** (see [`docs/r3-structure.md`](r3-structure.md) lane table). This doc resolves the design questions that block lane dispatch.
 
@@ -21,7 +21,7 @@ This document specifies the substrate shape for that generalization.
 
 ## §1. Scope extension: from file-globs to `.dag` sections
 
-The existing `LensApplication` (file-glob) carrier stays as-is for whole-tree invariant gates. The new substrate is **`SectionedLensApplication`**, a refinement of `LensApplication` whose `applies_to` is a structural section reference rather than a path glob.
+The existing `LensApplication` (file-glob) carrier stays as-is for whole-tree invariant gates. The new substrate consists of **two separate top-level carriers** — `EnforcedApplication` and `IntrospectApplication` — each refining `LensApplication`'s `applies_to` from a path glob to a structural section reference. Together they form the "sectioned lens application" surface; throughout this doc, "the SectionedLensApplication surface" refers to either carrier.
 
 ### §1.1 Why structural references, not name-based references
 
@@ -63,56 +63,141 @@ type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope        { declaration: DeclarationId, node: NodeId }
 
-// ApplicationConfig is a sum, not a record-with-Optional. This makes
-// "Enforce without budget" and "Introspect with budget" UNREPRESENTABLE
-// at the type level — illegal states cannot exist (per
-// feedback_state_space_vs_behavioral_invariants + modeling principles 2/6).
-type ApplicationConfig
-  = Enforce { budget: LensBudget, diagnostic_severity: DiagnosticSeverity }
-  | Introspect
-
 type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error is admitted
 
-type SectionedLensApplication {
-  lens: DeclarationId           // structural reference to the lens declaration
-  section: SectionRef
-  config: ApplicationConfig
-  span: SourceSpan              // user-authored site for diagnostic attribution
+// LensEnforcement<Output, Budget> is the per-lens projection AND
+// violation relation. Both are required for the fold-pass enforcement
+// check; the projection alone would leave "did the observed value
+// exceed the declared budget?" as API-level convention.
+//
+// - project: extracts the budget-comparable coordinate from the lens
+//   output (identity for lenses where Output = Budget; e.g.,
+//   summary.asymptotic_class for complexity).
+// - violates: per-lens violation relation. Given the user's declared
+//   budget and the projected lens-output, returns true iff the projected
+//   value EXCEEDS the budget. Each lens's enforcement declares its own
+//   violation semantics structurally (lattice ordering for complexity;
+//   dominance for cost; mode-mismatch for parallelism).
+type LensEnforcement<Output, Budget> {
+  project: Output -> Budget
+  violates: (declared: Budget, observed: Budget) -> Bool
 }
+
+// EnforceableLens<Output, Budget> packages a lens with its CANONICAL
+// enforcement (projection + violation relation) into ONE substrate
+// authority. Each lens declares its EnforceableLens once; users
+// referencing apply_lens cite the EnforceableLens (not lens +
+// enforcement separately). This makes the lens / enforcement pairing
+// structural — there is no way to mix-match a lens with a non-canonical
+// enforcement at the application site.
+//
+// Why packaging matters: the prior shape (lens + enforcement as
+// independent fields on EnforcedApplication) admitted constructible
+// pairs like `Lens<ComplexitySummary>` + a `LensEnforcement<
+// ComplexitySummary, AsymptoticClass>` declared by some other lens.
+// That violates P2 single-authority — the lens doesn't structurally
+// own its canonical enforcement; users could pair against any
+// type-compatible LensEnforcement. EnforceableLens collapses lens +
+// enforcement into one declared bundle, restoring single authority.
+type EnforceableLens<Output, Budget> {
+  lens: Lens<Output>
+  enforcement: LensEnforcement<Output, Budget>
+}
+
+// EnforcedApplication<Output, Budget> is the carrier for enforce-mode
+// lens applications. References ONE EnforceableLens (the bundled
+// authority); cannot pair against arbitrary lens / enforcement
+// combinations.
+type EnforcedApplication<Output, Budget> {
+  enforceable_lens: EnforceableLens<Output, Budget>  // bundled lens+enforcement authority
+  section: SectionRef
+  budget: Budget                                      // matches enforceable_lens.enforcement.project's target
+  diagnostic_severity: DiagnosticSeverity
+  span: SourceSpan                                    // user-authored site for diagnostic attribution
+}
+
+// IntrospectApplication<Output> is the carrier for introspection-mode
+// applications. Parametric in lens output ONLY — no budget, no
+// enforcement projection. Per the reviewer-flagged P2 / illegal-states-
+// unrepresentable concern: an Introspect application MUST NOT carry
+// enforcement metadata it cannot consume.
+type IntrospectApplication<Output> {
+  lens: Lens<Output>
+  section: SectionRef
+  span: SourceSpan
+}
+
+// EnforcedApplication and IntrospectApplication are TWO separate
+// top-level carriers — NOT variants of a single sum. v3's `.dag`
+// substrate parameterizes sum types uniformly across variants (each
+// variant shares the parent's type parameter set), so a sum where
+// Enforce binds Budget but Introspect doesn't is not currently
+// expressible. Two separate top-level declarations sidesteps the
+// per-variant-generic issue entirely.
+//
+// The lens-fold pass walks both lists separately and emits Diagnostics
+// from EnforcedApplication walks while recording values from
+// IntrospectApplication walks. Each top-level declaration in `.dag`
+// source is one or the other; user authoring chooses at the apply_lens
+// site which form to emit (parsed accordingly).
+//
+// "SectionedLensApplication" as a noun refers to either form
+// collectively (the user-authored surface); it is NOT a sum-type
+// declaration in the substrate. The substrate has just the two carriers
+// above. Cross-references to "the SectionedLensApplication surface"
+// mean "EnforcedApplication and IntrospectApplication taken together".
 ```
 
-The `lens` field is a `DeclarationId` (not a string lens name). This grounds in the canonical `.dag`-lens form per [`docs/lens-library-design.md`](lens-library-design.md) §1.5.
+Per `feedback_state_space_vs_behavioral_invariants` + modeling principles 2/6: **Enforce-without-budget / Introspect-with-budget / Introspect-with-enforcement / lens-projection-budget mismatch** are all illegal states; all unrepresentable in the carrier shape. Each top-level carrier carries exactly the type parameters its operation requires; user authoring chooses which top-level form to emit at the `apply_lens` site.
 
-The `LensBudget` shape is lens-instance-specific and lives in each lens's own substrate authority:
+The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) parametrizes lenses by their **lens-output carrier** `C` — the type returned by `read(d) -> Lookup<C>`. Per-lens carriers + their enforcement projections:
 
 ```dag
-// src/v3/lenses/complexity.dag (or equivalent — already exists in some form)
-
-type ComplexityBudget = AsymptoticClass     // O(1), O(log n), O(n), O(n log n), O(n²), ...
+// src/v3/lenses/complexity.dag
+data complexity_lens: Lens<ComplexitySummary> = ...   // rich output: work/span/asymptotic_class/work_certainty/span_certainty
+data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
+  project: |summary| summary.asymptotic_class           // budget compares against class only
+  violates: |declared, observed|                         // per-lens violation relation
+    asymptotic_class_lattice.lt(declared, observed)      // observed exceeds declared in dominance order
+}
+data complexity_enforceable: EnforceableLens<ComplexitySummary, AsymptoticClass> = {
+  lens: complexity_lens
+  enforcement: complexity_enforcement                    // canonical pairing — referenced by apply_lens
+}
 
 // src/v3/lenses/cost.dag
-
-type CostBudget = SymbolicCost              // already declared; this is the existing cost lens output type
+data cost_lens: Lens<SymbolicCost> = ...              // output IS the budget type
+data cost_enforcement: LensEnforcement<SymbolicCost, SymbolicCost> = {
+  project: |c| c                                        // identity projection
+  violates: |declared, observed|                         // observed dominates declared (worse cost)
+    dominates(observed, declared) && !dominates(declared, observed)
+}
+data cost_enforceable: EnforceableLens<SymbolicCost, SymbolicCost> = {
+  lens: cost_lens
+  enforcement: cost_enforcement
+}
 
 // src/v3/lenses/parallelism.dag
-
-type ParallelismBudget = ParallelismMode    // Sequential | OptInIndependent
-```
-
-**Why `LensBudget` is not a single union here**: each lens's budget shape is part of its own authority. A central `LensBudget = ComplexityBudget | CostBudget | ParallelismBudget | ...` would create a roster (same failure class as `kernel_lens_set`, per [`docs/lens-library-design.md`](lens-library-design.md) §1.5). The `Enforce.budget` field is an *opaque* refinement keyed by the `lens: DeclarationId` — the lens declaration itself names the budget type, and the type-checker enforces compatibility at lens-application authoring time.
-
-Implementation sketch for the keyed compatibility:
-
-```dag
-// in dsl/std/lens.dag (extending existing Lens<C> framework)
-
-type Lens<C> {
-  // existing fields: read fn, etc.
-  budget_type: DeclarationId        // the budget carrier this lens accepts
+data parallelism_lens: Lens<ParallelismMode> = ...    // output IS the budget type
+data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode> = {
+  project: |m| m                                        // identity projection
+  violates: |declared, observed|                         // mode-mismatch: user opted in to parallel but lens couldn't prove
+    match (declared, observed) {
+      (OptInIndependent, Sequential) => True
+      _ => False
+    }
+}
+data parallelism_enforceable: EnforceableLens<ParallelismMode, ParallelismMode> = {
+  lens: parallelism_lens
+  enforcement: parallelism_enforcement
 }
 ```
 
-The lens declaration names its `budget_type`. When the type-checker sees a `SectionedLensApplication` with `config = Enforce { budget: b, ... }`, it verifies `b inhabits lens.budget_type`. Any mismatch is a fail-closed diagnostic at authoring time. (No type-checking is needed for the `Introspect` variant — there is no budget to compatibility-check; introspection runs the lens and emits its value, no comparison.)
+The `EnforceableLens` declarations are the canonical pairings — apply_lens declarations reference them by name. The standalone `Lens` and `LensEnforcement` declarations exist for `Lens<C>`-only consumers (general lens-fold over substrate without enforcement) and for declared-but-not-yet-bundled enforcement types respectively, but the apply_lens substrate consumes only the bundled `EnforceableLens` form.
+
+**Why the projection rather than a single carrier**: the lens output for complexity is rich (`ComplexitySummary { work, span, asymptotic_class, work_certainty, span_certainty }` — per complexity-lens §1.7, certainty is per-coordinate to avoid collapsing per-dimension proof-tightness facts) — required by the lens-fold composition (per `compose_summary_*` in complexity-lens §3.1). The budget is the user's contract — typically a single class, not a full summary. Forcing budget = output would make users author `Enforce { budget: ComplexitySummary { ... } }` — over-constrained for the common "function should be O(log n)" case. Forcing output = budget would drop work/span/per-coordinate-certainty facts the lens-fold composition needs. The projection separates the two concerns: lens output stays rich (load-bearing for composition); budget stays simple (load-bearing for user authoring).
+
+Lens-output / projection / budget compatibility is **structural by construction**: each `EnforcedApplication<Output, Budget>` declaration ties lens / enforcement / budget via two shared type parameters. A `Lens<ComplexitySummary>` can only pair with a `LensEnforcement<ComplexitySummary, B>` (some Budget B) and a `budget: B` of the same B. Mismatched triples (e.g., complexity-lens with a `SymbolicCost` budget; complexity-lens with cost's identity projection) are unrepresentable in the carrier — the type system rejects them at parse/inference time, not via a separate type-checker rule. (No `budget_type: DeclarationId` field on `Lens<C>` is needed; the type parameters `Output` and `Budget` ARE the structural authority on the `EnforcedApplication` carrier.) Each `IntrospectApplication<Output>` declaration carries only `Output` — no budget, no enforcement projection — so introspection-mode applications cannot accidentally carry irrelevant enforcement metadata.
 
 ## §3. Violation policy under fail-closed discipline
 
@@ -122,15 +207,9 @@ The user reframe initially named the violation-policy axis as `CompileError | Wa
 - **Warning**: violations are logged but compilation succeeds. *Forbidden* — C-8 prohibits warnings as a steady state; the only legitimate "non-blocking detection" is introspection (no enforcement at all).
 - **Silent**: violations are silently dropped. *Forbidden* — same C-8 violation; "silent None" is named in `feedback_fail_closed_discipline` as exactly the pattern banned.
 
-The fail-closed-compatible enumeration is therefore binary, not ternary — and the budget is bundled INTO the `Enforce` variant by construction (per §2 above), making "Enforce without budget" and "Introspect with budget" structurally unrepresentable:
+The fail-closed-compatible enumeration is therefore binary, not ternary — and the budget + enforcement metadata are bundled INTO `EnforcedApplication<Output, Budget>` by construction (per §2 above). The `IntrospectApplication<Output>` carrier carries only `(lens, section, span)` — no budget, no enforcement projection. The two are **separate top-level declarations** in `.dag`; "Enforce without budget", "Introspect with budget", and "Introspect with enforcement metadata" are all structurally unrepresentable.
 
-```dag
-type ApplicationConfig
-  = Enforce { budget: LensBudget, diagnostic_severity: DiagnosticSeverity }   // produces a compile-time Diagnostic on violation
-  | Introspect                                                                  // computes lens value; no budget; no diagnostic
-```
-
-The pairing of `budget` with `Enforce` (and its absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no `Enforce + None` or `Introspect + Some(...)` combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`).
+The pairing of `budget` + `enforcement` with `Enforce` (and their absence in `Introspect`) is a state-space invariant, not a behavioral one. The type-checker has no illegal combination to reject — those states cannot be constructed (per `feedback_state_space_vs_behavioral_invariants`). Equally, the per-variant type parameters tie `EnforcedApplication.budget` to the lens's declared output type via `LensEnforcement<Output, Budget>` — lens/projection/budget mismatch is also unrepresentable.
 
 `DiagnosticSeverity` is a single-variant nominal carrier (only `Error`). It exists as a refinement-extension point so future *non-fail-closed* surfaces (if ever added — none currently planned) can extend without changing the `Enforce` carrier shape. Per `feedback_no_annotations` and `feedback_no_metadata_markers`, the single-variant carrier is structurally honest: there is exactly one severity, named.
 
@@ -144,13 +223,15 @@ C-8 is the canonical fail-closed compilation rule. A "warning" mode at lens appl
 
 If a user wants to "see the lens value but not enforce", that is `Introspect` mode — the lens runs, produces a value, and the value is available for downstream lenses (or for human reading via debug surfaces). No diagnostic, no enforcement, no warning. This is a different operation than enforcement-with-a-warning; it has clean semantics.
 
-### §3.2 Default policy for complexity contracts
+### §3.2 Default policy for complexity contracts — user-driven
 
-Per Director ratification 2026-05-02 + user directive: the default policy for complexity contracts is **opt-out** (compiler enforces by default; explicit waiver required for exceptions). The substrate shape for the default + waiver:
+Per Director ratification 2026-05-02 + user directive ("if we have suboptimal algorithms, we throw a compiler error"): complexity contracts are **user-authored**, with explicit budgets. There is no implicit auto-inferred baseline (resolution per §8.3 — auto-inferred baseline lacks a persisted authority and would lose the regression fact on every recompile).
 
-**Default**: when a function declaration has no explicit `SectionedLensApplication` for the complexity lens, the compiler applies a default budget — currently `O(unbounded)` (no budget), meaning every function is introspected by default but not enforced. Once T-Lens-Behavioral-Parity ships behavioral complexity, the default flips to *enforced with implicit budget derived from the function's body* — i.e., the compiler infers the actual complexity class and rejects regressions.
+**Default for unannotated functions**: the compiler emits an implicit `Introspect`-mode application during the lens fold — lens value is computed and surfaced for inspection; no enforcement, no compile error. (Per §5.1: this synthesis is fold-pass-only; not stored in source.)
 
-**Waiver**: when a user wants to override the default (accept a function whose complexity exceeds the inferred / user-named budget), they author a structural waiver:
+**Enforcement opt-in**: the user explicitly authors `apply_lens(complexity, fn, Enforce { budget: <chosen class>, diagnostic_severity: Error })` for functions where they want to commit to a complexity contract. Compile errors fire when the function's actual complexity exceeds the named budget.
+
+**Waiver**: when a user previously authored an `Enforce` budget but later wants to relax it (the function legitimately needs a worse class for a justified reason), they author a structural waiver:
 
 ```dag
 data my_function_complexity_waiver: ComplexityBudgetWaiver = {
@@ -162,7 +243,7 @@ data my_function_complexity_waiver: ComplexityBudgetWaiver = {
 
 This is a `.dag` declaration, not an annotation (per `feedback_no_annotations`). The waiver is itself subject to the same lens infrastructure — `lens_unused_parameters` could (eventually) flag stale waivers, `lens_structural_duplicates` flags duplicate waivers, etc.
 
-**Why a separate `ComplexityBudgetWaiver` carrier, not just `SectionedLensApplication { config: Introspect }`**: a waiver is *not* "the user wants introspection" — it is "the user accepts a known violation, with justification". The justification is load-bearing (per `feedback_reason_not_label` — encode the stable reason, not the volatile label). Conflating waivers with introspection would lose the justification.
+**Why a separate `ComplexityBudgetWaiver` carrier, not just an `Introspect` application**: a waiver is *not* "the user wants introspection" — it is "the user accepts a known violation, with justification". The justification is load-bearing (per `feedback_reason_not_label` — encode the stable reason, not the volatile label). Conflating waivers with introspection would lose the justification.
 
 ## §4. Worked examples (the 4 demonstrations per Director ratification)
 
@@ -186,15 +267,16 @@ apply_lens(complexity, my_search_function, Enforce {
 **Substrate after parsing**:
 
 ```dag
-data __apply_lens_my_search_function: SectionedLensApplication = {
-  lens: complexity                                     // DeclarationId of the complexity lens
+data __apply_lens_my_search_function: EnforcedApplication<ComplexitySummary, AsymptoticClass> = {
+  enforceable_lens: complexity_enforceable            // bundled lens+enforcement (per §2)
   section: DeclarationScope { declaration: my_search_function }
-  config: Enforce { budget: O_log_n, diagnostic_severity: Error }
+  budget: O_log_n
+  diagnostic_severity: Error
   span: <user-authored span>
 }
 ```
 
-**Compiler-side processing**: during the lens fold (existing infrastructure per [`docs/design-lens-framework.md`](design-lens-framework.md)), the compiler iterates over every `SectionedLensApplication` in the program. For each `Enforce` application, it runs the named lens against the named section, compares against the budget, and emits a Diagnostic if the lens value exceeds the budget.
+**Compiler-side processing**: during the lens fold (existing infrastructure per [`docs/design-lens-framework.md`](design-lens-framework.md)), the compiler iterates over every `EnforcedApplication` declaration in the program. For each, it (a) runs the named lens against the named section to obtain the rich output, (b) calls `enforcement.project(output)` to get the budget-comparable value, (c) calls `enforcement.violates(declared_budget, projected)` to decide, (d) emits a Diagnostic if `violates` returns true. The violation relation is per-lens substrate authority (declared in the per-lens `LensEnforcement`); the fold-pass dispatch reads it directly. (`IntrospectApplication` declarations are walked separately; see §5.)
 
 **Closure gate**: `complexity_violation_compile_error_demonstrated` — a TestClaim that constructs a function with O(n²) body + a lens application requiring O(log n) + asserts a Diagnostic is produced.
 
@@ -262,27 +344,25 @@ apply_lens(parallelism, my_loop_expression, Enforce {
 The compiler already has a lens-fold pass (per [`docs/design-lens-framework.md`](design-lens-framework.md) and the active `Lens<C>` framework). The lens-application surface adds one new step to that fold:
 
 1. **Existing**: walk every `Lens<C>` instance, apply to every program node, accumulate `Witness<C>`.
-2. **New**: walk every `SectionedLensApplication` declaration, apply the named lens to the named section *with the given budget*, emit a Diagnostic if `Enforce` mode and budget exceeded, OR record the lens value if `Introspect` mode.
+2. **New**: walk every `EnforcedApplication` declaration AND every `IntrospectApplication` declaration (two separate walks; not one sum-walk). For each `EnforcedApplication { enforceable_lens, section, budget, ... }`: run `enforceable_lens.lens` to get output; compute `projected = enforceable_lens.enforcement.project(output)`; if `enforceable_lens.enforcement.violates(budget, projected)` returns true, emit a Diagnostic. For each `IntrospectApplication { lens, ... }`: run lens, record output for downstream lens composition + debug surfaces; no comparison.
 
 The new step is structurally identical to the existing fold — same `Lens<C>` reader, same `Witness<C>` output type — with an additional budget comparison and Diagnostic emission. The implementation cost is O(1) lens-applications-per-program (typically tens to hundreds per project, not millions).
 
-### §5.1 Default-policy default-application synthesis
+### §5.1 Default-application synthesis (Introspect-only)
 
-For the *default* application of the complexity lens (per §3.2), the compiler synthesizes `SectionedLensApplication` records implicitly during the lens fold — one per function declaration, with `config: Enforce { budget: <inferred from body>, diagnostic_severity: Error }`. These synthesized records are not stored in the `.dag` source; they exist only during the fold pass.
+For unannotated functions (per §3.2), the compiler synthesizes `IntrospectApplication<ComplexitySummary>` records implicitly during the lens fold — one per function declaration, as `IntrospectApplication { lens: complexity_lens, section: DeclarationScope { ... }, span: <synthesized> }`. These synthesized records are not stored in the `.dag` source; they exist only during the fold pass.
 
-**Why synthesized rather than authored**: writing a default complexity application for every function would inflate the source. The synthesis is structural (every Declaration of arrow-connective shape gets one) and can be turned off per-declaration via an explicit user-authored introspection-mode application:
+The synthesizer **never** emits `Enforce` mode for unannotated functions — auto-inferred budgets lack persisted authority (per §8.3). Enforcement requires explicit user authoring of `apply_lens(complexity, fn, Enforce { budget: <class>, ... })`. The synthesizer's role is purely to ensure every function has at least Introspect coverage so the lens-fold pass produces a value for every port (for downstream lens composition + debug surfaces).
 
-```dag
-apply_lens(complexity, my_function, Introspect)
-```
+**Why fold-pass synthesis rather than no-synthesis**: per `feedback_compositional_not_templating`, the lens fold is a structural walk — every declaration produces a value. The Introspect synthesis ensures the walk is total over function declarations without requiring explicit user authoring for every function.
 
-This explicit application overrides the synthesized default for `my_function`. The "explicit overrides synthesized" rule resolves at the lens-fold layer (look up explicit applications first; synthesize only if absent).
+User-authored `apply_lens(complexity, my_function, Introspect)` is functionally identical to the synthesized default; the explicit form is only useful for documentation purposes (signaling "I considered enforcement and chose introspection").
 
 ## §6. Cross-program coordination
 
 This lane is **cross-program** between Substrate Manager and Verification Manager (per [`docs/r3-structure.md`](r3-structure.md) lane 16):
 
-- **Substrate Manager owns**: the `SectionedLensApplication` / `SectionRef` / `ApplicationConfig` carriers in `src/v3/std/lens_application.dag`; the compiler-side lens-fold integration; the per-lens `budget_type` declaration extension.
+- **Substrate Manager owns**: the `EnforceableLens<Output, Budget>` / `EnforcedApplication<Output, Budget>` / `IntrospectApplication<Output>` / `SectionRef` / `LensEnforcement<Output, Budget>` parametric carriers in `src/v3/std/lens_application.dag` (EnforceableLens is the bundled authority that EnforcedApplication references — packaging lens + enforcement into ONE substrate authority per P2 single-authority discipline); the compiler-side lens-fold integration (two separate walks — Enforce list reads `enforceable_lens.lens/enforcement`, Introspect list reads `lens` only); per-lens `EnforceableLens` declarations co-located with each lens — these are the canonical bundled authorities apply_lens references (one per lens — complexity, cost, parallelism, effect_enumeration). (No `Lens<C>.budget_type` field — the type parameters Output + Budget are the structural authority on each separate carrier; the EnforceableLens bundle prevents non-canonical lens/enforcement pairings at the application site.)
 - **Verification Manager owns**: the closure-gate TestClaims (`complexity_violation_compile_error_demonstrated`, `crdt_cost_basis_demonstrated`, `memory_peak_cost_basis_demonstrated`, `opt_in_iteration_parallelism_via_lens_application_demonstrated`); cross-target equivalence on lens-application semantics (does Rust-emitted code respect the budget in the same way Python-emitted does?).
 
 The split mirrors the existing T-CostLens-Composition split: substrate authors carriers + fold semantics, Verification asserts the demonstrations.
@@ -320,15 +400,21 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 **Implementation note:** at parse time, the type-checker maintains a per-`(lens, section)` count of `Enforce` mode applications. Count > 1 fires a Diagnostic naming both authoring sites. `Introspect` mode is unbounded.
 
-### §8.3 Default-application budget inference — RESOLVED (conditionally): regression-detection class, gated on T-Lens-Behavioral-Parity COMPLETE
+### §8.3 Default-application semantics — RESOLVED: user-driven contracts; no implicit baseline
 
-**Question:** For the synthesized default complexity application, what does "budget inferred from the body" mean exactly?
+**Question:** For functions without an explicit `apply_lens(complexity, ...)` declaration, what does the compiler do?
 
-**Resolved:** budget = computed asymptotic class at the time of synthesis. Any subsequent change that *increases* the class fires a Diagnostic (regression detection). This is the "implicit baseline" semantics — the compiler records what the function's complexity *was* and rejects changes that worsen it without an explicit user authoring update (either an explicit budget or an explicit waiver).
+**Resolved:** the compiler emits an implicit `Introspect`-mode application — no enforcement, just lens-value computation for inspection. **There is NO implicit Enforce-with-inferred-budget mode.** The user gets enforcement only by explicitly authoring `apply_lens(complexity, fn, Enforce { budget: <user-named class>, ... })`.
 
-**Cascade gate:** this resolution depends on T-Lens-Behavioral-Parity being COMPLETE for the complexity lens (asymptotic-class computation is reliable). Until that lane closes, the default complexity application is `Introspect`-mode only — the compiler records the lens value without enforcement, and surfaces it for inspection. When T-Lens-Behavioral-Parity COMPLETE lands, the default flips from `Introspect` to `Enforce { regression_baseline: <computed class> }`.
+**Why no implicit Enforce-with-inferred-baseline** (per codex BLOCKING on PR #1488 sha 265d8ef7): an inferred baseline computed from the current function body has no persisted authority. On the next compile, the synthesizer recomputes from the new (potentially-worse) body, getting the new class as both "current value" and "baseline" — they always agree, and no regression ever fires. The fact the design claimed to enforce (regression detection) was actually lost on every recompile. P2 single-authority + facts-flow-forward: a regression baseline must be a *declared authority* (in source), not an *ephemeral recomputation*.
 
-**Implementation note:** the cascade-flip is itself substrate work — a `LensApplication` field `regression_baseline_pinned: AsymptoticClass?` records the at-synthesis baseline; when present, regressions fire. When absent (pre-cascade), the application is introspection-only.
+**Why not synthesizer-emitted source declarations** (alternative considered): the synthesizer could write the inferred baseline back to source as an `apply_lens` declaration the user checks in. This is generated-code-on-disk, forbidden by `feedback_no_generated_code_on_disk`. It also changes the user's source file as a side effect of compilation — surprising and reversible-by-edit only.
+
+**The structural answer**: complexity contracts are user-authored. The user decides which functions have a budget and what it is. The compiler's role is (a) introspection (compute and report) for unannotated functions, (b) enforcement for explicitly-authored `Enforce` applications. No magic baseline.
+
+**Re-framing "opt-out for complexity"** (per the original user directive 2026-05-02 "if we have suboptimal algorithms, we throw a compiler error"): "opt-out" means the user *can* opt out of enforcement (via `Introspect` or via no application at all); the *compile error* fires when the user *opts in* with a budget the actual function exceeds. The compiler does not infer suboptimality; the user names what they consider acceptable, and divergence from the named contract fires.
+
+**`ComplexityBudgetWaiver`** retains its original purpose: when the user authored `apply_lens(complexity, fn, Enforce { budget: O_log_n, ... })` and later wants to relax it (the function legitimately needs O(n) for a justified reason), the waiver structurally records the exception with `justification`. The waiver is for accepted-known-violations of explicit user contracts, not for absent-implicit-baseline contracts.
 
 ### §8.4 Waiver lifecycle — RESOLVED: separate-lens future scope, dissolution-trigger named
 
@@ -348,7 +434,7 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 **Why:** reading computed class would mean a refactor of `f` that lowers its complexity (e.g., O(n log n) → O(n)) would propagate into `g`'s lens result *automatically*. That makes `g`'s emission silently dependent on `f`'s implementation choices. The declared budget is the abstraction barrier — `g` reads "f's contract is O(log n)" and composes against that. If `f`'s implementation diverges from its declared budget, that is `f`'s own Diagnostic (the lens application on `f` fires), not `g`'s.
 
-**Implementation note:** the lens-fold pass, when computing `g`'s complexity composition, looks up `f`'s `SectionedLensApplication` (if any) and reads `config.budget`. If `f` has no enforced application, the lens-fold reads the computed class as fallback (the absence of a contract means there is no abstraction barrier).
+**Implementation note:** the lens-fold pass, when computing `g`'s complexity composition, looks up `f`'s applications. If `f` has an `EnforcedApplication` declaration: read `EnforcedApplication.budget` as the declared contract. If `f` has only an `IntrospectApplication` (or no application at all): the lens-fold reads the computed class as fallback (the absence of an enforced contract means there is no abstraction barrier; introspection-only carries the lens value but no budget).
 
 **Bridge-as-steady-state avoidance:** this resolution preserves the cost-of-change=1 principle (changing `f`'s implementation does not require re-checking every caller's lens result) and keeps abstraction-barrier semantics consistent with the rest of the substrate (a function's *signature* is what callers depend on; the body is private detail).
 
@@ -360,7 +446,7 @@ All five questions resolved. Implementation can proceed without further Director
 
 This design doc extends:
 
-- [`docs/lens-library-design.md`](lens-library-design.md) §3 — the existing file-glob `LensApplication`. **No changes to existing carrier**; this doc adds `SectionedLensApplication` as a sibling carrier with structural section references.
+- [`docs/lens-library-design.md`](lens-library-design.md) §3 — the existing file-glob `LensApplication`. **No changes to existing carrier**; this doc adds `EnforcedApplication` + `IntrospectApplication` as sibling carriers with structural section references.
 - [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) — the lens-capability register tracking PROXY/STUB/PARTIAL/COMPLETE status per lens. This design assumes T-Lens-Behavioral-Parity has driven all four target lenses to COMPLETE before T-Lens-Application-Surface implementation begins.
 - [`docs/design-lens-framework.md`](design-lens-framework.md) — the `Lens<C>` framework. This design adds one fold-pass extension (lens-application discovery + budget comparison) but does not modify the underlying `Lens<C>` shape.
 - [`../INVARIANTS.md`](../INVARIANTS.md) C-8 (fail-closed compilation) — load-bearing for §3 (no Warning, no Silent policies).
@@ -371,14 +457,14 @@ This document does NOT modify:
 
 - The existing `Lens<C>` carrier shape (per T-Substrate-Lens-Primitive — that is R2 work already complete).
 - The existing file-glob `LensApplication` carrier (per [`docs/lens-library-design.md`](lens-library-design.md) §3 — sibling, not replacement).
-- Per-lens budget types (each lens owns its own `LensBudget` definition; this doc only specifies the dispatch carrier `ApplicationConfig`).
+- Per-lens budget types — each lens declares its own `LensEnforcement<Output, Budget>` projection (per §2); this doc only specifies the parametric dispatch carriers `EnforcedApplication<Output, Budget>` + `IntrospectApplication<Output>` (two separate top-level types). The lens-output type stays whatever the lens chooses (rich `ComplexitySummary` for complexity; identity-projected `SymbolicCost` for cost).
 
 ## §10. Implementation order (sketch)
 
 Within T-Lens-Application-Surface lane (per [`docs/r3-structure.md`](r3-structure.md) closure gates):
 
-1. **Substrate carriers landing** (`lens_application_carrier_landed`, `section_ref_substrate_landed`). Author `src/v3/std/lens_application.dag` per §2. Type-checker integration: `Lens<C>.budget_type` field added; `(lens, section)` single-authority enforcement at parse time.
-2. **Fold-pass integration** (`application_config_violation_policy_routing`). Extend the lens-fold pass to walk `SectionedLensApplication` declarations + emit Diagnostics on `Enforce`-mode budget violations + record lens values on `Introspect`-mode. Synthesized default-application per §5.1.
+1. **Substrate carriers landing** (`lens_application_carrier_landed`, `section_ref_substrate_landed`, `lens_enforcement_carrier_landed`). Author `src/v3/std/lens_application.dag` per §2 — **two separate top-level carriers**: `EnforcedApplication<Output, Budget>` and `IntrospectApplication<Output>`, plus `SectionRef` and `LensEnforcement<Output, Budget>`. NO sum-type wrapping the two (per §2 — v3 `.dag` substrate cannot currently express per-variant generics). Each top-level carrier holds exactly its required parameters (Enforce: Output + Budget; Introspect: Output only). Co-locate per-lens `LensEnforcement` declarations with each lens (complexity → AsymptoticClass projection; cost / parallelism → identity). Type-checker integration: `(lens, section)` single-authority enforcement at parse time. (Lens/projection/budget compatibility is structural via shared Output and Budget parameters per top-level carrier; Introspect cannot accidentally carry enforcement metadata.)
+2. **Fold-pass integration** (`enforce_violation_routing_landed`). Extend the lens-fold pass to walk `EnforcedApplication` declarations + emit Diagnostics on budget violations (via `enforcement.violates`); separately walk `IntrospectApplication` declarations + record lens values for downstream composition / debug surfaces. Two separate walks (no sum to dispatch on). Synthesized default-application per §5.1.
 3. **Worked example #1: complexity contract** (`complexity_violation_compile_error_demonstrated`). TestClaim per §4.1.
 4. **Worked example #2: CRDT cost basis** (`crdt_cost_basis_demonstrated`). TestClaim per §4.2.
 5. **Worked example #3: memory-peak cost basis** (`memory_peak_cost_basis_demonstrated`). TestClaim per §4.3.

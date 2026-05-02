@@ -41,21 +41,23 @@ v2's `SizeExpr` carries `SizeVar { name: String }` — a *named* size variable t
 **Substrate change:**
 
 ```dag
-// src/v3/std/algebra.dag — SizeVariable stays UNCHANGED (no display_name field)
+// src/v3/std/algebra.dag — SizeVariable gains display_name field
 
 type SizeVariable {
   source_port: PortId           // structural backing — which port's runtime size
+  display_name: String?         // user-facing name; populated by parser at authoring sites
 }
 
-// Equality on source_port (the only field).
-// User-facing name comes from intern_table::name_of(source_port) — single authority.
+// Equality on source_port only (display_name is presentation, not identity).
 fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
   port_id_eq(a.source_port, b.source_port)
 ```
 
-**Why no `display_name` field on the carrier** (resolved per gpt-5-5-pro BLOCKING at sha ef21e1a0): the InternTable already keys user-authored binding names by `port_id` (populated at parse time). Adding a `display_name: String?` field on `SizeVariable` creates two sources of truth — both `display_name` and InternTable would carry names; consumers could disagree. Single-authority discipline (P2) requires picking one. **InternTable is the canonical name authority** — `SizeVariable` stays as a structural reference. The renderer reads names via `intern_table::name_of(source_port)`. Aligned with [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md) §1.2.
+**Why `display_name: String?` field** (aligned with [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md) §1.2): v3 does NOT have a `intern_table::name_of(port_id) -> String` query landed (per `src/v3/std/algebra.dag:143` "InternTable lookup the lens doesn't yet run"). v3 has some InternTable machinery (per `project_intern_table` memory + PR #367 Phase 1) but the port-id-to-authored-name query is not wired. Assuming an unlanded query would lock substrate-target discipline. The structural-field path is what v3 currently supports. Single-authority discipline (P2) is preserved by making `display_name` the only authority — no parallel InternTable lookup; the renderer reads `display_name` directly from the carrier.
 
-**Why this is not a separate `SizeExpr` carrier:** `SizeExpr` in v2 was a coproduct (`SizeConst | SizeVar | SizeLen | SizeAdd | SizeMax`). In v3, `SymbolicCost` already covers `SizeConst` (`ConstantCost(Int)`), `SizeAdd` (`SumCost`), `SizeMax` (the dominance ordering), and `SizeLen` (`LinearCost(SizeVariable)`). The only "missing fact" the capability register names is the user-facing-name surface — closed by InternTable wiring (above), not by adding a new carrier. Reusing `SymbolicCost` for both cost and size dissolves v2's parallel `SizeExpr` ↔ `CostExpr` authorities into one — same fact-flow-forward shape. (Sustainability invariant: cost-of-change=1 when one type subsumes two.)
+**Why `String?`, not `String`**: per [`../INVARIANTS.md`](../INVARIANTS.md) C-9 (no fabrication), when no user-authored name exists the field is `None`; the renderer derives a fresh label from `source_port`. Never invent a fake name and stash it in the field.
+
+**Why this is not a separate `SizeExpr` carrier:** `SizeExpr` in v2 was a coproduct (`SizeConst | SizeVar | SizeLen | SizeAdd | SizeMax`). In v3, `SymbolicCost` already covers `SizeConst` (`ConstantCost(Int)`), `SizeAdd` (`SumCost`), `SizeMax` (the dominance ordering), and `SizeLen` (`LinearCost(SizeVariable)`). The only "missing fact" the capability register names is the user-facing-name surface — closed by the `display_name` field (above), not by adding a new carrier. Reusing `SymbolicCost` for both cost and size dissolves v2's parallel `SizeExpr` ↔ `CostExpr` authorities into one — same fact-flow-forward shape. (Sustainability invariant: cost-of-change=1 when one type subsumes two.)
 
 ### §1.3 Work/span dimension split
 
@@ -190,26 +192,21 @@ v2's `Certainty = Proven | Conservative` annotates a `ComplexitySummary` with wh
 // poisons the chain to Conservative.) Lattice-shaped, like DescentEvidence.
 
 type Certainty = Proven | Conservative
-
-data certainty_lattice: BoundedLattice<Certainty> = {
-  meet: meet_certainty                  // conservative wins under composition
-  join: join_certainty                  // proven wins under alternative
-  top: Proven                            // identity for meet
-  bottom: Conservative                   // identity for join
-}
-
-fn meet_certainty(a: Certainty, b: Certainty) -> Certainty =
-  match a {
-    Proven => b
-    Conservative => Conservative
-  }
-
-fn join_certainty(a: Certainty, b: Certainty) -> Certainty =
-  match a {
-    Conservative => b
-    Proven => Proven
-  }
 ```
+
+**No `BoundedLattice<Certainty>` declaration**. Earlier drafts proposed a lattice with `meet = "conservative wins under composition"` and `join = "proven wins under alternative"`. Both semantics are **cost-unaware** and would let a `Proven` arm hide a `Conservative` arm that carries the actual worst-case bound — violating P1 (modeling faithfulness): the result's certainty would no longer faithfully describe the bound it qualifies.
+
+**Certainty composition is cost-aware, not lattice-fold.** When two cost-and-certainty pairs `(c₁, k₁)` and `(c₂, k₂)` compose:
+
+- The cost composes structurally (sequential / iterate / branch-max per `SymbolicCost` semantics).
+- The certainty of the result depends on **which input dominated the cost**:
+  - If both contributions survive composition: certainty is `meet(k₁, k₂)` (any unproven contribution makes the whole result unproven).
+  - If `c₁` dominates `c₂` (e.g., branch-max picks `c₁` as worst-case): the result's certainty is `k₁` — `k₂` does not enter, because the bound being qualified is `c₁`'s bound.
+  - Symmetric for `c₂` dominating `c₁`.
+
+This is the `certainty_of_surviving_per_dim` projection in §3.1 (`compose_summary` family), applied per-dimension across both work and span (and any future dimensions per DB-3). A `BoundedLattice<Certainty>` declaration would suggest certainty composes independently of cost — exactly the bug the §3.1 design rejects. Certainty stays a 2-variant sum without an associated lattice instance; the composition lives at `ComplexitySummary` level via the cost-aware, per-dimension `compose_summary_*` functions.
+
+**Tightness ordering**: `Certainty` does have a natural ordering (`Proven ≥ Conservative` under tightness). That ordering is implicit when projecting to a single certainty value, but it is NOT a composition operation. Composition consumes cost-and-certainty pairs jointly per §3.1.
 
 **Why declare it in `lenses/complexity.dag`, not promote to `std/algebra.dag`:** per MODELING.md M10, new concepts get proper homes. `Certainty` is a complexity-analysis fact today; if other lenses (effects, parallelism) later need bound-tightness, it promotes to std/. Premature promotion couples unrelated consumers. Lens-local for now; promotion trigger named in the file header.
 
@@ -263,13 +260,16 @@ type ComplexitySummary {
   work: SymbolicCost              // total operation count (sequential cost)
   span: SymbolicCost              // critical path length (parallel cost)
   asymptotic_class: AsymptoticClass    // projection of `work` for diagnostic display
-  certainty: Certainty            // proof tightness
+  work_certainty: Certainty       // proof tightness OF the work bound
+  span_certainty: Certainty       // proof tightness OF the span bound
 }
 
 fn complexity_of(d: Dag, port_id: PortId) -> Lookup<ComplexitySummary> = ...
 ```
 
-**Why these are coordinates of one record:** every port has all four facts simultaneously. Confirmed record (not sum type). Per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 2 — single inhabitant carries values for all coordinates.
+**Why per-coordinate certainty, not a single global field**: per cursor BLOCKING on PR #1488 sha 75a6ab57 — collapsing per-dimension certainties into one global `certainty` field loses the fact that work might be Proven while span is Conservative (or vice versa). Downstream display/enforcement consumers need to know per-coordinate proof tightness independently. Per dimension has its own dominance (different inputs to composition) and therefore its own certainty; storing them separately preserves all the proof-tightness facts the lens computes.
+
+**Why these are coordinates of one record:** every port has all five facts simultaneously. Confirmed record (not sum type). Per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 2 — single inhabitant carries values for all coordinates. The `asymptotic_class` is a projection of `work`; its certainty is `work_certainty`. (No separate `class_certainty` — the class is derived from work, not an independent fact.)
 
 ## §2. Producer wiring — gated on T-E-P-Producer-Broadening
 
@@ -312,7 +312,8 @@ type ComplexitySummary {
   work: SymbolicCost
   span: SymbolicCost
   asymptotic_class: AsymptoticClass
-  certainty: Certainty
+  work_certainty: Certainty       // per-coordinate per §1.7
+  span_certainty: Certainty
 }
 
 type ComplexityEntry {
@@ -348,25 +349,117 @@ fn loop_entry(
   l: LoopNode
 ) -> ComplexityEntry = {
   let cost_bound = recurrence_bound_for(d, l)              // reads via per_call_pattern_at typed query (wraps per_call_descent_evidence side-table)
+  let bound_cert = certainty_of(cost_bound)
   let work = cost_bound_to_symbolic(cost_bound)
   let body_summary = body_complexity_at(d, acc, l.body)
+  // Joint composition: cost and certainty compose as ONE unit per
+  // compose_summary (§3.1) — certainty must be cost-aware so dominated
+  // components don't propagate stale Conservative facts to the final bound.
+  let outer = ComplexitySummary {
+    work: work
+    span: work
+    asymptotic_class: classify(work)
+    work_certainty: bound_cert
+    span_certainty: bound_cert         // outer's span = work, so same cert
+  }
   ComplexityEntry {
     port: l.result_port
-    summary: hit_complexity_summary_lookup(ComplexitySummary {
-      work: iterate(work, body_summary.work)
-      span: iterate(work, body_summary.span)               // span: sequential default; Branch arms use max_path
-      asymptotic_class: classify(iterate(work, body_summary.work))
-      certainty: meet_certainty(certainty_of(cost_bound), body_summary.certainty)
-    })
+    summary: hit_complexity_summary_lookup(
+      compose_summary_iterate(outer, body_summary)
+    )
   }
 }
 ```
 
-**Why the same forward-fold shape, just richer carrier:** the existing depth-proxy is structurally honest (catamorphism over `d.nodes`, fail-closed on `Miss`, parameter pre-seeding). Those properties are independent of the carrier type — they hold for `Lookup<Int>`, `Lookup<SymbolicCost>`, and `Lookup<ComplexitySummary>` identically. The behavioral-completeness work changes *what* each port carries, not *how* the lens walks. Per [`../INVARIANTS.md`](../INVARIANTS.md) P5 — the structural change is forward (richer fact), not lateral (parallel walker).
+### §3.1 Joint composition — `compose_summary` (cost-aware certainty)
+
+Per gpt-5-5-pro / codex BLOCKING (sha 98f2fc4f): `Certainty` cannot compose independently from cost dominance. If composition drops a cost component via dominance (`O(n) + O(n²) → O(n²)`), naively meeting the dropped component's `Conservative` certainty into the result would produce a `Conservative` summary even when the surviving component is `Proven`. **`(cost, certainty)` must compose as one unit.**
+
+```dag
+fn compose_summary_iterate(outer: ComplexitySummary, body: ComplexitySummary) -> ComplexitySummary {
+  let composed_work = iterate(outer.work, body.work)
+  let composed_span = iterate(outer.work, body.span)            // span uses outer's work for iteration count
+  let composed_class = classify(composed_work)
+  // Per-coordinate cost-aware certainty. Each dimension's surviving-
+  // contributor certainty stays on that dimension; no global collapse
+  // (per cursor BLOCKING on PR #1488 sha 75a6ab57 — collapsing loses
+  // proof-tightness facts when work is Proven but span Conservative).
+  let work_cert = certainty_of_surviving_per_dim(outer.work, body.work,
+                                                  outer.work_certainty, body.work_certainty,
+                                                  composed_work)
+  let span_cert = certainty_of_surviving_per_dim(outer.work, body.span,
+                                                  outer.work_certainty, body.span_certainty,
+                                                  composed_span)
+  ComplexitySummary {
+    work: composed_work
+    span: composed_span
+    asymptotic_class: composed_class
+    work_certainty: work_cert
+    span_certainty: span_cert
+  }
+}
+
+// Per-dimension surviving certainty: walks the dominance outcome on a
+// specific cost dimension (work, span, or future dimensions per DB-3),
+// identifies which input contributors survived, meets their per-dimension
+// certainties. Contributors dropped by dominance on this dimension do
+// not enter this dimension's certainty (but stay on their own dimension
+// in the composed result).
+//
+// Takes the per-dimension certainty INPUTS explicitly (outer_cert,
+// body_cert) — the caller passes in `outer.work_certainty`,
+// `body.span_certainty`, etc., depending on which dimension is being
+// composed. No global `outer.certainty` lookup; dimensions are
+// independent.
+fn certainty_of_surviving_per_dim(
+  outer_dim: SymbolicCost,
+  body_dim: SymbolicCost,
+  outer_cert: Certainty,
+  body_cert: Certainty,
+  composed_dim: SymbolicCost
+) -> Certainty =
+  match dominance_outcome(outer_dim, body_dim, composed_dim) {
+    BothSurvive => meet_pair(outer_cert, body_cert)
+    OuterDominates => outer_cert
+    BodyDominates => body_cert
+  }
+
+// Inline pairwise meet — used ONLY when both contributions survive cost
+// composition for a specific dimension. NOT a free-standing lattice
+// operation (no certainty_lattice instance per §1.5 — see that section
+// for why).
+fn meet_pair(a: Certainty, b: Certainty) -> Certainty =
+  match a {
+    Proven => b               // any Conservative contribution makes the result Conservative
+    Conservative => Conservative
+  }
+
+// Same per-dimension cost-aware certainty pattern for sequential and
+// branch composition: each computes work_cert + span_cert via
+// certainty_of_surviving_per_dim against the per-dimension dominance
+// outcome. NO meet across dimensions — the result keeps work_certainty
+// and span_certainty independent on the output ComplexitySummary.
+// Sequential: work composes additively (sum), span composes additively.
+// Branch: work composes via max_path (worst-case arm — only one arm
+// executes at runtime, so the arm with maximum work dominates the cost
+// for that branch); span composes via max_path (same reasoning — span
+// is critical-path, branch's worst-case-arm sets the path). This is
+// the "branch-max per SymbolicCost semantics" referenced at §1.4. Both
+// dimensions honor per-dimension surviving-contributor accounting
+// AND per-coordinate certainty independence.
+fn compose_summary_sequential(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary = ...
+fn compose_summary_branch(arms: List<ComplexitySummary>) -> ComplexitySummary = ...
+```
+
+**Why this matters for behavioral parity**: v2's `ComplexitySummary` composition is implicitly cost-aware (its diagnostic surfaces report `Θ(n²) Proven` rather than `O(n²) Conservative` when the inner `O(n)` term was conservative but dominated). A cost-unaware certainty composition would diverge from v2 on the cementing fixture corpus, failing the closure gate. The cost-aware composition is the correct shape, ratcheted by the cementing test.
+
+**Why the same forward-fold shape, just richer carrier:** the existing depth-proxy is structurally honest (catamorphism over `d.nodes`, fail-closed on `Miss`, parameter pre-seeding). Those properties are independent of the carrier type — they hold for `Lookup<Int>`, `Lookup<SymbolicCost>`, and `Lookup<ComplexitySummary>` identically. The behavioral-completeness work changes *what* each port carries (and how summaries compose jointly), not *how* the lens walks. Per [`../INVARIANTS.md`](../INVARIANTS.md) P5 — the structural change is forward (richer fact + joint composition), not lateral (parallel walker).
 
 ## §4. v2-oracle cementing test
 
 Per TESTING.md *Cementing tests (Band C — lens subsumption)* and [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) Discipline rule 6, every `BEHAVIORALLY COMPLETE` claim with a non-`N/A` v2 counterpart requires a cementing test that runs **the same minimal fixture through both implementations** and asserts semantic equality on the published carrier shape (or a documented projection).
+
+**Cross-lens cementing format alignment**: this Rust cementing test is the staged form. **Dissolution trigger**: at T-Tests-As-Data-Completeness step 5 (per [`docs/design-tests-as-data-completeness.md`](design-tests-as-data-completeness.md) §6 step 5 — *cementing dispatch port*), this Rust cementing test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration. All three behavioral-parity lenses (complexity / cost / effect-enumeration) follow the same staging — Rust cementing today, port to .dag at the migration step. This per-doc consistency is recorded in [`docs/design-r3-lens-substrate-index.md`](design-r3-lens-substrate-index.md) §"Cementing-test format" and matches the cross-lane sequencing in tests-as-data §8.3.
 
 ### §4.1 Mechanical shape
 
@@ -441,23 +534,52 @@ fn complexity_v2_v3_oracle_equivalent_on_corpus() {
 /// semantically-equivalent forms. The asymptotic projection is the published
 /// behavioral contract per the register's "what v2 has that v3 drops" column.
 fn assert_summaries_equivalent(v2: &V2Summary, v3: &V3Summary, fixture: &str) {
+    // Asymptotic-class equivalence per dimension (v3 publishes one
+    // class derived from work; v3_classify_span derives span class
+    // from v3.span structurally — same projection v2_classify applies
+    // to v2.span).
     let v2_class = v2_classify(&v2.work);
     let v3_class = v3.asymptotic_class;
     assert_eq!(v2_class, v3_class, "{fixture}: work asymptotic class mismatch");
-    
+
     let v2_span_class = v2_classify(&v2.span);
     let v3_span_class = v3_classify_span(&v3);
     assert_eq!(v2_span_class, v3_span_class, "{fixture}: span asymptotic class mismatch");
-    
-    assert_eq!(v2.certainty, v3.certainty, "{fixture}: certainty mismatch");
+
+    // Per-coordinate certainty equivalence per §1.7's
+    // ComplexitySummary { ..., work_certainty, span_certainty }.
+    // v2.certainty is a single global field; v3 carries per-coordinate
+    // facts. The documented projection is:
+    //
+    //     v2.certainty := meet_pair(v3.work_certainty, v3.span_certainty)
+    //
+    // (any unproven dimension makes the v2-equivalent global certainty
+    // unproven; if both v3 dimensions are Proven, v2 is Proven).
+    //
+    // The test asserts the projection equality — NOT v2.certainty ==
+    // each per-coordinate fact independently. Asserting independent
+    // equality would reject legitimate per-coordinate divergence
+    // (work_certainty=Proven, span_certainty=Conservative is a
+    // structurally-valid v3 summary that projects to v2.certainty=
+    // Conservative; a legitimate stronger-on-work claim would fail
+    // a per-coordinate-equality test against v2's coarser global field).
+    let v3_global_certainty = meet_pair(v3.work_certainty, v3.span_certainty);
+    assert_eq!(v2.certainty, v3_global_certainty,
+               "{fixture}: certainty projection mismatch (v3.work={:?}, v3.span={:?}, projected meet={:?}, v2.certainty={:?})",
+               v3.work_certainty, v3.span_certainty, v3_global_certainty, v2.certainty);
 }
 ```
 
 ### §4.2 What the test pins
 
-Per TESTING.md *"behavior-driven, not implementation-driven"*: the test pins **asymptotic-class equivalence and certainty equivalence**, not raw `CostExpr`/`SymbolicCost` structural equality. v2's normalization may produce a syntactically different `CostExpr` than v3's `SymbolicCost` for the same program (e.g., `SumCost([LinearCost, ConstantCost(1)])` vs `LinearCost`). Both project to `ClassLinear`. The behavioral contract is the projection, not the syntax.
+Per TESTING.md *"behavior-driven, not implementation-driven"*: the test pins **asymptotic-class equivalence (per dimension) and certainty-projection equivalence**, not raw `CostExpr`/`SymbolicCost` structural equality. v2's normalization may produce a syntactically different `CostExpr` than v3's `SymbolicCost` for the same program (e.g., `SumCost([LinearCost, ConstantCost(1)])` vs `LinearCost`). Both project to `ClassLinear`. The behavioral contract is the projection, not the syntax.
 
-This is a *documented projection* per TESTING.md *"or assert a documented, reviewed projection when the types differ but the claim is about a specific homomorphism"*. The homomorphism is `cost → AsymptoticClass`, and equivalence is asserted at that level.
+This is a *documented projection* per TESTING.md *"or assert a documented, reviewed projection when the types differ but the claim is about a specific homomorphism"*. The homomorphisms:
+- `v2.work → AsymptoticClass` ↔ `v3.work → v3.asymptotic_class` (the lens's own projection)
+- `v2.span → AsymptoticClass` ↔ `v3.span → v3_classify_span(v3.span)`
+- `v2.certainty (single global)` ↔ `meet_pair(v3.work_certainty, v3.span_certainty)` (homomorphism: v2's coarser global certainty IS the meet of v3's per-coordinate certainties — any unproven v3 dimension makes the projection Conservative)
+
+The certainty mapping is the meet projection: v2's single `certainty` field IS the meet of v3's per-coordinate `work_certainty` + `span_certainty`. The cementing test asserts v2.certainty matches the v3-meet (NOT v2.certainty == each v3 coordinate independently — that would reject legitimate per-coordinate divergence like `work_certainty=Proven, span_certainty=Conservative`, which validly projects to `v2.certainty=Conservative`). The test's failure surface names both v3 per-coordinate facts plus their meet, so the divergence is debuggable: v3 might have a stronger per-coordinate claim than v2 (e.g., v3 proved one dimension, v2 didn't) — that surfaces as a meet-equivalence pass with per-coordinate richness, NOT as a test failure.
 
 ### §4.3 Anti-pattern guard
 
@@ -476,7 +598,7 @@ The corpus covers each `AsymptoticClass` variant at least once, with at least on
 The dependency chain (per §2 cascade-gate sequence) drives a strict ordering:
 
 1. **T-E-P-Producer-Broadening lands** (separate lane; cascade prerequisite).
-2. **Substrate carriers land** in one PR per §1: renderer-side InternTable name wiring (§1.2 — no substrate change to `SizeVariable`), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` + lattice declaration (§1.5), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
+2. **Substrate carriers land** in one PR per §1: `SizeVariable.display_name: String?` field add (per cost-lens §1.2; v3 has no PortId-to-authored-name InternTable query, so the substrate-field path is the single authority), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` 2-variant sum **without** an associated lattice instance (§1.5 — composition is cost-aware via `compose_summary_*` per §3.1, not lattice-fold), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
 3. **Lens consumer rewrite** in one PR per §3.
 4. **Cementing test + fixture corpus** in one PR per §4.
 5. **Register update** to `BEHAVIORALLY COMPLETE` in the same PR as the cementing test.
@@ -502,9 +624,13 @@ Per `feedback_design_before_implement` — resolve all design questions before i
 
 (Resolved in §1.3.) At the *Dimension* layer they are two instances with different `compose` monoids (sum-on-Branch for work; max-on-Branch for span). At the *Summary output* layer they are coordinates of `ComplexitySummary`. Both framings are honest because the relationship is "two dimensions feed one summary" — same shape as DB-3 §"Dimension evaluation" describes for `DimensionReport`.
 
-### §7.2 Should `SizeVariable` carry a name field? — RESOLVED: no; InternTable is single name authority
+### §7.2 Should `SizeVariable` carry a name field? — RESOLVED: yes, `display_name: String?` field; substrate field is single authority
 
-(Resolved in §1.2.) Per gpt-5-5-pro BLOCKING at sha ef21e1a0 + P2 single-authority discipline: adding a `display_name: String?` field on `SizeVariable` would create two name authorities (the field + InternTable), letting consumers diverge on the user-facing label for the same `source_port`. Resolution: InternTable is the single canonical name source (already populated at parse time); the renderer reads via `intern_table::name_of(source_port)`. No substrate change to `SizeVariable`. Equality stays on `source_port` (the only field).
+(Resolved in §1.2.) Iterations:
+1. **First wave** (gpt-5-5-pro at sha ef21e1a0): a `display_name` field PLUS an InternTable lookup would create two sources of truth.
+2. **Second wave** (codex BLOCKING at sha 37f3bc62): v3 has no `intern_table::name_of(port_id)` query landed (per `src/v3/std/algebra.dag:143`). Assuming an unlanded query violates substrate-target discipline.
+
+**Final resolution**: add `display_name: String?` to `SizeVariable` as the single substrate authority for the user-facing name. There's no parallel authority (InternTable name-lookup query isn't landed; the structural-field path is what v3 supports). Single-authority discipline (P2) preserved. Aligned with cost-lens §1.2.
 
 ### §7.3 Should `Certainty` promote to `std/algebra.dag`? — RESOLVED: stays lens-local until a second consumer needs it
 
@@ -520,7 +646,7 @@ Per `feedback_design_before_implement` — resolve all design questions before i
 
 ### §7.6 What about the four hand-rolled `BoundedLattice<T>` instances in ROADMAP? — RESOLVED: this design dissolves one (FermiDepth-adjacent class-of-bounds), validates the pattern for the rest
 
-(Resolved by §1.4's discipline.) The ROADMAP P2 entry at `:362-365` flags four ad-hoc lattices: `FermiDepth`, `Encoding`, `DescentEvidence`, `SubValueRelation`. This design declares `BoundedLattice<AsymptoticClass>` and `BoundedLattice<Certainty>` as proper instances per `dsl/std/algebra.dag:263`. The `meet(top, a) = a` law (per ROADMAP:534 SubValueRelation receipt) is *verified by construction* — `meet_asymptotic_class(ClassUnknown, a) = a` is structurally trivial because `ClassUnknown` is the dominance top. Same shape applies to `Certainty`. The two new instances are both algebraically honest from day one, validating the dissolution path for the four pre-existing instances. Their dissolution stays under T-V-L4-L7-Direct's `l7_algebraic_laws_witnessed` gate (per [`docs/r3-structure.md`](r3-structure.md):155).
+(Resolved by §1.4's discipline.) The ROADMAP P2 entry at `:362-365` flags four ad-hoc lattices: `FermiDepth`, `Encoding`, `DescentEvidence`, `SubValueRelation`. This design declares **one** `BoundedLattice<AsymptoticClass>` instance per `dsl/std/algebra.dag:263` (no `BoundedLattice<Certainty>` — `Certainty` composition is cost-aware per §1.5 + §3.1, not lattice-fold). The `meet(top, a) = a` law (per ROADMAP:534 SubValueRelation receipt) is *verified by construction* — `meet_asymptotic_class(ClassUnknown, a) = a` is structurally trivial because `ClassUnknown` is the dominance top. The new `BoundedLattice<AsymptoticClass>` instance is algebraically honest from day one, validating the dissolution path for the four pre-existing instances. Its dissolution stays under T-V-L4-L7-Direct's `l7_algebraic_laws_witnessed` gate (per [`docs/r3-structure.md`](r3-structure.md):155).
 
 ## §8. Relationship to existing authority
 
@@ -549,7 +675,7 @@ Internal cascade (for this slice 1 work):
 1. **T-E-P-Producer-Broadening COMPLETE** — full per-call descent evidence available via `per_call_descent_evidence` side table.
 2. **R2-Evaluator landed** — lens runtime execution available.
 3. **R2-T-Substrate-Lens-Primitive landed** — `Lens<C>` shape available (already done).
-4. **Class-5 record bodies in `data` declarations** — required for `data work_dimension` / `data span_dimension` / `data asymptotic_class_lattice` / `data certainty_lattice`. This is *not* a hard cascade gate (the Rust execution authority bridges via `analyze_symbolic_cost_dimension` per existing pattern); when class-5 lands, the data declarations replace the Rust bridges. Dissolution trigger named per [`../INVARIANTS.md`](../INVARIANTS.md) P5.
+4. **Class-5 record bodies in `data` declarations** — required for `data work_dimension` / `data span_dimension` / `data asymptotic_class_lattice`. (No `data certainty_lattice` — `Certainty` does NOT have an associated lattice instance per §1.5; composition is cost-aware via `compose_summary_*` per §3.1, not lattice-fold.) This is *not* a hard cascade gate (the Rust execution authority bridges via `analyze_symbolic_cost_dimension` per existing pattern); when class-5 lands, the data declarations replace the Rust bridges. Dissolution trigger named per [`../INVARIANTS.md`](../INVARIANTS.md) P5.
 
 External cascade: standard R3 worker-dispatch precondition (R2-Evaluator landed).
 
