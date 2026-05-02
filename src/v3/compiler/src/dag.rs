@@ -1284,6 +1284,54 @@ pub fn per_call_descent_evidence(dag: &Dag) -> Vec<CallDescentEvidence> {
     entries
 }
 
+/// E-P typed CallPattern query over the per-call evidence authority.
+///
+/// This is the query surface named by the cost/complexity design docs. It
+/// deliberately projects from [`per_call_descent_evidence`] instead of walking
+/// call nodes independently, so producer broadening does not create a second
+/// callable-edge authority. This first bounded broadening slice adds the
+/// locally provable `PreservedValue -> SameArgumentCall` projection for
+/// self-calls that pass their argument through unchanged. Existing
+/// `SubValueRelation -> CallPattern` projections from `std.induction` remain
+/// preserved here; multi-argument composition and lowered/lens consumers
+/// remain separate E-P gates.
+pub fn per_call_pattern_at(dag: &Dag, call_site: NodeId) -> Option<CallPattern> {
+    let entry = per_call_descent_evidence(dag)
+        .into_iter()
+        .find(|entry| entry.call == call_site)?;
+    let [relation] = entry.evidence.as_slice() else {
+        return None;
+    };
+    sub_value_relation_to_call_pattern(relation)
+}
+
+pub fn sub_value_relation_to_call_pattern(relation: &SubValueRelation) -> Option<CallPattern> {
+    match relation {
+        SubValueRelation::ArithmeticDescent { param, factor } => match factor {
+            ShrinkFactor::ConstantShrink { steps } => Some(CallPattern::ArithmeticSubtractCall {
+                steps: steps.clone(),
+                ring_param: param.clone(),
+            }),
+            ShrinkFactor::ProportionalShrink { divisor } => {
+                Some(CallPattern::ArithmeticDivideCall {
+                    divisor: divisor.clone(),
+                    ring_param: param.clone(),
+                })
+            }
+            ShrinkFactor::UnitShrink => Some(CallPattern::ArithmeticSubtractCall {
+                steps: PositiveDescentAmount::OneStep,
+                ring_param: param.clone(),
+            }),
+        },
+        SubValueRelation::StrictSubValue { field, .. }
+        | SubValueRelation::IteratedSubValue { field } => Some(CallPattern::ChildAccessorCall {
+            accessor: field.field_name.clone(),
+        }),
+        SubValueRelation::PreservedValue => Some(CallPattern::SameArgumentCall),
+        SubValueRelation::SubValueUnknown => None,
+    }
+}
+
 fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a BindNode> {
     // Use the lowered structural authority: function declarations point at
     // their owning body bind through `ArrowBody::UserDefined`.
