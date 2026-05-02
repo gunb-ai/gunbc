@@ -36,7 +36,7 @@ This index documents the cross-doc edges that the coherence audit (2026-05-02) v
 
 ### Cementing-test format (staged)
 
-All three behavioral-parity lens designs (complexity §4, cost §5, effect-enumeration §6 step 5) ship **Rust cementing tests** at `src/v3/compiler/tests/integration/cementing/` per TESTING.md Band-C discipline as the today-form, with **explicit dissolution trigger** to T-Tests-As-Data-Completeness step 5 (per tests-as-data §10 step 5 — *cementing dispatch port*) where each Rust test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration.
+All three behavioral-parity lens designs (complexity §4, cost §5, effect-enumeration §6 step 5) ship **Rust cementing tests** at `src/v3/compiler/tests/integration/cementing/` per TESTING.md Band-C discipline as the today-form, with **explicit dissolution trigger** to T-Tests-As-Data-Completeness step 5 (per tests-as-data §6 step 5 — *cementing dispatch port*) where each Rust test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration.
 
 | Stage | Form | Authority | Dissolution trigger |
 |---|---|---|---|
