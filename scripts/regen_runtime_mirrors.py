@@ -647,6 +647,9 @@ def rust_type(source: str, overrides: dict[str, str] | None = None) -> str:
         "String": "String",
         "Bool": "bool",
         "Int": "i64",
+        # `Nat` (`Semiring<Magnitude>`) uses the same decimal literal carrier as `Int` in the
+        # runtime mirror; narrowing is via `int_literal_ranges::integer_range_for_decl`.
+        "Nat": "i64",
         "NodeId": "NodeId",
         "PortId": "PortId",
         "ClusterId": "ClusterId",
