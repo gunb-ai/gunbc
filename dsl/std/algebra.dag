@@ -160,9 +160,9 @@ type AbelianGroup<T> {
 //   where-clause syntax (`<M> where M : CommutativeMonoid<_>`), so this
 //   declaration accepts any type-reference for `<M>` at the parser/lower
 //   level. Slice 3's only intended consumer is `GroupCompletion<Nat>`, and
-//   `Nat = Semiring<Magnitude>` (Slice 2) carries the commutative-monoid
-//   laws via Semiring's `add`+`zero`+commutativity-on-add — denotationally
-//   the precondition holds.
+//   `Nat = CommutativeSemiring<Magnitude>` carries the commutative-monoid
+//   laws via the inherited `add`+`zero`+commutativity-on-add story —
+//   denotationally the precondition holds.
 //
 //   **Dissolution trigger:** when constrained-inhabitance / parametric
 //   where-clause syntax lands in the substrate (separate substrate-feature

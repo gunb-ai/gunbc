@@ -16,7 +16,7 @@
 // PRECEDENT: `dsl/std/constructors.dag:68,72` declares `type Product` and
 // `type Coproduct` as bare opaque atoms — same shape as Magnitude.
 //
-// CONSUMERS: none in this slice. `Nat = Semiring<Magnitude>` and downstream
+// CONSUMERS: none in this slice. `Nat = CommutativeSemiring<Magnitude>` and downstream
 // chain layers land in subsequent slices per design doc §6 sequencing.
 //
 // HARD BOUNDARIES (per dispatch on inbox #1288):

@@ -14,7 +14,7 @@
 //
 // Construction-chain progression:
 //
-//   Magnitude → Nat = Semiring<Magnitude> → Int = AbelianGroup<GroupCompletion<Nat>> → ...
+//   Magnitude → Nat = CommutativeSemiring<Magnitude> → Int = AbelianGroup<GroupCompletion<Nat>> → ...
 //
 // `GroupCompletion<Nat>` is the **derived carrier** (opaque atom denoting
 // the abelian-group carrier obtained from Nat via the Grothendieck

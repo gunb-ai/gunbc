@@ -2938,18 +2938,20 @@ fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
     }
 }
 
-/// T-Numeric-Construction Slice 2 — `Nat = Semiring<Magnitude>` resolves
-/// structurally to a `Semiring` instantiation whose carrier argument is the
+/// T-Numeric-Construction Nat sharpening — `Nat =
+/// CommutativeSemiring<Magnitude>` resolves structurally to a
+/// `CommutativeSemiring` instantiation whose carrier argument is the
 /// `Magnitude` opaque atom landed by Slice 1.
 ///
 /// The ratchet enforces both authorities at once:
 /// - `Nat` must lower to a `TypeConnective::Instantiation` whose template is
-///   `Semiring` (`dsl/std/algebra.dag`), not a fresh record or a name-keyed bridge.
+///   `CommutativeSemiring` (`dsl/std/algebra.dag`), not a fresh record or a
+///   name-keyed bridge.
 /// - The single carrier argument must resolve to `Magnitude` (`dsl/std/magnitude.dag`),
 ///   not to a `Word*` storage carrier — those remain storage refinements per
 ///   `docs/audit/t-numeric-construction-magnitude-6q.md`.
 #[test]
-fn nat_resolves_to_semiring_over_magnitude() {
+fn nat_resolves_to_commutative_semiring_over_magnitude() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let nat = dag
@@ -2960,9 +2962,9 @@ fn nat_resolves_to_semiring_over_magnitude() {
         "Nat must live in the canonical std/nat.dag module, not in a parallel authority"
     );
 
-    let semiring = dag
-        .declaration_by_name("Semiring")
-        .expect("`Semiring` algebra must be loaded from dsl/std/algebra.dag");
+    let commutative_semiring = dag
+        .declaration_by_name("CommutativeSemiring")
+        .expect("`CommutativeSemiring` algebra must be loaded from dsl/std/algebra.dag");
     let magnitude = dag
         .declaration_by_name("Magnitude")
         .expect("`Magnitude` opaque carrier must be loaded from dsl/std/magnitude.dag (Slice 1)");
@@ -2973,34 +2975,33 @@ fn nat_resolves_to_semiring_over_magnitude() {
             arguments,
         } => {
             assert_eq!(
-                *template, semiring.id,
-                "Nat must instantiate `Semiring`, not an alternate algebra record"
+                *template, commutative_semiring.id,
+                "Nat must instantiate `CommutativeSemiring`, not an alternate algebra record"
             );
             assert_eq!(
                 arguments.len(),
                 1,
-                "Semiring takes exactly one carrier type parameter"
+                "CommutativeSemiring takes exactly one carrier type parameter"
             );
             assert_eq!(
                 arguments[0].value, magnitude.id,
-                "Nat's Semiring carrier argument must be `Magnitude`, not a Word* storage carrier"
+                "Nat's CommutativeSemiring carrier argument must be `Magnitude`, not a Word* storage carrier"
             );
         }
         other => panic!(
-            "Nat must lower to a Semiring instantiation; got {other:?} — \
+            "Nat must lower to a CommutativeSemiring instantiation; got {other:?} — \
              a non-Instantiation connective indicates a parallel algebra authority \
-             rather than a clean Semiring<Magnitude> alias"
+             rather than a clean CommutativeSemiring<Magnitude> alias"
         ),
     }
 }
 
 /// T-Numeric-Construction algebra-strength sharpening — `CommutativeSemiring<T>`
 /// exists as the stronger algebra surface for semirings whose multiplication is
-/// commutative. This PR lands only the algebra type; `Nat` remains
-/// `Semiring<Magnitude>` until the follow-up alias-sharpening slice updates the
-/// Nat ratchet at the same time.
+/// commutative. Nat now consumes that algebra-strength surface directly while
+/// the field shape remains identical to `Semiring<T>`.
 #[test]
-fn commutative_semiring_declares_semiring_shape_without_sharpening_nat() {
+fn commutative_semiring_declares_semiring_shape_and_nat_uses_it() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let semiring = dag
@@ -3025,9 +3026,9 @@ fn commutative_semiring_declares_semiring_shape_without_sharpening_nat() {
         .expect("Nat remains loaded from std.nat");
     match &nat.connective {
         TypeConnective::Instantiation { template, .. } => assert_eq!(
-            *template, semiring.id,
-            "This slice intentionally does not sharpen Nat to CommutativeSemiring; \
-             the follow-up alias PR must update this ratchet with the Nat declaration"
+            *template, commutative.id,
+            "Nat must use the honest CommutativeSemiring<Magnitude> surface now that \
+             the algebra declaration exists"
         ),
         other => panic!("Nat must remain an algebra instantiation in this slice, got {other:?}"),
     }

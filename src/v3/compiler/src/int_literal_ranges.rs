@@ -136,8 +136,8 @@ pub(crate) fn integer_routing_witness_for_decl(
     integer_routing_witness_walk(dag, decl, 0)
 }
 
-/// `Nat` (`dsl/std/nat.dag`: `Semiring<Magnitude>`). Decimal literals narrow like nonnegative
-/// fixed-width ints: \([0, i64::MAX]\) until a distinct magnitude literal carrier ships.
+/// `Nat` (`dsl/std/nat.dag`: `CommutativeSemiring<Magnitude>`). Decimal literals narrow like
+/// nonnegative fixed-width ints: \([0, i64::MAX]\) until a distinct magnitude literal carrier ships.
 fn type_is_nat(dag: &Dag, mut decl: DeclarationId) -> bool {
     let Some(nat_id) = dag.declaration_by_name("Nat").map(|d| d.id) else {
         return false;

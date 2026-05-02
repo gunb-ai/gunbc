@@ -21,7 +21,7 @@ This doc executes that end-state. The structural fix layers as the textbook math
 ```
 Magnitude                              (terminal substrate — unbounded counting carrier)
    ↓
-Nat = Semiring<Magnitude>              (ℕ — natural numbers; no neg, no div)
+Nat = CommutativeSemiring<Magnitude>   (ℕ — natural numbers; no neg, no div)
    ↓
 Int                                   (ℤ via Grothendieck completion of Nat; AbelianGroup<Int> witness)
    ↓
@@ -244,7 +244,7 @@ The construction chain has different cost characteristics per layer that the cos
 | Layer | Operation | Cost (substrate-level) | Notes |
 |---|---|---|---|
 | **Magnitude** | (opaque carrier; no operations directly) | N/A | Refinements consume; Magnitude itself has no algebraic operations |
-| **Nat = Semiring<Magnitude>** | `add(a, b)` | O(1) on the algebraic axiom; refinement determines target-realization cost | Per-target: O(1) for `Nat<64>` on hardware; O(max(a, b)) for unbounded `Nat` via BigUint |
+| **Nat = CommutativeSemiring<Magnitude>** | `add(a, b)` | O(1) on the algebraic axiom; refinement determines target-realization cost | Per-target: O(1) for `Nat<64>` on hardware; O(max(a, b)) for unbounded `Nat` via BigUint |
 | **Nat** | `mul(a, b)` | O(1) algebraic; target: O(1) for fixed-width; O(n*m) for arbitrary-precision | |
 | **Int completion over Nat** | `add(a, b)` (via Grothendieck) | O(1) algebraic; same target cost as Nat | Sign handling adds constant factor; doesn't change asymptotic |
 | **Int** | `negate(a)` | O(1) algebraic; O(1) target | Sign flip |
