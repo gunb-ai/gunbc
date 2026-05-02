@@ -917,6 +917,53 @@ pub mod evaluator {
         }
 
         #[test]
+        fn eval_branch_reifies_true_bool_literal_scrutinee_to_true_arm() {
+            let mut dag = Dag::std_fixture_bootstrap_snapshot();
+            let true_tag = dag
+                .bool_runtime_variant_id(true)
+                .expect("Bool.True variant id");
+            let false_tag = dag
+                .bool_runtime_variant_id(false)
+                .expect("Bool.False variant id");
+            let scrutinee = dag.alloc_port_with_shape(dag.bool_shape().expect("Bool shape"));
+            let true_output = dag.push_value(LiteralBits::Int(11), span());
+            let true_body = node_for_port(&dag, true_output);
+            let false_output = dag.push_value(LiteralBits::Int(22), span());
+            let false_body = node_for_port(&dag, false_output);
+            let output = dag.push_branch(
+                scrutinee,
+                vec![
+                    Path {
+                        body: true_body,
+                        output: true_output,
+                        pattern: BranchPattern::ResolvedVariant(true_tag),
+                        binding: None,
+                    },
+                    Path {
+                        body: false_body,
+                        output: false_output,
+                        pattern: BranchPattern::ResolvedVariant(false_tag),
+                        binding: None,
+                    },
+                ],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+            let frame = EvalFrame::from_bindings([(
+                scrutinee,
+                Value::LiteralValue(LiteralBits::Bool(true)),
+            )])
+            .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let strategy = eager_strategy();
+
+            let value = eval_node(&dag, entry, &mut state, &strategy).expect("branch evaluates");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
         fn eval_branch_reifies_false_bool_literal_scrutinee_to_false_arm() {
             let mut dag = Dag::std_fixture_bootstrap_snapshot();
             let true_tag = dag
