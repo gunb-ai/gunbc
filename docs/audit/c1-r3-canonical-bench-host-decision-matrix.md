@@ -14,11 +14,13 @@ This artifact narrows the decision space to options derivable from current repo 
 Single runner label across all four CI jobs in `.github/workflows/ci.yml`:
 
 ```
-fmt                  → ubicloud-standard-2  (line 41)
-ci                   → ubicloud-standard-2  (line 62)
-v3                   → ubicloud-standard-2  (line 131)
-self_host_ratchet    → ubicloud-standard-2  (line 318)
+fmt                  → runs-on: ubicloud-standard-2
+ci                   → runs-on: ubicloud-standard-2
+v3                   → runs-on: ubicloud-standard-2
+self_host_ratchet    → runs-on: ubicloud-standard-2
 ```
+
+(Anchored by job name, not line number — `ci.yml` churns and line offsets drift.)
 
 No other workflow files exist (`ls .github/workflows/` → only `ci.yml`). No `bench`-tagged runner, no dedicated VM, no self-hosted runner pool, no Ubicloud machine pool larger than `standard-2`. No CI step currently invokes `cargo bench`.
 
