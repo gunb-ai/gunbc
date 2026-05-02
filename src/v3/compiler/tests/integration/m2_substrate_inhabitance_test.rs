@@ -2928,8 +2928,7 @@ fn approximate_field_carrier_record_shape_ratchets() {
                 "`Field<F>` carries exactly one type argument"
             );
             assert_eq!(
-                arguments[0].parameter,
-                field_template.type_params[0],
+                arguments[0].parameter, field_template.type_params[0],
                 "`Field` instantiation must fill `Field`'s formal `<T>` slot"
             );
             assert_eq!(
