@@ -329,7 +329,7 @@ fn structural_equivalent(v3: SymbolicCost, v2: CostExpr) -> Bool =
   }
 ```
 
-The `QuantifiedTestClaim` runs the v3 lens on `compile_v3(p)` and the v2 oracle on `compile_v2(p)` (where `compile_v2` invokes `src/v2/complexity.dag::analyze`) for every program produced by `cost_lens_corpus_generator`, asserting structural equivalence on the asymptotic class. Stop-at-first-failure semantics per tests-as-data §8.1.
+The Rust cementing test runs the v3 lens on `compile_v3(p)` and the v2 oracle on `compile_v2(p)` (where `compile_v2` invokes `src/v2/complexity.dag::analyze`) for every fixture in the corpus, asserting structural equivalence on the **full `SymbolicCost`/`CostExpr` carrier shape** (per the Band-C parity claim at line 316 — not a projection). Test fails on first non-equivalent fixture; the failure surfaces which fixture diverged and where in the structural walk the mismatch occurred.
 
 ### §5.2 Corpus shape
 

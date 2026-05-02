@@ -65,13 +65,6 @@ type SectionRef
 
 type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error is admitted
 
-// ApplicationConfig<Budget> is parametric in the budget type ONLY.
-// Both Enforce/Introspect partition AND budget unrepresentability for
-// Introspect are enforced structurally — no behavioral type-checker rule.
-type ApplicationConfig<Budget>
-  = Enforce { budget: Budget, diagnostic_severity: DiagnosticSeverity }
-  | Introspect
-
 // LensEnforcement<Output, Budget> is the per-lens projection from the
 // (potentially rich) lens output type to the budget-comparable type.
 // For lenses where Output = Budget (cost: SymbolicCost), the projection
@@ -82,25 +75,40 @@ type LensEnforcement<Output, Budget> {
   project: Output -> Budget
 }
 
-// SectionedLensApplication<Output, Budget> is parametric in BOTH the lens
-// output type and the budget type. The shared parameters tie the carriers:
-//   - lens: Lens<Output> — must match the lens's declared output type
-//   - enforcement: LensEnforcement<Output, Budget> — must project that
-//     specific Output to that specific Budget
-//   - config: ApplicationConfig<Budget> — budget must match the projection target
-// Mismatched triples (e.g., a complexity-lens with a SymbolicCost budget)
-// are structurally unrepresentable; the type system rejects them at parse
-// time, not via a separate type-checker rule.
-type SectionedLensApplication<Output, Budget> {
+// EnforcedApplication<Output, Budget> is the carrier for enforce-mode
+// lens applications. Parametric in BOTH lens output and budget; the
+// shared parameters tie lens / enforcement / budget structurally.
+type EnforcedApplication<Output, Budget> {
   lens: Lens<Output>                            // typed reference; Output is lens carrier
   enforcement: LensEnforcement<Output, Budget>  // projection tying Output to Budget
   section: SectionRef
-  config: ApplicationConfig<Budget>             // budget matches projection target
+  budget: Budget                                // matches projection target
+  diagnostic_severity: DiagnosticSeverity
   span: SourceSpan                              // user-authored site for diagnostic attribution
 }
+
+// IntrospectApplication<Output> is the carrier for introspection-mode
+// applications. Parametric in lens output ONLY — no budget, no
+// enforcement projection. Per the reviewer-flagged P2 / illegal-states-
+// unrepresentable concern: an Introspect application MUST NOT carry
+// enforcement metadata it cannot consume.
+type IntrospectApplication<Output> {
+  lens: Lens<Output>
+  section: SectionRef
+  span: SourceSpan
+}
+
+// SectionedLensApplication is the user-authored top-level surface — a
+// disjoint sum where each variant carries exactly the parameters that
+// variant uses. Enforce-mode applications carry (lens, enforcement,
+// section, budget, severity); Introspect-mode applications carry only
+// (lens, section). No phantom parameters; no irrelevant state.
+type SectionedLensApplication
+  = Enforce<Output, Budget>(EnforcedApplication<Output, Budget>)
+  | Introspect<Output>(IntrospectApplication<Output>)
 ```
 
-Per `feedback_state_space_vs_behavioral_invariants` + modeling principles 2/6: **Enforce-without-budget / Introspect-with-budget** AND **lens/projection/budget mismatch** are all illegal states; all unrepresentable in the carrier shape.
+Per `feedback_state_space_vs_behavioral_invariants` + modeling principles 2/6: **Enforce-without-budget / Introspect-with-budget / Introspect-with-enforcement / lens-projection-budget mismatch** are all illegal states; all unrepresentable in the carrier shape. Each variant of `SectionedLensApplication` carries exactly the type parameters its operation requires.
 
 The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) parametrizes lenses by their **lens-output carrier** `C` — the type returned by `read(d) -> Lookup<C>`. Per-lens carriers + their enforcement projections:
 
