@@ -143,7 +143,12 @@ Smallest useful slice:
    - `response` status mappings.
 3. Lower to new shared service carriers or, if the full carrier set is too large
    for one PR, lower to `ValueBody::Unparsed` with a typed `Service` declaration
-   scaffold and explicit diagnostics for unsupported sub-blocks.
+   scaffold and explicit diagnostics for unsupported sub-blocks. Dissolution
+   trigger for that scaffold: delete the `ValueBody::Unparsed` service fallback
+   once shared service child carriers lower config, operations, input metadata
+   including defaults, output projections, REST transport method/path/body/
+   headers, response status mapping, and mocks without unsupported-sub-block
+   diagnostics.
 4. Add a fixture using the existing Anthropic Messages service block shape and
    assert it parses as service structure rather than forcing
    `anthropic_schema.dag` / `anthropic_messages.dag` mirrors.
