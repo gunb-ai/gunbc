@@ -579,6 +579,169 @@ fn caller(n: Int) -> Int = helper(n)
     );
 }
 
+/// T-E-P-Producer-Broadening **gate (2)** — `e_p_call_pattern_lookup_authoritative`.
+///
+/// Pins `per_call_descent_evidence` as the **single** lookup authority for
+/// per-call `SubValueRelation` evidence over `TransformTarget::Callable`
+/// transforms. The gate guards against parallel producer growth while the
+/// other two gates (`_full_coverage`, `_per_call_landed`) extend the
+/// producer's coverage and move evidence onto a substrate carrier.
+///
+/// **Authoritativeness check (behavioral):**
+/// - For every `Behavior::Transform` whose target is `TransformTarget::Callable`
+///   and whose span sits in the user fixture file, the producer yields
+///   **exactly one** `CallDescentEvidence` entry. (Bootstrap-scoped
+///   Callable transforms are exercised by neighbouring `e_p_*` tests; this
+///   test's candidate set is span-narrowed for tractable enumeration.)
+/// - Each entry's `call: NodeId` is **unique** in the producer's output —
+///   no parallel/duplicate producer is silently appending entries.
+/// - Every producer entry corresponds to a real `Behavior::Transform` with
+///   a `Callable` target — no synthetic entries.
+/// - The producer-emitted set (filtered to the fixture file) **equals**
+///   the candidate set — totality over the fixture-file domain.
+///
+/// **Why a behavioral test over a source-grep ratchet:** the helpers
+/// `classify_call_argument` / `arithmetic_descent_relation` are already
+/// private to `dag.rs`; the public surface is the producer fn + the
+/// `SubValueRelation` / `CallDescentEvidence` types. The substantive
+/// "single authority" claim is that no *callable-edge → evidence* mapping
+/// is reconstructed elsewhere — this is observable as cardinality match
+/// between the producer's output and the live Callable-transform set.
+/// Future drift (a second producer adding entries; a missing call site) is
+/// caught by these structural assertions without coupling to source text.
+#[test]
+fn per_call_descent_evidence_is_single_lookup_authority_over_callable_transforms() {
+    use std::collections::HashSet;
+    use v3_compiler::dag::{Behavior, NodeId, TransformTarget};
+
+    // Two-function fixture exercises both branches of the producer's match
+    // (`caller_template == callee_template` self-recursion + resolved
+    // cross-template fail-closed). The single-authority claim must hold for
+    // the cross-template branch too — a future producer that adds a parallel
+    // walker for cross-template evidence (rather than going through
+    // `per_call_descent_evidence`'s fail-closed path) would otherwise slip
+    // past a self-recursion-only ratchet. Cardinality and uniqueness claims
+    // are gate-level properties; future producer-broadening slices (gate 1)
+    // add detection logic without changing this ratchet's shape.
+    let source = "\
+fn countdown(n: Int) -> Int =
+  if n == 0 then 0 else countdown(n - 1)
+
+fn helper(n: Int) -> Int = n - 1
+
+fn caller(n: Int) -> Int = helper(n)
+";
+    let dag = compile_to_dag(source, "e_p_lookup_authority.v3")
+        .expect("countdown self-call + caller→helper cross-template fixture compiles");
+
+    // Candidate set: every `Callable`-target transform whose *span* sits in
+    // the user fixture file. This narrows past the bootstrap dag's thousands
+    // of std/spec Callable transforms — the producer covers them under the
+    // same single-authority rule, but exhaustive iteration over the full
+    // bootstrap would dwarf the signal and is unnecessary for a structural
+    // cardinality assertion. The producer-emitted set (filtered identically)
+    // is compared to this candidate set below.
+    let fixture_callable_transforms: HashSet<NodeId> = dag
+        .nodes()
+        .iter()
+        .filter_map(Behavior::as_transform)
+        .filter(|t| matches!(t.target, TransformTarget::Callable(_)))
+        .filter(|t| t.span.file == "e_p_lookup_authority.v3")
+        .map(|t| t.id)
+        .collect();
+    // Sanity floor: the fixture must exercise both producer match branches
+    // (self-recursive countdown + cross-template caller→helper). Anything
+    // less leaves the cross-template fail-closed branch unverified — the
+    // coverage-equality assertion below would then trivially hold for a
+    // self-recursion-only producer. The cross-template caller→helper edge
+    // fails closed to `SubValueUnknown` (per
+    // `e_p_per_call_descent_evidence_fails_closed_for_non_self_call`), but
+    // it MUST still appear in the producer's entry set — single-authority
+    // means the producer covers all Callable edges, not just self-recursive.
+    assert!(
+        fixture_callable_transforms.len() >= 2,
+        "fixture must compile to >= 2 Callable transforms (countdown self-call + caller→helper \
+         cross-template); got {}",
+        fixture_callable_transforms.len()
+    );
+
+    let all_entries = per_call_descent_evidence(&dag);
+
+    // Filter to user-fixture entries for the cardinality comparison; the
+    // producer emits entries for the full bootstrap dag (thousands of std
+    // callable transforms), but the structural authoritativeness claim is
+    // gauged on the user fixture's narrow set where ground-truth is
+    // tractable to enumerate. Bootstrap-coverage is exercised by the same
+    // producer over std fixtures and validated by neighbouring tests
+    // (`e_p_per_call_descent_evidence_*`).
+    let entries: Vec<&v3_compiler::dag::CallDescentEvidence> = all_entries
+        .iter()
+        .filter(|entry| {
+            dag.node(entry.call)
+                .as_transform()
+                .map(|t| t.span.file == "e_p_lookup_authority.v3")
+                .unwrap_or(false)
+        })
+        .collect();
+
+    // Uniqueness: every entry's NodeId appears exactly once. A second producer
+    // appending evidence would either duplicate `call` ids or shift them.
+    let unique_call_ids: HashSet<NodeId> = entries.iter().map(|entry| entry.call).collect();
+    assert_eq!(
+        unique_call_ids.len(),
+        entries.len(),
+        "per_call_descent_evidence must emit unique entries per Callable transform; \
+         duplicate `call` ids indicate a parallel producer appending evidence"
+    );
+
+    // Reality: every entry must correspond to a real Callable-targeted
+    // transform. A synthetic entry (parallel producer building from another
+    // source) would fail this check.
+    for entry in &entries {
+        let node = dag.node(entry.call);
+        let Behavior::Transform(t) = node else {
+            panic!(
+                "per_call_descent_evidence emitted entry for non-Transform node {:?}; \
+                 call ids must reference live transforms",
+                entry.call
+            );
+        };
+        let TransformTarget::Callable(_) = t.target else {
+            panic!(
+                "per_call_descent_evidence emitted entry for non-Callable target on transform {:?}; \
+                 the producer scope is Callable transforms only",
+                entry.call
+            );
+        };
+        // The transform must be in the candidate set — the producer cannot
+        // reach Callable transforms outside the body-bind ownership rule
+        // without a parallel walker.
+        assert!(
+            fixture_callable_transforms.contains(&entry.call),
+            "per_call_descent_evidence emitted entry for transform {:?} not in the \
+             owned-Callable-transforms candidate set; this indicates a parallel \
+             walker reaching transforms outside the body-bind ownership rule",
+            entry.call
+        );
+    }
+
+    // Coverage: the producer must not silently drop call sites it owns. We
+    // assert the producer-emitted set (filtered to the fixture file) equals
+    // the candidate set (Callable transforms in the fixture file). Any
+    // mismatch indicates either (a) a missing call site, or (b) the producer
+    // overshooting its scope.
+    let entries_call_set: HashSet<NodeId> = entries.iter().map(|entry| entry.call).collect();
+    assert_eq!(
+        entries_call_set, fixture_callable_transforms,
+        "per_call_descent_evidence's emitted call set (restricted to the fixture file) \
+         must equal the set of Callable transforms in the fixture file. Mismatch indicates \
+         either (a) a missing call site (gate violation: producer is not the single \
+         authority because something else covers what the producer drops) or (b) the \
+         producer reaching outside body-owned transforms (gate violation: producer \
+         overshoots its scope)"
+    );
+}
+
 #[test]
 fn e_p_runtime_mirror_matches_induction_carrier_shape() {
     let dag = Dag::new();
