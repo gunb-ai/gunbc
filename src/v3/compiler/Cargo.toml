@@ -13,6 +13,11 @@ autobins = false
 # the default `v3-compiler` library build graph (production uses snapshots).
 bootstrap-regen-fresh = []
 
+# Cross-crate **tests** that need a declaration graph without bootstrap rows
+# (e.g. E-6 empty-`dag` witnesses). Off by default so production dependency graphs
+# cannot construct this substrate-invalid state without opting in.
+empty-substrate-for-tests = []
+
 # M0: the smallest v3 pipeline that exercises the full substrate.
 # parse -> lower to L1 behaviors -> infer types through Ports ->
 # emit diagnostics via the enforced mark_unresolved API -> one lens.

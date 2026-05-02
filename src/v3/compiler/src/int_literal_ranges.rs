@@ -136,7 +136,56 @@ pub(crate) fn integer_routing_witness_for_decl(
     integer_routing_witness_walk(dag, decl, 0)
 }
 
+/// `Nat` (`dsl/std/nat.dag`: `Semiring<Magnitude>`). Decimal literals narrow like nonnegative
+/// fixed-width ints: \([0, i64::MAX]\) until a distinct magnitude literal carrier ships.
+fn type_is_nat(dag: &Dag, mut decl: DeclarationId) -> bool {
+    let Some(nat_id) = dag.declaration_by_name("Nat").map(|d| d.id) else {
+        return false;
+    };
+    let Some(semiring_template) = dag.declaration_by_name("Semiring").map(|d| d.id) else {
+        return false;
+    };
+    let Some(magnitude_id) = dag.declaration_by_name("Magnitude").map(|d| d.id) else {
+        return false;
+    };
+    for _ in 0..32 {
+        if decl == nat_id {
+            return true;
+        }
+        let declaration = dag.declaration(decl);
+        match &declaration.connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if *template == semiring_template
+                && arguments.len() == 1
+                && arguments[0].value == magnitude_id =>
+            {
+                return true;
+            }
+            TypeConnective::Instantiation { template, .. } => decl = *template,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => decl = *next,
+            _ => return false,
+        }
+    }
+    false
+}
+
+fn nat_decimal_literal_interval() -> IntervalInt {
+    IntervalInt::ExactInterval {
+        target_name: "Nat".to_string(),
+        min_decimal: "0".to_string(),
+        max_decimal: i64::MAX.to_string(),
+        min: 0,
+        max: i128::from(i64::MAX),
+    }
+}
+
 pub(crate) fn integer_range_for_decl(dag: &Dag, decl: DeclarationId) -> IntegerRangeLookup {
+    if type_is_nat(dag, decl) {
+        return IntegerRangeLookup::Found(nat_decimal_literal_interval());
+    }
     let Some(witness) = integer_routing_witness_walk(dag, decl, 0) else {
         return IntegerRangeLookup::Missing;
     };
