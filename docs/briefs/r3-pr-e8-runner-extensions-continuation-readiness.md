@@ -59,6 +59,8 @@ authority for W1 without implementing it:
 
 That follow-on can be docs-only now. A runner implementation should wait until
 the producer identity and observation channel contracts are live and cited.
+The W1-specific blocker/proposal is recorded in
+[`r3-pr-e8-w1-output-producer-contract-blocker.md`](r3-pr-e8-w1-output-producer-contract-blocker.md).
 
 ## Workstream Gates
 
