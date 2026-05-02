@@ -88,6 +88,11 @@ fn run() -> Result<(), String> {
     // exit 0 — expected until v3 grammar + Lane 1e land (staged ratchet).
     let mut self_host_slice_failed: Option<String> = None;
 
+    // P0 / DB-8 `receipt.json` always-emitted keys — checked before write by
+    // `receipt_p0::validate_receipt_json_always_emitted_keys` / `top_level_property_needle`
+    // (two spaces + `"key":`). Keep these three emission anchors aligned with that helper:
+    // (1) pipeline field right after `{`, (2) `K_COMPILER_DAG_V3_PARSE` in `Ok` + `Err` arms,
+    // (3) `K_STATUS` on the closing field before `}`.
     let mut receipt = String::new();
     receipt.push_str("{\n");
     receipt.push_str(&format!(
@@ -184,8 +189,7 @@ fn run() -> Result<(), String> {
         json_string(exit_status)
     ));
 
-    // P0 receipt contract: substring needles in `self_host_receipt_p0::validate_receipt_json_always_emitted_keys`
-    // must match the `  "key":` shape emitted in this function (see `top_level_property_needle` docs).
+    // Must match the three anchors documented on `self_host_receipt_p0::top_level_property_needle`.
     receipt_p0::validate_receipt_json_always_emitted_keys(&receipt).map_err(|e| {
         format!("self_host_fixed_point: receipt contract (P0 always-emitted keys): {e}")
     })?;
