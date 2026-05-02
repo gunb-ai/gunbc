@@ -2,8 +2,9 @@
 //
 // Production consumer for the substrate-owned BridgeLedger carrier and
 // BridgeLedgerZero predicate. The claim subject is the canonical structural
-// ledger declaration, not an executable program; at HEAD this gate is red
-// until every canonical ledger row has status `Retired`.
+// ledger declaration, not an executable program. The integration harness
+// records the current open-row baseline and keeps a decreasing-open-count
+// ratchet against this claim while the binary zero gate stays the terminus.
 
 module std.r3_bridge_retirement_ledger_zero
 
