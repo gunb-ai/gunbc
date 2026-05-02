@@ -32,6 +32,9 @@ pub enum PositiveIntervalWidth {
     AdditionalUnit {
         previous: Box<PositiveIntervalWidth>,
     },
+    UnitCount {
+        units: i64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

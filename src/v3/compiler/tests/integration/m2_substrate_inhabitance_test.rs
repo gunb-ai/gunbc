@@ -1078,6 +1078,7 @@ fn substrate_coproducts_match_runtime_carriers() {
                 String::from("AdditionalUnit"),
                 vec![String::from("previous")],
             ),
+            (String::from("UnitCount"), vec![String::from("units")]),
         ]
     );
     assert_eq!(

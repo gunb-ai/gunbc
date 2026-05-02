@@ -14,6 +14,23 @@ import v3.std.emit_model {
   TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
 import v3.std.substrate { BoundDeclaration }
+import v3.std.computation_model {
+  TargetExecutionModel, GarbageCollected, LexicalScoping,
+  ShapeATargetSourceFiltering, ExecutionModelRequirement,
+  internal_source_filtering
+}
+import v3.std.clean_emission {
+  CleanEmissionContract,
+  TargetCleanEmissionBinding,
+  ExpressionWrappingRule, WrapOnlyInOperandPosition,
+  PatternBindingRule, EmitUnderscoreWhenUnused,
+  ImportRule, IncludeOnlyReferenced,
+  BlockReturnRule, ExplicitReturnKeyword,
+  VariableBindingRule, EmitLetUnderscoreWhenUnused,
+  MatchArmBodyRule, NotApplicableMatchArmBody,
+  CorrectionStyle, PostEmitVerifier,
+  VerifierOutputPolicy, RequireEmptyStdout
+}
 import std.algebra { BooleanAlgebra }
 import std.list { List }
 import std.integer { Int32 }
@@ -42,6 +59,23 @@ data go_int: TypeRealization = {
   is_copy: true
   fields: []
   cost: 1
+}
+
+data go_int32: TypeRealization = {
+  language: go_language
+  target: Int32
+  carrier: "int32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
+  language: go_language
+  kernel_integer: Int32
+  algebra: Int32
+  bound: BoundDeclarationRef { decl: coercion_fold_bound_i32_full }
+  type_realization: go_int32
 }
 
 data go_bool: TypeRealization = {
