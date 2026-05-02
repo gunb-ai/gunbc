@@ -45,7 +45,7 @@ So the honest next PR is a focused substrate precursor, not this audit PR:
 1. Add `measure: PortId` to `LoopBound::Descent`.
 2. Add/ratchet `loop_bound_measure(bound) -> PortId`.
 3. Populate `Descent.measure` from the same per-entry descent parameter currently used as `LoopNode.source`.
-4. Add a ratchet that `LoopNode.source == loop_bound_measure(LoopNode.bound)` while `LoopNode.source` still exists.
+4. Add a ratchet that `LoopNode.source == Descent.measure` while `LoopNode.source` still exists for mutual-recursion descent loops. Do not assert that `Cardinality.count` equals `LoopNode.source`; cardinality loops may carry an explicit count port distinct from the iterated source.
 5. Update the `LoopBound` green dissolution receipt in `src/v3/std/substrate.dag` and the mutual-recursion lowering design receipt in `docs/design-mutual-recursion-lowering.md` so they name the new measure facet and keep cluster topology distinct from cost measure.
 6. In a later migration, retire direct `LoopNode.source` reads or make `source` derived from `LoopBound`.
 
@@ -75,13 +75,13 @@ That sequence preserves single authority while giving the cost lens a source-fre
 
 ### Q6 - Representation duality
 
-**BLOCKER unless direct `LoopNode.source` cost reads are retired.** The target state has one cost-measure representation: `loop_bound_measure(LoopBound)`. During migration, `LoopNode.source` is a compatibility field with a ratcheted equality invariant, not a second authority.
+**BLOCKER unless direct `LoopNode.source` cost reads are retired.** The target state has one descent cost-measure representation: `loop_bound_measure(LoopBound)` for `Descent` reads, with `Cardinality.count` remaining the explicit cardinality bound. During migration, `LoopNode.source` is a compatibility field for descent loops with a ratcheted equality invariant, not a second authority.
 
 ## Decision
 
 **STOP+PING for implementation; proceed only with this docs receipt.**
 
-The required next substrate fact is crisp: `LoopBound::Descent` needs `measure: PortId`, and the shared accessor should be `loop_bound_measure(bound: LoopBound) -> PortId`. But implementing it safely is wider than a tiny precursor because `LoopNode.source` is still a live authority across emitted Rust and generated lens surfaces. The next worker should author the narrow substrate precursor with generated snapshots and equality ratchets, then a follow-up should retire direct `LoopNode.source` reads from cost composition.
+The required next substrate fact is crisp: `LoopBound::Descent` needs `measure: PortId`, and the shared accessor should be `loop_bound_measure(bound: LoopBound) -> PortId`. But implementing it safely is wider than a tiny precursor because `LoopNode.source` is still a live authority across emitted Rust and generated lens surfaces. The next worker should author the narrow substrate precursor with generated snapshots and descent equality ratchets, then a follow-up should retire direct `LoopNode.source` reads from cost composition.
 
 ## Non-goals
 
