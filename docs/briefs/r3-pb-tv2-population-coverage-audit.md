@@ -1,0 +1,129 @@
+# R3 PB — T-V2-Retirement Population A + B coverage spot-check audit (docs-only)
+
+**Status:** AUDIT artifact (docs-only). Authored 2026-05-02 by PB Manager continuation per dispatches on inbox #1149 (Pop A 4363271189 + Pop B 4363833311/4363833641 — combined since both are parallel coverage spot-checks against the same authority chain).
+
+**This is NOT S-1.** S-1 (PM-authored worker brief) remains absent on `origin/main` HEAD at audit time; this audit feeds the future S-1 and the G-2 worker. No code changes; no `src/v2/` edits; no Cargo-edge removal; no `kernel_algebra_profile` migration; no `verification.dag` convergence decision from PB.
+
+## Live state verification
+
+`origin/main` HEAD at audit-authoring time: same lineage as the S-1 input packet (PR #1462 merged). S-1 PM-authored worker brief still missing under `docs/briefs/` (only `pb-substrate-pilot-v2-arithmeticop.md`, `r3-pb-tv2-g1-readiness-receipt.md`, `r3-pb-tv2-s1-input-packet.md`, and this audit).
+
+## Population A — internal `src/v2/tests/src/` named tests (4 spot-checked per dispatch)
+
+**Audit framing:** these tests live INSIDE `src/v2/tests` and fall with G-2 (workspace-member removal of `src/v2/tests`) per audit §1 / matrix §2.1. They count against G-2, not G-1. The dispatch question is: when G-2 deletes the crate, are the *semantic properties* these tests guarantee already covered on the v3 side, or does G-2 need a coverage migration first?
+
+### A.1 `src/v2/tests/src/derive_bound_fail_closed_test.rs`
+
+| Field | Value |
+|---|---|
+| Tested behavior | `derive_bound(param, branches, factor, work_exponent) -> CostBound`: P3 fail-closed; rejects non-positive branch counts (`0`, `-3`), invalid work exponents, plus `master_theorem` boundary cases. From v2 `std_induction`. |
+| v3-side substrate analog | **LIVE** — `fn derive_bound(...)` declared at `src/v3/std/induction.dag:897`; `fn master_theorem(form: RecurrenceForm) -> CostBound` at `:823`. |
+| v3-side test coverage | **MISSING** — `grep -rn "fn derive_bound\|fn master_theorem" src/v3/compiler/tests/` returns no test invocations. Substrate is live; behavior tests are not. |
+| Disposition recommendation for S-1 | Before G-2 deletes `src/v2/tests`: PB Manager dispatches a v3-side property-test worker that asserts the fail-closed semantics on `src/v3/std/induction.dag::derive_bound` + `master_theorem` (parallel `Int`-input cases: 0 branches → `ErrorBound`; negative branches → `ErrorBound`; etc.). Without that v3-side coverage, G-2 silently drops the fail-closed receipt for the `Int`-input cost-algebra boundary. |
+| Counter-default cost | Skipping the migration would let `derive_bound`/`master_theorem` regress on those boundary inputs without a test ratchet. |
+
+### A.2 `src/v2/tests/src/int_pow_bounded_test.rs`
+
+| Field | Value |
+|---|---|
+| Tested behavior | `int_pow_bounded(base, exp) -> Int?`: negative exponent → `None`; non-negative matches `pow`; overflow at `2^63` → `None`. Plus degenerate-base cap (`0`, `1`, `-1`) doesn't deep-recurse. Also `ceil_log`. From v2 `std_induction`. |
+| v3-side substrate analog | **LIVE** — `fn int_pow_bounded(base: Int, exp: Int) -> Int?` at `src/v3/std/induction.dag:767`; `fn ceil_log` at `:802`; `fn ceil_log_iter` at `:808`. |
+| v3-side test coverage | **MISSING** — same grep returns nothing. |
+| Disposition recommendation for S-1 | Same shape as A.1: v3-side property-test worker re-asserts negative-exp / overflow / degenerate-base / `ceil_log` semantics against `src/v3/std/induction.dag` directly. The semantic surface is identical (both versions take `Int` / `Int?`); the v3 fixture is a near-mechanical port of the v2 test body. |
+| Counter-default cost | Skipping migration loses the Int-overflow / negative-exp boundary ratchet; v3 currently has no test coverage of these edge cases despite the substrate being live. |
+
+### A.3 `src/v2/tests/src/peano_materialization_cap_test.rs`
+
+| Field | Value |
+|---|---|
+| Tested behavior | M9 / P4: Peano literal bridges cap at 256 (oversize `Int` inputs → `none`, not deep-recurse / wrap). `positive_descent_amount_from_positive_int(k)` rejects > 256; `proportional_divisor_from_int_at_least_two(k)` rejects > 256; `master_theorem` work_exponent capped before `int_pow_bounded`. From v2 `std_induction` + `std_termination`. |
+| v3-side substrate analog | **LIVE with the cap declared** — `fn peano_literal_materialization_cap() -> Int { 256 }` at `src/v3/std/termination.dag:140`; `fn positive_descent_amount_from_positive_int` at `:146`; `fn proportional_divisor_from_int_at_least_two` at `:162`. The cap value (256) is a single-source v3 declaration. |
+| v3-side test coverage | **MISSING** — same grep. |
+| Disposition recommendation for S-1 | v3-side property-test worker asserts `positive_descent_amount_from_positive_int(257) == None`, `… (256) != None`, `… (1) != None`, plus parallel `proportional_divisor_from_int_at_least_two` cases. Substrate is live; just needs test wiring. **Bonus benefit**: a v3-side test would bind `peano_literal_materialization_cap()` as the cap source-of-truth (currently a magic 256 in v2 test bodies); v3 already has the named constant, so the v3 test cites `peano_literal_materialization_cap()` and the cap is grep-clean across the codebase. |
+| Counter-default cost | Skipping migration loses fail-closed receipt for the 256-cap; the cap function itself stays live but un-tested at the boundary. |
+
+### A.4 `src/v2/tests/src/sub_value_lattice_factor_test.rs`
+
+| Field | Value |
+|---|---|
+| Tested behavior | P2 / single-authority: `meet_sub_value` and `join_sub_value` must not drop cost-relevant `ShrinkFactor` when field/param keys align. Tests strict + non-strict aligned-key cases on `SubValueRelation`. From v2 `std_induction`. |
+| v3-side substrate analog | **LIVE** — `fn meet_sub_value` at `src/v3/std/induction.dag:281`; `fn join_sub_value` at `:329`. Same `SubValueRelation` / `RecursionShape` / `InductiveField` substrate carriers (also live in `src/v3/std/induction.dag`; ratchet at `m2_substrate_inhabitance_test.rs`). |
+| v3-side test coverage | **MISSING** — same grep. |
+| Disposition recommendation for S-1 | v3-side property-test worker ports the meet/join cases against `src/v3/std/induction.dag::{meet_sub_value, join_sub_value}` with v3 `SubValueRelation` / `InductiveField` / `RecursionShape` constructors. The `ShrinkFactor`-preservation invariant is identical between versions; the test body is a near-mechanical port. |
+| Counter-default cost | Skipping migration loses the lattice-factor-preservation receipt; without it the meet/join behavior could silently regress without a test catching it. |
+
+### Population A summary
+
+All 4 named tests have **substrate live on v3 side** (every function has a parallel `src/v3/std/induction.dag` or `termination.dag` declaration), but **none have v3-side test coverage**. Migration is mechanical (port test bodies; v3 `Int`/`String`/struct constructor surfaces are equivalent). Recommended: a single v3-side property-test PR landing all 4 ports under (e.g.) `src/v3/compiler/tests/integration/v2_property_coverage_migration_test.rs` (or per-file split if the worker prefers); explicit S-1 routing per Decision 6 of the input packet (S-1 covers G-1 + G-2 prereq chain).
+
+## Population B — substantive G-1 consumers outside `src/v2/` (2 test files)
+
+**Audit framing:** these are the §3.1 + §3.2 consumers from the migration matrix. The S-1 input packet's Decisions 1 + 2 already enumerated the *disposition choice* for each. This section spot-checks the v3-side coverage **available today** so S-1's author can pick replace-vs-delete (Decision 1) / authority-migration sequencing (Decision 2) with the live state visible.
+
+### B.1 `src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs` (matrix §3.1)
+
+| Field | Value |
+|---|---|
+| Current dependency | `use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult}; use v2_compiler::v2_interpreter::{self, Value}; use v2_compiler_tests::helpers::resolve_imports_transitively;` (verified at file head). |
+| Property under test | `dsl/std/render.dag` `repeat_string(s, n)` and `indent_text` semantics; lower-time fold; `String` result. The v2 oracle compiles a small program through the v2 pipeline and runs the v2 interpreter to assert output. |
+| v3-side substrate analog | **LIVE** — `dsl/std/render.dag::repeat_string` is declared in v3 substrate (referenced in matrix §3.1's "Proposed migration"). The v3 evaluator surface that would HOST the equivalence row is in flight per `docs/briefs/r2-evaluator-manager.md` PR-A through PR-E; not yet landed. |
+| v3-side test coverage | **PARTIAL** — `p0_std_render_repeat_string_test.rs` itself uses v2 as oracle; no parallel v3-evaluator-side test exists. The "Replace" disposition (S-1 Decision 1 default) lands the missing v3-side fixture as a corpus row consuming the in-flight evaluator. The "Delete" disposition (alternate) requires a structural-guarantee receipt naming the v3 typed primitive composition that makes the test redundant. |
+| Disposition recommendation for S-1 | **Replace** (S-1 input packet Decision 1's default), gated on R2-Evaluator surface landing far enough to host the equivalence row. If R2-Evaluator timeline is uncertain, **Delete with structural-guarantee receipt** is the fallback if the v3 lower-time fold is statically guaranteed to produce the right `String` result by typed primitive composition (PB cannot make that call alone — needs Substrate Manager confirmation that the `dsl/std/render.dag::repeat_string` lowering is structurally total). |
+| Counter-default cost | Pre-emptive deletion without structural-guarantee receipt drops oracle without replacement (loses `repeat_string` lower-time fold ratchet). Pre-emptive replacement before R2-Evaluator surface is ready ships a fixture pointing at a non-functional substrate (same fail-red-permanently pattern audits #1235 / #1347 / #1368 / #1415 reject). |
+
+### B.2 `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` (matrix §3.2)
+
+| Field | Value |
+|---|---|
+| Current dependency | `let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();` (line 1005) plus the `v2_profile_to_v3` shim at line 991-1004 mapping `v2_compiler::std_algebra::AlgebraProfile` variants to v3 `AlgebraProfile`. |
+| Property under test | Drift ratchet: v3 `dag::kernel_algebra_profile` matches v2 stage0 `std_algebra::kernel_algebra_profile()` row-for-row, treating v2 stage0 as the authority. |
+| v3-side substrate analog | **PARTIALLY LIVE** — `kernel_algebra_profile` is declared on the v3 side (in `dsl/std/algebra.dag`), but the audit/matrix names v2 stage0 as the *authority* the v3 mirror is checked against; the cross-program migration is to make v3 the single authority and retire the parity test. Substrate Manager owns the authority migration per S-1 input packet Decision 2. |
+| v3-side test coverage | **WILL BECOME REDUNDANT** — once v3 single-authority `kernel_algebra_profile` lands (Substrate continuation work), the parity test is structurally meaningless (no mirror to compare against). The other tests in the same file (`m2_substrate_inhabitance_test.rs`) are unaffected and continue to ratchet v3-side substrate inhabitance. |
+| Disposition recommendation for S-1 | **Migrate authority + retire parity test** (S-1 input packet Decision 2's default). Sequencing per matrix §3.2 STOP cell: Substrate-side authority migration **first** (Substrate Manager dispatches), then PB retires the parity test (in this same file, atomic with the Substrate PR or a follow-up depending on PR boundaries). The parity test's drop is mechanical once `v2_compiler::std_algebra::kernel_algebra_profile()` is no longer the authority. |
+| Counter-default cost | Reverse ordering (PB drops parity test before Substrate authority lands) loses drift detection. PB acting unilaterally (without Substrate-Manager-routed authority migration) makes a cross-program decision PB doesn't own. |
+
+### Population B summary
+
+Both are substantively gated on cross-lane work (R2-Evaluator surface for B.1's "Replace" path; Substrate-side `kernel_algebra_profile` authority migration for B.2). PB cannot dispose of either honestly until S-1 routes the disposition + the prerequisite cross-lane work lands. The two Cargo edges (matrix §3.3) drop atomically once both B.1 and B.2 dispose.
+
+## Net dispatch order this audit implies
+
+Combining Pop A + Pop B per the matrix's prerequisite DAG + this audit:
+
+1. **S-1 lands** (PM-authored T-V2-Retirement worker brief).
+2. **B.1 + B.2 dispositions land** per Decision 1 + 2 of S-1 input packet (#1462). Substrate-side `kernel_algebra_profile` migration runs in parallel for B.2.
+3. **§3.3 Cargo edges drop** atomically with B.1 + B.2 closure.
+4. **G-1 green** — `cargo test -p v3-compiler` passes without v2 crates.
+5. **Pop A v3-side property-test migration PR** — 4-test port (or per-file split). Lands BEFORE G-2 (which deletes `src/v2/tests`); without the migration, G-2 silently drops the property ratchets. Substrate is live on v3 side for all 4; migration is mechanical.
+6. **G-2 prereq stack green** (S-1 + S-2 + S-3 + S-4 + G-1; per audit §3.2).
+7. **G-2 implementation** — `src/v2/stage0` + `src/v2/tests` workspace members removed; `src/v2/` deleted.
+
+Pop A migration (step 5) is **gated by S-1 only** — substrate is live; no R2-Evaluator / PB-Runtime / Substrate-side dependency. Could in principle run in parallel with B.1 + B.2 dispositions (step 2) if S-1 dispatches both lanes. Recommended sequencing: S-1 covers Pop A migration scope explicitly so the ratchet doesn't get lost.
+
+## Constraints honored (verbatim from dispatches)
+
+- ✅ No code changes.
+- ✅ No `src/v2/` deletion or workspace-member removal.
+- ✅ No `v2-compiler` / `v2-compiler-tests` Cargo edge removal.
+- ✅ No `kernel_algebra_profile` migration decision from PB (Decision 2 routes to Substrate; this audit only spot-checks the live state for Substrate's reference).
+- ✅ No `verification.dag` convergence decision from PB.
+- ✅ No claim of G-1 implementation unblocked.
+- ✅ No claim of S-1 authored.
+
+## What this PR is
+
+A single new docs-only file (`docs/briefs/r3-pb-tv2-population-coverage-audit.md`) plus a link-only registration in `docs/briefs/r2-pure-bootstrap-manager.md` sub-briefs list. Combined Pop A + Pop B audit since the dispatches are parallel; PM/Director can split into two artifacts later if useful.
+
+## Cross-refs
+
+- Parent audit: [`docs/audit/t-v2-retirement-audit.md`](../audit/t-v2-retirement-audit.md) (#1338).
+- Per-surface migration matrix: [`docs/audit/t-v2-retirement-migration-matrix.md`](../audit/t-v2-retirement-migration-matrix.md) (#1346/#1379).
+- G-1 readiness receipt: [`docs/briefs/r3-pb-tv2-g1-readiness-receipt.md`](r3-pb-tv2-g1-readiness-receipt.md) (#1446).
+- S-1 input packet (Decision 1 + 2 referenced): [`docs/briefs/r3-pb-tv2-s1-input-packet.md`](r3-pb-tv2-s1-input-packet.md) (#1462).
+- R2-Evaluator manager (B.1 prerequisite): [`docs/briefs/r2-evaluator-manager.md`](r2-evaluator-manager.md).
+- Equivalence-corpus seed (B.1 "replace" path framing): [`docs/briefs/r3-pb-runtime-equivalence-corpus-seed-audit.md`](r3-pb-runtime-equivalence-corpus-seed-audit.md).
+- Substrate-fact-introduction procedure (B.2 routing): [`INVARIANTS.md`](../../INVARIANTS.md) §P1.
+- PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md).
+- Live v3 substrate authorities: `src/v3/std/induction.dag:281` (`meet_sub_value`), `:329` (`join_sub_value`), `:767` (`int_pow_bounded`), `:802` (`ceil_log`), `:823` (`master_theorem`), `:897` (`derive_bound`); `src/v3/std/termination.dag:140` (`peano_literal_materialization_cap`), `:146` (`positive_descent_amount_from_positive_int`), `:162` (`proportional_divisor_from_int_at_least_two`).
+- Live Pop A test sources (anchor for future v3-port worker): `src/v2/tests/src/derive_bound_fail_closed_test.rs`, `src/v2/tests/src/int_pow_bounded_test.rs`, `src/v2/tests/src/peano_materialization_cap_test.rs`, `src/v2/tests/src/sub_value_lattice_factor_test.rs`.
+- Live Pop B test sources: `src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs`, `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs:991`.
