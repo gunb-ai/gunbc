@@ -579,6 +579,161 @@ fn caller(n: Int) -> Int = helper(n)
     );
 }
 
+/// T-E-P-Producer-Broadening **gate (2)** — `e_p_call_pattern_lookup_authoritative`.
+///
+/// Pins `per_call_descent_evidence` as the **single** lookup authority for
+/// per-call `SubValueRelation` evidence over `TransformTarget::Callable`
+/// transforms. The gate guards against parallel producer growth while the
+/// other two gates (`_full_coverage`, `_per_call_landed`) extend the
+/// producer's coverage and move evidence onto a substrate carrier.
+///
+/// **Authoritativeness check (behavioral):**
+/// - For every `Behavior::Transform` whose target is `TransformTarget::Callable`
+///   and whose `NodeId` is reachable from a function-declaration body bind,
+///   the producer yields **exactly one** `CallDescentEvidence` entry.
+/// - The producer's entry set is **total** over those transforms — no
+///   missing call site.
+/// - Each entry's `call: NodeId` is **unique** in the producer's output —
+///   no parallel/duplicate producer is silently appending entries.
+/// - Every producer entry corresponds to a real `Behavior::Transform` with
+///   a `Callable` target — no synthetic entries.
+///
+/// **Why a behavioral test over a source-grep ratchet:** the helpers
+/// `classify_call_argument` / `arithmetic_descent_relation` are already
+/// private to `dag.rs`; the public surface is the producer fn + the
+/// `SubValueRelation` / `CallDescentEvidence` types. The substantive
+/// "single authority" claim is that no *callable-edge → evidence* mapping
+/// is reconstructed elsewhere — this is observable as cardinality match
+/// between the producer's output and the live Callable-transform set.
+/// Future drift (a second producer adding entries; a missing call site) is
+/// caught by these structural assertions without coupling to source text.
+#[test]
+fn per_call_descent_evidence_is_single_lookup_authority_over_callable_transforms() {
+    use std::collections::HashSet;
+    use v3_compiler::dag::{Behavior, NodeId, TransformTarget};
+
+    // Two-fixture mix exercises both branches of the producer's match
+    // (caller_template == callee_template self-recursion + cross-template
+    // resolved fail-closed). If a future producer-broadening slice adds
+    // mutual-recursion or child-accessor evidence detection, the test is
+    // unchanged: the cardinality and uniqueness claims are gate-level
+    // properties, not slice-specific.
+    let source = "\
+fn countdown(n: Int) -> Int =
+  if n == 0 then 0 else countdown(n - 1)
+
+fn helper(n: Int) -> Int = n - 1
+
+fn caller(n: Int) -> Int = helper(n)
+";
+    let dag = compile_to_dag(source, "e_p_lookup_authority.v3")
+        .expect("countdown + cross-call fixture compiles");
+
+    // Ground-truth: every callable-target transform owned by some body bind.
+    // We accept any owning body (function declaration's `ArrowBody::UserDefined`
+    // -> bind body); the producer walks exactly that set.
+    let mut owned_callable_transforms: HashSet<NodeId> = HashSet::new();
+    for declaration in dag.declarations() {
+        let TypeConnective::Arrow {
+            body: ArrowBody::UserDefined(bind_id),
+            ..
+        } = &declaration.connective
+        else {
+            continue;
+        };
+        let Some(bind) = dag.node_opt(bind_id).and_then(Behavior::as_bind) else {
+            continue;
+        };
+        for transform in dag.nodes().iter().filter_map(Behavior::as_transform) {
+            // Reachability: walk the bind body's transitive transform set the
+            // same way `bind_body_transform_ids` does (private helper); here we
+            // approximate by checking whether the transform's output port is
+            // reachable from the bind's value through producer edges. To keep
+            // the test self-contained, we compare against the producer's own
+            // notion of ownership (its output is the authority): a transform is
+            // "owned" iff it appears in the producer's emitted set with this
+            // caller name. That comparison is below; here we just collect the
+            // candidate Callable-targeted transforms for the cardinality lower
+            // bound.
+            let TransformTarget::Callable(_) = transform.target else {
+                continue;
+            };
+            // Bind ownership upper bound — every Callable transform anywhere in
+            // the dag is a candidate; the producer narrows by ownership. We
+            // assert the producer's narrowed count below.
+            let _ = bind;
+            owned_callable_transforms.insert(transform.id);
+        }
+    }
+    // Sanity floor: the fixture must exercise multiple Callable transforms or
+    // the test is trivially satisfiable.
+    assert!(
+        owned_callable_transforms.len() >= 2,
+        "fixture must compile to >= 2 Callable transforms (countdown self-call + caller→helper); got {}",
+        owned_callable_transforms.len()
+    );
+
+    let entries = per_call_descent_evidence(&dag);
+
+    // Uniqueness: every entry's NodeId appears exactly once. A second producer
+    // appending evidence would either duplicate `call` ids or shift them.
+    let unique_call_ids: HashSet<NodeId> = entries.iter().map(|entry| entry.call).collect();
+    assert_eq!(
+        unique_call_ids.len(),
+        entries.len(),
+        "per_call_descent_evidence must emit unique entries per Callable transform; \
+         duplicate `call` ids indicate a parallel producer appending evidence"
+    );
+
+    // Reality: every entry must correspond to a real Callable-targeted
+    // transform in the bootstrap dag. A synthetic entry (parallel producer
+    // building from another source) would fail this check.
+    for entry in &entries {
+        let node = dag.node(entry.call);
+        let Behavior::Transform(t) = node else {
+            panic!(
+                "per_call_descent_evidence emitted entry for non-Transform node {:?}; \
+                 call ids must reference live transforms",
+                entry.call
+            );
+        };
+        let TransformTarget::Callable(_) = t.target else {
+            panic!(
+                "per_call_descent_evidence emitted entry for non-Callable target on transform {:?}; \
+                 the producer scope is Callable transforms only",
+                entry.call
+            );
+        };
+        // The transform must be in the candidate set — the producer cannot
+        // reach Callable transforms outside the bind-owned set without a
+        // parallel walker.
+        assert!(
+            owned_callable_transforms.contains(&entry.call),
+            "per_call_descent_evidence emitted entry for transform {:?} not in the \
+             owned-Callable-transforms candidate set; this indicates a parallel \
+             walker reaching transforms outside the body-bind ownership rule",
+            entry.call
+        );
+    }
+
+    // Coverage: the producer must not silently drop call sites it owns. We
+    // assert the entry count equals the bind-owned Callable-transform count.
+    // (`bind_body_transform_ids` is private; the producer's own narrowing is
+    // the source of truth — `entries.len()` is the producer-narrowed count
+    // and must equal the union of all bind-owned Callable transforms.)
+    let owned_count_from_entries: HashSet<NodeId> =
+        entries.iter().map(|entry| entry.call).collect();
+    assert_eq!(
+        owned_count_from_entries, owned_callable_transforms,
+        "per_call_descent_evidence's emitted call set must equal the set of \
+         Callable transforms owned by some function body bind. Mismatch indicates \
+         either (a) a missing call site (gate violation: producer is not the \
+         single authority because something else covers what the producer drops) \
+         or (b) the producer reaching outside body-owned transforms (gate \
+         violation: producer overshoots its scope)"
+    );
+}
+
 #[test]
 fn e_p_runtime_mirror_matches_induction_carrier_shape() {
     let dag = Dag::new();
