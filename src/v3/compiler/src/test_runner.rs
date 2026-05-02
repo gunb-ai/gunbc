@@ -256,6 +256,89 @@ impl Drop for W1RustEmitScratchGuard {
     }
 }
 
+/// New process group for the W1 host child so [`kill_process_group_on_timeout`] can tear down a
+/// wedged `rustc` or emitted binary without leaving grandchildren (same contract as
+/// [`build_execute_command_process`]).
+fn w1_prepare_host_command(cmd: &mut Command) {
+    cmd.stdin(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+}
+
+/// `spawn` + wall-bounded wait + captured stdout/stderr — fail-closed vs unbounded `output()`
+/// (Decidability / CI: checked-in claims cannot hang the verifier on a runaway target-language child).
+/// Uses [`EXECUTE_COMMAND_WALL_TIMEOUT`] and the same `try_wait` poll + process-group kill path as
+/// [`child_wait_for_execute_command`].
+fn w1_host_command_output(
+    label: &str,
+    wall: Duration,
+    mut cmd: Command,
+) -> Result<std::process::Output, String> {
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("{label}: failed to spawn host child: {e}"))?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("{label}: internal error: stdout not piped (W1 host harness)"))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("{label}: internal error: stderr not piped (W1 host harness)"))?;
+
+    let stdout_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut stdout, &mut buf);
+        buf
+    });
+    let stderr_handle = std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = std::io::Read::read_to_end(&mut stderr, &mut buf);
+        buf
+    });
+
+    let status = match child_wait_for_execute_command(&mut child, wall) {
+        Ok(s) => s,
+        Err(ChildWaitFail::WallTimeout { wall_time }) => {
+            let _ = stdout_handle.join();
+            let _ = stderr_handle.join();
+            return Err(format!(
+                "{label}: exceeded {:.2}s wall-clock limit (timeout — process group / child killed, fail-closed); \
+                 dissolution: PB-Runtime owns host subprocess policy for generated tests",
+                wall_time.as_secs_f64()
+            ));
+        }
+        Err(ChildWaitFail::Io(err)) => {
+            let _ = stdout_handle.join();
+            let _ = stderr_handle.join();
+            return Err(format!("{label}: wait on host child failed: {err}"));
+        }
+    };
+
+    let stdout_bytes = stdout_handle
+        .join()
+        .map_err(|_| format!("{label}: stdout capture thread panicked"))?;
+    let stderr_bytes = stderr_handle
+        .join()
+        .map_err(|_| format!("{label}: stderr capture thread panicked"))?;
+
+    Ok(std::process::Output {
+        status,
+        stdout: stdout_bytes,
+        stderr: stderr_bytes,
+    })
+}
+
 fn w1_rust_emit_output_int(
     program_dag: &Dag,
     output_bind: &BindNode,
@@ -330,8 +413,8 @@ fn w1_rust_emit_output_int(
 
     let mut rustc = Command::new("rustc");
     // Same stable-toolchain contract as boundary rustc harnesses (strip bootstrap leakage).
-    // Use `output()` (not `status()`) while stderr is piped: otherwise rustc can fill the pipe
-    // and block; bounded stderr is surfaced in the failure string below.
+    // Wall-bounded `spawn` + pipe drain (not `status()` / not unbounded `output()`): piped stderr
+    // can stall `rustc`; a wedged compile must fail-closed like [`EXECUTE_COMMAND_WALL_TIMEOUT`].
     rustc
         .env_remove("RUSTC_BOOTSTRAP")
         .arg("--edition=2021")
@@ -340,9 +423,12 @@ fn w1_rust_emit_output_int(
         .arg(&bin_path)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    let compile_out = rustc
-        .output()
-        .map_err(|e| format!("W1 rust_emit_output: failed to spawn rustc: {e}"))?;
+    w1_prepare_host_command(&mut rustc);
+    let compile_out = w1_host_command_output(
+        "W1 rust_emit_output: rustc",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        rustc,
+    )?;
     if !compile_out.status.success() {
         let stderr = String::from_utf8_lossy(&compile_out.stderr);
         let stdout = String::from_utf8_lossy(&compile_out.stdout);
@@ -354,11 +440,14 @@ fn w1_rust_emit_output_int(
             stderr.trim_end(),
         ));
     }
-    let run = Command::new(&bin_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("W1 rust_emit_output: failed to run emitted binary: {e}"))?;
+    let mut run_cmd = Command::new(&bin_path);
+    run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    w1_prepare_host_command(&mut run_cmd);
+    let run = w1_host_command_output(
+        "W1 rust_emit_output: emitted binary",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        run_cmd,
+    )?;
     if !run.status.success() {
         let stderr = String::from_utf8_lossy(&run.stderr);
         let stdout = String::from_utf8_lossy(&run.stdout);
