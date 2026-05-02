@@ -6,6 +6,7 @@ import v3.std.substrate_minimal {
 }
 import std.effects { WorkflowEffect }
 import v3.std.lookup { Lookup }
+import std.nat { Nat }
 
 type TypeShape {
   declaration: DeclarationId
