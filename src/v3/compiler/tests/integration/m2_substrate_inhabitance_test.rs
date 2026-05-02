@@ -2550,6 +2550,55 @@ fn special_value_policy_axes_are_closed_sums() {
 }
 
 #[test]
+fn string_diagnostic_ordering_axes_live_in_emit_model_authority() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    for name in [
+        "StringOwnershipAxis",
+        "StringLifetimeAxis",
+        "StringGrowabilityAxis",
+        "StringEncodingAxis",
+    ] {
+        let decl = dag
+            .declaration_by_name(name)
+            .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
+        assert_eq!(
+            decl.span.file, "src/v3/std/emit_model.dag",
+            "`{name}` must stay with target emission-model substrate; \
+             per-target diagnostic-ordering rows land in target specs later"
+        );
+    }
+}
+
+#[test]
+fn string_diagnostic_ordering_axes_are_closed_structural_values() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    assert_eq!(
+        disj_variant_labels(&dag, "StringOwnershipAxis"),
+        ["Owned", "Borrowed"].map(String::from),
+        "string ownership must be a typed axis, not a boolean or target string"
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "StringLifetimeAxis"),
+        ["SelfContained", "Caller"].map(String::from),
+        "string lifetime must use canonical substrate names, not Rust enum \
+         escaping or target-local strings"
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "StringGrowabilityAxis"),
+        ["Growable", "Fixed", "NotApplicable"].map(String::from),
+        "`NotApplicable` must be an explicit growability value, not absence"
+    );
+    assert_eq!(
+        disj_variant_labels(&dag, "StringEncodingAxis"),
+        ["Utf8FreeMonoidChar"].map(String::from),
+        "R2 string encoding vocabulary must name the FreeMonoid<Char> / UTF-8 \
+         row shape structurally"
+    );
+}
+
+#[test]
 fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
