@@ -585,10 +585,11 @@ fn render_loop_bound(bound: &LoopBound) -> String {
                 render_port_id(*count)
             )
         }
-        LoopBound::Descent { cluster } => {
+        LoopBound::Descent { cluster, measure } => {
             format!(
-                "LoopBound::Descent {{ cluster: {} }}",
-                render_cluster_id(*cluster)
+                "LoopBound::Descent {{ cluster: {}, measure: {} }}",
+                render_cluster_id(*cluster),
+                render_port_id(*measure)
             )
         }
     }

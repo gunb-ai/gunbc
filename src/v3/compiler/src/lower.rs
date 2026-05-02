@@ -408,6 +408,7 @@ fn finalize_mutual_clusters(
                 body: pending_loop.body_root.unwrap_or(loop_id),
                 bound: LoopBound::Descent {
                     cluster: cluster_id,
+                    measure: pending_loop.source,
                 },
                 output: pending_loop.loop_output,
                 span: pending_loop.span.clone(),

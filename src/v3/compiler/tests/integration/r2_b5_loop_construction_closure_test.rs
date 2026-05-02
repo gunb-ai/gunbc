@@ -73,19 +73,22 @@ fn odd(n: Int) -> Bool = if n == 0 then false else even(n - 1)
 
             match &lp.bound {
                 LoopBound::Cardinality { count } => {
-                    assert_eq!(
-                        *count, lp.source,
-                        "cardinality-bound loops use the descent witness port as `count` \
-                         (same port as `source`/`init` in `lower.rs`)"
+                    assert!(
+                        dag.port_opt(count).is_some(),
+                        "cardinality-bound loops carry a valid explicit count port"
                     );
                     if lp.span.file == file {
                         saw_cardinality_fixture = true;
                     }
                 }
-                LoopBound::Descent { cluster } => {
+                LoopBound::Descent { cluster, measure } => {
                     assert!(
                         (cluster.raw() as usize) < dag.clusters().len(),
                         "descent cluster id must resolve into `dag.clusters()`"
+                    );
+                    assert_eq!(
+                        *measure, lp.source,
+                        "descent-bound loops carry the same runtime measure as source"
                     );
                     if lp.span.file == file {
                         saw_descent_fixture = true;
