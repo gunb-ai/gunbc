@@ -94,6 +94,15 @@ fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
             "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
             results[0].result
         );
+    });
+}
+
+#[test]
+fn r3_verification_l4_emit_eval_false_branch_passes_w1_emit_vs_eval() {
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
+        let results = TestRunner::new(dag).run_suite(L4_SUITE);
+        assert_eq!(results.len(), 2);
         assert_eq!(results[1].claim_name, L4_FALSE_CLAIM);
         assert!(
             matches!(results[1].result, ClaimResult::Pass),
