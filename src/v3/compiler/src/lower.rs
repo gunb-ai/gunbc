@@ -1034,14 +1034,15 @@ fn field_value_contains_undischarged_scalar_literal(
         crate::dag::FieldValue::Variant {
             constructor,
             payload,
-        } => variant_payload_fields_for_lowering(dag, *constructor).is_some_and(|fields| {
-            payload
-                .iter()
-                .zip(fields.iter())
-                .any(|(value, (_, field_type))| {
-                    field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
-                })
-        }),
+        } => variant_payload_fields_for_lowering(dag, *constructor, Some(expected_type))
+            .is_some_and(|fields| {
+                payload
+                    .iter()
+                    .zip(fields.iter())
+                    .any(|(value, (_, field_type))| {
+                        field_value_contains_undischarged_scalar_literal(dag, *field_type, value)
+                    })
+            }),
     }
 }
 
@@ -3459,6 +3460,49 @@ fn duplicate_record_field(
     fields.iter().find(|field| !seen.insert(field.name.clone()))
 }
 
+/// `PositiveIntervalWidth.UnitCount` carries a Peano-spine authoring shorthand;
+/// reject negative `units` literals so width magnitude stays nonnegative at rest.
+fn enforce_non_negative_unit_count_payload(
+    dag: &Dag,
+    variant_payload_ty: DeclarationId,
+    payload: &[crate::dag::FieldValue],
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let Some(piw_decl) = dag.declaration_by_name("PositiveIntervalWidth") else {
+        return Ok(());
+    };
+    let TypeConnective::Disj { variants } = &piw_decl.connective else {
+        return Ok(());
+    };
+    let Some(unit_variant) = variants.iter().find(|v| v.label == "UnitCount") else {
+        return Ok(());
+    };
+    if unit_variant.ty != variant_payload_ty {
+        return Ok(());
+    }
+    let Some(first) = payload.first() else {
+        return Err(Diagnostic::ResolveError {
+            name: "PositiveIntervalWidth.UnitCount payload is empty".to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        });
+    };
+    match first {
+        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) if *n >= 0 => Ok(()),
+        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) => Err(Diagnostic::ResolveError {
+            name: crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message(*n),
+            span: span.clone(),
+            fixes: Vec::new(),
+        }),
+        _ => Err(Diagnostic::ResolveError {
+            name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
+                .to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        }),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_structural_field_value(
     data_name: &str,
@@ -3792,7 +3836,11 @@ fn lower_structural_field_value(
                     return None;
                 }
             };
-        let payload_fields = match variant_payload_fields_for_lowering(dag, variant_decl_id) {
+        let payload_fields = match variant_payload_fields_for_lowering(
+            dag,
+            variant_decl_id,
+            Some(expected_type),
+        ) {
             Some(fields) => fields,
             other => {
                 report_declaration_error(
@@ -3896,6 +3944,12 @@ fn lower_structural_field_value(
                     pending_refined_function_refs,
                 )?);
             }
+        }
+        if let Err(diag) =
+            enforce_non_negative_unit_count_payload(dag, variant_decl_id, &payload, variant_span)
+        {
+            report_declaration_error(dag, diag);
+            return None;
         }
         return Some(crate::dag::FieldValue::Variant {
             constructor: variant_decl_id,
@@ -5759,11 +5813,36 @@ fn lower_field_projection_from_port(
     output
 }
 
+/// Pushes template argument frames from any outer `Instantiation` chain (outer → inner template)
+/// so payload fields that use type parameters from the instantiated outer type resolve correctly.
+fn push_lower_subst_instantiation_prefix(
+    dag: &Dag,
+    mut ty: DeclarationId,
+    subst: &mut LowerSubstStack,
+) {
+    for _ in 0..32 {
+        match &dag.declaration(ty).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                ty = *template;
+            }
+            _ => break,
+        }
+    }
+}
+
 fn variant_payload_fields_for_lowering(
     dag: &Dag,
     variant_decl: DeclarationId,
+    outer_instantiated_type: Option<DeclarationId>,
 ) -> Option<Vec<(String, DeclarationId)>> {
     let mut subst = LowerSubstStack::default();
+    if let Some(outer) = outer_instantiated_type {
+        push_lower_subst_instantiation_prefix(dag, outer, &mut subst);
+    }
     let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
     let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
         return None;
@@ -6557,7 +6636,9 @@ fn lower_variant_record_expr(
             },
         );
     };
-    let Some(expected_fields) = variant_payload_fields_for_lowering(dag, variant_decl) else {
+    let Some(expected_fields) =
+        variant_payload_fields_for_lowering(dag, variant_decl, expected_decl)
+    else {
         return unresolved_port(
             dag,
             Diagnostic::ResolveError {
@@ -7610,7 +7691,10 @@ fn collect_recursive_callees(
 mod tests {
     use super::*;
     use crate::dag::Declaration;
-    use crate::diagnostics::SourceSpan;
+    use crate::dag::Field;
+    use crate::dag::LiteralBits;
+    use crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
+    use crate::diagnostics::{Diagnostic, SourceSpan};
     use std::collections::HashMap;
 
     fn test_span() -> SourceSpan {
@@ -7639,6 +7723,47 @@ mod tests {
             span: test_span(),
         });
         id
+    }
+
+    #[test]
+    fn enforce_non_negative_unit_count_payload_rejects_negative_literal() {
+        std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(|| {
+                let dag = Dag::new();
+                let piw = dag
+                    .declaration_by_name("PositiveIntervalWidth")
+                    .expect("bootstrap PositiveIntervalWidth");
+                let TypeConnective::Disj { variants } = &piw.connective else {
+                    panic!("PositiveIntervalWidth must be a sum");
+                };
+                let unit_count_payload_ty = variants
+                    .iter()
+                    .find(|v| v.label == "UnitCount")
+                    .expect("UnitCount variant")
+                    .ty;
+                let span = test_span();
+                let payload = vec![crate::dag::FieldValue::Literal(LiteralBits::Int(-1))];
+                let err = enforce_non_negative_unit_count_payload(
+                    &dag,
+                    unit_count_payload_ty,
+                    &payload,
+                    &span,
+                )
+                .expect_err("negative units must be rejected");
+                let Diagnostic::ResolveError { name, .. } = err else {
+                    panic!("expected ResolveError; got {err:?}");
+                };
+                assert_eq!(
+                    name,
+                    positive_interval_width_unit_count_requires_nonnegative_units_literal_message(
+                        -1
+                    )
+                );
+            })
+            .expect("spawn enforce_non_negative_unit_count_payload test")
+            .join()
+            .expect("enforce_non_negative_unit_count_payload test panicked");
     }
 
     fn surface_named_type(name: &str) -> SurfaceType {

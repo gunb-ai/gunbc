@@ -10,7 +10,8 @@ import v3.std.emit_model {
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
-  CollectionOps, ValueConstructionSyntax, LanguageSpec
+  CollectionOps, ValueConstructionSyntax, LanguageSpec,
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
@@ -31,6 +32,7 @@ import v3.std.clean_emission {
 }
 import std.algebra { BooleanAlgebra }
 import std.list { List }
+import std.integer { Int32 }
 import v3.std.parse_surface {
   SurfaceModule, SurfaceItem, SurfaceParam, SurfaceField, SurfaceVariant,
   VariantPayload, SurfaceType, SurfaceRecordField, SurfaceMapEntry, SurfaceMatchArm,
@@ -56,6 +58,26 @@ data go_int: TypeRealization = {
   is_copy: true
   fields: []
   cost: 1
+}
+
+data go_int32: TypeRealization = {
+  language: go_language
+  target: Int32
+  carrier: "int32"
+  is_copy: true
+  fields: []
+  cost: 1
+}
+
+data go_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
+  language: go_language
+  kernel_integer: Int32
+  algebra: Int32
+  bound: StaticBoundFact(BoundedInterval {
+    lower: -2147483648
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
+  type_realization: go_int32
 }
 
 data go_bool: TypeRealization = {
