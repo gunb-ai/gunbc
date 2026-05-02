@@ -14,7 +14,10 @@
 
 use std::collections::BTreeMap;
 
-use v3_compiler::dag::Dag;
+use v3_compiler::dag::{
+    Dag, Declaration, DeclarationId, FieldValue, Interval, IntervalWidth, LiteralBits,
+    PositiveIntervalWidth, TypeConnective, ValueBody,
+};
 use v3_grounding_lifetime::{BindingId, LifetimeAnalysisReport};
 
 use crate::diagnostic::EmissionDiagnostic;
@@ -27,6 +30,39 @@ use crate::types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance}
 /// failing to lower inhabitance `data` breaks CI.
 const MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS: usize = 8;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BoundMatch {
+    Matches,
+    DiffersExact,
+    DiffersKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum BoundDeclarationView {
+    StaticBound(Interval<i64>),
+    #[allow(dead_code)]
+    PlatformDependent,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TargetIntegerInhabitanceBoundView {
+    BoundUnspecified,
+    StaticBoundFact(Interval<i64>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ScratchTargetLanguage {
+    Rust,
+    Python,
+    Go,
+}
+
+struct TargetIntegerTypeInhabitanceRow {
+    language: DeclarationId,
+    bound: TargetIntegerInhabitanceBoundView,
+    type_realization: DeclarationId,
+}
+
 fn declared_target_integer_type_inhabitance_row_count(dag: &Dag) -> usize {
     let Some(meta) = dag.declaration_by_name("TargetIntegerTypeInhabitance") else {
         return 0;
@@ -35,6 +71,297 @@ fn declared_target_integer_type_inhabitance_row_count(dag: &Dag) -> usize {
         .iter()
         .filter(|decl| decl.meta_tag == Some(meta.id))
         .count()
+}
+
+fn design_doc_example_8_program_bound() -> BoundDeclarationView {
+    BoundDeclarationView::StaticBound(Interval::BoundedInterval {
+        lower: -2_147_483_648,
+        width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
+            units: 4_294_967_295,
+        }),
+    })
+}
+
+fn match_bound(
+    program: &BoundDeclarationView,
+    target: &TargetIntegerInhabitanceBoundView,
+) -> BoundMatch {
+    match (program, target) {
+        (
+            BoundDeclarationView::StaticBound(_),
+            TargetIntegerInhabitanceBoundView::StaticBoundFact(Interval::Unbounded),
+        ) => BoundMatch::Matches,
+        (
+            BoundDeclarationView::StaticBound(program_interval),
+            TargetIntegerInhabitanceBoundView::StaticBoundFact(target_interval),
+        ) => {
+            if program_interval == target_interval {
+                BoundMatch::Matches
+            } else {
+                BoundMatch::DiffersExact
+            }
+        }
+        (
+            BoundDeclarationView::StaticBound(_),
+            TargetIntegerInhabitanceBoundView::BoundUnspecified,
+        ) => BoundMatch::DiffersKind,
+        (BoundDeclarationView::PlatformDependent, _) => BoundMatch::DiffersKind,
+    }
+}
+
+fn exact_static_bound_match(
+    program: &BoundDeclarationView,
+    target: &TargetIntegerInhabitanceBoundView,
+) -> bool {
+    matches!(
+        (program, target),
+        (
+            BoundDeclarationView::StaticBound(program_interval),
+            TargetIntegerInhabitanceBoundView::StaticBoundFact(target_interval),
+        ) if program_interval == target_interval
+    )
+}
+
+fn field<'a>(fields: &'a [(String, FieldValue)], label: &str) -> Option<&'a FieldValue> {
+    fields
+        .iter()
+        .find_map(|(field_label, value)| (field_label == label).then_some(value))
+}
+
+fn reference_field(fields: &[(String, FieldValue)], label: &str) -> Option<DeclarationId> {
+    match field(fields, label)? {
+        FieldValue::Reference(id) => Some(*id),
+        _ => None,
+    }
+}
+
+fn int_literal_field(fields: &[(String, FieldValue)], label: &str) -> Option<i64> {
+    match field(fields, label)? {
+        FieldValue::Literal(LiteralBits::Int(value)) => Some(*value),
+        _ => None,
+    }
+}
+
+fn variant_label(dag: &Dag, constructor: DeclarationId) -> Option<&str> {
+    dag.declarations().iter().find_map(|decl| {
+        if let TypeConnective::Disj { variants } = &decl.connective {
+            variants
+                .iter()
+                .find_map(|variant| (variant.ty == constructor).then_some(variant.label.as_str()))
+        } else {
+            None
+        }
+    })
+}
+
+fn parse_positive_interval_width(dag: &Dag, value: &FieldValue) -> Option<PositiveIntervalWidth> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    match variant_label(dag, *constructor)? {
+        "OneUnit" => Some(PositiveIntervalWidth::OneUnit),
+        "AdditionalUnit" => {
+            let [previous] = payload.as_slice() else {
+                return None;
+            };
+            Some(PositiveIntervalWidth::AdditionalUnit {
+                previous: Box::new(parse_positive_interval_width(dag, previous)?),
+            })
+        }
+        "UnitCount" => {
+            if let [FieldValue::Literal(LiteralBits::Int(units))] = payload.as_slice() {
+                return Some(PositiveIntervalWidth::UnitCount { units: *units });
+            }
+            if let [FieldValue::Record(fields)] = payload.as_slice() {
+                return Some(PositiveIntervalWidth::UnitCount {
+                    units: int_literal_field(fields, "units")?,
+                });
+            };
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_interval_width(dag: &Dag, value: &FieldValue) -> Option<IntervalWidth> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    match variant_label(dag, *constructor)? {
+        "ZeroWidth" => {
+            if payload.is_empty() {
+                Some(IntervalWidth::ZeroWidth)
+            } else {
+                None
+            }
+        }
+        "PositiveWidth" => {
+            let [width] = payload.as_slice() else {
+                return None;
+            };
+            Some(IntervalWidth::PositiveWidth(parse_positive_interval_width(
+                dag, width,
+            )?))
+        }
+        _ => None,
+    }
+}
+
+fn parse_int_interval(dag: &Dag, value: &FieldValue) -> Option<Interval<i64>> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    match variant_label(dag, *constructor)? {
+        "Unbounded" => {
+            if payload.is_empty() {
+                Some(Interval::Unbounded)
+            } else {
+                None
+            }
+        }
+        "BoundedInterval" => {
+            if let [FieldValue::Literal(LiteralBits::Int(lower)), width] = payload.as_slice() {
+                return Some(Interval::BoundedInterval {
+                    lower: *lower,
+                    width: parse_interval_width(dag, width)?,
+                });
+            }
+            if let [FieldValue::Record(fields)] = payload.as_slice() {
+                return Some(Interval::BoundedInterval {
+                    lower: int_literal_field(fields, "lower")?,
+                    width: parse_interval_width(dag, field(fields, "width")?)?,
+                });
+            };
+            None
+        }
+        _ => None,
+    }
+}
+
+fn parse_target_integer_inhabitance_bound(
+    dag: &Dag,
+    value: &FieldValue,
+) -> Option<TargetIntegerInhabitanceBoundView> {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
+        return None;
+    };
+    match variant_label(dag, *constructor)? {
+        "BoundUnspecified" => {
+            if payload.is_empty() {
+                Some(TargetIntegerInhabitanceBoundView::BoundUnspecified)
+            } else {
+                None
+            }
+        }
+        "StaticBoundFact" => {
+            let [interval] = payload.as_slice() else {
+                return None;
+            };
+            Some(TargetIntegerInhabitanceBoundView::StaticBoundFact(
+                parse_int_interval(dag, interval)?,
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn parse_target_integer_type_inhabitance_row(
+    dag: &Dag,
+    decl: &Declaration,
+) -> Option<TargetIntegerTypeInhabitanceRow> {
+    let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+        return None;
+    };
+    Some(TargetIntegerTypeInhabitanceRow {
+        language: reference_field(fields, "language")?,
+        bound: parse_target_integer_inhabitance_bound(dag, field(fields, "bound")?)?,
+        type_realization: reference_field(fields, "type_realization")?,
+    })
+}
+
+fn target_language_id(dag: &Dag, target: ScratchTargetLanguage) -> Option<DeclarationId> {
+    let name = match target {
+        ScratchTargetLanguage::Rust => "rust_language",
+        ScratchTargetLanguage::Python => "python_language",
+        ScratchTargetLanguage::Go => "go_language",
+    };
+    Some(dag.declaration_by_name(name)?.id)
+}
+
+fn target_inhabitance_from_type_realization(
+    dag: &Dag,
+    realization: DeclarationId,
+) -> Option<TargetInhabitance> {
+    match dag.declaration(realization).name.as_deref()? {
+        "rust_i32" => Some(TargetInhabitance::RustI32),
+        "python_int" => Some(TargetInhabitance::PythonInt),
+        "go_int32" => Some(TargetInhabitance::GoInt32),
+        "rust_u32" => Some(TargetInhabitance::RustU32),
+        _ => None,
+    }
+}
+
+fn select_example_8_declared_inhabitance(
+    dag: &Dag,
+    target: ScratchTargetLanguage,
+    program_bound: &BoundDeclarationView,
+) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    let Some(meta) = dag.declaration_by_name("TargetIntegerTypeInhabitance") else {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "declared_TargetIntegerTypeInhabitance_rows".to_string(),
+        });
+    };
+    let Some(language) = target_language_id(dag, target) else {
+        return Err(EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_language".to_string(),
+        });
+    };
+
+    let matches: Vec<TargetIntegerTypeInhabitanceRow> = dag
+        .declarations()
+        .iter()
+        .filter(|decl| decl.meta_tag == Some(meta.id))
+        .filter_map(|decl| parse_target_integer_type_inhabitance_row(dag, decl))
+        .filter(|row| row.language == language)
+        .filter(|row| match_bound(program_bound, &row.bound) == BoundMatch::Matches)
+        .collect();
+    let exact_matches: Vec<&TargetIntegerTypeInhabitanceRow> = matches
+        .iter()
+        .filter(|row| exact_static_bound_match(program_bound, &row.bound))
+        .collect();
+
+    let selected = match (exact_matches.as_slice(), matches.as_slice()) {
+        ([selected], _) => *selected,
+        ([], [selected]) => selected,
+        ([], []) => return Err(EmissionDiagnostic::NoInhabitant),
+        _ => {
+            return Err(EmissionDiagnostic::UnderRefined {
+                unspecified_axis: "target_integer_inhabitance".to_string(),
+            });
+        }
+    };
+
+    target_inhabitance_from_type_realization(dag, selected.type_realization).ok_or_else(|| {
+        EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        }
+    })
 }
 
 fn fold_design_doc_example_1_unrefined_int() -> Result<TargetInhabitance, EmissionDiagnostic> {
@@ -57,16 +384,51 @@ fn fold_design_doc_example_6_no_inhabitant() -> Result<TargetInhabitance, Emissi
     Err(EmissionDiagnostic::NoInhabitant)
 }
 
-fn fold_design_doc_example_8_rust() -> Result<TargetInhabitance, EmissionDiagnostic> {
-    Ok(TargetInhabitance::RustI32)
+fn fold_design_doc_example_8_rust(dag: &Dag) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    select_example_8_declared_inhabitance(
+        dag,
+        ScratchTargetLanguage::Rust,
+        &design_doc_example_8_program_bound(),
+    )
 }
 
-fn fold_design_doc_example_8_python() -> Result<TargetInhabitance, EmissionDiagnostic> {
-    Ok(TargetInhabitance::PythonInt)
+fn fold_design_doc_example_8_python(dag: &Dag) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    select_example_8_declared_inhabitance(
+        dag,
+        ScratchTargetLanguage::Python,
+        &design_doc_example_8_program_bound(),
+    )
 }
 
-fn fold_design_doc_example_8_go() -> Result<TargetInhabitance, EmissionDiagnostic> {
-    Ok(TargetInhabitance::GoInt32)
+fn fold_design_doc_example_8_go(dag: &Dag) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    select_example_8_declared_inhabitance(
+        dag,
+        ScratchTargetLanguage::Go,
+        &design_doc_example_8_program_bound(),
+    )
+}
+
+#[cfg(test)]
+pub(crate) fn fold_design_doc_example_8_for_testing(
+    dag: &Dag,
+    target: IntScratchExample,
+    program_bound: Interval<i64>,
+) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    let target = match target {
+        IntScratchExample::DesignDocExample8Rust => ScratchTargetLanguage::Rust,
+        IntScratchExample::DesignDocExample8Python => ScratchTargetLanguage::Python,
+        IntScratchExample::DesignDocExample8Go => ScratchTargetLanguage::Go,
+        _ => {
+            return Err(EmissionDiagnostic::UnderRefined {
+                unspecified_axis: "example_8_target".to_string(),
+            });
+        }
+    };
+    select_example_8_declared_inhabitance(
+        dag,
+        target,
+        &BoundDeclarationView::StaticBound(program_bound),
+    )
 }
 
 /// Structural fold: program + lifetime analysis + LanguageSpec projection →
@@ -116,9 +478,11 @@ pub fn fold_program_to_target(
                 IntScratchExample::DesignDocExample6NoInhabitant => {
                     fold_design_doc_example_6_no_inhabitant()?
                 }
-                IntScratchExample::DesignDocExample8Rust => fold_design_doc_example_8_rust()?,
-                IntScratchExample::DesignDocExample8Python => fold_design_doc_example_8_python()?,
-                IntScratchExample::DesignDocExample8Go => fold_design_doc_example_8_go()?,
+                IntScratchExample::DesignDocExample8Rust => fold_design_doc_example_8_rust(dag)?,
+                IntScratchExample::DesignDocExample8Python => {
+                    fold_design_doc_example_8_python(dag)?
+                }
+                IntScratchExample::DesignDocExample8Go => fold_design_doc_example_8_go(dag)?,
             };
             Ok(BTreeMap::from([(binding, inhabitance)]))
         }
