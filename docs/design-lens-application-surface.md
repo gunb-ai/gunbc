@@ -65,14 +65,22 @@ type SectionRef
 
 type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error is admitted
 
-// LensEnforcement<Output, Budget> is the per-lens projection from the
-// (potentially rich) lens output type to the budget-comparable type.
-// For lenses where Output = Budget (cost: SymbolicCost), the projection
-// is identity. For lenses where they differ (complexity: Output =
-// ComplexitySummary, Budget = AsymptoticClass), the projection extracts
-// the budget-comparable coordinate from the rich output.
+// LensEnforcement<Output, Budget> is the per-lens projection AND
+// violation relation. Both are required for the fold-pass enforcement
+// check; the projection alone would leave "did the observed value
+// exceed the declared budget?" as API-level convention.
+//
+// - project: extracts the budget-comparable coordinate from the lens
+//   output (identity for lenses where Output = Budget; e.g.,
+//   summary.asymptotic_class for complexity).
+// - violates: per-lens violation relation. Given the user's declared
+//   budget and the projected lens-output, returns true iff the projected
+//   value EXCEEDS the budget. Each lens's enforcement declares its own
+//   violation semantics structurally (lattice ordering for complexity;
+//   dominance for cost; mode-mismatch for parallelism).
 type LensEnforcement<Output, Budget> {
   project: Output -> Budget
+  violates: (declared: Budget, observed: Budget) -> Bool
 }
 
 // EnforcedApplication<Output, Budget> is the carrier for enforce-mode
@@ -117,18 +125,27 @@ The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) parametrizes lenses 
 data complexity_lens: Lens<ComplexitySummary> = ...   // rich output: work/span/class/certainty
 data complexity_enforcement: LensEnforcement<ComplexitySummary, AsymptoticClass> = {
   project: |summary| summary.asymptotic_class           // budget compares against class only
+  violates: |declared, observed|                         // per-lens violation relation
+    asymptotic_class_lattice.lt(declared, observed)      // observed exceeds declared in dominance order
 }
 
 // src/v3/lenses/cost.dag
 data cost_lens: Lens<SymbolicCost> = ...              // output IS the budget type
 data cost_enforcement: LensEnforcement<SymbolicCost, SymbolicCost> = {
   project: |c| c                                        // identity projection
+  violates: |declared, observed|                         // observed dominates declared (worse cost)
+    dominates(observed, declared) && !dominates(declared, observed)
 }
 
 // src/v3/lenses/parallelism.dag
 data parallelism_lens: Lens<ParallelismMode> = ...    // output IS the budget type
 data parallelism_enforcement: LensEnforcement<ParallelismMode, ParallelismMode> = {
   project: |m| m                                        // identity projection
+  violates: |declared, observed|                         // mode-mismatch: user opted in to parallel but lens couldn't prove
+    match (declared, observed) {
+      (OptInIndependent, Sequential) => True
+      _ => False
+    }
 }
 ```
 
@@ -215,7 +232,7 @@ data __apply_lens_my_search_function: SectionedLensApplication =
   })
 ```
 
-**Compiler-side processing**: during the lens fold (existing infrastructure per [`docs/design-lens-framework.md`](design-lens-framework.md)), the compiler iterates over every `SectionedLensApplication` in the program. For each `Enforce` application, it runs the named lens against the named section, compares against the budget, and emits a Diagnostic if the lens value exceeds the budget.
+**Compiler-side processing**: during the lens fold (existing infrastructure per [`docs/design-lens-framework.md`](design-lens-framework.md)), the compiler iterates over every `SectionedLensApplication` in the program. For each `Enforce` application, it (a) runs the named lens against the named section to obtain the rich output, (b) calls `enforcement.project(output)` to get the budget-comparable value, (c) calls `enforcement.violates(declared_budget, projected)` to decide, (d) emits a Diagnostic if `violates` returns true. The violation relation is per-lens substrate authority (declared in the per-lens `LensEnforcement`); the fold-pass dispatch reads it directly.
 
 **Closure gate**: `complexity_violation_compile_error_demonstrated` — a TestClaim that constructs a function with O(n²) body + a lens application requiring O(log n) + asserts a Diagnostic is produced.
 
@@ -275,7 +292,7 @@ apply_lens(parallelism, my_loop_expression, Enforce {
 The compiler already has a lens-fold pass (per [`docs/design-lens-framework.md`](design-lens-framework.md) and the active `Lens<C>` framework). The lens-application surface adds one new step to that fold:
 
 1. **Existing**: walk every `Lens<C>` instance, apply to every program node, accumulate `Witness<C>`.
-2. **New**: walk every `SectionedLensApplication` declaration, apply the named lens to the named section *with the given budget*, emit a Diagnostic if `Enforce` mode and budget exceeded, OR record the lens value if `Introspect` mode.
+2. **New**: walk every `SectionedLensApplication` declaration. For `Enforce(EnforcedApplication { lens, enforcement, budget, ... })`: run lens to get output; compute `projected = enforcement.project(output)`; if `enforcement.violates(budget, projected)` returns true, emit a Diagnostic. For `Introspect(IntrospectApplication { lens, ... })`: run lens, record output for downstream lens composition + debug surfaces; no comparison.
 
 The new step is structurally identical to the existing fold — same `Lens<C>` reader, same `Witness<C>` output type — with an additional budget comparison and Diagnostic emission. The implementation cost is O(1) lens-applications-per-program (typically tens to hundreds per project, not millions).
 
