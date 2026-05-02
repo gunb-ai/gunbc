@@ -77,13 +77,21 @@ These checks are not new tests — they are existing CI/grep invocations that MU
 
 | # | Guardrail | Verification |
 |---|---|---|
-| Gd-1 | No remaining v2 references in `src/`, `tests/`, `dsl/extdeps/` | `grep -rEn '\bv2_compiler(_tests)?\b\|src/v2/' src/ tests/ dsl/extdeps/` returns zero matches that aren't already in the PR's deletion diff. |
+| Gd-1 | No remaining v2 references in `src/`, `tests/`, `dsl/extdeps/` | See verification command below the table; returns zero matches that aren't already in the PR's deletion diff. |
 | Gd-2 | Workspace builds | `cargo build --workspace` exit 0; `cargo test --workspace` exit 0. (No more `--exclude v2-compiler-tests` flag needed; the crate is gone.) |
 | Gd-3 | `Cargo.lock` no longer references v2 | `grep -n 'v2-compiler' Cargo.lock` returns zero matches. |
 | Gd-4 | SG-0 census still passes | `cargo test -p v3-compiler --test integration sg0_census_test` green; the census root `src/v3/compiler` is unchanged by this PR. |
 | Gd-5 | `fmt`, `ci`, `v3`, `self_host_ratchet` all green | Standard CI matrix on the deletion PR. |
 | Gd-6 | PR description includes the §1 STOP-condition green-receipt table | Each S-1..S-4 + G-1 row links to the merged PR or closure-ledger receipt that took it green. Reviewer rejects the PR if any row is unevidenced. |
 | Gd-7 | No `--no-verify` push, no force-push to deletion branch | Standard repo discipline. |
+
+Gd-1 verification command (kept outside the table to avoid markdown pipe-escape pitfalls; in `grep -E`, `\|` is a literal `|` not alternation, so the in-table form silently misses one of the alternatives):
+
+```sh
+grep -rEn '\bv2_compiler(_tests)?\b|src/v2/' src/ tests/ dsl/extdeps/
+```
+
+Green: returns zero matches that aren't already in the PR's deletion diff.
 
 ---
 
