@@ -22,6 +22,7 @@ Re-stated from parent audit §1 + §3.2; this plan adds nothing new. Verified at
 | G-1 | `v2_oracle_no_remaining_test_consumers` green | Per migration matrix §3 (single authority): `grep -rEn '\bv2_compiler(_tests)?\b' src/ tests/` excluding `src/v2/` returns zero substantive matches; Cargo edges in `src/v3/compiler/Cargo.toml:32-33` deleted (§3.3). G-1 closure does NOT include the legacy emit chain or verification.dag convergence — those are separate G-2 prerequisites tracked in the next two rows. |
 | G-2-prereq-emit | Legacy emit chain retired (G-2 prerequisite per migration matrix §4.2) | `{rust,python,go}_simple_method_specs` / `*_method_templates` / `*_method_wraps_result` deleted from `dsl/extdeps/languages/{rust,python,go}/emit.dag` — per-target, all three families. Per matrix §4.2 STOP/green criteria. |
 | G-2-prereq-verif | `verification.dag` convergence landed (G-2 prerequisite per migration matrix §5) | Substrate-led design call ratified; v2-era `dsl/std/verification.dag` surface either dissolved into v3's `src/v3/std/verification.dag` (`TestPredicate`/`TestClaim { ..., requires: List<ResourceReference> }`/`TestSuite`/`TestObligation`) or moved to a renamed module path; no surviving authority depends on the v2-era surface. Routed to Substrate Manager per matrix §5.2. |
+| G-2-prereq-ci | CI workflow no longer invokes v2-compiler (G-2 prerequisite, surfaced 2026-05-02) | `.github/workflows/ci.yml` has no `v2-compiler` references. At HEAD the `ci` job currently runs `cargo build -p v2-compiler --release` (line 120) and `cargo run -p v2-compiler --release -- run --source-root dsl --function run_ci_pipeline` (line 123), and the cache key hashes `src/v2/stage0/src/**` (line 114). All three must be retired or replaced (with v3-side equivalents under PB-Runtime) in a **separate prior PR** before the deletion PR opens — otherwise the deletion PR's `ci` job fails on "package `v2-compiler` not found". Verified: `grep -n 'v2\|stage0' .github/workflows/ci.yml` returns zero matches. |
 
 If any row is not green, deletion PR MUST NOT open. STOP+PING with the unmet row.
 
@@ -85,7 +86,7 @@ These checks MUST hold on the deletion PR before merge. Two enforcement classes:
 | Gd-3 | `Cargo.lock` no longer references v2 | `grep -n 'v2-compiler' Cargo.lock` returns zero matches. |
 | Gd-4 | SG-0 census still passes | `cargo test -p v3-compiler --test integration sg0_census_test` green; the census root `src/v3/compiler` is unchanged by this PR. |
 | Gd-5 | `fmt`, `ci`, `v3`, `self_host_ratchet` all green | Standard CI matrix on the deletion PR. |
-| Gd-6 | PR description includes the §1 STOP-condition green-receipt table | Each of the 7 §1 rows — S-1, S-2, S-3, S-4, G-1, G-2-prereq-emit, G-2-prereq-verif — links to the merged PR or closure-ledger receipt that took it green. Reviewer rejects the PR if any row is unevidenced. |
+| Gd-6 | PR description includes the §1 STOP-condition green-receipt table | Each of the 8 §1 rows — S-1, S-2, S-3, S-4, G-1, G-2-prereq-emit, G-2-prereq-verif, G-2-prereq-ci — links to the merged PR or closure-ledger receipt that took it green. Reviewer rejects the PR if any row is unevidenced. |
 | Gd-7 | No `--no-verify` push, no force-push to deletion branch | Standard repo discipline. |
 
 Gd-1 verification command (kept outside the table to avoid markdown pipe-escape pitfalls; in `grep -E`, `\|` is a literal `|` not alternation, so the in-table form silently misses one of the alternatives):
@@ -120,7 +121,7 @@ Green: returns zero matches that aren't already in the PR's deletion diff.
 
 ## 6. Routing question (single, for PB Manager)
 
-**Who signs off on Gd-6?** Standing review cadence (CI + scheduled-review providers) covers Gd-1..Gd-5 and Gd-7. Gd-6 (STOP-condition green-receipt table) requires a human sign-off that all 7 receipts (S-1, S-2, S-3, S-4, G-1, G-2-prereq-emit, G-2-prereq-verif) are valid. **Single-reviewer rule: PB Manager owns Gd-6 sign-off** on the deletion PR; ambiguous-ownership reviews are not acceptable. Director involvement is escalation-only — if PB Manager finds the receipt-table *format itself* under-specified at deletion time, escalate format ratification to Director once and apply the ratified format on subsequent reviews; Gd-6 sign-off authority remains PB Manager.
+**Who signs off on Gd-6?** Standing review cadence (CI + scheduled-review providers) covers Gd-1..Gd-5 and Gd-7. Gd-6 (STOP-condition green-receipt table) requires a human sign-off that all 8 receipts (S-1, S-2, S-3, S-4, G-1, G-2-prereq-emit, G-2-prereq-verif, G-2-prereq-ci) are valid. **Single-reviewer rule: PB Manager owns Gd-6 sign-off** on the deletion PR; ambiguous-ownership reviews are not acceptable. Director involvement is escalation-only — if PB Manager finds the receipt-table *format itself* under-specified at deletion time, escalate format ratification to Director once and apply the ratified format on subsequent reviews; Gd-6 sign-off authority remains PB Manager.
 
 ---
 
@@ -128,7 +129,7 @@ Green: returns zero matches that aren't already in the PR's deletion diff.
 
 This plan is intentionally minimal:
 
-- §1: STOP conditions re-stated; deletion PR may not open until all 7 (S-1..S-4 + G-1 + G-2-prereq-emit + G-2-prereq-verif) are green (verified at HEAD).
+- §1: STOP conditions re-stated; deletion PR may not open until all 8 (S-1..S-4 + G-1 + G-2-prereq-emit + G-2-prereq-verif + G-2-prereq-ci) are green (verified at HEAD).
 - §2: Deletion PR shape — single atomic PR, three structural file-system operations, explicit out-of-scope list, bounded Population C sweep.
 - §3: 7 guardrails total — Gd-1..Gd-5 mechanical CI/grep gates; Gd-6..Gd-7 human/process guardrails (PB Manager sign-off and repo discipline).
 - §4: 7-day rollback window via `git revert`; beyond that, treat as fresh reintroduction.
