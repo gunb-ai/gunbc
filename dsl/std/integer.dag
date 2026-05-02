@@ -1,31 +1,50 @@
 // std/integer.dag -- Integer types as carrier + algebra witness.
 //
-// MODELING NOTE: A value of type Int is NOT an OrderedRing record.
-// Int is a CARRIER (Word64) with EVIDENCE that it inhabits OrderedRing.
-// The algebra record is the witness — it tells the compiler what
-// operations are valid on Int values. Values are Word64; operations
-// come from the ring structure.
+// MODELING NOTE: T-Numeric-Construction Slice 3 pivots the default `Int`
+// alias from the legacy 64-bit storage carrier to the honest construction-
+// chain form. Authority chain:
 //
-// Current representation: Int = OrderedRing<Word64>
-// This conflates carrier with witness (the reviewer correctly noted
-// this). The end-state model separates them:
+//   - `docs/design-numeric-construction.md` §3 (construction-chain layer 3).
+//   - `docs/audit/t-numeric-construction-group-completion-6q.md` (Q6
+//     single-authority resolution: `type Int = AbelianGroup<GroupCompletion<Nat>>`,
+//     not the rejected compact form `type Int = GroupCompletion<Nat>`).
+//   - GroupCompletion<M> substrate-introduction (#1448, merged).
+//   - Director ratifications on inbox #1288 (#4360232423 substrate-split,
+//     #4362239705 Slice 3 alias-pivot dispatch).
 //
-//   type Int64 = Carrier<Word64> with OrderedRing
-//   -- or --
-//   type Int64 { carrier: Word64, algebra: OrderedRing<Word64> }
+// Construction-chain progression:
 //
-// Until the language supports trait/witness syntax, the direct alias
-// is the honest intermediate. The compiler's structural field lookup
-// works the same either way — it finds "add" on the resolved type.
+//   Magnitude → Nat = Semiring<Magnitude> → Int = AbelianGroup<GroupCompletion<Nat>> → ...
 //
-// Signed/unsigned distinction comes from the algebra:
+// `GroupCompletion<Nat>` is the **derived carrier** (opaque atom denoting
+// the abelian-group carrier obtained from Nat via the Grothendieck
+// construction). `AbelianGroup<T>` is the standard algebra witness over
+// that carrier — `T = GroupCompletion<Nat>` types `inverse: fn(GroupCompletion<Nat>) -> GroupCompletion<Nat>`,
+// which is honest by construction (every element of the group-completion
+// carrier has an additive inverse).
+//
+// The fixed-width rows (`Int8`..`Int128`, `UInt8`..`UInt128`) stay on
+// `OrderedRing<Word*>` / `Semiring<Word*>`; only this default alias moves.
+// Slice §6 (cascade) migrates downstream consumers off `OrderedRing<Word64>`
+// for the abstract `Int` algebra. Until then, code that explicitly names
+// `Int8`/`Int64`/etc. continues to inhabit `OrderedRing<Word*>`.
+//
+// LEGACY MODELING NOTE (Int8..Int128 storage rows): A value of type Int8
+// is NOT an OrderedRing record. Int8 is a CARRIER (Byte) with EVIDENCE
+// that it inhabits OrderedRing. The algebra record is the witness — it
+// tells the compiler what operations are valid on Int8 values. Values are
+// Byte; operations come from the ring structure. The fixed-width rows
+// stay shape-conflated until v3 supports trait/witness syntax separation.
+//
+// Signed/unsigned distinction comes from the algebra (legacy fixed-width rows):
 //   OrderedRing has negate (signed arithmetic — additive inverse)
 //   Semiring has no negate (unsigned — only add and mul)
 
 module std.integer
 
-import std.algebra { OrderedRing, Semiring }
+import std.algebra { OrderedRing, Semiring, AbelianGroup, GroupCompletion }
 import std.bit { Byte, Word16, Word32, Word64, Word128 }
+import std.nat { Nat }
 
 // Signed integers: ordered rings (add + negate + mul + compare)
 type Int8 = OrderedRing<Byte>
@@ -41,8 +60,27 @@ type UInt32 = Semiring<Word32>
 type UInt64 = Semiring<Word64>
 type UInt128 = Semiring<Word128>
 
-// Default aliases
-type Int = Int64
+// Default aliases.
+//
+// T-Numeric-Construction Slice 3 alias-pivot.
+//
+// `Int` is the abstract integer algebra: an `AbelianGroup` over the
+// derived `GroupCompletion<Nat>` carrier. `GroupCompletion<Nat>` (from
+// `std.algebra`) is the opaque atom denoting "the abelian-group carrier
+// derived from Nat via the Grothendieck construction"; `AbelianGroup<T>`
+// over that carrier is the standard algebra witness. This is the canonical
+// Q6 single-authority form per the audit at
+// `docs/audit/t-numeric-construction-group-completion-6q.md`; the compact
+// alternative `type Int = GroupCompletion<Nat>` was explicitly rejected.
+//
+// The fixed-width storage rows above (`Int8`..`Int128`) stay on
+// `OrderedRing<Word*>`; only this default alias is the construction-chain
+// layer-3 carrier. Slice §6 (cascade) migrates downstream consumers off
+// `OrderedRing<Word*>` for the abstract `Int` algebra path.
+//
+// `UInt = UInt64` remains the legacy default alias until the cascade slice;
+// per design doc `UInt IS Nat`, but per-row migration is §6's job.
+type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = UInt64
 
 // ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
