@@ -2985,9 +2985,7 @@ fn int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat() {
             );
             arguments[0].value
         }
-        other => panic!(
-            "Int must lower to an AbelianGroup instantiation; got {other:?}"
-        ),
+        other => panic!("Int must lower to an AbelianGroup instantiation; got {other:?}"),
     };
 
     // The carrier argument resolves to `GroupCompletion<Nat>` — itself an
