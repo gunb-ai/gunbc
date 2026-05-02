@@ -37,7 +37,7 @@ pub use types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance};
 
 #[cfg(test)]
 mod tests {
-    use v3_compiler::dag::Dag;
+    use v3_compiler::dag::{Dag, Interval, IntervalWidth};
     use v3_grounding_lifetime::LifetimeAnalysisReport;
 
     use super::*;
@@ -177,5 +177,23 @@ mod tests {
             IntScratchExample::DesignDocExample8Go,
             TargetInhabitance::GoInt32,
         );
+    }
+
+    #[test]
+    fn fold_dag_int_refined_cross_target_requires_matching_declared_bound() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let wrong_bound = Interval::BoundedInterval {
+                lower: -2_147_483_648,
+                width: IntervalWidth::ZeroWidth,
+            };
+            let err = crate::fold::fold_design_doc_example_8_for_testing(
+                &dag,
+                IntScratchExample::DesignDocExample8Rust,
+                wrong_bound,
+            )
+            .expect_err("mismatched bound should not select the declared i32 row");
+            assert_eq!(err, EmissionDiagnostic::NoInhabitant);
+        });
     }
 }
