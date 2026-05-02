@@ -53,6 +53,39 @@ PR #810 §0); not as a one-off. Cite the program brief.
 
 - **Exactly one disposition** (delete path **or** census shrink with N→M **or** lane + cited ROADMAP row/link): ___
 
+## Per-PR debt-paydown receipt (required for all PRs)
+
+<!--
+Per docs/briefs/r3-debt-paydown-program-coordination.md (#1518) and
+INVARIANTS.md §P5(c).
+
+Fill this section with a single-checkable receipt for tracked ROADMAP debt
+rows touched by this PR. This is separate from the hand-Rust dissolution
+gate above: the gate covers SG-0 hand-Rust scaffold discipline; this section
+covers ROADMAP debt-row retirement discipline for the R3 Debt-Paydown
+standing program.
+
+Use one bullet per touched debt row. Each bullet must use exactly one of
+the three dispositions below:
+
+(1) Debt paid: cite the ROADMAP row by path + heading/anchor or permalink,
+    and name the retirement mechanism in this PR.
+
+(2) Debt found, routed: cite the ROADMAP row by path + heading/anchor or
+    permalink, and name the owning lane plus the filed retirement issue/PR.
+    Routing is interim only; the row remains open until the retirement PR
+    merges.
+
+(3) No debt touched: use only when the PR neither introduces, modifies, nor
+    retires a tracked-debt row.
+
+Insufficient: "see ROADMAP", "TBD", "tracked elsewhere", "follow-up PR",
+a lane name without a cited row, or any routed debt without a filed
+retirement issue/PR.
+-->
+
+- **Exactly one disposition** (Debt paid **or** Debt found + routed **or** No debt touched): ___
+
 ## Test plan
 
 - [ ] (Bulleted checklist of TODOs for verifying the PR.)
