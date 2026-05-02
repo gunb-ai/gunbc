@@ -104,8 +104,10 @@ Grounding-owned row population after that slice:
 3. Ratchet provider-specific schema facts against the canonical files only as
    a transition; retire lockstep mirrors once parsing is the authority.
 4. Keep provider-domain coproducts where they are genuinely domain-specific
-   (`AnthropicUserContentBlock`, OpenAI message roles, etc.), but do not copy
-   shared transport/service machinery per provider.
+   (`AnthropicUserContentBlock`, OpenAI tool-choice / response-format shapes,
+   etc.), but do not copy shared transport/service machinery per provider.
+   Shared LLM concepts such as message `Role` stay in `dsl/extdeps/llm/llm.dag`
+   and must not be reintroduced as provider-local authority.
 
 ## ProviderTypedWire Alias
 
