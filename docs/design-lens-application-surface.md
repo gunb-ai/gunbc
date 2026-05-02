@@ -87,18 +87,29 @@ type LensEnforcement<Output, Budget> {
 // enforcement (projection + violation relation) into ONE substrate
 // authority. Each lens declares its EnforceableLens once; users
 // referencing apply_lens cite the EnforceableLens (not lens +
-// enforcement separately). This makes the lens / enforcement pairing
-// structural — there is no way to mix-match a lens with a non-canonical
-// enforcement at the application site.
+// enforcement separately).
 //
-// Why packaging matters: the prior shape (lens + enforcement as
-// independent fields on EnforcedApplication) admitted constructible
-// pairs like `Lens<ComplexitySummary>` + a `LensEnforcement<
-// ComplexitySummary, AsymptoticClass>` declared by some other lens.
-// That violates P2 single-authority — the lens doesn't structurally
-// own its canonical enforcement; users could pair against any
-// type-compatible LensEnforcement. EnforceableLens collapses lens +
-// enforcement into one declared bundle, restoring single authority.
+// PARSER-LEVEL UNIQUENESS INVARIANT: the parser enforces "at most
+// ONE EnforceableLens<C, B> declaration per (Lens<C>, Budget B) pair
+// in the program". User code that declares a second EnforceableLens
+// referencing the same lens with a type-compatible Budget fails
+// parse-time with a Diagnostic naming both declarations as the
+// duplicate-canonical-enforcement violation. This is the same shape
+// as v3's other single-authority parser invariants (e.g., one
+// declaration per name; one BoundedLattice instance per type).
+// EnforcedApplication.enforceable_lens references resolve unambiguously
+// to the SOLE canonical EnforceableLens for that (lens, Budget) tuple.
+//
+// Why parser-level, not type-level: full type-level enforcement
+// (preventing user code from EVER declaring a second EnforceableLens<C, B>)
+// would require existentials or singleton inhabitance — substrate
+// features v3 does not fully express today (per `src/v3/std/lens.dag`
+// and substrate.dag inhabitance support is sparse). The parser-level
+// uniqueness invariant achieves the same single-authority outcome
+// (no two competing canonical enforcements for a lens/budget pair)
+// at the only construction site v3 currently supports as a structural
+// gate. Future substrate hardening (existentials / dependent inhabitance)
+// would let this lift to type-level.
 type EnforceableLens<Output, Budget> {
   lens: Lens<Output>
   enforcement: LensEnforcement<Output, Budget>
