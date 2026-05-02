@@ -1,12 +1,14 @@
 use std::collections::BTreeSet;
+use std::io::Write;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    AtomPayload, Behavior, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path, PortId,
-    PortState, TypeConnective, ValueBody,
+    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
+    Path, PortId, PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
@@ -208,6 +210,367 @@ fn eval_lane_e_differential_cost_lineage(
         "v2_oracle_cost" => Ok(cost_of(program_dag, &bind_port)),
         _ => Err(format!(
             "unsupported lineage `{lineage_name}` for T-LaneE `DifferentialEquals` cost (expected `v3_program_cost` or `v2_oracle_cost`)"
+        )),
+    }
+}
+
+fn w1_parse_single_int_stdout_carve_out(stdout: &str) -> Result<i64, String> {
+    let trimmed = stdout.trim();
+    if trimmed.is_empty() {
+        return Err(
+            "W1 rust_emit_output: empty stdout after trim (transitional Int-only stdout parse \
+             carve-out authorized for slice-1 only; dissolution: substrate `ProgramObservation<Value>` \
+             + observation-channel / `ValueKind` per `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`)"
+                .to_string(),
+        );
+    }
+    let parts: Vec<&str> = trimmed.split_whitespace().collect();
+    if parts.len() != 1 {
+        return Err(format!(
+            "W1 rust_emit_output: stdout must be exactly one integer token (transitional carve-out); \
+             got {parts:?} (dissolution: typed observation channel + `ValueKind`)"
+        ));
+    }
+    parts[0].parse::<i64>().map_err(|_| {
+        format!(
+            "W1 rust_emit_output: stdout token `{}` is not a valid i64 (transitional Int-only carve-out)",
+            parts[0]
+        )
+    })
+}
+
+/// RAII guard: delete the W1 rustc scratch directory on return or panic (best-effort `remove_dir_all`).
+struct W1RustEmitScratchGuard {
+    dir: std::path::PathBuf,
+}
+
+impl W1RustEmitScratchGuard {
+    fn new(dir: std::path::PathBuf) -> Self {
+        Self { dir }
+    }
+}
+
+impl Drop for W1RustEmitScratchGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.dir);
+    }
+}
+
+/// Max bytes retained from a W1 host child's **stdout** (slice-1 Int observation: one token +
+/// whitespace). Beyond this we keep draining until EOF so the child cannot stall on a full pipe.
+const W1_HOST_CAPTURE_MAX_STDOUT_BYTES: usize = 16 * 1024;
+
+/// Max bytes retained from a W1 host child's **stderr** (`rustc` diagnostics / runtime errors).
+/// Same drain-to-EOF behavior after the cap.
+const W1_HOST_CAPTURE_MAX_STDERR_BYTES: usize = 256 * 1024;
+
+const W1_HOST_DRAIN_CHUNK_BYTES: usize = 8192;
+
+#[derive(Debug)]
+struct W1BoundedPipeCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
+}
+
+/// Read from `r` until EOF: store at most `max_stored` bytes, then discard the rest so the peer
+/// cannot block on a full pipe (P2 host-process boundary).
+fn w1_drain_reader_bounded(
+    mut r: impl std::io::Read,
+    max_stored: usize,
+) -> std::io::Result<W1BoundedPipeCapture> {
+    let mut buf = Vec::new();
+    let mut truncated = false;
+    let mut scratch = [0u8; W1_HOST_DRAIN_CHUNK_BYTES];
+    loop {
+        let n = r.read(&mut scratch)?;
+        if n == 0 {
+            break;
+        }
+        if buf.len() >= max_stored {
+            truncated = true;
+            continue;
+        }
+        let room = max_stored - buf.len();
+        if n <= room {
+            buf.extend_from_slice(&scratch[..n]);
+        } else {
+            buf.extend_from_slice(&scratch[..room]);
+            truncated = true;
+        }
+    }
+    Ok(W1BoundedPipeCapture {
+        bytes: buf,
+        truncated,
+    })
+}
+
+/// New process group for the W1 host child so [`kill_process_group_on_timeout`] can tear down a
+/// wedged `rustc` or emitted binary without leaving grandchildren (same contract as
+/// [`build_execute_command_process`]).
+fn w1_prepare_host_command(cmd: &mut Command) {
+    cmd.stdin(Stdio::null());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setpgid(0, 0) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
+}
+
+/// `spawn` + wall-bounded wait + **bounded** stdout/stderr capture — fail-closed vs unbounded
+/// `output()` / `read_to_end` allocation (Decidability / CI). Uses [`EXECUTE_COMMAND_WALL_TIMEOUT`]
+/// and the same `try_wait` poll + process-group kill path as [`child_wait_for_execute_command`].
+/// After [`W1_HOST_CAPTURE_MAX_STDOUT_BYTES`] / [`W1_HOST_CAPTURE_MAX_STDERR_BYTES`] the reader keeps
+/// draining until EOF so a verbose child cannot wedge on a full pipe.
+fn w1_host_command_output(
+    label: &str,
+    wall: Duration,
+    mut cmd: Command,
+) -> Result<std::process::Output, String> {
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("{label}: failed to spawn host child: {e}"))?;
+    let mut stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| format!("{label}: internal error: stdout not piped (W1 host harness)"))?;
+    let mut stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| format!("{label}: internal error: stderr not piped (W1 host harness)"))?;
+
+    let stdout_handle = std::thread::spawn(move || {
+        w1_drain_reader_bounded(&mut stdout, W1_HOST_CAPTURE_MAX_STDOUT_BYTES)
+    });
+    let stderr_handle = std::thread::spawn(move || {
+        w1_drain_reader_bounded(&mut stderr, W1_HOST_CAPTURE_MAX_STDERR_BYTES)
+    });
+
+    let status = match child_wait_for_execute_command(&mut child, wall) {
+        Ok(s) => s,
+        Err(ChildWaitFail::WallTimeout { wall_time }) => {
+            let _ = stdout_handle.join();
+            let _ = stderr_handle.join();
+            return Err(format!(
+                "{label}: exceeded {:.2}s wall-clock limit (timeout — process group / child killed, fail-closed); \
+                 dissolution: PB-Runtime owns host subprocess policy for generated tests",
+                wall_time.as_secs_f64()
+            ));
+        }
+        Err(ChildWaitFail::Io(err)) => {
+            let _ = stdout_handle.join();
+            let _ = stderr_handle.join();
+            return Err(format!("{label}: wait on host child failed: {err}"));
+        }
+    };
+
+    let stdout_cap = stdout_handle
+        .join()
+        .map_err(|_| format!("{label}: stdout capture thread panicked"))?
+        .map_err(|e| format!("{label}: read stdout failed: {e}"))?;
+    let stderr_cap = stderr_handle
+        .join()
+        .map_err(|_| format!("{label}: stderr capture thread panicked"))?
+        .map_err(|e| format!("{label}: read stderr failed: {e}"))?;
+
+    if stdout_cap.truncated || stderr_cap.truncated {
+        return Err(format!(
+            "{label}: bounded host I/O exceeded (stdout cap {} B, stderr cap {} B; stdout_trunc={} stderr_trunc={}); \
+             child exit={:?}; fail-closed vs unbounded capture; dissolution: PB-Runtime owns diagnostic bounds for generated-test subprocesses",
+            W1_HOST_CAPTURE_MAX_STDOUT_BYTES,
+            W1_HOST_CAPTURE_MAX_STDERR_BYTES,
+            stdout_cap.truncated,
+            stderr_cap.truncated,
+            status.code(),
+        ));
+    }
+
+    Ok(std::process::Output {
+        status,
+        stdout: stdout_cap.bytes,
+        stderr: stderr_cap.bytes,
+    })
+}
+
+fn w1_rust_emit_output_int(
+    program_dag: &Dag,
+    output_bind: &BindNode,
+    claim_file: &str,
+) -> Result<i64, String> {
+    // **Transitional producer identity (contract 1):** only the spelling `rust_emit_output` is
+    // accepted at the `DifferentialEquals` subject/oracle `DeclarationRef` site, fail-closed
+    // elsewhere in `eval_differential_equals`. **Dissolution:** substrate producer-role markers
+    // replace name-keyed recognition (`docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`).
+    let last_bind = match last_emit_rust_program_top_level_value_bind_name(program_dag) {
+        Ok(Some(name)) => name,
+        Ok(None) => {
+            return Err(
+                "W1 rust_emit_output: compiled program has no top-level value binds (emit_rust program \
+                 mode requires at least one); dissolution: PB-Runtime-generated target-language tests"
+                    .to_string(),
+            );
+        }
+        Err(e) => {
+            return Err(format!(
+                "W1 rust_emit_output: cannot resolve emit-rust print target (same `RealizationIndexes` \
+                 path as `emit_rust_with_mode`): {e:?}"
+            ));
+        }
+    };
+    if last_bind != output_bind.name {
+        return Err(format!(
+            "W1 rust_emit_output: `ProgramOutputBind.output_ref` must name the **last** top-level \
+             value bind after `source_filtering` (same bind `emit_rust` program-mode `main` prints; \
+             see `last_emit_rust_program_top_level_value_bind_name`) — expected `{last_bind}`, got `{}` \
+             (claim file `{claim_file}`; transitional coupling; dissolution: PB-Runtime harness + typed \
+             observation channel)",
+            output_bind.name
+        ));
+    }
+    let rust_src = std::thread::scope(|s| -> Result<String, String> {
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn_scoped(s, || crate::emit_rust::emit_rust(program_dag))
+            .map_err(|e| format!("W1 rust_emit_output: spawn emit worker: {e}"))?;
+        let joined = handle
+            .join()
+            .map_err(|_| "W1 rust_emit_output: emit worker panicked".to_string())?;
+        joined.map_err(|e| {
+            format!(
+                "W1 rust_emit_output: emit_rust failed (use #1485-approved `emit_rust` / `emit_rust_with_mode` path only; dissolution: PB-Runtime-generated tests): {e:?}"
+            )
+        })
+    })?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let scratch = std::env::temp_dir().join(format!(
+        "gunbc_w1_rust_emit_{}_{}",
+        std::process::id(),
+        stamp
+    ));
+    std::fs::create_dir_all(&scratch).map_err(|e| {
+        format!(
+            "W1 rust_emit_output: create scratch dir {}: {e}",
+            scratch.display()
+        )
+    })?;
+    let _scratch_guard = W1RustEmitScratchGuard::new(scratch.clone());
+    let src_path = scratch.join("main.rs");
+    let bin_path = scratch.join("w1_emit_eval_out");
+    let mut file = std::fs::File::create(&src_path)
+        .map_err(|e| format!("W1 rust_emit_output: create {}: {e}", src_path.display()))?;
+    file.write_all(rust_src.as_bytes())
+        .map_err(|e| format!("W1 rust_emit_output: write {}: {e}", src_path.display()))?;
+
+    let mut rustc = Command::new("rustc");
+    // Same stable-toolchain contract as boundary rustc harnesses (strip bootstrap leakage).
+    // Wall-bounded `spawn` + pipe drain (not `status()` / not unbounded `output()`): piped stderr
+    // can stall `rustc`; a wedged compile must fail-closed like [`EXECUTE_COMMAND_WALL_TIMEOUT`].
+    rustc
+        .env_remove("RUSTC_BOOTSTRAP")
+        .arg("--edition=2021")
+        .arg(&src_path)
+        .arg("-o")
+        .arg(&bin_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    w1_prepare_host_command(&mut rustc);
+    let compile_out = w1_host_command_output(
+        "W1 rust_emit_output: rustc",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        rustc,
+    )?;
+    if !compile_out.status.success() {
+        let stderr = String::from_utf8_lossy(&compile_out.stderr);
+        let stdout = String::from_utf8_lossy(&compile_out.stdout);
+        return Err(format!(
+            "W1 rust_emit_output: rustc failed (exit {:?}); rustc stdout:\n{}\nrustc stderr:\n{}; \
+             dissolution: PB-Runtime owns compilation policy for generated tests",
+            compile_out.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end(),
+        ));
+    }
+    let mut run_cmd = Command::new(&bin_path);
+    run_cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    w1_prepare_host_command(&mut run_cmd);
+    let run = w1_host_command_output(
+        "W1 rust_emit_output: emitted binary",
+        EXECUTE_COMMAND_WALL_TIMEOUT,
+        run_cmd,
+    )?;
+    if !run.status.success() {
+        let stderr = String::from_utf8_lossy(&run.stderr);
+        let stdout = String::from_utf8_lossy(&run.stdout);
+        return Err(format!(
+            "W1 rust_emit_output: emitted Rust binary exited with {:?}; stdout:\n{}\nstderr:\n{}; \
+             dissolution: PB-Runtime-generated tests own exit-status / stdio policy",
+            run.status.code(),
+            stdout.trim_end(),
+            stderr.trim_end(),
+        ));
+    }
+    w1_parse_single_int_stdout_carve_out(&String::from_utf8_lossy(&run.stdout))
+}
+
+fn w1_dag_eval_output_int(program_dag: &Dag, output_bind: &BindNode) -> Result<i64, String> {
+    // **Dissolution:** `dag_eval_output` collapses into PR-B eager evaluation + witness construction
+    // (`docs/briefs/r2-pr-b-2-runner-extension-bundle.md`); this arm is the first runner bridge only.
+    if !output_bind.params.is_empty() {
+        return Err(format!(
+            "W1 dag_eval_output: bind `{}` must be a top-level value bind (empty `params`); got callable-shaped bind",
+            output_bind.name
+        ));
+    }
+    let producer = program_dag
+        .resolve_producer_opt(&output_bind.value)
+        .ok_or_else(|| {
+            format!(
+            "W1 dag_eval_output: bind `{}` value port has no producer node in compiled program Dag",
+            output_bind.name
+        )
+        })?;
+    let entry = producer.id();
+    let strategy = crate::evaluator::EvalStrategy::ApplicativeOrder {
+        input_order: crate::evaluator::InputEvaluationOrder::LeftFirst,
+    };
+    let mut state =
+        crate::evaluator::EvalStateStack::with_root_frame(crate::evaluator::EvalFrame::empty());
+    let value = crate::evaluator::evaluate_body(program_dag, entry, &mut state, strategy)
+        .map_err(|e| {
+            format!(
+                "W1 dag_eval_output: `evaluate_body` / `eval_node` error on bind `{}` (no-memo eager `ApplicativeOrder` / `LeftFirst` at call site per #1485 fire criteria): {e:?}",
+                output_bind.name
+            )
+        })?;
+    match &value {
+        crate::evaluator::Value::LiteralValue(LiteralBits::Int(n)) => Ok(*n),
+        other => Err(format!(
+            "W1 dag_eval_output: only `Value::LiteralValue(Int)` is supported for slice-1 Int parity \
+             (transitional debt; dissolution: substrate `ValueKind` widening + observation normalization): {other:?}"
+        )),
+    }
+}
+
+fn w1_differential_equals_lineage_int(
+    lineage: &str,
+    program_dag: &Dag,
+    output_bind: &BindNode,
+    claim_file: &str,
+) -> Result<i64, String> {
+    match lineage {
+        "rust_emit_output" => w1_rust_emit_output_int(program_dag, output_bind, claim_file),
+        "dag_eval_output" => w1_dag_eval_output_int(program_dag, output_bind),
+        _ => Err(format!(
+            "W1 internal error: unknown lineage `{lineage}` (expected rust_emit_output or dag_eval_output)"
         )),
     }
 }
@@ -2333,6 +2696,39 @@ impl<'a> TestRunner<'a> {
             );
         }
 
+        let w1_emit_eval_pair = (subject_lineage.as_str(), oracle_lineage.as_str());
+        if matches!(
+            w1_emit_eval_pair,
+            ("rust_emit_output", "dag_eval_output") | ("dag_eval_output", "rust_emit_output")
+        ) {
+            let subject_int = match w1_differential_equals_lineage_int(
+                subject_lineage.as_str(),
+                &program_dag,
+                bind,
+                &claim.file_name,
+            ) {
+                Ok(v) => v,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
+            let oracle_int = match w1_differential_equals_lineage_int(
+                oracle_lineage.as_str(),
+                &program_dag,
+                bind,
+                &claim.file_name,
+            ) {
+                Ok(v) => v,
+                Err(msg) => return ClaimResult::Fail(msg),
+            };
+            return if subject_int == oracle_int {
+                ClaimResult::Pass
+            } else {
+                ClaimResult::Fail(format!(
+                    "DifferentialEquals(W1): `{subject_lineage}` int {subject_int} != `{oracle_lineage}` int {oracle_int} \
+                     (emit vs eager eval parity; dissolution: PB-Runtime tests + PR-B witness-shaped `ProgramObservation<Value>`)"
+                ))
+            };
+        }
+
         let pairing_ok = (subject_lineage.as_str() == "v3_program_cost"
             && oracle_lineage.as_str() == "v2_oracle_cost")
             || (subject_lineage.as_str() == "v2_oracle_cost"
@@ -2344,7 +2740,14 @@ impl<'a> TestRunner<'a> {
             // target-language tests; `dag_eval_output` -> PR-B eager evaluator
             // plus witness construction.
             return ClaimResult::NotYetImplemented(format!(
-                "DifferentialEquals: only the (v3_program_cost, v2_oracle_cost) cost lineage pairing is implemented; got ({subject_lineage}, {oracle_lineage}). Output producers such as (rust_emit_output, dag_eval_output) remain gated on explicit producer identity plus typed observation normalization; dissolution targets are PB-Runtime generated target-language tests for rust_emit_output and PR-B eager evaluator plus witness construction for dag_eval_output"
+                "DifferentialEquals: unsupported producer pairing ({subject_lineage}, {oracle_lineage}); \
+                 implemented: (v3_program_cost, v2_oracle_cost) Lane-E cost parity and \
+                 (rust_emit_output, dag_eval_output) W1 emit/eval Int slice per #1485 / \
+                 `docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`. \
+                 This path stays NotYetImplemented (fail-closed unsupported-pair receipt, not Pass) until \
+                 an approved producer + observation contract matches; after #1495 lands, rebase this \
+                 branch and preserve the stronger unsupported-pair ratchet / producer-identity gates vs \
+                 substrate-owned dissolution (`r2-pr-b-2-runner-extension-bundle.md`)."
             ));
         }
 
