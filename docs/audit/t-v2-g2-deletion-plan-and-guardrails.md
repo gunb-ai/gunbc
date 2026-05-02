@@ -19,7 +19,9 @@ Re-stated from parent audit §1 + §3.2; this plan adds nothing new. Verified at
 | S-2 | T-FixedPoint closed | `pb_self_compile_fixed_point` predicate green under R3 elevated bar; closure ledger receipt. |
 | S-3 | T-LensProducer-Retirement closed | All three sub-gates green (`lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs` retired); files do not exist under `src/v3/compiler/src/`. |
 | S-4 | PB-Runtime trampoline live as bootstrap | `cargo build --workspace` succeeds without `src/v2/stage0` invocation in the bootstrap chain; verified by removing `src/v2/stage0` from `Cargo.toml` workspace `members` in a *throw-away* check (NOT committed) and confirming compile + run works through PB-Runtime alone. |
-| G-1 | `v2_oracle_no_remaining_test_consumers` green | `grep -rEn '\bv2_compiler(_tests)?\b' src/ tests/` excluding `src/v2/` returns zero substantive matches; Cargo edges in `src/v3/compiler/Cargo.toml:32-33` deleted; legacy emit chain (`{rust,python,go}_simple_method_specs`/`*_method_templates`/`*_method_wraps_result`) deleted from `dsl/extdeps/languages/{rust,python,go}/emit.dag` per migration matrix §4.2 (per-target, all three families); `verification.dag` convergence call landed (Substrate) per migration matrix §5. |
+| G-1 | `v2_oracle_no_remaining_test_consumers` green | Per migration matrix §3 (single authority): `grep -rEn '\bv2_compiler(_tests)?\b' src/ tests/` excluding `src/v2/` returns zero substantive matches; Cargo edges in `src/v3/compiler/Cargo.toml:32-33` deleted (§3.3). G-1 closure does NOT include the legacy emit chain or verification.dag convergence — those are separate G-2 prerequisites tracked in the next two rows. |
+| G-2-prereq-emit | Legacy emit chain retired (G-2 prerequisite per migration matrix §4.2) | `{rust,python,go}_simple_method_specs` / `*_method_templates` / `*_method_wraps_result` deleted from `dsl/extdeps/languages/{rust,python,go}/emit.dag` — per-target, all three families. Per matrix §4.2 STOP/green criteria. |
+| G-2-prereq-verif | `verification.dag` convergence landed (G-2 prerequisite per migration matrix §5) | Substrate-led design call ratified; v2-era `dsl/std/verification.dag` surface either dissolved into v3's `src/v3/std/verification.dag` (`TestPredicate`/`TestClaim { ..., requires: List<ResourceReference> }`/`TestSuite`/`TestObligation`) or moved to a renamed module path; no surviving authority depends on the v2-era surface. Routed to Substrate Manager per matrix §5.2. |
 
 If any row is not green, deletion PR MUST NOT open. STOP+PING with the unmet row.
 
@@ -51,8 +53,8 @@ cargo build --workspace
 ### 2.2 What MUST NOT be in the deletion PR
 
 - ❌ No edits to `src/v3/` code (G-1 already removed v2-* deps from `src/v3/compiler/Cargo.toml` per migration matrix §3.3).
-- ❌ No edits to `dsl/extdeps/languages/{rust,python,go}/emit.dag` (G-1 already retired the legacy emit chain per migration matrix §4.2).
-- ❌ No edits to `dsl/std/verification.dag` (Substrate-led convergence already landed per migration matrix §5; the v2-era surface is either dissolved or moved to a renamed module path before G-2).
+- ❌ No edits to `dsl/extdeps/languages/{rust,python,go}/emit.dag` (the G-2-prereq-emit row in §1 — legacy emit chain — already retired before this PR).
+- ❌ No edits to `dsl/std/verification.dag` (the G-2-prereq-verif row in §1 — Substrate-led convergence — already landed before this PR; v2-era surface dissolved or renamed).
 - ❌ No new tests, no fixture changes, no comment-cleanup sweeps in unrelated files.
 - ❌ No CI workflow edits.
 - ❌ No SG-0 census expansion. (`src/v2/` files were never on `EXPECTED_HAND_AUTHORED_*` because the SG-0 census root is `src/v3/compiler` per `sg0_census_test.rs`. Verify at deletion time; if drift placed any v2 file on the list, removal is in-scope for the same PR.)
@@ -98,9 +100,9 @@ These checks are not new tests — they are existing CI/grep invocations that MU
 ## 5. What this plan deliberately does NOT do
 
 - ❌ Does not specify the deletion timeline or schedule. Timing is governed by §1 STOP conditions; this plan is shape, not schedule.
-- ❌ Does not enumerate the v2 file count or per-file disposition. The migration matrix §2.1 already named the 15 internal `src/v2/tests/src/*.rs` files and 124 total files under `src/v2/`; the deletion is `git rm -r src/v2/`, no per-file plan needed.
+- ❌ Does not enumerate the v2 file count or per-file disposition. The migration matrix §2.1 already named the 13 substantive `v2_compiler`-importing test files in `src/v2/tests/src/` (15 `.rs` files total in the crate when counting `lib.rs` + `bug_sentinel_ratchet.rs`) and 124 total files under `src/v2/`; the deletion is `git rm -r src/v2/`, no per-file plan needed.
 - ❌ Does not propose new substrate, new tests, or new authorities. This is a removal plan only.
-- ❌ Does not include the Substrate-Mgr `verification.dag` convergence call. That work belongs to migration matrix §5 / Substrate Manager and is a §1 G-1 prerequisite, not part of this PR.
+- ❌ Does not include the Substrate-Mgr `verification.dag` convergence call. That work belongs to migration matrix §5 / Substrate Manager and is the §1 G-2-prereq-verif row, not part of this PR.
 - ❌ Does not include capture of any baseline data, perf gates, or CI-runner changes. Orthogonal lane (C1).
 
 ---
