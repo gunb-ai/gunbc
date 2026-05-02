@@ -383,13 +383,13 @@ This document does NOT modify:
 
 - The existing `Lens<C>` carrier shape (per T-Substrate-Lens-Primitive — that is R2 work already complete).
 - The existing file-glob `LensApplication` carrier (per [`docs/lens-library-design.md`](lens-library-design.md) §3 — sibling, not replacement).
-- Per-lens budget types — each lens's existing `Lens<C>` carrier IS the budget type; this doc only specifies the parametric dispatch carrier `ApplicationConfig<C>`. No new per-lens budget carriers.
+- Per-lens budget types — each lens declares its own `LensEnforcement<Output, Budget>` projection (per §2); this doc only specifies the parametric dispatch carriers `ApplicationConfig<Budget>` + `SectionedLensApplication<Output, Budget>`. The lens-output type stays whatever the lens chooses (rich `ComplexitySummary` for complexity; identity-projected `SymbolicCost` for cost).
 
 ## §10. Implementation order (sketch)
 
 Within T-Lens-Application-Surface lane (per [`docs/r3-structure.md`](r3-structure.md) closure gates):
 
-1. **Substrate carriers landing** (`lens_application_carrier_landed`, `section_ref_substrate_landed`). Author `src/v3/std/lens_application.dag` per §2 — `SectionedLensApplication<C>` + `SectionRef` + `ApplicationConfig<C>` parametric in lens carrier `C`. Type-checker integration: `(lens, section)` single-authority enforcement at parse time. (Lens-budget compatibility is structural via the shared `C`; no `budget_type` field on `Lens<C>`.)
+1. **Substrate carriers landing** (`lens_application_carrier_landed`, `section_ref_substrate_landed`, `lens_enforcement_carrier_landed`). Author `src/v3/std/lens_application.dag` per §2 — `SectionedLensApplication<Output, Budget>` + `SectionRef` + `ApplicationConfig<Budget>` + `LensEnforcement<Output, Budget>` parametric in both lens output and budget. Co-locate per-lens `LensEnforcement` declarations with each lens (complexity → AsymptoticClass projection; cost / parallelism → identity). Type-checker integration: `(lens, section)` single-authority enforcement at parse time. (Lens/projection/budget compatibility is structural via shared Output and Budget parameters.)
 2. **Fold-pass integration** (`application_config_violation_policy_routing`). Extend the lens-fold pass to walk `SectionedLensApplication` declarations + emit Diagnostics on `Enforce`-mode budget violations + record lens values on `Introspect`-mode. Synthesized default-application per §5.1.
 3. **Worked example #1: complexity contract** (`complexity_violation_compile_error_demonstrated`). TestClaim per §4.1.
 4. **Worked example #2: CRDT cost basis** (`crdt_cost_basis_demonstrated`). TestClaim per §4.2.

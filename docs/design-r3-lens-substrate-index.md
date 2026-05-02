@@ -24,7 +24,7 @@ This index documents the cross-doc edges that the coherence audit (2026-05-02) v
 
 | Authority | Owning doc | Consumer docs |
 |---|---|---|
-| `SectionRef` / `SectionedLensApplication` / `ApplicationConfig` | lens-application-surface §2 | (used by future user-authored lens applications) |
+| `SectionRef` / `SectionedLensApplication<Output, Budget>` / `ApplicationConfig<Budget>` / `LensEnforcement<Output, Budget>` | lens-application-surface §2 | (used by future user-authored lens applications; per-lens `LensEnforcement` projections co-located with each lens — complexity → AsymptoticClass projection, cost / parallelism → identity) |
 | `QuantifiedTestClaim` / `ProgramGenerator` / `ForAll`/`Exists` quantifiers | tests-as-data §2.2 | cementing tests in cost/complexity/effect-enumeration |
 | `AsymptoticClass` lattice | complexity-lens §1.4 | lens-application's `ComplexityBudget` (= `AsymptoticClass`) |
 | `SymbolicCost` algebra (DB-7 carrier; semiring fix in cost-lens §4) | algebra.dag (DB-7) — not authored here | complexity-lens (consumes for symbolic-cost dimension); cost-lens (extends with semiring inhabitance + product-zero fix) |
