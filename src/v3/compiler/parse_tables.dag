@@ -306,6 +306,10 @@ data top_level_kw_type: TopLevelItemKwRow = {
   token_variant: "KwType"
 }
 
+data top_level_kw_service: TopLevelItemKwRow = {
+  token_variant: "KwService"
+}
+
 data top_level_kw_module: TopLevelItemKwRow = {
   token_variant: "KwModule"
 }

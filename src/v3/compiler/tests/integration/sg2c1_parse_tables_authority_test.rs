@@ -17,6 +17,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::parse_for_test;
 use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
 use v3_compiler::tokenize_for_test;
@@ -362,10 +363,17 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
     // collected below). This literal exists as an explicit crash-on-edit pin:
     // extending `parse_item` match arms alone does **not** update `got`; you
     // must author matching rows first (then regen fills `top_level_item_dispatch`).
-    let expected: std::collections::BTreeSet<&'static str> =
-        ["KwLet", "KwFn", "KwType", "KwModule", "KwImport", "KwData"]
-            .into_iter()
-            .collect();
+    let expected: std::collections::BTreeSet<&'static str> = [
+        "KwLet",
+        "KwFn",
+        "KwType",
+        "KwService",
+        "KwModule",
+        "KwImport",
+        "KwData",
+    ]
+    .into_iter()
+    .collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
@@ -393,6 +401,19 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
         expected, got_ref,
         "top_level_kw_* rows in parse_tables.dag do not cover exactly the keyword tokens \
          `parse_item` dispatches on"
+    );
+}
+
+#[test]
+fn service_top_level_item_dispatch_fails_closed_until_service_block_ast_lands() {
+    let tokens = tokenize_for_test("service Llm {}", "top_level_service_anchor.v3")
+        .expect("tokenize service anchor");
+    let err = parse_for_test(&tokens, "top_level_service_anchor.v3")
+        .expect_err("service should fail closed until the ServiceBlock AST/lowerer slice lands");
+    let msg = format!("{err:?}");
+    assert!(
+        msg.contains("service") || msg.contains("ServiceBlock"),
+        "service parse failure should name the service anchor; got: {msg}"
     );
 }
 
