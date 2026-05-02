@@ -622,25 +622,19 @@ mod e7_analyze_complexity_integration {
         assert_eq!(dimension_name, "symbolic_cost");
     }
 
-    /// E7 §test 6 (integration form): every entry in
-    /// `DimensionFail.violations` is a typed `Diagnostic` enum
-    /// variant — never inspected by string content beyond non-empty
-    /// checks on the human-facing `message` field. Constructed
-    /// against the public API only.
+    /// E7 §test 6 (integration form, success-path scope): the public
+    /// API preserves the typed `Witness<SymbolicCost>` envelope on
+    /// the `DimensionOk` arm — every witness is a typed enum
+    /// inhabitant the test pattern-matches without inspecting the
+    /// `reason` string. Typed-diagnostic discipline on the `Fail`
+    /// arm is pinned by the in-module `analyze_complexity_tests`
+    /// (`src/v3/compiler/src/dimension.rs`), which constructs
+    /// ghost-port DAGs via crate-private builders that the public
+    /// API surface here cannot reach (the surface compiler always
+    /// wires its outputs). This integration test confirms the public
+    /// API does not lose the typed envelope on the success path.
     #[test]
-    fn analyze_complexity_public_api_fail_diagnostics_are_typed() {
-        // A program that would compile but where the symbolic-cost
-        // lens is forced to fail by an unwired port is harder to
-        // construct from source alone (the surface compiler wires
-        // its outputs). Instead, exercise the public API on a
-        // well-typed program and assert the `DimensionOk` typed shape;
-        // typed-diagnostic discipline on the `Fail` arm is already
-        // pinned by the in-module `analyze_complexity_tests` which
-        // construct ghost-port DAGs via crate-private builders. This
-        // integration test confirms the public API does not lose the
-        // typed envelope on the success path: `DimensionOk` carries
-        // typed `Witness<SymbolicCost>` entries, not stringly-typed
-        // ones.
+    fn analyze_complexity_public_api_preserves_typed_witness_envelope_on_ok() {
         let dag = compile_to_dag("let w = 7 + 8", "e7_int_typed.v3").expect("compiles");
         let root = find_bind_root(&dag, "w");
 
