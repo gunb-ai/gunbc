@@ -45,8 +45,8 @@ with Substrate Manager / `#1130`.
 | Requirement | Present at HEAD | Gap / owner |
 |---|---:|---|
 | `Interval<D>` shared parent | Yes, in `src/v3/std/substrate.dag` | Generic `Interval<D>` exists as `BoundedInterval { lower: D, width: IntervalWidth } | Unbounded`; it is not a concrete `Interval<Int>` row and is not yet consumed by Coercion-Fold inhabitance selection. |
-| `BoundDeclaration = StaticBound(Interval<Int>) \| PlatformDependent` | No | Substrate amendment. Owner: Substrate Manager (`#1130`). Grounding should consume after it lands. |
-| Program syntax / lowering for `Int(lo..hi)` to `BoundDeclaration` | Partial / not declared for this fold | Needs substrate and parse/lower authority work before Grounding can read it structurally. |
+| `BoundDeclaration = StaticBound(Interval<Int>) \| PlatformDependent` | **Yes, landed in #1449** | `src/v3/std/substrate.dag` declares the carrier. Ground-truth at HEAD: `StaticBound` wraps the shared `Interval<Int>` parent; `Interval<D>` remains `BoundedInterval { lower: D, width: IntervalWidth } \| Unbounded`. #1449 did not introduce an `ExactInterval { lo, hi }` shape. |
+| Program syntax / lowering for `Int(lo..hi)` to `BoundDeclaration` | No for this fold | #1449 explicitly did not add parser/lowerer syntax for `Int(lo..hi)`, `Int(any)`, or `Int(platform)`. Design-doc `(lo..hi)` syntax must lower into `StaticBound(BoundedInterval { lower, width })` before Grounding can read it structurally. |
 | Per-target integer inhabitance rows with algebra + bound facts | No for the required full family | `src/v3/spec/{rust,python,go}.dag` has broad `TypeRealization` rows such as `rust_int`, `python_int`, `go_int`. Rust also has a narrow `rust_uint8` / `UInt8` row. None of these rows carry the design-doc `BoundDeclaration` facts, and the needed family rows (`RustI32`, `RustU32`, `PythonInt`, `GoInt32`, etc.) are not declared. Owner: Substrate / LanguageSpec population. |
 | Algebra resolution facts for signedness ambiguity | Not enough for Example 5 | Need declared relationship between program Int aliases/refinements and algebra families before the fold can fail closed on algebra structurally. |
 | Inhabitance-search infrastructure | No production path | `fold_program_to_target` currently accepts a scratch projection and ignores the `Dag`. A real path needs typed extraction of LanguageSpec inhabitance rows and a pure candidate-filter pipeline. |
@@ -94,36 +94,48 @@ match_bound(program_bound: BoundDeclaration, target_bound: BoundDeclaration) -> 
 Expected semantics:
 
 - `StaticBound(Interval<Int>)` matches only the same static interval for emission.
+  At HEAD this means exact equality on `BoundedInterval { lower, width }` or the
+  shared `Unbounded` variant; there is no `ExactInterval { lo, hi }` carrier.
 - `PlatformDependent` is distinct from static intervals; it cannot be silently
   treated as unbounded or as a host-machine integer.
 - ordering / nearest-wider relations are diagnostic-only and must not select an
   emission target.
 
-This predicate is not implementable as a pure function over current substrate
-facts because `BoundDeclaration` is not declared and the per-target inhabitance
-rows do not carry bound declarations. Grounding can implement the function body
-only after Substrate lands those facts.
+This predicate shape is now implementable over the carrier landed in #1449, but
+it is not yet dispatchable end-to-end: program bounds are not lowered into
+`BoundDeclaration`, and per-target inhabitance rows do not carry bound
+declarations. Grounding can implement the fold body only after those remaining
+facts land.
 
 ## Slice Sequencing
 
 1. **Slice A: substrate bound carrier.**  
-   Owner: Substrate Manager (`#1130`). Declare `BoundDeclaration` as
-   `StaticBound(Interval<Int>) | PlatformDependent`, plus the structural
-   constructors needed by program bounds. This is not Grounding-owned.
+   Owner: Substrate Manager (`#1130`). **Done in #1449.** `BoundDeclaration`
+   is declared as `StaticBound(Interval<Int>) | PlatformDependent`; the payload
+   uses the existing generic `Interval<D>` parent with
+   `BoundedInterval { lower, width } | Unbounded`.
 
 2. **Slice B: per-target integer inhabitance rows.**  
    Owner: Substrate / LanguageSpec population. Add Rust, Python, and Go integer
    inhabitance rows carrying algebra and `BoundDeclaration` facts. Include the
    rows needed by Examples 1, 2, 5, 6, and 8 first. This is also outside
-   Grounding's authority unless explicitly delegated by Substrate.
+   Grounding's authority unless explicitly delegated by Substrate. Still open
+   after #1449.
 
-3. **Slice C: declared projection reader.**  
-   Owner: Grounding after Slices A/B land. Replace `ScratchIntExamples` with a
-   declared projection extracted from the `Dag`. Keep `Undeclared`
-   fail-closed. Add tests that construct or load the minimal LanguageSpec rows
-   and assert the same outputs currently covered by scratch examples.
+3. **Slice B.5: program-bound parse/lower and algebra intent projection.**  
+   Owner: Substrate / parse-lower, coordinated by Substrate Manager. Lower
+   `Int(lo..hi)`, unbounded/static-any, and platform-dependent forms into
+   `BoundDeclaration`, and expose Semiring vs OrderedRing intent or an
+   ambiguity diagnostic. Still open after #1449.
 
-4. **Slice D: remove scratch driver.**  
+4. **Slice C: declared projection reader.**  
+   Owner: Grounding after the remaining Slice B/B.5 prerequisites land. Replace
+   `ScratchIntExamples` with a declared projection extracted from the `Dag`.
+   Keep `Undeclared` fail-closed. Add tests that construct or load the minimal
+   LanguageSpec rows and assert the same outputs currently covered by scratch
+   examples.
+
+5. **Slice D: remove scratch driver.**  
    Owner: Grounding. Delete `IntScratchExample`, the hardcoded
    `fold_design_doc_example_*` functions, and the lane-local `TargetInhabitance`
    variants that are only mirrors of declared rows. Tests should assert the
@@ -139,7 +151,7 @@ Unblocked today:
 
 Blocked on Substrate:
 
-- Real `BoundDeclaration` matching.
+- Program-bound parse/lower into the landed `BoundDeclaration` carrier.
 - Per-target integer inhabitance row population.
 - Real algebra disambiguation for Example 5.
 - Cross-target Example 8 selection as a single structural predicate.
