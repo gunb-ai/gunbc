@@ -299,21 +299,65 @@ Per [`docs/r3-structure.md`](r3-structure.md):
 
 Pre-cascade *design-doc* work is permitted (this doc); pre-cascade *substrate work* (carriers landing, fold-integration code) waits for T-Lens-Behavioral-Parity COMPLETE.
 
-## §8. Open design questions
+## §8. Resolved design questions
 
-The following questions are surfaced rather than resolved here. They are non-blocking for design-doc completion but should be resolved before implementation begins.
+Five design questions surfaced during authoring. Per `feedback_design_before_implement` ("resolve all design questions before implementation"), each is resolved here rather than deferred to lane dispatch.
 
-1. **Module-level lens application semantics.** When a user writes `apply_lens(complexity, my_module, budget)`, does the budget apply to *each function in the module* or to the *aggregate cost across the module*? Recommendation: aggregate-across-module (each module-level application is one budget for the whole module's cost composition); per-function budgets need explicit per-function applications.
+### §8.1 Module-level lens application semantics — RESOLVED: aggregate-across-module
 
-2. **Multiple applications on the same section.** A user could write two `apply_lens(complexity, ...)` applications targeting the same function with different budgets. Resolution: type-checker rejects (same `(lens, section)` pair appearing twice = fail-closed authoring violation, single-authority discipline per P2). Exception: one Enforce + multiple Introspect applications on the same section are admitted (only one budget per section).
+**Question:** When a user writes `apply_lens(complexity, my_module, budget)`, does the budget apply to *each function in the module* or to the *aggregate cost across the module*?
 
-3. **Lens application budget inference.** For the synthesized default complexity application, what does "budget inferred from the body" mean exactly? Options: (a) budget = computed asymptotic class (regression detection — any subsequent change that *increases* the class fires), (b) budget = unbounded with introspection result recorded (no enforcement, just observability). Recommendation: (a), but flag-gated until T-Lens-Behavioral-Parity ships and asymptotic-class computation is reliable.
+**Resolved:** aggregate-across-module. Each module-level application is one budget for the whole module's cost composition. Per-function budgets require explicit per-function applications.
 
-4. **Waiver lifecycle.** `ComplexityBudgetWaiver` declarations need a path to dissolution — a stale waiver (the function has been refactored to no longer need it) should be detected. Recommendation: `lens_unused_parameters` analogue — a `lens_stale_waivers` lens that flags waivers whose target function's lens value no longer exceeds the budget. This becomes a future R-? lens, not part of T-Lens-Application-Surface scope.
+**Why:** the alternative (budget applies to each function) would mean the same `apply_lens(complexity, my_module, O_log_n)` semantically expands to N independent applications (one per function in the module). That violates §8.2 single-authority discipline (each function gets a budget without an authoring receipt) and conflates module-scope with function-scope (different SectionRef variants with the same semantics). Aggregate-across-module preserves the structural fact that "module" is a different scope than "every function in module" — they are distinct concepts and should have distinct semantics.
 
-5. **Cross-section composition.** When a function `f` is `apply_lens(complexity, f, O_log_n)`-ed and another function `g` calls `f`, does `g`'s complexity lens read `f`'s declared budget or its actual computed class? The composition semantics need an explicit rule. Recommendation: read the **declared budget** (since the budget is the user's contract; reading the computed class would let `g`'s emission depend on `f`'s implementation rather than its contract — bridge-as-steady-state pattern).
+**Implementation note:** the lens-fold pass, when processing a `DeclarationScope { declaration: <module DeclarationId> }`, reads the module's aggregate cost composition (fold over all top-level declarations within the module) rather than synthesizing per-function budgets.
 
-These questions are flagged as open; resolution shapes the per-(lens, section) contract semantics and should be ratified by Director before lane dispatch. None block this design doc landing.
+### §8.2 Multiple applications on the same section — RESOLVED: fail-closed-reject
+
+**Question:** What happens when a user writes two `apply_lens(complexity, ...)` applications targeting the same function with different budgets?
+
+**Resolved:** type-checker rejects. Same `(lens, section)` pair appearing twice with `Enforce` mode in both is a fail-closed authoring violation per P2 (single-authority discipline).
+
+**Permitted exception:** one `Enforce` + multiple `Introspect` applications on the same section are admitted. Introspect mode produces no budget, only a lens value reading; multiple readings of the same section by the same lens have identical results (lens is a pure function), so the duplication is structurally idempotent rather than authority-conflicting.
+
+**Implementation note:** at parse time, the type-checker maintains a per-`(lens, section)` count of `Enforce` mode applications. Count > 1 fires a Diagnostic naming both authoring sites. `Introspect` mode is unbounded.
+
+### §8.3 Default-application budget inference — RESOLVED (conditionally): regression-detection class, gated on T-Lens-Behavioral-Parity COMPLETE
+
+**Question:** For the synthesized default complexity application, what does "budget inferred from the body" mean exactly?
+
+**Resolved:** budget = computed asymptotic class at the time of synthesis. Any subsequent change that *increases* the class fires a Diagnostic (regression detection). This is the "implicit baseline" semantics — the compiler records what the function's complexity *was* and rejects changes that worsen it without an explicit user authoring update (either an explicit budget or an explicit waiver).
+
+**Cascade gate:** this resolution depends on T-Lens-Behavioral-Parity being COMPLETE for the complexity lens (asymptotic-class computation is reliable). Until that lane closes, the default complexity application is `Introspect`-mode only — the compiler records the lens value without enforcement, and surfaces it for inspection. When T-Lens-Behavioral-Parity COMPLETE lands, the default flips from `Introspect` to `Enforce { regression_baseline: <computed class> }`.
+
+**Implementation note:** the cascade-flip is itself substrate work — a `LensApplication` field `regression_baseline_pinned: AsymptoticClass?` records the at-synthesis baseline; when present, regressions fire. When absent (pre-cascade), the application is introspection-only.
+
+### §8.4 Waiver lifecycle — RESOLVED: separate-lens future scope, dissolution-trigger named
+
+**Question:** `ComplexityBudgetWaiver` declarations need a path to dissolution — a stale waiver should be detected.
+
+**Resolved:** stale-waiver detection is a future lens (`lens_stale_waivers`) tracked outside T-Lens-Application-Surface scope. **Dissolution trigger named explicitly per P5 scaffold-discipline**: when `lens_stale_waivers` ships, every `ComplexityBudgetWaiver` whose target's actual lens value no longer exceeds the budget is a stale-waiver finding. The user must either delete the waiver (if no longer needed) or update its `justification` field (if still load-bearing). The lens-fold pass enforces no semantics on stale waivers until that future lens lands; pre-`lens_stale_waivers`, waivers are honored unconditionally.
+
+**Why split out:** `lens_stale_waivers` is a separate lens with its own substrate input (every waiver) and its own enforcement output (per-waiver staleness Diagnostic). Bundling it into T-Lens-Application-Surface scope would inflate this lane; the dissolution trigger is named so the future lens has clear input semantics.
+
+**Tracking:** add `lens_stale_waivers` to [`docs/lens-library-design.md`](lens-library-design.md) §6 (future lenses) when this design doc lands.
+
+### §8.5 Cross-section composition — RESOLVED: read declared budget, not computed class
+
+**Question:** When function `f` is `apply_lens(complexity, f, O_log_n)`-ed and another function `g` calls `f`, does `g`'s complexity lens read `f`'s declared budget or its actual computed class?
+
+**Resolved:** read the declared budget. The budget is the user's contract; reading the computed class would let `g`'s emission depend on `f`'s implementation rather than its contract.
+
+**Why:** reading computed class would mean a refactor of `f` that lowers its complexity (e.g., O(n log n) → O(n)) would propagate into `g`'s lens result *automatically*. That makes `g`'s emission silently dependent on `f`'s implementation choices. The declared budget is the abstraction barrier — `g` reads "f's contract is O(log n)" and composes against that. If `f`'s implementation diverges from its declared budget, that is `f`'s own Diagnostic (the lens application on `f` fires), not `g`'s.
+
+**Implementation note:** the lens-fold pass, when computing `g`'s complexity composition, looks up `f`'s `SectionedLensApplication` (if any) and reads `config.budget`. If `f` has no enforced application, the lens-fold reads the computed class as fallback (the absence of a contract means there is no abstraction barrier).
+
+**Bridge-as-steady-state avoidance:** this resolution preserves the cost-of-change=1 principle (changing `f`'s implementation does not require re-checking every caller's lens result) and keeps abstraction-barrier semantics consistent with the rest of the substrate (a function's *signature* is what callers depend on; the body is private detail).
+
+---
+
+All five questions resolved. Implementation can proceed without further Director ratification on these specific points. Cascade gates (T-Lens-Behavioral-Parity COMPLETE for §8.3 enforcement-flip) and external dependencies (R2-Evaluator landed) remain as the only outstanding preconditions.
 
 ## §9. Relationship to existing authority
 
@@ -349,4 +393,4 @@ Total estimate (per L-XL sizing in the lane row): substrate carriers + fold-pass
 
 ---
 
-**This document is a design spec, not a ship target.** It resolves the structural design questions blocking T-Lens-Application-Surface lane dispatch. The lane itself runs once cascade gates clear (T-Lens-Behavioral-Parity COMPLETE + R2-Evaluator landed). Open questions in §8 should be ratified by Director before implementation begins; substrate authoring (steps 1-2 above) can proceed once §8 is closed.
+**This document is a design spec, not a ship target.** It resolves the structural design questions blocking T-Lens-Application-Surface lane dispatch. The lane itself runs once cascade gates clear (T-Lens-Behavioral-Parity COMPLETE + R2-Evaluator landed). All §8 design questions resolved in-doc; no Director ratification required before substrate authoring begins.
