@@ -1,5 +1,11 @@
 //! PB-1 — Rust `main.rs` shell for generated `[[bin]]` shims (Item 5).
 //!
+//! **SG-0 / bounded-seed receipt:** hand-authored path is enumerated in
+//! `EXPECTED_HAND_AUTHORED_NON_TEST` in `sg0_census_test.rs` (not
+//! `GENERATED_FILES` / `build.rs` output). Narrow host helper for §4.2 shell
+//! text only; see `docs/invariants/bounded-substrate-seed.md` (no new
+//! substrate primitive — mirrors existing `std.process.ProcessExit`).
+//!
 //! Authority: `docs/design-pb-runtime-interpreter.md` §4.2 (`main` →
 //! `ProcessExit` → `ExitCode`). This module owns **parameterized Rust text**
 //! only: it does not resolve `BinShim.entry` `DeclarationRef` targets (row-#1
