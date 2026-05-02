@@ -3189,6 +3189,38 @@ mod signed_decimal_int_literal_tests {
             tokens.get(1).map(|t| &t.kind)
         );
     }
+
+    #[test]
+    fn infix_minus_without_whitespace_stays_binary_minus() {
+        let tokens = tokenize("1-1", "infix_minus.v3").expect("tokenize");
+        assert!(tokens.len() >= 4, "expected literal, minus, literal, EOF");
+        assert!(matches!(&tokens[0].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[1].kind, TokenKind::Minus));
+        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[3].kind, TokenKind::Eof));
+    }
+
+    #[test]
+    fn ident_minus_digit_without_whitespace_stays_binary_minus() {
+        let tokens = tokenize("x-1", "ident_minus.v3").expect("tokenize");
+        assert!(tokens.len() >= 4, "expected ident, minus, literal, EOF");
+        assert!(matches!(
+            &tokens[0].kind,
+            TokenKind::Ident(x) if x == "x"
+        ));
+        assert!(matches!(&tokens[1].kind, TokenKind::Minus));
+        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[3].kind, TokenKind::Eof));
+    }
+
+    #[test]
+    fn unary_minus_after_eq_still_merges_digits() {
+        let tokens = tokenize("=-42", "eq_unary.v3").expect("tokenize");
+        assert!(tokens.len() >= 3, "expected Eq, signed literal, EOF");
+        assert!(matches!(&tokens[0].kind, TokenKind::Eq));
+        assert!(matches!(&tokens[1].kind, TokenKind::IntLit(-42)));
+        assert!(matches!(&tokens[2].kind, TokenKind::Eof));
+    }
 }
 
 /// PB-Runtime / flat-namespace: L1 behavior marker `ValueBehavior` frees bare

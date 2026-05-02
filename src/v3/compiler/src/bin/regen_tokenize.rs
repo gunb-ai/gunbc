@@ -26,6 +26,26 @@ const SHARED_SYNTAX_FILE: &str = "dsl/extdeps/languages/dag/syntax.dag";
 const HEADER: &str = "// AUTO-GENERATED from `src/v3/compiler/tokenize.dag` via\n\
      // `regen_tokenize`. Regenerate instead of hand-editing.\n\n";
 
+/// Signed `-` + digit merge only in unary positions so infix `-` stays `Minus`
+/// (`1-1`, `x-1`). Inserted before `tokenize` in generated output.
+const MINUS_PREFIX_INT_HELPER: &str = r#"fn minus_prefixed_decimal_allowed(prev: Option<&TokenKind>) -> bool {
+    !matches!(
+        prev,
+        Some(
+            TokenKind::Ident(_)
+                | TokenKind::IntLit(_)
+                | TokenKind::StringLit(_)
+                | TokenKind::KwTrue
+                | TokenKind::KwFalse
+                | TokenKind::RParen
+                | TokenKind::RBracket
+                | TokenKind::RBrace
+        )
+    )
+}
+
+"#;
+
 fn main() {
     // Single-authority gate: the output path this driver writes must
     // be registered in `REGEN_OUTPUTS` (surfaced as
@@ -799,6 +819,7 @@ fn emit_tokenize_fn(
     }
 
     let mut s = String::new();
+    s.push_str(MINUS_PREFIX_INT_HELPER);
     s.push_str("pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {\n");
     s.push_str("    let bytes = source.as_bytes();\n");
     s.push_str("    let mut pos: usize = 0;\n");
@@ -811,7 +832,7 @@ fn emit_tokenize_fn(
     s.push_str("        let byte = bytes[pos];\n\n");
     s.push_str("        let start = pos;\n\n");
     s.push_str(
-        "        if byte == b'-' && bytes.get(pos + 1).is_some_and(|b| byte_matches(*b, ScannerCharClass::Digit)) {\n",
+        "        if byte == b'-'\n            && bytes.get(pos + 1).is_some_and(|b| byte_matches(*b, ScannerCharClass::Digit))\n            && minus_prefixed_decimal_allowed(tokens.last().map(|t: &Token| &t.kind))\n        {\n",
     );
     s.push_str("            let mut end = pos + 1;\n");
     s.push_str(

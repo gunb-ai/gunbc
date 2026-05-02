@@ -77,6 +77,22 @@ pub struct Token {
     pub span: SourceSpan,
 }
 
+fn minus_prefixed_decimal_allowed(prev: Option<&TokenKind>) -> bool {
+    !matches!(
+        prev,
+        Some(
+            TokenKind::Ident(_)
+                | TokenKind::IntLit(_)
+                | TokenKind::StringLit(_)
+                | TokenKind::KwTrue
+                | TokenKind::KwFalse
+                | TokenKind::RParen
+                | TokenKind::RBracket
+                | TokenKind::RBrace
+        )
+    )
+}
+
 pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
     let bytes = source.as_bytes();
     let mut pos: usize = 0;
@@ -92,6 +108,7 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
             && bytes
                 .get(pos + 1)
                 .is_some_and(|b| byte_matches(*b, ScannerCharClass::Digit))
+            && minus_prefixed_decimal_allowed(tokens.last().map(|t: &Token| &t.kind))
         {
             let mut end = pos + 1;
             while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {
