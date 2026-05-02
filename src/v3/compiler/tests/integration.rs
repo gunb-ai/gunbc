@@ -668,6 +668,33 @@ mod e7_analyze_complexity_integration {
                         dw.len(),
                         "wrapper must produce the same witness-spine count for root {selected_root:?}",
                     );
+                    // Strengthen length-equality to per-witness
+                    // content equality on the typed `Inhabits` arm.
+                    // SymbolicCost has PartialEq; Behavior on the
+                    // Violates arm does not, so fail-arm content
+                    // equality stays in the in-module unit tests.
+                    for (cw_i, dw_i) in cw.iter().zip(dw.iter()) {
+                        match (cw_i, dw_i) {
+                            (
+                                v3_compiler::Witness::Inhabits(cc),
+                                v3_compiler::Witness::Inhabits(dc),
+                            ) => assert_eq!(
+                                cc, dc,
+                                "wrapper must produce identical Inhabits content for root {selected_root:?}",
+                            ),
+                            (
+                                v3_compiler::Witness::Violates { .. },
+                                v3_compiler::Witness::Violates { .. },
+                            ) => panic!(
+                                "well-typed two-bind fixture should not emit Violates witnesses; \
+                                 likely regression for root {selected_root:?}",
+                            ),
+                            other => panic!(
+                                "wrapper and direct analyzer produced different witness arms for \
+                                 root {selected_root:?}: {other:?}",
+                            ),
+                        }
+                    }
                 }
                 other => panic!(
                     "expected both DimensionOk for selected root {selected_root:?}, got {other:?}",
