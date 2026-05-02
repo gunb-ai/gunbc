@@ -2485,7 +2485,10 @@ impl Dag {
     ///
     /// Cross-crate **tests** only (e.g. E-6 witnesses that compare bootstrap-full vs empty graphs).
     /// Production paths must use [`Dag::new`].
-    #[doc(hidden)]
+    ///
+    /// Gated behind feature `empty-substrate-for-tests` so normal library builds do not expose a
+    /// public constructor for substrate-invalid empty graphs ([`Dag::new`] remains the production entry).
+    #[cfg(feature = "empty-substrate-for-tests")]
     pub fn new_empty_for_testing() -> Self {
         Self::empty()
     }
