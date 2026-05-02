@@ -7,7 +7,7 @@ runtime `Value`, or introduce a parallel lens/report shape.
 **Inputs:** [`r3-pr-e6-lens-fold-readiness-audit.md`](r3-pr-e6-lens-fold-readiness-audit.md),
 [`r3-evaluator-dispatch.md`](r3-evaluator-dispatch.md) E6, live
 `src/v3/std/lens.dag`, live `src/v3/std/dimensions.dag`, live
-`src/v3/std/algebra.dag`, and the body evaluator in
+`dsl/std/algebra.dag` (`Monoid<T>` authority), and the body evaluator in
 `src/v3/compiler/src/lib.rs`.
 
 ## Next Gate
@@ -22,6 +22,11 @@ E6-G1 is not a new substrate carrier. It is an implementation/API fact:
 > function values through the shared `eval_node` / `eval_port` callable boundary,
 > and lift the returned `Witness<C>` / `OptionalDiagnostic` values into the
 > existing `DimensionReport<C>` carrier without fabricating a carrier on failure.
+
+The `Lens<C>` carrier itself is already live in `src/v3/std/lens.dag`; E6-G1
+does not sequence declaring that carrier. The still-missing substrate/API fact
+is an honest way to author or reference at least one `Lens<C>` **value** with
+function-valued fields and a `Monoid<C>` witness sourced from the live carriers.
 
 This is the narrowest useful unblock because the generic fold cannot prove even
 the empty/unit or single-behavior cases until it can:
