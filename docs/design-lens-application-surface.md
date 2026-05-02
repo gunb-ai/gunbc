@@ -240,6 +240,10 @@ data __apply_lens_my_search_function: SectionedLensApplication =
 
 **User intent**: "this CRDT data declaration has a per-write cost basis of O(log replicas); cost lens reads this when composing."
 
+**Worked-example discipline**: the audit
+[`docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`](audit/t-user-authored-cost-basis-discipline-worked-examples.md)
+splits this into two facts: the lens application owns `(lens, section, config, span)`, while a cost-lens-owned cost-basis declaration owns the `PerWrite` basis evidence. T-CostLens-Composition derives `N * log(replicas)` from writes and loop structure; the derived cost is not a second user-authored basis fact.
+
 ```dag
 apply_lens(cost, my_crdt_field, Enforce {
   budget: SymbolicCost { per_op: O_log_replicas }
@@ -256,6 +260,10 @@ apply_lens(cost, my_crdt_field, Enforce {
 ### §4.3 Memory-peak cost basis
 
 **User intent**: "this function's memory peak is O(input size); cost lens with the memory dimension reads this."
+
+**Worked-example discipline**: the audit
+[`docs/audit/t-user-authored-cost-basis-discipline-worked-examples.md`](audit/t-user-authored-cost-basis-discipline-worked-examples.md)
+keeps the application config separate from memory-basis evidence. The later memory-peak demonstration must declare peak composition semantics (for example max/live-overlap behavior) in the cost-lens authority; generic application config does not decide peak algebra.
 
 ```dag
 apply_lens(cost, my_memory_intensive_function, Enforce {
