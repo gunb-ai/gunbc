@@ -17,6 +17,7 @@
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
@@ -410,10 +411,17 @@ fn service_top_level_item_dispatch_fails_closed_until_service_block_ast_lands() 
         .expect("tokenize service anchor");
     let err = parse_for_test(&tokens, "top_level_service_anchor.v3")
         .expect_err("service should fail closed until the ServiceBlock AST/lowerer slice lands");
-    let msg = format!("{err:?}");
-    assert!(
-        msg.contains("service") || msg.contains("ServiceBlock"),
-        "service parse failure should name the service anchor; got: {msg}"
+    let Diagnostic::ParseError { message, span, .. } = err else {
+        panic!("expected ParseError for top-level service anchor, got {err:?}");
+    };
+    assert_eq!(
+        message,
+        "service items are recognized at the top-level boundary but the ServiceBlock parser scaffold is not landed yet",
+        "service parse failure should name the ServiceBlock anchor explicitly",
+    );
+    assert_eq!(
+        span.file, "top_level_service_anchor.v3",
+        "service parse failure should be anchored to the service keyword span",
     );
 }
 
