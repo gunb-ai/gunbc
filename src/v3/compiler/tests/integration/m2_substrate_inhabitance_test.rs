@@ -2969,3 +2969,105 @@ fn group_completion_is_bare_opaque_atom_with_one_type_parameter() {
          no value_body should be present"
     );
 }
+
+/// T-Numeric-Construction Slice 3 — `Int = AbelianGroup<GroupCompletion<Nat>>`
+/// resolves structurally as the canonical Q6 single-authority form per
+/// `docs/audit/t-numeric-construction-group-completion-6q.md`.
+///
+/// The ratchet enforces three structural facts at once:
+/// - `Int` lives in `dsl/std/integer.dag` (single authority).
+/// - The alias-chain target is an `AbelianGroup` instantiation (NOT
+///   `OrderedRing`/`Int64`, NOT the rejected compact `GroupCompletion<Nat>`
+///   form, NOT a `Word*` storage carrier).
+/// - The `AbelianGroup`'s carrier argument is itself an instantiation:
+///   `GroupCompletion<Nat>` — proving the two-step construction
+///   (`AbelianGroup<T>` standard parametric reading; `T = GroupCompletion<Nat>`
+///   is the derived carrier; `<Nat>` is the input commutative-monoid).
+#[test]
+fn int_default_alias_resolves_to_abelian_group_over_group_completion_of_nat() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let int_default = dag
+        .declaration_by_name("Int")
+        .expect("`Int` default alias missing from full bootstrap (T-Numeric-Construction Slice 3)");
+    assert_eq!(
+        int_default.span.file, "dsl/std/integer.dag",
+        "Int default alias must live in dsl/std/integer.dag, not in a parallel authority"
+    );
+
+    let abelian_group = dag
+        .declaration_by_name("AbelianGroup")
+        .expect("`AbelianGroup` algebra must be loaded from dsl/std/algebra.dag");
+    let group_completion = dag
+        .declaration_by_name("GroupCompletion")
+        .expect("`GroupCompletion` carrier must be loaded from dsl/std/algebra.dag (#1448)");
+    let nat = dag
+        .declaration_by_name("Nat")
+        .expect("`Nat` carrier must be loaded from dsl/std/nat.dag (Slice 2)");
+
+    // Walk the alias chain to the underlying instantiation.
+    let mut current = int_default;
+    let mut hops: usize = 0;
+    let connective = loop {
+        match &current.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByName(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByStructure(next)) => {
+                assert!(hops < 8, "Int alias chain too deep (cycle?)");
+                hops += 1;
+                current = dag.declaration(*next);
+            }
+            other => break other,
+        }
+    };
+
+    let outer_arg_decl = match connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, abelian_group.id,
+                "Int's outer instantiation must be `AbelianGroup`; not `OrderedRing`/`Int64` \
+                 (legacy storage chain), not the rejected compact `GroupCompletion<Nat>` form"
+            );
+            assert_eq!(
+                arguments.len(),
+                1,
+                "AbelianGroup<T> takes exactly one carrier type parameter"
+            );
+            arguments[0].value
+        }
+        other => panic!("Int must lower to an AbelianGroup instantiation; got {other:?}"),
+    };
+
+    // The carrier argument resolves to `GroupCompletion<Nat>` — itself an
+    // Instantiation { template: GroupCompletion, arguments: [Nat] }.
+    let carrier_decl = dag.declaration(outer_arg_decl);
+    match &carrier_decl.connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, group_completion.id,
+                "Int's AbelianGroup carrier must be `GroupCompletion<...>` — \
+                 the derived-carrier construction, not Nat directly (the \
+                 rejected `AbelianGroup<Nat>` form would assert Nat has \
+                 additive inverses) and not a `Word*` storage carrier"
+            );
+            assert_eq!(
+                arguments.len(),
+                1,
+                "GroupCompletion<M> takes exactly one type parameter"
+            );
+            assert_eq!(
+                arguments[0].value, nat.id,
+                "GroupCompletion's input commutative-monoid must be `Nat`; \
+                 the construction chain is Magnitude → Nat → Int"
+            );
+        }
+        other => panic!(
+            "Int's AbelianGroup carrier must be a GroupCompletion instantiation; got {other:?}"
+        ),
+    }
+}
