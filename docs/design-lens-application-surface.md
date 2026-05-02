@@ -129,13 +129,15 @@ C-8 is the canonical fail-closed compilation rule. A "warning" mode at lens appl
 
 If a user wants to "see the lens value but not enforce", that is `Introspect` mode — the lens runs, produces a value, and the value is available for downstream lenses (or for human reading via debug surfaces). No diagnostic, no enforcement, no warning. This is a different operation than enforcement-with-a-warning; it has clean semantics.
 
-### §3.2 Default policy for complexity contracts
+### §3.2 Default policy for complexity contracts — user-driven
 
-Per Director ratification 2026-05-02 + user directive: the default policy for complexity contracts is **opt-out** (compiler enforces by default; explicit waiver required for exceptions). The substrate shape for the default + waiver:
+Per Director ratification 2026-05-02 + user directive ("if we have suboptimal algorithms, we throw a compiler error"): complexity contracts are **user-authored**, with explicit budgets. There is no implicit auto-inferred baseline (resolution per §8.3 — auto-inferred baseline lacks a persisted authority and would lose the regression fact on every recompile).
 
-**Default**: when a function declaration has no explicit `SectionedLensApplication` for the complexity lens, the compiler applies a default budget — currently `O(unbounded)` (no budget), meaning every function is introspected by default but not enforced. Once T-Lens-Behavioral-Parity ships behavioral complexity, the default flips to *enforced with implicit budget derived from the function's body* — i.e., the compiler infers the actual complexity class and rejects regressions.
+**Default for unannotated functions**: the compiler emits an implicit `Introspect`-mode application during the lens fold — lens value is computed and surfaced for inspection; no enforcement, no compile error. (Per §5.1: this synthesis is fold-pass-only; not stored in source.)
 
-**Waiver**: when a user wants to override the default (accept a function whose complexity exceeds the inferred / user-named budget), they author a structural waiver:
+**Enforcement opt-in**: the user explicitly authors `apply_lens(complexity, fn, Enforce { budget: <chosen class>, diagnostic_severity: Error })` for functions where they want to commit to a complexity contract. Compile errors fire when the function's actual complexity exceeds the named budget.
+
+**Waiver**: when a user previously authored an `Enforce` budget but later wants to relax it (the function legitimately needs a worse class for a justified reason), they author a structural waiver:
 
 ```dag
 data my_function_complexity_waiver: ComplexityBudgetWaiver = {
@@ -243,17 +245,15 @@ The compiler already has a lens-fold pass (per [`docs/design-lens-framework.md`]
 
 The new step is structurally identical to the existing fold — same `Lens<C>` reader, same `Witness<C>` output type — with an additional budget comparison and Diagnostic emission. The implementation cost is O(1) lens-applications-per-program (typically tens to hundreds per project, not millions).
 
-### §5.1 Default-policy default-application synthesis
+### §5.1 Default-application synthesis (Introspect-only)
 
-For the *default* application of the complexity lens (per §3.2), the compiler synthesizes `SectionedLensApplication` records implicitly during the lens fold — one per function declaration, with `config: Enforce { budget: <inferred from body>, diagnostic_severity: Error }`. These synthesized records are not stored in the `.dag` source; they exist only during the fold pass.
+For unannotated functions (per §3.2), the compiler synthesizes `SectionedLensApplication` records implicitly during the lens fold — one per function declaration, with `config: Introspect`. These synthesized records are not stored in the `.dag` source; they exist only during the fold pass.
 
-**Why synthesized rather than authored**: writing a default complexity application for every function would inflate the source. The synthesis is structural (every Declaration of arrow-connective shape gets one) and can be turned off per-declaration via an explicit user-authored introspection-mode application:
+The synthesizer **never** emits `Enforce` mode for unannotated functions — auto-inferred budgets lack persisted authority (per §8.3). Enforcement requires explicit user authoring of `apply_lens(complexity, fn, Enforce { budget: <class>, ... })`. The synthesizer's role is purely to ensure every function has at least Introspect coverage so the lens-fold pass produces a value for every port (for downstream lens composition + debug surfaces).
 
-```dag
-apply_lens(complexity, my_function, Introspect)
-```
+**Why fold-pass synthesis rather than no-synthesis**: per `feedback_compositional_not_templating`, the lens fold is a structural walk — every declaration produces a value. The Introspect synthesis ensures the walk is total over function declarations without requiring explicit user authoring for every function.
 
-This explicit application overrides the synthesized default for `my_function`. The "explicit overrides synthesized" rule resolves at the lens-fold layer (look up explicit applications first; synthesize only if absent).
+User-authored `apply_lens(complexity, my_function, Introspect)` is functionally identical to the synthesized default; the explicit form is only useful for documentation purposes (signaling "I considered enforcement and chose introspection").
 
 ## §6. Cross-program coordination
 
@@ -297,20 +297,21 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 **Implementation note:** at parse time, the type-checker maintains a per-`(lens, section)` count of `Enforce` mode applications. Count > 1 fires a Diagnostic naming both authoring sites. `Introspect` mode is unbounded.
 
-### §8.3 Default-application budget inference — RESOLVED (conditionally): regression-detection class, gated on T-Lens-Behavioral-Parity COMPLETE
+### §8.3 Default-application semantics — RESOLVED: user-driven contracts; no implicit baseline
 
-**Question:** For the synthesized default complexity application, what does "budget inferred from the body" mean exactly?
+**Question:** For functions without an explicit `apply_lens(complexity, ...)` declaration, what does the compiler do?
 
-**Resolved:** budget = computed asymptotic class at the time of synthesis. Any subsequent change that *increases* the class fires a Diagnostic (regression detection). This is the "implicit baseline" semantics — the compiler records what the function's complexity *was* and rejects changes that worsen it without an explicit user authoring update (either an explicit budget or an explicit waiver).
+**Resolved:** the compiler emits an implicit `Introspect`-mode application — no enforcement, just lens-value computation for inspection. **There is NO implicit Enforce-with-inferred-budget mode.** The user gets enforcement only by explicitly authoring `apply_lens(complexity, fn, Enforce { budget: <user-named class>, ... })`.
 
-**Cascade gate:** this resolution depends on T-Lens-Behavioral-Parity being COMPLETE for the complexity lens (asymptotic-class computation is reliable). Until that lane closes, the default complexity application is `Introspect`-mode only — the compiler records the lens value without enforcement, and surfaces it for inspection. When T-Lens-Behavioral-Parity COMPLETE lands, the default flips from `Introspect` to `Enforce { regression_baseline: <computed class> }`.
+**Why no implicit Enforce-with-inferred-baseline** (per codex BLOCKING on PR #1488 sha 265d8ef7): an inferred baseline computed from the current function body has no persisted authority. On the next compile, the synthesizer recomputes from the new (potentially-worse) body, getting the new class as both "current value" and "baseline" — they always agree, and no regression ever fires. The fact the design claimed to enforce (regression detection) was actually lost on every recompile. P2 single-authority + facts-flow-forward: a regression baseline must be a *declared authority* (in source), not an *ephemeral recomputation*.
 
-**Implementation note:** the cascade-flip is purely synthesizer-side, NOT substrate-side. The synthesizer constructs different `ApplicationConfig<AsymptoticClass>` variants depending on T-Lens-Behavioral-Parity status:
+**Why not synthesizer-emitted source declarations** (alternative considered): the synthesizer could write the inferred baseline back to source as an `apply_lens` declaration the user checks in. This is generated-code-on-disk, forbidden by `feedback_no_generated_code_on_disk`. It also changes the user's source file as a side effect of compilation — surprising and reversible-by-edit only.
 
-- Pre-cascade (T-Lens-Behavioral-Parity not COMPLETE): synthesizer emits `Introspect` for every default complexity application.
-- Post-cascade (T-Lens-Behavioral-Parity COMPLETE): synthesizer emits `Enforce { budget: <computed class>, diagnostic_severity: Error }` — the computed class IS the budget, captured at synthesis time so subsequent code changes that increase the class fire a regression diagnostic.
+**The structural answer**: complexity contracts are user-authored. The user decides which functions have a budget and what it is. The compiler's role is (a) introspection (compute and report) for unannotated functions, (b) enforcement for explicitly-authored `Enforce` applications. No magic baseline.
 
-No optional `regression_baseline_pinned: AsymptoticClass?` field on `SectionedLensApplication` (which would re-create the illegal-states-representable pattern that the §2 sum-type fix dissolved — absence = introspection, presence = enforcement). The variant choice carries the same fact structurally: `Enforce.budget` IS the regression baseline; `Introspect` has no baseline because there is no enforcement. The cascade just changes which variant the synthesizer constructs.
+**Re-framing "opt-out for complexity"** (per the original user directive 2026-05-02 "if we have suboptimal algorithms, we throw a compiler error"): "opt-out" means the user *can* opt out of enforcement (via `Introspect` or via no application at all); the *compile error* fires when the user *opts in* with a budget the actual function exceeds. The compiler does not infer suboptimality; the user names what they consider acceptable, and divergence from the named contract fires.
+
+**`ComplexityBudgetWaiver`** retains its original purpose: when the user authored `apply_lens(complexity, fn, Enforce { budget: O_log_n, ... })` and later wants to relax it (the function legitimately needs O(n) for a justified reason), the waiver structurally records the exception with `justification`. The waiver is for accepted-known-violations of explicit user contracts, not for absent-implicit-baseline contracts.
 
 ### §8.4 Waiver lifecycle — RESOLVED: separate-lens future scope, dissolution-trigger named
 

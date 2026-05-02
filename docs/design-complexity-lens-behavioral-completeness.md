@@ -532,7 +532,7 @@ The corpus covers each `AsymptoticClass` variant at least once, with at least on
 The dependency chain (per §2 cascade-gate sequence) drives a strict ordering:
 
 1. **T-E-P-Producer-Broadening lands** (separate lane; cascade prerequisite).
-2. **Substrate carriers land** in one PR per §1: renderer-side InternTable name wiring (§1.2 — no substrate change to `SizeVariable`), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` + lattice declaration (§1.5), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
+2. **Substrate carriers land** in one PR per §1: renderer-side InternTable name wiring (§1.2 — no substrate change to `SizeVariable`), `AsymptoticClass` + lattice declaration (§1.4), `Certainty` 2-variant sum **without** an associated lattice instance (§1.5 — composition is cost-aware via `compose_summary_*` per §3.1, not lattice-fold), `cost_bound_to_symbolic` projection (§1.6), `ComplexitySummary` carrier (§1.7), `Dimension<SymbolicCost>` data declarations (§1.3 — gated on class-5).
 3. **Lens consumer rewrite** in one PR per §3.
 4. **Cementing test + fixture corpus** in one PR per §4.
 5. **Register update** to `BEHAVIORALLY COMPLETE` in the same PR as the cementing test.
@@ -576,7 +576,7 @@ Per `feedback_design_before_implement` — resolve all design questions before i
 
 ### §7.6 What about the four hand-rolled `BoundedLattice<T>` instances in ROADMAP? — RESOLVED: this design dissolves one (FermiDepth-adjacent class-of-bounds), validates the pattern for the rest
 
-(Resolved by §1.4's discipline.) The ROADMAP P2 entry at `:362-365` flags four ad-hoc lattices: `FermiDepth`, `Encoding`, `DescentEvidence`, `SubValueRelation`. This design declares `BoundedLattice<AsymptoticClass>` and `BoundedLattice<Certainty>` as proper instances per `dsl/std/algebra.dag:263`. The `meet(top, a) = a` law (per ROADMAP:534 SubValueRelation receipt) is *verified by construction* — `meet_asymptotic_class(ClassUnknown, a) = a` is structurally trivial because `ClassUnknown` is the dominance top. Same shape applies to `Certainty`. The two new instances are both algebraically honest from day one, validating the dissolution path for the four pre-existing instances. Their dissolution stays under T-V-L4-L7-Direct's `l7_algebraic_laws_witnessed` gate (per [`docs/r3-structure.md`](r3-structure.md):155).
+(Resolved by §1.4's discipline.) The ROADMAP P2 entry at `:362-365` flags four ad-hoc lattices: `FermiDepth`, `Encoding`, `DescentEvidence`, `SubValueRelation`. This design declares **one** `BoundedLattice<AsymptoticClass>` instance per `dsl/std/algebra.dag:263` (no `BoundedLattice<Certainty>` — `Certainty` composition is cost-aware per §1.5 + §3.1, not lattice-fold). The `meet(top, a) = a` law (per ROADMAP:534 SubValueRelation receipt) is *verified by construction* — `meet_asymptotic_class(ClassUnknown, a) = a` is structurally trivial because `ClassUnknown` is the dominance top. The new `BoundedLattice<AsymptoticClass>` instance is algebraically honest from day one, validating the dissolution path for the four pre-existing instances. Its dissolution stays under T-V-L4-L7-Direct's `l7_algebraic_laws_witnessed` gate (per [`docs/r3-structure.md`](r3-structure.md):155).
 
 ## §8. Relationship to existing authority
 
