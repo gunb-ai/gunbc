@@ -1071,6 +1071,13 @@ fn substrate_coproducts_match_runtime_carriers() {
         ]
     );
     assert_eq!(
+        sum_variants(&dag, "TargetIntegerInhabitanceBound"),
+        vec![
+            (String::from("BoundUnspecified"), Vec::new()),
+            (String::from("StaticBoundFact"), vec![String::from("_0")]),
+        ]
+    );
+    assert_eq!(
         sum_variants(&dag, "PositiveIntervalWidth"),
         vec![
             (String::from("OneUnit"), Vec::new()),
@@ -1540,6 +1547,66 @@ fn bound_declaration_static_bound_wraps_interval_int() {
         "PlatformDependent must remain a distinct no-payload kind, not an \
          Interval<Int> value"
     );
+}
+
+#[test]
+fn target_integer_type_inhabitance_rows_are_structural_slice_b_receipt() {
+    let dag = Dag::new();
+    assert!(
+        dag.diagnostics().is_empty(),
+        "bootstrap diagnostics: {:?}",
+        dag.diagnostics()
+    );
+    let meta = dag
+        .declaration_by_name("TargetIntegerTypeInhabitance")
+        .expect("TargetIntegerTypeInhabitance meta");
+    let mut rows: Vec<&str> = Vec::new();
+    for decl in dag.declarations() {
+        if decl.meta_tag != Some(meta.id) {
+            continue;
+        }
+        let name = decl.name.as_deref().expect("named inhabitance data row");
+        rows.push(name);
+        assert!(
+            matches!(&decl.value_body, Some(ValueBody::Structural { .. })),
+            "`{name}` must lower as ValueBody::Structural (Coercion-Fold Slice B); got {:?}",
+            decl.value_body
+        );
+    }
+    assert!(
+        rows.len() >= 8,
+        "expected Rust/Python/Go TargetIntegerTypeInhabitance population; got {:?}",
+        rows
+    );
+}
+
+#[test]
+fn positive_interval_width_unit_count_rejects_negative_units_literal() {
+    // Full-bootstrap `infer` can overflow the default test thread stack on some hosts;
+    // mirror v2 integration tests by giving this compile a dedicated larger stack.
+    let hit = std::thread::Builder::new()
+        .stack_size(8 * 1024 * 1024)
+        .spawn(|| {
+            let source = "module test_negative_unit_count\n\n\
+import v3.std.substrate { PositiveIntervalWidth }\n\n\
+type Holder {\n\
+  w: PositiveIntervalWidth\n\
+}\n\n\
+data bad: Holder = { w: UnitCount { units: -1 } }\n";
+            let dag = semantic_dag_for(source, "positive_interval_unit_count_negative.v3");
+            let hit = dag.diagnostics().iter().any(|(_, diagnostic)| {
+                matches!(
+                    diagnostic,
+                    Diagnostic::ResolveError { name, .. }
+                        if name.contains("nonnegative") && name.contains("UnitCount")
+                )
+            });
+            hit
+        })
+        .expect("spawn unit_count negative test thread")
+        .join()
+        .expect("unit_count negative test thread panicked");
+    assert!(hit, "expected nonnegative UnitCount.units ResolveError");
 }
 
 #[test]

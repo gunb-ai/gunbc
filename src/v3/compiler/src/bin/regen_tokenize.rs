@@ -811,7 +811,7 @@ fn emit_tokenize_fn(
     s.push_str("        let byte = bytes[pos];\n\n");
     s.push_str("        let start = pos;\n\n");
     s.push_str(
-        "        if byte == b'-' && bytes.get(pos + 1).map_or(false, |b| byte_matches(*b, ScannerCharClass::Digit)) {\n",
+        "        if byte == b'-' && bytes.get(pos + 1).is_some_and(|b| byte_matches(*b, ScannerCharClass::Digit)) {\n",
     );
     s.push_str("            let mut end = pos + 1;\n");
     s.push_str(

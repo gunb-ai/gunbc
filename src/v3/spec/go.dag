@@ -13,7 +13,6 @@ import v3.std.emit_model {
   CollectionOps, ValueConstructionSyntax, LanguageSpec,
   TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
-import v3.std.substrate { BoundDeclaration }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
   ShapeATargetSourceFiltering, ExecutionModelRequirement,
@@ -74,7 +73,10 @@ data go_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
   language: go_language
   kernel_integer: Int32
   algebra: Int32
-  bound: BoundDeclarationRef { decl: coercion_fold_bound_i32_full }
+  bound: StaticBoundFact(BoundedInterval {
+    lower: -2147483648
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
   type_realization: go_int32
 }
 

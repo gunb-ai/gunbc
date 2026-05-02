@@ -93,6 +93,11 @@ type PositiveIntervalWidth
   // (inclusive discrete span `units` above `lower` in `BoundedInterval<Int>`).
   // Peano spines remain valid for small cardinalities; Coercion-Fold rows use
   // `UnitCount` so Examples 2 / 6 / 8 intervals fit in spec files.
+  // Invariant: `units` must be a nonnegative `Int` literal — enforced at lower
+  // time in `lower_structural_field_value` (`enforce_non_negative_unit_count_payload`
+  // in `lower.rs`); negative literals fail closed before `ValueBody::Structural`.
+  // Peano `OneUnit` / `AdditionalUnit` remains the proof-carrying spine where a
+  // unary encoding is required; `UnitCount` is decimal shorthand under that gate.
   | UnitCount { units: Int }
 
 type IntervalWidth
@@ -106,6 +111,10 @@ type IntervalWidth
 type Interval<D>
   = BoundedInterval { lower: D, width: IntervalWidth }
   | Unbounded
+
+// Alias so LanguageSpec-side carriers (`emit_model`) can name fixed `Int`
+// intervals without instantiating `Interval<Int>` at every import site.
+type IntInterval = Interval<Int>
 
 // 🟢 TERMINAL at Coercion-Fold bound-declaration scope. Static value-domain
 // bounds are represented by the shared Interval<Int> parent; platform-dependent

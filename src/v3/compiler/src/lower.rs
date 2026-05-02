@@ -3459,6 +3459,51 @@ fn duplicate_record_field(
     fields.iter().find(|field| !seen.insert(field.name.clone()))
 }
 
+/// `PositiveIntervalWidth.UnitCount` carries a Peano-spine authoring shorthand;
+/// reject negative `units` literals so width magnitude stays nonnegative at rest.
+fn enforce_non_negative_unit_count_payload(
+    dag: &Dag,
+    variant_payload_ty: DeclarationId,
+    payload: &[crate::dag::FieldValue],
+    span: &SourceSpan,
+) -> Result<(), Diagnostic> {
+    let Some(piw_decl) = dag.declaration_by_name("PositiveIntervalWidth") else {
+        return Ok(());
+    };
+    let TypeConnective::Disj { variants } = &piw_decl.connective else {
+        return Ok(());
+    };
+    let Some(unit_variant) = variants.iter().find(|v| v.label == "UnitCount") else {
+        return Ok(());
+    };
+    if unit_variant.ty != variant_payload_ty {
+        return Ok(());
+    }
+    let Some(first) = payload.first() else {
+        return Err(Diagnostic::ResolveError {
+            name: "PositiveIntervalWidth.UnitCount payload is empty".to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        });
+    };
+    match first {
+        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) if *n >= 0 => Ok(()),
+        crate::dag::FieldValue::Literal(LiteralBits::Int(n)) => Err(Diagnostic::ResolveError {
+            name: format!(
+                "PositiveIntervalWidth.UnitCount requires nonnegative `units` literal; got {n}"
+            ),
+            span: span.clone(),
+            fixes: Vec::new(),
+        }),
+        _ => Err(Diagnostic::ResolveError {
+            name: "PositiveIntervalWidth.UnitCount requires a literal Int `units` field"
+                .to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        }),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn lower_structural_field_value(
     data_name: &str,
@@ -3896,6 +3941,12 @@ fn lower_structural_field_value(
                     pending_refined_function_refs,
                 )?);
             }
+        }
+        if let Err(diag) =
+            enforce_non_negative_unit_count_payload(dag, variant_decl_id, &payload, variant_span)
+        {
+            report_declaration_error(dag, diag);
+            return None;
         }
         return Some(crate::dag::FieldValue::Variant {
             constructor: variant_decl_id,

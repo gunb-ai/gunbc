@@ -67,7 +67,6 @@ import v3.std.emit_model {
   TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
 import v3.std.substrate {
-  BoundDeclaration,
   SubstrateAccessorRealization, SubstrateAccessorBinding,
   port, node, resolve_producer, lane2_workflow_at, declaration_by_id
 }
@@ -153,27 +152,20 @@ data rust_i128: TypeRealization = {
   cost: 1
 }
 
-// Shared `BoundDeclaration` substrate for Coercion-Fold Examples 2, 6, 8 (cross-target same refs).
-data coercion_fold_bound_u32_0_to_max: BoundDeclaration = StaticBound(BoundedInterval {
-  lower: 0
-  width: PositiveWidth(UnitCount { units: 4294967295 })
-})
-
-data coercion_fold_bound_i32_full: BoundDeclaration = StaticBound(BoundedInterval {
-  lower: -2147483648
-  width: PositiveWidth(UnitCount { units: 4294967295 })
-})
-
-// Example-family: arbitrary-precision value domain (distinct from any fixed-width row).
-data coercion_fold_bound_int_unbounded: BoundDeclaration = StaticBound(Unbounded)
-
 // ── TargetIntegerTypeInhabitance rows (design-emission-model Examples 1, 2, 5, 6, 8 family) ──
+// Bounds use `StaticBoundFact(Interval<Int>)` inline so rows lower structurally
+// (DB-10: top-level `data …: BoundDeclaration = …` stays Unparsed). Signed
+// interval lowers use decimal literals such as `-2147483648`, produced by the
+// v3 tokenizer’s `-` + digits spelling (see `tokenize_generated.rs`).
 
 data rust_integer_inhabit_u32_at_program_bound: TargetIntegerTypeInhabitance = {
   language: rust_language
   kernel_integer: UInt32
   algebra: UInt32
-  bound: BoundDeclarationRef { decl: coercion_fold_bound_u32_0_to_max }
+  bound: StaticBoundFact(BoundedInterval {
+    lower: 0
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
   type_realization: rust_u32
 }
 
@@ -181,7 +173,10 @@ data rust_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
   language: rust_language
   kernel_integer: Int32
   algebra: Int32
-  bound: BoundDeclarationRef { decl: coercion_fold_bound_i32_full }
+  bound: StaticBoundFact(BoundedInterval {
+    lower: -2147483648
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
   type_realization: rust_i32
 }
 

@@ -3168,6 +3168,29 @@ mod tokenize_ascii_parity_tests {
     }
 }
 
+/// Signed decimal literals (`-` immediately followed by ASCII digits) for
+/// Coercion-Fold interval lowers (`src/v3/spec/rust.dag` Slice B rows).
+#[cfg(test)]
+mod signed_decimal_int_literal_tests {
+    use super::tokenize::{tokenize, TokenKind};
+
+    #[test]
+    fn minus_digits_lexes_as_single_int_lit_i32_min() {
+        let tokens =
+            tokenize("-2147483648", "signed_decimal_int_literal_tests.v3").expect("tokenize");
+        assert!(
+            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if *n == -2147483648),
+            "expected `-2147483648` as one token; got {:?}",
+            tokens.first().map(|t| &t.kind)
+        );
+        assert!(
+            matches!(tokens.get(1).map(|t| &t.kind), Some(TokenKind::Eof)),
+            "expected EOF after literal; got {:?}",
+            tokens.get(1).map(|t| &t.kind)
+        );
+    }
+}
+
 /// PB-Runtime / flat-namespace: L1 behavior marker `ValueBehavior` frees bare
 /// `Value` for runtime union carriers (`type Value = …` in user or evaluator DAG).
 #[cfg(test)]

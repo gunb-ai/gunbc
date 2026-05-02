@@ -26,7 +26,6 @@ import v3.std.emit_model {
   CollectionOps, ValueConstructionSyntax, LanguageSpec,
   TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
-import v3.std.substrate { BoundDeclaration }
 import std.integer { Int }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -177,7 +176,10 @@ data python_integer_inhabit_at_i32_program_bound: TargetIntegerTypeInhabitance =
   language: python_language
   kernel_integer: Int
   algebra: Int
-  bound: BoundDeclarationRef { decl: coercion_fold_bound_i32_full }
+  bound: StaticBoundFact(BoundedInterval {
+    lower: -2147483648
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
   type_realization: python_int
 }
 
@@ -186,7 +188,7 @@ data python_integer_inhabit_unbounded_decl: TargetIntegerTypeInhabitance = {
   language: python_language
   kernel_integer: Int
   algebra: Int
-  bound: BoundDeclarationRef { decl: coercion_fold_bound_int_unbounded }
+  bound: StaticBoundFact(Unbounded)
   type_realization: python_int
 }
 

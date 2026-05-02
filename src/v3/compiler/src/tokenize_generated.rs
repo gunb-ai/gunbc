@@ -88,15 +88,10 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
 
         let start = pos;
 
-        if byte_matches(byte, ScannerCharClass::Whitespace) {
-            pos += 1;
-            continue;
-        }
-
         if byte == b'-'
             && bytes
                 .get(pos + 1)
-                .map_or(false, |b| byte_matches(*b, ScannerCharClass::Digit))
+                .is_some_and(|b| byte_matches(*b, ScannerCharClass::Digit))
         {
             let mut end = pos + 1;
             while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {
@@ -120,6 +115,11 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 span: SourceSpan::new(file, start as u32, end as u32),
             });
             pos = end;
+            continue;
+        }
+
+        if byte_matches(byte, ScannerCharClass::Whitespace) {
+            pos += 1;
             continue;
         }
 
