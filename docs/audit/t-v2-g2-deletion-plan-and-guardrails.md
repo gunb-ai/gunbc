@@ -68,7 +68,12 @@ Inside the deletion PR, sweep doc-comment / string-literal `src/v2/` references 
 grep -rln 'src/v2/' src/v3/ dsl/ docs/ | xargs -I {} echo "review: {}"
 ```
 
-For each match, decide: keep (historical reference), delete (rotted comment), or rephrase (general statement that no longer needs v2 context). Per migration matrix §6.4: "do not pre-empt; sweep at G-2." This sweep is bounded and listed explicitly so it doesn't expand into a broader churn.
+Per-tree disposition (must be consistent with Gd-1, which fail-closes on zero matches in `src/`, `dsl/`, `.github/`):
+
+- **`src/v3/`, `dsl/`, `.github/`** — match must be **deleted or rephrased to remove the trigger**. "Keep" is NOT permitted in these trees because Gd-1 scans them and would fail-open if a match survived.
+- **`docs/`** — "keep" permitted for genuine historical references (Gd-1 does not scan `docs/`); delete rotted comments; rephrase general statements that no longer need v2 context.
+
+Per migration matrix §6.4: "do not pre-empt; sweep at G-2." This sweep is bounded and listed explicitly so it doesn't expand into a broader churn.
 
 ---
 
