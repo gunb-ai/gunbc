@@ -49,6 +49,8 @@ Incremental Evaluator substrate landings (e.g. PR-E lineage called out in progra
 - `src/v3/compiler/src/lens_apply.rs`
 - `src/v3/compiler/src/lens_testgen.rs`
 
+**Mechanical anchor:** `EXPECTED_HAND_AUTHORED_NON_TEST` is the Rust `const` slice in `src/v3/compiler/tests/integration/sg0_census_test.rs` (not a path on disk). Each bullet above is a **string literal** in that slice; the corresponding `.rs` files exist under `src/v3/compiler/` (e.g. `lens_apply.rs` is present at `src/v3/compiler/src/lens_apply.rs`).
+
 Re-verify after any SG-0 census edit by searching those strings inside `EXPECTED_HAND_AUTHORED_NON_TEST` (line numbers drift; the sorted path list is the authority).
 
 **Conclusion — P2:** **Still blocked** on T-LensProducer-Retirement / SG-0 choreography per the brief; no evidence in this audit that the XL lane’s retirement sub-gates are cleared or that SG-0 non-test has dropped to zero.
