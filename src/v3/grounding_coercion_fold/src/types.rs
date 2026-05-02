@@ -10,8 +10,10 @@
 /// (substrate / #1286 / manager #1133).
 ///
 /// **`ScratchIntExamples`** — **checkpoint only**: drives [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
-/// Int-family examples without walking Phase 1 Dag rows. Remove or supersede when a declared
-/// projection replaces this scratch path.
+/// Int-family examples. Still reads the bootstrap `Dag` once to count
+/// `TargetIntegerTypeInhabitance` declarations (`emit_model.dag`, **INVARIANTS.md E-6**
+/// same-PR witness); row payloads are not interpreted until Slice C replaces this path.
+/// Remove or supersede when a declared projection replaces this scratch path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum LanguageSpecProjection {
     #[default]

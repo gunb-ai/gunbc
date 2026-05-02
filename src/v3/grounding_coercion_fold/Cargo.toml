@@ -11,3 +11,7 @@ license.workspace = true
 [dependencies]
 v3-compiler = { path = "../compiler" }
 v3-grounding-lifetime = { path = "../grounding_lifetime" }
+
+[dev-dependencies]
+# `#[test]` witnesses call `Dag::new_empty_for_testing` (feature-gated on `v3-compiler`).
+v3-compiler = { path = "../compiler", features = ["empty-substrate-for-tests"] }

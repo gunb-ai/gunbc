@@ -127,6 +127,7 @@ fn generate(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> String {
     let diag_int_pre = string_data_named(dag, "diagnostic_invalid_integer_literal_prefix");
     let diag_int_suf = string_data_named(dag, "diagnostic_invalid_integer_literal_suffix");
     let escapes = collect_string_escape_rows(dag);
+    let minus_infix_labels = collect_minus_infix_only_after_token_kinds(dag);
 
     let mut out = String::new();
     out.push_str("use crate::diagnostics::{Diagnostic, SourceSpan};\n");
@@ -151,9 +152,86 @@ pub struct Token {
         &diag_int_suf,
         &escapes,
         &ascii_scan_order,
+        &minus_infix_labels,
     ));
     out.push_str(&emit_punctuation_token(&puncts));
     out
+}
+
+fn collect_minus_infix_only_after_token_kinds(dag: &Dag) -> Vec<String> {
+    let decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("minus_infix_only_after_token_kinds"))
+        .unwrap_or_else(|| {
+            panic!(
+                "missing `minus_infix_only_after_token_kinds` data in `{TOKENIZE_AUTHORITY_FILE}`"
+            )
+        });
+    let Some(ValueBody::List(values)) = decl.value_body.as_ref() else {
+        panic!(
+            "`minus_infix_only_after_token_kinds` in `{TOKENIZE_AUTHORITY_FILE}` must be a list"
+        );
+    };
+    let mut out = Vec::new();
+    for value in values {
+        match value {
+            FieldValue::Literal(LiteralBits::String(s)) => out.push(s.clone()),
+            other => panic!(
+                "`minus_infix_only_after_token_kinds`: expected string literal elements, got {other:?}"
+            ),
+        }
+    }
+    assert!(
+        !out.is_empty(),
+        "`minus_infix_only_after_token_kinds` must not be empty"
+    );
+    out
+}
+
+fn token_kind_pattern_for_minus_disambiguation(label: &str) -> &'static str {
+    match label {
+        "Ident" => "TokenKind::Ident(_)",
+        "IntLit" => "TokenKind::IntLit(_)",
+        "StringLit" => "TokenKind::StringLit(_)",
+        "KwTrue" => "TokenKind::KwTrue",
+        "KwFalse" => "TokenKind::KwFalse",
+        "RParen" => "TokenKind::RParen",
+        "RBracket" => "TokenKind::RBracket",
+        "RBrace" => "TokenKind::RBrace",
+        other => panic!(
+            "unsupported `{other}` in `minus_infix_only_after_token_kinds`; \
+             add a `TokenKind` arm to `token_kind_pattern_for_minus_disambiguation` \
+             in `regen_tokenize.rs`"
+        ),
+    }
+}
+
+fn emit_minus_prefixed_decimal_allowed(labels: &[String]) -> String {
+    assert!(
+        !labels.is_empty(),
+        "`minus_infix_only_after_token_kinds` must name at least one variant"
+    );
+    let mut inner = String::new();
+    for (idx, label) in labels.iter().enumerate() {
+        let pat = token_kind_pattern_for_minus_disambiguation(label);
+        if idx == 0 {
+            inner.push_str(pat);
+        } else {
+            inner.push_str("\n                | ");
+            inner.push_str(pat);
+        }
+    }
+    format!(
+        "fn minus_prefixed_decimal_allowed(prev: Option<&TokenKind>) -> bool {{\n\
+    !matches!(\n\
+        prev,\n\
+        Some(\n\
+            {inner}\n\
+        )\n\
+    )\n\
+}}\n\n"
+    )
 }
 
 fn emit_char_scanner_class_scaffolding(scan_order: &[String]) -> String {
@@ -765,6 +843,7 @@ fn emit_tokenize_fn(
     diag_int_suf: &str,
     escapes: &[(u8, i64)],
     ascii_scan_order: &[String],
+    minus_infix_only_after: &[String],
 ) -> String {
     let ensure_classes = |required: &[&str]| {
         for name in required {
@@ -799,6 +878,7 @@ fn emit_tokenize_fn(
     }
 
     let mut s = String::new();
+    s.push_str(&emit_minus_prefixed_decimal_allowed(minus_infix_only_after));
     s.push_str("pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {\n");
     s.push_str("    let bytes = source.as_bytes();\n");
     s.push_str("    let mut pos: usize = 0;\n");
@@ -810,6 +890,48 @@ fn emit_tokenize_fn(
     s.push_str("    while pos < bytes.len() {\n");
     s.push_str("        let byte = bytes[pos];\n\n");
     s.push_str("        let start = pos;\n\n");
+    s.push_str(
+        "        if byte == b'-'\n            && bytes.get(pos + 1).is_some_and(|b| byte_matches(*b, ScannerCharClass::Digit))\n            && minus_prefixed_decimal_allowed(tokens.last().map(|t: &Token| &t.kind))\n        {\n",
+    );
+    s.push_str("            let mut end = pos + 1;\n");
+    s.push_str(
+        "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {\n",
+    );
+    s.push_str("                end += 1;\n");
+    s.push_str("            }\n");
+    s.push_str("            let literal = &source[pos + 1..end];\n");
+    s.push_str(
+        "            let magnitude: u128 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+    );
+    s.push_str(&format!(
+        "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
+        int_pre, int_suf
+    ));
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("                fixes: Vec::new(),\n");
+    s.push_str("            })?;\n");
+    s.push_str("            const SIGNED_DECIMAL_I64_ABS_MIN: u128 = 9223372036854775808;\n");
+    s.push_str("            let value: i64 = match magnitude {\n");
+    s.push_str("                0 => 0,\n");
+    s.push_str("                m if m <= i64::MAX as u128 => -(m as i64),\n");
+    s.push_str("                m if m == SIGNED_DECIMAL_I64_ABS_MIN => i64::MIN,\n");
+    s.push_str("                _ => {\n");
+    s.push_str("                    return Err(Diagnostic::TokenizerError {\n");
+    s.push_str(
+        "                        message: format!(\"integer literal out of range for i64: `-{}`\", literal),\n",
+    );
+    s.push_str("                        span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("                        fixes: Vec::new(),\n");
+    s.push_str("                    });\n");
+    s.push_str("                }\n");
+    s.push_str("            };\n");
+    s.push_str("            tokens.push(Token {\n");
+    s.push_str("                kind: TokenKind::IntLit(value),\n");
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("            });\n");
+    s.push_str("            pos = end;\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
     for class in ascii_scan_order {
         if class == "Whitespace" {
             s.push_str("        if byte_matches(byte, ScannerCharClass::Whitespace) {\n");
