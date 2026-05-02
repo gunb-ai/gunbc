@@ -59,20 +59,35 @@ Two iterations of reviewer feedback shaped this resolution:
 // Equality is on `source_port` (structural identity); `display_name`
 // is a presentation slot (NOT identity — same source_port with
 // different authored names is the same size variable).
+//
+// CONSTRUCTION INVARIANT: SizeVariable is constructed exclusively by
+// the parser at authoring sites, against a per-DAG `PortId → String?`
+// name table populated at parse time. Every SizeVariable instance
+// referencing source_port `p` carries the canonical display_name for
+// `p` (or None if no authored name was given). The parser is the
+// single point of construction; SymbolicCost payloads cannot be
+// constructed with mismatched display_name values for the same
+// source_port. This is a parser-level invariant, not a type-level
+// guarantee, but the parser is the only construction site for
+// SizeVariable in the substrate (no user-facing `SizeVariable { ... }`
+// literal at authoring time — SizeVariables emerge from let-binding
+// references during lowering).
 type SizeVariable {
   source_port: PortId
-  display_name: String?         // user-facing name; populated by parser at authoring sites
+  display_name: String?         // canonical display_name keyed by source_port (parser-derived)
 }
 
 fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
   port_id_eq(a.source_port, b.source_port)
+  // display_name comparison would be redundant per the construction
+  // invariant — same source_port always carries same display_name.
 ```
 
-`SymbolicCost` (DB-7 locked) is unchanged — it continues to carry `SizeVariable` in `LinearCost`/`PolynomialCost`/`LogCost` payloads. The change is a single field addition.
+`SymbolicCost` (DB-7 locked) is unchanged — it continues to carry `SizeVariable` in `LinearCost`/`PolynomialCost`/`LogCost` payloads. The change is a single field addition. **Per the construction invariant above, `SymbolicCost` payloads carrying SizeVariable copies cannot have divergent labels for the same source_port**: the parser canonicalizes display_name from the per-DAG name table, so all SizeVariable instances for port_id `p` carry the same display_name (or all None). User-facing labels are single-authority by construction.
 
 **Why `String?`, not `String`**: per [`../INVARIANTS.md`](../INVARIANTS.md) C-9 (no fabrication), when no user-authored name exists the field is `None`; the renderer derives a fresh label (e.g., `"|port_42|"`) from `source_port`. We never invent a fake name and stash it in the field.
 
-**Single authority preserved**: `display_name` is the only authority. There is no parallel InternTable lookup at this surface; the diagnostic renderer reads `display_name` directly. Future intern-table-query work (when v3 lands `intern_table::name_of`) is a separate concern; this slice does not depend on it.
+**Future hardening**: when v3 lands a substrate-level `port_id → name` query (currently unwired per `src/v3/std/algebra.dag:143`), `display_name` can be retired from the carrier — the renderer would look up the name via the query at render time, eliminating the field entirely. This is a future cleanup; for now the parser-canonicalized field is what v3 supports.
 
 ### §1.3 Why the unified `SymbolicCost` algebra is correct (not a parallel `SizeExpr`)
 
