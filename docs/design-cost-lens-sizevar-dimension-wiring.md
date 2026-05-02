@@ -244,7 +244,7 @@ The bug class: `SymbolicCost`'s `normalize` does not satisfy the *annihilation l
 
 The bug is two distinct semiring laws sharing one helper because `SymbolicCost` was modeled as a single coproduct without declaring its semiring inhabitance.
 
-### §4.2 The fix — declare `SymbolicCost` as `CommutativeSemiring<SymbolicCost>`
+### §4.2 The fix — declare `SymbolicCost` as `Semiring<SymbolicCost>`
 
 Per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 1 (DAG-ancestor check): the fix is not to special-case the helper but to declare the algebra structure that mandates the right semantics. `Semiring<T>` already exists at `dsl/std/algebra.dag:190-195`:
 

@@ -166,9 +166,9 @@ The structural separation (quantifier on `QuantifiedTestClaim`, not in `TestPred
 
 Per `project_test_modeling` (from MEMORY): *"tests as verification claims in std/; structural tests from data; string templates are bootstrap seed."* The migration is a structural classification of the existing Rust suite by which `TestPredicate` variant covers each test.
 
-### §3.1 Rust-test classification (six classes)
+### §3.1 Rust-test classification (seven classes)
 
-The current Rust test population (`src/v3/compiler/tests/` — 87 files, ~357 integration tests + crate-internal `#[cfg(test)] mod tests`) decomposes into six structural classes. Each class names the `TestPredicate` it ports to:
+The current Rust test population (`src/v3/compiler/tests/` — 87 files, ~357 integration tests + crate-internal `#[cfg(test)] mod tests`) decomposes into seven structural classes (C1–C7 per the enumeration in §10 step 3). Each class names the `TestPredicate` it ports to:
 
 | Class | Description | Target `TestPredicate` | Approx. share | Migration shape |
 |---|---|---|---|---|
