@@ -122,9 +122,9 @@ v2's `ComplexitySummary` does not directly carry an "asymptotic class" enum, but
 // External authority: Knuth (1976) "Big Omicron and big Omega"
 // https://en.wikipedia.org/wiki/Big_O_notation
 //
-// The closed seven-variant set covers the asymptotic surface the thesis
+// The closed eight-variant set covers the asymptotic surface the thesis
 // reasons about. Anything else collapses to ClassUnknown (top). Adding
-// an eighth variant is a STOP signal — same discipline as SymbolicCost.
+// a ninth variant is a STOP signal — same discipline as SymbolicCost.
 
 type AsymptoticClass
   = ClassConstant       // O(1)
