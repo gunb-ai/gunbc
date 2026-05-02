@@ -41,7 +41,7 @@ R3 has **16 lanes + 1 standing program** (revised 2026-04-28 per Director review
 
 ### NEW STANDING PROGRAM (added 2026-05-02)
 
-**R3 Debt-Paydown Manager** — 9th standing R3 manager. Owned program: ROADMAP debt-row retirement + velocity-tripwire enforcement + closure-receipt cadence + per-PR discipline rule. Closure gate: `r3_debt_paydown_zero_remaining` — no tracked-debt rows survive R3 close. Per `feedback_standing_managers_need_owned_deliverables`: standing manager territory because Director ad-hoc would bottleneck. Hybrid mechanism: (a) per-PR discipline rule (every R3 PR includes "debt receipt" naming debt found + debt paid in this PR or routed to a paydown lane; vague deferrals rejected per existing INVARIANTS §P5(b) per-PR gate — "Vague deferrals ('see ROADMAP', 'TBD', narrative without a cited row) do not satisfy the gate"); (b) windowed enforcement via INVARIANTS §P5(c) Velocity tripwire (≥3:1 introduction:dissolution ratio in any 7-day window puts ad-hoc lane dispatch under Director review); (c) standing manager owns systemic debt that doesn't fit organic per-PR cleanup.
+**R3 Debt-Paydown Manager** — 9th standing R3 manager. Owned program: ROADMAP debt-row retirement + velocity-tripwire enforcement + closure-receipt cadence + per-PR discipline rule. Closure gate: `r3_debt_paydown_zero_remaining` — no tracked-debt rows survive R3 close. Per `feedback_standing_managers_need_owned_deliverables`: standing manager territory because Director ad-hoc would bottleneck. Hybrid mechanism: (a) per-PR discipline rule (every R3 PR includes "debt receipt" naming debt found + debt paid in this PR or routed to a paydown lane; vague deferrals rejected per existing INVARIANTS §P5 (Progress Is Dissolution) Dispatch-Discipline Mechanisms (b) per-PR gate — "Vague deferrals ('see ROADMAP', 'TBD', narrative without a cited row) do not satisfy the gate"); (b) windowed enforcement via INVARIANTS §P5 (Progress Is Dissolution) Dispatch-Discipline Mechanisms (c) Velocity tripwire (≥3:1 introduction:dissolution ratio in any 7-day window puts ad-hoc lane dispatch under Director review); (c) standing manager owns systemic debt that doesn't fit organic per-PR cleanup.
 
 ### Behavioral Expectations Documentation (parallel-dispatchable across features)
 
@@ -166,7 +166,7 @@ Plus 2 priority corrections folded into existing lanes (Director-ratified 2026-0
 
 **Owned program**:
 - **ROADMAP debt-row retirement** — every tracked-debt row in ROADMAP `### Post-merge debt (...)` sections gets a named retirement PR or explicit closure receipt before R3 close
-- **Velocity-tripwire enforcement** — per `INVARIANTS.md §P5(c)` Velocity tripwire (introduction:dissolution PR ratio ≥3:1 in any 7-day window); manager surfaces tripwire readings to Director on cadence
+- **Velocity-tripwire enforcement** — per `INVARIANTS.md §P5` (Progress Is Dissolution) Dispatch-Discipline Mechanisms (c) Velocity tripwire (introduction:dissolution PR ratio ≥3:1 in any 7-day window); manager surfaces tripwire readings to Director on cadence
 - **Per-PR discipline rule** — every R3 PR includes "debt receipt": names debt found in this PR, names debt paid in this PR, OR names a paydown-lane retirement PR for the debt; vague deferrals rejected
 - **Closure-receipt cadence** — converts Director's reflective-analysis findings into per-PR retirement work; closes the gap between "tracked debt" and "retired debt"
 
@@ -196,7 +196,7 @@ R3 inherits R2's manager structure with **four modifications** (originally 3; ex
 
 Director's role unchanged: cross-program conflict resolution + scope-change escalation + weekly health check.
 
-**Total R3 active surfaces**: 16 lanes + 1 standing program + 4 manager-structure modifications = **17 active surfaces** (expanded from prior 12 lanes + 3 manager modifications = 13 active surfaces at 2026-04-30 lock). Manager count: **9 standing R3 managers** (8 + Debt-Paydown).
+**Total R3 active surfaces**: 16 lanes + 1 standing program = **17 active surfaces** (expanded from 13 active surfaces at 2026-04-30 lock — 4 new lanes + 1 new standing program added 2026-05-02 per user directive that all "accidentally deferred" gaps absorb into R3). Manager-structure modifications (4 total — Substrate continuation expansion, Verification Manager, R3 Release Manager, Debt-Paydown Manager) are organizational, not separately-counted surfaces — each distributes existing-or-new lane ownership rather than creating a new program surface. Manager count: **9 standing R3 managers** (8 + Debt-Paydown).
 
 ## Dependency DAG
 
