@@ -108,11 +108,13 @@ pub fn tokenize(source: &str, file: &str) -> Result<Vec<Token>, Diagnostic> {
                 span: SourceSpan::new(file, start as u32, end as u32),
                 fixes: Vec::new(),
             })?;
-            let value = magnitude.checked_neg().ok_or_else(|| Diagnostic::TokenizerError {
-                message: format!("integer literal out of range for i64: `-{}`", literal),
-                span: SourceSpan::new(file, start as u32, end as u32),
-                fixes: Vec::new(),
-            })?;
+            let value = magnitude
+                .checked_neg()
+                .ok_or_else(|| Diagnostic::TokenizerError {
+                    message: format!("integer literal out of range for i64: `-{}`", literal),
+                    span: SourceSpan::new(file, start as u32, end as u32),
+                    fixes: Vec::new(),
+                })?;
             tokens.push(Token {
                 kind: TokenKind::IntLit(value),
                 span: SourceSpan::new(file, start as u32, end as u32),
