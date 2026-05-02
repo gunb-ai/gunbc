@@ -313,7 +313,7 @@ Cementing-test format aligns with sibling lens designs (complexity §4, effect-e
 
 **Dissolution trigger**: at T-Tests-As-Data-Completeness step 5 (per [`docs/design-tests-as-data-completeness.md`](design-tests-as-data-completeness.md) §6 step 5 — *cementing dispatch port*), this Rust cementing test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration. Per the cross-lane sequencing in tests-as-data §8.3, Rust cementing is the staged form; the .dag port lands together for all lenses when the register migrates. Cost-lens shipping its closure gate does NOT block on the migration; the Rust cementing test is the per-PR receipt today.
 
-The Rust test runs the v3 lens on a fixture and the v2 oracle on the same fixture (`src/v2/complexity.dag::analyze`), asserting structural equivalence on the asymptotic class:
+The Rust test runs the v3 lens on a fixture and the v2 oracle on the same fixture (`src/v2/complexity.dag::analyze`), asserting **structural equivalence on the `SymbolicCost`/`CostExpr` carrier** (the published Band-C parity claim — full carrier shape, not a projection). Asymptotic-class projection is checked separately as a downstream consequence (when both expressions normalize to the same `SymbolicCost`/`CostExpr` shape, their `AsymptoticClass` projections necessarily agree); the cementing test does NOT permit asymptotic-class equivalence as a substitute for full-carrier equivalence — that would be a documented homomorphism, but this test commits to the stronger claim.
 
 Where `structural_equivalent(a: SymbolicCost, b: CostExpr) -> Bool` is the v2/v3 isomorphism test — both expressions are normalized then walked structurally:
 
