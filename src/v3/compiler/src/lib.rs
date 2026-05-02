@@ -101,8 +101,7 @@ pub mod evaluator {
 
     /// **Dissolution receipt: TERMINAL.** Typed fail-closed outcomes for
     /// the body evaluator: missing-substrate cases (`MissingNode`,
-    /// `UnboundPort`), behavior-not-yet-implemented stubs for arms still
-    /// owned by later PR-E slices (`UnsupportedBehavior`), E3 transform
+    /// `UnboundPort`), E3 transform
     /// operand / arity diagnostics (`TransformArityMismatch`,
     /// `UnsupportedTransformTarget`, `BadTransformOperands`), Branch
     /// resolution / shape / payload-frame errors (E4), and frame
@@ -119,10 +118,6 @@ pub mod evaluator {
         },
         UnboundPort {
             port: PortId,
-        },
-        UnsupportedBehavior {
-            node: NodeId,
-            behavior: &'static str,
         },
         TransformArityMismatch {
             expected: usize,
@@ -249,10 +244,7 @@ pub mod evaluator {
             Behavior::Transform(t) => eval_transform_node(dag, t, state, strategy),
             Behavior::Branch(branch) => eval_branch(dag, branch.clone(), state, strategy),
             Behavior::Loop(loop_node) => eval_loop(dag, loop_node.clone(), state, strategy),
-            behavior => Err(EvalError::UnsupportedBehavior {
-                node: behavior.id(),
-                behavior: behavior_label(behavior),
-            }),
+            Behavior::Bind(bind) => eval_bind(dag, bind.clone(), state, strategy),
         }
     }
 
@@ -424,6 +416,54 @@ pub mod evaluator {
         }
     }
 
+    /// PR-E Bind/callable-entry prerequisite: evaluate the body port in a
+    /// fresh callable frame populated from the caller-visible parameter
+    /// bindings. Argument evaluation / callable dispatch stays outside this
+    /// slice; callers must have already registered `BindNode.params` in an
+    /// outer frame.
+    pub fn eval_bind(
+        dag: &Dag,
+        bind: crate::dag::BindNode,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        if bind.params.is_empty() {
+            return eval_port(dag, bind.value, state, strategy);
+        }
+        let bindings = bind
+            .params
+            .iter()
+            .map(|param| {
+                state
+                    .lookup(*param)
+                    .cloned()
+                    .map(|value| (*param, value))
+                    .map_err(EvalError::from)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        state.push_frame(EvalFrame::empty());
+        let body_result = eval_bind_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
+        let pop_result = state.pop_frame();
+        match (body_result, pop_result) {
+            (Ok(value), Ok(_)) => Ok(value),
+            (Err(err), _) => Err(err),
+            (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+        }
+    }
+
+    fn eval_bind_body_in_pushed_frame(
+        dag: &Dag,
+        bind: &crate::dag::BindNode,
+        bindings: Vec<(PortId, Value)>,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        for (param, value) in bindings {
+            state.bind_top(param, value)?;
+        }
+        eval_port(dag, bind.value, state, strategy)
+    }
+
     fn eval_transform_node(
         dag: &Dag,
         t: &TransformNode,
@@ -551,16 +591,6 @@ pub mod evaluator {
         strategy: EvalStrategy,
     ) -> Result<Value, EvalError> {
         eval_node(dag, entry, state, &strategy)
-    }
-
-    fn behavior_label(behavior: &Behavior) -> &'static str {
-        match behavior {
-            Behavior::Value(_) => "Value",
-            Behavior::Transform(_) => "Transform",
-            Behavior::Branch(_) => "Branch",
-            Behavior::Loop(_) => "Loop",
-            Behavior::Bind(_) => "Bind",
-        }
     }
 
     /// **Dissolution receipt: TERMINAL.** The three variants are distinct
@@ -1944,23 +1974,136 @@ pub mod evaluator {
         }
 
         #[test]
-        fn bind_behavior_fails_closed() {
+        fn eval_bind_value_binding_returns_body_port_value() {
             let mut dag = Dag::new();
             let value = dag.push_value(LiteralBits::Bool(false), span());
             let entry = dag.push_bind("flag", value, Vec::new(), span());
             let mut state = empty_state();
             let strategy = eager_strategy();
 
-            let err = eval_node(&dag, entry, &mut state, &strategy).expect_err("unsupported bind");
+            let out = eval_node(&dag, entry, &mut state, &strategy).expect("bind evaluates");
+
+            assert_eq!(out, Value::LiteralValue(LiteralBits::Bool(false)));
+            assert!(matches!(dag.node(entry), Behavior::Bind(_)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_bind_copies_callable_param_into_fresh_frame_for_body() {
+            let mut dag = Dag::new();
+            let param = dag.alloc_port(None);
+            let one = dag.push_value(LiteralBits::Int(1), span());
+            let body = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![param, one],
+                span(),
+            );
+            let entry = dag.push_bind("increment", body, vec![param], span());
+            let caller =
+                EvalFrame::from_bindings([(param, Value::LiteralValue(LiteralBits::Int(41)))])
+                    .expect("caller frame");
+            let mut state = EvalStateStack::with_root_frame(caller);
+
+            let out = eval_node(&dag, entry, &mut state, &eager_strategy())
+                .expect("callable bind evaluates");
+
+            assert_eq!(out, Value::LiteralValue(LiteralBits::Int(42)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+            assert_eq!(
+                state.lookup(param),
+                Ok(&Value::LiteralValue(LiteralBits::Int(41))),
+                "caller binding remains in the outer frame"
+            );
+        }
+
+        #[test]
+        fn eval_bind_body_result_can_be_parameter_port() {
+            let mut dag = Dag::new();
+            let param = dag.alloc_port(None);
+            let entry = dag.push_bind("identity", param, vec![param], span());
+            let caller = EvalFrame::from_bindings([(
+                param,
+                Value::LiteralValue(LiteralBits::String("arg".to_string())),
+            )])
+            .expect("caller frame");
+            let mut state = EvalStateStack::with_root_frame(caller);
+
+            let out = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("identity bind");
+
+            assert_eq!(
+                out,
+                Value::LiteralValue(LiteralBits::String("arg".to_string()))
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_bind_duplicate_param_fails_closed_and_restores_stack() {
+            let mut dag = Dag::new();
+            let param = dag.alloc_port(None);
+            let entry = dag.push_bind("dup", param, vec![param, param], span());
+            let caller =
+                EvalFrame::from_bindings([(param, Value::LiteralValue(LiteralBits::Int(1)))])
+                    .expect("caller frame");
+            let mut state = EvalStateStack::with_root_frame(caller);
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("duplicate param");
 
             assert_eq!(
                 err,
-                EvalError::UnsupportedBehavior {
-                    node: entry,
-                    behavior: "Bind"
+                EvalError::FrameError(EvalFrameError::DuplicateBinding { port: param })
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_bind_unbound_param_fails_closed_without_pushing_frame() {
+            let mut dag = Dag::new();
+            let param = dag.alloc_port(None);
+            let entry = dag.push_bind("missing", param, vec![param], span());
+            let mut state = empty_state();
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("unbound param");
+
+            assert_eq!(
+                err,
+                EvalError::FrameError(EvalFrameError::UnboundPort { port: param })
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[test]
+        fn eval_bind_restores_stack_after_body_diagnostic() {
+            let mut dag = Dag::new();
+            let param = dag.alloc_port(None);
+            let one = dag.push_value(LiteralBits::Int(1), span());
+            let bad_body = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Div)),
+                vec![param, one],
+                span(),
+            );
+            let entry = dag.push_bind("bad", bad_body, vec![param], span());
+            let caller =
+                EvalFrame::from_bindings([(param, Value::LiteralValue(LiteralBits::Int(8)))])
+                    .expect("caller frame");
+            let mut state = EvalStateStack::with_root_frame(caller);
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("body diagnostic");
+
+            assert_eq!(
+                err,
+                EvalError::UnsupportedTransformTarget {
+                    kind: "ArithmeticDiv",
                 }
             );
-            assert!(matches!(dag.node(entry), Behavior::Bind(_)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+            assert_eq!(
+                state.lookup(param),
+                Ok(&Value::LiteralValue(LiteralBits::Int(8)))
+            );
         }
 
         #[test]
