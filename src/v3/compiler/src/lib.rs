@@ -3648,6 +3648,77 @@ mod tokenize_ascii_parity_tests {
     }
 }
 
+/// Signed decimal literals (`-` immediately followed by ASCII digits) for
+/// Coercion-Fold interval lowers (`src/v3/spec/rust.dag` Slice B rows).
+#[cfg(test)]
+mod signed_decimal_int_literal_tests {
+    use super::tokenize::{tokenize, TokenKind};
+
+    #[test]
+    fn minus_digits_lexes_as_single_int_lit_i32_min() {
+        let tokens =
+            tokenize("-2147483648", "signed_decimal_int_literal_tests.v3").expect("tokenize");
+        assert!(
+            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if *n == -2147483648),
+            "expected `-2147483648` as one token; got {:?}",
+            tokens.first().map(|t| &t.kind)
+        );
+        assert!(
+            matches!(tokens.get(1).map(|t| &t.kind), Some(TokenKind::Eof)),
+            "expected EOF after literal; got {:?}",
+            tokens.get(1).map(|t| &t.kind)
+        );
+    }
+
+    #[test]
+    fn minus_digits_lexes_as_single_int_lit_i64_min() {
+        let tokens =
+            tokenize("-9223372036854775808", "signed_decimal_i64_min.v3").expect("tokenize");
+        assert!(
+            matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::IntLit(n)) if *n == i64::MIN),
+            "expected i64::MIN as one token; got {:?}",
+            tokens.first().map(|t| &t.kind)
+        );
+        assert!(
+            matches!(tokens.get(1).map(|t| &t.kind), Some(TokenKind::Eof)),
+            "expected EOF after literal; got {:?}",
+            tokens.get(1).map(|t| &t.kind)
+        );
+    }
+
+    #[test]
+    fn infix_minus_without_whitespace_stays_binary_minus() {
+        let tokens = tokenize("1-1", "infix_minus.v3").expect("tokenize");
+        assert!(tokens.len() >= 4, "expected literal, minus, literal, EOF");
+        assert!(matches!(&tokens[0].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[1].kind, TokenKind::Minus));
+        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[3].kind, TokenKind::Eof));
+    }
+
+    #[test]
+    fn ident_minus_digit_without_whitespace_stays_binary_minus() {
+        let tokens = tokenize("x-1", "ident_minus.v3").expect("tokenize");
+        assert!(tokens.len() >= 4, "expected ident, minus, literal, EOF");
+        assert!(matches!(
+            &tokens[0].kind,
+            TokenKind::Ident(x) if x == "x"
+        ));
+        assert!(matches!(&tokens[1].kind, TokenKind::Minus));
+        assert!(matches!(&tokens[2].kind, TokenKind::IntLit(1)));
+        assert!(matches!(&tokens[3].kind, TokenKind::Eof));
+    }
+
+    #[test]
+    fn unary_minus_after_eq_still_merges_digits() {
+        let tokens = tokenize("=-42", "eq_unary.v3").expect("tokenize");
+        assert!(tokens.len() >= 3, "expected Eq, signed literal, EOF");
+        assert!(matches!(&tokens[0].kind, TokenKind::Eq));
+        assert!(matches!(&tokens[1].kind, TokenKind::IntLit(-42)));
+        assert!(matches!(&tokens[2].kind, TokenKind::Eof));
+    }
+}
+
 /// PB-Runtime / flat-namespace: L1 behavior marker `ValueBehavior` frees bare
 /// `Value` for runtime union carriers (`type Value = …` in user or evaluator DAG).
 #[cfg(test)]

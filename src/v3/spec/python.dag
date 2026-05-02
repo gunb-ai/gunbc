@@ -23,8 +23,10 @@ import v3.std.emit_model {
   StatementSyntax, ExpressionSyntax, ControlFlowSyntax, ForEachSyntax,
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
-  CollectionOps, ValueConstructionSyntax, LanguageSpec
+  CollectionOps, ValueConstructionSyntax, LanguageSpec,
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
+import std.integer { Int }
 import v3.std.clean_emission {
   CleanEmissionContract,
   TargetCleanEmissionBinding,
@@ -167,6 +169,27 @@ data python_int: TypeRealization = {
   is_copy: true
   fields: []
   cost: 1
+}
+
+// Example 8: same static i32-range bound as Rust/Go; arbitrary precision carrier (`int`).
+data python_integer_inhabit_at_i32_program_bound: TargetIntegerTypeInhabitance = {
+  language: python_language
+  kernel_integer: Int
+  algebra: Int
+  bound: StaticBoundFact(BoundedInterval {
+    lower: -2147483648
+    width: PositiveWidth(UnitCount { units: 4294967295 })
+  })
+  type_realization: python_int
+}
+
+// Value-domain unbounded integer (design doc Python `int` magnitude axis).
+data python_integer_inhabit_unbounded_decl: TargetIntegerTypeInhabitance = {
+  language: python_language
+  kernel_integer: Int
+  algebra: Int
+  bound: StaticBoundFact(Unbounded)
+  type_realization: python_int
 }
 
 data python_bool: TypeRealization = {
