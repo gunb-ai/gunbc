@@ -211,6 +211,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
+    "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/infer.rs",
@@ -222,6 +223,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lower.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
+    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
+    "src/v3/compiler/src/process_exit.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
     // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
     // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
@@ -1000,5 +1003,9 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
     assert!(
         list.contains("\"rust_target.rs\""),
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
+    );
+    assert!(
+        list.contains("\"emit_rust_bin_shim.rs\""),
+        "hand_maintained_src should exclude emit_rust_bin_shim.rs (PB-1 shell helper) from recursive freshness drift"
     );
 }
