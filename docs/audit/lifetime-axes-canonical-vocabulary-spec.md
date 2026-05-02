@@ -137,6 +137,8 @@ Exact record names live with Substrate / LanguageSpec authoring (**#1130**).
 - Rows that mean “growability does not apply” **must** reference the substrate **`NotApplicable`** arm, not omit the column.
 - **Growability bridge:** When projecting analyzer facts into string-family rows, map **`Yes` → `Growable`**, **`No` → `Fixed`**, **`NotApplicable` → `NotApplicable`** (labels are **not** identical across sides — document the mapping in the bridge, not only in tests).
 
+**Structural rationale (not an arbitrary relabeling):** Analyzer **`Growability`** records **what the fold witnessed** about growth-bearing mutations (`Yes` / `No`) versus **explicit non-applicability** (`NotApplicable`). Substrate **`StringGrowabilityAxis`** names **target-facing capacity disposition** for string-family rows (**`Growable`** / **`Fixed`**) plus the same explicit **`NotApplicable`**. The pairing is the **unique bijection between matching partitions**: witnessed growth ⇒ capacity may grow; witnessed absence of growth under a load-bearing axis ⇒ fixed capacity; axis out of scope ⇒ **`NotApplicable`** on both sides. If those semantics ever diverged (new analyzer arm or new substrate arm), the bridge table must change — the ratchet holds that table as **shared truth**, not a free permutation.
+
 ---
 
 ## 5. P1 receipts (refresh after partial landing)
@@ -162,7 +164,7 @@ A practical `lifetime_axes_lockstep` (name illustrative) should **not** assert `
 1. **Per overlapping axis**, assert that **variant identifiers that must align across the bridge** match between:
    - substrate `StringOwnershipAxis`, `StringLifetimeAxis`, `StringEncodingAxis` (and **`NotApplicable`** on `StringGrowabilityAxis`), and  
    - the corresponding analyzer enums in `facts.rs` (**`Owned`/`Borrowed`**, map **`Self_` ↔ `SelfContained`**, **`Caller`**, **`Utf8FreeMonoidChar`**, **`NotApplicable`**).
-2. **Growability:** add a **small fixed mapping table** in the test (`Yes`↔`Growable`, `No`↔`Fixed`, `NotApplicable`↔`NotApplicable`) and assert both sides list exactly those pairs — i.e. **not** raw label equality for the growability axis.
+2. **Growability:** add a **small fixed mapping table** in the test (`Yes`↔`Growable`, `No`↔`Fixed`, `NotApplicable`↔`NotApplicable`) and assert both sides list exactly those pairs — i.e. **not** raw label equality for the growability axis. The table is the **documented bijection** from Section 4, not a disposable rename table.
 3. **Implementation sketch:** `include_str!("../../grounding_lifetime/src/facts.rs")` plus bootstrap DAG (`generated_full_bootstrap_dag()` / `declaration_by_name` on `StringOwnershipAxis`, …); Cargo package **`v3-grounding-tests`**, path **`src/v3/grounding_tests/`** (hyphen vs underscore — same crate as `emission_diagnostic_lockstep.rs`). Wire `#[cfg(test)] mod lifetime_axes_lockstep;` in `src/v3/grounding_tests/src/lib.rs`.
 
 **Why not (a) alone:** String-family-specific analyzer enums **do not exist** yet; waiting on them would block Slice 2. **Option (b)** still catches accidental drift in **shared** labels and forces the **growability** mapping to stay explicit — aligned with **snappy-koi-58** Slice 2 dispatch.
@@ -183,14 +185,14 @@ If the program later **hoists** shared non-namespaced sums, treat that as a **su
 
 ## 8. Substrate Manager design call (#1130)
 
-**Open design question (surface only — no decision here):** Should **target-axis declarations** for diagnostics / LanguageSpec stay **per-family** (**`String*Axis`**, current direction post-#1465), or move toward **canonical compositional** sums plus **views** into family-specific rows?
+**Open design question (surface only — no decision here):** For **Substrate Manager** routing on **#1130**: should **`DeclarationRef` targets** carried by LanguageSpec / diagnostic-ordering / string-family rows continue to resolve to **per-family substrate sums** (**`String*Axis`**, emit-model authority post-#1465), with **program-wide analyzer enums unchanged** and **projection at the fold** — or should substrate introduce a **shared canonical sum layer** (non-namespaced `Ownership` / `Growability`-shaped declarations) that families **compose or view**, reducing duplicate sum names at the cost of migration and of **merging scopes** that today stay deliberately separate?
 
 | Direction | Upside | Downside |
 |-----------|--------|----------|
-| **Per-family namespaced axes** (today) | Clear ownership of scope; avoids pretending string axes subsume all programs. | More bridge tables; more names for reviewers to hold. |
+| **Per-family namespaced axes** (today) | Clear ownership of scope; avoids pretending string axes subsume all programs; analyzer lane stays one vocabulary for all surfaces. | More bridge tables; more names for reviewers to hold. |
 | **Canonical + composed** | One declaration graph for “lifetime axes” across families. | Higher migration cost; risk of over-unifying program facts with target-only axes. |
 
-Route the call on **#1130**; this doc only frames the trade-off for substrate planning.
+Route the call on **#1130**; this doc only frames the trade-off for substrate planning. **Neither option requires renaming analyzer `Ownership` to `StringOwnership`** — the fork is **where substrate declarations live and how rows point at them**, not **collapsing the analyzer fact model into string-only names**.
 
 ---
 
