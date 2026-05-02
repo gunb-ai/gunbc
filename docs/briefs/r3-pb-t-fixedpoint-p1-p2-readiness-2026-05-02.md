@@ -19,6 +19,8 @@
 | [`src/v3/compiler/src/self_host_receipt_p0.rs`](../../src/v3/compiler/src/self_host_receipt_p0.rs) | P0 receipt contract (unchanged relevance) |
 | [`src/v3/compiler/tests/integration/sg0_census_test.rs`](../../src/v3/compiler/tests/integration/sg0_census_test.rs) | SG-0 hand-authored non-test census (P2 proxy) |
 
+**Live path inventory (repo root, all present in-tree at authoring):** `docs/briefs/r3-pb-t-fixedpoint-worker.md`, `docs/briefs/r3-pb-t-fixedpoint-p1-p2-readiness-2026-05-02.md` (this file), `docs/r3-structure.md`, `.github/workflows/ci.yml`, `src/v3/compiler/src/bin/self_host_fixed_point.rs`, `src/v3/compiler/src/self_host_receipt_p0.rs`, `src/v3/compiler/tests/integration/sg0_census_test.rs`. Relative links in the table above resolve from `docs/briefs/` to these paths.
+
 Incremental Evaluator substrate landings (e.g. PR-E lineage called out in program mail) were **not** treated as a substitute for the brief’s **ledger-level** “R2-Evaluator landed” gate; see P1 conclusion.
 
 ---
@@ -41,7 +43,13 @@ Incremental Evaluator substrate landings (e.g. PR-E lineage called out in progra
 
 **Brief definition (P2 row):** Preconditions include **T-LensProducer-Retirement (XL)** + PB-1 shim pattern; three producer files retired; **SG-0 non-test = 0** census signal.
 
-**Census signal:** `EXPECTED_HAND_AUTHORED_NON_TEST` in `sg0_census_test.rs` still lists the three program-sized producer files named in the brief—`src/v3/compiler/src/lens_apply.rs`, `src/v3/compiler/src/lens_testgen.rs`, and `src/v3/compiler/src/bin/regen_lens.rs`—among other hand-authored non-test paths.
+**Census signal (live literals, `EXPECTED_HAND_AUTHORED_NON_TEST`):** the ratchet array in `sg0_census_test.rs` still includes the three T-LensProducer retirement targets named in the worker brief:
+
+- `src/v3/compiler/src/bin/regen_lens.rs`
+- `src/v3/compiler/src/lens_apply.rs`
+- `src/v3/compiler/src/lens_testgen.rs`
+
+Re-verify after any SG-0 census edit by searching those strings inside `EXPECTED_HAND_AUTHORED_NON_TEST` (line numbers drift; the sorted path list is the authority).
 
 **Conclusion — P2:** **Still blocked** on T-LensProducer-Retirement / SG-0 choreography per the brief; no evidence in this audit that the XL lane’s retirement sub-gates are cleared or that SG-0 non-test has dropped to zero.
 
