@@ -343,6 +343,10 @@ data soft_keyword_ident_type: SoftKeywordIdentRow = {
   token_variant: "KwType"
 }
 
+data soft_keyword_ident_service: SoftKeywordIdentRow = {
+  token_variant: "KwService"
+}
+
 // --- SG-2c-4: bracket opener / closer membership table. Parser helpers
 // that skip or scan token spans while tracking paren/brace/bracket depth
 // (`skip_where_clause`, `rhs_is_sum` in `parse_parser_body.txt`) dispatch

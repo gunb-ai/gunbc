@@ -103,6 +103,7 @@ pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {
 /// `src/v3/compiler/parse_tables.dag`.
 pub fn soft_keyword_ident_spelling(kind: &TokenKind) -> Option<&'static str> {
     match kind {
+        TokenKind::KwService => Some("service"),
         TokenKind::KwType => Some("type"),
         _ => None,
     }

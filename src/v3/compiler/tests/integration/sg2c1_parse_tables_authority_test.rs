@@ -419,10 +419,12 @@ fn service_top_level_item_dispatch_fails_closed_until_service_block_ast_lands() 
 
 #[test]
 fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_names() {
-    // `parse_field_label` and `parse_variant` currently accept exactly one
-    // soft-keyword alias as a bare name: `KwType -> "type"`. Keep the
+    // `parse_field_label` and `parse_variant` currently accept exactly two
+    // soft-keyword aliases as bare names: `KwType -> "type"` and
+    // `KwService -> "service"`. Keep the
     // generated parser-name alias table fail-closed.
-    let expected: std::collections::BTreeSet<&'static str> = ["KwType"].into_iter().collect();
+    let expected: std::collections::BTreeSet<&'static str> =
+        ["KwType", "KwService"].into_iter().collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
@@ -450,6 +452,20 @@ fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_n
         expected, got_ref,
         "soft_keyword_ident_* rows in parse_tables.dag do not cover exactly the keyword aliases \
          the parser accepts as bare names"
+    );
+}
+
+#[test]
+fn soft_keyword_ident_service_still_parses_in_name_position() {
+    let source = "fn demo() -> Int = { service: 1 }";
+    let tokens = tokenize_for_test(source, "soft_keyword_ident_service.v3")
+        .expect("tokenize soft keyword service");
+    let parsed = parse_for_test(&tokens, "soft_keyword_ident_service.v3")
+        .expect("parse soft keyword service");
+    let item = parsed.items.into_iter().next().expect("expected one item");
+    assert!(
+        matches!(item, v3_compiler::parse_surface::SurfaceItem::Fn { .. }),
+        "service should stay parseable in name position without weakening the top-level service anchor"
     );
 }
 
