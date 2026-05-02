@@ -1,0 +1,497 @@
+# Cost Lens — SizeVar Value Semantics + Dimension<SymbolicCost> Wiring
+
+> Part of: [`docs/r3-structure.md`](r3-structure.md) row 146 (T-Lens-Behavioral-Parity slice 2 — cost), [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) `cost.dag` row, [`docs/design-symbolic-cost-algebra.md`](design-symbolic-cost-algebra.md) (DB-7), [`docs/design-dimension-abstraction.md`](design-dimension-abstraction.md) (DB-3), [`../INVARIANTS.md`](../INVARIANTS.md)
+>
+> **Purpose:** specify the substrate-shape upgrades that take `src/v3/lenses/cost.dag` from BEHAVIORALLY PROXY to BEHAVIORALLY COMPLETE. Three structural moves: (1) `SizeVariable` carries value-semantics (a typed expression in the cost algebra, not just a port reference); (2) `data symbolic_cost_dimension: AnalysisDimension<SymbolicCost>` materializes per DB-3 once grammar gaps close; (3) lens consumes the same per-call `DescentEvidence` / `CallPattern` / `SubValueRelation` producer foundation as complexity, with a cementing TestClaim against the v2 oracle.
+>
+> **Authority discipline:** this is an R3 design doc; the implementation lane is **T-Lens-Behavioral-Parity slice 2 (cost)** under Substrate Manager + Verification Manager (cross-program). This doc resolves the design questions blocking that slice's worker dispatch.
+
+## What this document is
+
+[`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) row for `cost.dag` reads:
+
+> `cost.dag` | TERMINAL | **PROXY** | … | Named `SizeVar` with value semantics (v3's `SizeVariable` carries only `source_port: PortId`). `Dimension<SymbolicCost>` wiring deferred on grammar gaps. **E-I carriers are present and E-P has a first narrow producer slice;** broader producer coverage, cost/complexity lens consumption, and the same-source v2/v3 cementing test remain pending.
+
+Three concrete debts surface from that row:
+
+1. **Value-impoverished `SizeVariable`** — v3's `SizeVariable { source_port: PortId }` (in [`src/v3/std/algebra.dag`](../src/v3/std/algebra.dag)) carries port identity but no value-semantic structure. v2's `SizeExpr = SizeConst | SizeVar { name: String } | SizeLen { collection: String } | SizeAdd { … } | SizeMax { … }` (in [`src/v2/complexity.dag`](../src/v2/complexity.dag) lines 99–104) is a typed expression algebra. The v3 form admits only one shape — "the size of this port" — and cannot express "k+1" or "max(n, m)" as it appears at recurrence boundaries.
+2. **Dimension<SymbolicCost> data declaration deferred** — [`src/v3/lenses/cost.dag`](../src/v3/lenses/cost.dag) lines 264–305 explicitly mark the `data symbolic_cost_dimension: AnalysisDimension<SymbolicCost> = { … }` declaration as blocked on class-5 grammar gaps (record literals inside `data` bodies + `fn X { body }` block-bodied definitions with structural carriers). The Rust trampoline `v3_compiler::analyze_symbolic_cost_dimension` carries the execution today; the `.dag`-as-authority migration waits on grammar.
+3. **Producer foundation not consumed** — `src/v3/std/induction.dag::SubValueRelation` + `std.computation::CallPattern` + `v3_compiler::dag::per_call_descent_evidence` (the E-I + E-P producers) are staged but the cost lens does not yet consume them at call sites. Recursive bodies receive a structural-depth proxy, not a recurrence-derived bound.
+
+This document specifies the substrate shape and the lane-internal sequencing that resolves all three. It is the cost-slice analogue of [`docs/design-lens-application-surface.md`](design-lens-application-surface.md): a design spec whose substrate carriers + closure gates feed back into the lane row's checklists.
+
+## §1. SizeVariable value semantics — substrate-shape upgrade
+
+### §1.1 The current shape and what it loses
+
+```dag
+// src/v3/std/algebra.dag:146-148 (current)
+type SizeVariable {
+  source_port: PortId
+}
+```
+
+Two cost expressions correlate via `same_size_variable(a, b) = a.source_port == b.source_port`. That suffices for the dominance MVP DB-7 ships ("two `LinearCost` over the same port collapse to `PolynomialCost(var, 2)` under squaring"). What it cannot express:
+
+- **Arithmetic on sizes**: a recurrence body whose loop bound is `n - 1` (the canonical structural-recursion descent step) collapses to "the size of `n`'s port" — which is `n`, not `n - 1`. Distinguishing `O(n)` from `O(n - k)` is not asymptotically load-bearing in isolation, but composing through `iterate(LinearCost(n - 1), …)` versus `iterate(LinearCost(n), …)` is — the former proves termination via `ArithmeticDescent`; the latter does not.
+- **Aggregate sizes**: v2's `SizeMax { left, right }` carries the worst-case across branches with distinct size variables. v3 today has no expression for "the max of `|outer|` and `|inner|`" — it forces composite shapes into `UnknownCost` or into `SumCost`/`ProductCost` of `LinearCost`s, losing the relation that the two sizes share an enclosing context.
+- **Named-binding semantics**: v2's `SizeVar { name: String }` lets the diagnostic surface render "O(|items|)" against the user's binding name. v3's port-id-only form has no surface label until an InternTable lookup is wired (per [`src/v3/std/algebra.dag`](../src/v3/std/algebra.dag) line 144 comment: "When a render consumer pins the missing piece, `SizeVariable` grows a `name` field").
+
+### §1.2 Target shape — `SizeExpr` as a typed expression algebra
+
+The DAG-ancestor check (per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 1) finds the existing parent: `SymbolicCost` already inhabits the algebra hierarchy (via DB-7's seven-variant coproduct). `SizeExpr` is structurally a *subset* of `SymbolicCost`'s shape — both carry a typed expression tree over named primitives, with closure under composition operations. The dissolution path: declare `SizeExpr` as the named expression algebra, retrofit `SizeVariable` as one of its variants.
+
+```dag
+// target shape (post-upgrade) — src/v3/std/algebra.dag
+
+// 🟢 TERMINAL. Symbolic size expression — the closed expression algebra
+// names the runtime size of a DAG port's value, possibly composed
+// arithmetically. Replaces the port-only `SizeVariable` shape.
+//
+// Variant set:
+//   - `SizePort { source_port }` — the runtime size of a port (was the entire
+//     content of the old `SizeVariable`)
+//   - `SizeConst { value }`      — a literal known size (e.g., max iterations cap)
+//   - `SizeAdd { left, right }`  — sum of two size expressions
+//   - `SizeMax { left, right }`  — worst-case size across branches
+//   - `SizeShrink { var, factor }` — `var` shrunk by a `ShrinkFactor`
+//                                   (UnitShrink → `n - 1`, ProportionalShrink(2) → `n/2`)
+type SizeExpr
+  = SizePort { source_port: PortId }
+  | SizeConst { value: Int }
+  | SizeAdd { left: SizeExpr, right: SizeExpr }
+  | SizeMax { left: SizeExpr, right: SizeExpr }
+  | SizeShrink { var: SizeExpr, factor: ShrinkFactor }
+```
+
+`ShrinkFactor` already exists in `src/v3/std/computation.dag` (`UnitShrink | ConstantShrink | ProportionalShrink`) and is the canonical descent-amount carrier; reusing it forbids parallel authority on "by how much does this size shrink" (per [`../INVARIANTS.md`](../INVARIANTS.md) P2: every fact lives in exactly one place).
+
+`SymbolicCost` then refers to `SizeExpr` everywhere it currently refers to `SizeVariable`:
+
+```dag
+type SymbolicCost
+  = ConstantCost(Int)
+  | LinearCost(SizeExpr)                                       // was: SizeVariable
+  | PolynomialCost { var: SizeExpr, degree: DegreeAtLeastTwo }  // was: var: SizeVariable
+  | ProductCost(NonSingletonList<SymbolicCost>)
+  | SumCost(NonSingletonList<SymbolicCost>)
+  | LogCost(SizeExpr)                                          // was: SizeVariable
+  | UnknownCost(String)
+```
+
+**No `name: String` field on `SizePort`.** Surface-render labels come from the InternTable lookup keyed by `source_port` (which is itself an interned `PortId`); names are aliases for declarations, not the declarations themselves (per `feedback_naming_is_aliasing` and `feedback_no_metadata_markers`). Render is `intern_table_lookup(source_port).name`, not a duplicated field.
+
+### §1.3 Coproduct-vs-coordinate check
+
+Per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 2, every `SizeExpr` proposed variant is asked: are these alternatives or coordinates?
+
+- A single inhabitant cannot simultaneously be `SizePort`, `SizeAdd`, and `SizeMax` — these are alternatives.
+- `SizePort` itself is one variant; `source_port` is its only field, so no further dissolution needed.
+- `SizeShrink { var, factor }` carries both a recursive `SizeExpr` and a `ShrinkFactor` as coordinates of one variant — they're not alternatives (a shrink expression has both); record-shape inside the variant is correct.
+
+The check passes; the proposed shape is structurally honest.
+
+### §1.4 Why `SizeExpr` retires `SizeVariable` rather than living alongside it
+
+Per `feedback_parallel_representation_debt` and [`../INVARIANTS.md`](../INVARIANTS.md) P5: do not ship two carriers for the same fact. `SizeVariable` is structurally `SizePort`'s payload — having both means consumers must choose, and the choice drifts. The migration is atomic:
+
+1. Add the new `SizeExpr` declaration.
+2. Update `SymbolicCost` to use `SizeExpr` (the change is mechanical: `SizeVariable` → `SizePort { source_port: <existing port> }`).
+3. Update `same_size_variable` → `size_expr_eq` to walk the expression structure recursively.
+4. Update all consumers (cost.dag, complexity.dag, the Rust mirror in `dag.rs`) in the same change.
+5. Delete `SizeVariable`.
+
+No bridge step. No `SizeVariable` appearing alongside `SizeExpr`.
+
+## §2. Dimension<SymbolicCost> wiring — closing the deferred declaration
+
+### §2.1 Current state — the deferral receipt
+
+[`src/v3/lenses/cost.dag`](../src/v3/lenses/cost.dag) lines 264–305 are the authoritative receipt for the deferral. Two grammar gaps named explicitly:
+
+1. **Class-5 gap #3**: record literals inside `data X: T = { … }` bodies. The lowerer reports "data has an opaque body — user code cannot yet use record / list / map literals inside data bodies."
+2. **Block-body grammar**: record literals / match / lambdas inside `fn X { body }` definitions. Constructing `Witness::Violates { reason, at }` — the MissingCost-to-violation shim DB-3's `witness_of` contract requires — hits the same restriction.
+
+Today, [`v3_compiler::analyze_symbolic_cost_dimension`](../src/v3/compiler/src/) packages the same `compute_symbolic_costs` algebra as a `DimensionReport<SymbolicCost>` (per [`src/v3/std/dimensions.dag`](../src/v3/std/dimensions.dag)), but the `data` value remains in Rust.
+
+### §2.2 Target shape per DB-3 + DB-7
+
+```dag
+// target shape — src/v3/lenses/cost.dag (post-grammar-gap close)
+
+import std.dimensions { AnalysisDimension, Witness, Inhabits, Violates,
+                        OptionalDiagnostic, NoDiagnostic, SomeDiagnostic }
+import std.algebra { SymbolicCost, ConstantCost, sequential }
+import v3.std.diagnostics { Diagnostic, MissingCostKind }
+
+// 🟢 TERMINAL. The cost dimension instance per DB-3.
+data symbolic_cost_dimension: AnalysisDimension<SymbolicCost> = {
+  name: "symbolic_cost"
+  witness_of: symbolic_cost_witness_of   // Behavior → Witness<SymbolicCost>
+  compose: sequential                     // SymbolicCost × SymbolicCost → SymbolicCost
+  identity: ConstantCost(0)               // additive identity in the cost algebra
+  break_diagnostic: symbolic_cost_break_diagnostic
+}
+
+fn symbolic_cost_witness_of(d: Dag, behavior: Behavior) -> Witness<SymbolicCost> =
+  match behavior_cost_lookup(d, behavior) {
+    Miss => Violates {
+      reason: "missing per-port cost in compute_symbolic_costs"
+      at: behavior
+    }
+    Hit(cost) => Inhabits(cost)
+  }
+
+fn symbolic_cost_break_diagnostic(behavior: Behavior, composed: SymbolicCost) -> OptionalDiagnostic =
+  match composed {
+    UnknownCost(reason) => SomeDiagnostic {
+      value: cost_unknown_diagnostic(behavior, reason)
+    }
+    _ => NoDiagnostic
+  }
+```
+
+The four monoid-shape obligations (`compose`, `identity`, monoid laws, break-diagnostic semantics) are satisfied:
+
+- **Identity**: `ConstantCost(0)` is the additive identity; `sequential(ConstantCost(0), c) = normalize(SumCost([0, c])) = c` after `drop_zero` strips the zero (per `src/v3/std/algebra.dag::drop_zero`).
+- **Associativity**: `sequential(sequential(a, b), c) = SumCost([SumCost([a, b]), c])` and `sequential(a, sequential(b, c)) = SumCost([a, SumCost([b, c])])`. After `normalize` flattening (see §4 below for the full-flattening dependency), both produce the same flat sum modulo order. Currently `normalize` does not fully flatten nested sums; that gap is a separate landed-in-this-slice obligation.
+- **Commutativity** (NOT required for general monoid; required for cost): `sequential(a, b)` versus `sequential(b, a)` produce the same `SumCost` *after* `drop_dominated` runs. This holds for `SymbolicCost` because `drop_dominated` is order-insensitive (it walks pairwise comparisons against the dominance lattice).
+- **Break-diagnostic semantics**: `UnknownCost(reason)` in the composed result fires `SomeDiagnostic`; everything else returns `NoDiagnostic`. This matches DB-3's "diagnostic when composition breaks" contract — `UnknownCost` is the "the analyzer could not prove a tighter bound" failure mode (per `src/v3/std/algebra.dag` lines 22–33).
+
+### §2.3 Why this lands now (versus continuing to defer)
+
+The grammar gaps the deferral receipt names are not blockers for the *cost* slice specifically; they are blockers for the *uniform* `data … : AnalysisDimension<C>` declaration shape across all dimensions. Two paths:
+
+- **Path A (uniform-grammar-first)**: wait for class-5 record-body lowering across all `data` declarations. Then every dimension lands its `data` value at once.
+- **Path B (cost-slice-first)**: declare a narrow dispatch surface inside `lenses/cost.dag` that constructs the `AnalysisDimension<SymbolicCost>` value via fn-level builders (no record literal in `data` body), and migrate when class-5 lands.
+
+Path B is the bridge-as-steady-state pattern (per [`../INVARIANTS.md`](../INVARIANTS.md) P5 + `feedback_dissolve_bridges`). **This design selects Path A** with a sequencing constraint: cost slice 2 ships its substrate carriers (`SizeExpr` upgrade + producer-consumption rewiring) and the closure-gate cementing test, but the `data symbolic_cost_dimension` declaration itself lands as part of T-Tests-As-Data-Completeness's grammar-gap retirement (since the grammar gap is shared across multiple lanes — record literals in `data` bodies block Dimension instances for parallelism, idempotency, effect_enumeration, AND user-declared dimensions per Lane 2 Stage 2f).
+
+The cost lane's closure gate `cost_lens_behaviorally_complete` is therefore satisfied by:
+
+1. `SizeExpr` substrate-shape upgrade landed.
+2. Producer-foundation consumption landed (per §3 below).
+3. Cementing TestClaim against v2 oracle landed (per §5 below).
+4. **Not** the `data symbolic_cost_dimension` declaration landing — that landing is `cost_dimension_data_declaration_landed`, scoped to the grammar lane, and tracked separately. The Rust trampoline `analyze_symbolic_cost_dimension` remains the dispatch surface in the interim *with a named dissolution trigger* (per [`../INVARIANTS.md`](../INVARIANTS.md) P5 scaffold-discipline): "when class-5 record-body grammar lands, this trampoline retires."
+
+This is not a regression vs the old comment in `cost.dag` — it makes the dissolution trigger explicit and per-gate.
+
+## §3. Producer foundation shared with complexity
+
+### §3.1 The shared E-I + E-P substrate
+
+Per [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) §"Substrate carriers vs per-call producers":
+
+- `std.termination::DescentEvidence` (Strict | NonIncreasing | DescentUnknown) — staged at `src/v3/std/termination.dag`.
+- `std.computation::CallPattern` (ChildAccessorCall | FoldBodyCall | SameArgumentCall | ArithmeticSubtractCall | ArithmeticDivideCall) — staged at `src/v3/std/computation.dag`.
+- `std.induction::SubValueRelation` (PreservedValue | StrictSubValue | IteratedSubValue | ArithmeticDescent | SubValueUnknown) — staged at `src/v3/std/induction.dag`.
+- `v3_compiler::dag::per_call_descent_evidence` — first E-P producer slice covering recursive self-call + arithmetic-descent at call sites.
+
+The complexity lens (slice 1 of T-Lens-Behavioral-Parity) consumes these to compute work/span dimensions and asymptotic class. The cost lens (slice 2) consumes the *same* facts, projected through a different fold:
+
+| Per-call fact | Complexity lens consumes as | Cost lens consumes as |
+|---|---|---|
+| `DescentEvidence::Strict` | "this call descends; recurrence terminates" | same — terminates the cost recurrence |
+| `CallPattern::ArithmeticSubtractCall { factor: UnitShrink }` | "`n → n-1` recurrence; depth = n" | `iterate(LinearCost(SizePort(arg)), body_cost)` — n iterations of body |
+| `CallPattern::ArithmeticDivideCall { factor: ProportionalShrink(2) }` | "`n → n/2` recurrence; depth = log n" | `iterate(LogCost(SizePort(arg)), body_cost)` — log n iterations of body |
+| `SubValueRelation::IteratedSubValue { field }` | "iterates over a list field; depth = |list|" | `iterate(LinearCost(SizePort(field)), body_cost)` |
+
+The shared consumption pattern is one function per call site that takes the per-call fact and returns a `SymbolicCost`:
+
+```dag
+fn call_pattern_to_iter_bound(pattern: CallPattern, arg_port: PortId) -> Lookup<SymbolicCost> =
+  match pattern {
+    ArithmeticSubtractCall { factor: UnitShrink } =>
+      hit_symbolic_cost_lookup(LinearCost(SizePort { source_port: arg_port }))
+    ArithmeticSubtractCall { factor: ConstantShrink(_) } =>
+      hit_symbolic_cost_lookup(LinearCost(SizePort { source_port: arg_port }))
+    ArithmeticDivideCall { factor: ProportionalShrink(_) } =>
+      hit_symbolic_cost_lookup(LogCost(SizePort { source_port: arg_port }))
+    ChildAccessorCall { … } =>
+      hit_symbolic_cost_lookup(LinearCost(SizePort { source_port: arg_port }))
+    SameArgumentCall =>
+      miss_symbolic_cost_lookup()  // not a recurrence — same arg means no descent
+    FoldBodyCall { … } =>
+      hit_symbolic_cost_lookup(LinearCost(SizePort { source_port: arg_port }))
+  }
+```
+
+### §3.2 Where the consumer attaches in the lens
+
+The cost lens's existing `entry_for` dispatch on `Behavior` (in [`src/v3/lenses/cost.dag`](../src/v3/lenses/cost.dag) lines 102–118) gets one new case for the recursive-call sub-case of `Transform`:
+
+```dag
+// extension to entry_for
+Transform(t) =>
+  match per_call_pattern_at(d, t.call_site) {
+    None =>
+      // base case — non-recursive transform; existing behavior
+      { port: t.result_port, cost: transform_cost(acc, t.inputs) }
+    Some(pattern) =>
+      // recursive call — use the per-call fact to derive the recurrence cost
+      { port: t.result_port, cost: recursive_transform_cost(acc, t, pattern) }
+  }
+```
+
+`per_call_pattern_at(d: Dag, call_site: NodeId) -> CallPattern?` is the structural-query surface (per [`../INVARIANTS.md`](../INVARIANTS.md) L-7: lenses consume declared substrate query functions). The lens does *not* reach into `per_call_descent_evidence` storage directly; the substrate exposes `per_call_pattern_at` as the typed query.
+
+### §3.3 Why complexity and cost share producer wiring
+
+This is exactly the pattern row 146 names: "same producer foundation as complexity." Both lenses are `Lens<C>` instances per R2-T-Substrate-Lens-Primitive — complexity with `C = AsymptoticClass`, cost with `C = SymbolicCost` — folding over the same Behavior structure with the same per-call evidence. The ergonomic move: factor the per-call query into `std.computation::per_call_pattern_at` (already implied by the staged producer side-table); both lenses become consumers.
+
+Per [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) §1.2 (the section-ref pattern): each lens has its own budget type (`AsymptoticClass` vs `SymbolicCost`) but consumes the same structural facts. The substrate authority is the per-call query surface; the per-lens algebra is private.
+
+## §4. SymbolicCost commutative-semiring discipline (product-zero bug class)
+
+### §4.1 The bug class and why it surfaces here
+
+Per `docs/r3-structure.md` §"Plus 3 fold-ins":
+
+> **T-V-L4-L7-Direct exhaustive witness coverage** — per-(algebra, inhabitant, law) witness coverage ensures bug class like SymbolicCost product-zero (PR #1430 §A) is structurally caught by `l7_algebraic_laws_witnessed` gate at all inhabitants.
+
+The bug class: `SymbolicCost`'s `normalize` does not satisfy the *annihilation law* of a commutative semiring, `a * 0 = 0`. Concretely, `normalize(ProductCost([LinearCost(n), ConstantCost(0)]))` does not collapse to `ConstantCost(0)` because `drop_zero` (`src/v3/std/algebra.dag` lines 416–424) strips zero terms from *both* `Sum` and `Product` lists with the *same* function — but the semiring distinguishes:
+
+- **Sum identity (`ConstantCost(0)` in `SumCost`)**: drop the zero. `O(n) + 0 = O(n)`. Correct.
+- **Product annihilator (`ConstantCost(0)` in `ProductCost`)**: collapse the *whole product* to zero. `O(n) · 0 = 0`. Currently broken — `drop_zero` strips the zero from the product list, leaving `LinearCost(n)`, which is wrong.
+
+The bug is two distinct semiring laws sharing one helper because `SymbolicCost` was modeled as a single coproduct without declaring its semiring inhabitance.
+
+### §4.2 The fix — declare `SymbolicCost` as `CommutativeSemiring<SymbolicCost>`
+
+Per [`../INVARIANTS.md`](../INVARIANTS.md) P1 Step 1 (DAG-ancestor check): the fix is not to special-case the helper but to declare the algebra structure that mandates the right semantics. `Semiring<T>` already exists at `dsl/std/algebra.dag:190-195`:
+
+```dag
+type Semiring<T> {
+  add: fn(T, T) -> T
+  zero: T
+  mul: fn(T, T) -> T
+  one: T
+}
+```
+
+The fix:
+
+1. Declare a `Semiring<SymbolicCost>` instance with:
+   - `zero = ConstantCost(0)`
+   - `add = sequential` (already exists)
+   - `one = ConstantCost(1)`
+   - `mul = iterate` (already exists, but renamed below)
+2. Rename `iterate` → `multiply_costs` to match the algebra-field semantics. `iterate` is a domain operation (loop iteration); `multiply_costs` is the algebra primitive that `iterate` becomes a special case of.
+3. Replace `drop_zero` with two separate helpers: `drop_additive_zero` (for `SumCost` lists) and `collapse_on_multiplicative_zero` (for `ProductCost` lists; if any term is `ConstantCost(0)`, the whole product is `ConstantCost(0)`).
+4. Update `reduce_product` to call `collapse_on_multiplicative_zero` first.
+
+The shape:
+
+```dag
+fn collapse_on_multiplicative_zero(terms: List<SymbolicCost>) -> List<SymbolicCost> =
+  if any_zero(terms) then
+    cons(ConstantCost(0), empty())   // single-element list — reduce_product unwraps to ConstantCost(0)
+  else
+    terms
+
+fn any_zero(terms: List<SymbolicCost>) -> Bool =
+  match terms {
+    Empty => False
+    Cons(payload) => is_zero_constant(payload.head) || any_zero(payload.tail)
+  }
+```
+
+Then `reduce_product`'s top:
+
+```dag
+fn reduce_product(terms: List<SymbolicCost>) -> SymbolicCost =
+  let collapsed = collapse_on_multiplicative_zero(terms) in
+  match collapsed { … existing match … }
+```
+
+### §4.3 Why this is in the cost-lens design doc (and not a separate algebra fix)
+
+The cementing TestClaim against v2 oracle (§5 below) will fail today on programs containing dead-product surfaces (`fold(items, 0, |acc, x| 0 * acc) ≡ O(1)` per v2; v3 reports `O(n)`). The fix has to land *inside* the cost-lens behavioral-parity slice or the cementing test cannot pass. The structural fix (declare semiring inhabitance) is the right shape; the slice-inline patch (rewrite `drop_zero`) without declaring the algebra would be a heuristic by [`../INVARIANTS.md`](../INVARIANTS.md) P1.
+
+The semiring declaration is also load-bearing for `feedback_lattice_consolidation` ("ad-hoc lattices need to dissolve into BoundedLattice declarations") — the symbolic-cost case is the same pattern at a different algebra. Declaring the inhabitance makes the laws structurally checkable at L7-witnessing time per the T-V-L4-L7-Direct fold-in.
+
+### §4.4 Operator-dispatch fold-in
+
+Per `project_algebra_operator_dispatch` (memory): "BinOp emission reads operand type algebra for correct symbol." Once `Semiring<SymbolicCost>` is declared, code that writes `a + b` against two `SymbolicCost` values should resolve through the Semiring's `add` field, picking up `sequential` rather than asking the consumer to spell `sequential(a, b)`. This is downstream of slice 2 (it requires v3's `+` operator dispatch to walk algebra inhabitance for non-numeric types) but the substrate fact landing here is what unblocks it. No code-change in slice 2 for this; the design captures the linkage.
+
+## §5. Cementing TestClaim against v2 oracle
+
+### §5.1 The TestClaim shape
+
+Per row 146 closure language ("cementing test against v2 oracle on same source") and per [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) discipline ("Every claim of 'v3 replaces v2 X' requires a behavioral cementing test"), the cost slice ships:
+
+```dag
+// gate: cost_lens_v2_oracle_equivalence_demonstrated
+test cost_lens_v2_oracle_equivalence: TestClaim {
+  // a corpus of source programs spanning the semiring laws + non-trivial recurrences
+  programs: List<SourceProgram>
+
+  expectation: ForAll { p: SourceProgram in programs }
+    let v3_cost = analyze_symbolic_cost_dimension(compile_v3(p))
+    let v2_cost = v2_complexity_oracle(compile_v2(p))
+    structural_equivalent(v3_cost, v2_cost)
+}
+```
+
+Where `structural_equivalent(a: SymbolicCost, b: CostExpr) -> Bool` is the v2/v3 isomorphism test — both expressions are normalized then walked structurally:
+
+```dag
+fn structural_equivalent(v3: SymbolicCost, v2: CostExpr) -> Bool =
+  match (normalize(v3), v2_simplify(v2)) {
+    (ConstantCost(k_v3), CostConst { value: k_v2 }) => k_v3 == k_v2
+    (LinearCost(SizePort { source_port: p }), CostMul { left, right }) =>
+      // v2 spells O(n) as `n * 1` after simplify; check the structural shape matches
+      … structural walk …
+    … // all (variant, variant) pairs covered exhaustively
+    _ => False  // any mismatched shape fails
+  }
+```
+
+The TestClaim runs the v3 lens on `compile_v3(p)` and the v2 oracle on `compile_v2(p)` (where `compile_v2` invokes `src/v2/complexity.dag::analyze`) and asserts structural equivalence on the asymptotic class.
+
+### §5.2 Corpus shape
+
+Per [`docs/design-lens-application-surface.md`](design-lens-application-surface.md) §4 (4 worked examples per Director ratification on orthogonal axes), the cost cementing test ships a corpus covering:
+
+1. **Constant cost**: `let x = 1` → `O(1)` on both. Smoke test for the trivial-equivalence case.
+2. **Linear cost via fold**: `fold(items, 0, +)` → `O(|items|)` on both. Smoke test for SizePort reading.
+3. **Polynomial via nested folds**: `fold(items, 0, |acc, x| acc + fold(items, 0, +))` → `O(|items|²)` on both. Smoke test for `combine_linear_with` collapsing two LinearCosts on the same port to PolynomialCost.
+4. **Logarithmic via halving recursion**: a recursive function with `ArithmeticDivideCall { factor: ProportionalShrink(2) }` → `O(log n)` on both. Smoke test for the producer-foundation E-P consumption.
+5. **Unrelated sizes**: `fold(items, 0, |acc, x| acc + fold(jobs, 0, +))` → `O(|items| · |jobs|)` on both. Smoke test for distinct `SizePort` correlation.
+6. **Branch-max**: `if cond then fold(items, 0, +) else fold(items, 0, |acc, x| fold(items, …))` → `O(|items|²)` on both (max of branches). Smoke test for `max_path` and dominance.
+7. **Annihilation law**: `fold(items, 0, |acc, x| 0 * acc)` → `O(1)` on both. Smoke test for the §4 product-zero fix.
+8. **Identity-on-empty**: empty body → `ConstantCost(0)` on v3, `CostConst { value: 0 }` on v2. Smoke test for AnalysisDimension identity.
+
+This corpus is *not* exhaustive over the cost algebra — exhaustiveness comes from L7 algebraic-law witnessing (per the T-V-L4-L7-Direct fold-in). The cementing test demonstrates equivalence on a representative spread of cost shapes; the L7 witnesses prove the laws hold for all inhabitants.
+
+### §5.3 Where the corpus lives
+
+Per [`../INVARIANTS.md`](../INVARIANTS.md) P2 (every fact in one place) and `feedback_no_generated_code_on_disk`: the corpus lives as `.dag` source files under `src/v3/test/cost_lens_corpus/` with a `TestClaim` referencing them via `DeclarationId`. Both `compile_v3` and `compile_v2` consume the same source (v2 reads `.dag` directly; v3 reads `.dag` directly through the v3 parser). The cementing test does not maintain parallel v2 and v3 fixtures.
+
+This avoids the parallel-representation debt named in `feedback_parallel_representation_debt` — the corpus is one set of `.dag` programs, not two.
+
+## §6. Cross-program coordination
+
+This slice is **cross-program** between Substrate Manager and Verification Manager (per [`docs/r3-structure.md`](r3-structure.md) row 146):
+
+- **Substrate Manager owns**: the `SizeExpr` substrate-shape upgrade in `src/v3/std/algebra.dag`; the `Semiring<SymbolicCost>` declaration and `collapse_on_multiplicative_zero` fix; the `per_call_pattern_at` typed query surface (or its equivalent — already implied by the E-P side table); the consumer rewiring inside `src/v3/lenses/cost.dag`.
+- **Verification Manager owns**: the `cost_lens_v2_oracle_equivalence_demonstrated` TestClaim corpus + structural-equivalence harness; coordination with T-V-L4-L7-Direct on the per-(algebra, inhabitant, law) witness coverage that catches the product-zero class of bugs structurally.
+
+The split mirrors slice 1 (complexity) — Substrate authors carriers + lens consumption; Verification authors the cementing TestClaim.
+
+## §7. Cascade gates
+
+Per [`docs/r3-structure.md`](r3-structure.md):
+
+- **Internal cascade (within T-Lens-Behavioral-Parity)**: cost slice 2 cannot dispatch until T-E-P-Producer-Broadening (the foundational lane that broadens producer coverage from the first narrow slice to full `ExprCall.descent_evidence` parity) is COMPLETE. Reason: per-call `CallPattern` lookups must be authoritative for every recursive call site, not just the first slice. If the producer is partial, the lens consumer falls back to `UnknownCost` for uncovered call sites, the cementing test against v2 fails on those programs, and slice 2 cannot close.
+- **Internal cascade (within slice 2)**: SizeExpr substrate-shape upgrade lands first; producer-consumption rewiring lands second (it depends on `SizePort`); cementing test lands third (it depends on both). The §4 product-zero fix is ordering-independent of the SizeExpr upgrade and can land in parallel.
+- **External cascade**: R2-Evaluator landed (per the standard R3 worker-dispatch precondition); R2-T-Substrate-Lens-Primitive landed (the `Lens<C>` framework cost.dag inhabits).
+
+Pre-cascade design-doc work is permitted (this doc); pre-cascade substrate work waits.
+
+## §8. Resolved design questions
+
+Six design questions surfaced during authoring. Per `feedback_design_before_implement`, each is resolved here.
+
+### §8.1 SizeExpr or SizeVariable union — RESOLVED: SizeExpr is the new authority, SizeVariable retires
+
+**Question:** keep `SizeVariable` as a record carrying both `source_port` and an optional `expr: SizeExpr?` for backward compatibility, or make `SizeExpr` the new authority and retire `SizeVariable`?
+
+**Resolved:** `SizeExpr` is the new authority. `SizeVariable` retires in the same change.
+
+**Why:** `SizeVariable { source_port } + SizeExpr?` is the textbook bridge-as-steady-state pattern (per [`../INVARIANTS.md`](../INVARIANTS.md) P5 + `feedback_parallel_representation_debt`). The migration is mechanical (every `SizeVariable { source_port: p }` becomes `SizePort { source_port: p }`), so atomic landing is feasible. No bridge.
+
+### §8.2 Carry user-facing names on `SizePort` — RESOLVED: no, names come from InternTable
+
+**Question:** add a `name: String` field to `SizePort` for diagnostic rendering?
+
+**Resolved:** no. Names are aliases for declarations (per `feedback_naming_is_aliasing`); render-time consumers look up the name from the InternTable keyed by `source_port`. The fact lives in one place.
+
+**Why:** v2's `SizeVar { name: String }` carried the name as a structural field because v2 did not yet have an InternTable; v3 does (per `project_intern_table` memory). Repeating the v2 mistake in v3 would be wholly redundant authority.
+
+**Implementation note:** the InternTable lookup function is `intern_table::name_of(port_id) -> String`. Diagnostic rendering calls this; no `name` field on `SizePort`.
+
+### §8.3 `Dimension<SymbolicCost>` declaration scope for slice 2 — RESOLVED: Path A, declaration deferred to grammar lane
+
+**Question:** does slice 2 ship the `data symbolic_cost_dimension: AnalysisDimension<SymbolicCost> = { … }` value, or does it wait for the class-5 grammar gap to close?
+
+**Resolved:** wait for the grammar gap. Slice 2's closure gate `cost_lens_behaviorally_complete` is defined to NOT require the `data` declaration landing; the dissolution trigger is named explicitly (`when class-5 record-body grammar lands, the trampoline retires`), and the trampoline `analyze_symbolic_cost_dimension` is preserved with that explicit dissolution trigger per [`../INVARIANTS.md`](../INVARIANTS.md) P5 scaffold-discipline.
+
+**Why:** the grammar gap is shared across multiple Dimension instances (idempotency, parallelism, effect_enumeration, user-declared dimensions per Stage 2f). Solving it in slice 2 only would either duplicate the work (per-lane gap fix) or defer the cross-lane fix to a later lane that has to redo it. The clean structural answer is: grammar work happens once, then every dimension's `data` value lands.
+
+The cementing test (§5) does NOT require the `data` declaration — it dispatches through `analyze_symbolic_cost_dimension` directly, treating that Rust function as the interim authority *named with its dissolution trigger*. When the trampoline retires, the cementing test rebinds to the `data` declaration; no test rewrite, just the analyze entrypoint changes.
+
+### §8.4 Producer query surface name — RESOLVED: `per_call_pattern_at(d, call_site) -> CallPattern?`
+
+**Question:** what's the typed query surface name for the per-call evidence the lens consumes?
+
+**Resolved:** `per_call_pattern_at(d: Dag, call_site: NodeId) -> CallPattern?` exposed from `std.computation`. Following the same shape as `node(d: Dag, NodeId) -> Behavior?` (the existing substrate accessor — see `src/v3/lenses/cost.dag` line 157).
+
+**Why:** `Option`-typed query surfaces are the established pattern in v3's substrate (per L-7). The query returns `None` for non-recursive call sites, `Some(pattern)` for recursive ones; the consumer dispatches on the option. This avoids fail-closed-panic for the common non-recursive case while making the per-call presence/absence structurally typed.
+
+**Cross-cut:** complexity slice 1 consumes the same query. The shared query surface IS the "same producer foundation" of row 146. No per-lens query duplication.
+
+### §8.5 SymbolicCost semiring declaration shape — RESOLVED: `Semiring<SymbolicCost>`, not `CommutativeSemiring<SymbolicCost>`
+
+**Question:** declare `SymbolicCost` as `Semiring` (left-distributive only) or `CommutativeSemiring` (multiplication commutative)?
+
+**Resolved:** `Semiring<SymbolicCost>` — the multiplicative side does NOT enforce commutativity in the type. Practical reason: `iterate(bound, body)` semantically means "body runs `bound` times in sequence"; reordering to `iterate(body, bound)` semantically means "bound runs `body` times" — different operationally. For asymptotic-class purposes the orders coincide (`O(n) · O(m) = O(n · m)` either way), but the substrate should not promise more than the operational shape supports.
+
+**Why:** the v2 oracle's `CostMul` is *also* not commutative-typed; declaring v3's algebra as commutative would introduce a parallel-authority claim on the algebra structure that v2 does not make. Per [`../INVARIANTS.md`](../INVARIANTS.md) P1, the algebra declaration should match the operational fact.
+
+**Note:** for the asymptotic-equivalence cementing test, `dominates(O(n)·O(m), O(m)·O(n))` returns true in both directions (per `src/v3/std/algebra.dag::dominates` ProductCost branch — "any child dominates" symmetry). The cementing test's structural-equivalence harness reflects this — it normalizes both sides before comparing.
+
+### §8.6 Cementing-test corpus authoring location — RESOLVED: `src/v3/test/cost_lens_corpus/`, single `.dag` source serves both v2 and v3
+
+**Question:** corpus as parallel v2 + v3 fixtures, or single source consumed by both?
+
+**Resolved:** single `.dag` source under `src/v3/test/cost_lens_corpus/`. Both v2 and v3 parse and analyze the same files.
+
+**Why:** parallel fixtures are parallel-representation debt (per `feedback_parallel_representation_debt`); they drift. The `.dag` parsers in v2 and v3 are both authoritative on the same source language; the cementing test exploits exactly that — same source, two analyzers, structural equivalence.
+
+**Implementation note:** v2's parser is `src/v2/parser/...` (existing); v3's is `src/v3/compiler/src/parse.rs`. The cementing-test harness calls both on the same `.dag` file path.
+
+---
+
+All six questions resolved. Implementation can proceed without further Director ratification. Cascade gates (T-E-P-Producer-Broadening COMPLETE for §3 consumption; R2-Evaluator landed for §5 test execution) and external dependencies (class-5 grammar gap for §2.3 `data` declaration deferred to a different lane) remain as the only outstanding preconditions on the *full* cost-lens behavioral parity; the slice-2 closure gate is satisfied without those.
+
+## §9. Relationship to existing authority
+
+This design doc extends:
+
+- [`docs/design-symbolic-cost-algebra.md`](design-symbolic-cost-algebra.md) (DB-7) — the SymbolicCost coproduct shape. **Modifies**: `LinearCost`/`PolynomialCost`/`LogCost` payload changes from `SizeVariable` to `SizeExpr`. Adds the `Semiring<SymbolicCost>` inhabitance declaration.
+- [`docs/design-dimension-abstraction.md`](design-dimension-abstraction.md) (DB-3) — the `Dimension<C>` framework. **No changes to existing carrier**; this doc names how `AnalysisDimension<SymbolicCost>` instantiates and the deferral discipline for the `data` value.
+- [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) — the lens-capability register tracking PROXY/STUB/PARTIAL/COMPLETE status per lens. **Updates**: `cost.dag` row "What v2 has that v3 drops" column collapses on landing of slice 2 (named SizeVar value semantics: replaced by `SizeExpr`; producer wiring: consumed via `per_call_pattern_at`; cementing test: shipped per §5). The "Dimension<SymbolicCost> wiring deferred on grammar gaps" remainder gets a named dissolution trigger pointing to the class-5 grammar lane.
+- [`../INVARIANTS.md`](../INVARIANTS.md) C-8 (fail-closed compilation) — load-bearing for §4 (the product-zero fix removes a fabrication-shaped behavior; v3 was not failing closed on the annihilation-law violation, it was returning a wrong-but-plausible cost).
+- [`../INVARIANTS.md`](../INVARIANTS.md) P1 (modeling faithfulness) — load-bearing for §4.2 (the fix declares the algebra structure rather than special-casing the helper).
+- [`../INVARIANTS.md`](../INVARIANTS.md) P2 (boundary discipline) — load-bearing for §3.2 (the `per_call_pattern_at` query surface as single authority).
+- [`../INVARIANTS.md`](../INVARIANTS.md) P5 (progress is dissolution) — load-bearing for §8.1 (atomic SizeVariable retirement, no bridge), §8.3 (named dissolution trigger for the trampoline), §8.6 (no parallel corpus).
+- `feedback_lenses_not_passes` — load-bearing for §3 (zero heuristics; the lens is a fold over substrate facts, never derives them).
+- `feedback_state_space_vs_behavioral_invariants` — load-bearing for §1.2 (the SizeExpr coproduct rules out illegal states like "size is two ports" that the old SizeVariable shape did not even consider).
+- `project_lattice_consolidation` (memory) — this slice's declaration of `Semiring<SymbolicCost>` is one of the named ad-hoc lattices/algebras the project memory tracks; declaring inhabitance is the consolidation move.
+- `project_algebra_operator_dispatch` (memory) — Semiring declaration enables `+`/`*` operator dispatch over `SymbolicCost`.
+
+This document does NOT modify:
+
+- The seven-variant `SymbolicCost` coproduct shape itself (per DB-7's STOP SIGNAL on an eighth variant).
+- The `AnalysisDimension<C>` substrate carrier (per DB-3 — sibling, not replacement).
+- v2's `complexity.dag` (it is the oracle, not a target of change).
+
+## §10. Implementation order (sketch)
+
+Within T-Lens-Behavioral-Parity slice 2 (cost) per [`docs/r3-structure.md`](r3-structure.md) closure gates:
+
+1. **SizeExpr substrate-shape upgrade** (`size_expr_substrate_landed`). Author the `SizeExpr` declaration; update `SymbolicCost` to use it; update `same_size_variable` → `size_expr_eq`; migrate Rust mirror in `dag.rs`; delete `SizeVariable`. Atomic.
+2. **Semiring<SymbolicCost> declaration + product-zero fix** (`symbolic_cost_semiring_inhabitance_landed`). Declare the `Semiring<SymbolicCost>` instance; add `collapse_on_multiplicative_zero`; update `reduce_product`. Atomic with the dispatch.
+3. **`per_call_pattern_at` substrate query surface** (`per_call_pattern_query_surface_landed`). Expose `per_call_pattern_at(d, call_site) -> CallPattern?` from `std.computation`; the query reads `v3_compiler::dag::per_call_descent_evidence`. Co-owned with complexity slice 1 (same query).
+4. **Cost lens producer consumption** (`cost_lens_consumes_per_call_pattern`). Extend `entry_for` to dispatch on `per_call_pattern_at`; add `recursive_transform_cost`; add `call_pattern_to_iter_bound`. Depends on steps 1–3.
+5. **Cementing TestClaim against v2 oracle** (`cost_lens_v2_oracle_equivalence_demonstrated`). Author the corpus under `src/v3/test/cost_lens_corpus/`; author the structural-equivalence harness; wire as a `TestClaim` referencing `analyze_symbolic_cost_dimension` and v2's `analyze`. Depends on steps 1–4.
+6. **Capability-register row update** (`cost_lens_capability_register_complete`). Update `docs/v3-lens-capability-register.md` row to BEHAVIORALLY COMPLETE. The "Dimension<SymbolicCost> wiring deferred on grammar gaps" residual collapses onto the class-5 grammar lane's dissolution trigger.
+
+Steps 1–3 are parallel-dispatchable (independent substrate authorings). Steps 4–5 are sequential. Step 6 is the closure receipt.
+
+Total estimate (per L-XL sizing in the lane row): substrate carriers + producer-query surface + lens rewiring = M-L; corpus + cementing harness = M; capability-register update = S. End-to-end: 3-5 weeks worker time at standard R3 cadence post-cascade.
+
+---
+
+**This document is a design spec, not a ship target.** It resolves the structural design questions blocking T-Lens-Behavioral-Parity slice 2 (cost) dispatch. The slice itself runs once cascade gates clear (T-E-P-Producer-Broadening COMPLETE + R2-Evaluator landed). All §8 design questions resolved in-doc; no Director ratification required before substrate authoring begins.
