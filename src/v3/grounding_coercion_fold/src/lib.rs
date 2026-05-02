@@ -64,6 +64,22 @@ mod tests {
     }
 
     #[test]
+    fn scratch_int_examples_require_emit_model_inhabitance_rows() {
+        let dag = Dag::new_empty_for_testing();
+        let lifetime: LifetimeAnalysisReport = Default::default();
+        let spec = LanguageSpecProjection::ScratchIntExamples(
+            IntScratchExample::DesignDocExample2BoundedU32,
+        );
+        let err = fold_program_to_target(&dag, &lifetime, &spec).expect_err("row gate");
+        assert_eq!(
+            err,
+            EmissionDiagnostic::UnderRefined {
+                unspecified_axis: "declared_TargetIntegerTypeInhabitance_rows".to_string(),
+            }
+        );
+    }
+
+    #[test]
     fn design_doc_example_1_unrefined_int_under_refined() {
         let dag = Dag::new();
         let lifetime: LifetimeAnalysisReport = Default::default();
