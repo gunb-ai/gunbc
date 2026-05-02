@@ -2853,6 +2853,25 @@ pub fn __v3_int_div(l: i64, r: i64) -> ::core::result::Result<i64, DivError> {
     Ok(join_rendered(&sections, " "))
 }
 
+/// Name of the last top-level **value** `Bind` that `emit_rust` program-mode `main` prints — **same
+/// predicate** as `emit_rust_with_mode`'s `top_level_binds` walk (`source_filtering` excludes,
+/// empty `params`, `Dag::nodes` order). W1 `rust_emit_output` uses this as single authority so the
+/// runner cannot drift from emission when non-claim-file binds participate in the emitted `Dag`.
+pub(crate) fn last_emit_rust_program_top_level_value_bind_name(
+    dag: &Dag,
+) -> Result<Option<String>, EmitError> {
+    let indexes = RealizationIndexes::build(dag)?;
+    Ok(dag
+        .nodes()
+        .iter()
+        .rev()
+        .filter_map(Behavior::as_bind)
+        .filter(|bind| !indexes.source_filtering.excludes(&bind.span.file))
+        .filter(|b| b.params.is_empty())
+        .next()
+        .map(|b| b.name.clone()))
+}
+
 /// Bundled emission context. Carries the typed indexes, substrate
 /// marker handles, and bound-name index through the recursive
 /// render walk. Replaces the pre-unwind multi-arg threading where

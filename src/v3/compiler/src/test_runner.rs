@@ -8,6 +8,7 @@ use crate::dag::{
     Path, PortId, PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
+use crate::emit::rust_target::last_emit_rust_program_top_level_value_bind_name;
 use crate::generated_files::GENERATED_FILES;
 use crate::infer::type_shapes_equivalent;
 use crate::lens_apply::{
@@ -213,24 +214,6 @@ fn eval_lane_e_differential_cost_lineage(
     }
 }
 
-/// Last top-level **value** bind (empty `params`) in `claim_file`, in `Dag::nodes` order.
-///
-/// **W1 transitional coupling:** `emit_rust` program mode prints the **last** such bind from
-/// `emit_rust_with_mode` (`rust_target.rs`). `rust_emit_output` therefore requires
-/// `ProgramOutputBind.output_ref` to name that same bind until PB-Runtime owns observation layout
-/// (`docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md` §Typed Observation normalization).
-fn w1_last_top_level_value_bind_name(dag: &Dag, claim_file: &str) -> Option<String> {
-    dag.nodes()
-        .iter()
-        .filter_map(|node| match node {
-            Behavior::Bind(bind) if bind.span.file == claim_file && bind.params.is_empty() => {
-                Some(bind.name.clone())
-            }
-            _ => None,
-        })
-        .last()
-}
-
 fn w1_parse_single_int_stdout_carve_out(stdout: &str) -> Result<i64, String> {
     let trimmed = stdout.trim();
     if trimmed.is_empty() {
@@ -282,19 +265,29 @@ fn w1_rust_emit_output_int(
     // accepted at the `DifferentialEquals` subject/oracle `DeclarationRef` site, fail-closed
     // elsewhere in `eval_differential_equals`. **Dissolution:** substrate producer-role markers
     // replace name-keyed recognition (`docs/briefs/r3-pr-e8-w1-output-producer-contract-blocker.md`).
-    let Some(last_bind) = w1_last_top_level_value_bind_name(program_dag, claim_file) else {
-        return Err(
-            "W1 rust_emit_output: compiled program has no top-level value binds (emit_rust program \
-             mode requires at least one); dissolution: PB-Runtime-generated target-language tests"
-                .to_string(),
-        );
+    let last_bind = match last_emit_rust_program_top_level_value_bind_name(program_dag) {
+        Ok(Some(name)) => name,
+        Ok(None) => {
+            return Err(
+                "W1 rust_emit_output: compiled program has no top-level value binds (emit_rust program \
+                 mode requires at least one); dissolution: PB-Runtime-generated target-language tests"
+                    .to_string(),
+            );
+        }
+        Err(e) => {
+            return Err(format!(
+                "W1 rust_emit_output: cannot resolve emit-rust print target (same `RealizationIndexes` \
+                 path as `emit_rust_with_mode`): {e:?}"
+            ));
+        }
     };
     if last_bind != output_bind.name {
         return Err(format!(
             "W1 rust_emit_output: `ProgramOutputBind.output_ref` must name the **last** top-level \
-             value bind in `{claim_file}` so emitted `main` prints the same bind `emit_rust` selects \
-             as final — expected bind `{last_bind}`, got `{}` (transitional coupling; dissolution: \
-             PB-Runtime harness + typed observation channel)",
+             value bind after `source_filtering` (same bind `emit_rust` program-mode `main` prints; \
+             see `last_emit_rust_program_top_level_value_bind_name`) — expected `{last_bind}`, got `{}` \
+             (claim file `{claim_file}`; transitional coupling; dissolution: PB-Runtime harness + typed \
+             observation channel)",
             output_bind.name
         ));
     }
