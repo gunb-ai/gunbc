@@ -91,14 +91,17 @@ Both are substantively gated on cross-lane work (R2-Evaluator surface for B.1's 
 Combining Pop A + Pop B per the matrix's prerequisite DAG + this audit:
 
 1. **S-1 lands** (PM-authored T-V2-Retirement worker brief).
-2. **B.1 + B.2 dispositions land** per Decision 1 + 2 of S-1 input packet (#1462). Substrate-side `kernel_algebra_profile` migration runs in parallel for B.2.
+2. **Three lanes can dispatch in parallel once S-1 lands** (each retains its own lane-specific dependency chain — S-1 is the common gate, not the only gate per lane):
+   - **B.1 disposition** per Decision 1 of S-1 input packet (#1462) — additionally gated on R2-Evaluator surface for the Replace path, or a Substrate structural-guarantee receipt for the Delete fallback. Lane-specific.
+   - **B.2 disposition** per Decision 2 — additionally gated on Substrate-side `kernel_algebra_profile` authority migration landing first. Lane-specific.
+   - **Pop A v3-side property-test migration** — gated by **S-1 only**; substrate is live on v3 side for all 4 (verified per `src/v3/std/{induction,termination}.dag` line citations above); no R2-Evaluator / PB-Runtime / Substrate-authority dependency. Mechanical port.
 3. **§3.3 Cargo edges drop** atomically with B.1 + B.2 closure.
 4. **G-1 green** — `cargo test -p v3-compiler` passes without v2 crates.
-5. **Pop A v3-side property-test migration PR** — 4-test port (or per-file split). Lands BEFORE G-2 (which deletes `src/v2/tests`); without the migration, G-2 silently drops the property ratchets. Substrate is live on v3 side for all 4; migration is mechanical.
-6. **G-2 prereq stack green** (S-1 + S-2 + S-3 + S-4 + G-1; per audit §3.2).
+5. **Pop A migration green** — must precede G-2; without it, G-2 silently drops the property ratchets when `src/v2/tests` is removed. Independent of G-1 close ordering otherwise.
+6. **G-2 prereq stack green** (S-1 + S-2 + S-3 + S-4 + G-1; per audit §3.2). Pop A coverage from step 5 is implicit in this stack via Pop A's "before G-2" anchoring.
 7. **G-2 implementation** — `src/v2/stage0` + `src/v2/tests` workspace members removed; `src/v2/` deleted.
 
-Pop A migration (step 5) is **gated by S-1 only** — substrate is live; no R2-Evaluator / PB-Runtime / Substrate-side dependency. Could in principle run in parallel with B.1 + B.2 dispositions (step 2) if S-1 dispatches both lanes. Recommended sequencing: S-1 covers Pop A migration scope explicitly so the ratchet doesn't get lost.
+Recommended sequencing for the S-1 author: explicitly enumerate Pop A migration scope alongside the B.1/B.2 dispositions so all three lane-specific dispatches surface in one document and the Pop A property ratchet doesn't get lost between G-1 close and G-2 deletion.
 
 ## Constraints honored (verbatim from dispatches)
 
