@@ -4,6 +4,9 @@
 //! generated sources can `match` on the same structural shape the `.dag`
 //! substrate declares, without inventing a parallel exit carrier.
 
+// Practice 4 (coproduct checkpoint, `docs/modeling-discipline.md` §P1): 🟢 GREEN —
+// terminal host mirror of `dsl/std/process.dag` `ProcessExit`; no extra variants
+// or semantics beyond that substrate coproduct.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProcessExit {
     ExitSuccess,
