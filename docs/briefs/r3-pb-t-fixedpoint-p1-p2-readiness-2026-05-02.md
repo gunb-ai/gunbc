@@ -4,7 +4,7 @@
 **Date:** 2026-05-02  
 **Trigger:** PB re-audit after P0 receipt work (`#1425` / `#1447` / `#1463`) and recent Evaluator / R3 expansion landings on `main`.
 
-**Authority:** [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) execution matrix §P1–P2, §Dispatch preconditions, §Relationship to DB-8; [`r3-structure.md`](../r3-structure.md) lane table + R3 worker dispatch precondition; in-tree mechanical signals below.
+**Authority (repo-root paths — verify in checkout):** `docs/briefs/r3-pb-t-fixedpoint-worker.md` (execution matrix §P1–P2, §Dispatch preconditions, §Relationship to DB-8); `docs/r3-structure.md` (lane table + R3 worker dispatch precondition); mechanical signals in the table below and in §P1 / §P2.
 
 ---
 
@@ -12,14 +12,14 @@
 
 | Surface | Role in audit |
 |--------|----------------|
-| [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) | P1/P2 definitions, dispatch joint precondition, DB-8 relationship |
-| [`r3-structure.md`](../r3-structure.md) | T-FixedPoint lane row, Evaluator / Lens dependencies |
-| [`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) | `self_host_ratchet` job policy |
-| [`src/v3/compiler/src/bin/self_host_fixed_point.rs`](../../src/v3/compiler/src/bin/self_host_fixed_point.rs) | Staged vs full `compiler.dag` cycle |
-| [`src/v3/compiler/src/self_host_receipt_p0.rs`](../../src/v3/compiler/src/self_host_receipt_p0.rs) | P0 receipt contract (unchanged relevance) |
-| [`src/v3/compiler/tests/integration/sg0_census_test.rs`](../../src/v3/compiler/tests/integration/sg0_census_test.rs) | SG-0 hand-authored non-test census (P2 proxy) |
+| `docs/briefs/r3-pb-t-fixedpoint-worker.md` | P1/P2 definitions, dispatch joint precondition, DB-8 relationship |
+| `docs/r3-structure.md` | T-FixedPoint lane row, Evaluator / Lens dependencies |
+| `.github/workflows/ci.yml` | `self_host_ratchet` job policy |
+| `src/v3/compiler/src/bin/self_host_fixed_point.rs` | Staged vs full `compiler.dag` cycle |
+| `src/v3/compiler/src/self_host_receipt_p0.rs` | P0 receipt contract (unchanged relevance) |
+| `src/v3/compiler/tests/integration/sg0_census_test.rs` | SG-0 hand-authored non-test census (P2 proxy) |
 
-**Live path inventory (repo root, all present in-tree at authoring):** `docs/briefs/r3-pb-t-fixedpoint-worker.md`, `docs/briefs/r3-pb-t-fixedpoint-p1-p2-readiness-2026-05-02.md` (this file), `docs/r3-structure.md`, `.github/workflows/ci.yml`, `src/v3/compiler/src/bin/self_host_fixed_point.rs`, `src/v3/compiler/src/self_host_receipt_p0.rs`, `src/v3/compiler/tests/integration/sg0_census_test.rs`. Relative links in the table above resolve from `docs/briefs/` to these paths.
+**Live path inventory (repo root, all present in-tree at authoring):** same paths as the first column above, plus `docs/briefs/r3-pb-t-fixedpoint-p1-p2-readiness-2026-05-02.md` (this file). No file-relative markdown URLs — every path is written from the workspace root for copy-paste verification.
 
 Incremental Evaluator substrate landings (e.g. PR-E lineage called out in program mail) were **not** treated as a substitute for the brief’s **ledger-level** “R2-Evaluator landed” gate; see P1 conclusion.
 
@@ -29,7 +29,7 @@ Incremental Evaluator substrate landings (e.g. PR-E lineage called out in progra
 
 **Brief definition (P1 row):** Preconditions include **R2-Evaluator landed**; deliverable *shape* is a **runnable `compiler.dag` fixed-point cycle** (see matrix + §Dependencies (1)).
 
-**Dispatch precondition (joint):** Per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §Dispatch preconditions, **T-FixedPoint worker dispatch** still waits on a closure-ledger read showing **R2-Evaluator landed and stable** *and* **R2-Grounding-Rust + R2-Grounding-Python** (and the other rows). Host-side compiler improvements alone do not rewrite that authority.
+**Dispatch precondition (joint):** Per `docs/briefs/r3-pb-t-fixedpoint-worker.md` §Dispatch preconditions, **T-FixedPoint worker dispatch** still waits on a closure-ledger read showing **R2-Evaluator landed and stable** *and* **R2-Grounding-Rust + R2-Grounding-Python** (and the other rows). Host-side compiler improvements alone do not rewrite that authority.
 
 **Mechanical signal (`self_host_fixed_point`):** Module docs still state the full emit → `rustc` → run → byte-diff cycle on `dsl/gunbc/compiler.dag` requires **v3-parseable** `compiler.dag` **and** an emitted CLI that can re-run emission; until Lane 3 Stage 3c the binary remains **staged** on `default_fixed_point_source` with a **probe/conditional** `compiler.dag` slice (`src/v3/compiler/src/bin/self_host_fixed_point.rs`, module docs at file head).
 
@@ -69,4 +69,4 @@ Receipt-key pin + **validate-before-`write_receipt`** (`self_host_receipt_p0` + 
 | Is **P2** open for T-FixedPoint-owned implementation? | **STOP** — still gated on **lens producer retirement** + **SG-0 = 0** per brief; T-FixedPoint **consumes** that signal, it does not close it. |
 | Smallest **honest** next work PB can steer (outside this lane owning closure)? | **Upstream:** R2-Evaluator program + joint grounding ledger items; **XL:** lens producer retirement + PB-1 shim; **Lane 1e / emit:** determinism debt called out in DB-8 / `self_host_ratchet` comments. |
 
-Cross-reference for PB Manager: keep using [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §Dispatch preconditions as the single dispatch authority; re-run this style of audit when the **closure ledger** or **SG-0 census** materially changes.
+Cross-reference for PB Manager: keep using `docs/briefs/r3-pb-t-fixedpoint-worker.md` §Dispatch preconditions as the single dispatch authority; re-run this style of audit when the **closure ledger** or **SG-0 census** materially changes.
