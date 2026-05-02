@@ -8,10 +8,11 @@
 
 Do not start the parser/AST/lowering code slice from the current tree.
 
-The current v3 parser still dispatches only `Fn`, `Data`, and `Module` items.
-There is no `service` keyword anchor yet, so a code PR that claims to ingest
-canonical provider blocks would have to open a broader grammar cascade than the
-narrow slice we want here.
+The current v3 parser still dispatches only the existing top-level surface item
+forms (`Let`, `Fn`, `Type`, `Module`, `Import`, and `Data`). There is no
+`service` keyword anchor yet, so a code PR that claims to ingest canonical
+provider blocks would have to open a broader grammar cascade than the narrow
+slice we want here.
 
 This brief records the exact shared service-block shape that the first code PR
 should target once the grammar anchor exists, and it defines the STOP boundary
