@@ -24,7 +24,7 @@ Each row is a decision S-1 must make. **Recommended default** is what existing a
 | Field | Value |
 |---|---|
 | **Question** | Replace the v2 oracle with a v3 evaluator equivalence-corpus row, OR delete the test as redundant with a structural-guarantee receipt? |
-| **Recommended default** | **Replace.** Matches `r3-pb-runtime-equivalence-corpus-seed-audit.md` Seed (1) (`Int` arithmetic) shape; preserves the property under test (lower-time fold of `repeat_string` to a string literal); converges with the broader §7.1 PB-Runtime ↔ R2-Evaluator equivalence corpus. The "delete with receipt" path is acceptable only if the lower-time fold is structurally guaranteed by v3 typed primitive composition such that no oracle is needed. |
+| **Recommended default** | **Replace.** Aligns with the broader PB-Runtime ↔ R2-Evaluator equivalence-corpus direction (cf. migration-matrix §3.1 "Proposed migration" + `r3-pb-runtime-equivalence-corpus-seed-audit.md` general framing — the seed audit's three named seed classes are not binding here; `repeat_string` is a `std.render` / lower-time fold / `String` result and doesn't map onto a specific seed class). Preserves the property under test (lower-time fold of `repeat_string` to a string literal). The "delete with receipt" path is acceptable only if the lower-time fold is structurally guaranteed by v3 typed primitive composition such that no oracle is needed. |
 | **Pre-requisite for the "replace" path** | R2-Evaluator surface live enough to host an equivalence-corpus row — currently in flight per `docs/briefs/r2-evaluator-manager.md` PR-A through PR-E. The "delete" path has no R2-Evaluator dependency. |
 | **Owner** | **PM** picks (audit §3.1 explicitly names this as S-1's choice). **PB** executes once chosen. |
 
