@@ -172,6 +172,13 @@ records the current post-bundle state: `AlgebraicLaw::Associativity` and
 declared producer identity / observation-channel authority for executable
 runner work.
 
+**W1 blocker/proposal:** [`r3-pr-e8-w1-output-producer-contract-blocker.md`](r3-pr-e8-w1-output-producer-contract-blocker.md)
+records the accepted STOP+PING for
+`DifferentialEquals(rust_emit_output, dag_eval_output, ProgramOutputBind)`:
+`dag_eval_output` is plausible through no-memo eager `evaluate_body`, but
+`rust_emit_output` still needs an explicit producer identity contract and typed
+observation normalization before runner code can land.
+
 **STOP+PING:** no convention-only stdout parsing, no new `TestPredicate`
 variants, and no permanent expansion of `test_runner.rs` authority without a
 dissolution hook.
