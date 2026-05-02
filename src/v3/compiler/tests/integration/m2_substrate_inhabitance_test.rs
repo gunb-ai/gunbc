@@ -2886,12 +2886,12 @@ fn approximate_field_axes_live_in_v3_std_authority() {
 fn approximate_field_carrier_record_shape_ratchets() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
-    let approx_id = find_named(dag, "ApproximateField");
+    let approx_id = find_named(&dag, "ApproximateField");
     let field_template = dag
         .declaration_by_name("Field")
         .expect("`Field` must load from dsl/std/algebra.dag");
 
-    let mut labels = record_fields(dag, "ApproximateField");
+    let mut labels = record_fields(&dag, "ApproximateField");
     labels.sort();
     assert_eq!(
         labels,
@@ -2912,7 +2912,7 @@ fn approximate_field_carrier_record_shape_ratchets() {
         "ApproximateField<F> takes exactly one carrier type parameter"
     );
 
-    let base_ty = conj_field_by_id(dag, approx_id, "base");
+    let base_ty = conj_field_by_id(&dag, approx_id, "base");
     match &dag.declaration(base_ty).connective {
         TypeConnective::Instantiation {
             template,
@@ -2935,7 +2935,7 @@ fn approximate_field_carrier_record_shape_ratchets() {
         other => panic!("`base` must lower to a Field instantiation; got {other:?}"),
     }
 
-    let mut sv_labels = record_fields(dag, "SpecialValues");
+    let mut sv_labels = record_fields(&dag, "SpecialValues");
     sv_labels.sort();
     assert_eq!(
         sv_labels,
