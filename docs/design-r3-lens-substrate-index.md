@@ -28,7 +28,7 @@ This index documents the cross-doc edges that the coherence audit (2026-05-02) v
 | `QuantifiedTestClaim` / `ProgramGenerator` / `ForAll`/`Exists` quantifiers | tests-as-data §2.2 | cementing tests in cost/complexity/effect-enumeration |
 | `AsymptoticClass` lattice | complexity-lens §1.4 | lens-application's `ComplexityBudget` (= `AsymptoticClass`) |
 | `SymbolicCost` algebra (DB-7 carrier; semiring fix in cost-lens §4) | algebra.dag (DB-7) — not authored here | complexity-lens (consumes for symbolic-cost dimension); cost-lens (extends with semiring inhabitance + product-zero fix) |
-| `SizeVariable { source_port: PortId }` | algebra.dag (DB-7) | unchanged; both lenses consume DB-7 carrier; renderer reads name via `intern_table::name_of(source_port)` (single authority for names — see cost-lens §1.2 + complexity-lens §1.2) |
+| `SizeVariable { source_port: PortId, display_name: String? }` | algebra.dag (DB-7) | one field added (`display_name: String?`); both lenses consume DB-7 carrier; user-facing name carried by `display_name` field (single substrate authority — see cost-lens §1.2 + complexity-lens §1.2; v3 has no `intern_table::name_of` query landed, so the structural-field path is what's currently supported) |
 | `per_call_pattern_at(d, call_site) → CallPattern?` typed query | cost-lens §3.2 + §8.4 | complexity-lens §2 (single shared producer query — no parallel authority) |
 | Resource-threaded callable signatures | effect-enumeration §2.4 | cost-lens §3.3 (consumption is signature-shape-agnostic) |
 | `Operation` (replaces `OperationEffect` post-migration) | effect-enumeration §4 | DB-18 `WorkflowEffect.LinearEffect.ops` (element-type refinement) |

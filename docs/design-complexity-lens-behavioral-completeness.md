@@ -41,21 +41,23 @@ v2's `SizeExpr` carries `SizeVar { name: String }` — a *named* size variable t
 **Substrate change:**
 
 ```dag
-// src/v3/std/algebra.dag — SizeVariable stays UNCHANGED (no display_name field)
+// src/v3/std/algebra.dag — SizeVariable gains display_name field
 
 type SizeVariable {
   source_port: PortId           // structural backing — which port's runtime size
+  display_name: String?         // user-facing name; populated by parser at authoring sites
 }
 
-// Equality on source_port (the only field).
-// User-facing name comes from intern_table::name_of(source_port) — single authority.
+// Equality on source_port only (display_name is presentation, not identity).
 fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool =
   port_id_eq(a.source_port, b.source_port)
 ```
 
-**Why no `display_name` field on the carrier** (resolved per gpt-5-5-pro BLOCKING at sha ef21e1a0): the InternTable already keys user-authored binding names by `port_id` (populated at parse time). Adding a `display_name: String?` field on `SizeVariable` creates two sources of truth — both `display_name` and InternTable would carry names; consumers could disagree. Single-authority discipline (P2) requires picking one. **InternTable is the canonical name authority** — `SizeVariable` stays as a structural reference. The renderer reads names via `intern_table::name_of(source_port)`. Aligned with [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md) §1.2.
+**Why `display_name: String?` field** (aligned with [`docs/design-cost-lens-sizevar-dimension-wiring.md`](design-cost-lens-sizevar-dimension-wiring.md) §1.2): v3 does NOT have a `intern_table::name_of(port_id) -> String` query landed (per `src/v3/std/algebra.dag:143` "InternTable lookup the lens doesn't yet run"). v3 has some InternTable machinery (per `project_intern_table` memory + PR #367 Phase 1) but the port-id-to-authored-name query is not wired. Assuming an unlanded query would lock substrate-target discipline. The structural-field path is what v3 currently supports. Single-authority discipline (P2) is preserved by making `display_name` the only authority — no parallel InternTable lookup; the renderer reads `display_name` directly from the carrier.
 
-**Why this is not a separate `SizeExpr` carrier:** `SizeExpr` in v2 was a coproduct (`SizeConst | SizeVar | SizeLen | SizeAdd | SizeMax`). In v3, `SymbolicCost` already covers `SizeConst` (`ConstantCost(Int)`), `SizeAdd` (`SumCost`), `SizeMax` (the dominance ordering), and `SizeLen` (`LinearCost(SizeVariable)`). The only "missing fact" the capability register names is the user-facing-name surface — closed by InternTable wiring (above), not by adding a new carrier. Reusing `SymbolicCost` for both cost and size dissolves v2's parallel `SizeExpr` ↔ `CostExpr` authorities into one — same fact-flow-forward shape. (Sustainability invariant: cost-of-change=1 when one type subsumes two.)
+**Why `String?`, not `String`**: per [`../INVARIANTS.md`](../INVARIANTS.md) C-9 (no fabrication), when no user-authored name exists the field is `None`; the renderer derives a fresh label from `source_port`. Never invent a fake name and stash it in the field.
+
+**Why this is not a separate `SizeExpr` carrier:** `SizeExpr` in v2 was a coproduct (`SizeConst | SizeVar | SizeLen | SizeAdd | SizeMax`). In v3, `SymbolicCost` already covers `SizeConst` (`ConstantCost(Int)`), `SizeAdd` (`SumCost`), `SizeMax` (the dominance ordering), and `SizeLen` (`LinearCost(SizeVariable)`). The only "missing fact" the capability register names is the user-facing-name surface — closed by the `display_name` field (above), not by adding a new carrier. Reusing `SymbolicCost` for both cost and size dissolves v2's parallel `SizeExpr` ↔ `CostExpr` authorities into one — same fact-flow-forward shape. (Sustainability invariant: cost-of-change=1 when one type subsumes two.)
 
 ### §1.3 Work/span dimension split
 
@@ -622,9 +624,13 @@ Per `feedback_design_before_implement` — resolve all design questions before i
 
 (Resolved in §1.3.) At the *Dimension* layer they are two instances with different `compose` monoids (sum-on-Branch for work; max-on-Branch for span). At the *Summary output* layer they are coordinates of `ComplexitySummary`. Both framings are honest because the relationship is "two dimensions feed one summary" — same shape as DB-3 §"Dimension evaluation" describes for `DimensionReport`.
 
-### §7.2 Should `SizeVariable` carry a name field? — RESOLVED: no; InternTable is single name authority
+### §7.2 Should `SizeVariable` carry a name field? — RESOLVED: yes, `display_name: String?` field; substrate field is single authority
 
-(Resolved in §1.2.) Per gpt-5-5-pro BLOCKING at sha ef21e1a0 + P2 single-authority discipline: adding a `display_name: String?` field on `SizeVariable` would create two name authorities (the field + InternTable), letting consumers diverge on the user-facing label for the same `source_port`. Resolution: InternTable is the single canonical name source (already populated at parse time); the renderer reads via `intern_table::name_of(source_port)`. No substrate change to `SizeVariable`. Equality stays on `source_port` (the only field).
+(Resolved in §1.2.) Iterations:
+1. **First wave** (gpt-5-5-pro at sha ef21e1a0): a `display_name` field PLUS an InternTable lookup would create two sources of truth.
+2. **Second wave** (codex BLOCKING at sha 37f3bc62): v3 has no `intern_table::name_of(port_id)` query landed (per `src/v3/std/algebra.dag:143`). Assuming an unlanded query violates substrate-target discipline.
+
+**Final resolution**: add `display_name: String?` to `SizeVariable` as the single substrate authority for the user-facing name. There's no parallel authority (InternTable name-lookup query isn't landed; the structural-field path is what v3 supports). Single-authority discipline (P2) preserved. Aligned with cost-lens §1.2.
 
 ### §7.3 Should `Certainty` promote to `std/algebra.dag`? — RESOLVED: stays lens-local until a second consumer needs it
 
