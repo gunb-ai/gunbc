@@ -178,6 +178,13 @@ pub mod evaluator {
             count: PortId,
             value: i64,
         },
+        /// E5 fail-closed: count is non-negative but cannot fit in the
+        /// host iteration counter without truncation.
+        LoopCardinalityTooLarge {
+            node: NodeId,
+            count: PortId,
+            value: i64,
+        },
         /// E4 / E2 propagation: an `EvalFrameError` produced during
         /// frame discipline (push/pop balance, duplicate bind, unbound
         /// port). Carries the underlying `EvalFrameError` for
@@ -401,7 +408,13 @@ pub mod evaluator {
         strategy: &EvalStrategy,
     ) -> Result<usize, EvalError> {
         match eval_port(dag, count, state, strategy)? {
-            Value::LiteralValue(LiteralBits::Int(n)) if n >= 0 => Ok(n as usize),
+            Value::LiteralValue(LiteralBits::Int(n)) if n >= 0 => {
+                usize::try_from(n).map_err(|_| EvalError::LoopCardinalityTooLarge {
+                    node,
+                    count,
+                    value: n,
+                })
+            }
             Value::LiteralValue(LiteralBits::Int(n)) => Err(EvalError::LoopCardinalityNegative {
                 node,
                 count,
@@ -1532,6 +1545,35 @@ pub mod evaluator {
                     node: entry,
                     count,
                     value: -1,
+                }
+            );
+            assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        #[cfg(target_pointer_width = "32")]
+        #[test]
+        fn eval_loop_cardinality_count_too_large_for_usize_fails_closed() {
+            let mut dag = Dag::new();
+            let source = dag.alloc_port(None);
+            let init = dag.push_value(LiteralBits::Int(0), span());
+            let too_large = i64::from(u32::MAX) + 1;
+            let count = dag.push_value(LiteralBits::Int(too_large), span());
+            let body_output = dag.push_value(LiteralBits::Int(1), span());
+            let body = node_for_port(&dag, body_output);
+            let output =
+                dag.push_loop(source, init, body, LoopBound::Cardinality { count }, span());
+            let entry = node_for_port(&dag, output);
+            let mut state = empty_state();
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("count too large");
+
+            assert_eq!(
+                err,
+                EvalError::LoopCardinalityTooLarge {
+                    node: entry,
+                    count,
+                    value: too_large,
                 }
             );
             assert_eq!(state.frames_outer_to_inner().len(), 1);
