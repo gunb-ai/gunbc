@@ -367,3 +367,50 @@ const EXPECTED_PER_TARGET_LISTS: &[&str] = &[
     "python_method_template_contracts",
     "go_method_template_contracts",
 ];
+
+/// R3 Debt-Paydown — `diagnostics_empty_after_bootstrap` ratchet for the
+/// method-template-contract bootstrap fixture authorities.
+///
+/// Per `ROADMAP.md:502` (`go_method_template_contracts` live diagnostic
+/// mismatch dissolution) and `ROADMAP.md:504,576` (general
+/// `diagnostics_empty_after_bootstrap` pattern), and the
+/// `docs/debt/r3-debt-paydown-ledger-2026-05-02.md:82` row, the
+/// dissolution requires a single combined ratchet that asserts, for
+/// every method-template-contract data declaration:
+///
+///   1. The declaration is present in the full bootstrap Dag.
+///   2. Its `value_body` lowers to `ValueBody::List(_)` (not `Map`,
+///      not the no-body fallback).
+///   3. The bootstrap Dag carries an empty `diagnostics()` table.
+///
+/// (1) and (2) overlap with `method_template_contract_per_target_dag_method_unique`,
+/// but the existing test does not pin the diagnostics-empty axis;
+/// (3) overlaps with `pb1_bootstrap_full_snapshot_test::generated_full_bootstrap_snapshots_have_no_diagnostics`,
+/// but that test does not anchor on the per-contract authority. This
+/// test combines both axes so that a future shape regression on any
+/// of the 3 contracts cannot pass over a semantically diagnostic
+/// bootstrap Dag (which is the failure mode the ROADMAP row describes).
+#[test]
+fn bootstrap_method_template_contracts_lower_to_list_with_empty_diagnostics() {
+    let dag = generated_full_bootstrap_dag();
+
+    // Axis 3 first: assert the bootstrap Dag is diagnostic-clean
+    // before per-contract structural checks. A noisy bootstrap means
+    // any per-contract assertion would be passing over a Dag the
+    // compiler already flagged as broken — exactly the failure mode
+    // ROADMAP.md:504 names.
+    assert!(
+        dag.diagnostics().is_empty(),
+        "diagnostics_empty_after_bootstrap ratchet failed: bootstrap Dag carries diagnostics: {:?}",
+        dag.diagnostics()
+    );
+
+    // Axes 1 + 2 per contract: each declaration must be present and
+    // lower to ValueBody::List. assert_per_target_list_dag_method_unique
+    // already covers this with the same panics; we re-invoke it here
+    // so the combined gate is one test, one failure surface, one
+    // dissolution receipt.
+    for list_name in EXPECTED_PER_TARGET_LISTS {
+        assert_per_target_list_dag_method_unique(&dag, list_name);
+    }
+}
