@@ -810,6 +810,42 @@ fn emit_tokenize_fn(
     s.push_str("    while pos < bytes.len() {\n");
     s.push_str("        let byte = bytes[pos];\n\n");
     s.push_str("        let start = pos;\n\n");
+    s.push_str(
+        "        if byte == b'-' && bytes.get(pos + 1).map_or(false, |b| byte_matches(*b, ScannerCharClass::Digit)) {\n",
+    );
+    s.push_str("            let mut end = pos + 1;\n");
+    s.push_str(
+        "            while end < bytes.len() && byte_matches(bytes[end], ScannerCharClass::Digit) {\n",
+    );
+    s.push_str("                end += 1;\n");
+    s.push_str("            }\n");
+    s.push_str("            let literal = &source[pos + 1..end];\n");
+    s.push_str(
+        "            let magnitude: i64 = literal.parse().map_err(|_| Diagnostic::TokenizerError {\n",
+    );
+    s.push_str(&format!(
+        "                message: format!(\"{{}}{{}}{{}}\", {}, literal, {}),\n",
+        int_pre, int_suf
+    ));
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("                fixes: Vec::new(),\n");
+    s.push_str("            })?;\n");
+    s.push_str(
+        "            let value = magnitude.checked_neg().ok_or_else(|| Diagnostic::TokenizerError {\n",
+    );
+    s.push_str(
+        "                message: format!(\"integer literal out of range for i64: `-{}`\", literal),\n",
+    );
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("                fixes: Vec::new(),\n");
+    s.push_str("            })?;\n");
+    s.push_str("            tokens.push(Token {\n");
+    s.push_str("                kind: TokenKind::IntLit(value),\n");
+    s.push_str("                span: SourceSpan::new(file, start as u32, end as u32),\n");
+    s.push_str("            });\n");
+    s.push_str("            pos = end;\n");
+    s.push_str("            continue;\n");
+    s.push_str("        }\n\n");
     for class in ascii_scan_order {
         if class == "Whitespace" {
             s.push_str("        if byte_matches(byte, ScannerCharClass::Whitespace) {\n");
