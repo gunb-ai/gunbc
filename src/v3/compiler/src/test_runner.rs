@@ -4,8 +4,8 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 use crate::dag::{
-    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits, Path,
-    PortId, PortState, TypeConnective, ValueBody,
+    AtomPayload, Behavior, BindNode, Dag, Declaration, DeclarationId, FieldValue, LiteralBits,
+    Path, PortId, PortState, TypeConnective, ValueBody,
 };
 use crate::diagnostics::Diagnostic;
 use crate::generated_files::GENERATED_FILES;
@@ -223,9 +223,7 @@ fn w1_last_top_level_value_bind_name(dag: &Dag, claim_file: &str) -> Option<Stri
     dag.nodes()
         .iter()
         .filter_map(|node| match node {
-            Behavior::Bind(bind)
-                if bind.span.file == claim_file && bind.params.is_empty() =>
-            {
+            Behavior::Bind(bind) if bind.span.file == claim_file && bind.params.is_empty() => {
                 Some(bind.name.clone())
             }
             _ => None,
@@ -258,7 +256,11 @@ fn w1_parse_single_int_stdout_carve_out(stdout: &str) -> Result<i64, String> {
     })
 }
 
-fn w1_rust_emit_output_int(program_dag: &Dag, output_bind: &BindNode, claim_file: &str) -> Result<i64, String> {
+fn w1_rust_emit_output_int(
+    program_dag: &Dag,
+    output_bind: &BindNode,
+    claim_file: &str,
+) -> Result<i64, String> {
     // **Transitional producer identity (contract 1):** only the spelling `rust_emit_output` is
     // accepted at the `DifferentialEquals` subject/oracle `DeclarationRef` site, fail-closed
     // elsewhere in `eval_differential_equals`. **Dissolution:** substrate producer-role markers
@@ -293,8 +295,12 @@ fn w1_rust_emit_output_int(program_dag: &Dag, output_bind: &BindNode, claim_file
         std::process::id(),
         stamp
     ));
-    std::fs::create_dir_all(&scratch)
-        .map_err(|e| format!("W1 rust_emit_output: create scratch dir {}: {e}", scratch.display()))?;
+    std::fs::create_dir_all(&scratch).map_err(|e| {
+        format!(
+            "W1 rust_emit_output: create scratch dir {}: {e}",
+            scratch.display()
+        )
+    })?;
     let src_path = scratch.join("main.rs");
     let bin_path = scratch.join("w1_emit_eval_out");
     let mut file = std::fs::File::create(&src_path)
@@ -343,12 +349,14 @@ fn w1_dag_eval_output_int(program_dag: &Dag, output_bind: &BindNode) -> Result<i
             output_bind.name
         ));
     }
-    let producer = program_dag.resolve_producer_opt(&output_bind.value).ok_or_else(|| {
-        format!(
+    let producer = program_dag
+        .resolve_producer_opt(&output_bind.value)
+        .ok_or_else(|| {
+            format!(
             "W1 dag_eval_output: bind `{}` value port has no producer node in compiled program Dag",
             output_bind.name
         )
-    })?;
+        })?;
     let entry = producer.id();
     let strategy = crate::evaluator::EvalStrategy::ApplicativeOrder {
         input_order: crate::evaluator::InputEvaluationOrder::LeftFirst,
@@ -2507,10 +2515,7 @@ impl<'a> TestRunner<'a> {
             );
         }
 
-        let w1_emit_eval_pair = (
-            subject_lineage.as_str(),
-            oracle_lineage.as_str(),
-        );
+        let w1_emit_eval_pair = (subject_lineage.as_str(), oracle_lineage.as_str());
         if matches!(
             w1_emit_eval_pair,
             ("rust_emit_output", "dag_eval_output") | ("dag_eval_output", "rust_emit_output")

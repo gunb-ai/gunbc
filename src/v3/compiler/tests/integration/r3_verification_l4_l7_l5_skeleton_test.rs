@@ -17,7 +17,8 @@ const L4_FIXTURE_PATH: &str =
 const L4_SUITE: &str = "r3_verification_l4_emit_eval_skeleton_suite";
 const L4_CLAIM: &str = "r3_verification_l4_emit_eval_match_skeleton";
 
-const L4_MIXED_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag");
+const L4_MIXED_FIXTURE: &str =
+    include_str!("../fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag");
 const L4_MIXED_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag";
 const L4_MIXED_SUITE: &str = "r3_verification_l4_emit_eval_mixed_lineage_suite";
