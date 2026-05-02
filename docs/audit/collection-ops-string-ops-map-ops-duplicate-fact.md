@@ -249,3 +249,9 @@ whether flat `MethodRef` is sufficient for all operation render contracts or
 whether a target render row needs an explicit algebra/profile coordinate. Route
 that question to `#1130` before authoring row-population slices that would
 otherwise encode the distinction in record names.
+
+**2026-05-02 follow-up receipt:** `method-render-identity-6q.md` answers that
+question for the current row-authoring lane. Keep flat `MethodRef` as the
+render identity and add no `MethodRenderRef` / `(algebra_id, method_id)` render
+key until a target needs two rows for the same `MethodRef` whose difference is
+genuinely algebra/profile-owned.
