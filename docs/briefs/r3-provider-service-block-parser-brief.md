@@ -20,7 +20,17 @@ for that later implementation PR.
 
 ## Current Authority Surface
 
-Existing shared substrate facts live in:
+The verified canonical service authority is the existing provider extdeps
+service blocks in:
+
+- `dsl/extdeps/llm/anthropic.dag`
+- `dsl/extdeps/llm/openai.dag`
+
+Those files already carry the full shared service grammar we want the first
+implementation slice to parse and lower: service config, operations, typed
+inputs, typed outputs, REST transport, response mappings, and mock responses.
+
+Existing shared substrate facts that should receive those parsed facts live in:
 
 - `src/v3/std/services.dag`
 - `src/v3/std/anthropic_messages.dag`
@@ -42,14 +52,15 @@ anchor can be added without broadening the compiler surface.
 
 ## Canonical Shared Grammar
 
-The first code slice should target a canonical shared provider-service block of
-the form:
+The first code slice should target the canonical provider-service block shape
+already present in `dsl/extdeps/llm/{anthropic,openai}.dag`:
 
 ```dag
 service <Name> {
   config { ... }
   operation <Name> {
     input { ... }
+    output { ... }
     transport rest { ... }
     response { ... }
     mock_response { ... }
