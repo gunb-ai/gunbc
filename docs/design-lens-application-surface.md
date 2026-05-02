@@ -63,54 +63,39 @@ type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope        { declaration: DeclarationId, node: NodeId }
 
-// ApplicationConfig is a sum, not a record-with-Optional. This makes
-// "Enforce without budget" and "Introspect with budget" UNREPRESENTABLE
-// at the type level — illegal states cannot exist (per
-// feedback_state_space_vs_behavioral_invariants + modeling principles 2/6).
-type ApplicationConfig
-  = Enforce { budget: LensBudget, diagnostic_severity: DiagnosticSeverity }
-  | Introspect
-
 type DiagnosticSeverity = Error                  // C-8 fail-closed: only Error is admitted
 
-type SectionedLensApplication {
-  lens: DeclarationId           // structural reference to the lens declaration
+// ApplicationConfig<C> ties the budget type C to the lens type C structurally.
+// Both Enforce/Introspect partition AND lens-budget compatibility are
+// enforced by the type system — no behavioral type-checker rule.
+type ApplicationConfig<C>
+  = Enforce { budget: C, diagnostic_severity: DiagnosticSeverity }
+  | Introspect
+
+// SectionedLensApplication<C> is parametric in the lens carrier C.
+// The `lens: Lens<C>` and `config: ApplicationConfig<C>` share the same C —
+// so a complexity-lens (C = AsymptoticClass) cannot be paired with a cost
+// budget (C = SymbolicCost). Mismatch is unrepresentable, not type-checker-rejected.
+type SectionedLensApplication<C> {
+  lens: Lens<C>                 // typed reference; C is the lens's carrier
   section: SectionRef
-  config: ApplicationConfig
+  config: ApplicationConfig<C>  // budget type tied to lens via shared C
   span: SourceSpan              // user-authored site for diagnostic attribution
 }
 ```
 
-The `lens` field is a `DeclarationId` (not a string lens name). This grounds in the canonical `.dag`-lens form per [`docs/lens-library-design.md`](lens-library-design.md) §1.5.
+Per `feedback_state_space_vs_behavioral_invariants` + modeling principles 2/6: both **Enforce-without-budget / Introspect-with-budget** AND **lens/budget-type-mismatch** are illegal states; both are unrepresentable in the carrier shape, not deferred to type-checker rules.
 
-The `LensBudget` shape is lens-instance-specific and lives in each lens's own substrate authority:
-
-```dag
-// src/v3/lenses/complexity.dag (or equivalent — already exists in some form)
-
-type ComplexityBudget = AsymptoticClass     // O(1), O(log n), O(n), O(n log n), O(n²), ...
-
-// src/v3/lenses/cost.dag
-
-type CostBudget = SymbolicCost              // already declared; this is the existing cost lens output type
-
-// src/v3/lenses/parallelism.dag
-
-type ParallelismBudget = ParallelismMode    // Sequential | OptInIndependent
-```
-
-**Why `LensBudget` is not a single union here**: each lens's budget shape is part of its own authority. A central `LensBudget = ComplexityBudget | CostBudget | ParallelismBudget | ...` would create a roster (same failure class as `kernel_lens_set`, per [`docs/lens-library-design.md`](lens-library-design.md) §1.5). The `Enforce.budget` field is an *opaque* refinement keyed by the `lens: DeclarationId` — the lens declaration itself names the budget type, and the type-checker enforces compatibility at lens-application authoring time.
-
-Implementation sketch for the keyed compatibility:
+The `Lens<C>` framework (per R2-T-Substrate-Lens-Primitive) already parametrizes lenses by their carrier `C`. Per-lens `C` instantiations are documented at the lens declaration site:
 
 ```dag
-// in dsl/std/lens.dag (extending existing Lens<C> framework)
-
-type Lens<C> {
-  // existing fields: read fn, etc.
-  budget_type: DeclarationId        // the budget carrier this lens accepts
-}
+// src/v3/lenses/complexity.dag — Lens<AsymptoticClass>
+// src/v3/lenses/cost.dag — Lens<SymbolicCost>
+// src/v3/lenses/parallelism.dag — Lens<ParallelismMode>
+// (each lens's existing carrier IS the budget type — no separate ComplexityBudget / CostBudget needed)
 ```
+
+Each lens's existing carrier (per the `Lens<C>` framework) is also the budget type for `apply_lens` — the application surface inherits the structural typing without adding new carriers per lens.
 
 The lens declaration names its `budget_type`. When the type-checker sees a `SectionedLensApplication` with `config = Enforce { budget: b, ... }`, it verifies `b inhabits lens.budget_type`. Any mismatch is a fail-closed diagnostic at authoring time. (No type-checking is needed for the `Introspect` variant — there is no budget to compatibility-check; introspection runs the lens and emits its value, no comparison.)
 

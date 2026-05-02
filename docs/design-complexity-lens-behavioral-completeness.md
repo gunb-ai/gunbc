@@ -348,25 +348,77 @@ fn loop_entry(
   l: LoopNode
 ) -> ComplexityEntry = {
   let cost_bound = recurrence_bound_for(d, l)              // reads via per_call_pattern_at typed query (wraps per_call_descent_evidence side-table)
+  let bound_cert = certainty_of(cost_bound)
   let work = cost_bound_to_symbolic(cost_bound)
   let body_summary = body_complexity_at(d, acc, l.body)
+  // Joint composition: cost and certainty compose as ONE unit per
+  // compose_summary (§3.1) — certainty must be cost-aware so dominated
+  // components don't propagate stale Conservative facts to the final bound.
+  let outer = ComplexitySummary {
+    work: work
+    span: work
+    asymptotic_class: classify(work)
+    certainty: bound_cert
+  }
   ComplexityEntry {
     port: l.result_port
-    summary: hit_complexity_summary_lookup(ComplexitySummary {
-      work: iterate(work, body_summary.work)
-      span: iterate(work, body_summary.span)               // span: sequential default; Branch arms use max_path
-      asymptotic_class: classify(iterate(work, body_summary.work))
-      certainty: meet_certainty(certainty_of(cost_bound), body_summary.certainty)
-    })
+    summary: hit_complexity_summary_lookup(
+      compose_summary_iterate(outer, body_summary)
+    )
   }
 }
 ```
 
-**Why the same forward-fold shape, just richer carrier:** the existing depth-proxy is structurally honest (catamorphism over `d.nodes`, fail-closed on `Miss`, parameter pre-seeding). Those properties are independent of the carrier type — they hold for `Lookup<Int>`, `Lookup<SymbolicCost>`, and `Lookup<ComplexitySummary>` identically. The behavioral-completeness work changes *what* each port carries, not *how* the lens walks. Per [`../INVARIANTS.md`](../INVARIANTS.md) P5 — the structural change is forward (richer fact), not lateral (parallel walker).
+### §3.1 Joint composition — `compose_summary` (cost-aware certainty)
+
+Per gpt-5-5-pro / codex BLOCKING (sha 98f2fc4f): `Certainty` cannot compose independently from cost dominance. If composition drops a cost component via dominance (`O(n) + O(n²) → O(n²)`), naively meeting the dropped component's `Conservative` certainty into the result would produce a `Conservative` summary even when the surviving component is `Proven`. **`(cost, certainty)` must compose as one unit.**
+
+```dag
+fn compose_summary_iterate(outer: ComplexitySummary, body: ComplexitySummary) -> ComplexitySummary {
+  let composed_work = iterate(outer.work, body.work)
+  let composed_span = iterate(outer.work, body.span)            // span uses outer's work for iteration count
+  let composed_class = classify(composed_work)
+  // Cost-aware certainty: if dominance dropped a component, that
+  // component's certainty does NOT enter the result. The result's
+  // certainty is the meet of the certainties of the SURVIVING
+  // components only.
+  let composed_certainty = certainty_of_surviving(outer, body, composed_work)
+  ComplexitySummary {
+    work: composed_work
+    span: composed_span
+    asymptotic_class: composed_class
+    certainty: composed_certainty
+  }
+}
+
+// Walks composed_work, identifies which input components survived dominance,
+// and meets their certainties. Components that were dominated do not contribute.
+fn certainty_of_surviving(
+  outer: ComplexitySummary,
+  body: ComplexitySummary,
+  composed: SymbolicCost
+) -> Certainty =
+  match dominance_outcome(outer.work, body.work, composed) {
+    BothSurvive => meet_certainty(outer.certainty, body.certainty)
+    OuterDominates => outer.certainty
+    BodyDominates => body.certainty
+  }
+
+// Same joint composition for sequential / parallel composition (different
+// outcome rules but the same coordination pattern).
+fn compose_summary_sequential(a: ComplexitySummary, b: ComplexitySummary) -> ComplexitySummary = ...
+fn compose_summary_branch(arms: List<ComplexitySummary>) -> ComplexitySummary = ...
+```
+
+**Why this matters for behavioral parity**: v2's `ComplexitySummary` composition is implicitly cost-aware (its diagnostic surfaces report `Θ(n²) Proven` rather than `O(n²) Conservative` when the inner `O(n)` term was conservative but dominated). A cost-unaware certainty composition would diverge from v2 on the cementing fixture corpus, failing the closure gate. The cost-aware composition is the correct shape, ratcheted by the cementing test.
+
+**Why the same forward-fold shape, just richer carrier:** the existing depth-proxy is structurally honest (catamorphism over `d.nodes`, fail-closed on `Miss`, parameter pre-seeding). Those properties are independent of the carrier type — they hold for `Lookup<Int>`, `Lookup<SymbolicCost>`, and `Lookup<ComplexitySummary>` identically. The behavioral-completeness work changes *what* each port carries (and how summaries compose jointly), not *how* the lens walks. Per [`../INVARIANTS.md`](../INVARIANTS.md) P5 — the structural change is forward (richer fact + joint composition), not lateral (parallel walker).
 
 ## §4. v2-oracle cementing test
 
 Per TESTING.md *Cementing tests (Band C — lens subsumption)* and [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) Discipline rule 6, every `BEHAVIORALLY COMPLETE` claim with a non-`N/A` v2 counterpart requires a cementing test that runs **the same minimal fixture through both implementations** and asserts semantic equality on the published carrier shape (or a documented projection).
+
+**Cross-lens cementing format alignment**: this Rust cementing test is the staged form. **Dissolution trigger**: at T-Tests-As-Data-Completeness step 5 (per [`docs/design-tests-as-data-completeness.md`](design-tests-as-data-completeness.md) §10 step 5 — *cementing dispatch port*), this Rust cementing test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration. All three behavioral-parity lenses (complexity / cost / effect-enumeration) follow the same staging — Rust cementing today, port to .dag at the migration step. This per-doc consistency is recorded in [`docs/design-r3-lens-substrate-index.md`](design-r3-lens-substrate-index.md) §"Cementing-test format" and matches the cross-lane sequencing in tests-as-data §8.3.
 
 ### §4.1 Mechanical shape
 

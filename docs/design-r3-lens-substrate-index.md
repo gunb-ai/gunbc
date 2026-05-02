@@ -34,9 +34,16 @@ This index documents the cross-doc edges that the coherence audit (2026-05-02) v
 | `Operation` (replaces `OperationEffect` post-migration) | effect-enumeration §4 | DB-18 `WorkflowEffect.LinearEffect.ops` (element-type refinement) |
 | `LensCapabilityRegister` (`.dag` declaration replacing markdown) | tests-as-data §8.3 | all 4 lens design docs (closure-gate "row → COMPLETE" steps depend on this migration) |
 
-### Cementing-test format
+### Cementing-test format (staged)
 
-All v2-oracle cementing tests use the same DB-15 `DifferentialEquals` predicate inside a `QuantifiedTestClaim` (per tests-as-data §2.2). Complexity-lens §4, cost-lens §5, effect-enumeration §5 all instantiate this shape. Different shapes would be parallel-test-infrastructure debt; the index confirms they are unified.
+All three behavioral-parity lens designs (complexity §4, cost §5, effect-enumeration §6 step 5) ship **Rust cementing tests** at `src/v3/compiler/tests/integration/cementing/` per TESTING.md Band-C discipline as the today-form, with **explicit dissolution trigger** to T-Tests-As-Data-Completeness step 5 (per tests-as-data §10 step 5 — *cementing dispatch port*) where each Rust test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration.
+
+| Stage | Form | Authority | Dissolution trigger |
+|---|---|---|---|
+| Today (per-lens slice closure) | Rust cementing test in `src/v3/compiler/tests/integration/cementing/` | TESTING.md Band-C | tests-as-data step 5 lands |
+| Post-migration (after tests-as-data step 5) | `.dag` `TestClaim`/`QuantifiedTestClaim` consuming the lens register | tests-as-data §2.2 + §8.3 | n/a (terminal form) |
+
+This staging avoids blocking lens-slice closures on the tests-as-data migration (which has its own cascade). All three behavioral-parity lenses align on the same staged format; per-lens shipping does not require waiting on the migration. The migration when it lands ports all three Rust tests in one wave per the cross-lane sequencing in tests-as-data §8.3. Per-lens divergence (using `.dag` form for one lens but Rust for another) is forbidden — would be parallel-test-infrastructure debt.
 
 ### Cross-cutting invariants (held by all 5 docs)
 

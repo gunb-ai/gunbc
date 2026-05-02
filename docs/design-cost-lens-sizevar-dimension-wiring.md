@@ -80,13 +80,13 @@ A `SizeExpr` coproduct would:
 
 The descent-semantics question is answered by the existing `CallPattern` query surface (per §3.2 below): the lens dispatches on `per_call_pattern_at(d, call_site)` to read the recurrence shape; size expressions never need to carry descent.
 
-### §1.4 Migration shape — additive field, no carrier rename
+### §1.4 Migration shape — renderer-only, no substrate change
 
-The migration is a single field addition, not a multi-carrier reshape:
+The migration is purely renderer-side; no substrate change to `SizeVariable`:
 
-1. (NO substrate change to `SizeVariable` — the carrier stays at `{ source_port: PortId }`. Per §1.2, the missing wiring is renderer-side, not substrate-side.)
-2. Update the Rust mirror in `src/v3/compiler/src/dag.rs` (single field add).
-3. Wire render-side surfaces (`Display` impls; `compute_symbolic_costs` rendering) to call `intern_table::name_of(source_port)` for the user-facing label. (Parser already populates InternTable with binding names — no parser change either.)
+1. NO substrate change to `SizeVariable` — the carrier stays at `{ source_port: PortId }` per §1.2.
+2. NO Rust mirror change in `src/v3/compiler/src/dag.rs` — same struct.
+3. Wire render-side surfaces (`Display` impls; `compute_symbolic_costs` rendering) to call `intern_table::name_of(source_port)` for the user-facing label. (Parser already populates InternTable with binding names at parse time — no parser change either.)
 
 No new types. No parallel carriers. No deletion.
 
@@ -309,22 +309,11 @@ Per `project_algebra_operator_dispatch` (memory): "BinOp emission reads operand 
 
 Per row 146 closure language ("cementing test against v2 oracle on same source") and per [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) discipline ("Every claim of 'v3 replaces v2 X' requires a behavioral cementing test"), the cost slice ships:
 
-Per [`docs/design-tests-as-data-completeness.md`](design-tests-as-data-completeness.md) §2.2, `ForAll` quantification belongs on the *claim* (`QuantifiedTestClaim`), not inside a predicate. The cementing test therefore takes the `QuantifiedTestClaim` shape:
+Cementing-test format aligns with sibling lens designs (complexity §4, effect-enumeration §5.3): **Rust cementing test today**, lives at `src/v3/compiler/tests/integration/cementing/cost_v2_v3_oracle_test.rs`, registered via the existing `cementing_test_modules_exist_for_escalated_v2_complete_registry_claims` ratchet. Same Band-C discipline as complexity-lens cementing.
 
-```dag
-// gate: cost_lens_v2_oracle_equivalence_demonstrated
-data cost_lens_v2_oracle_equivalence: QuantifiedTestClaim {
-  name: "cost_lens_v2_oracle_equivalence"
-  generator: cost_lens_corpus_generator     // ProgramGenerator producing List<SourceProgram>
-  quantifier: ForAll
-  predicate: DifferentialEquals {           // per DB-15 — the canonical cementing predicate
-    v3_oracle: analyze_symbolic_cost_dimension_compose_compile_v3
-    v2_oracle: v2_complexity_oracle_compose_compile_v2
-    equivalence: structural_equivalent_v3_v2
-  }
-  requires: [...]                            // E-P producer + renderer-side InternTable name wiring landed
-}
-```
+**Dissolution trigger**: at T-Tests-As-Data-Completeness step 5 (per [`docs/design-tests-as-data-completeness.md`](design-tests-as-data-completeness.md) §10 step 5 — *cementing dispatch port*), this Rust cementing test ports to a `.dag` `TestClaim`/`QuantifiedTestClaim` declaration alongside the lens-capability register migration. Per the cross-lane sequencing in tests-as-data §8.3, Rust cementing is the staged form; the .dag port lands together for all lenses when the register migrates. Cost-lens shipping its closure gate does NOT block on the migration; the Rust cementing test is the per-PR receipt today.
+
+The Rust test runs the v3 lens on a fixture and the v2 oracle on the same fixture (`src/v2/complexity.dag::analyze`), asserting structural equivalence on the asymptotic class:
 
 Where `structural_equivalent(a: SymbolicCost, b: CostExpr) -> Bool` is the v2/v3 isomorphism test — both expressions are normalized then walked structurally:
 
