@@ -618,12 +618,23 @@ fn per_call_descent_evidence_is_single_lookup_authority_over_callable_transforms
     // mutual-recursion or child-accessor evidence detection, the test is
     // unchanged: the cardinality and uniqueness claims are gate-level
     // properties, not slice-specific.
+    // Two-function fixture exercises both branches of the producer's match
+    // (`caller_template == callee_template` self-recursion + resolved
+    // cross-template fail-closed). The single-authority claim must hold for
+    // the cross-template branch too — a future producer that attempts a
+    // parallel walker for cross-template evidence (rather than going through
+    // `per_call_descent_evidence`'s fail-closed path) would otherwise slip
+    // past a self-recursion-only ratchet.
     let source = "\
 fn countdown(n: Int) -> Int =
   if n == 0 then 0 else countdown(n - 1)
+
+fn helper(n: Int) -> Int = n - 1
+
+fn caller(n: Int) -> Int = helper(n)
 ";
     let dag = compile_to_dag(source, "e_p_lookup_authority.v3")
-        .expect("countdown + cross-call fixture compiles");
+        .expect("countdown self-call + caller→helper cross-template fixture compiles");
 
     // Ground-truth: every callable-target transform owned by some body bind.
     // We accept any owning body (function declaration's `ArrowBody::UserDefined`
@@ -646,11 +657,23 @@ fn countdown(n: Int) -> Int =
         .collect();
     // Sanity floor: the fixture must exercise multiple Callable transforms or
     // the test is trivially satisfiable.
+    // Sanity floor: the fixture must exercise both producer match branches
+    // (self-recursive countdown + cross-template caller→helper). Anything
+    // less leaves the cross-template fail-closed branch unverified.
     assert!(
-        !owned_callable_transforms.is_empty(),
-        "fixture must compile to >= 1 Callable transform (countdown self-call); got {}",
+        owned_callable_transforms.len() >= 2,
+        "fixture must compile to >= 2 Callable transforms (countdown self-call + caller→helper \
+         cross-template); got {}",
         owned_callable_transforms.len()
     );
+
+    // Cross-template branch verification: the producer must emit one entry
+    // per Callable transform regardless of caller/callee template alignment.
+    // The cross-template caller→helper edge fails closed to SubValueUnknown
+    // (per `e_p_per_call_descent_evidence_fails_closed_for_non_self_call`)
+    // but it MUST still appear in the entry set — single-authority means the
+    // producer covers all Callable edges, not just the self-recursive ones.
+    let _ = (); // (the assertions below cover the cross-template entry by enforcing set equality)
 
     let all_entries = per_call_descent_evidence(&dag);
 
