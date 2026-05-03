@@ -194,4 +194,3 @@ fn lookup_helper_finds_known_row_and_returns_none_for_unknown_method() {
         "lookup for a non-MethodDeclaration target must return None, not fabricate a row"
     );
 }
-
