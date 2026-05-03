@@ -158,35 +158,28 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
         .iter()
         .find(|(label, _)| label == "authorities")
         .expect("bootstrap_authority has authorities field");
-    let FieldValue::List(rows) = authorities else {
-        panic!("bootstrap_authority.authorities should lower to a list");
+    let FieldValue::Map(rows) = authorities else {
+        panic!("bootstrap_authority.authorities should lower to a map");
     };
 
-    rows.iter()
-        .map(|row| {
-            let FieldValue::Record(fields) = row else {
-                panic!("bootstrap_authority row should lower to a record");
+    rows.entries()
+        .iter()
+        .map(|(key, authority)| {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = authority
+            else {
+                panic!("bootstrap_authority map value should lower to a variant");
             };
-            let kind = fields
-                .iter()
-                .find_map(|(label, value)| {
-                    if label != "kind" {
-                        return None;
-                    }
-                    let FieldValue::Variant {
-                        constructor,
-                        payload,
-                    } = value
-                    else {
-                        panic!("bootstrap_authority row kind should lower to a variant");
-                    };
-                    assert!(
-                        payload.is_empty(),
-                        "BootstrapAuthorityKind variants should not carry payloads"
-                    );
-                    dag.declaration(*constructor).name.clone()
-                })
-                .expect("bootstrap_authority row has kind");
+            let kind = dag
+                .declaration(*constructor)
+                .name
+                .clone()
+                .expect("BootstrapAuthority variant has a name");
+            let [FieldValue::Record(fields)] = payload.as_slice() else {
+                panic!("BootstrapAuthority variant should carry one record payload");
+            };
             let path = fields
                 .iter()
                 .find_map(|(label, value)| {
@@ -199,6 +192,10 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
                     }
                 })
                 .expect("bootstrap_authority row has path");
+            assert_eq!(
+                key, &path,
+                "bootstrap_authority map key must match the variant payload path"
+            );
             (kind, path)
         })
         .collect()
