@@ -287,7 +287,7 @@ fn parse_v2_brace_body_fields(body: &str) -> Vec<V2Field> {
 /// tuples in declaration order. `payload_fields` is `None` for bare
 /// variants (`EndTurn`) and `Some([(label, is_optional), ...])` for
 /// record-payload variants (`UserToolResultBlock { tool_use_id: String,
-/// content: String, is_error: Bool? }`). Handles both inline
+/// content: AnthropicToolResultContent?, is_error: Bool? }`). Handles both inline
 /// (`type X = A | B | C`) and multi-line (`type X\n  = Foo { … }\n  | Bar { … }`)
 /// shapes.
 type V2VariantPayload = Option<Vec<V2Field>>;
@@ -552,6 +552,11 @@ fn anthropic_chat_message_lockstep() {
 #[test]
 fn anthropic_user_content_block_lockstep() {
     assert_disj_lockstep("AnthropicUserContentBlock");
+}
+
+#[test]
+fn anthropic_tool_result_content_lockstep() {
+    assert_disj_lockstep("AnthropicToolResultContent");
 }
 
 #[test]

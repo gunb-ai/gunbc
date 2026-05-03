@@ -6366,6 +6366,86 @@ fn anthropic_dag_compiles_to_rust() {
     );
 }
 
+#[test]
+fn anthropic_tool_result_content_accepts_text_and_image_blocks() {
+    let source = r#"module anthropic_tool_result_content_test
+
+import extdeps.llm.anthropic
+import extdeps.llm.llm { TextContent, ImageContent, Base64Image }
+
+data tool_results: List<AnthropicChatMessage> = [
+  UserMessage {
+    content: [
+      UserToolResultBlock {
+        tool_use_id: "toolu_text",
+        content: ToolResultText { text: "15 degrees" },
+        is_error: none
+      },
+      UserToolResultBlock {
+        tool_use_id: "toolu_image",
+        content: ToolResultBlocks {
+          blocks: [
+            TextContent { text: "chart" },
+            ImageContent {
+              source: Base64Image {
+                media_type: "image/jpeg",
+                data: "/9j/4AAQSkZJRg..."
+              }
+            }
+          ]
+        },
+        is_error: none
+      },
+      UserToolResultBlock {
+        tool_use_id: "toolu_empty",
+        content: none,
+        is_error: none
+      }
+    ]
+  }
+]
+"#;
+    let result = compile_dag_named(
+        "anthropic_tool_result_content_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn anthropic_tool_result_content_rejects_legacy_string_slot() {
+    let source = r#"module anthropic_tool_result_content_negative_test
+
+import extdeps.llm.anthropic
+
+data tool_results: List<AnthropicChatMessage> = [
+  UserMessage {
+    content: [
+      UserToolResultBlock {
+        tool_use_id: "toolu_legacy",
+        content: "15 degrees",
+        is_error: none
+      }
+    ]
+  }
+]
+"#;
+    let result = compile_dag_named(
+        "anthropic_tool_result_content_negative_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    let messages = diagnostic_messages(&result);
+    assert!(
+        messages.iter().any(|message| {
+            message.contains("AnthropicToolResultContent") && message.contains("String")
+        }),
+        "legacy string tool_result content should produce a typed diagnostic, got:\n{}",
+        messages.join("\n")
+    );
+}
+
 // ── RE-5: Multi-backend test ─────────────────────────────────────────────
 #[test]
 fn multi_backend_cli_and_rest_compile() {
