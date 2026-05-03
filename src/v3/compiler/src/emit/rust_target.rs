@@ -1461,11 +1461,13 @@ fn parse_collection_ops(
     declaration: DeclarationId,
 ) -> Result<CollectionOpsBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
+    let fold_contract = require_field_decl_ref(fields, "fold_contract", declaration)?;
+    let fold = method_contract_single_emit_template_string(dag, fold_contract)?;
     Ok(CollectionOpsBinding {
         concat: syntax_field_string(fields, "concat", declaration)?,
         length: syntax_field_string(fields, "length", declaration)?,
         is_empty: syntax_field_string(fields, "is_empty", declaration)?,
-        fold: syntax_field_string(fields, "fold", declaration)?,
+        fold,
         map: syntax_field_string(fields, "map", declaration)?,
         filter: syntax_field_string(fields, "filter", declaration)?,
         contains: syntax_field_string(fields, "contains", declaration)?,
@@ -1473,6 +1475,54 @@ fn parse_collection_ops(
         list_literal: syntax_field_string(fields, "list_literal", declaration)?,
         cons: syntax_field_string(fields, "cons", declaration)?,
     })
+}
+
+/// `MethodTemplateContract.emit_template` as a `SingleTemplate` string — the
+/// shape collection fold emission supports today (higher-order split is not
+/// wired through this path yet).
+fn method_contract_single_emit_template_string(
+    dag: &Dag,
+    contract_decl: DeclarationId,
+) -> Result<String, EmitError> {
+    let fields = structural_fields_for_decl(dag, contract_decl)?;
+    let emit_value = fields
+        .iter()
+        .find(|(label, _)| label == "emit_template")
+        .map(|(_, v)| v)
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract missing emit_template field",
+        })?;
+    let FieldValue::Variant {
+        constructor,
+        ref payload,
+    } = emit_value
+    else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract.emit_template must be a sum variant",
+        });
+    };
+    let ctor = dag.declaration(*constructor);
+    let Some(ctor_name) = ctor.name.as_deref() else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract.emit_template variant has no name",
+        });
+    };
+    if ctor_name != "SingleTemplate" {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration: contract_decl,
+            detail: "collection fold contract must use MethodEmitTemplate.SingleTemplate today",
+        });
+    }
+    let [FieldValue::Literal(LiteralBits::String(template))] = payload.as_slice() else {
+        return Err(EmitError::MalformedTargetSyntax {
+            declaration: contract_decl,
+            detail: "SingleTemplate must carry exactly one string template payload",
+        });
+    };
+    Ok(template.replace("%Q", "\""))
 }
 
 fn parse_value_construction_syntax(

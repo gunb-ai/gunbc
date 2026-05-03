@@ -360,11 +360,11 @@ impl PythonIndexes {
                 "is_empty",
                 collections,
             )?,
-            fold: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "fold",
-                collections,
-            )?,
+            fold: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let fold_contract = require_field_decl_ref(cfields, "fold_contract", collections)?;
+                method_contract_single_emit_template_string(dag, fold_contract, collections)?
+            },
             map: require_field_string(
                 structural_fields_for_decl(dag, collections)?,
                 "map",
@@ -1722,6 +1722,52 @@ fn parse_pattern_realization(
         head_expr: require_field_string(fields, "head_expr", declaration)?,
         tail_expr: require_field_string(fields, "tail_expr", declaration)?,
     })
+}
+
+fn method_contract_single_emit_template_string(
+    dag: &Dag,
+    contract_decl: DeclarationId,
+    parent: DeclarationId,
+) -> Result<String, EmitPythonError> {
+    let fields = structural_fields_for_decl(dag, contract_decl)?;
+    let emit_value = fields
+        .iter()
+        .find(|(label, _)| label == "emit_template")
+        .map(|(_, v)| v)
+        .ok_or(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract missing emit_template field",
+        })?;
+    let FieldValue::Variant {
+        constructor,
+        ref payload,
+    } = emit_value
+    else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract.emit_template must be a sum variant",
+        });
+    };
+    let ctor = dag.declaration(*constructor);
+    let Some(ctor_name) = ctor.name.as_deref() else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "MethodTemplateContract.emit_template variant has no name",
+        });
+    };
+    if ctor_name != "SingleTemplate" {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration: parent,
+            detail: "collection fold contract must use MethodEmitTemplate.SingleTemplate today",
+        });
+    }
+    let [FieldValue::Literal(LiteralBits::String(template))] = payload.as_slice() else {
+        return Err(EmitPythonError::MalformedSpec {
+            declaration: contract_decl,
+            detail: "SingleTemplate must carry exactly one string template payload",
+        });
+    };
+    Ok(template.clone())
 }
 
 fn structural_fields_for_decl(

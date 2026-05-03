@@ -24,8 +24,10 @@ import v3.std.emit_model {
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
   CollectionOps, ValueConstructionSyntax, LanguageSpec,
-  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound,
+  MethodTemplateContract, SingleTemplate, NamedArg
 }
+import std.methods { fold_method }
 import std.integer { Int }
 import v3.std.clean_emission {
   CleanEmissionContract,
@@ -106,6 +108,14 @@ data python_patterns: PatternMatchSyntax = {
   wildcard: "_"
 }
 
+data python_language_spec_free_monoid_fold_template: MethodTemplateContract = {
+  dag_method: { decl: fold_method },
+  runtime_template: "__v3_fold({recv}, {init}, {body})",
+  emit_template: SingleTemplate { template: "__v3_fold({recv}, {init}, {body})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data python_collections: CollectionOps = {
   empty_list: "[]"
   list_literal: "[{elements}]"
@@ -113,7 +123,7 @@ data python_collections: CollectionOps = {
   concat: "[*{left}, *{right}]"
   length: "len({recv})"
   is_empty: "(len({recv}) == 0)"
-  fold: "__v3_fold({recv}, {init}, {body})"
+  fold_contract: python_language_spec_free_monoid_fold_template
   map: "[{body} for {item} in {recv}]"
   filter: "[{item_push} for {item} in {recv} if {predicate}]"
   contains: "({item} in {recv})"
