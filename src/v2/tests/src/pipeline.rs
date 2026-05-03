@@ -6397,6 +6397,93 @@ type RealEnum
 }
 
 #[test]
+fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
+    let source = r#"module bad_affix_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data bad_affix_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase { prefix: "Usr" } }
+}
+
+type RealEnum
+  = UserText { text: String }
+"#;
+    let result = compile_dag_named(
+        "bad_affix_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bad_affix_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content
+                .contains("variant UserText does not satisfy declared wire rename prefix: Usr"),
+        "declared affix policy must fail closed when a variant does not match; got:\n{content}"
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_string_variant_requires_unit_variants() {
+    let source = r#"module fielded_string_variant_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data string_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "fielded_string_variant_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(
+        &result,
+        "src/fielded_string_variant_coproduct_wire_contract.rs",
+    );
+    assert!(
+        content.contains("compile_error!")
+            && content.contains(
+                "CoproductWireContract StringVariant requires a nullary-only coproduct: RealEnum"
+            ),
+        "fielded coproducts must not accept plain StringVariant wire contracts; got:\n{content}"
+    );
+}
+
+#[test]
+fn internally_tagged_coproduct_wire_contract_requires_literal_tag_field() {
+    let source = r#"module malformed_internal_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data bad_internal_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "malformed_internal_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains("InternallyTaggedObject requires a literal tag_field"),
+        "malformed InternallyTaggedObject contracts must fail closed; got:\n{content}"
+    );
+}
+
+#[test]
 fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
     let source = r#"module no_wire_contract_unit_enum
 
