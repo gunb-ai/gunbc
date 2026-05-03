@@ -256,16 +256,22 @@ fn render_dag(per_target: &[(MethodTemplateTarget, BTreeMap<String, String>)]) -
     s
 }
 
-/// Escape a `String` for placement inside a `.dag` string literal. The grammar
-/// uses `\\` for backslash and `\"` for double quote; brace pairs `{...}`
-/// already pass through (legacy templates rely on `{recv}` / `{arg}`
-/// placeholders).
+/// Escape a `String` for placement inside a v2 `.dag` string literal.
+///
+/// v2's grammar escapes `\\` for backslash, `\"` for double quote, and —
+/// crucially for template-text projection — `\{` and `\}` for brace pairs
+/// (the legacy authorities at `dsl/extdeps/languages/{python,go}/emit.dag`
+/// store templates as e.g. `"len(\{recv\})"`). Without the brace escapes
+/// v2 treats `{recv}` as variable interpolation and emits "undefined
+/// variable" diagnostics.
 fn escape_dag_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for ch in s.chars() {
         match ch {
             '\\' => out.push_str("\\\\"),
             '"' => out.push_str("\\\""),
+            '{' => out.push_str("\\{"),
+            '}' => out.push_str("\\}"),
             other => out.push(other),
         }
     }

@@ -140,10 +140,13 @@ fn rust_count_row_lands_in_generated_map() {
     let out_dir = fresh_temp_dir("rust-count");
     let written = write_method_template_projection_dag(&dag, &out_dir).expect("emit");
     let content = std::fs::read_to_string(&written).expect("read");
+    // v2's grammar requires `{` and `}` to be escaped inside string
+    // literals (legacy authorities use `\{recv\}`). The producer mirrors
+    // that escape style so v2 lexes the row text correctly.
     assert!(
-        content.contains("\"count\": \"({recv}.len() as i64)\""),
-        "Rust `count` row must land with its documented emit_template; \
-         content was:\n{content}"
+        content.contains("\"count\": \"(\\{recv\\}.len() as i64)\""),
+        "Rust `count` row must land with its documented emit_template \
+         (with v2 brace-escapes); content was:\n{content}"
     );
     let _ = std::fs::remove_dir_all(&out_dir);
 }
@@ -159,7 +162,9 @@ fn python_and_go_count_rows_land_in_generated_maps() {
 
     // Both Python and Go projects `count` to `len({recv})` per the row
     // authorities; both should be present in their per-target maps.
-    let occurrences = content.matches("\"count\": \"len({recv})\"").count();
+    let occurrences = content
+        .matches("\"count\": \"len(\\{recv\\})\"")
+        .count();
     assert_eq!(
         occurrences, 2,
         "Python and Go each project `count` to `len({{recv}})`; expected \
