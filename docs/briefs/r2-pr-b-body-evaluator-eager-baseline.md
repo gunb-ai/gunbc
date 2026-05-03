@@ -54,8 +54,8 @@ it still needs its worker dispatch / Rust implementation slice.
 | `Value` / `NamedField`                 | `src/v3/std/runtime.dag` (PR-A.1, #1243)                                  | LANDED on `main`                       |
 | `EvalFrame { bindings: Map<PortId, Value> }` | `src/v3/std/runtime.dag` (PR-A.2, #1255)                            | LANDED on `main`                       |
 | `EvalStateStack { frames: List<EvalFrame> }` | `src/v3/std/runtime.dag` (PR-A.2, #1255)                             | LANDED on `main`                       |
-| `EvalStrategy` / `InputEvaluationOrder` | `src/v3/std/runtime.dag` (PR-A.3 carrier completion, #1544)              | LANDED in this PR                       |
-| `EvalStateKey` / `EvalMemoKey`         | `src/v3/std/runtime.dag` (PR-A.3 carrier completion, #1544)              | LANDED in this PR                       |
+| `EvalStrategy` / `InputEvaluationOrder` | `src/v3/std/runtime.dag` (PR-A.3 carrier completion, #1544)              | LANDED on main by #1544                 |
+| `EvalStateKey` / `EvalMemoKey`         | `src/v3/std/runtime.dag` (PR-A.3 carrier completion, #1544)              | LANDED on main by #1544                 |
 
 PR-B.0 reads these as the substrate it will execute over. PR-B.1 may now consume
 the closed eager strategy and structural memo-key carriers from `runtime.dag`;
