@@ -1007,6 +1007,12 @@ mod tests {
         }
     }
 
+    /// 🟢 TERMINAL at the test-local `MethodRef` mutation scope. Names the
+    /// two ways an in-memory `Dag` row can break the closed `MethodRef`
+    /// schema: duplicate the existing `decl` field, or append a field with
+    /// an unknown label. Both modes drive the closed-schema check in
+    /// `closed_record_lookup`. Test-only; not part of the projection's
+    /// public surface.
     enum MethodRefMutation<'a> {
         Duplicate,
         AppendUnknown(&'a str),
