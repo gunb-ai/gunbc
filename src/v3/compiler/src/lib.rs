@@ -17,6 +17,7 @@
 
 pub mod dag;
 pub mod diagnostics;
+pub mod pb_method_template_projection;
 mod regen_bootstrap_emit;
 
 /// SG-0 producer-owned generated-file manifest.
