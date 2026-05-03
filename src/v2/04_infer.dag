@@ -601,26 +601,14 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 
-fn literal_value_is_string(value: LiteralValue) -> Bool {
-  match value {
-    LitStr { value: _ } => true
-    _ => false
-  }
-}
-
-fn rejects_raw_string_for_optional_coproduct_field(expected: Node, got: Node, value: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  // Regression pin for legacy authoring forms that wrote a raw string into an
-  // optional coproduct field. This is deliberately narrow: non-literal string
-  // expressions and broader coproduct assignability belong to the general
-  // record-field type-check path.
+fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  // Regression pin for legacy authoring forms that wrote a String into an
+  // optional coproduct field. Broader coproduct assignability belongs to the
+  // general record-field type-check path.
   let expected_inner = with_required_cardinality(n: expected)
   let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
   let got_is_string = authored_name_at(source_indices: source_indices, node: got) == "String"
-  let value_is_string_literal = match value.expr_data {
-    ExprLiteral { value: lit } => literal_value_is_string(value: lit)
-    _ => false
-  }
-  expected_is_optional_coproduct && got_is_string && value_is_string_literal
+  expected_is_optional_coproduct && got_is_string
 }
 
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
@@ -2356,10 +2344,9 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let field_type_diags = match field_expected {
       Some { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        if rejects_raw_string_for_optional_coproduct_field(
+        if rejects_string_for_optional_coproduct_field(
           expected: expected_node,
           got: got_node,
-          value: ar_typed,
           source_indices: scope.type_env.source_indices
         ) {
           [type_mismatch_error(

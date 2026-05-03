@@ -6420,12 +6420,14 @@ fn anthropic_tool_result_content_rejects_legacy_string_slot() {
 
 import extdeps.llm.anthropic
 
+data legacy_content: String = "15 degrees"
+
 data tool_results: List<AnthropicChatMessage> = [
   UserMessage {
     content: [
       UserToolResultBlock {
         tool_use_id: "toolu_legacy",
-        content: "15 degrees",
+        content: legacy_content,
         is_error: none
       }
     ]
