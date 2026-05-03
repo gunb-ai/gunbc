@@ -162,9 +162,7 @@ fn python_and_go_count_rows_land_in_generated_maps() {
 
     // Both Python and Go projects `count` to `len({recv})` per the row
     // authorities; both should be present in their per-target maps.
-    let occurrences = content
-        .matches("\"count\": \"len(\\{recv\\})\"")
-        .count();
+    let occurrences = content.matches("\"count\": \"len(\\{recv\\})\"").count();
     assert_eq!(
         occurrences, 2,
         "Python and Go each project `count` to `len({{recv}})`; expected \

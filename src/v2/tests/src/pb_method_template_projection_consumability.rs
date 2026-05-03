@@ -98,8 +98,9 @@ fn rust_count_template() -> Map<String, String> { rust_method_template_emit }
         .map(|index| index.file.as_str())
         .collect();
     assert!(
-        loaded_paths.iter().any(|path| path
-            .contains("generated/method_template_projection.dag")),
+        loaded_paths
+            .iter()
+            .any(|path| path.contains("generated/method_template_projection.dag")),
         "expected the ephemeral generated module to be loaded; got: {loaded_paths:?}"
     );
     // The "do not commit" invariant: the generated file must be loaded
