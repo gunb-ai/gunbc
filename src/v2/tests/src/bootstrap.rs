@@ -394,8 +394,8 @@ fn main() -> Int { generated_answer() }
         "expected dag artifact at {}",
         out_dir.join("dag-artifact.json").display()
     );
-    let committed_generated_projection = crate::helpers::workspace_root()
-        .join("src/generated/method_template_projection.dag");
+    let committed_generated_projection =
+        crate::helpers::workspace_root().join("src/generated/method_template_projection.dag");
     assert!(
         !committed_generated_projection.exists(),
         "ratchet must not rely on committed generated .dag at {}",
