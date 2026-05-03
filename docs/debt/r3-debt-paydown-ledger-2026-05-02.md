@@ -94,7 +94,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
 | Author-now/fire-later verification style | 2026-05-01 | R3 Verification | Open | Make one `BinaryDimensionReportEquals` claim actually execute. |
 | Typed-carrier-landed + Rust-mirror-remains pattern | 2026-05-01 | R3 PB debt discipline | Open | Pair mirror introductions with isomorphism/generation or deletion. |
-| BridgeLedgerZero known-open reporting | 2026-05-01 | R3 Verification | Open | Convert to decreasing-open-count ratchet or per-bridge closures. |
+| BridgeLedgerZero known-open reporting | 2026-05-01 | R3 Verification | Retired | PR #1571 (`c3138a946`) lands the decreasing-open-count ratchet (`test(v3): add BridgeLedger open-count ratchet`); known-open count can no longer silently grow. Closes Bundle 4a. |
 | Bare RHS alias table / numeric drift | 2026-05-01 | R3 Substrate | Open | Dissolve `PRELUDE_BARE_RHS_ALIAS_IDENTS`; add alias regression coverage. |
 
 ## De Facto Closed Or Cleanup-Only Rows
