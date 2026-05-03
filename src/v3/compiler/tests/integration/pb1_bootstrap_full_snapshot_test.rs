@@ -8,7 +8,7 @@
 //! `cargo test`. See `docs/briefs/pb-1-e-residual-scaffold-retirement-worker.md`.
 
 use v3_compiler::{
-    dag::{DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody},
+    dag::{DeclarationId, FieldValue, TypeConnective, ValueBody},
     generated_full_bootstrap_dag, generated_full_bootstrap_without_parse_surface_dag,
     generated_std_bootstrap_dag,
     serialize::{first_difference, serialize_dag},
@@ -177,35 +177,13 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
                         kind.id
                     )
                 });
-            let path = bootstrap_authority_payload_path(payload);
-            assert_eq!(
-                key, &path,
-                "bootstrap_authority map key must match the variant payload path"
+            assert!(
+                payload.is_empty(),
+                "BootstrapAuthority variants should not carry duplicate path payloads"
             );
-            (kind, path)
+            (kind, key.clone())
         })
         .collect()
-}
-
-fn bootstrap_authority_payload_path(payload: &[FieldValue]) -> String {
-    let [value] = payload else {
-        panic!("BootstrapAuthority variant should carry one path payload");
-    };
-    field_value_path_literal(value)
-}
-
-fn field_value_path_literal(value: &FieldValue) -> String {
-    match value {
-        FieldValue::Literal(LiteralBits::String(path)) => path.clone(),
-        FieldValue::Record(fields) => {
-            let (_, path_value) = fields
-                .iter()
-                .find(|(label, _)| label == "path")
-                .expect("path wrapper record has path field");
-            field_value_path_literal(path_value)
-        }
-        _ => panic!("path payload should lower to a string or path wrapper record"),
-    }
 }
 
 fn bootstrap_authority_variant_labels(dag: &Dag) -> Vec<(DeclarationId, String)> {
