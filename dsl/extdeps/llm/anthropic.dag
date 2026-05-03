@@ -11,11 +11,26 @@ module extdeps.llm.anthropic
 import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract }
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
-import std.serialization { VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { HttpMethod }
 
 // Wire contract: Anthropic API returns enum values as snake_case strings.
 data wire_contract: VariantEncoding = llm_snake_wire_contract
+
+data anthropic_chat_message_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicChatMessage",
+  encoding: InternallyTaggedObject { tag_field: "role", naming: SnakeCaseStrip { suffix: "Message" } }
+}
+
+data anthropic_user_content_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicUserContentBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: SnakeCaseStrip { prefix: "User", suffix: "Block" } }
+}
+
+data anthropic_assistant_content_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicAssistantContentBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: SnakeCaseStrip { prefix: "Assistant", suffix: "Block" } }
+}
 
 // -- Models --------------------------------------------------------
 
@@ -148,15 +163,16 @@ data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
-// keyed by `type` (https://docs.anthropic.com/en/api/messages). `type` is not
-// caller-authored model state on `TextBlock`; the future
-// `rest_request_wire_serde_alignment` closure must emit it from the variant.
-data structural_coverage_gap_anthropic_messages_request_wire: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|residue:message_variant_must_emit_role_string_user_assistant",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserTextBlock|residue:variant_must_emit_flat_type_text_wire_key",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock.AssistantTextBlock|residue:variant_must_emit_flat_type_text_wire_key",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock.AssistantToolUseBlock|residue:variant_must_emit_flat_type_tool_use_wire_key",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock|residue:variant_must_emit_flat_type_tool_result_wire_key"
+// keyed by `type` (https://docs.anthropic.com/en/api/messages). These rows are
+// now source-level `CoproductWireContract` authorities above; the v2 Rust
+// emitter consumes them directly for serde attributes. `AnthropicToolResultContent`
+// is not present in the current canonical surface; the nested/image-capable
+// tool-result content shape remains gap-carried separately below.
+data rest_request_wire_serde_alignment_receipt: List<String> = [
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
+  "closure:rest_request_wire_serde_alignment|ROADMAP:326|partial_substrate_closure|remaining:Grounding_request_wire_migration_after_substrate_lands"
 ]
 
 data structural_coverage_gap_anthropic_tool_result_full_content_surface: List<String> = [

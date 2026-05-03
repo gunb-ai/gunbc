@@ -6196,6 +6196,110 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     );
 }
 
+fn attrs_immediately_above_enum<'a>(content: &'a str, enum_decl: &str) -> Vec<&'a str> {
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted module"));
+    let prelude = &content[..pos];
+    let mut attrs_above: Vec<&str> = Vec::new();
+    for line in prelude.lines().rev() {
+        let t = line.trim();
+        if t.is_empty() {
+            if attrs_above.is_empty() {
+                continue;
+            }
+            break;
+        }
+        if t.starts_with("#[") {
+            attrs_above.push(t);
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        break;
+    }
+    attrs_above
+}
+
+fn enum_block<'a>(content: &'a str, enum_decl: &str) -> &'a str {
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted module"));
+    let next_enum = content[pos + enum_decl.len()..]
+        .find("\npub enum ")
+        .map(|i| pos + enum_decl.len() + i)
+        .unwrap_or(content.len());
+    &content[pos..next_enum]
+}
+
+#[test]
+fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named(
+        "dsl/extdeps/llm/anthropic.dag",
+        &source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+
+    for (enum_decl, tag, renames) in [
+        (
+            "pub enum AnthropicChatMessage",
+            "#[serde(tag = \"role\")]",
+            &[
+                "#[serde(rename = \"user\")]",
+                "#[serde(rename = \"assistant\")]",
+            ][..],
+        ),
+        (
+            "pub enum AnthropicUserContentBlock",
+            "#[serde(tag = \"type\")]",
+            &[
+                "#[serde(rename = \"text\")]",
+                "#[serde(rename = \"tool_result\")]",
+            ][..],
+        ),
+        (
+            "pub enum AnthropicAssistantContentBlock",
+            "#[serde(tag = \"type\")]",
+            &[
+                "#[serde(rename = \"text\")]",
+                "#[serde(rename = \"tool_use\")]",
+            ][..],
+        ),
+    ] {
+        let attrs = attrs_immediately_above_enum(&content, enum_decl);
+        assert!(
+            attrs.contains(&tag),
+            "expected {tag} immediately above {enum_decl}; attrs: {:?}",
+            attrs
+        );
+        let block = enum_block(&content, enum_decl);
+        for rename in renames {
+            assert!(
+                block.contains(rename),
+                "expected {rename} in {enum_decl} block; got:\n{block}"
+            );
+        }
+    }
+
+    let stop_attrs = attrs_immediately_above_enum(&content, "pub enum AnthropicStopReason");
+    assert!(
+        stop_attrs.contains(&"#[serde(rename_all = \"snake_case\")]"),
+        "expected AnthropicStopReason to remain a snake-case string enum; attrs: {:?}",
+        stop_attrs
+    );
+    assert!(
+        !stop_attrs.iter().any(|attr| attr.contains("tag =")),
+        "AnthropicStopReason must not become an internally tagged object; attrs: {:?}",
+        stop_attrs
+    );
+}
+
 // Golden JSON for the narrow `OpenAiChatMessage { role, content }` row under the same
 // serde policy as emitted code (`#[serde(rename_all = "snake_case")]` on the role enum).
 // Guards Chat Completions `messages[].role` strings without provider string branching.
