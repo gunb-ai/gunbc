@@ -555,11 +555,15 @@ fn emit_rust_compile_error_item(message: String) -> String {
 fn data_item_type_is_coproduct_wire_contract(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match item.type_annotation {
     Some { value: type_node } =>
-      authored_name_at(source_indices: source_indices, node: type_node) == "CoproductWireContract"
-      || match type_node.inferred {
+      match type_node.inferred {
         Some { value: inf } =>
           match inf {
-            Resolved { node } => authored_name_at(source_indices: source_indices, node: node) == "CoproductWireContract"
+            Resolved { node } =>
+              authored_name_at(source_indices: source_indices, node: node) == "CoproductWireContract"
+              && match node.ident_span {
+                Some { value: span } => span.file |> contains("dsl/std/serialization.dag")
+                None => false
+              }
             _ => false
           }
         None => false
