@@ -3283,7 +3283,7 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
 }
 
 #[test]
-fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
+fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let eval_state_key_id = find_named(&dag, "EvalStateKey");
