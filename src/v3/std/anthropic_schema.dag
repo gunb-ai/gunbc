@@ -44,15 +44,41 @@ type AnthropicChatMessage
   = UserMessage      { content: List<AnthropicUserContentBlock> }
   | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
+// 🟢 TERMINAL shared content-block coordinate mirror for tool-result nested
+// content. The v2 source imports these from `dsl/extdeps/llm/llm.dag`; this
+// v3 file mirrors the reachable type surface directly because it is a
+// self-contained Anthropic callable precursor. The v2 `Base64Image.data`
+// label is mirrored as `base64` because `data` is a v3 keyword.
+type ImageSource
+  = Base64Image {
+      media_type: String
+      base64: String
+    }
+  | UrlImage { url: String }
+
+type ContentBlock
+  = TextContent { text: String }
+  | ImageContent { source: ImageSource }
+
+// 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicToolResultContent`
+// (`dsl/extdeps/llm/anthropic.dag`). Scalar text and nested content blocks are
+// alternatives in Anthropic's tool-result content slot, not optional sibling
+// fields on the tool-result row.
+type AnthropicToolResultContent
+  = ToolResultText { text: String }
+  | ToolResultBlocks { blocks: List<ContentBlock> }
+
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicUserContentBlock`
-// (`dsl/extdeps/llm/anthropic.dag:48-50`). Tool-result content is a
-// flat string in the Anthropic v1 wire today; nested-content/image
-// surface is gap-carried on the v2 source's
-// `structural_coverage_gap_anthropic_tool_result_full_content_surface`
-// and stays out of scope for this mirror.
+// (`dsl/extdeps/llm/anthropic.dag`). Tool-result content is optional on the
+// wire and, when present, is the explicit `AnthropicToolResultContent`
+// coproduct.
 type AnthropicUserContentBlock
   = UserTextBlock       { text: String }
-  | UserToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
+  | UserToolResultBlock {
+      tool_use_id: String
+      content: AnthropicToolResultContent?
+      is_error: Bool?
+    }
 
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicAssistantContentBlock`
 // (`dsl/extdeps/llm/anthropic.dag:54-56`). Assistant rows emit either
@@ -62,7 +88,11 @@ type AnthropicUserContentBlock
 // commitment in this mirror.
 type AnthropicAssistantContentBlock
   = AssistantTextBlock    { text: String }
-  | AssistantToolUseBlock { id: String, name: String, input: Json }
+  | AssistantToolUseBlock {
+      id: String
+      name: String
+      input: Json
+    }
 
 // 🟢 TERMINAL provider-domain enum mirroring `AnthropicStopReason`
 // (`dsl/extdeps/llm/anthropic.dag:127`). Closed Anthropic API enum;
