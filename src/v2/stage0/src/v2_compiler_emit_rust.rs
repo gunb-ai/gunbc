@@ -2780,7 +2780,12 @@ pub fn emit_type_def_from_connective(
                         }
                     }
                 };
-                emit_enum_from_children(
+                let rename_validations = variant_rename_validations_for_policy(
+                    item.children.clone(),
+                    env.clone(),
+                    serde_policy.clone(),
+                );
+                let enum_text = emit_enum_from_children(
                     &item_text,
                     &type_params,
                     &item.children.clone(),
@@ -2788,7 +2793,15 @@ pub fn emit_type_def_from_connective(
                     &shared_types,
                     &env,
                     &serde_policy,
-                )
+                );
+                if (rename_validations.clone().as_str() == "".to_string().as_str()) {
+                    enum_text
+                } else {
+                    v2_rt::concat(
+                        v2_rt::concat(rename_validations.clone(), "\n".to_string()),
+                        enum_text,
+                    )
+                }
             }
         }
     }
@@ -3456,7 +3469,7 @@ pub fn string_without_suffix(value: &String, suffix: &String) -> Option<String> 
 }
 
 pub fn wire_variant_rename_attr_for_policy(
-    authored: &String,
+    authored: String,
     policy: &Rc<RustEnumWireSerde>,
 ) -> String {
     match policy.rename_style.clone() {
@@ -3466,44 +3479,14 @@ pub fn wire_variant_rename_attr_for_policy(
                     let without_prefix = match policy.rename_prefix.clone() {
                         Some(prefix) => match string_without_prefix(&authored, &prefix) {
                             Some(stripped) => stripped.clone(),
-                            None => {
-                                return v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(
-                                                "    compile_error!(\"variant ".to_string(),
-                                                authored.clone(),
-                                            ),
-                                            " does not satisfy declared wire rename prefix: "
-                                                .to_string(),
-                                        ),
-                                        prefix.clone(),
-                                    ),
-                                    "\");\n".to_string(),
-                                )
-                            }
+                            None => return "".to_string(),
                         },
-                        None => authored.clone(),
+                        None => authored,
                     };
                     let without_suffix = match policy.rename_suffix.clone() {
                         Some(suffix) => match string_without_suffix(&without_prefix, &suffix) {
                             Some(stripped) => stripped.clone(),
-                            None => {
-                                return v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(
-                                                "    compile_error!(\"variant ".to_string(),
-                                                authored.clone(),
-                                            ),
-                                            " does not satisfy declared wire rename suffix: "
-                                                .to_string(),
-                                        ),
-                                        suffix.clone(),
-                                    ),
-                                    "\");\n".to_string(),
-                                )
-                            }
+                            None => return "".to_string(),
                         },
                         None => without_prefix,
                     };
@@ -3523,6 +3506,81 @@ pub fn wire_variant_rename_attr_for_policy(
     }
 }
 
+pub fn variant_rename_validation_for_policy(
+    authored: &String,
+    policy: &Rc<RustEnumWireSerde>,
+) -> String {
+    match policy.rename_style.clone() {
+        Some(style) => {
+            if (style.clone().as_str() == "StripAffixAndSnakeCase".to_string().as_str()) {
+                {
+                    let without_prefix = match policy.rename_prefix.clone() {
+                        Some(prefix) => match string_without_prefix(&authored, &prefix) {
+                            Some(stripped) => stripped.clone(),
+                            None => {
+                                return emit_rust_compile_error_item(v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat("variant ".to_string(), authored.clone()),
+                                        " does not satisfy declared wire rename prefix: "
+                                            .to_string(),
+                                    ),
+                                    prefix.clone(),
+                                ))
+                            }
+                        },
+                        None => authored.clone(),
+                    };
+                    match policy.rename_suffix.clone() {
+                        Some(suffix) => match string_without_suffix(&without_prefix, &suffix) {
+                            Some(_) => "".to_string(),
+                            None => emit_rust_compile_error_item(v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat("variant ".to_string(), authored.clone()),
+                                    " does not satisfy declared wire rename suffix: ".to_string(),
+                                ),
+                                suffix.clone(),
+                            )),
+                        },
+                        None => "".to_string(),
+                    }
+                }
+            } else {
+                "".to_string()
+            }
+        }
+        None => "".to_string(),
+    }
+}
+
+pub fn variant_rename_validations_for_policy(
+    children: Rc<Vec<Rc<Node>>>,
+    env: Rc<TypeEnv>,
+    serde_policy: Rc<RustEnumWireSerde>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for text in Rc::new({
+            let mut __result = Vec::new();
+            for child in children.iter().cloned() {
+                __result.push(variant_rename_validation_for_policy(
+                    &authored_name(env.clone(), child.clone()),
+                    &serde_policy,
+                ));
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            if (text.clone().as_str() != "".to_string().as_str()) {
+                __result.push(text);
+            }
+        }
+        __result
+    })
+    .join(&"\n".to_string())
+}
+
 pub fn emit_variant_from_child(
     child: &Rc<Node>,
     recursive_types: Rc<HashMap<String, bool>>,
@@ -3532,7 +3590,7 @@ pub fn emit_variant_from_child(
 ) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
-        let rename_attr = wire_variant_rename_attr_for_policy(&child_text, &serde_policy);
+        let rename_attr = wire_variant_rename_attr_for_policy(child_text.clone(), &serde_policy);
         if ((child.children.clone().len() as i64) == 0) {
             v2_rt::concat(
                 v2_rt::concat(
