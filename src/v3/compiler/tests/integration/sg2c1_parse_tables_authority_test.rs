@@ -16,8 +16,9 @@
 //! emission over `List<Token>`; see `parse_tables.dag` header.
 
 use v3_compiler::compile_to_dag;
-use v3_compiler::dag::{FieldValue, LiteralBits, TypeConnective, ValueBody};
+use v3_compiler::dag::{FieldValue, LiteralBits, OperatorKind, TypeConnective, ValueBody};
 use v3_compiler::diagnostics::Diagnostic;
+use v3_compiler::operators;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
@@ -142,6 +143,86 @@ fn binary_op_rows_cover_every_operator_token_the_parser_dispatches_on() {
         "binary_op_* rows in parse_tables.dag do not cover exactly the operator tokens the \
          parser dispatches on"
     );
+}
+
+#[test]
+fn dag_binary_operators_have_token_parse_table_and_operator_mapping() {
+    let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
+        .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
+    let tokenize_dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+
+    let token_kind_decl = tokenize_dag
+        .declaration_by_name("TokenKind")
+        .expect("TokenKind declaration in tokenize.dag");
+    let TypeConnective::Disj {
+        variants: token_variants,
+    } = &token_kind_decl.connective
+    else {
+        panic!("TokenKind should lower to a Disj");
+    };
+    let token_variant_names: std::collections::BTreeSet<String> =
+        token_variants.iter().map(|v| v.label.clone()).collect();
+
+    let binary_op_row_type_id = tables_dag
+        .declaration_by_name("BinaryOpRow")
+        .expect("BinaryOpRow declaration")
+        .id;
+    let mut rows_by_symbol = std::collections::BTreeMap::new();
+    for decl in tables_dag.declarations() {
+        if decl.meta_tag != Some(binary_op_row_type_id) {
+            continue;
+        }
+        let name = decl.name.as_deref().unwrap_or("<anonymous>");
+        let Some(ValueBody::Structural { fields }) = &decl.value_body else {
+            panic!("`parse_tables.dag::{name}`: BinaryOpRow should carry structural fields");
+        };
+        let token_variant = string_field(fields, "token_variant", name);
+        let operator_symbol = string_field(fields, "operator_symbol", name);
+        assert!(
+            rows_by_symbol
+                .insert(operator_symbol.clone(), token_variant.clone())
+                .is_none(),
+            "duplicate BinaryOpRow coverage for operator symbol `{operator_symbol}`"
+        );
+    }
+
+    for spec in shared_dag_operator_specs(SHARED_SYNTAX_DAG) {
+        let Some(binop) = spec.binop else {
+            continue;
+        };
+        let expected_token = token_kind_for_shared_dag_operator(&spec.symbol);
+        assert!(
+            token_variant_names.contains(expected_token),
+            "`dag_operators` symbol `{}` expects TokenKind::{expected_token} in tokenize.dag",
+            spec.symbol
+        );
+        let row_token = rows_by_symbol.get(&spec.symbol).unwrap_or_else(|| {
+            panic!(
+                "`dag_operators` binary operator `{}` has no BinaryOpRow in parse_tables.dag",
+                spec.symbol
+            )
+        });
+        assert_eq!(
+            row_token, expected_token,
+            "`dag_operators` binary operator `{}` maps to TokenKind::{expected_token}, but \
+             parse_tables.dag routes TokenKind::{row_token}",
+            spec.symbol
+        );
+        let Some(operator_kind) = operators::from_symbol(&spec.symbol) else {
+            panic!(
+                "`dag_operators` binary operator `{}` has no operators.dag::from_symbol mapping",
+                spec.symbol
+            );
+        };
+        let actual_binop = operator_kind_binop_name(operator_kind);
+        assert_eq!(
+            actual_binop, binop,
+            "`dag_operators` binary operator `{}` records binop `{binop}`, but \
+             operators.dag maps it to `{actual_binop}`",
+            spec.symbol
+        );
+    }
 }
 
 #[test]
@@ -656,4 +737,123 @@ fn primary_atom_rows_cover_exactly_the_tokens_parse_primary_atomic_arm() {
         "primary_atom_* rows in parse_tables.dag do not cover exactly the `TokenKind` set for \
          `parse_primary` after the prefix pass"
     );
+}
+
+struct SharedDagOperatorSpec {
+    symbol: String,
+    binop: Option<String>,
+}
+
+fn shared_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
+    extract_balanced_section(source, "data dag_operators", '[', ']')
+        .split("OperatorSpec")
+        .skip(1)
+        .filter_map(|entry| {
+            let body = entry.split_once('}').map(|(body, _)| body).unwrap_or(entry);
+            if !body.contains("symbol:") {
+                return None;
+            }
+            let symbol = string_literal_after(body, "symbol:")
+                .unwrap_or_else(|| panic!("OperatorSpec entry missing string `symbol`: {body}"));
+            let binop = ident_after(body, "binop:")
+                .unwrap_or_else(|| panic!("OperatorSpec `{symbol}` missing `binop` field"));
+            Some(SharedDagOperatorSpec {
+                symbol,
+                binop: (binop != "none").then_some(binop),
+            })
+        })
+        .collect()
+}
+
+fn token_kind_for_shared_dag_operator(symbol: &str) -> &'static str {
+    match symbol {
+        "==" => "EqEq",
+        "!=" => "NotEq",
+        "<" => "Lt",
+        "<=" => "Le",
+        ">" => "Gt",
+        ">=" => "Ge",
+        "+" => "Plus",
+        "-" => "Minus",
+        "*" => "Star",
+        "/" => "Slash",
+        "&&" => "AmpAmp",
+        "||" => "PipePipe",
+        other => panic!(
+            "`dag_operators` binary operator `{other}` is not supported by the v3 token/parser/operator chain; \
+             delete the row until the full chain lands"
+        ),
+    }
+}
+
+fn operator_kind_binop_name(op: OperatorKind) -> &'static str {
+    match op {
+        OperatorKind::Arithmetic(arith) => match arith {
+            v3_compiler::dag::ArithmeticOp::Add => "Add",
+            v3_compiler::dag::ArithmeticOp::Sub => "Sub",
+            v3_compiler::dag::ArithmeticOp::Mul => "Mul",
+            v3_compiler::dag::ArithmeticOp::Div => "Div",
+        },
+        OperatorKind::Comparison(comp) => match comp {
+            v3_compiler::dag::ComparisonOp::Eq => "Eq",
+            v3_compiler::dag::ComparisonOp::Ne => "Ne",
+            v3_compiler::dag::ComparisonOp::Lt => "Lt",
+            v3_compiler::dag::ComparisonOp::Le => "Le",
+            v3_compiler::dag::ComparisonOp::Gt => "Gt",
+            v3_compiler::dag::ComparisonOp::Ge => "Ge",
+        },
+        OperatorKind::Logical(logical) => match logical {
+            v3_compiler::dag::LogicalOp::And => "And",
+            v3_compiler::dag::LogicalOp::Or => "Or",
+        },
+    }
+}
+
+fn string_field(fields: &[(String, FieldValue)], label: &str, decl_name: &str) -> String {
+    fields
+        .iter()
+        .find_map(|(k, v)| (k == label).then_some(v))
+        .and_then(|v| match v {
+            FieldValue::Literal(LiteralBits::String(s)) => Some(s.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("`{decl_name}`: missing string `{label}` field"))
+}
+
+fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close: char) -> &'a str {
+    let anchor_idx = source
+        .find(anchor)
+        .unwrap_or_else(|| panic!("missing `{anchor}` in shared syntax fixture"));
+    let tail = &source[anchor_idx..];
+    let open_rel = tail
+        .find(open)
+        .unwrap_or_else(|| panic!("missing `{open}` after `{anchor}` in shared syntax fixture"));
+    let start = anchor_idx + open_rel;
+    let mut depth = 0usize;
+    for (offset, ch) in source[start..].char_indices() {
+        if ch == open {
+            depth += 1;
+        } else if ch == close {
+            depth -= 1;
+            if depth == 0 {
+                return &source[start + open.len_utf8()..start + offset];
+            }
+        }
+    }
+    panic!("unterminated `{anchor}` section");
+}
+
+fn string_literal_after(source: &str, label: &str) -> Option<String> {
+    let tail = source.split_once(label)?.1.trim_start();
+    let tail = tail.strip_prefix('"')?;
+    let end = tail.find('"')?;
+    Some(tail[..end].to_string())
+}
+
+fn ident_after(source: &str, label: &str) -> Option<String> {
+    let tail = source.split_once(label)?.1.trim_start();
+    let end = tail
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or(tail.len());
+    Some(tail[..end].to_string())
 }
