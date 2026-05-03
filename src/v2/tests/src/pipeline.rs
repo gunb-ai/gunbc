@@ -6470,6 +6470,31 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     }
 }
 
+#[test]
+fn openai_chat_completion_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<OpenAiChatCompletion200Body> = response.json().await?"),
+        "expected ChatCompletion 200 response to deserialize through typed OpenAiChatCompletion200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).choices")
+            && content.contains(".message).content.clone()")
+            && content.contains("(__rest_wire).usage).prompt_tokens.clone()"),
+        "expected ChatCompletion output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/choices/0/message/content\")"),
+        "ChatCompletion content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
@@ -6516,6 +6541,31 @@ service test.Llm {
     assert!(
         content.contains("pointer(\"/model\")"),
         "RE-4b: expected JSON pointer extraction for model, got:\n{content}"
+    );
+}
+
+#[test]
+fn anthropic_messages_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<AnthropicMessages200Body> = response.json().await?"),
+        "expected Anthropic Messages 200 response to deserialize through typed AnthropicMessages200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).content")
+            && content.contains(".text.clone()")
+            && content.contains("(__rest_wire).usage).input_tokens.clone()"),
+        "expected Anthropic Messages output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/content/0/text\")"),
+        "Anthropic Messages content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
     );
 }
 
