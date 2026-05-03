@@ -3393,28 +3393,28 @@ pub fn emit_enum_shared_accessors(
     }
 }
 
-pub fn string_without_prefix(value: &String, prefix: &String) -> String {
+pub fn string_without_prefix(value: &String, prefix: &String) -> Option<String> {
     if (v2_rt::string_length(&prefix) == 0) {
-        value.clone()
+        None
     } else {
         if ((v2_rt::string_length(&value) >= v2_rt::string_length(&prefix))
             && (v2_rt::substring(&value, 0, v2_rt::string_length(&prefix)).as_str()
                 == prefix.clone().as_str()))
         {
-            v2_rt::substring(
+            Some(v2_rt::substring(
                 &value,
                 v2_rt::string_length(&prefix),
                 v2_rt::string_length(&value),
-            )
+            ))
         } else {
-            value.clone()
+            None
         }
     }
 }
 
-pub fn string_without_suffix(value: &String, suffix: &String) -> String {
+pub fn string_without_suffix(value: &String, suffix: &String) -> Option<String> {
     if (v2_rt::string_length(&suffix) == 0) {
-        value.clone()
+        None
     } else {
         if ((v2_rt::string_length(&value) >= v2_rt::string_length(&suffix))
             && (v2_rt::substring(
@@ -3425,40 +3425,82 @@ pub fn string_without_suffix(value: &String, suffix: &String) -> String {
             .as_str()
                 == suffix.clone().as_str()))
         {
-            v2_rt::substring(
+            Some(v2_rt::substring(
                 &value,
                 0,
                 (v2_rt::string_length(&value) - v2_rt::string_length(&suffix)),
-            )
+            ))
         } else {
-            value.clone()
+            None
         }
     }
 }
 
-pub fn wire_variant_name_for_policy(
-    authored: String,
+pub fn wire_variant_rename_attr_for_policy(
+    authored: &String,
     policy: &Rc<RustEnumWireSerde>,
-) -> Option<String> {
+) -> String {
     match policy.rename_style.clone() {
         Some(style) => {
             if (style.clone().as_str() == "StripAffixAndSnakeCase".to_string().as_str()) {
                 {
                     let without_prefix = match policy.rename_prefix.clone() {
-                        Some(prefix) => string_without_prefix(&authored, &prefix),
-                        None => authored,
+                        Some(prefix) => match string_without_prefix(&authored, &prefix) {
+                            Some(stripped) => stripped.clone(),
+                            None => {
+                                return v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                "    compile_error!(\"variant ".to_string(),
+                                                authored.clone(),
+                                            ),
+                                            " does not satisfy declared wire rename prefix: "
+                                                .to_string(),
+                                        ),
+                                        prefix.clone(),
+                                    ),
+                                    "\");\n".to_string(),
+                                )
+                            }
+                        },
+                        None => authored.clone(),
                     };
                     let without_suffix = match policy.rename_suffix.clone() {
-                        Some(suffix) => string_without_suffix(&without_prefix, &suffix),
+                        Some(suffix) => match string_without_suffix(&without_prefix, &suffix) {
+                            Some(stripped) => stripped.clone(),
+                            None => {
+                                return v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                "    compile_error!(\"variant ".to_string(),
+                                                authored.clone(),
+                                            ),
+                                            " does not satisfy declared wire rename suffix: "
+                                                .to_string(),
+                                        ),
+                                        suffix.clone(),
+                                    ),
+                                    "\");\n".to_string(),
+                                )
+                            }
+                        },
                         None => without_prefix,
                     };
-                    Some(to_snake(without_suffix))
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            "    #[serde(rename = \"".to_string(),
+                            to_snake(without_suffix),
+                        ),
+                        "\")]\n".to_string(),
+                    )
                 }
             } else {
-                None
+                "".to_string()
             }
         }
-        None => None,
+        None => "".to_string(),
     }
 }
 
@@ -3471,13 +3513,7 @@ pub fn emit_variant_from_child(
 ) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
-        let rename_attr = match wire_variant_name_for_policy(child_text.clone(), &serde_policy) {
-            Some(wire_name) => v2_rt::concat(
-                v2_rt::concat("    #[serde(rename = \"".to_string(), wire_name.clone()),
-                "\")]\n".to_string(),
-            ),
-            None => "".to_string(),
-        };
+        let rename_attr = wire_variant_rename_attr_for_policy(&child_text, &serde_policy);
         if ((child.children.clone().len() as i64) == 0) {
             v2_rt::concat(
                 v2_rt::concat(
