@@ -6415,7 +6415,9 @@ type RealEnum
     );
     assert!(
         content.contains("compile_error!")
-            && content.contains("CoproductWireContract StringVariant requires a nullary-only coproduct: RealEnum"),
+            && content.contains(
+                "CoproductWireContract StringVariant requires a nullary-only coproduct: RealEnum"
+            ),
         "fielded coproducts must not accept plain StringVariant wire contracts; got:\n{content}"
     );
 }
