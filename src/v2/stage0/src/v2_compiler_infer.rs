@@ -842,29 +842,28 @@ pub fn type_mismatch_error(
     )
 }
 
-pub fn optional_inner_type_compatible(
+pub fn rejects_raw_string_for_optional_coproduct_field(
     expected: Rc<Node>,
     got: Rc<Node>,
+    value: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     {
         let expected_inner = with_required_cardinality(&expected);
-        node_type_compatible(expected_inner, got, source_indices)
+        let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
+            == Cardinality::CardOptional)
+            && (expected_inner.connective.clone() == Connective::Disj));
+        let got_is_string = (authored_name_at(source_indices.clone(), got).as_str()
+            == "String".to_string().as_str());
+        let value_is_string_literal = match (*value.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { ref value, .. } => match value.as_ref() {
+                LiteralValue::LitStr { .. } => true,
+                _ => false,
+            },
+            _ => false,
+        };
+        ((expected_is_optional_coproduct && got_is_string) && value_is_string_literal)
     }
-}
-
-pub fn record_field_value_compatible(
-    expected: &Rc<Node>,
-    got: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> bool {
-    (node_type_compatible(expected.clone(), got.clone(), source_indices.clone())
-        || ((expected.return_cardinality.clone() == Cardinality::CardOptional)
-            && optional_inner_type_compatible(
-                expected.clone(),
-                got.clone(),
-                source_indices.clone(),
-            )))
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -4211,13 +4210,12 @@ pub fn infer_record_lit(
                     let field_type_diags = match field_expected.clone() {
                         Some(expected_node) => {
                             let got_node = resolved_type(ar_typed.clone());
-                            if record_field_value_compatible(
-                                &expected_node,
-                                &got_node,
-                                &scope.type_env.clone().source_indices.clone(),
+                            if rejects_raw_string_for_optional_coproduct_field(
+                                expected_node.clone(),
+                                got_node.clone(),
+                                ar_typed.clone(),
+                                scope.type_env.clone().source_indices.clone(),
                             ) {
-                                Rc::new(vec![])
-                            } else {
                                 Rc::new(vec![type_mismatch_error(
                                     node_type_shape(
                                         &expected_node,
@@ -4230,6 +4228,8 @@ pub fn infer_record_lit(
                                     ar_typed.span.clone(),
                                     scope.module_name.clone(),
                                 )])
+                            } else {
+                                Rc::new(vec![])
                             }
                         }
                         None => Rc::new(vec![]),
