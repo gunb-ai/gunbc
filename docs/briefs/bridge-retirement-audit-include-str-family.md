@@ -133,7 +133,7 @@ by” lists **family** prerequisites, not every test import.
 | **Declaration** | `src/v3/compiler/build.rs` — `emit_r1_gates_fixture` reads `r1_gates.template.dag`, `named_function_count.dag`, `.v3` fixtures; **`replace`** on sentinels `R1_*_SPLICE_V1`; writes `tests/fixtures/r1_gates.dag`. |
 | **Consumers** | **1** generated fixture file; many integration tests consume `r1_gates.dag` (not all through `include_str!` — often `compile_file` / path). |
 | **Retirement shape** | Structural `TestClaim` / declaration ref so lens body is not duplicated inside escaped string literals; or single generator owned by substrate. |
-| **Sibling blocker** | **BR-07**, **BR-08**, **BR-14** (canonical lens bytes must stay consistent across build splice, `test_runner` const, and user gate test). |
+| **Sibling blocker** | **BR-07**, **BR-08** (canonical lens bytes must stay consistent across build splice, `test_runner` const, and user gate test). Optional alignment: **BR-17** (`lens_apply` tests also `include_str!` the same lens). |
 | **Order** | **11** (bundle with canonical-lens retirement wave). |
 
 ---
