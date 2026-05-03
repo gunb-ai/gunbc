@@ -87,10 +87,10 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Provider/API mirror multiplication risk | 2026-04-30 | R3 Grounding | Open | Shared service ingestion path before more provider mirrors. |
 | Hand-Rust acceptance growth | 2026-04-30 | R3 Verification + Substrate | Open | `.dag` TestClaim capability for reflected-Dag structural assertions. |
 | `Json` + `Bytes` opaque kernel decomposition | 2026-05-01 | R3 Substrate | Open / disposition pending | Decide after T-Numeric-Construction whether this becomes an R3 lane. |
-| SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix normalization; add semiring law witnesses. |
+| SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Retired | PR #1555 (`5ef6530c7`) lands `SymbolicCost` semiring inhabitance with the zero-annihilation law witness. |
 | SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Retired | PR #1543 (`3c77a60c9`) stops claiming `BoundedLattice` in `src/v3/std/induction.dag` and restates the actual meet-oriented / auxiliary-join helpers per Path B of the algebra-claim audit. |
 | Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Retired | PR #1548 (`0427f96f7`) landed the typed `BindNodeId` witness on `ArrowBody::UserDefined`; all six emitter sites consume `(*bind_id).bind(self.dag)`, guarded site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`. Local-typed-error path was rejected at design split as parallel-representation debt. |
-| `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Open | Remove unsupported rows or add full token/parse/operator chain. |
+| `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Retired | PR #1552 (`d9bda3e3d`) deletes the unsupported `dag` operator rows and gates syntax coverage with a 4-authority cross-validation gate. |
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
 | Author-now/fire-later verification style | 2026-05-01 | R3 Verification | Open | Make one `BinaryDimensionReportEquals` claim actually execute. |
 | Typed-carrier-landed + Rust-mirror-remains pattern | 2026-05-01 | R3 PB debt discipline | Open | Pair mirror introductions with isomorphism/generation or deletion. |
@@ -117,22 +117,16 @@ These rows should not consume implementation-worker capacity unless the ledger t
 2. **Bootstrap diagnostics-empty gate for method-template contracts.**
    One structural ratchet can close both the `go_method_template_contracts` mismatch and the broader "shape test passed over diagnostic Dag" pattern.
 
-3. **SymbolicCost semiring zero law.**
-   High correctness impact: fixes cost-lens facts and seeds the Verification law-witness closure path.
-
-4. **SubValueRelation algebra-claim correction.**
-   Pairs naturally with the law-witness lane; either fixes the law or removes an invalid guarantee.
-
-5. **`ValueBody` mirror update + first isomorphism receipt.**
+3. **`ValueBody` mirror update + first isomorphism receipt.**
    Slightly larger, but it attacks multiple rows at once: ValueBody drift, FieldMap illegal-state mirror, reflection-overtrust, and hand-mirror growth.
 
-6. **Method-template consumer migration audit-to-retirement slice.**
+4. **Method-template consumer migration audit-to-retirement slice.**
    PRs populated rows; the invariant gain lands only when old runtime/emit tables stop serving consumers.
 
-7. **CI slow-test exemption fresh audit.**
+5. **CI slow-test exemption fresh audit.**
    Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
 
-(Three original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545; *BridgeLedgerZero decreasing-open-count ratchet* — retired by PR #1571 (ledger row 97).)
+(Five original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545; *BridgeLedgerZero decreasing-open-count ratchet* — retired by PR #1571 (ledger row 97); *SymbolicCost semiring zero law* — retired by PR #1555 (ledger row 90); *SubValueRelation algebra-claim correction* — retired by PR #1543 (ledger row 91).)
 
 ## Velocity Tripwire Baseline
 
