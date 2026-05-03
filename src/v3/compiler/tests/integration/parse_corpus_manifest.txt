@@ -27,7 +27,7 @@ src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
 src/v3/std/algebra.dag	47	339773	40b62a1381f56e84
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
 src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
-src/v3/std/anthropic_schema.dag	8	20682	1de25b12dd9648e5
+src/v3/std/anthropic_schema.dag	11	28972	e0cdc5d56f8e8468
 src/v3/std/approximate_field.dag	11	16862	d3bf5c7f2f410ce1
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
 src/v3/std/bootstrap_authority.dag	4	64334	5bad26d70c58cc74
