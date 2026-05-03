@@ -18970,7 +18970,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(734)],
                 output: DeclarationId(641),
-                body: ArrowBody::UserDefined(NodeId(3)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(3))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19786,7 +19786,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762)],
                 output: DeclarationId(763),
-                body: ArrowBody::UserDefined(NodeId(6)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(6))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19840,7 +19840,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(1689),
-                body: ArrowBody::UserDefined(NodeId(10)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(10))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19858,7 +19858,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762), DeclarationId(1690)],
                 output: DeclarationId(1691),
-                body: ArrowBody::UserDefined(NodeId(12)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(12))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19876,7 +19876,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762)],
                 output: DeclarationId(99),
-                body: ArrowBody::UserDefined(NodeId(17)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(17))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19894,7 +19894,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(761)],
                 output: DeclarationId(81),
-                body: ArrowBody::UserDefined(NodeId(25)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(25))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19912,7 +19912,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(29)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(29))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19930,7 +19930,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(33)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(33))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19948,7 +19948,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(37)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(37))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19966,7 +19966,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(41)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(41))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -19984,7 +19984,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1692)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(45)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(45))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20002,7 +20002,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(99),
-                body: ArrowBody::UserDefined(NodeId(98)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(98))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20020,7 +20020,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(760), DeclarationId(760)],
                 output: DeclarationId(99),
-                body: ArrowBody::UserDefined(NodeId(102)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(102))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20038,7 +20038,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(110)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(110))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20056,7 +20056,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1693)],
                 output: DeclarationId(1694),
-                body: ArrowBody::UserDefined(NodeId(116)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(116))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20074,7 +20074,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1695)],
                 output: DeclarationId(1696),
-                body: ArrowBody::UserDefined(NodeId(129)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(129))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20092,7 +20092,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762)],
                 output: DeclarationId(99),
-                body: ArrowBody::UserDefined(NodeId(139)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(139))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20110,7 +20110,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1697)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(151)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(151))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20128,7 +20128,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1698)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(163)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(163))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20146,7 +20146,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1699)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(180)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(180))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20164,7 +20164,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(189)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(189))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20182,7 +20182,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(760), DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(198)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(198))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20205,7 +20205,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     DeclarationId(762),
                 ],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(203)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(203))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20241,7 +20241,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(762), DeclarationId(762)],
                 output: DeclarationId(762),
-                body: ArrowBody::UserDefined(NodeId(206)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(206))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20259,7 +20259,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(763), DeclarationId(762)],
                 output: DeclarationId(763),
-                body: ArrowBody::UserDefined(NodeId(213)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(213))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20277,7 +20277,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(763)],
                 output: DeclarationId(99),
-                body: ArrowBody::UserDefined(NodeId(215)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(215))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20295,7 +20295,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1700), DeclarationId(762)],
                 output: DeclarationId(1701),
-                body: ArrowBody::UserDefined(NodeId(228)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(228))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20313,7 +20313,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1702), DeclarationId(762)],
                 output: DeclarationId(1703),
-                body: ArrowBody::UserDefined(NodeId(235)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(235))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -20331,7 +20331,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1704)],
                 output: DeclarationId(1705),
-                body: ArrowBody::UserDefined(NodeId(238)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(238))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -29064,7 +29064,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(744)],
                 output: DeclarationId(2243),
-                body: ArrowBody::UserDefined(NodeId(240)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(240))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -47985,7 +47985,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(722)],
                 output: DeclarationId(197),
-                body: ArrowBody::UserDefined(NodeId(257)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(257))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -48003,7 +48003,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(722)],
                 output: DeclarationId(197),
-                body: ArrowBody::UserDefined(NodeId(274)),
+                body: ArrowBody::UserDefined(BindNodeId::new(NodeId(274))),
             },
             type_params: vec![],
             phantom_params: Vec::new(),

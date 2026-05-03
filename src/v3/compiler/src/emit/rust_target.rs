@@ -2500,12 +2500,7 @@ fn analyze_user_defined_callable(
             detail: "user-defined callable does not have a UserDefined Arrow body",
         });
     };
-    let Some(bind) = dag.node(*bind_id).as_bind() else {
-        return Err(EmitError::MalformedUserDefinedCallable {
-            declaration,
-            detail: "user-defined callable body does not point to a Bind node",
-        });
-    };
+    let bind = (*bind_id).bind(dag);
     if bind.params.len() < inputs.len() {
         return Err(EmitError::MalformedUserDefinedCallable {
             declaration,
@@ -4498,11 +4493,7 @@ impl<'a> Ctx<'a> {
                     .to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         if inputs.len() != param_bindings.len() {
             return Err(EmitError::UnsupportedBehavior(
                 "callable parameter count does not match the requested Rust closure parameters"
@@ -4592,11 +4583,7 @@ impl<'a> Ctx<'a> {
                     .to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         let param_dispositions = self.callable_param_dispositions(declaration.id, inputs.len());
         let mut locals = RenderLocals::default();
         let mut output_callable_walk = HashSet::new();
