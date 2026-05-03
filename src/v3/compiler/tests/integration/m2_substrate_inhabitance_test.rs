@@ -3094,6 +3094,50 @@ fn string_diagnostic_ordering_axes_are_closed_structural_values() {
 }
 
 #[test]
+fn string_family_inhabitance_row_is_language_scoped_and_axis_typed() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let row = dag
+        .declaration_by_name("StringFamilyInhabitanceRow")
+        .expect("StringFamilyInhabitanceRow missing from full bootstrap");
+    assert_eq!(
+        row.span.file, "src/v3/std/emit_model.dag",
+        "string-family rows must live beside the landed axis authority in emit_model"
+    );
+    assert_eq!(
+        record_fields(&dag, "StringFamilyInhabitanceRow"),
+        [
+            "language",
+            "target_type",
+            "type_realization",
+            "ownership",
+            "lifetime",
+            "growability",
+            "encoding",
+        ]
+        .map(String::from),
+        "string-family row host must stay structurally explicit and language-scoped"
+    );
+
+    let declaration_ref = find_named(&dag, "DeclarationRef");
+    for field in [
+        "language",
+        "target_type",
+        "type_realization",
+        "ownership",
+        "lifetime",
+        "growability",
+        "encoding",
+    ] {
+        assert_eq!(
+            conj_field_by_id(&dag, row.id, field),
+            declaration_ref,
+            "`{field}` must remain a structural `DeclarationRef` edge"
+        );
+    }
+}
+
+#[test]
 fn runtime_value_carrier_matches_pb_runtime_shape_and_marker_boundary() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
