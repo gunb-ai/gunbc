@@ -21,34 +21,31 @@ type BootstrapAuthority
   | CompilerAuthority { path: String }
   | ExtdepsFixtureAuthority { path: String }
 
-type BootstrapAuthoritySet {
-  // Map key is the canonical path and gives the set duplicate-free membership
-  // semantics. The value repeats the path inside the typed root variant because
-  // current structural maps do not project their key into the value payload.
-  // Dissolution trigger: replace the repeated value path with a dependent
-  // map-entry/key projection once substrate map entries can pass the key to the
-  // value type.
-  authorities: Map<String, BootstrapAuthority>
-}
+// Map key is the canonical path and gives the set duplicate-free membership
+// semantics. The value repeats the path inside the typed root variant because
+// current structural maps do not project their key into the value payload.
+// Dissolution trigger: replace the repeated value path with a dependent
+// map-entry/key projection once substrate map entries can pass the key to the
+// value type.
+type BootstrapAuthoritySet = Map<String, BootstrapAuthority>
 
 data bootstrap_authority: BootstrapAuthoritySet = {
-  authorities: {
-    "dsl/std/logic.dag": StdAuthority { path: "dsl/std/logic.dag" },
-    "dsl/std/bit.dag": StdAuthority { path: "dsl/std/bit.dag" },
-    "dsl/std/error_primitives.dag": StdAuthority { path: "dsl/std/error_primitives.dag" },
-    "dsl/std/algebra.dag": StdAuthority { path: "dsl/std/algebra.dag" },
-    "dsl/std/magnitude.dag": StdAuthority { path: "dsl/std/magnitude.dag" },
-    "dsl/std/nat.dag": StdAuthority { path: "dsl/std/nat.dag" },
-    "dsl/std/integer.dag": StdAuthority { path: "dsl/std/integer.dag" },
-    "dsl/std/rational.dag": StdAuthority { path: "dsl/std/rational.dag" },
-    "dsl/std/float.dag": StdAuthority { path: "dsl/std/float.dag" },
-    "dsl/std/types.dag": StdAuthority { path: "dsl/std/types.dag" },
-    "dsl/std/string_type.dag": StdAuthority { path: "dsl/std/string_type.dag" },
-    "dsl/std/unicode.dag": StdAuthority { path: "dsl/std/unicode.dag" },
-    "dsl/std/render_repeat_string_bootstrap.dag": StdAuthority { path: "dsl/std/render_repeat_string_bootstrap.dag" },
-    "dsl/std/methods.dag": StdAuthority { path: "dsl/std/methods.dag" },
+  "dsl/std/logic.dag": StdAuthority { path: "dsl/std/logic.dag" },
+  "dsl/std/bit.dag": StdAuthority { path: "dsl/std/bit.dag" },
+  "dsl/std/error_primitives.dag": StdAuthority { path: "dsl/std/error_primitives.dag" },
+  "dsl/std/algebra.dag": StdAuthority { path: "dsl/std/algebra.dag" },
+  "dsl/std/magnitude.dag": StdAuthority { path: "dsl/std/magnitude.dag" },
+  "dsl/std/nat.dag": StdAuthority { path: "dsl/std/nat.dag" },
+  "dsl/std/integer.dag": StdAuthority { path: "dsl/std/integer.dag" },
+  "dsl/std/rational.dag": StdAuthority { path: "dsl/std/rational.dag" },
+  "dsl/std/float.dag": StdAuthority { path: "dsl/std/float.dag" },
+  "dsl/std/types.dag": StdAuthority { path: "dsl/std/types.dag" },
+  "dsl/std/string_type.dag": StdAuthority { path: "dsl/std/string_type.dag" },
+  "dsl/std/unicode.dag": StdAuthority { path: "dsl/std/unicode.dag" },
+  "dsl/std/render_repeat_string_bootstrap.dag": StdAuthority { path: "dsl/std/render_repeat_string_bootstrap.dag" },
+  "dsl/std/methods.dag": StdAuthority { path: "dsl/std/methods.dag" },
 
-    "src/v3/std/algebra.dag": V3StdAuthority { path: "src/v3/std/algebra.dag" },
+  "src/v3/std/algebra.dag": V3StdAuthority { path: "src/v3/std/algebra.dag" },
     "src/v3/std/anthropic_messages.dag": V3StdAuthority { path: "src/v3/std/anthropic_messages.dag" },
     "src/v3/std/anthropic_operations.dag": V3StdAuthority { path: "src/v3/std/anthropic_operations.dag" },
     "src/v3/std/anthropic_schema.dag": V3StdAuthority { path: "src/v3/std/anthropic_schema.dag" },
