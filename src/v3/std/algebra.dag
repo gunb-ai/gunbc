@@ -168,6 +168,16 @@ type DegreeAtLeastTwo
 // evidence. The `Semiring<SymbolicCost>` inhabitance edge is the
 // substrate prerequisite for downstream Verification law witnesses
 // (INVARIANTS §P1); it does not retire those law rows in this slice.
+// This is intentionally edge-only today: v3 can parse the imported
+// `Semiring<T>` instantiation, but class-5 structural data lowering still
+// rejects honest function-valued witness fields (`add`, `mul`, etc.). Do
+// NOT add a parallel ad-hoc witness table. Dissolution trigger:
+// `symbolic_cost_semiring_structural_witness_lands` - when function-valued
+// structural data fields lower cleanly, author the single
+// `data symbolic_cost_semiring: Semiring<SymbolicCost>` witness with
+// `add = sequential`, `zero = ConstantCost(0)`, `mul = iterate`, and
+// `one = ConstantCost(1)`, then retire this edge-only boundary note in the
+// same PR.
 type SymbolicCost inhabits Semiring<SymbolicCost>
   = ConstantCost(Int)
   | LinearCost(SizeVariable)
