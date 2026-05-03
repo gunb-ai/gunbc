@@ -17,10 +17,18 @@
 //!    target (`count` for Rust, Python, Go) — proves the map was populated
 //!    from the typed `MethodTemplateContract` rows, not a hand-authored
 //!    second authority.
-//! 5. The generated file is structurally well-formed: re-reading + parsing
-//!    via the v2-compatible kernel grammar (validated through v3 compile)
-//!    produces a `data … Map<String, String>` structure carrying the
-//!    spot-checked entries.
+//! 5. The generated file's surface shape is asserted via string-fragment
+//!    `contains` / `matches` checks against the spot-checked entries.
+//!    Parse / compile validation of the actual emitted bytes is **not**
+//!    performed here; the cross-tree dep boundary forbids
+//!    `v3-compiler-tests → v2-compiler` and vice versa, and the
+//!    accepted split test chain (per Director / PB
+//!    `#issuecomment-4367336134`) covers parse-and-import on the v2
+//!    side via the consumability ratchet's hand-fabricated shape
+//!    fixture in `src/v2/tests/src/pb_method_template_projection_consumability.rs`.
+//!    PR #1575's `stage0_compile_imports_ephemeral_generated_source_root`
+//!    (`#[ignore]`d) is the canonical end-to-end byte-equivalent ratchet
+//!    when needed.
 //!
 //! Out of scope (per dispatch / Gap 4 scope clamp):
 //! - **No v2 stage0 subprocess test here**: that is the consumer-side
