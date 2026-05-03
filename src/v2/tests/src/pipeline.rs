@@ -6238,11 +6238,7 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
     let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
-    let result = compile_dag_named(
-        "dsl/extdeps/llm/anthropic.dag",
-        &source,
-        RenderTarget::Rust,
-    );
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
 
