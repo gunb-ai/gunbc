@@ -80,7 +80,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Operator inference synthetic-arrow fallback | 2026-04-30 | R3 Substrate | Open | Structural algebra walk is authoritative; typed unsupported-operator diagnostic on miss. |
 | `go_method_template_contracts` diagnostic mismatch | 2026-04-30 | R3 Substrate | Open | All three method-template contract declarations lower to `ValueBody::List` with empty diagnostics. |
 | Missing diagnostics-empty bootstrap gate | 2026-04-30 | R3 Substrate + Verification | Open | `diagnostics_empty_after_bootstrap` ratchet for new bootstrap authorities. |
-| `test_runner.rs` predicate-language growth | 2026-04-30 | R3 Evaluator + PB | Open | Freeze bespoke arms unless paired with evaluator/PB-runtime dissolution hook. |
+| `test_runner.rs` predicate-language growth | 2026-04-30 | R3 Evaluator + PB | Partial | Bundle 4b: `.github/PULL_REQUEST_TEMPLATE.md` Evaluator-freeze section + `docs/debt/r3-bundle-4b-test-runner-freeze-receipt.md` enforce a named dissolution hook for any `test_runner.rs` edit; bespoke arms remain until dissolved per brief table. |
 | `dsl/v3/std/emit_model.dag` facade | 2026-04-30 | R3 Substrate / Grounding | Open | Ratchet facade as non-canonical; retire when v2/CI resolves canonical v3 std. |
 | Method-template consumer migration | 2026-04-30 | R3 Grounding | Open | Migrate consumers off old runtime/emit tables before adding more rows. |
 | Reflection completeness over-trusted | 2026-04-30 | R3 Verification | Open | Generated conformance walker or equivalent mechanical theorem. |
