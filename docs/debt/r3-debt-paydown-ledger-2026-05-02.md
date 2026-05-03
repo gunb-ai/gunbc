@@ -17,9 +17,9 @@ This pass classifies 69 ROADMAP-tracked debt rows in the ledger range:
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 60 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 59 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Partially closed | 6 | Has a landed partial receipt but still names remaining work. |
-| Retired / stale receipt row | 3 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 4 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -89,7 +89,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `Json` + `Bytes` opaque kernel decomposition | 2026-05-01 | R3 Substrate | Open / disposition pending | Decide after T-Numeric-Construction whether this becomes an R3 lane. |
 | SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix normalization; add semiring law witnesses. |
 | SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix ordering/top semantics or stop claiming `BoundedLattice`. |
-| Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Open | Replace `expect` with typed emit errors or typed `BindNodeId` witness. |
+| Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Retired | PR #1548 (`0427f96f7`) landed the typed `BindNodeId` witness on `ArrowBody::UserDefined`; all six emitter sites consume `(*bind_id).bind(self.dag)`, guarded site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`. Local-typed-error path was rejected at design split as parallel-representation debt. |
 | `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Open | Remove unsupported rows or add full token/parse/operator chain. |
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
 | Author-now/fire-later verification style | 2026-05-01 | R3 Verification | Open | Make one `BinaryDimensionReportEquals` claim actually execute. |
@@ -112,32 +112,31 @@ These rows should not consume implementation-worker capacity unless the ledger t
 1. **Reject duplicate record-literal fields.**
    Small, correctness-critical, and already has a sibling duplicate-key pattern in map lowering. Closure removes a silent fact-drop bug rather than adding a new scaffold.
 
-2. **Replace emitter `as_bind().expect()` panics with typed errors.**
-   Six localized call sites; converts crash behavior into fail-closed diagnostics and is adjacent to existing emitter error paths.
-
-3. **Go `UnknownVariant` fail-closed fix.**
+2. **Go `UnknownVariant` fail-closed fix.**
    Small emit-surface bug with direct P3/C-6/C-9 payoff. A typed `VariantParentNotFound` error is an easy receipt.
 
-4. **Bootstrap diagnostics-empty gate for method-template contracts.**
+3. **Bootstrap diagnostics-empty gate for method-template contracts.**
    One structural ratchet can close both the `go_method_template_contracts` mismatch and the broader "shape test passed over diagnostic Dag" pattern.
 
-5. **SymbolicCost semiring zero law.**
+4. **SymbolicCost semiring zero law.**
    High correctness impact: fixes cost-lens facts and seeds the Verification law-witness closure path.
 
-6. **SubValueRelation algebra-claim correction.**
+5. **SubValueRelation algebra-claim correction.**
    Pairs naturally with the law-witness lane; either fixes the law or removes an invalid guarantee.
 
-7. **`ValueBody` mirror update + first isomorphism receipt.**
+6. **`ValueBody` mirror update + first isomorphism receipt.**
    Slightly larger, but it attacks multiple rows at once: ValueBody drift, FieldMap illegal-state mirror, reflection-overtrust, and hand-mirror growth.
 
-8. **Method-template consumer migration audit-to-retirement slice.**
+7. **Method-template consumer migration audit-to-retirement slice.**
    PRs populated rows; the invariant gain lands only when old runtime/emit tables stop serving consumers.
 
-9. **BridgeLedgerZero decreasing-open-count ratchet.**
+8. **BridgeLedgerZero decreasing-open-count ratchet.**
    Turns a reporting scaffold into pressure for actual row retirement across bridge owners.
 
-10. **CI slow-test exemption fresh audit.**
-    Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
+9. **CI slow-test exemption fresh audit.**
+   Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
+
+(Previously item 2 — *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path; see ledger row 92.)
 
 ## Velocity Tripwire Baseline
 
@@ -153,7 +152,7 @@ Next cadence pass should record:
 
 Recommended first retirement bundle for the Debt-Paydown Manager to coordinate:
 
-1. **Substrate fail-closed mini-bundle:** duplicate record labels, emitter `as_bind()` typed errors, Go `UnknownVariant`.
+1. **Substrate fail-closed mini-bundle:** duplicate record labels, Go `UnknownVariant`. (Emitter `as_bind()` retired by PR #1548 via `BindNodeId` witness — no longer in this bundle.)
 2. **Verification/substrate executable-gate bundle:** diagnostics-empty bootstrap ratchet plus one `BinaryDimensionReportEquals` claim that actually compares produced reports.
 3. **Grounding consumer-retirement bundle:** method-template old-table consumer migration; prevent more row population from masking parallel authority.
 4. **PB/Verification bridge discipline bundle:** BridgeLedgerZero decreasing-open-count ratchet and `test_runner.rs` bespoke-arm freeze rule.
