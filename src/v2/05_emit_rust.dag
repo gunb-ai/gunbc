@@ -368,7 +368,7 @@ fn rust_internal_policy_for_encoding(encoding: Node, source_indices: Map<String,
         None =>
           rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
       }
-    None => rust_tagged_object_policy()
+    None => rust_serde_error_policy(message: "InternallyTaggedObject requires a literal tag_field")
   }
 }
 
@@ -382,17 +382,18 @@ fn rust_internal_policy_for_encoding(encoding: Node, source_indices: Map<String,
 // `body` expression node; field inits live on `children`, not `body.body` — so when
 // `wire_item.body` is absent, fall back to `ExprRecordLit` on `wire_item` itself.
 fn resolve_wire_serde_policy_from_encoding_node(ve: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
-  if ve.children |> count > 0 {
-    match record_string_field(record: ve, field_name: "tag_field", source_indices: source_indices) {
-      Some { value: _ } => rust_internal_policy_for_encoding(encoding: ve, source_indices: source_indices)
-      None =>
-        match naming_policy_node(encoding: ve, source_indices: source_indices) {
-          Some { value: nv } => rust_string_policy_for_naming(naming: nv, source_indices: source_indices)
-          None => rust_string_as_authored_policy()
-        }
+  let encoding_name = authored_name_at(source_indices: source_indices, node: ve)
+  if encoding_name == "InternallyTaggedObject" {
+    rust_internal_policy_for_encoding(encoding: ve, source_indices: source_indices)
+  } else if encoding_name == "StringVariant" {
+    match naming_policy_node(encoding: ve, source_indices: source_indices) {
+      Some { value: nv } => rust_string_policy_for_naming(naming: nv, source_indices: source_indices)
+      None => rust_string_as_authored_policy()
     }
-  } else {
+  } else if encoding_name == "TaggedVariant" {
     rust_tagged_object_policy()
+  } else {
+    rust_serde_error_policy(message: concat("unsupported VariantEncoding: ", encoding_name))
   }
 }
 
