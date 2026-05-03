@@ -356,9 +356,11 @@ pub fn method_template_contract_row(
         TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
     );
     if !template_ok {
-        return Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
-            decl_id: dag_method,
-        });
+        return Err(
+            MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+                decl_id: dag_method,
+            },
+        );
     }
     let rows = method_template_contract_rows(dag, target)?;
     Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
