@@ -190,9 +190,14 @@ fn higher_order_rows_are_skipped() {
     let rust_block_start = content
         .find("data rust_method_template_emit:")
         .expect("Rust map present");
+    // Bound the Rust block by the next `data ` declaration (Python's map),
+    // not by the next `}` literal: template values themselves contain
+    // escaped `\}` and an unanchored `find("}")` could halt mid-row.
+    // The next `data ` boundary is structural (the producer always emits
+    // Python's map immediately after Rust's).
     let rust_block_end = content[rust_block_start..]
-        .find("}")
-        .expect("Rust map block terminates")
+        .find("data python_method_template_emit:")
+        .expect("Python map block immediately follows Rust map")
         + rust_block_start;
     let rust_block = &content[rust_block_start..rust_block_end];
     assert!(
