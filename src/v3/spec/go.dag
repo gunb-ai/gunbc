@@ -11,10 +11,9 @@ import v3.std.emit_model {
   LiteralSyntax, ModuleSyntax, FunctionSyntax, TypeApplicationSyntax,
   TypeDefinitionSyntax, RecordDeriveTemplateBundle, PatternMatchSyntax,
   CollectionOps, ValueConstructionSyntax, LanguageSpec,
-  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound,
-  MethodTemplateContract, SingleTemplate, NamedArg
+  TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
-import std.methods { fold_method }
+import v3.std.go_method_template_contracts { go_language_spec_free_monoid_fold_contract }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
   ShapeATargetSourceFiltering, ExecutionModelRequirement,
@@ -1163,19 +1162,11 @@ data go_patterns: PatternMatchSyntax = {
   wildcard: "_"
 }
 
-data go_language_spec_free_monoid_fold_template: MethodTemplateContract = {
-  dag_method: { decl: fold_method },
-  runtime_template: "/* fold({recv}, {init}, {body}) */",
-  emit_template: SingleTemplate { template: "/* fold({recv}, {init}, {body}) */" },
-  wraps_result: false,
-  placeholder_convention: NamedArg
-}
-
 data go_collection_ops: CollectionOps = {
   concat: "append({left}, {right}...)"
   length: "int64(len({recv}))"
   is_empty: "len({recv}) == 0"
-  fold_contract: go_language_spec_free_monoid_fold_template
+  fold_contract: go_language_spec_free_monoid_fold_contract
   map: "/* map({recv}, {body}) */"
   filter: "/* filter({recv}, {body}) */"
   contains: "/* contains({recv}, {item}) */"

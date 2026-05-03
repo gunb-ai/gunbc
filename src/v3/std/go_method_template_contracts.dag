@@ -59,6 +59,19 @@ import std.methods {
   string_contains_method
 }
 
+// **P2 single authority** for `fold_method` on the Go target: LanguageSpec
+// `CollectionOps.fold_contract` uses the explicit `{recv}` / `{init}` / `{body}`
+// stub. It does **not** repeat inside `go_method_template_contracts` below —
+// that list row used `v2rt.Fold({recv}, {arg})` (different placeholder shape),
+// a second parallel contract for the same registry method (same class of bug as
+// Python #1577 review).
+data go_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
+  dag_method: { decl: fold_method },
+  runtime_template: "/* fold({recv}, {init}, {body}) */",
+  emit_template: SingleTemplate { template: "/* fold({recv}, {init}, {body}) */" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
 
 data go_method_template_contracts: List<MethodTemplateContract> = [
   {
@@ -135,13 +148,6 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
     dag_method: { decl: take_method },
     runtime_template: "{recv}[:{arg}]",
     emit_template: SingleTemplate { template: "{recv}[:{arg}]" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
-    dag_method: { decl: fold_method },
-    runtime_template: "v2rt.Fold({recv}, {arg})",
-    emit_template: SingleTemplate { template: "v2rt.Fold({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },
