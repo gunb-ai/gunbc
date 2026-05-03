@@ -112,7 +112,7 @@ fn build_module_index_for_roots(
     let mut index = HashMap::new();
     for root in roots {
         if root.exists() {
-            scan_dag_files(&root, &mut index);
+            scan_dag_files(root, &mut index);
         }
     }
     index
