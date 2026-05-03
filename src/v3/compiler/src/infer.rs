@@ -3765,7 +3765,10 @@ fn materialize_substituted_refined_decl(
         connective: TypeConnective::Arrow {
             inputs: vec![substituted_base],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(BindNodeId::new(bind_id)),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),

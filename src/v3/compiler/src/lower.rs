@@ -575,7 +575,10 @@ fn build_refinement_predicate_declaration(
         connective: TypeConnective::Arrow {
             inputs: vec![base_decl_id],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(BindNodeId::new(bind_id)),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -1320,7 +1323,10 @@ fn build_narrowed_refinement(
         connective: TypeConnective::Arrow {
             inputs: vec![true_base_decl],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(BindNodeId::new(bind_id)),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -4634,7 +4640,10 @@ fn lower_fn_item_expr_body(
         dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
             inputs: param_decl_inputs,
             output: return_decl_id,
-            body: ArrowBody::UserDefined(BindNodeId::new(bind_id)),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         };
         let mut outer_scope = outer_scope;
         outer_scope.insert(name.to_string(), err_port);
@@ -4791,7 +4800,10 @@ fn lower_fn_item_expr_body(
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
         inputs: param_decl_inputs,
         output: return_decl_id,
-        body: ArrowBody::UserDefined(BindNodeId::new(bind_id)),
+        body: ArrowBody::UserDefined(
+            BindNodeId::from_bind_node(dag, bind_id)
+                .expect("UserDefined Arrow body bind id must point at a Bind"),
+        ),
     };
 
     let mut outer_scope = outer_scope;
@@ -5112,7 +5124,10 @@ fn lower_lambda_expr(
         connective: TypeConnective::Arrow {
             inputs: expected_inputs,
             output: expected_output,
-            body: ArrowBody::UserDefined(BindNodeId::new(bind_id)),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(ctx.dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),

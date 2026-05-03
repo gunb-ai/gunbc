@@ -113,8 +113,13 @@ impl NodeId {
 pub struct BindNodeId(NodeId);
 
 impl BindNodeId {
-    pub(crate) fn new(id: NodeId) -> Self {
+    fn new_unchecked(id: NodeId) -> Self {
         Self(id)
+    }
+
+    pub(crate) fn from_bind_node(dag: &Dag, id: NodeId) -> Option<Self> {
+        dag.node_opt(&id).and_then(Behavior::as_bind)?;
+        Some(Self::new_unchecked(id))
     }
 
     pub fn node_id(self) -> NodeId {
@@ -667,7 +672,7 @@ impl AtomPayload {
 ///      writes `Pending` for `fn foo(x) -> T = body` declarations as
 ///      the initial substrate state. `lower_fn_item` is responsible
 ///      for patching every such declaration to
-///      `ArrowBody::UserDefined(BindNodeId::new(bind_id))` before the Dag is frozen
+///      `ArrowBody::UserDefined(BindNodeId::from_bind_node(dag, bind_id))` before the Dag is frozen
 ///      — including on error paths (R13 fix in `lower.rs`). A
 ///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
