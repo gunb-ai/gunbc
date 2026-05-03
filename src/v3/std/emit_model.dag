@@ -171,6 +171,24 @@ type StringGrowabilityAxis
 type StringEncodingAxis
   = Utf8FreeMonoidChar
 
+// 🟡 SCAFFOLD. LanguageSpec-owned sibling carrier for string-family
+// diagnostic-ordering rows. The row keeps the #1465 axis authority
+// namespaced and structural: each field references the canonical axis
+// declaration by `DeclarationRef`, and `language` points at the owning
+// `LanguageSpec` declaration. Dissolves when the follow-on row-population
+// declaration lands beside this carrier and a Grounding projection reader
+// consumes `StringFamilyInhabitanceRow` from `LanguageSpec` without a local
+// bridge. Until then, this carrier only establishes the substrate home.
+type StringFamilyInhabitanceRow {
+  language: DeclarationRef
+  target_type: DeclarationRef
+  type_realization: DeclarationRef
+  ownership: DeclarationRef
+  lifetime: DeclarationRef
+  growability: DeclarationRef
+  encoding: DeclarationRef
+}
+
 type TypeInstantiationRealization {
   language: DeclarationRef
   target: DeclarationRef
