@@ -3,8 +3,15 @@
 //!
 //! The v2-tests crate cannot depend on v3-compiler (the boundary forbids
 //! it), so this test fabricates a `.dag` matching the producer's output
-//! shape character-for-character and proves v2's import / compile pipeline
-//! consumes it via the ephemeral source-root mechanism from PR #1575.
+//! **structural shape** — module declaration, per-target `Map<String,
+//! String>` declaration names, and one spot-check entry per target — and
+//! proves v2's import / compile pipeline consumes it via the ephemeral
+//! source-root mechanism from PR #1575. The fixture is **not byte-
+//! identical** to `render_dag`'s output: the header comment wording is
+//! intentionally distinct so reviewers do not mistake this fixture for
+//! the producer's authoritative emission. Byte-equivalent end-to-end
+//! coverage lives in PR #1575's `stage0_compile_imports_ephemeral_generated_source_root`
+//! (`#[ignore]`d, slow path).
 //!
 //! Together with the v3-side producer integration tests
 //! (`pb_method_template_projection_dag_emit_test`, which assert the
@@ -45,10 +52,14 @@ fn v2_consumes_generated_method_template_projection_shape() {
     let generated_dir = generated_root.join("generated");
     std::fs::create_dir_all(&generated_dir).expect("create generated dir");
 
-    // This is the EXACT output shape `write_method_template_projection_dag`
-    // produces. If the producer's shape drifts, the v3-side producer tests
-    // catch it; if v2 stops being able to consume this shape, this catches
-    // it. Together: shape parity ratchet.
+    // Structural shape parity (not byte identity) with
+    // `write_method_template_projection_dag`'s output: module
+    // declaration, three `data <target>_method_template_emit:
+    // Map<String, String>` declarations, and one `count` spot-check
+    // entry per target. The header text intentionally differs so this
+    // fixture cannot be confused with producer-authoritative bytes; the
+    // v3-side producer tests own header-and-content invariants over the
+    // real emission, this v2-side ratchet owns "v2 imports this shape."
     let generated_dag = "\
 // AUTO-GENERATED — do not commit. Produced by v3-compiler's
 // `pb_method_template_projection_dag_emit`. Single row authority:
