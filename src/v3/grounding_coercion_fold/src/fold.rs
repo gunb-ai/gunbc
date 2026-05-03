@@ -71,7 +71,6 @@ struct ProgramIntegerIntent {
     algebra: DeclarationId,
     bound: BoundDeclarationView,
     type_realization: DeclarationId,
-    output: TargetInhabitance,
 }
 
 fn declared_target_integer_type_inhabitance_row_count(dag: &Dag) -> usize {
@@ -351,9 +350,9 @@ fn select_declared_inhabitance(
         .filter(|row| exact_static_bound_match(&intent.bound, &row.bound))
         .collect();
 
-    match (exact_matches.as_slice(), matches.as_slice()) {
-        ([_], _) => {}
-        ([], [_]) => {}
+    let selected = match (exact_matches.as_slice(), matches.as_slice()) {
+        ([selected], _) => *selected,
+        ([], [selected]) => selected,
         ([], []) => return Err(EmissionDiagnostic::NoInhabitant),
         _ => {
             return Err(EmissionDiagnostic::UnderRefined {
@@ -362,7 +361,24 @@ fn select_declared_inhabitance(
         }
     };
 
-    Ok(intent.output.clone())
+    target_inhabitance_from_type_realization(dag, selected.type_realization).ok_or_else(|| {
+        EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_integer_type_realization".to_string(),
+        }
+    })
+}
+
+fn target_inhabitance_from_type_realization(
+    dag: &Dag,
+    realization: DeclarationId,
+) -> Option<TargetInhabitance> {
+    match dag.declaration(realization).name.as_deref()? {
+        "rust_i32" => Some(TargetInhabitance::RustI32),
+        "python_int" => Some(TargetInhabitance::PythonInt),
+        "go_int32" => Some(TargetInhabitance::GoInt32),
+        "rust_u32" => Some(TargetInhabitance::RustU32),
+        _ => None,
+    }
 }
 
 fn declaration_id_by_name(
@@ -386,10 +402,10 @@ fn example_8_program_intent(
         target_language_id(dag, target).ok_or_else(|| EmissionDiagnostic::UnderRefined {
             unspecified_axis: "target_language".to_string(),
         })?;
-    let (kernel_integer_name, algebra_name, type_realization_name, output) = match target {
-        ScratchTargetLanguage::Rust => ("Int32", "Int32", "rust_i32", TargetInhabitance::RustI32),
-        ScratchTargetLanguage::Python => ("Int", "Int", "python_int", TargetInhabitance::PythonInt),
-        ScratchTargetLanguage::Go => ("Int32", "Int32", "go_int32", TargetInhabitance::GoInt32),
+    let (kernel_integer_name, algebra_name, type_realization_name) = match target {
+        ScratchTargetLanguage::Rust => ("Int32", "Int32", "rust_i32"),
+        ScratchTargetLanguage::Python => ("Int", "Int", "python_int"),
+        ScratchTargetLanguage::Go => ("Int32", "Int32", "go_int32"),
     };
     Ok(ProgramIntegerIntent {
         target_language,
@@ -401,7 +417,6 @@ fn example_8_program_intent(
             type_realization_name,
             "target_integer_type_realization",
         )?,
-        output,
     })
 }
 
@@ -438,7 +453,6 @@ fn fold_design_doc_example_2_semiring_u32(
             "rust_u32",
             "target_integer_type_realization",
         )?,
-        output: TargetInhabitance::RustU32,
     };
     select_declared_inhabitance(dag, &intent)
 }
@@ -524,17 +538,6 @@ pub(crate) fn select_program_integer_intent_for_testing(
         target_language_id(dag, target).ok_or_else(|| EmissionDiagnostic::UnderRefined {
             unspecified_axis: "target_language".to_string(),
         })?;
-    let output = match target {
-        ScratchTargetLanguage::Rust => {
-            if type_realization_name == "rust_u32" {
-                TargetInhabitance::RustU32
-            } else {
-                TargetInhabitance::RustI32
-            }
-        }
-        ScratchTargetLanguage::Python => TargetInhabitance::PythonInt,
-        ScratchTargetLanguage::Go => TargetInhabitance::GoInt32,
-    };
     let intent = ProgramIntegerIntent {
         target_language,
         kernel_integer: declaration_id_by_name(dag, kernel_integer_name, "kernel_integer")?,
@@ -545,7 +548,6 @@ pub(crate) fn select_program_integer_intent_for_testing(
             type_realization_name,
             "target_integer_type_realization",
         )?,
-        output,
     };
     select_declared_inhabitance(dag, &intent)
 }
