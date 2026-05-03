@@ -146,7 +146,7 @@ type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseT
 // `model`, `stop_reason`, optional `stop_sequence`, `usage`. `AnthropicMessages200TextBlock`
 // remains the narrow text slice inside `content[]`; thinking, tool_use, images,
 // server tools, citations, and `usage` cache-token breakdowns stay gap-carried on
-// `structural_coverage_gap_anthropic_messages_outputs`.
+// the narrower downstream API-surface receipts below.
 type AnthropicMessages200Body {
   id: String
   type: String
@@ -158,7 +158,7 @@ type AnthropicMessages200Body {
   usage: AnthropicMessages200Usage
 }
 
-data structural_coverage_gap_anthropic_messages_outputs: List<String> = [
+data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
   "closure:anthropic_messages_200_residual|AnthropicMessages200Body|missing:container|AnthropicMessages200TextBlock|missing:thinking|missing:tool_use|missing:redacted_thinking|missing:web_search|missing:server_tool_use|missing:citations|AnthropicMessages200Usage|missing:cache_creation_input_tokens|missing:cache_read_input_tokens|missing:service_tier"
 ]
 
