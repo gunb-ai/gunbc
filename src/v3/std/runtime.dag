@@ -83,11 +83,19 @@ type EvalFrame {
 // §Substrate Targets and the merged audit
 // `docs/briefs/r2-pr-a-2-eval-frame-dependency-audit.md`. Frame push/pop
 // is evaluator-internal; the stack is not observable as a `Value`. PR-A.3
-// owns `EvalThunk` / `EvalStrategy` / `EvalMemoKey` and may revisit the
-// orientation when memoization keying lands; PR-A.2 must not silently
-// amend the locked carrier shape.
+// consumes this stack structurally through `EvalStateKey` / `EvalMemoKey`;
+// PR-A.2 must not silently amend the locked carrier shape.
 type EvalStateStack {
   frames: List<EvalFrame>
+}
+
+// 🟢 TERMINAL at PR-A.3 memo-key scope. Memoization identity is structural:
+// the reachable evaluator state is the `EvalStateStack`, not a string digest,
+// declaration name, frame count, or other name-only fingerprint. A future
+// digest carrier may replace this only when its construction and equality are
+// declared as the single authority over reachable-state identity.
+type EvalStateKey {
+  state: EvalStateStack
 }
 
 // 🟢 TERMINAL at PR-A.3 eager-baseline scope. The evaluator's first executable
@@ -101,3 +109,14 @@ type EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }
 // order consumed by the initial evaluator strategy. Additional order variants
 // are semantic expansions and must land with executable evaluator behavior.
 type InputEvaluationOrder = LeftFirst
+
+// 🟢 TERMINAL at PR-A.3 memo-key scope. This declares the key shape for any
+// later evaluator memo table without implementing caching behavior. `state_key`
+// is structural evaluator state and `strategy` is the closed strategy carrier;
+// neither may be replaced by strings, names, or host-only labels.
+type EvalMemoKey {
+  program: DeclarationId
+  node: NodeId
+  state_key: EvalStateKey
+  strategy: EvalStrategy
+}
