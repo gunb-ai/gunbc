@@ -34,13 +34,30 @@ fn run_self_compile(
     binary: &std::path::Path,
     output_dir: &std::path::Path,
 ) -> std::process::Output {
+    run_self_compile_with_extra_source_roots(binary, output_dir, &[])
+}
+
+/// Run self-compile with additional dependency source roots appended after the
+/// canonical `src/v2` and `dsl` roots. Future build-time generated `.dag`
+/// projections should use this surface: keep `src/v2` as the entry root and
+/// pass the generated temp/OUT_DIR root as a dependency pool.
+fn run_self_compile_with_extra_source_roots(
+    binary: &std::path::Path,
+    output_dir: &std::path::Path,
+    extra_source_roots: &[std::path::PathBuf],
+) -> std::process::Output {
     let [v2_root, dsl_root] = crate::helpers::source_roots();
-    std::process::Command::new(binary)
+    let mut command = std::process::Command::new(binary);
+    command
         .arg("compile")
         .arg("--source-root")
         .arg(&v2_root)
         .arg("--source-root")
-        .arg(&dsl_root)
+        .arg(&dsl_root);
+    for root in extra_source_roots {
+        command.arg("--source-root").arg(root);
+    }
+    command
         .arg("--output-dir")
         .arg(output_dir)
         .output()
@@ -303,6 +320,77 @@ fn stage0_compile_accepts_dag_target() {
     );
 
     let _ = std::fs::remove_dir_all(&source_dir);
+    let _ = std::fs::remove_dir_all(&out_dir);
+}
+
+#[test]
+#[ignore] // Requires building stage0 binary (~2 min)
+fn stage0_compile_imports_ephemeral_generated_source_root() {
+    let stage0_bin = build_stage0();
+
+    let entry_root = std::env::temp_dir().join("v2-ephemeral-entry-root");
+    let generated_root = std::env::temp_dir().join("v2-ephemeral-generated-root");
+    let out_dir = std::env::temp_dir().join("v2-ephemeral-generated-out");
+    let _ = std::fs::remove_dir_all(&entry_root);
+    let _ = std::fs::remove_dir_all(&generated_root);
+    let _ = std::fs::remove_dir_all(&out_dir);
+    std::fs::create_dir_all(entry_root.join("ephemeral")).unwrap();
+    std::fs::create_dir_all(generated_root.join("generated")).unwrap();
+    std::fs::write(
+        generated_root
+            .join("generated")
+            .join("method_template_projection.dag"),
+        "module generated.method_template_projection\n\nfn generated_answer() -> Int { 41 }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        entry_root.join("ephemeral").join("entry.dag"),
+        "\
+module ephemeral.entry
+
+import generated.method_template_projection { generated_answer }
+
+fn main() -> Int { generated_answer() }
+",
+    )
+    .unwrap();
+
+    let output = std::process::Command::new(&stage0_bin)
+        .arg("compile")
+        .arg("--source-root")
+        .arg(&entry_root)
+        .arg("--source-root")
+        .arg(&generated_root)
+        .arg("--output-dir")
+        .arg(&out_dir)
+        .arg("--target")
+        .arg("dag")
+        .output()
+        .expect("failed to run stage0 compile");
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    eprintln!("ephemeral generated source-root stderr:\n{}", stderr);
+    assert!(
+        output.status.success(),
+        "stage0 compile failed with ephemeral generated source root:\n{}",
+        stderr
+    );
+    assert!(
+        stderr.contains("indexed 2 modules from 2 source roots"),
+        "expected both entry and generated temp roots to be indexed, got:\n{stderr}"
+    );
+    assert!(
+        out_dir.join("dag-artifact.json").exists(),
+        "expected dag artifact at {}",
+        out_dir.join("dag-artifact.json").display()
+    );
+    assert!(
+        !std::path::Path::new("src/generated/method_template_projection.dag").exists(),
+        "ratchet must not rely on a committed generated .dag under src/"
+    );
+
+    let _ = std::fs::remove_dir_all(&entry_root);
+    let _ = std::fs::remove_dir_all(&generated_root);
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
