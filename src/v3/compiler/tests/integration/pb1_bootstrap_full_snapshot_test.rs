@@ -147,6 +147,37 @@ fn bootstrap_authority_rows_match_full_bootstrap_source_files() {
     }
 }
 
+#[test]
+fn diagnostics_empty_after_bootstrap_for_bootstrap_authority() {
+    let dag = generated_full_bootstrap_dag();
+    let authority_rows = bootstrap_authority_rows(&dag);
+    let mut failures = Vec::new();
+
+    for (kind, path) in authority_rows {
+        let diagnostics: Vec<_> = dag
+            .diagnostics()
+            .iter()
+            .filter_map(|(port, diagnostic)| {
+                (diagnostic.span().file == path)
+                    .then(|| format!("port {port:?}: {:?}: {}", diagnostic, diagnostic.message()))
+            })
+            .collect();
+
+        if !diagnostics.is_empty() {
+            failures.push(format!(
+                "{path} ({kind}) produced diagnostics after bootstrap:\n  {}",
+                diagnostics.join("\n  ")
+            ));
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "diagnostics_empty_after_bootstrap failed for bootstrap_authority rows:\n{}",
+        failures.join("\n\n")
+    );
+}
+
 fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
     let decl = dag
         .declaration_by_name("bootstrap_authority")
