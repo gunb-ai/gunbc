@@ -2500,7 +2500,12 @@ fn analyze_user_defined_callable(
             detail: "user-defined callable does not have a UserDefined Arrow body",
         });
     };
-    let bind = (*bind_id).bind(dag);
+    let Some(bind) = (*bind_id).bind_opt(dag) else {
+        return Err(EmitError::MalformedUserDefinedCallable {
+            declaration,
+            detail: "user-defined callable body does not point to a Bind node",
+        });
+    };
     if bind.params.len() < inputs.len() {
         return Err(EmitError::MalformedUserDefinedCallable {
             declaration,

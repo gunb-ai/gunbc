@@ -126,10 +126,12 @@ impl BindNodeId {
         self.0
     }
 
+    pub fn bind_opt(self, dag: &Dag) -> Option<&BindNode> {
+        dag.node_opt(&self.0)?.as_bind()
+    }
+
     pub fn bind(self, dag: &Dag) -> &BindNode {
-        dag.node(self.0)
-            .as_bind()
-            .expect("BindNodeId must point at a Bind")
+        self.bind_opt(dag).expect("BindNodeId must point at a Bind")
     }
 }
 
