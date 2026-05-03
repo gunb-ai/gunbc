@@ -202,12 +202,14 @@ pub fn write_method_template_projection_dag(
                 }
             })?;
             if let Some(prior) = name_to_decl.get(&name) {
-                return Err(MethodTemplateProjectionDagEmitError::LegacyMapKeyCollision {
-                    target,
-                    name,
-                    first_dag_method: *prior,
-                    duplicate_dag_method: row.dag_method,
-                });
+                return Err(
+                    MethodTemplateProjectionDagEmitError::LegacyMapKeyCollision {
+                        target,
+                        name,
+                        first_dag_method: *prior,
+                        duplicate_dag_method: row.dag_method,
+                    },
+                );
             }
             name_to_decl.insert(name.clone(), row.dag_method);
             map.insert(name, template.clone());
