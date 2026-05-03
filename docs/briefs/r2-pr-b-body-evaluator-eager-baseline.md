@@ -190,8 +190,8 @@ Full evaluator execution still cannot ship in R2 because:
    downstream consumers (R3 lens producers, cross-target reflection
    consumers) is not in scope here.
 
-R3 closure for body evaluation requires (in order): PR-A.3 implementation
-carriers → PR-B.1 eager Rust evaluator → lazy / `EvalThunk` slice →
+R3 closure for body evaluation requires (in order): PR-A.3 carrier substrate
+(done by #1544) → PR-B.1 eager Rust evaluator → lazy / `EvalThunk` slice →
 TC2 strengthened predicate → witness construction worker brief and slice →
 PR-D harness running the evaluator across targets.
 
