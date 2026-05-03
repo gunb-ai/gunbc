@@ -405,9 +405,9 @@ fn main() -> Int { generated_answer() }
 
         assert_no_diagnostics(&result);
         let loaded_paths: Vec<_> = result
-            .source_indices
+            .newline_indices
             .iter()
-            .map(|index| index.file.clone())
+            .map(|index| index.file.as_str())
             .collect();
         assert!(
             loaded_paths.iter().any(|path| path.contains(
