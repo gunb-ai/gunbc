@@ -749,10 +749,7 @@ fn shared_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
         .split("OperatorSpec")
         .skip(1)
         .filter_map(|entry| {
-            let body = entry
-                .split_once('}')
-                .map(|(body, _)| body)
-                .unwrap_or(entry);
+            let body = entry.split_once('}').map(|(body, _)| body).unwrap_or(entry);
             if !body.contains("symbol:") {
                 return None;
             }
