@@ -63,8 +63,8 @@ import std.methods {
 // `CollectionOps.fold_contract` uses the explicit `{recv}` / `{init}` / `{body}`
 // stub. It does **not** repeat inside `go_method_template_contracts` below —
 // that list row used `v2rt.Fold({recv}, {arg})` (different placeholder shape),
-// a second parallel contract for the same registry method (same class of bug as
-// Python #1577 review).
+// a second parallel contract for the same registry method; see
+// `docs/briefs/collectionops-algebra-reframe.md`.
 data go_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   dag_method: { decl: fold_method },
   runtime_template: "/* fold({recv}, {init}, {body}) */",

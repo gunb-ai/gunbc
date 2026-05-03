@@ -1360,7 +1360,7 @@ data rust_patterns: PatternMatchSyntax = {
   wildcard: "_"
 }
 
-data rust_language_spec_free_monoid_fold_template: MethodTemplateContract = {
+data rust_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   dag_method: { decl: fold_method },
   runtime_template: "({recv}).iter().fold({init}, {body})",
   emit_template: SingleTemplate { template: "({recv}).iter().fold({init}, {body})" },
@@ -1372,7 +1372,7 @@ data rust_collection_ops: CollectionOps = {
   concat: "{ let mut __left = {left}; __left.extend({right}); __left }"
   length: "({recv}).len() as i64"
   is_empty: "({recv}).is_empty()"
-  fold_contract: rust_language_spec_free_monoid_fold_template
+  fold_contract: rust_language_spec_free_monoid_fold_contract
   map: "({recv}).iter().map({body}).collect::<Vec<_>>()"
   filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }"
   contains: "({recv}).contains({item})"

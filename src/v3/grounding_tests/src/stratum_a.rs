@@ -46,10 +46,10 @@ pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
 const LANGUAGE_SPEC_FOLD_CONTRACT_WITNESSES: &[(&str, &str)] = &[
     (
         "rust_collection_ops",
-        "rust_language_spec_free_monoid_fold_template",
+        "rust_language_spec_free_monoid_fold_contract",
     ),
     (
-        "python_collection_ops",
+        "python_collections",
         "python_language_spec_free_monoid_fold_contract",
     ),
     (
@@ -73,12 +73,12 @@ fn verify_language_spec_fold_contract_wiring(dag: &Dag) -> Result<(), GroundingT
         .id;
 
     for &(collection_ops_name, fold_contract_decl_name) in LANGUAGE_SPEC_FOLD_CONTRACT_WITNESSES {
-        let cs_decl = dag.declaration_by_name(collection_ops_name).ok_or_else(|| {
-            GroundingTestsDiagnostic::StratumADagProjectionFailed {
+        let cs_decl = dag
+            .declaration_by_name(collection_ops_name)
+            .ok_or_else(|| GroundingTestsDiagnostic::StratumADagProjectionFailed {
                 step: "fold_contract_witness.collection_ops",
                 detail: format!("missing `{collection_ops_name}`"),
-            }
-        })?;
+            })?;
         let vb = cs_decl.value_body.as_ref().ok_or_else(|| {
             GroundingTestsDiagnostic::StratumADagProjectionFailed {
                 step: "fold_contract_witness.collection_ops.value_body",
@@ -125,9 +125,7 @@ fn verify_language_spec_fold_contract_wiring(dag: &Dag) -> Result<(), GroundingT
                 return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
                     list_name: fold_contract_decl_name.to_string(),
                     row_index: 0,
-                    detail: format!(
-                        "expected MethodTemplateContract instantiation, got {other:?}"
-                    ),
+                    detail: format!("expected MethodTemplateContract instantiation, got {other:?}"),
                 });
             }
         };
@@ -147,7 +145,10 @@ fn verify_language_spec_fold_contract_wiring(dag: &Dag) -> Result<(), GroundingT
                 detail: format!("`{fold_contract_decl_name}` missing value_body"),
             }
         })?;
-        let ValueBody::Structural { fields: contract_fields } = contract_body else {
+        let ValueBody::Structural {
+            fields: contract_fields,
+        } = contract_body
+        else {
             return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
                 step: "fold_contract_witness.named_decl.shape",
                 detail: format!(
