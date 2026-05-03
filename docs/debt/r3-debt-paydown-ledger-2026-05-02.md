@@ -32,7 +32,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `rest_typed_response_body` | 2026-04-21 | Grounding services | Open | Typed REST response body support; remove JSON-path projection rows. |
 | `openai_chat_message_full_coproduct` | 2026-04-21 | Grounding services | Open | Full OpenAI chat message coproduct, not narrow text-only row. |
 | `anthropic_tool_result_full_content_surface` | 2026-04-21 | Grounding services | Open | Tool-result content modeled as nested/image-capable surface. |
-| REST request wire serde alignment | 2026-04-21 | Grounding services | Open | Wire serde consumes typed carrier rows end-to-end. |
+| REST request wire serde alignment | 2026-04-21 | Grounding services | Partial | Anthropic request coproduct wire authority is now source-level via `CoproductWireContract` rows for message/content payload enums; v2 Rust emit consumes coproduct-local contracts before module fallback/default and ratchets role/type serde. Remaining: Grounding Anthropic request-wire migration can resume after this lands and consume the substrate rows end-to-end. |
 | `repeat_string` constant-fold receipt | 2026-04 | PB / evaluator | Partial | Interim bridge retired; remaining target is in-runner / modeled std body evaluation. |
 | REST_OPS `CreateComment` test-table drift | 2026-04 | Grounding GitHub extdeps | Open | Test table consumes extdep operation facts; delete parallel path table. |
 | `__BUG_NO_PROFILE_...` sentinel | 2026-04 | PB / fail-closed | Open | Return `Option` / typed failure instead of fabricated string. |

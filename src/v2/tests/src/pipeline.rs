@@ -6296,6 +6296,54 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
     );
 }
 
+#[test]
+fn coproduct_wire_contract_target_must_name_local_coproduct() {
+    let source = r#"module stale_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data stale_contract: CoproductWireContract = {
+  coproduct: "MissingEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "stale_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/stale_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains(
+                "CoproductWireContract target does not name a local coproduct: MissingEnum"
+            ),
+        "stale CoproductWireContract target must fail closed in emitted Rust; got:\n{content}"
+    );
+}
+
+#[test]
+fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
+    let source = r#"module no_wire_contract_unit_enum
+
+type LocalUnitEnum
+  = First
+  | Second
+"#;
+    let result = compile_dag_named("no_wire_contract_unit_enum.dag", source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/no_wire_contract_unit_enum.rs");
+    let attrs = attrs_immediately_above_enum(&content, "pub enum LocalUnitEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "unit coproducts without a declared wire_contract must keep tagged-object default; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
 // Golden JSON for the narrow `OpenAiChatMessage { role, content }` row under the same
 // serde policy as emitted code (`#[serde(rename_all = "snake_case")]` on the role enum).
 // Guards Chat Completions `messages[].role` strings without provider string branching.
