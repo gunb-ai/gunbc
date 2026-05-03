@@ -6197,6 +6197,219 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     );
 }
 
+fn attrs_immediately_above_enum<'a>(content: &'a str, enum_decl: &str) -> Vec<&'a str> {
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted module"));
+    let prelude = &content[..pos];
+    let mut attrs_above: Vec<&str> = Vec::new();
+    for line in prelude.lines().rev() {
+        let t = line.trim();
+        if t.is_empty() {
+            if attrs_above.is_empty() {
+                continue;
+            }
+            break;
+        }
+        if t.starts_with("#[") {
+            attrs_above.push(t);
+            continue;
+        }
+        if t.starts_with("//") {
+            continue;
+        }
+        break;
+    }
+    attrs_above
+}
+
+fn enum_block<'a>(content: &'a str, enum_decl: &str) -> &'a str {
+    let pos = content
+        .find(enum_decl)
+        .unwrap_or_else(|| panic!("expected {enum_decl} in emitted module"));
+    let next_enum = content[pos + enum_decl.len()..]
+        .find("\npub enum ")
+        .map(|i| pos + enum_decl.len() + i)
+        .unwrap_or(content.len());
+    &content[pos..next_enum]
+}
+
+#[test]
+fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+
+    for (enum_decl, tag, renames) in [
+        (
+            "pub enum AnthropicChatMessage",
+            "#[serde(tag = \"role\")]",
+            &[
+                "#[serde(rename = \"user\")]",
+                "#[serde(rename = \"assistant\")]",
+            ][..],
+        ),
+        (
+            "pub enum AnthropicUserContentBlock",
+            "#[serde(tag = \"type\")]",
+            &[
+                "#[serde(rename = \"text\")]",
+                "#[serde(rename = \"tool_result\")]",
+            ][..],
+        ),
+        (
+            "pub enum AnthropicAssistantContentBlock",
+            "#[serde(tag = \"type\")]",
+            &[
+                "#[serde(rename = \"text\")]",
+                "#[serde(rename = \"tool_use\")]",
+            ][..],
+        ),
+    ] {
+        let attrs = attrs_immediately_above_enum(&content, enum_decl);
+        assert!(
+            attrs.contains(&tag),
+            "expected {tag} immediately above {enum_decl}; attrs: {:?}",
+            attrs
+        );
+        let block = enum_block(&content, enum_decl);
+        for rename in renames {
+            assert!(
+                block.contains(rename),
+                "expected {rename} in {enum_decl} block; got:\n{block}"
+            );
+        }
+    }
+
+    let stop_attrs = attrs_immediately_above_enum(&content, "pub enum AnthropicStopReason");
+    assert!(
+        stop_attrs.contains(&"#[serde(rename_all = \"snake_case\")]"),
+        "expected AnthropicStopReason to remain a snake-case string enum; attrs: {:?}",
+        stop_attrs
+    );
+    assert!(
+        !stop_attrs.iter().any(|attr| attr.contains("tag =")),
+        "AnthropicStopReason must not become an internally tagged object; attrs: {:?}",
+        stop_attrs
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_target_must_name_local_coproduct() {
+    let source = r#"module stale_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data stale_contract: CoproductWireContract = {
+  coproduct: "MissingEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "stale_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/stale_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains(
+                "CoproductWireContract target does not name a local coproduct: MissingEnum"
+            ),
+        "stale CoproductWireContract target must fail closed in emitted Rust; got:\n{content}"
+    );
+}
+
+#[test]
+fn structural_coproduct_wire_contract_shape_is_not_authority() {
+    let source = r#"module structural_coproduct_wire_contract
+import std.serialization { VariantEncoding }
+
+type FakeContract {
+  coproduct: String
+  encoding: VariantEncoding
+}
+
+data fake_contract: FakeContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "kind", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "structural_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/structural_coproduct_wire_contract.rs");
+    assert!(
+        !content.contains("CoproductWireContract target does not name"),
+        "structural lookalikes must not be validated as CoproductWireContract authority; got:\n{content}"
+    );
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "structural lookalikes must not override the default serde contract; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
+    let source = r#"module bad_affix_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data bad_affix_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase { prefix: "Usr" } }
+}
+
+type RealEnum
+  = UserText { text: String }
+"#;
+    let result = compile_dag_named(
+        "bad_affix_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/bad_affix_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content
+                .contains("variant UserText does not satisfy declared wire rename prefix: Usr"),
+        "declared affix policy must fail closed when a variant does not match; got:\n{content}"
+    );
+}
+
+#[test]
+fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
+    let source = r#"module no_wire_contract_unit_enum
+
+type LocalUnitEnum
+  = First
+  | Second
+"#;
+    let result = compile_dag_named("no_wire_contract_unit_enum.dag", source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/no_wire_contract_unit_enum.rs");
+    let attrs = attrs_immediately_above_enum(&content, "pub enum LocalUnitEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "unit coproducts without a declared wire_contract must keep tagged-object default; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
 // Golden JSON for the narrow `OpenAiChatMessage { role, content }` row under the same
 // serde policy as emitted code (`#[serde(rename_all = "snake_case")]` on the role enum).
 // Guards Chat Completions `messages[].role` strings without provider string branching.
@@ -6258,6 +6471,31 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     }
 }
 
+#[test]
+fn openai_chat_completion_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<OpenAiChatCompletion200Body> = response.json().await?"),
+        "expected ChatCompletion 200 response to deserialize through typed OpenAiChatCompletion200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).choices")
+            && content.contains(".message).content.clone()")
+            && content.contains("(__rest_wire).usage).prompt_tokens.clone()"),
+        "expected ChatCompletion output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/choices/0/message/content\")"),
+        "ChatCompletion content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
@@ -6304,6 +6542,31 @@ service test.Llm {
     assert!(
         content.contains("pointer(\"/model\")"),
         "RE-4b: expected JSON pointer extraction for model, got:\n{content}"
+    );
+}
+
+#[test]
+fn anthropic_messages_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<AnthropicMessages200Body> = response.json().await?"),
+        "expected Anthropic Messages 200 response to deserialize through typed AnthropicMessages200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).content")
+            && content.contains(".text.clone()")
+            && content.contains("(__rest_wire).usage).input_tokens.clone()"),
+        "expected Anthropic Messages output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/content/0/text\")"),
+        "Anthropic Messages content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
     );
 }
 

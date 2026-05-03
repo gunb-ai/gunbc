@@ -113,7 +113,7 @@ type AnthropicStopReason
 // the 200 response's `content[]` per `from "content/0/text"` extraction
 // in the operation; thinking/tool-use/image content blocks remain
 // gap-carried on the v2 source's
-// `structural_coverage_gap_anthropic_messages_outputs`.
+// `structural_coverage_gap_anthropic_messages_200_residual`.
 type AnthropicMessages200TextBlock {
   type: String
   text: String
@@ -123,7 +123,7 @@ type AnthropicMessages200TextBlock {
 // (`dsl/extdeps/llm/anthropic.dag:116-119`). Cache-token breakdowns
 // (`cache_creation_input_tokens`, `cache_read_input_tokens`) and
 // `service_tier` stay gap-carried on the v2 source per the same
-// `structural_coverage_gap_anthropic_messages_outputs` row.
+// `structural_coverage_gap_anthropic_messages_200_residual` row.
 type AnthropicMessages200Usage {
   input_tokens:  Int
   output_tokens: Int
