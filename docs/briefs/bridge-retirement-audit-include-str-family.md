@@ -41,8 +41,9 @@ without coordinating `royal-newt-846`.
 | Entry id | Why it touches the sibling slice |
 | --- | --- |
 | BR-18 | `r2_b5_loop_construction_closure_test` embeds `lower.rs` and `builder.rs` as **raw source text** for substring / structure proofs — parallel to “read compiler source via file identity” bridges. |
-| BR-14 / BR-15 | Canonical lens bytes in `test_runner` feed `reflect_program_dag_nodes_in_file` / fold paths that key on **logical file names** today; dissolution text in `test_runner.rs` names `DeclarationRef` / program substrate. |
-| BR-20 | `patch_kernel_bool_boolean_algebra_inhabits` keys `Bool` via `Declaration.span.file == "dsl/std/types.dag"` and attaches `Diagnostic` with `SourceSpan`. |
+| BR-07 / BR-08 | Canonical lens bytes in `test_runner` and the user-authored lens gate test feed `reflect_program_dag_nodes_in_file` / fold paths that key on **logical file names** today; dissolution text in `test_runner.rs` names `DeclarationRef` / program substrate. |
+| BR-19 | `patch_kernel_bool_boolean_algebra_inhabits` keys `Bool` via `Declaration.span.file == "dsl/std/types.dag"` and attaches `Diagnostic` with `SourceSpan`. |
+| BR-16 | Shape-A spec `include_str!` cluster sits next to emit `source_filtering` / file-participation semantics — coordinate if retirement touches filtering authority. |
 | BR-A (appendix) | Many integration tests call `compile_to_dag(source, virtual_path)` where `virtual_path` participates in diagnostics / extraction policy — same ledger row even when the bytes come from `include_str!` vs inline strings. |
 
 ---
