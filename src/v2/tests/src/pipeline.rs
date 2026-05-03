@@ -6484,6 +6484,42 @@ type RealEnum
 }
 
 #[test]
+fn coproduct_wire_contract_requires_declared_naming_fields() {
+    let source = r#"module malformed_naming_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data missing_naming_contract: CoproductWireContract = {
+  coproduct: "MissingNamingEnum",
+  encoding: InternallyTaggedObject { tag_field: "type" }
+}
+
+data missing_prefix_contract: CoproductWireContract = {
+  coproduct: "MissingPrefixEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase }
+}
+
+type MissingNamingEnum
+  = RealPayload { value: String }
+
+type MissingPrefixEnum
+  = UserText { text: String }
+"#;
+    let result = compile_dag_named(
+        "malformed_naming_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/malformed_naming_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains("InternallyTaggedObject requires a naming policy")
+            && content.contains("StripPrefixAndSnakeCase requires a literal prefix"),
+        "malformed naming policies must fail closed at decode time; got:\n{content}"
+    );
+}
+
+#[test]
 fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
     let source = r#"module no_wire_contract_unit_enum
 

@@ -305,32 +305,106 @@ fn optional_string_record_field(record: Node, field_name: String, source_indices
   }
 }
 
+fn required_literal_string_policy_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
+    Some { value: n } => literal_string_value(n: n)
+    None => none
+  }
+}
+
 fn rust_string_policy_for_naming(naming: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
-  if authored_name_at(source_indices: source_indices, node: naming) == "SnakeCase" {
-    rust_snake_string_policy()
-  } else if authored_name_at(source_indices: source_indices, node: naming) == "StripPrefixAndSnakeCase" {
-    rust_serde_policy(
-      enum_attr: "",
-      rename_prefix: optional_string_record_field(record: naming, field_name: "prefix", source_indices: source_indices),
-      rename_suffix: none,
-      rename_style: Some { value: "StripAffixAndSnakeCase" }
-    )
-  } else if authored_name_at(source_indices: source_indices, node: naming) == "StripSuffixAndSnakeCase" {
-    rust_serde_policy(
-      enum_attr: "",
-      rename_prefix: none,
-      rename_suffix: optional_string_record_field(record: naming, field_name: "suffix", source_indices: source_indices),
-      rename_style: Some { value: "StripAffixAndSnakeCase" }
-    )
-  } else if authored_name_at(source_indices: source_indices, node: naming) == "StripPrefixSuffixAndSnakeCase" {
-    rust_serde_policy(
-      enum_attr: "",
-      rename_prefix: optional_string_record_field(record: naming, field_name: "prefix", source_indices: source_indices),
-      rename_suffix: optional_string_record_field(record: naming, field_name: "suffix", source_indices: source_indices),
-      rename_style: Some { value: "StripAffixAndSnakeCase" }
-    )
-  } else {
+  let naming_name = authored_name_at(source_indices: source_indices, node: naming)
+  if naming_name == "AsAuthored" {
     rust_string_as_authored_policy()
+  } else if naming_name == "SnakeCase" {
+    rust_snake_string_policy()
+  } else if naming_name == "StripPrefixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        rust_serde_policy(
+          enum_attr: "",
+          rename_prefix: Some { value: prefix },
+          rename_suffix: none,
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripPrefixAndSnakeCase requires a literal prefix")
+    }
+  } else if naming_name == "StripSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+      Some { value: suffix } =>
+        rust_serde_policy(
+          enum_attr: "",
+          rename_prefix: none,
+          rename_suffix: Some { value: suffix },
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripSuffixAndSnakeCase requires a literal suffix")
+    }
+  } else if naming_name == "StripPrefixSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+          Some { value: suffix } =>
+            rust_serde_policy(
+              enum_attr: "",
+              rename_prefix: Some { value: prefix },
+              rename_suffix: Some { value: suffix },
+              rename_style: Some { value: "StripAffixAndSnakeCase" }
+            )
+          None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal suffix")
+        }
+      None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal prefix")
+    }
+  } else {
+    rust_serde_error_policy(message: concat("unsupported VariantNaming: ", naming_name))
+  }
+}
+
+fn rust_internal_policy_for_naming(tag_field: String, naming: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  let naming_name = authored_name_at(source_indices: source_indices, node: naming)
+  if naming_name == "AsAuthored" {
+    rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
+  } else if naming_name == "SnakeCase" {
+    rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\", rename_all = \"snake_case\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
+  } else if naming_name == "StripPrefixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        rust_serde_policy(
+          enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
+          rename_prefix: Some { value: prefix },
+          rename_suffix: none,
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripPrefixAndSnakeCase requires a literal prefix")
+    }
+  } else if naming_name == "StripSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+      Some { value: suffix } =>
+        rust_serde_policy(
+          enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
+          rename_prefix: none,
+          rename_suffix: Some { value: suffix },
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripSuffixAndSnakeCase requires a literal suffix")
+    }
+  } else if naming_name == "StripPrefixSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+          Some { value: suffix } =>
+            rust_serde_policy(
+              enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
+              rename_prefix: Some { value: prefix },
+              rename_suffix: Some { value: suffix },
+              rename_style: Some { value: "StripAffixAndSnakeCase" }
+            )
+          None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal suffix")
+        }
+      None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal prefix")
+    }
+  } else {
+    rust_serde_error_policy(message: concat("unsupported VariantNaming: ", naming_name))
   }
 }
 
@@ -338,35 +412,8 @@ fn rust_internal_policy_for_encoding(encoding: Node, source_indices: Map<String,
   match record_string_field(record: encoding, field_name: "tag_field", source_indices: source_indices) {
     Some { value: tag_field } =>
       match naming_policy_node(encoding: encoding, source_indices: source_indices) {
-        Some { value: naming } =>
-          if authored_name_at(source_indices: source_indices, node: naming) == "SnakeCase" {
-            rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\", rename_all = \"snake_case\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
-          } else if authored_name_at(source_indices: source_indices, node: naming) == "StripPrefixAndSnakeCase" {
-            rust_serde_policy(
-              enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
-              rename_prefix: optional_string_record_field(record: naming, field_name: "prefix", source_indices: source_indices),
-              rename_suffix: none,
-              rename_style: Some { value: "StripAffixAndSnakeCase" }
-            )
-          } else if authored_name_at(source_indices: source_indices, node: naming) == "StripSuffixAndSnakeCase" {
-            rust_serde_policy(
-              enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
-              rename_prefix: none,
-              rename_suffix: optional_string_record_field(record: naming, field_name: "suffix", source_indices: source_indices),
-              rename_style: Some { value: "StripAffixAndSnakeCase" }
-            )
-          } else if authored_name_at(source_indices: source_indices, node: naming) == "StripPrefixSuffixAndSnakeCase" {
-            rust_serde_policy(
-              enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
-              rename_prefix: optional_string_record_field(record: naming, field_name: "prefix", source_indices: source_indices),
-              rename_suffix: optional_string_record_field(record: naming, field_name: "suffix", source_indices: source_indices),
-              rename_style: Some { value: "StripAffixAndSnakeCase" }
-            )
-          } else {
-            rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
-          }
-        None =>
-          rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
+        Some { value: naming } => rust_internal_policy_for_naming(tag_field: tag_field, naming: naming, source_indices: source_indices)
+        None => rust_serde_error_policy(message: "InternallyTaggedObject requires a naming policy")
       }
     None => rust_serde_error_policy(message: "InternallyTaggedObject requires a literal tag_field")
   }
@@ -388,7 +435,7 @@ fn resolve_wire_serde_policy_from_encoding_node(ve: Node, source_indices: Map<St
   } else if encoding_name == "StringVariant" {
     match naming_policy_node(encoding: ve, source_indices: source_indices) {
       Some { value: nv } => rust_string_policy_for_naming(naming: nv, source_indices: source_indices)
-      None => rust_string_as_authored_policy()
+      None => rust_serde_error_policy(message: "StringVariant requires a naming policy")
     }
   } else if encoding_name == "TaggedVariant" {
     rust_tagged_object_policy()
@@ -552,14 +599,23 @@ fn emit_rust_compile_error_item(message: String) -> String {
   concat("compile_error!(\"", message, "\");")
 }
 
+fn string_has_suffix(value: String, suffix: String) -> Bool {
+  string_length(s: value) >= string_length(s: suffix)
+  && substring(s: value, start: string_length(s: value) - string_length(s: suffix), end: string_length(s: value)) == suffix
+}
+
+fn node_is_std_serialization_coproduct_wire_contract(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: node) == "CoproductWireContract"
+  && string_has_suffix(value: node.span.file, suffix: "dsl/std/serialization.dag")
+}
+
 fn data_item_type_is_coproduct_wire_contract(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   match item.type_annotation {
     Some { value: type_node } =>
-      authored_name_at(source_indices: source_indices, node: type_node) == "CoproductWireContract"
-      || match type_node.inferred {
+      match type_node.inferred {
         Some { value: inf } =>
           match inf {
-            Resolved { node } => authored_name_at(source_indices: source_indices, node: node) == "CoproductWireContract"
+            Resolved { node } => node_is_std_serialization_coproduct_wire_contract(node: node, source_indices: source_indices)
             _ => false
           }
         None => false
