@@ -169,6 +169,22 @@ pub enum MethodTemplateProjectionError {
         list: &'static str,
         row_index: usize,
     },
+    /// `MethodRef.decl` references a declaration that does not instantiate
+    /// `MethodDeclaration`. This is the fail-closed boundary check
+    /// `src/v3/std/methods.dag` calls out: until refinement-typing on
+    /// `DeclarationRef` lands (`DeclarationRef<MethodDeclaration>`), the
+    /// projection enforces "decl points at a MethodDeclaration data
+    /// binding" structurally — the check the substrate grammar cannot yet
+    /// express type-system-side.
+    MethodRefDeclNotMethodDeclaration {
+        list: &'static str,
+        row_index: usize,
+        decl_id: DeclarationId,
+    },
+    /// `MethodDeclaration` itself is missing from the bootstrap `Dag`.
+    /// Should be impossible if the std fixtures lower cleanly; surfaced
+    /// rather than panicked so consumers can act on it.
+    MethodDeclarationCarrierMissing,
     /// `runtime_template` field is not a string literal.
     RuntimeTemplateNotString {
         list: &'static str,
@@ -333,7 +349,7 @@ fn project_row(
     let lookup = closed_record_lookup(list, row_index, "MethodTemplateContract", fields, EXPECTED)?;
 
     let dag_method_value = lookup_required(list, row_index, &lookup, "dag_method")?;
-    let dag_method = project_dag_method(list, row_index, dag_method_value)?;
+    let dag_method = project_dag_method(dag, list, row_index, dag_method_value)?;
 
     let runtime_template_value = lookup_required(list, row_index, &lookup, "runtime_template")?;
     let runtime_template = match runtime_template_value {
@@ -435,6 +451,7 @@ fn lookup_required<'a>(
 }
 
 fn project_dag_method(
+    dag: &Dag,
     list: &'static str,
     row_index: usize,
     value: &FieldValue,
@@ -459,10 +476,47 @@ fn project_dag_method(
         .get("decl")
         .copied()
         .ok_or(MethodTemplateProjectionError::DagMethodNotMethodRefRecord { list, row_index })?;
-    match decl_value {
-        FieldValue::Reference(decl_id) => Ok(*decl_id),
-        _ => Err(MethodTemplateProjectionError::MethodRefDeclNotReference { list, row_index }),
+    let decl_id = match decl_value {
+        FieldValue::Reference(decl_id) => *decl_id,
+        _ => {
+            return Err(MethodTemplateProjectionError::MethodRefDeclNotReference {
+                list,
+                row_index,
+            });
+        }
+    };
+    // `src/v3/std/methods.dag` calls out the boundary contract: today's
+    // substrate grammar can't express `DeclarationRef<MethodDeclaration>`,
+    // so the projection enforces fail-closed at the boundary that
+    // `decl` references a `MethodDeclaration`-instantiating data binding.
+    // Pattern mirrors `method_registry_test.rs::method_registry_covers_*`.
+    let method_declaration_id = dag
+        .declaration_by_name("MethodDeclaration")
+        .ok_or(MethodTemplateProjectionError::MethodDeclarationCarrierMissing)?
+        .id;
+    let referenced = dag.declaration(decl_id);
+    let template = match &referenced.connective {
+        TypeConnective::Instantiation { template, .. } => *template,
+        _ => {
+            return Err(
+                MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
+                    list,
+                    row_index,
+                    decl_id,
+                },
+            );
+        }
+    };
+    if template != method_declaration_id {
+        return Err(
+            MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
+                list,
+                row_index,
+                decl_id,
+            },
+        );
     }
+    Ok(decl_id)
 }
 
 fn project_emit_template(
@@ -813,6 +867,67 @@ mod tests {
     enum MethodRefMutation<'a> {
         Duplicate,
         AppendUnknown(&'a str),
+    }
+
+    #[test]
+    fn method_ref_decl_not_method_declaration_surfaces_typed_error() {
+        // `src/v3/std/methods.dag` enforces fail-closed at the projection
+        // boundary that `MethodRef.decl` instantiates `MethodDeclaration`,
+        // because today's substrate grammar can't express
+        // `DeclarationRef<MethodDeclaration>`. Mutate the first row's
+        // `MethodRef.decl` to point at a declaration that is not a
+        // `MethodDeclaration` instance (`MethodTemplateContract` itself
+        // is a type declaration, not a `MethodDeclaration` data binding)
+        // and assert the typed error.
+        let mut dag = generated_full_bootstrap_dag();
+        let non_method_id = dag
+            .declaration_by_name("MethodTemplateContract")
+            .expect("MethodTemplateContract type")
+            .id;
+
+        let list_decl_id = dag
+            .declaration_by_name("rust_method_template_contracts")
+            .expect("list")
+            .id;
+        let decl = dag.declaration_mut(list_decl_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::List(rows) = body else {
+            panic!("not a list");
+        };
+        let row = rows.get_mut(0).expect("row 0");
+        let FieldValue::Record(fields) = row else {
+            panic!("row not record");
+        };
+        let dag_method_value = fields
+            .iter_mut()
+            .find(|(label, _)| label == "dag_method")
+            .map(|(_, value)| value)
+            .expect("dag_method field");
+        let FieldValue::Record(method_ref_fields) = dag_method_value else {
+            panic!("dag_method not record");
+        };
+        let decl_field_value = method_ref_fields
+            .iter_mut()
+            .find(|(label, _)| label == "decl")
+            .map(|(_, value)| value)
+            .expect("decl field");
+        *decl_field_value = FieldValue::Reference(non_method_id);
+
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
+                list,
+                row_index,
+                decl_id,
+            }) => {
+                assert_eq!(list, "rust_method_template_contracts");
+                assert_eq!(row_index, 0);
+                assert_eq!(decl_id, non_method_id);
+            }
+            other => panic!(
+                "expected MethodRefDeclNotMethodDeclaration for non-MethodDeclaration target, got {other:?}"
+            ),
+        }
     }
 
     #[test]
