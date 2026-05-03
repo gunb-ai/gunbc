@@ -22,6 +22,8 @@
 //! emit migration are sequenced strictly after this hook lands. No v2
 //! consumer is migrated by this module.
 
+use std::collections::HashMap;
+
 use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 
 /// Target language whose `MethodTemplateContract` row list is being projected.
@@ -321,10 +323,19 @@ fn project_row(
         return Err(MethodTemplateProjectionError::RowNotRecord { list, row_index });
     };
 
-    let dag_method_value = field_by_label(list, row_index, fields, "dag_method")?;
+    const EXPECTED: &[&str] = &[
+        "dag_method",
+        "runtime_template",
+        "emit_template",
+        "wraps_result",
+        "placeholder_convention",
+    ];
+    let lookup = closed_record_lookup(list, row_index, "MethodTemplateContract", fields, EXPECTED)?;
+
+    let dag_method_value = lookup_required(list, row_index, &lookup, "dag_method")?;
     let dag_method = project_dag_method(list, row_index, dag_method_value)?;
 
-    let runtime_template_value = field_by_label(list, row_index, fields, "runtime_template")?;
+    let runtime_template_value = lookup_required(list, row_index, &lookup, "runtime_template")?;
     let runtime_template = match runtime_template_value {
         FieldValue::Literal(LiteralBits::String(s)) => s.clone(),
         _ => {
@@ -335,16 +346,16 @@ fn project_row(
         }
     };
 
-    let emit_template_value = field_by_label(list, row_index, fields, "emit_template")?;
+    let emit_template_value = lookup_required(list, row_index, &lookup, "emit_template")?;
     let emit_template = project_emit_template(dag, list, row_index, emit_template_value)?;
 
-    let wraps_result_value = field_by_label(list, row_index, fields, "wraps_result")?;
+    let wraps_result_value = lookup_required(list, row_index, &lookup, "wraps_result")?;
     let wraps_result = match wraps_result_value {
         FieldValue::Literal(LiteralBits::Bool(b)) => *b,
         _ => return Err(MethodTemplateProjectionError::WrapsResultNotBool { list, row_index }),
     };
 
-    let placeholder_value = field_by_label(list, row_index, fields, "placeholder_convention")?;
+    let placeholder_value = lookup_required(list, row_index, &lookup, "placeholder_convention")?;
     let placeholder_convention = project_placeholder(dag, list, row_index, placeholder_value)?;
 
     Ok(MethodTemplateContractRow {
@@ -356,16 +367,66 @@ fn project_row(
     })
 }
 
-fn field_by_label<'a>(
+/// Validate that `fields` carries exactly the closed set of `expected`
+/// labels — no duplicates, no unknowns. Missing labels are not reported
+/// here (the per-field `lookup_required` calls below surface those as
+/// `RowMissingField` so the error names *which* field is missing).
+///
+/// Returns a label-to-`FieldValue` map for the present fields; collisions
+/// surface as `RowDuplicateField` and unknown labels surface as
+/// `RowUnknownField`. `record` names the carrier (e.g.
+/// `"MethodTemplateContract"` or `"MethodRef"`) for diagnostic context.
+fn closed_record_lookup<'a>(
     list: &'static str,
     row_index: usize,
+    record: &'static str,
     fields: &'a [(String, FieldValue)],
+    expected: &[&'static str],
+) -> Result<HashMap<&'a str, &'a FieldValue>, MethodTemplateProjectionError> {
+    let mut lookup: HashMap<&str, &FieldValue> = HashMap::with_capacity(expected.len());
+    let mut first_seen_index: HashMap<&str, usize> = HashMap::with_capacity(expected.len());
+    for (field_index, (label, value)) in fields.iter().enumerate() {
+        if !expected.contains(&label.as_str()) {
+            return Err(MethodTemplateProjectionError::RowUnknownField {
+                list,
+                row_index,
+                record,
+                field: label.clone(),
+                field_index,
+            });
+        }
+        if let Some(prior_index) = first_seen_index.get(label.as_str()) {
+            // Re-borrow the matching expected label so the returned error
+            // carries a `&'static str` rather than a row-local borrow.
+            let static_label = expected
+                .iter()
+                .copied()
+                .find(|exp| *exp == label.as_str())
+                .expect("expected label must match a known constant");
+            return Err(MethodTemplateProjectionError::RowDuplicateField {
+                list,
+                row_index,
+                record,
+                field: static_label,
+                first_field_index: *prior_index,
+                duplicate_field_index: field_index,
+            });
+        }
+        lookup.insert(label.as_str(), value);
+        first_seen_index.insert(label.as_str(), field_index);
+    }
+    Ok(lookup)
+}
+
+fn lookup_required<'a>(
+    list: &'static str,
+    row_index: usize,
+    lookup: &HashMap<&'a str, &'a FieldValue>,
     field: &'static str,
 ) -> Result<&'a FieldValue, MethodTemplateProjectionError> {
-    fields
-        .iter()
-        .find(|(label, _)| label == field)
-        .map(|(_, value)| value)
+    lookup
+        .get(field)
+        .copied()
         .ok_or(MethodTemplateProjectionError::RowMissingField {
             list,
             row_index,
@@ -381,10 +442,22 @@ fn project_dag_method(
     let FieldValue::Record(method_ref_fields) = value else {
         return Err(MethodTemplateProjectionError::DagMethodNotMethodRefRecord { list, row_index });
     };
-    let decl_value = method_ref_fields
-        .iter()
-        .find(|(label, _)| label == "decl")
-        .map(|(_, v)| v)
+    // `MethodRef` is a single-field carrier (`{ decl: DeclarationRef }`)
+    // per `src/v3/std/methods.dag`. Apply the same closed-schema check
+    // as the outer row so duplicates (`{ decl: a, decl: b }`) and
+    // unknown extras (`{ decl: ..., extra: ... }`) surface as typed
+    // errors instead of being silently ignored.
+    const METHOD_REF_FIELDS: &[&str] = &["decl"];
+    let lookup = closed_record_lookup(
+        list,
+        row_index,
+        "MethodRef",
+        method_ref_fields,
+        METHOD_REF_FIELDS,
+    )?;
+    let decl_value = lookup
+        .get("decl")
+        .copied()
         .ok_or(MethodTemplateProjectionError::DagMethodNotMethodRefRecord { list, row_index })?;
     match decl_value {
         FieldValue::Reference(decl_id) => Ok(*decl_id),
@@ -600,6 +673,184 @@ mod tests {
             .unwrap_or_else(|| panic!("row {row_index} missing from `{list_name}`"))
             .clone();
         rows.push(clone);
+    }
+
+    /// Mutate the row at `row_index` of `list_name` by adding a second
+    /// field with `field_label` (cloned from the first occurrence). Used
+    /// by the closed-schema duplicate-field tests below.
+    fn duplicate_field_on_row(dag: &mut Dag, list_name: &str, row_index: usize, field_label: &str) {
+        let decl_id = dag.declaration_by_name(list_name).expect("list").id;
+        let decl = dag.declaration_mut(decl_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::List(rows) = body else {
+            panic!("not a list");
+        };
+        let row = rows.get_mut(row_index).expect("row");
+        let FieldValue::Record(fields) = row else {
+            panic!("row not record");
+        };
+        let (orig_label, orig_value) = fields
+            .iter()
+            .find(|(label, _)| label == field_label)
+            .map(|(label, value)| (label.clone(), value.clone()))
+            .expect("field to clone");
+        fields.push((orig_label, orig_value));
+    }
+
+    /// Replace the row at `row_index` of `list_name` so that, after the
+    /// existing fields, an unknown-labelled field is appended (used by
+    /// the closed-schema unknown-field tests below).
+    fn append_unknown_field_on_row(
+        dag: &mut Dag,
+        list_name: &str,
+        row_index: usize,
+        unknown_label: &str,
+    ) {
+        let decl_id = dag.declaration_by_name(list_name).expect("list").id;
+        let decl = dag.declaration_mut(decl_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::List(rows) = body else {
+            panic!("not a list");
+        };
+        let row = rows.get_mut(row_index).expect("row");
+        let FieldValue::Record(fields) = row else {
+            panic!("row not record");
+        };
+        fields.push((
+            unknown_label.to_string(),
+            FieldValue::Literal(LiteralBits::Bool(false)),
+        ));
+    }
+
+    #[test]
+    fn duplicate_field_on_row_surfaces_typed_error() {
+        let mut dag = generated_full_bootstrap_dag();
+        duplicate_field_on_row(
+            &mut dag,
+            "rust_method_template_contracts",
+            0,
+            "runtime_template",
+        );
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::RowDuplicateField {
+                record,
+                field,
+                first_field_index,
+                duplicate_field_index,
+                ..
+            }) => {
+                assert_eq!(record, "MethodTemplateContract");
+                assert_eq!(field, "runtime_template");
+                assert_ne!(first_field_index, duplicate_field_index);
+            }
+            other => panic!("expected RowDuplicateField, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_field_on_row_surfaces_typed_error() {
+        let mut dag = generated_full_bootstrap_dag();
+        append_unknown_field_on_row(
+            &mut dag,
+            "rust_method_template_contracts",
+            0,
+            "renamed_field",
+        );
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::RowUnknownField { record, field, .. }) => {
+                assert_eq!(record, "MethodTemplateContract");
+                assert_eq!(field, "renamed_field");
+            }
+            other => panic!("expected RowUnknownField, got {other:?}"),
+        }
+    }
+
+    /// Inject a duplicate or unknown field into the inner `MethodRef`
+    /// record at `dag_method` for the row at `row_index`.
+    fn mutate_method_ref(
+        dag: &mut Dag,
+        list_name: &str,
+        row_index: usize,
+        kind: MethodRefMutation<'_>,
+    ) {
+        let decl_id = dag.declaration_by_name(list_name).expect("list").id;
+        let decl = dag.declaration_mut(decl_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::List(rows) = body else {
+            panic!("not a list");
+        };
+        let row = rows.get_mut(row_index).expect("row");
+        let FieldValue::Record(fields) = row else {
+            panic!("row not record");
+        };
+        let (_, dag_method_value) = fields
+            .iter_mut()
+            .find(|(label, _)| label == "dag_method")
+            .expect("dag_method field");
+        let FieldValue::Record(method_ref_fields) = dag_method_value else {
+            panic!("dag_method not record");
+        };
+        match kind {
+            MethodRefMutation::Duplicate => {
+                let (label, value) = method_ref_fields
+                    .iter()
+                    .find(|(label, _)| label == "decl")
+                    .map(|(label, value)| (label.clone(), value.clone()))
+                    .expect("decl field");
+                method_ref_fields.push((label, value));
+            }
+            MethodRefMutation::AppendUnknown(label) => {
+                method_ref_fields.push((
+                    label.to_string(),
+                    FieldValue::Literal(LiteralBits::Bool(false)),
+                ));
+            }
+        }
+    }
+
+    enum MethodRefMutation<'a> {
+        Duplicate,
+        AppendUnknown(&'a str),
+    }
+
+    #[test]
+    fn duplicate_field_on_method_ref_surfaces_typed_error() {
+        let mut dag = generated_full_bootstrap_dag();
+        mutate_method_ref(
+            &mut dag,
+            "rust_method_template_contracts",
+            0,
+            MethodRefMutation::Duplicate,
+        );
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::RowDuplicateField { record, field, .. }) => {
+                assert_eq!(record, "MethodRef");
+                assert_eq!(field, "decl");
+            }
+            other => panic!("expected RowDuplicateField for MethodRef, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unknown_field_on_method_ref_surfaces_typed_error() {
+        let mut dag = generated_full_bootstrap_dag();
+        mutate_method_ref(
+            &mut dag,
+            "rust_method_template_contracts",
+            0,
+            MethodRefMutation::AppendUnknown("nickname"),
+        );
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::RowUnknownField { record, field, .. }) => {
+                assert_eq!(record, "MethodRef");
+                assert_eq!(field, "nickname");
+            }
+            other => panic!("expected RowUnknownField for MethodRef, got {other:?}"),
+        }
     }
 
     #[test]
