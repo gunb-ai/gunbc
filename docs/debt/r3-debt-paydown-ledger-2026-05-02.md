@@ -129,13 +129,10 @@ These rows should not consume implementation-worker capacity unless the ledger t
 6. **Method-template consumer migration audit-to-retirement slice.**
    PRs populated rows; the invariant gain lands only when old runtime/emit tables stop serving consumers.
 
-7. **BridgeLedgerZero decreasing-open-count ratchet.**
-   Turns a reporting scaffold into pressure for actual row retirement across bridge owners.
-
-8. **CI slow-test exemption fresh audit.**
+7. **CI slow-test exemption fresh audit.**
    Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
 
-(Two original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545.)
+(Three original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545; *BridgeLedgerZero decreasing-open-count ratchet* — retired by PR #1571 (ledger row 97).)
 
 ## Velocity Tripwire Baseline
 
@@ -154,6 +151,6 @@ Recommended first retirement bundle for the Debt-Paydown Manager to coordinate:
 1. **Substrate fail-closed mini-bundle:** duplicate record labels. (Emitter `as_bind()` retired by PR #1548 via `BindNodeId` witness; Go `UnknownVariant` retired by PR #820 / ledger close-out PR #1545.)
 2. **Verification/substrate executable-gate bundle:** diagnostics-empty bootstrap ratchet plus one `BinaryDimensionReportEquals` claim that actually compares produced reports.
 3. **Grounding consumer-retirement bundle:** method-template old-table consumer migration; prevent more row population from masking parallel authority.
-4. **PB/Verification bridge discipline bundle:** BridgeLedgerZero decreasing-open-count ratchet and `test_runner.rs` bespoke-arm freeze rule.
+4. **PB/Verification bridge discipline bundle:** `test_runner.rs` bespoke-arm freeze rule. (BridgeLedgerZero decreasing-open-count ratchet retired by PR #1571, ledger row 97.)
 
 Each bundle should require its PR body to name debt paid, debt newly found, and any remaining row by exact ROADMAP heading, matching the R3 per-PR debt receipt rule.
