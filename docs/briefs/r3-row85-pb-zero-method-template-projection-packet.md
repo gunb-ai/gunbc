@@ -36,7 +36,7 @@ decisions are Substrate/Director-owned (see §3 below).
   question.
 - `docs/audit/pb-zero-v2-canonical-read-surface-options-stop-matrix.md`
   — STOP matrix over six candidate surfaces; explicit conclusion: *no*
-  canonical surface has been chosen; Substrate Manager + Director own
+  canonical surface has been chosen; active Substrate manager + Director own
   the next decision per `INVARIANTS.md` `## P1` / `## P2`.
 - `src/v3/std/rust_method_template_contracts.dag:6-17` (header) +
   `python_method_template_contracts.dag` + `go_method_template_contracts.dag`
@@ -85,9 +85,13 @@ dispatchable afterward.
 
 ## 4. Decision-routing artifact (this packet's first deliverable)
 
-**Owner:** R2 Substrate Manager (primary) + Director (gate).
+**Owner:** active Substrate manager (R3 Substrate is the current owner
+for row 85 and adjacent method-template substrate gaps; older audits
+cited here name "R2 Substrate Manager" because they predated R3
+routing — read those references as "active Substrate manager") +
+Director (gate).
 **Surface:** new short note under `docs/decisions/` (or extension of
-`docs/briefs/r2-substrate-manager.md`) — Substrate Manager chooses.
+the active Substrate manager's brief) — Substrate manager chooses.
 **Required content:**
 
 - Names the canonical read surface for `MethodTemplateContract` row
@@ -110,7 +114,8 @@ dispatchable afterward.
 
 **Until that artifact lands, no PB-Zero worker on row 85 is
 dispatchable.** This packet itself does not satisfy that artifact —
-authoring it is a Substrate Manager act, not a director-mode act.
+authoring it is an active-Substrate-manager act, not a director-mode
+act.
 
 ## 5. PB-Zero Gap-4 worker shape (dispatchable only after §4 lands)
 
