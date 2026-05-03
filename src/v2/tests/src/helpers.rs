@@ -410,9 +410,9 @@ fn main() -> Int { generated_answer() }
             .map(|index| index.file.as_str())
             .collect();
         assert!(
-            loaded_paths.iter().any(|path| path.contains(
-                "generated/method_template_projection.dag"
-            )),
+            loaded_paths
+                .iter()
+                .any(|path| path.contains("generated/method_template_projection.dag")),
             "expected generated temp-root module to be loaded, got: {loaded_paths:?}"
         );
         assert!(
