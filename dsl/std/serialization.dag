@@ -18,13 +18,16 @@ type DeclarationRef = String
 // How enum variant names map to wire strings.
 // AsAuthored: variant name as-is (User → "User", Bot → "Bot").
 // SnakeCase: variant name lowercased with underscores (EndTurn → "end_turn").
-// SnakeCaseStrip: remove an authored prefix/suffix, then snake_case the result.
-// This handles provider-domain variants whose source names carry role context
-// that is not part of the wire discriminant.
+// StripPrefixAndSnakeCase / StripSuffixAndSnakeCase /
+// StripPrefixSuffixAndSnakeCase: remove at least one authored affix, then
+// snake_case the result. These handle provider-domain variants whose source
+// names carry role context that is not part of the wire discriminant.
 type VariantNaming
   = AsAuthored
   | SnakeCase
-  | SnakeCaseStrip { prefix: String?, suffix: String? }
+  | StripPrefixAndSnakeCase { prefix: String }
+  | StripSuffixAndSnakeCase { suffix: String }
+  | StripPrefixSuffixAndSnakeCase { prefix: String, suffix: String }
 
 // How enum variants appear on the wire.
 // StringVariant: plain strings — the common REST API pattern.

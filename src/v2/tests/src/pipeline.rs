@@ -6326,6 +6326,43 @@ type RealEnum
 }
 
 #[test]
+fn structural_coproduct_wire_contract_shape_is_not_authority() {
+    let source = r#"module structural_coproduct_wire_contract
+import std.serialization { VariantEncoding }
+
+type FakeContract {
+  coproduct: String
+  encoding: VariantEncoding
+}
+
+data fake_contract: FakeContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "kind", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "structural_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/structural_coproduct_wire_contract.rs");
+    assert!(
+        !content.contains("CoproductWireContract target does not name"),
+        "structural lookalikes must not be validated as CoproductWireContract authority; got:\n{content}"
+    );
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "structural lookalikes must not override the default serde contract; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
 fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
     let source = r#"module no_wire_contract_unit_enum
 
