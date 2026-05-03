@@ -51,7 +51,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
-use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
+use crate::diagnostics::{
+    BootstrapAuthorityKey, Diagnostic, DiagnosticAttribution, DiagnosticTable, SourceSpan,
+};
 use crate::types::TypeShape;
 
 mod bootstrap_std_generated {
@@ -3463,10 +3465,29 @@ impl Dag {
     /// Biconditional invariant, held by construction:
     ///   port.state == Unresolved  iff  diagnostics.contains(port_id)
     pub(crate) fn mark_unresolved(&mut self, port: PortId, diagnostic: Diagnostic) {
+        self.mark_unresolved_with_attribution(
+            port,
+            diagnostic,
+            DiagnosticAttribution::Unattributed,
+        );
+    }
+
+    /// `mark_unresolved` carrying an explicit
+    /// [`DiagnosticAttribution`]. The diagnostic is recorded against
+    /// the same fail-closed biconditional as ordinary
+    /// `mark_unresolved`; the attribution rides alongside on
+    /// [`DiagnosticTable`] so consumers can dispatch bootstrap-vs-user
+    /// origins without scanning `SourceSpan.file`.
+    pub(crate) fn mark_unresolved_with_attribution(
+        &mut self,
+        port: PortId,
+        diagnostic: Diagnostic,
+        attribution: DiagnosticAttribution,
+    ) {
         if let Some(p) = self.ports.get_mut(&port) {
             p.state = PortState::Unresolved;
         }
-        self.diagnostics.insert(port, diagnostic);
+        self.diagnostics.insert(port, diagnostic, attribution);
     }
 
     /// Attach a diagnostic to the Dag without a pre-existing port anchor.
@@ -3476,9 +3497,35 @@ impl Dag {
     /// PortId (unresolved declarations, tokenize/parse errors on
     /// bootstrap fixtures, duplicate top-level declarations, etc.).
     /// `compile_to_dag` surfaces these through `Err(CompileError::Semantic)`.
+    ///
+    /// Records [`DiagnosticAttribution::Unattributed`]. Bootstrap
+    /// loaders attaching tokenize/parse/fixture failures against a
+    /// substrate `bootstrap_authority` row should call
+    /// [`Self::attach_bootstrap_diagnostic`] instead so verification
+    /// consumers get a structural witness rather than a path string.
     pub(crate) fn attach_diagnostic(&mut self, diagnostic: Diagnostic) {
         let port = self.alloc_port(None);
         self.mark_unresolved(port, diagnostic);
+    }
+
+    /// Sibling of [`Self::attach_diagnostic`] for diagnostics raised
+    /// while loading or patching a substrate `bootstrap_authority` row.
+    /// Allocates the same detached phantom port (no fabricated producer
+    /// node) but records
+    /// [`DiagnosticAttribution::BootstrapAuthority(key)`] so consumers
+    /// can recover bootstrap origin via witness identity instead of a
+    /// `SourceSpan.file` string compare.
+    pub(crate) fn attach_bootstrap_diagnostic(
+        &mut self,
+        authority: BootstrapAuthorityKey,
+        diagnostic: Diagnostic,
+    ) {
+        let port = self.alloc_port(None);
+        self.mark_unresolved_with_attribution(
+            port,
+            diagnostic,
+            DiagnosticAttribution::BootstrapAuthority(authority),
+        );
     }
 
     /// Populate `primitives` by reading the declaration table for the
