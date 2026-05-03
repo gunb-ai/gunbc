@@ -351,11 +351,15 @@ pub fn method_template_contract_row(
         .ok_or(MethodTemplateProjectionError::MethodDeclarationCarrierMissing)?
         .id;
     let referenced = dag.declaration(dag_method);
-    let template_ok = matches!(
+    // Same dual check as `project_dag_method`: connective must instantiate
+    // `MethodDeclaration` AND a `value_body` must be present. Without the
+    // value-body guard, a type alias like `type Foo = MethodDeclaration`
+    // would pass the connective test alone.
+    let is_method_declaration_data = matches!(
         &referenced.connective,
         TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
-    );
-    if !template_ok {
+    ) && referenced.value_body.is_some();
+    if !is_method_declaration_data {
         return Err(
             MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
                 decl_id: dag_method,
@@ -529,19 +533,19 @@ fn project_dag_method(
         .ok_or(MethodTemplateProjectionError::MethodDeclarationCarrierMissing)?
         .id;
     let referenced = dag.declaration(decl_id);
-    let template = match &referenced.connective {
-        TypeConnective::Instantiation { template, .. } => *template,
-        _ => {
-            return Err(
-                MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
-                    list,
-                    row_index,
-                    decl_id,
-                },
-            );
-        }
-    };
-    if template != method_declaration_id {
+    // `src/v3/std/methods.dag` requires a `data <name>_method: MethodDeclaration`
+    // data binding, not just any declaration whose connective resolves to
+    // `MethodDeclaration`. Require both:
+    //   (a) `connective` is `Instantiation { template = MethodDeclaration }`
+    //       — rules out type aliases pointing at unrelated targets, and
+    //   (b) `value_body.is_some()` — rules out a type alias of the form
+    //       `type Foo = MethodDeclaration` (which lowers with an
+    //       `Instantiation` connective but no value body).
+    let is_method_declaration_data = matches!(
+        &referenced.connective,
+        TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
+    ) && referenced.value_body.is_some();
+    if !is_method_declaration_data {
         return Err(
             MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
                 list,
@@ -901,6 +905,55 @@ mod tests {
     enum MethodRefMutation<'a> {
         Duplicate,
         AppendUnknown(&'a str),
+    }
+
+    #[test]
+    fn method_ref_decl_alias_without_value_body_surfaces_typed_error() {
+        // `src/v3/std/methods.dag` requires a *data binding*
+        // (`data <name>_method: MethodDeclaration = { name: "..." }`),
+        // not just any declaration whose connective resolves to
+        // `MethodDeclaration`. A type alias like
+        // `type Foo = MethodDeclaration` lowers to an `Instantiation`
+        // connective with **no `value_body`**; without the value-body
+        // guard, that shape would pass the connective check alone.
+        //
+        // Simulate the alias-shape by stripping `value_body` from a real
+        // `MethodDeclaration` data binding (`count_method`) and asserting
+        // the typed error fires for both the per-row check
+        // (`MethodRefDeclNotMethodDeclaration`) and the lookup helper
+        // (`LookupKeyNotMethodDeclaration`).
+        let mut dag = generated_full_bootstrap_dag();
+        let count_method_id = dag
+            .declaration_by_name("count_method")
+            .expect("count_method MethodDeclaration in bootstrap")
+            .id;
+        dag.declaration_mut(count_method_id).value_body = None;
+
+        // Per-row path: row 0 of `rust_method_template_contracts` is the
+        // `count_method` row, so projecting it should now surface
+        // `MethodRefDeclNotMethodDeclaration` instead of returning a row.
+        let row_result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match row_result {
+            Err(MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
+                decl_id, ..
+            }) => assert_eq!(decl_id, count_method_id),
+            other => panic!(
+                "expected MethodRefDeclNotMethodDeclaration for alias-shaped target, got {other:?}"
+            ),
+        }
+
+        // Lookup-helper path: same key, same shape; the helper validates
+        // at entry and surfaces `LookupKeyNotMethodDeclaration`.
+        let helper_result =
+            method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id);
+        match helper_result {
+            Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration { decl_id }) => {
+                assert_eq!(decl_id, count_method_id);
+            }
+            other => panic!(
+                "expected LookupKeyNotMethodDeclaration for alias-shaped key, got {other:?}"
+            ),
+        }
     }
 
     #[test]
