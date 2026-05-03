@@ -3,23 +3,26 @@
 
 #![allow(non_camel_case_types)]
 
-use self::DivError::*;
-use self::Result::*;
-use crate::v2_rt;
-use crate::NonEmptyBTreeSet;
-use crate::NonEmptyVec;
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::v2_rt;
+use crate::NonEmptyVec;
+use crate::NonEmptyBTreeSet;
+use self::Result::*;
+use self::DivError::*;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Result<ok, err> {
-    Ok { value: Box<ok> },
-    Err { value: Box<err> },
+    Ok {
+        value: Box<ok>,
+    },
+    Err {
+        value: Box<err>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "_variant")]
 pub enum DivError {
     DivideByZero,
     Overflow,
