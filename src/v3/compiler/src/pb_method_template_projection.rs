@@ -935,7 +935,8 @@ mod tests {
         let row_result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
         match row_result {
             Err(MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
-                decl_id, ..
+                decl_id,
+                ..
             }) => assert_eq!(decl_id, count_method_id),
             other => panic!(
                 "expected MethodRefDeclNotMethodDeclaration for alias-shaped target, got {other:?}"
@@ -950,9 +951,9 @@ mod tests {
             Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration { decl_id }) => {
                 assert_eq!(decl_id, count_method_id);
             }
-            other => panic!(
-                "expected LookupKeyNotMethodDeclaration for alias-shaped key, got {other:?}"
-            ),
+            other => {
+                panic!("expected LookupKeyNotMethodDeclaration for alias-shaped key, got {other:?}")
+            }
         }
     }
 
