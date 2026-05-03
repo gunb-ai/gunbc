@@ -3079,7 +3079,7 @@ fn string_diagnostic_ordering_axes_are_closed_structural_values() {
 }
 
 #[test]
-fn string_family_inhabitance_row_is_language_owned_and_axis_typed() {
+fn string_family_inhabitance_row_is_language_scoped_and_axis_typed() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
 
     let row = dag
@@ -3101,7 +3101,7 @@ fn string_family_inhabitance_row_is_language_owned_and_axis_typed() {
             "encoding",
         ]
         .map(String::from),
-        "string-family row host must stay structurally explicit and LanguageSpec-owned"
+        "string-family row host must stay structurally explicit and language-scoped"
     );
 
     let declaration_ref = find_named(&dag, "DeclarationRef");
