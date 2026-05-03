@@ -21130,7 +21130,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 4588, 4656),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 4593, 4661),
         });
         declarations.push(Declaration {
             id: DeclarationId(808),
@@ -21155,7 +21155,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 4994, 5070),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5004, 5080),
         });
         declarations.push(Declaration {
             id: DeclarationId(809),
@@ -21204,7 +21204,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5417, 5704),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5427, 5714),
         });
         declarations.push(Declaration {
             id: DeclarationId(810),
@@ -53323,7 +53323,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5538, 5573),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5548, 5583),
         });
         declarations.push(Declaration {
             id: DeclarationId(1778),
@@ -53340,7 +53340,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5652, 5659),
+            span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 5662, 5669),
         });
         declarations.push(Declaration {
             id: DeclarationId(1779),
