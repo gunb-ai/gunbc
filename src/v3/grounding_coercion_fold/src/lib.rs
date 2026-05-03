@@ -12,14 +12,16 @@
 //! - [`LanguageSpecProjection::ScratchIntExamples`](types::LanguageSpecProjection::ScratchIntExamples)
 //!   drives **design-emission-model §Example 1** (unrefined `Int` → substrate-shaped
 //!   [`EmissionDiagnostic::UnderRefined`](diagnostic::EmissionDiagnostic::UnderRefined) with axis `"bound"`)
-//!   and **§Example 2** (`Int(0..2^32)` / `Semiring` exact-bound → [`TargetInhabitance::RustU32`](types::TargetInhabitance::RustU32))
+//!   and **§Example 2** (`Int(0..2^32)` / `Semiring` exact-bound → declared Rust `u32`
+//!   inhabitance row, surfaced through [`TargetInhabitance::RustU32`](types::TargetInhabitance::RustU32))
 //!   plus **§Example 5** (same bound without algebra annotation → `UnderRefined("algebra")`)
 //!   and **§Example 6** (`Int(0..2^65)` → [`EmissionDiagnostic::NoInhabitant`](diagnostic::EmissionDiagnostic::NoInhabitant))
 //!   and **§Example 8** (`Int(-2^31..2^31)` → Rust `i32`, Python `int`, Go `int32`)
 //!   for a single synthetic binding — checkpoint until a real LanguageSpec projection replaces
-//!   the scratch carrier (manager #1133 / #1286). **Slice B:** before scratch outcomes run,
-//!   the fold counts declared `TargetIntegerTypeInhabitance` rows in the bootstrap `dag`
-//!   (**INVARIANTS.md E-6** same-PR consumer).
+//!   the scratch carrier (manager #1133 / #1286). Before scratch outcomes run, the fold counts
+//!   declared `TargetIntegerTypeInhabitance` rows in the bootstrap `dag`
+//!   (**INVARIANTS.md E-6** same-PR consumer); Examples 2 and 8 then select by the row's
+//!   `language`, `kernel_integer`, `algebra`, `bound`, and `type_realization` facts.
 //!
 //! ## SG-0 / discipline
 //!
@@ -37,7 +39,7 @@ pub use types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance};
 
 #[cfg(test)]
 mod tests {
-    use v3_compiler::dag::{Dag, Interval, IntervalWidth};
+    use v3_compiler::dag::{Dag, Interval, IntervalWidth, PositiveIntervalWidth};
     use v3_grounding_lifetime::LifetimeAnalysisReport;
 
     use super::*;
@@ -193,6 +195,31 @@ mod tests {
                 wrong_bound,
             )
             .expect_err("mismatched bound should not select the declared i32 row");
+            assert_eq!(err, EmissionDiagnostic::NoInhabitant);
+        });
+    }
+
+    #[test]
+    fn fold_dag_int_refined_cross_target_requires_matching_kernel_and_algebra() {
+        with_bootstrap_stack(|| {
+            let dag = Dag::new();
+            let i32_bound = Interval::BoundedInterval {
+                lower: -2_147_483_648,
+                width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
+                    units: 4_294_967_295,
+                }),
+            };
+            let err = crate::fold::select_program_integer_intent_for_testing(
+                &dag,
+                IntScratchExample::DesignDocExample8Rust,
+                "UInt32",
+                "UInt32",
+                "rust_i32",
+                i32_bound,
+            )
+            .expect_err(
+                "right target, bound, and realization with wrong kernel/algebra must not select",
+            );
             assert_eq!(err, EmissionDiagnostic::NoInhabitant);
         });
     }
