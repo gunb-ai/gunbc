@@ -25374,7 +25374,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 2876, 3190),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 2885, 3199),
         });
         declarations.push(Declaration {
             id: DeclarationId(946),
@@ -25879,7 +25879,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ])),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3192, 6551),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3201, 6560),
         });
         declarations.push(Declaration {
             id: DeclarationId(947),
@@ -27373,8 +27373,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                2492,
-                2808,
+                2532,
+                2848,
             ),
         });
         declarations.push(Declaration {
@@ -28012,8 +28012,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                2810,
-                7104,
+                2850,
+                7144,
             ),
         });
         declarations.push(Declaration {
@@ -45397,7 +45397,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
         });
         declarations.push(Declaration {
             id: DeclarationId(1407),
-            name: Some("rust_language_spec_free_monoid_fold_template".to_string()),
+            name: Some("rust_language_spec_free_monoid_fold_contract".to_string()),
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(941),
                 arguments: vec![],
@@ -56554,7 +56554,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3227, 3255),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3236, 3264),
         });
         declarations.push(Declaration {
             id: DeclarationId(1968),
@@ -57449,8 +57449,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                2849,
-                2877,
+                2889,
+                2917,
             ),
         });
         declarations.push(Declaration {
