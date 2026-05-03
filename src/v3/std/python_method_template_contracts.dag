@@ -9,13 +9,12 @@
 //     `wraps_result`. Per Q4 four-property gate, every row's
 //     `wraps_result` is structurally `false` for Python — declared
 //     explicitly here, NOT silently inherited from Rust.
-//   - `string_contains` is in `python_method_templates` but NOT in the
-//     `dsl/std/methods.dag` registry (registry covers `algebra.dag`
-//     template-list names; `string_contains` is target-only). Open
-//     classification question (algebra-method vs target-only emit
-//     shortcut) deferred to Phase 2 / Modeling per manager call (#1133
-//     msg ID 4343454397). No row authored in Phase 1; legacy emit map
-//     continues serving v2 until classification + Phase 2 retirement.
+//   - `string_contains` is now classified as a target-only emit-shortcut
+//     name in `dsl/std/methods.dag` (#1549 Gap 1 / R3 dispatch on parent
+//     inbox #1130). The row below references `string_contains_method`
+//     and renders Python's `{arg} in {recv}` for the substring shape;
+//     this is structurally distinct from algebra `contains` (collection
+//     membership) which is not currently rendered through this list.
 //   - `{arg0}` → `{arg}` rewrite applied to runtime templates (`join`,
 //     `split`); rows use `placeholder_convention: NamedArg` uniformly.
 //   - Methods present only in `python_method_templates` (concat, map,
@@ -51,7 +50,8 @@ import std.methods {
   take_method,
   fold_method,
   sort_by_method,
-  append_method
+  append_method,
+  string_contains_method
 }
 
 
@@ -179,6 +179,13 @@ data python_method_template_contracts: List<MethodTemplateContract> = [
     dag_method: { decl: append_method },
     runtime_template: "{recv} + [{arg}]",
     emit_template: SingleTemplate { template: "{recv} + [{arg}]" },
+    wraps_result: false,
+    placeholder_convention: NamedArg
+  },
+  {
+    dag_method: { decl: string_contains_method },
+    runtime_template: "{arg} in {recv}",
+    emit_template: SingleTemplate { template: "{arg} in {recv}" },
     wraps_result: false,
     placeholder_convention: NamedArg
   }
