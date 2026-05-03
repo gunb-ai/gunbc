@@ -150,6 +150,10 @@ Recommended next dispatch order:
 
 1. **Substrate/API:** land the smallest honest way to author or reference one
    `Lens<C>` value with function-valued fields and `Monoid<C>` witness fields.
+   The 2026-05-03 substrate reassessment STOP receipt is
+   [`r3-pr-e6-lens-value-authoring-stop.md`](r3-pr-e6-lens-value-authoring-stop.md):
+   current `main` still lacks the honest function-valued structural data
+   surface for that value.
 2. **E6-G0 evaluator API:** land `FieldProject` and `Callable` execution for
    those fields through the existing `evaluate_body` / `eval_node` /
    `eval_port` entry points.
