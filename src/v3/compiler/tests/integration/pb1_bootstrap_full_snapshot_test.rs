@@ -8,7 +8,7 @@
 //! `cargo test`. See `docs/briefs/pb-1-e-residual-scaffold-retirement-worker.md`.
 
 use v3_compiler::{
-    dag::{FieldValue, LiteralBits, ValueBody},
+    dag::{DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody},
     generated_full_bootstrap_dag, generated_full_bootstrap_without_parse_surface_dag,
     generated_std_bootstrap_dag,
     serialize::{first_difference, serialize_dag},
@@ -151,6 +151,7 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
     let decl = dag
         .declaration_by_name("bootstrap_authority")
         .expect("full bootstrap loads bootstrap_authority");
+    let variant_labels = bootstrap_authority_variant_labels(dag);
     let Some(ValueBody::Map(rows)) = decl.value_body.as_ref() else {
         panic!("bootstrap_authority should lower to a structural map body");
     };
@@ -166,30 +167,37 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
                 panic!("bootstrap_authority map value should lower to a variant");
             };
             let kind = dag
-                .declaration(*constructor)
-                .name
-                .clone()
-                .expect("BootstrapAuthority variant has a name");
-            let [FieldValue::Record(fields)] = payload.as_slice() else {
-                panic!("BootstrapAuthority variant should carry one record payload");
-            };
-            let path = fields
+                .declaration(*constructor);
+            let kind = variant_labels
                 .iter()
-                .find_map(|(label, value)| {
-                    if label != "path" {
-                        return None;
-                    }
-                    match value {
-                        FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
-                        _ => panic!("bootstrap_authority row path should lower to a string"),
-                    }
-                })
-                .expect("bootstrap_authority row has path");
+                .find_map(|(id, label)| (*id == *constructor).then(|| label.clone()))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "BootstrapAuthority variant constructor {:?} should appear in BootstrapAuthority",
+                        kind.id
+                    )
+                });
+            let [FieldValue::Literal(LiteralBits::String(path))] = payload.as_slice() else {
+                panic!("BootstrapAuthority variant should carry one path string payload");
+            };
             assert_eq!(
-                key, &path,
+                key, path,
                 "bootstrap_authority map key must match the variant payload path"
             );
-            (kind, path)
+            (kind, path.clone())
         })
+        .collect()
+}
+
+fn bootstrap_authority_variant_labels(dag: &Dag) -> Vec<(DeclarationId, String)> {
+    let decl = dag
+        .declaration_by_name("BootstrapAuthority")
+        .expect("full bootstrap loads BootstrapAuthority");
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        panic!("BootstrapAuthority should lower to a disjunction");
+    };
+    variants
+        .iter()
+        .map(|variant| (variant.ty, variant.label.clone()))
         .collect()
 }
