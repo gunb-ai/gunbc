@@ -1309,11 +1309,7 @@ impl<'a> Ctx<'a> {
                 "python emitter only supports user-defined callable bodies".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         if bind.params.len() < inputs.len() {
             return Err(EmitPythonError::Unsupported(
                 "callable bind parameter count does not match arrow inputs".to_string(),
@@ -1385,11 +1381,7 @@ impl<'a> Ctx<'a> {
                 "emit_python only supports user-defined function bodies".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         let mut locals = RenderLocals::default();
         let mut params = Vec::new();
         for (idx, port) in bind.params.iter().enumerate() {
