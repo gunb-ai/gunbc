@@ -37,6 +37,71 @@ Concretely, this means a new predicate's evaluation either:
 
 Cases (a) + (b) are the dissolution path. Case (c) is the explicit STOP+PING. There is no fourth case; specifically, "open a new bespoke `match` arm pending future cleanup" is **not** a case under the freeze.
 
+## PB-Runtime Dissolution Hook Qualification
+
+> **Stable citeable anchor.** Evaluator Manager's freeze template/docs cite this section by name. The heading text and slug (`#pb-runtime-dissolution-hook-qualification`) are stable; renames require Evaluator + PB Manager coordination.
+
+A future PR adding or extending a `test_runner.rs::run_claim` predicate arm or producer path **qualifies as PB-runtime-routed** (and is therefore freeze-allowed) iff **all** of the following are cited in the PR description and present in-tree at PR landing:
+
+### Q1 — Convergence-case classification
+
+The PR cites which of the three cases in §2 the predicate falls into:
+
+- **(a) Value-domain fold over PB-Runtime evaluation result.** The arm dispatches to a `Lens<C>`-shaped fold that consumes a `Value` produced by PB-Runtime's `evaluate` (per `docs/design-pb-runtime-interpreter.md` §3). The arm is a thin adapter; it does not contain bespoke evaluation logic.
+- **(b) Reflection-only structural projection.** The arm dispatches to a structural query per `docs/design-reflection-completeness.md`. No PB-Runtime invocation; no execution. Static fold over reflected program structure.
+- **(c) P1-routed substrate gap.** Neither (a) nor (b) applies because the predicate semantics requires a primitive PB-Runtime cannot express via its 5-primitive base (`feedback_compiler_is_dag_processor.md`). **(c)-classified PRs do not land runner code in the same PR**; they land a P1 substrate-fact-introduction escalation row first.
+
+PRs that cannot place the predicate in (a), (b), or (c) are not freeze-allowed. There is no "(d) bespoke pending cleanup".
+
+### Q2 — Dissolution declaration reference
+
+For (a) and (b), the PR cites a `.dag` declaration ref by symbol/path that is the runner arm's dispatch target — either:
+
+- **Existing on `main`** at PR open time (preferred), or
+- **Landing in the same PR** as the arm.
+
+The runner arm's body is the citation site (e.g., `// dissolves through: <decl ref>` with the cited symbol). Bare prose pointers, ROADMAP rows, or cross-brief mentions do **not** satisfy Q2 — the citation is to a structural declaration, not to documentation.
+
+For (c), the citation is the P1 escalation row (issue/PR/ledger row authored by Substrate Manager); runner code is deferred to after the P1 disposition lands and the row converts to (a)/(b).
+
+### Q3 — Convergence claim (case (a) only)
+
+For (a)-classified arms, a `TestClaim` of the shape locked in `docs/design-pb-runtime-interpreter.md` §7.1 (PB-Runtime equivalence fixture: `DifferentialEquals` between PB-Runtime `evaluate` and R2-Evaluator) covers the predicate's semantics. The claim either:
+
+- **Exists on `main`** for an equivalent program shape consumed by the predicate, or
+- **Lands in the same PR** as the arm (per-row authoring is parallelizable; the dispatch is the §3.1 table row's worker).
+
+The claim's existence is what makes the arm's evaluation structurally accountable; Q3 closure is the per-row dissolution receipt.
+
+### Q4 — §3.1 dissolution-table row
+
+The §3.1 per-predicate dissolution table (PB-owned; see §3) has a **row for the variant** with columns populated:
+
+- Variant constructor name (per `src/v3/std/verification.dag::TestPredicate`).
+- Convergence case (a/b/c) matching Q1.
+- Dissolution declaration ref matching Q2 (or P1 row for (c)).
+- Status today (bespoke / partially-dissolved / fully-dissolved / P1-pending).
+
+A missing or unfilled row means the predicate is not freeze-allowed regardless of Q1/Q2/Q3 claims in the PR description. The table is the **single source of truth**; Evaluator's freeze mechanism reads it.
+
+### Disqualifiers (explicit non-criteria)
+
+The following do **not** qualify as PB-runtime dissolution hooks even if cited:
+
+- A new `TestPredicate` variant introduced by the PR. Substrate change → P1 → Substrate Manager. Not in scope of any runner PR.
+- A new `Value` variant in PB-Runtime. Anti-bridge invariant #2 (`docs/design-pb-runtime-interpreter.md` §6) → P1.
+- A new `TestPredicate` discipline-marker field (e.g., `pb_runtime_evaluable: Bit`). Substrate change → P1.
+- A new producer identity in `test_runner.rs` (per Evaluator's freeze constraint). Producer dispatch lands only via the W1/W3 paths already locked in `docs/briefs/r2-pr-b-2-runner-extension-bundle.md`.
+- A new substrate observation/channel carrier. Routes to P1 per `r2-pr-b-2-runner-extension-bundle.md` W3 "Structural observation authority".
+- "Convention-only" runner observation (regex over stdout, ad-hoc parsing, env-variable signaling). Forbidden per `r2-pr-b-2-runner-extension-bundle.md` runner-authority discipline.
+- A bespoke `match` arm whose dispatch target is itself in the same arm (self-citation). Q2 requires a structural declaration outside the arm body.
+
+### Reviewer rule (one-line summary)
+
+A `test_runner.rs` predicate-arm or producer-path PR is **PB-runtime-routed** iff Q1+Q2+Q4 hold (and Q3 for (a)). Anything else is **uncited bespoke runner growth** and the freeze blocks it. If a reviewer or worker concludes the predicate cannot satisfy Q1–Q4 without one of the disqualifiers, **STOP+PING** to PB Manager + Evaluator Manager rather than smuggling a carrier.
+
+---
+
 ## 3. Hook shape (PB-owned landing point)
 
 The PB-side artifact is a **convergence-discipline contract**, not a new piece of vocabulary. Its three elements:
@@ -66,13 +131,9 @@ This is **the same anti-bridge invariant #1** from the design lock: "the `.dag` 
 
 ### 3.3 Reviewer rule (the freeze's allow-condition, PB-side)
 
-A PR adding or modifying a `TestPredicate` evaluation lands iff:
+A PR adding or modifying a `TestPredicate` evaluation lands iff it satisfies the **PB-Runtime Dissolution Hook Qualification** section above (Q1–Q4 + non-disqualifiers).
 
-1. The §3.1 table has a row for the variant marked (a), (b), or (c).
-2. If (a)/(b): a dissolution declaration ref exists in `.dag` *or* is being landed in the same PR. The runner arm cites the ref.
-3. If (c): a P1 substrate-fact-introduction escalation row exists. Runner arm work is **deferred** to after P1 lands; the PR carrying runner code is not the place that work happens.
-
-This is the PB-side allow-condition for Evaluator's freeze. Evaluator's freeze mechanism (CI ratchet / `match`-arm count gate / equivalent — Evaluator's lane to design) checks the table; PB owns the table.
+This is the PB-side allow-condition for Evaluator's freeze. Evaluator's freeze mechanism (docs/template enforcement, per Evaluator coordination) cites the qualification section by name and checks the §3.1 table; PB owns the qualification text + the table. If docs/template enforcement turns out to be insufficient at the freeze layer, Evaluator STOP+PINGs rather than smuggling a carrier — the qualification stays the contract on PB's side.
 
 ## 4. Sequence (sequential vs parallelizable)
 
