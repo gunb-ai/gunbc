@@ -265,7 +265,8 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
     }
 
     assert!(
-        !shared_operators.contains("??") && !shared_operators.contains("%"),
+        !shared_operators.iter().any(|operator| operator == "??")
+            && !shared_operators.iter().any(|operator| operator == "%"),
         "unsupported `??` / `%` syntax must not be advertised in `dag_operators` without the \
          full tokenizer/parser/operator chain"
     );
