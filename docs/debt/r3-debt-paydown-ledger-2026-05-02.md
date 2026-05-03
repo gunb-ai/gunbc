@@ -90,7 +90,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix normalization; add semiring law witnesses. |
 | SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix ordering/top semantics or stop claiming `BoundedLattice`. |
 | Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Open | Replace `expect` with typed emit errors or typed `BindNodeId` witness. |
-| `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Debt paid (#1553) | Removed unsupported `.dag` shared-syntax rows and ratcheted SG-1a so future shared operators must have the tokenizer/parser/operator chain before advertisement. |
+| `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Open | Remove unsupported rows or add full token/parse/operator chain. |
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
 | Author-now/fire-later verification style | 2026-05-01 | R3 Verification | Open | Make one `BinaryDimensionReportEquals` claim actually execute. |
 | Typed-carrier-landed + Rust-mirror-remains pattern | 2026-05-01 | R3 PB debt discipline | Open | Pair mirror introductions with isomorphism/generation or deletion. |
