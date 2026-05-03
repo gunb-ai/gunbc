@@ -17,10 +17,10 @@ This pass classifies 69 ROADMAP-tracked debt rows in the ledger range:
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 50 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 49 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
 | Partially closed | 8 | Has a landed partial receipt but still names remaining work. |
-| Retired / stale receipt row | 10 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 11 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -30,10 +30,10 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 |---|---|---|---|---|
 | PR #726 E-I / E-C ship-with-debt receipt | 2026-04-24 | E-P / E-M | Open | Behavioral wiring, `promote_to_strict` dissolution, unified numeric-refinement authority. |
 | PR #825 pre-merge review audit | 2026-04 | B4.4 / substrate-const parity | Open | Close optional trigger rows in `docs/debt/pr-825-pre-merge-review-audit.md`. |
-| `rest_typed_response_body` | 2026-04-21 | Grounding services | Open | Typed REST response body support; remove JSON-path projection rows. |
+| `rest_typed_response_body` | 2026-04-21 | Grounding services | Retired | Typed 200-body projection receipts for OpenAI ChatCompletion and Anthropic Messages retired by PR #1576 regression witnesses; response-fidelity residuals remain tracked as `*_200_residual`, and other `response { 200 => Json }` operations are separate follow-up scope. |
 | `openai_chat_message_full_coproduct` | 2026-04-21 | Grounding services | Open | Full OpenAI chat message coproduct, not narrow text-only row. |
 | `anthropic_tool_result_full_content_surface` | 2026-04-21 | Grounding services | Open | Tool-result content modeled as nested/image-capable surface. |
-| REST request wire serde alignment | 2026-04-21 | Grounding services | Open | Wire serde consumes typed carrier rows end-to-end. |
+| REST request wire serde alignment | 2026-04-21 | Grounding services | Partial | Anthropic request coproduct wire authority is now source-level via `CoproductWireContract` rows for message/content payload enums; v2 Rust emit consumes coproduct-local contracts before module fallback/default and ratchets role/type serde. Remaining: Grounding Anthropic request-wire migration can resume after this lands and consume the substrate rows end-to-end. |
 | `repeat_string` constant-fold receipt | 2026-04 | PB / evaluator | Partial | Interim bridge retired; remaining target is in-runner / modeled std body evaluation. |
 | REST_OPS `CreateComment` test-table drift | 2026-04 | Grounding GitHub extdeps | Open | Test table consumes extdep operation facts; delete parallel path table. |
 | `__BUG_NO_PROFILE_...` sentinel | 2026-04 | PB / fail-closed | Open | Return `Option` / typed failure instead of fabricated string. |
@@ -74,13 +74,13 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Go branch emits `UnknownVariant` | 2026-04-25 | Emit / fail-closed | Retired | PR #820 added typed `EmitError::VariantParentNotFound`, removed the `UnknownVariant` fallback, and added missing-parent regression coverage. |
 | Lens fold fallback + file-path semantics | 2026-04-25 | Lens application / identity carrier | Open | Require structural callable edge and fold-shape carrier. |
 | `test_runner.rs` filename / sentinel bridges | 2026-04-25 | PB / Verification | Open | Structural claim roles and declaration refs replace filename/sentinel routing. |
-| B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. |
+| B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. **Receipt (2026-05-03):** family-B audit packet `docs/briefs/bridge-retirement-audit-include-str-family.md` (`include_str!` / patching); per-row retirements remain Verification (#1276). |
 | Duplicate record-literal fields silently accepted | 2026-04-30 | R3 Substrate | Retired | PR #1551 (`929bfe650`) rejects duplicate fields in expression-position named-variant constructors before type-field projection. |
 | `ValueBody` Rust/.dag mirror drift | 2026-04-30 | R3 Substrate + Verification | Open | Mirror update plus generated isomorphism / `DagShapeReport` gate. |
 | `FieldMap` duplicate-free invariant lost in `.dag` mirror | 2026-04-30 | R3 Substrate | Open | Duplicate-free map carrier or keyed table construction. |
 | Operator inference synthetic-arrow fallback | 2026-04-30 | R3 Substrate | Open | Structural algebra walk is authoritative; typed unsupported-operator diagnostic on miss. |
 | `go_method_template_contracts` diagnostic mismatch | 2026-04-30 | R3 Substrate | Open | All three method-template contract declarations lower to `ValueBody::List` with empty diagnostics. |
-| Missing diagnostics-empty bootstrap gate | 2026-04-30 | R3 Substrate + Verification | Open | `diagnostics_empty_after_bootstrap` ratchet for new bootstrap authorities. |
+| Missing diagnostics-empty bootstrap gate | 2026-04-30 | R3 Substrate + Verification | Retired | `diagnostics_empty_after_bootstrap` ratchet for new bootstrap authorities. |
 | `test_runner.rs` predicate-language growth | 2026-04-30 | R3 Evaluator + PB | Partial | Bundle 4b: `.github/PULL_REQUEST_TEMPLATE.md` Evaluator-freeze section + `docs/debt/r3-bundle-4b-test-runner-freeze-receipt.md` enforce a named dissolution hook for any `test_runner.rs` edit; bespoke arms remain until dissolved per brief table. |
 | `dsl/v3/std/emit_model.dag` facade | 2026-04-30 | R3 Substrate / Grounding | Open | Ratchet facade as non-canonical; retire when v2/CI resolves canonical v3 std. |
 | Method-template consumer migration | 2026-04-30 | R3 Grounding | Partial | PR #1549 (`dfc61af7e`) lands Phase 1 audit (`docs/briefs/method-template-consumer-migration-audit.md`): enumerates Rust + `.dag` consumers of `*_method_templates` / `rust_method_wraps_result` / `rust_simple_method_specs`, leaf-first retirement order. Phase 1 partial closures: Gap 1 + Gap 2 active in Substrate; Gap 3 reference-only via `BootstrapAuthority` carrier #1554. Subsequent landings: #1560 PB-Zero projection packet (decision-gated), #1561 `string_contains` registry classification, #1568 Rust projection oracle / test helper. **Gap 4 + Gap 5 (build-step consumer surface, leaf migrations) remain blocked** on either Substrate build-pipeline support for ephemeral generated-source-root `.dag` imports (tied to #1558 dissolution-first reframe) or a Gap 5 design that avoids needing that surface. Grounding's calm-tern Phase 2 leaf migration parked until then. |
