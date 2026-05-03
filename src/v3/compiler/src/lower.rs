@@ -6651,6 +6651,22 @@ fn lower_variant_record_expr(
             },
         );
     };
+    let mut seen_payload_fields = HashSet::new();
+    for field in expr.fields {
+        if !seen_payload_fields.insert(field.name.clone()) {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "named constructor `{}` repeats payload field `{}`",
+                        expr.target, field.name
+                    ),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        }
+    }
     for field in expr.fields {
         if !expected_fields
             .iter()
