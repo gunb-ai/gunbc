@@ -22,8 +22,10 @@ fn build_stage0() -> std::path::PathBuf {
         "stage0 build failed:\n{}",
         String::from_utf8_lossy(&build.stderr)
     );
-    let ws = crate::helpers::workspace_root();
-    let bin = ws.join("target/release/v2-compiler");
+    let target_dir = std::env::var_os("CARGO_TARGET_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| crate::helpers::workspace_root().join("target"));
+    let bin = target_dir.join("release/v2-compiler");
     assert!(bin.exists(), "stage0 binary not found at {}", bin.display());
     bin
 }
