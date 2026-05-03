@@ -138,9 +138,7 @@ fn eligibility_walk_callable(
             let ArrowBody::UserDefined(root) = body else {
                 return false;
             };
-            let Behavior::Bind(b) = dag.node(*root) else {
-                return false;
-            };
+            let b = (*root).bind(dag);
             eligibility_walk_port(dag, b.value, visited, depth + 1)
         }
         _ => false,
@@ -198,10 +196,8 @@ fn monomorph_callable_bind_root(dag: &Dag, mut decl_id: DeclarationId) -> Option
                 let ArrowBody::UserDefined(root) = body else {
                     return None;
                 };
-                return match dag.node(*root) {
-                    Behavior::Bind(b) if b.params.len() >= 2 => Some(b),
-                    _ => None,
-                };
+                let b = (*root).bind(dag);
+                return (b.params.len() >= 2).then_some(b);
             }
             _ => return None,
         }
@@ -273,9 +269,7 @@ pub fn apply_lens_declaration(
             got: inputs.len(),
         });
     }
-    let Behavior::Bind(root_bind) = lens_program.node(*root) else {
-        return Err(LensApplyError::MalformedLensRoot);
-    };
+    let root_bind = (*root).bind(lens_program);
     if root_bind.params.len() != inputs.len() {
         return Err(LensApplyError::ArityMismatch {
             expected: root_bind.params.len(),
@@ -656,9 +650,7 @@ impl<'a> EvalCtx<'a> {
                 got: arg_ports.len(),
             });
         }
-        let Behavior::Bind(b) = self.dag.node(*root) else {
-            return Err(LensApplyError::MalformedLensRoot);
-        };
+        let b = (*root).bind(self.dag);
         if b.params.len() != arg_ports.len() {
             return Err(LensApplyError::ArityMismatch {
                 expected: b.params.len(),
