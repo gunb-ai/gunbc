@@ -54,7 +54,9 @@ MethodRef`, then use:
 
 `rg -n "method_templates|rust_method_wraps_result|rust_simple_method_specs"` at
 HEAD finds the following live consumer classes after excluding documentation and
-the generated bootstrap snapshot.
+`src/v3/compiler/src/bootstrap_generated.rs`. Generated stage0 mirrors are
+included because they are Rust consumers generated from the v2 `.dag` source
+surface and must disappear with the source authority.
 
 | Consumer | Old authority read | Current behavior | Replacement read / blocker |
 | --- | --- | --- | --- |
