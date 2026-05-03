@@ -221,6 +221,11 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lens_testgen.rs",
     "src/v3/compiler/src/lib.rs",
     "src/v3/compiler/src/lower.rs",
+    // R3 row 85 / PB #1560 Gap 4: target-keyed projection of the
+    // `MethodTemplateContract` rows from the full bootstrap `Dag` for
+    // PB-zero / v2-retirement consumers (decision in
+    // `docs/decisions/r3-row85-method-template-read-surface.md`).
+    "src/v3/compiler/src/pb_method_template_projection.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
     // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
@@ -364,6 +369,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/method_template_contract_test.rs",
     "src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs",
     "src/v3/compiler/tests/integration/pb1_bootstrap_full_snapshot_test.rs",
+    // R3 row 85 / PB #1560 Gap 4: focused acceptance for the
+    // `pb_method_template_projection` consumer hook. Stays hand-Rust
+    // alongside `method_template_contract_test.rs` until testgen covers
+    // reflected-Dag structural assertions over std/ row authorities.
+    "src/v3/compiler/tests/integration/pb_method_template_projection_test.rs",
     "src/v3/compiler/tests/integration/pipe_desugar.rs",
     // Prereq-X (call-on-field-access) blocker ratchet for fold_lens<C>
     // consumer wiring (Prereq-3b dispatch on inbox #1141; audit at
