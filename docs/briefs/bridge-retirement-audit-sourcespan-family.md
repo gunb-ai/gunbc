@@ -63,8 +63,8 @@ Do not budget a retirement row for the old path suffix.
 | `src/v3/std/bridge_ledger.dag` row | Relation to this family |
 | --- | --- |
 | `bridge_source_span_file_participation_retired` | **Primary** umbrella — this audit enumerates the open participation sites feeding that row’s prerequisites. |
-| `bridge_include_str_side_channels_retired` | **Overlap** — `include_str!` entries that compile to a parallel `Dag` with real `SourceSpan.file` values (`test_runner.rs`, `pipeline_authority.rs` commentary, regen hosts). |
-| `bridge_canonical_lens_name_patching_residual` | **Sibling** — co-retirement risk with `R1_CANONICAL_*` / `INFER_HELPERS_SOURCE` rows below. |
+| `bridge_include_str_side_channels_retired` | **Overlap** — `include_str!` entries that **actually** `compile_to_dag` embedded bytes into a parallel `Dag` with real `SourceSpan.file` values (`test_runner.rs` canonical lenses, `pipeline_authority.rs` commentary, regen hosts). **Excludes** §Out-of-family embeds such as `INFER_HELPERS_SOURCE` (substring census only; no `compile_to_dag`). |
+| `bridge_canonical_lens_name_patching_residual` | **Sibling** — co-retirement with row **#13** (`R1_CANONICAL_*` bytes + lens-name dispatch). `INFER_HELPERS_SOURCE` is **not** in this sibling lane; route it under `bridge_exact_string_patching_residual_retired` / §Out of family. |
 
 ## Enumeration — per-entry shape
 
