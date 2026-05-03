@@ -804,10 +804,19 @@ pub fn data_item_type_is_coproduct_wire_contract(
                     ((authored_name_at(source_indices, &node).as_str()
                         == "CoproductWireContract".to_string().as_str())
                         && match node.ident_span.clone() {
-                            Some(span) => crate::v2_rt::string_contains(
-                                &span.file.clone(),
-                                "dsl/std/serialization.dag".to_string(),
-                            ),
+                            Some(span) => {
+                                let expected_file = "dsl/std/serialization.dag".to_string();
+                                (crate::v2_rt::string_length(&span.file.clone())
+                                    >= crate::v2_rt::string_length(&expected_file))
+                                    && (crate::v2_rt::substring(
+                                        &span.file.clone(),
+                                        crate::v2_rt::string_length(&span.file.clone())
+                                            - crate::v2_rt::string_length(&expected_file),
+                                        crate::v2_rt::string_length(&span.file.clone()),
+                                    )
+                                    .as_str()
+                                        == expected_file.as_str())
+                            }
                             None => false,
                         })
                 }

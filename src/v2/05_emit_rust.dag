@@ -561,7 +561,10 @@ fn data_item_type_is_coproduct_wire_contract(item: Node, source_indices: Map<Str
             Resolved { node } =>
               authored_name_at(source_indices: source_indices, node: node) == "CoproductWireContract"
               && match node.ident_span {
-                Some { value: span } => string_contains(s: span.file, pattern: "dsl/std/serialization.dag")
+                Some { value: span } =>
+                  let expected_file = "dsl/std/serialization.dag"
+                  string_length(s: span.file) >= string_length(s: expected_file)
+                  && substring(s: span.file, start: string_length(s: span.file) - string_length(s: expected_file), end: string_length(s: span.file)) == expected_file
                 None => false
               }
             _ => false
