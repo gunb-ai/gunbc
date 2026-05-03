@@ -46,8 +46,10 @@ Lane 1 slice 1 should **not** dispatch as a plain L4 implementation worker yet.
 The next dispatchable unit is narrower: **W1 runner-extension implementation**
 for `DifferentialEquals(rust_emit_output, dag_eval_output, ProgramOutputBind)`.
 That worker can now cite `evaluate_body` as the oracle substrate for
-`dag_eval_output`, but it must still author the producer dispatch and decide the
-explicit no-memo eager scope.
+`dag_eval_output`, but it must still author the producer dispatch. Memoization is
+no longer a readiness carve-out: if W1 uses memoization, it must consume the
+declared `EvalMemoKey` boundary; if it does not use memoization, it should simply
+leave that carrier unused rather than define a parallel no-memo convention.
 
 Recommended trigger for re-engagement:
 
