@@ -117,7 +117,7 @@ fn bootstrap_authority_rows_match_full_bootstrap_source_files() {
 
     assert_eq!(
         authority_paths, source_files,
-        "`bootstrap_authority.authorities` must match the committed full bootstrap snapshot's source-file membership"
+        "`bootstrap_authority` must match the committed full bootstrap snapshot's source-file membership"
     );
 
     for (kind, path) in authority_rows {
@@ -177,16 +177,35 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
                         kind.id
                     )
                 });
-            let [FieldValue::Literal(LiteralBits::String(path))] = payload.as_slice() else {
-                panic!("BootstrapAuthority variant should carry one path string payload");
-            };
+            let path = bootstrap_authority_payload_path(payload);
             assert_eq!(
-                key, path,
+                key, &path,
                 "bootstrap_authority map key must match the variant payload path"
             );
-            (kind, path.clone())
+            (kind, path)
         })
         .collect()
+}
+
+fn bootstrap_authority_payload_path(payload: &[FieldValue]) -> String {
+    let [value] = payload else {
+        panic!("BootstrapAuthority variant should carry one path payload");
+    };
+    field_value_path_literal(value)
+}
+
+fn field_value_path_literal(value: &FieldValue) -> String {
+    match value {
+        FieldValue::Literal(LiteralBits::String(path)) => path.clone(),
+        FieldValue::Record(fields) => {
+            let (_, path_value) = fields
+                .iter()
+                .find(|(label, _)| label == "path")
+                .expect("path wrapper record has path field");
+            field_value_path_literal(path_value)
+        }
+        _ => panic!("path payload should lower to a string or path wrapper record"),
+    }
 }
 
 fn bootstrap_authority_variant_labels(dag: &Dag) -> Vec<(DeclarationId, String)> {

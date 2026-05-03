@@ -16,11 +16,11 @@ import std.types { FilePath }
 // from today; each variant owns its path payload so category and path cannot
 // drift as independent record fields. If a future bootstrap root appears, this
 // coproduct must grow in the same PR as the authority row and ratchet.
-type StdAuthorityPath = FilePath where pattern("^dsl/std/")
-type V3StdAuthorityPath = FilePath where pattern("^src/v3/std/")
-type V3SpecAuthorityPath = FilePath where pattern("^src/v3/spec/")
-type CompilerAuthorityPath = FilePath where pattern("^src/v3/compiler/")
-type ExtdepsFixtureAuthorityPath = FilePath where pattern("^dsl/extdeps/")
+type StdAuthorityPath { path: FilePath }
+type V3StdAuthorityPath { path: FilePath }
+type V3SpecAuthorityPath { path: FilePath }
+type CompilerAuthorityPath { path: FilePath }
+type ExtdepsFixtureAuthorityPath { path: FilePath }
 
 type BootstrapAuthority
   = StdAuthority { path: StdAuthorityPath }
@@ -38,65 +38,65 @@ type BootstrapAuthority
 type BootstrapAuthoritySet = Map<String, BootstrapAuthority>
 
 data bootstrap_authority: BootstrapAuthoritySet = {
-  "dsl/std/logic.dag": StdAuthority { path: "dsl/std/logic.dag" },
-  "dsl/std/bit.dag": StdAuthority { path: "dsl/std/bit.dag" },
-  "dsl/std/error_primitives.dag": StdAuthority { path: "dsl/std/error_primitives.dag" },
-  "dsl/std/algebra.dag": StdAuthority { path: "dsl/std/algebra.dag" },
-  "dsl/std/magnitude.dag": StdAuthority { path: "dsl/std/magnitude.dag" },
-  "dsl/std/nat.dag": StdAuthority { path: "dsl/std/nat.dag" },
-  "dsl/std/integer.dag": StdAuthority { path: "dsl/std/integer.dag" },
-  "dsl/std/rational.dag": StdAuthority { path: "dsl/std/rational.dag" },
-  "dsl/std/float.dag": StdAuthority { path: "dsl/std/float.dag" },
-  "dsl/std/types.dag": StdAuthority { path: "dsl/std/types.dag" },
-  "dsl/std/string_type.dag": StdAuthority { path: "dsl/std/string_type.dag" },
-  "dsl/std/unicode.dag": StdAuthority { path: "dsl/std/unicode.dag" },
-  "dsl/std/render_repeat_string_bootstrap.dag": StdAuthority { path: "dsl/std/render_repeat_string_bootstrap.dag" },
-  "dsl/std/methods.dag": StdAuthority { path: "dsl/std/methods.dag" },
+  "dsl/std/logic.dag": StdAuthority { path: { path: "dsl/std/logic.dag" } },
+  "dsl/std/bit.dag": StdAuthority { path: { path: "dsl/std/bit.dag" } },
+  "dsl/std/error_primitives.dag": StdAuthority { path: { path: "dsl/std/error_primitives.dag" } },
+  "dsl/std/algebra.dag": StdAuthority { path: { path: "dsl/std/algebra.dag" } },
+  "dsl/std/magnitude.dag": StdAuthority { path: { path: "dsl/std/magnitude.dag" } },
+  "dsl/std/nat.dag": StdAuthority { path: { path: "dsl/std/nat.dag" } },
+  "dsl/std/integer.dag": StdAuthority { path: { path: "dsl/std/integer.dag" } },
+  "dsl/std/rational.dag": StdAuthority { path: { path: "dsl/std/rational.dag" } },
+  "dsl/std/float.dag": StdAuthority { path: { path: "dsl/std/float.dag" } },
+  "dsl/std/types.dag": StdAuthority { path: { path: "dsl/std/types.dag" } },
+  "dsl/std/string_type.dag": StdAuthority { path: { path: "dsl/std/string_type.dag" } },
+  "dsl/std/unicode.dag": StdAuthority { path: { path: "dsl/std/unicode.dag" } },
+  "dsl/std/render_repeat_string_bootstrap.dag": StdAuthority { path: { path: "dsl/std/render_repeat_string_bootstrap.dag" } },
+  "dsl/std/methods.dag": StdAuthority { path: { path: "dsl/std/methods.dag" } },
 
-  "src/v3/std/algebra.dag": V3StdAuthority { path: "src/v3/std/algebra.dag" },
-    "src/v3/std/anthropic_messages.dag": V3StdAuthority { path: "src/v3/std/anthropic_messages.dag" },
-    "src/v3/std/anthropic_operations.dag": V3StdAuthority { path: "src/v3/std/anthropic_operations.dag" },
-    "src/v3/std/anthropic_schema.dag": V3StdAuthority { path: "src/v3/std/anthropic_schema.dag" },
-    "src/v3/std/approximate_field.dag": V3StdAuthority { path: "src/v3/std/approximate_field.dag" },
-    "src/v3/std/bin_shim.dag": V3StdAuthority { path: "src/v3/std/bin_shim.dag" },
-    "src/v3/std/bootstrap_authority.dag": V3StdAuthority { path: "src/v3/std/bootstrap_authority.dag" },
-    "src/v3/std/bridge_ledger.dag": V3StdAuthority { path: "src/v3/std/bridge_ledger.dag" },
-    "src/v3/std/clean_emission.dag": V3StdAuthority { path: "src/v3/std/clean_emission.dag" },
-    "src/v3/std/computation.dag": V3StdAuthority { path: "src/v3/std/computation.dag" },
-    "src/v3/std/computation_model.dag": V3StdAuthority { path: "src/v3/std/computation_model.dag" },
-    "src/v3/std/diagnostics.dag": V3StdAuthority { path: "src/v3/std/diagnostics.dag" },
-    "src/v3/std/dimensions.dag": V3StdAuthority { path: "src/v3/std/dimensions.dag" },
-    "src/v3/std/effects.dag": V3StdAuthority { path: "src/v3/std/effects.dag" },
-    "src/v3/std/emit_model.dag": V3StdAuthority { path: "src/v3/std/emit_model.dag" },
-    "src/v3/std/extdeps_bootstrap_fixtures.dag": V3StdAuthority { path: "src/v3/std/extdeps_bootstrap_fixtures.dag" },
-    "src/v3/std/go_method_template_contracts.dag": V3StdAuthority { path: "src/v3/std/go_method_template_contracts.dag" },
-    "src/v3/std/induction.dag": V3StdAuthority { path: "src/v3/std/induction.dag" },
-    "src/v3/std/integer_diagnostic_order.dag": V3StdAuthority { path: "src/v3/std/integer_diagnostic_order.dag" },
-    "src/v3/std/lens.dag": V3StdAuthority { path: "src/v3/std/lens.dag" },
-    "src/v3/std/list.dag": V3StdAuthority { path: "src/v3/std/list.dag" },
-    "src/v3/std/lookup.dag": V3StdAuthority { path: "src/v3/std/lookup.dag" },
-    "src/v3/std/methods.dag": V3StdAuthority { path: "src/v3/std/methods.dag" },
-    "src/v3/std/parse_surface.dag": V3StdAuthority { path: "src/v3/std/parse_surface.dag" },
-    "src/v3/std/python_method_template_contracts.dag": V3StdAuthority { path: "src/v3/std/python_method_template_contracts.dag" },
-    "src/v3/std/resources.dag": V3StdAuthority { path: "src/v3/std/resources.dag" },
-    "src/v3/std/runtime.dag": V3StdAuthority { path: "src/v3/std/runtime.dag" },
-    "src/v3/std/rust_method_template_contracts.dag": V3StdAuthority { path: "src/v3/std/rust_method_template_contracts.dag" },
-    "src/v3/std/services.dag": V3StdAuthority { path: "src/v3/std/services.dag" },
-    "src/v3/std/substrate.dag": V3StdAuthority { path: "src/v3/std/substrate.dag" },
-    "src/v3/std/substrate_minimal.dag": V3StdAuthority { path: "src/v3/std/substrate_minimal.dag" },
-    "src/v3/std/termination.dag": V3StdAuthority { path: "src/v3/std/termination.dag" },
-    "src/v3/std/tokenize.dag": V3StdAuthority { path: "src/v3/std/tokenize.dag" },
-    "src/v3/std/verification.dag": V3StdAuthority { path: "src/v3/std/verification.dag" },
-    "src/v3/std/workflows.dag": V3StdAuthority { path: "src/v3/std/workflows.dag" },
+  "src/v3/std/algebra.dag": V3StdAuthority { path: { path: "src/v3/std/algebra.dag" } },
+    "src/v3/std/anthropic_messages.dag": V3StdAuthority { path: { path: "src/v3/std/anthropic_messages.dag" } },
+    "src/v3/std/anthropic_operations.dag": V3StdAuthority { path: { path: "src/v3/std/anthropic_operations.dag" } },
+    "src/v3/std/anthropic_schema.dag": V3StdAuthority { path: { path: "src/v3/std/anthropic_schema.dag" } },
+    "src/v3/std/approximate_field.dag": V3StdAuthority { path: { path: "src/v3/std/approximate_field.dag" } },
+    "src/v3/std/bin_shim.dag": V3StdAuthority { path: { path: "src/v3/std/bin_shim.dag" } },
+    "src/v3/std/bootstrap_authority.dag": V3StdAuthority { path: { path: "src/v3/std/bootstrap_authority.dag" } },
+    "src/v3/std/bridge_ledger.dag": V3StdAuthority { path: { path: "src/v3/std/bridge_ledger.dag" } },
+    "src/v3/std/clean_emission.dag": V3StdAuthority { path: { path: "src/v3/std/clean_emission.dag" } },
+    "src/v3/std/computation.dag": V3StdAuthority { path: { path: "src/v3/std/computation.dag" } },
+    "src/v3/std/computation_model.dag": V3StdAuthority { path: { path: "src/v3/std/computation_model.dag" } },
+    "src/v3/std/diagnostics.dag": V3StdAuthority { path: { path: "src/v3/std/diagnostics.dag" } },
+    "src/v3/std/dimensions.dag": V3StdAuthority { path: { path: "src/v3/std/dimensions.dag" } },
+    "src/v3/std/effects.dag": V3StdAuthority { path: { path: "src/v3/std/effects.dag" } },
+    "src/v3/std/emit_model.dag": V3StdAuthority { path: { path: "src/v3/std/emit_model.dag" } },
+    "src/v3/std/extdeps_bootstrap_fixtures.dag": V3StdAuthority { path: { path: "src/v3/std/extdeps_bootstrap_fixtures.dag" } },
+    "src/v3/std/go_method_template_contracts.dag": V3StdAuthority { path: { path: "src/v3/std/go_method_template_contracts.dag" } },
+    "src/v3/std/induction.dag": V3StdAuthority { path: { path: "src/v3/std/induction.dag" } },
+    "src/v3/std/integer_diagnostic_order.dag": V3StdAuthority { path: { path: "src/v3/std/integer_diagnostic_order.dag" } },
+    "src/v3/std/lens.dag": V3StdAuthority { path: { path: "src/v3/std/lens.dag" } },
+    "src/v3/std/list.dag": V3StdAuthority { path: { path: "src/v3/std/list.dag" } },
+    "src/v3/std/lookup.dag": V3StdAuthority { path: { path: "src/v3/std/lookup.dag" } },
+    "src/v3/std/methods.dag": V3StdAuthority { path: { path: "src/v3/std/methods.dag" } },
+    "src/v3/std/parse_surface.dag": V3StdAuthority { path: { path: "src/v3/std/parse_surface.dag" } },
+    "src/v3/std/python_method_template_contracts.dag": V3StdAuthority { path: { path: "src/v3/std/python_method_template_contracts.dag" } },
+    "src/v3/std/resources.dag": V3StdAuthority { path: { path: "src/v3/std/resources.dag" } },
+    "src/v3/std/runtime.dag": V3StdAuthority { path: { path: "src/v3/std/runtime.dag" } },
+    "src/v3/std/rust_method_template_contracts.dag": V3StdAuthority { path: { path: "src/v3/std/rust_method_template_contracts.dag" } },
+    "src/v3/std/services.dag": V3StdAuthority { path: { path: "src/v3/std/services.dag" } },
+    "src/v3/std/substrate.dag": V3StdAuthority { path: { path: "src/v3/std/substrate.dag" } },
+    "src/v3/std/substrate_minimal.dag": V3StdAuthority { path: { path: "src/v3/std/substrate_minimal.dag" } },
+    "src/v3/std/termination.dag": V3StdAuthority { path: { path: "src/v3/std/termination.dag" } },
+    "src/v3/std/tokenize.dag": V3StdAuthority { path: { path: "src/v3/std/tokenize.dag" } },
+    "src/v3/std/verification.dag": V3StdAuthority { path: { path: "src/v3/std/verification.dag" } },
+    "src/v3/std/workflows.dag": V3StdAuthority { path: { path: "src/v3/std/workflows.dag" } },
 
-    "src/v3/spec/v3_l1.dag": V3SpecAuthority { path: "src/v3/spec/v3_l1.dag" },
-    "src/v3/spec/go.dag": V3SpecAuthority { path: "src/v3/spec/go.dag" },
-    "src/v3/spec/python.dag": V3SpecAuthority { path: "src/v3/spec/python.dag" },
-    "src/v3/spec/rust.dag": V3SpecAuthority { path: "src/v3/spec/rust.dag" },
+    "src/v3/spec/v3_l1.dag": V3SpecAuthority { path: { path: "src/v3/spec/v3_l1.dag" } },
+    "src/v3/spec/go.dag": V3SpecAuthority { path: { path: "src/v3/spec/go.dag" } },
+    "src/v3/spec/python.dag": V3SpecAuthority { path: { path: "src/v3/spec/python.dag" } },
+    "src/v3/spec/rust.dag": V3SpecAuthority { path: { path: "src/v3/spec/rust.dag" } },
 
-    "src/v3/compiler/pipeline.dag": CompilerAuthority { path: "src/v3/compiler/pipeline.dag" },
-    "src/v3/compiler/operators.dag": CompilerAuthority { path: "src/v3/compiler/operators.dag" },
-    "src/v3/compiler/regen.dag": CompilerAuthority { path: "src/v3/compiler/regen.dag" },
+    "src/v3/compiler/pipeline.dag": CompilerAuthority { path: { path: "src/v3/compiler/pipeline.dag" } },
+    "src/v3/compiler/operators.dag": CompilerAuthority { path: { path: "src/v3/compiler/operators.dag" } },
+    "src/v3/compiler/regen.dag": CompilerAuthority { path: { path: "src/v3/compiler/regen.dag" } },
 
-    "dsl/extdeps/languages/rust/primitives.dag": ExtdepsFixtureAuthority { path: "dsl/extdeps/languages/rust/primitives.dag" }
+    "dsl/extdeps/languages/rust/primitives.dag": ExtdepsFixtureAuthority { path: { path: "dsl/extdeps/languages/rust/primitives.dag" } }
 }
