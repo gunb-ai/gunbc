@@ -185,6 +185,16 @@ type ValueBody
 // Typed witness that a NodeId identifies a BindNode. `ArrowBody::UserDefined`
 // carries this witness instead of a raw NodeId so the bind-body invariant lives
 // in the substrate authority as well as the Rust mirror.
+//
+// Constructor-validation asymmetry (tracked Track 9 debt): validity is
+// enforced today by `BindNodeId::from_bind_node(dag, id)`, which fails closed
+// unless `id` resolves to `Behavior::Bind`. The reflected substrate exposes the
+// witness field shape only; direct `.dag` construction can still write the
+// record. When .dag-side construction matures in the Lane 3c self-hosting
+// cycle, add the equivalent substrate-level constructor authority so direct
+// producers cannot forge invalid bind handles. Same ROADMAP authority as
+// ParamRef / TransformRef: ../../../ROADMAP.md — Track 9 ("Tracked debt —
+// substrate constructor-validation asymmetry").
 type BindNodeId {
   node: NodeId
 }
