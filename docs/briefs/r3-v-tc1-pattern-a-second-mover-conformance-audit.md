@@ -7,9 +7,12 @@ Director-directed on #828 after the Worker C deferred-fixture sweep.
 
 ## Contract
 
-This audit does not re-check the fixture envelope already covered by
-`docs/briefs/r3-v-deferred-test-conformance-sweep.md`. It checks the deeper
-TC1 claim-structure commitment behind that envelope:
+This audit does not re-check the fixture envelope already covered by Worker C
+PR #1578 (`docs/briefs/r3-v-deferred-test-conformance-sweep.md`): the fixture
+uses `BinaryDimensionReportEquals(tc1_subject_f_report,
+tc1_subject_eta_expanded_report)`, and both refs resolve to
+`DimensionReport<Tc1EtaLensObservation>`. This receipt checks the deeper TC1
+claim-structure commitment behind that envelope:
 
 1. The TC1 consumer remains `BinaryDimensionReportEquals`; it compares two
    typed report references only after producer-side `DimensionReport<C>` values
