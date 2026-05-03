@@ -2,7 +2,9 @@
 // `dsl/std/methods.dag` registry.
 //
 // Companion to `dsl/std/methods.dag` which declares the
-// `MethodDeclaration` carrier and the 63 per-method `data` bindings.
+// `MethodDeclaration` carrier, the 63 algebra-template per-method
+// `data` bindings, and any legacy v2 emit-map aliases (see that
+// file's header for the alias convention and dissolution trigger).
 // `MethodRef` lives here (not in `dsl/std/methods.dag`) because it
 // references `DeclarationRef` from `v3.spec.v3_l1`, and `dsl/std/`
 // stays v3-spec-free per the existing layering convention.

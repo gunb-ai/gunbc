@@ -17,9 +17,9 @@ This pass classifies 69 ROADMAP-tracked debt rows in the ledger range:
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 59 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 58 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Partially closed | 6 | Has a landed partial receipt but still names remaining work. |
-| Retired / stale receipt row | 4 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 5 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -80,7 +80,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Operator inference synthetic-arrow fallback | 2026-04-30 | R3 Substrate | Open | Structural algebra walk is authoritative; typed unsupported-operator diagnostic on miss. |
 | `go_method_template_contracts` diagnostic mismatch | 2026-04-30 | R3 Substrate | Open | All three method-template contract declarations lower to `ValueBody::List` with empty diagnostics. |
 | Missing diagnostics-empty bootstrap gate | 2026-04-30 | R3 Substrate + Verification | Open | `diagnostics_empty_after_bootstrap` ratchet for new bootstrap authorities. |
-| `test_runner.rs` predicate-language growth | 2026-04-30 | R3 Evaluator + PB | Open | Freeze bespoke arms unless paired with evaluator/PB-runtime dissolution hook. |
+| `test_runner.rs` predicate-language growth | 2026-04-30 | R3 Evaluator + PB | Partial | Bundle 4b: `.github/PULL_REQUEST_TEMPLATE.md` Evaluator-freeze section + `docs/debt/r3-bundle-4b-test-runner-freeze-receipt.md` enforce a named dissolution hook for any `test_runner.rs` edit; bespoke arms remain until dissolved per brief table. |
 | `dsl/v3/std/emit_model.dag` facade | 2026-04-30 | R3 Substrate / Grounding | Open | Ratchet facade as non-canonical; retire when v2/CI resolves canonical v3 std. |
 | Method-template consumer migration | 2026-04-30 | R3 Grounding | Open | Migrate consumers off old runtime/emit tables before adding more rows. |
 | Reflection completeness over-trusted | 2026-04-30 | R3 Verification | Open | Generated conformance walker or equivalent mechanical theorem. |
@@ -89,7 +89,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `Json` + `Bytes` opaque kernel decomposition | 2026-05-01 | R3 Substrate | Open / disposition pending | Decide after T-Numeric-Construction whether this becomes an R3 lane. |
 | SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix normalization; add semiring law witnesses. |
 | SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix ordering/top semantics or stop claiming `BoundedLattice`. |
-| Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Open | Replace `expect` with typed emit errors or typed `BindNodeId` witness. |
+| Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Retired | PR #1548 (`0427f96f7`) landed the typed `BindNodeId` witness on `ArrowBody::UserDefined`; all six emitter sites consume `(*bind_id).bind(self.dag)`, guarded site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`. Local-typed-error path was rejected at design split as parallel-representation debt. |
 | `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Open | Remove unsupported rows or add full token/parse/operator chain. |
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
 | Author-now/fire-later verification style | 2026-05-01 | R3 Verification | Open | Make one `BinaryDimensionReportEquals` claim actually execute. |
@@ -105,37 +105,37 @@ These rows should not consume implementation-worker capacity unless the ledger t
 2. **`lower_fn_body_into_existing_decl` defensive Arrow re-derive**: ROADMAP records the cited symbol no longer exists and live lowering fails closed.
 3. **`patch_lower_helpers_generated_type_alias_refinement` exact-string patching**: retired by PR #1014.
 4. **Go branch emits `UnknownVariant`**: retired by PR #820; live Go branch emission now returns `EmitError::VariantParentNotFound` with regression coverage.
-5. **E-M method carrier parity framing** inside the substrate-carrier port program: closed by structural subsumption pick; remaining work belongs to E-P consumer/cementing and non-carrier lens blockers.
-6. **P0 repeat-string oracle bridge**: the interim `p0_repeat_string_v2_oracle_rust_bridge` is retired, but the broader modeled-evaluation target remains open. Track as partial, not as a fresh P0 bug.
+5. **Emitter `as_bind().expect()` panic paths**: retired by PR #1548 via the typed `BindNodeId` witness on `ArrowBody::UserDefined` (`src/v3/compiler/src/dag.rs:113`); all six emitter sites consume `(*bind_id).bind(self.dag)`; guarded `rust_target.rs:2503` site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`.
+6. **E-M method carrier parity framing** inside the substrate-carrier port program: closed by structural subsumption pick; remaining work belongs to E-P consumer/cementing and non-carrier lens blockers.
+7. **P0 repeat-string oracle bridge**: the interim `p0_repeat_string_v2_oracle_rust_bridge` is retired, but the broader modeled-evaluation target remains open. Track as partial, not as a fresh P0 bug.
 
 ## Highest-Leverage Retirement Targets
 
 1. **Reject duplicate record-literal fields.**
    Small, correctness-critical, and already has a sibling duplicate-key pattern in map lowering. Closure removes a silent fact-drop bug rather than adding a new scaffold.
 
-2. **Replace emitter `as_bind().expect()` panics with typed errors.**
-   Six localized call sites; converts crash behavior into fail-closed diagnostics and is adjacent to existing emitter error paths.
-
-3. **Bootstrap diagnostics-empty gate for method-template contracts.**
+2. **Bootstrap diagnostics-empty gate for method-template contracts.**
    One structural ratchet can close both the `go_method_template_contracts` mismatch and the broader "shape test passed over diagnostic Dag" pattern.
 
-4. **SymbolicCost semiring zero law.**
+3. **SymbolicCost semiring zero law.**
    High correctness impact: fixes cost-lens facts and seeds the Verification law-witness closure path.
 
-5. **SubValueRelation algebra-claim correction.**
+4. **SubValueRelation algebra-claim correction.**
    Pairs naturally with the law-witness lane; either fixes the law or removes an invalid guarantee.
 
-6. **`ValueBody` mirror update + first isomorphism receipt.**
+5. **`ValueBody` mirror update + first isomorphism receipt.**
    Slightly larger, but it attacks multiple rows at once: ValueBody drift, FieldMap illegal-state mirror, reflection-overtrust, and hand-mirror growth.
 
-7. **Method-template consumer migration audit-to-retirement slice.**
+6. **Method-template consumer migration audit-to-retirement slice.**
    PRs populated rows; the invariant gain lands only when old runtime/emit tables stop serving consumers.
 
-8. **BridgeLedgerZero decreasing-open-count ratchet.**
+7. **BridgeLedgerZero decreasing-open-count ratchet.**
    Turns a reporting scaffold into pressure for actual row retirement across bridge owners.
 
-9. **CI slow-test exemption fresh audit.**
-    Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
+8. **CI slow-test exemption fresh audit.**
+   Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
+
+(Two original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545.)
 
 ## Velocity Tripwire Baseline
 
@@ -151,7 +151,7 @@ Next cadence pass should record:
 
 Recommended first retirement bundle for the Debt-Paydown Manager to coordinate:
 
-1. **Substrate fail-closed mini-bundle:** duplicate record labels and emitter `as_bind()` typed errors. Go `UnknownVariant` is already retired by PR #820.
+1. **Substrate fail-closed mini-bundle:** duplicate record labels. (Emitter `as_bind()` retired by PR #1548 via `BindNodeId` witness; Go `UnknownVariant` retired by PR #820 / ledger close-out PR #1545.)
 2. **Verification/substrate executable-gate bundle:** diagnostics-empty bootstrap ratchet plus one `BinaryDimensionReportEquals` claim that actually compares produced reports.
 3. **Grounding consumer-retirement bundle:** method-template old-table consumer migration; prevent more row population from masking parallel authority.
 4. **PB/Verification bridge discipline bundle:** BridgeLedgerZero decreasing-open-count ratchet and `test_runner.rs` bespoke-arm freeze rule.
