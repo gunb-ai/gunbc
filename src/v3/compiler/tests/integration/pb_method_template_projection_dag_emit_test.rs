@@ -36,11 +36,11 @@
 use std::path::PathBuf;
 
 use v3_compiler::generated_full_bootstrap_dag;
-use v3_compiler::pb_method_template_projection_dag_emit::{
-    generated_map_declaration_name, write_method_template_projection_dag,
-    GENERATED_MODULE_NAME, GENERATED_PROJECTION_RELATIVE_PATH,
-};
 use v3_compiler::pb_method_template_projection::MethodTemplateTarget;
+use v3_compiler::pb_method_template_projection_dag_emit::{
+    generated_map_declaration_name, write_method_template_projection_dag, GENERATED_MODULE_NAME,
+    GENERATED_PROJECTION_RELATIVE_PATH,
+};
 
 /// Build a fresh per-test temp directory under the system tempdir. Mirrors the
 /// pattern in `src/v2/tests/src/bootstrap.rs::temp_dir`. The test removes the

@@ -65,8 +65,7 @@ use crate::pb_method_template_projection::{
 /// File path, relative to `out_dir`, where the producer writes the generated
 /// projection. Stable so v2 callers can cite it directly when configuring
 /// `--source-root`.
-pub const GENERATED_PROJECTION_RELATIVE_PATH: &str =
-    "generated/method_template_projection.dag";
+pub const GENERATED_PROJECTION_RELATIVE_PATH: &str = "generated/method_template_projection.dag";
 
 /// Module declaration name in the generated `.dag` file. v2 callers import
 /// from this name (e.g.
@@ -154,9 +153,8 @@ pub fn write_method_template_projection_dag(
     let mut per_target: Vec<(MethodTemplateTarget, BTreeMap<String, String>)> =
         Vec::with_capacity(TARGETS.len());
     for target in TARGETS.iter().copied() {
-        let rows = method_template_contract_rows(dag, target).map_err(|cause| {
-            MethodTemplateProjectionDagEmitError::Projection { target, cause }
-        })?;
+        let rows = method_template_contract_rows(dag, target)
+            .map_err(|cause| MethodTemplateProjectionDagEmitError::Projection { target, cause })?;
         let mut map: BTreeMap<String, String> = BTreeMap::new();
         for (row_index, row) in rows.iter().enumerate() {
             // Higher-order rows are deliberately skipped — the legacy
@@ -170,10 +168,12 @@ pub fn write_method_template_projection_dag(
                 row.dag_method,
                 method_declaration_id,
             )
-            .map_err(|cause| MethodTemplateProjectionDagEmitError::MethodNameRecoveryFailed {
-                target,
-                row_index,
-                cause,
+            .map_err(|cause| {
+                MethodTemplateProjectionDagEmitError::MethodNameRecoveryFailed {
+                    target,
+                    row_index,
+                    cause,
+                }
             })?;
             // Per-target uniqueness by `dag_method` was already validated by
             // `method_template_contract_rows`; the same `name` cannot appear
