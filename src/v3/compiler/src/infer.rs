@@ -32,9 +32,9 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, CardinalityBound, Dag, Declaration,
-    DeclarationId, Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter, PortId, PortState,
-    TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, BindNodeId, CardinalityBound, Dag,
+    Declaration, DeclarationId, Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter,
+    PortId, PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -1191,16 +1191,7 @@ fn decide_transform(dag: &mut Dag, t: &TransformNode) -> Decision {
             // User function: the call site's signature is only trustworthy
             // once the function's Bind.value port has reached Resolved.
             // Uninferred → Retry; Unresolved → fail the call site.
-            let bind_id = *bind_id;
-            match dag
-                .port(
-                    dag.node(bind_id)
-                        .as_bind()
-                        .map(|b| b.value)
-                        .unwrap_or(t.output),
-                )
-                .state()
-            {
+            match dag.port((*bind_id).bind(dag).value).state() {
                 PortState::Uninferred => return Decision::Retry,
                 PortState::Unresolved => {
                     let name = transform_target_display_name(dag, &t.target);
@@ -1771,10 +1762,9 @@ fn predicate_info(dag: &Dag, pred_decl: DeclarationId) -> Option<(PortId, PortId
         ..
     } = &dag.declaration(pred_decl).connective
     {
-        if let Behavior::Bind(bind) = dag.node(*bind_id) {
-            if let Some(param_port) = bind.params.first() {
-                return Some((*param_port, bind.value));
-            }
+        let bind = (*bind_id).bind(dag);
+        if let Some(param_port) = bind.params.first() {
+            return Some((*param_port, bind.value));
         }
     }
     None
@@ -2259,7 +2249,7 @@ fn callable_signature_context(
         ..
     } = &decl.connective
     {
-        let bind = dag.node(*bind_id).as_bind()?;
+        let bind = (*bind_id).bind(dag);
         if bind.params.len() < inputs.len() {
             return None;
         }
@@ -3056,9 +3046,7 @@ fn resolve_lambda_parameter_types(dag: &mut Dag) -> bool {
             let ArrowBody::UserDefined(bind_id) = body else {
                 continue;
             };
-            let Some(bind) = dag.node(*bind_id).as_bind() else {
-                continue;
-            };
+            let bind = (*bind_id).bind(dag);
             if bind.params.len() < expected_signature.inputs.len() {
                 continue;
             }
@@ -3094,30 +3082,23 @@ fn validate_user_defined_function_signatures(dag: &mut Dag) -> bool {
         diagnostic: Diagnostic,
     }
 
-    let user_defined_arrows: Vec<(
-        DeclarationId,
-        Vec<DeclarationId>,
-        DeclarationId,
-        crate::dag::NodeId,
-    )> = dag
-        .declarations()
-        .iter()
-        .filter_map(|decl| match &decl.connective {
-            TypeConnective::Arrow {
-                inputs,
-                output,
-                body: ArrowBody::UserDefined(bind_id),
-            } => Some((decl.id, inputs.clone(), *output, *bind_id)),
-            _ => None,
-        })
-        .collect();
+    let user_defined_arrows: Vec<(DeclarationId, Vec<DeclarationId>, DeclarationId, BindNodeId)> =
+        dag.declarations()
+            .iter()
+            .filter_map(|decl| match &decl.connective {
+                TypeConnective::Arrow {
+                    inputs,
+                    output,
+                    body: ArrowBody::UserDefined(bind_id),
+                } => Some((decl.id, inputs.clone(), *output, *bind_id)),
+                _ => None,
+            })
+            .collect();
 
     let mut failures = Vec::new();
 
     'declarations: for (decl_id, inputs, output, bind_id) in user_defined_arrows {
-        let Some(bind) = dag.node(bind_id).as_bind() else {
-            continue;
-        };
+        let bind = bind_id.bind(dag);
         if matches!(dag.port(bind.value).state(), PortState::Unresolved) {
             continue;
         }
@@ -3784,7 +3765,10 @@ fn materialize_substituted_refined_decl(
         connective: TypeConnective::Arrow {
             inputs: vec![substituted_base],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),

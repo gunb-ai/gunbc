@@ -26,7 +26,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::dag::{
     type_connective_cardinality, ArrowBody, AtomPayload, Behavior, BindEmitParticipation, BindNode,
-    BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
+    BindNodeId, BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
     Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
     LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
     PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
@@ -575,7 +575,10 @@ fn build_refinement_predicate_declaration(
         connective: TypeConnective::Arrow {
             inputs: vec![base_decl_id],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -1320,7 +1323,10 @@ fn build_narrowed_refinement(
         connective: TypeConnective::Arrow {
             inputs: vec![true_base_decl],
             output: bool_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -1370,9 +1376,7 @@ pub(crate) fn outer_predicate_slots(
     else {
         return None;
     };
-    let Behavior::Bind(bind) = dag.node(*bind_id) else {
-        return None;
-    };
+    let bind = (*bind_id).bind(dag);
     let param = *bind.params.first()?;
     Some((param, bind.value))
 }
@@ -4636,7 +4640,10 @@ fn lower_fn_item_expr_body(
         dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
             inputs: param_decl_inputs,
             output: return_decl_id,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         };
         let mut outer_scope = outer_scope;
         outer_scope.insert(name.to_string(), err_port);
@@ -4793,7 +4800,10 @@ fn lower_fn_item_expr_body(
     dag.declaration_mut(fn_decl_id).connective = TypeConnective::Arrow {
         inputs: param_decl_inputs,
         output: return_decl_id,
-        body: ArrowBody::UserDefined(bind_id),
+        body: ArrowBody::UserDefined(
+            BindNodeId::from_bind_node(dag, bind_id)
+                .expect("UserDefined Arrow body bind id must point at a Bind"),
+        ),
     };
 
     let mut outer_scope = outer_scope;
@@ -5114,7 +5124,10 @@ fn lower_lambda_expr(
         connective: TypeConnective::Arrow {
             inputs: expected_inputs,
             output: expected_output,
-            body: ArrowBody::UserDefined(bind_id),
+            body: ArrowBody::UserDefined(
+                BindNodeId::from_bind_node(ctx.dag, bind_id)
+                    .expect("UserDefined Arrow body bind id must point at a Bind"),
+            ),
         },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
@@ -6651,6 +6664,22 @@ fn lower_variant_record_expr(
             },
         );
     };
+    let mut seen_payload_fields = HashSet::new();
+    for field in expr.fields {
+        if !seen_payload_fields.insert(field.name.clone()) {
+            return unresolved_port(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "named constructor `{}` repeats payload field `{}`",
+                        expr.target, field.name
+                    ),
+                    span: field.span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+        }
+    }
     for field in expr.fields {
         if !expected_fields
             .iter()

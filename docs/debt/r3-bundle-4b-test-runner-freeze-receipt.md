@@ -15,12 +15,12 @@
 
 1. **`.github/PULL_REQUEST_TEMPLATE.md`** — section **Evaluator freeze — `src/v3/compiler/src/test_runner.rs` (R3 Bundle 4b)**. Any PR that touches `test_runner.rs` must fill that section with a **one-hop** dissolution citation.
 2. **Evaluator-side (preferred for W1/W2/W3 scaffolds):** **`docs/briefs/r2-pr-b-2-runner-extension-bundle.md` — §Runner authority discipline** — dissolution-target table.
-3. **PB-runtime allowed hook destination (parallel lane):** **`docs/briefs/r3-pb-runtime-test-predicate-dissolution-hook.md#pb-runtime-dissolution-hook-qualification`** — in-tree stub (one-hop anchor); full Q1–Q4 + disqualifiers per **#1550**. Until **#1550** merges, PRs using this hook also cite **#1550** in the PR body.
+3. **PB-runtime allowed hook destination (parallel lane):** **`docs/briefs/r3-pb-runtime-test-predicate-dissolution-hook.md#pb-runtime-dissolution-hook-qualification`** — live in-tree Q1–Q4 + disqualifiers (PB packet **#1550** on `main`).
 4. **Deferral-only:** **`ROADMAP.md`** bullet *`test_runner.rs` becoming a parallel test-predicate authority`* — not vague prose alone.
 
 ## PB lane boundary
 
-PB owns **runtime-hook** qualification (**#1550** expands `r3-pb-runtime-test-predicate-dissolution-hook.md`); Evaluator bundle **4b** cites that brief path as the **stable PB hook anchor** (stub until **#1550**) alongside the **r2-pr-b-2** runner-authority table. This receipt does not prescribe PB code edits.
+PB owns **runtime-hook** qualification (`docs/briefs/r3-pb-runtime-test-predicate-dissolution-hook.md`); Evaluator bundle **4b** cites that brief as the **stable PB hook anchor** alongside the **r2-pr-b-2** runner-authority table. This receipt does not prescribe PB code edits.
 
 ## Escalation
 
