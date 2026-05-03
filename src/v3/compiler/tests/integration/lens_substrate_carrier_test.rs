@@ -120,14 +120,14 @@ fn e6_g1_stop_receipt_names_exact_lens_value_blockers() {
             .expect("read E6 lens value authoring STOP receipt");
 
     for required in [
-        "Class-5 data-body lowering",
-        "Function-valued field references",
-        "`Monoid<C>` structural witness value authoring",
-        "`Witness<C>` / `OptionalDiagnostic` constructor expression support",
+        "Live for the non-generic pieces this shape needs",
+        "blocked through instantiated generic Conj fields",
+        "instantiated generic Conj substitution gap",
+        "Live for the representative constructors",
         "Explicit typed lens-instance handle instead of full `data Lens<C>`",
         "No honest `Lens<C>` value can be authored or referenced on current `main`",
         "no Rust lens registry",
-        "lens_value_structural_data_fields_lands",
+        "lens_value_generic_conj_field_substitution_lands",
     ] {
         assert!(
             receipt.contains(required),

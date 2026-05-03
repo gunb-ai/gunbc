@@ -37,26 +37,27 @@ readiness audit rejects.
 
 | Case | Current status | Why it blocks an honest `Lens<C>` value |
 | --- | --- | --- |
-| Class-5 data-body lowering | Partially live for scalar, top-level record/list/map structural data. | `Lens<C>` needs nested structural values and function-valued fields. The existing `ValueBody` surface is not enough to express a full lens instance as executable data. |
-| Function-valued field references | Blocked for `Lens<C>` fields. | `read`, `branch`, `iterate`, `validate`, and `Monoid<C>.op` must be references to executable functions of arrow type. Current structural data references are declaration-reference shaped, not first-class function values consumable by E6-G1. |
-| `Monoid<C>` structural witness value authoring | Blocked for the nested `sequential` field. | E6-G1 must read `sequential.identity` and `sequential.op` from the declared value. A host default such as integer `0` or symbolic-cost `ConstantCost(0)` would fabricate the monoid witness. |
-| `Witness<C>` / `OptionalDiagnostic` constructor expression support | Blocked for representative `read` and `validate` functions. | A useful lens read must return `Inhabits(c)` or `Violates { reason, at }`; validation must return `NoDiagnostic` or `SomeDiagnostic { value }`. Current lens files still document this as deferred instead of authoring constructor-returning function bodies. |
-| Explicit typed lens-instance handle instead of full `data Lens<C>` | Not chosen in this slice. | A handle may become the right narrow API if class-5 value bodies remain delayed, but it must be a substrate carrier that points at a real declared lens authority. This dispatch did not have enough evaluator consumer shape to specify that handle without inventing a registry. |
+| Class-5 data-body lowering | Live for the non-generic pieces this shape needs. | Current tests already cover structural record data, nested structural records, and non-generic function-valued field references. This is not the remaining blocker by itself. |
+| Function-valued field references | Live for non-generic Conj fields, blocked through instantiated generic Conj fields. | `MiniLens<Int>` / `Monoid<Int>`-shaped data still fails when field checking must substitute `C -> Int` through `Lens<C>` and `Monoid<C>`. E6-G1 needs that substitution-aware field lowering before `read`, `branch`, `iterate`, `validate`, and `sequential.op` can be trusted as declared function fields. |
+| `Monoid<C>` structural witness value authoring | Blocked by the same instantiated generic Conj substitution gap. | Non-generic nested witness records lower. The missing fact is that `Lens<Int>.sequential: Monoid<Int>` must resolve `Monoid<C>` fields under substitution and accept `op: fn(Int, Int) -> Int` plus `identity: Int` without a host default. |
+| `Witness<C>` / `OptionalDiagnostic` constructor expression support | Live for the representative constructors. | Current tests cover `Witness<Int>::Inhabits` and `OptionalDiagnostic::NoDiagnostic` constructor-returning functions. This is not the remaining authoring blocker, though E6-G1 still must execute and lift those values later. |
+| Explicit typed lens-instance handle instead of full `data Lens<C>` | Not chosen in this slice. | A handle may become the right narrow API only if generic Conj substitution remains delayed, but it must be a substrate carrier that points at a real declared lens authority. This dispatch did not have enough evaluator consumer shape to specify that handle without inventing a registry. |
 
 ## Next Dispatch
 
 Recommended next substrate dispatch:
 
-`lens_value_structural_data_fields_lands`
+`lens_value_generic_conj_field_substitution_lands`
 
 Scope:
 
-- make structural data bodies able to carry function-valued declaration
-  references for fields whose declared type is an arrow;
-- make nested structural data sufficient for `Monoid<C>` witness values;
+- make structural data-body checking substitute instantiated generic Conj
+  fields, specifically `Lens<C> -> Lens<Int>` and
+  `Monoid<C> -> Monoid<Int>`, before validating field values;
 - prove one minimal `Lens<Int>` fixture lowers to a `ValueBody::Structural`
   with `name`, `read`, `sequential`, `branch`, `iterate`, and `validate`
-  present as typed fields;
+  present as typed fields, with `sequential.op` and `sequential.identity`
+  read from the nested `Monoid<Int>` value;
 - keep `Witness<C>`, `OptionalDiagnostic`, and `DimensionReport<C>` unchanged.
 
 Only after that substrate fact lands should Evaluator E6-G0/G1 consume the
@@ -68,4 +69,3 @@ lifting; this STOP receipt does not implement it.
 This receipt introduces no Rust lens registry, no per-lens callbacks, no new
 report or witness carriers, no `test_runner.rs` predicate, and no value that
 fabricates `DimensionReport<C>`.
-
