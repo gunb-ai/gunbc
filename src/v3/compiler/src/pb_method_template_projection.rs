@@ -595,11 +595,8 @@ mod tests {
             .expect("count_method MethodDeclaration in bootstrap Dag")
             .id;
 
-        let result = method_template_contract_row(
-            &dag,
-            MethodTemplateTarget::Rust,
-            count_method_id,
-        );
+        let result =
+            method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id);
         match result {
             Err(MethodTemplateProjectionError::DuplicateMethodTemplateRow {
                 list,
