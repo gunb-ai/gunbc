@@ -163,34 +163,62 @@ fn rust_count_row_anchors_runtime_emit_drift() {
 }
 
 #[test]
-fn lookup_helper_finds_known_row_and_returns_none_for_unknown_method() {
-    // The `(target, dag_method)` direct lookup is a thin convenience over
-    // the row-list API; it must return the same row data and surface
-    // `None` cleanly when the method has no row for that target. This
-    // anchors the contract Gap 5 / leaf-emit consumers will rely on.
+fn lookup_helper_three_distinct_states() {
+    // The `(target, dag_method)` direct lookup must distinguish three
+    // states cleanly so Gap 5 / leaf-emit consumers cannot conflate them:
+    //
+    //   1. Hit:     valid `MethodDeclaration` whose target list has a row.
+    //   2. Miss:    valid `MethodDeclaration` whose target list has no row.
+    //   3. Invalid: `dag_method` is not a `MethodDeclaration` at all
+    //              → typed `LookupKeyNotMethodDeclaration` error.
+    //
+    // (1) and (2) are the legitimate `Ok(Some)` / `Ok(None)` axes; (3) is
+    // the typed error the helper enforces at the public boundary until
+    // `DeclarationRef<MethodDeclaration>` refinement-typing lands.
     let dag = generated_full_bootstrap_dag();
+
+    // (1) Hit: `count_method` is in `dsl/std/methods.dag` and has a row in
+    // `rust_method_template_contracts`.
     let count_method_id = dag
         .declaration_by_name("count_method")
         .expect("count_method MethodDeclaration in bootstrap Dag")
         .id;
-
-    let direct = method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id)
+    let hit = method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id)
         .expect("projection")
         .expect("count_method row present for Rust target");
-    assert_eq!(direct.runtime_template, "{recv}.len()");
+    assert_eq!(hit.runtime_template, "{recv}.len()");
 
-    // `MethodTemplateContract` itself is a type declaration, not a
-    // `MethodDeclaration`, so no per-target row is keyed by it. The
-    // helper must return `Ok(None)` rather than fabricating one.
+    // (2) Miss: `add_method` is in `dsl/std/methods.dag` (a real
+    // `MethodDeclaration`) but has no row in
+    // `rust_method_template_contracts`. Must return `Ok(None)`, not a
+    // typed error.
+    let add_method_id = dag
+        .declaration_by_name("add_method")
+        .expect("add_method MethodDeclaration in bootstrap Dag")
+        .id;
+    let miss = method_template_contract_row(&dag, MethodTemplateTarget::Rust, add_method_id)
+        .expect("projection");
+    assert!(
+        miss.is_none(),
+        "valid MethodDeclaration with no Rust row must return None, not fabricate a row"
+    );
+
+    // (3) Invalid: `MethodTemplateContract` itself is a type declaration,
+    // not a `MethodDeclaration`. Must surface
+    // `LookupKeyNotMethodDeclaration` rather than `Ok(None)` (which would
+    // conflate it with case 2).
     let non_method_decl_id = dag
         .declaration_by_name("MethodTemplateContract")
         .expect("MethodTemplateContract type")
         .id;
-    let missing =
-        method_template_contract_row(&dag, MethodTemplateTarget::Rust, non_method_decl_id)
-            .expect("projection");
-    assert!(
-        missing.is_none(),
-        "lookup for a non-MethodDeclaration target must return None, not fabricate a row"
-    );
+    let invalid =
+        method_template_contract_row(&dag, MethodTemplateTarget::Rust, non_method_decl_id);
+    match invalid {
+        Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration { decl_id }) => {
+            assert_eq!(decl_id, non_method_decl_id);
+        }
+        other => panic!(
+            "lookup with a non-MethodDeclaration key must surface LookupKeyNotMethodDeclaration, got {other:?}"
+        ),
+    }
 }
