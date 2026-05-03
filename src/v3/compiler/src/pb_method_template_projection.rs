@@ -285,48 +285,47 @@ pub fn method_template_contract_rows(
         );
     };
 
-    rows.iter()
+    let projected: Vec<MethodTemplateContractRow> = rows
+        .iter()
         .enumerate()
         .map(|(row_index, row)| project_row(dag, list_name, row_index, row))
-        .collect()
+        .collect::<Result<_, _>>()?;
+
+    // Per-target uniqueness by `dag_method` is the substrate-side claim
+    // (`method_template_contract_per_target_dag_method_unique`). Enforce it
+    // at the canonical row-list boundary so v2-retirement consumers that
+    // build their own keyed tables from the projection cannot silently
+    // observe two authorities for the same `(target, MethodRef)` pair.
+    let mut first_seen: HashMap<DeclarationId, usize> = HashMap::with_capacity(projected.len());
+    for (index, row) in projected.iter().enumerate() {
+        if let Some(prior) = first_seen.get(&row.dag_method) {
+            return Err(MethodTemplateProjectionError::DuplicateMethodTemplateRow {
+                list: list_name,
+                first_row_index: *prior,
+                duplicate_row_index: index,
+            });
+        }
+        first_seen.insert(row.dag_method, index);
+    }
+
+    Ok(projected)
 }
 
 /// Direct `(target, dag_method)` lookup helper for Gap-5 / leaf-emit
 /// consumers. Returns the row whose `dag_method` matches `dag_method`, or
 /// `None` if the per-target list does not contain a row keyed by that
 /// `MethodDeclaration`. Projection failures (typed
-/// [`MethodTemplateProjectionError`]) bubble through.
-///
-/// **Fail-closed on duplicate authorities.** Per-target uniqueness by
-/// `dag_method` is the substrate-side claim
-/// (`method_template_contract_per_target_dag_method_unique`); if two rows
-/// share a `dag_method`, the helper surfaces
-/// [`MethodTemplateProjectionError::DuplicateMethodTemplateRow`] rather
-/// than silently selecting the first match by iteration order. Gap 5 /
-/// leaf-emit consumers depend on the helper preserving "one row per
-/// `(target, MethodRef)`" as a public boundary.
+/// [`MethodTemplateProjectionError`]) — including
+/// [`MethodTemplateProjectionError::DuplicateMethodTemplateRow`], which is
+/// enforced at the canonical row-list boundary in
+/// [`method_template_contract_rows`] — bubble through.
 pub fn method_template_contract_row(
     dag: &Dag,
     target: MethodTemplateTarget,
     dag_method: DeclarationId,
 ) -> Result<Option<MethodTemplateContractRow>, MethodTemplateProjectionError> {
     let rows = method_template_contract_rows(dag, target)?;
-    let list_name = target.list_declaration_name();
-    let mut found: Option<(usize, MethodTemplateContractRow)> = None;
-    for (index, row) in rows.into_iter().enumerate() {
-        if row.dag_method != dag_method {
-            continue;
-        }
-        if let Some((first_row_index, _)) = &found {
-            return Err(MethodTemplateProjectionError::DuplicateMethodTemplateRow {
-                list: list_name,
-                first_row_index: *first_row_index,
-                duplicate_row_index: index,
-            });
-        }
-        found = Some((index, row));
-    }
-    Ok(found.map(|(_, row)| row))
+    Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
 }
 
 fn project_row(
@@ -969,25 +968,21 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_row_in_lookup_helper_surfaces_typed_error() {
+    fn duplicate_row_surfaces_typed_error_at_canonical_row_list_api() {
         // Per-target uniqueness by `dag_method` is the substrate-side claim
         // `method_template_contract_per_target_dag_method_unique`. The
-        // direct `(target, dag_method)` lookup helper must fail-closed on
-        // duplicate rows rather than silently selecting the first match by
-        // iteration order — Gap 5 / leaf-emit consumers depend on the
-        // helper preserving "one row per `(target, MethodRef)`" as a
-        // public boundary.
+        // canonical row-list API enforces this at the public boundary so
+        // every consumer (direct row-list consumer or `(target, dag_method)`
+        // lookup helper) observes the same fail-closed behavior. Gap 5 /
+        // leaf-emit consumers building their own keyed tables from the
+        // projection cannot silently observe two authorities for the same
+        // `(target, MethodRef)` pair.
         let mut dag = generated_full_bootstrap_dag();
         duplicate_row(&mut dag, "rust_method_template_contracts", 0);
 
-        let count_method_id = dag
-            .declaration_by_name("count_method")
-            .expect("count_method MethodDeclaration in bootstrap Dag")
-            .id;
-
-        let result =
-            method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id);
-        match result {
+        // Canonical row-list API surfaces the duplicate.
+        let list_result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match list_result {
             Err(MethodTemplateProjectionError::DuplicateMethodTemplateRow {
                 list,
                 first_row_index,
@@ -997,9 +992,25 @@ mod tests {
                 assert_ne!(first_row_index, duplicate_row_index);
             }
             other => panic!(
-                "expected DuplicateMethodTemplateRow for duplicate (target, dag_method), got {other:?}"
+                "expected DuplicateMethodTemplateRow at row-list API for duplicate (target, dag_method), got {other:?}"
             ),
         }
+
+        // Lookup helper inherits the fail-closed shape via the row-list
+        // API; no separate uniqueness path on the helper.
+        let count_method_id = dag
+            .declaration_by_name("count_method")
+            .expect("count_method MethodDeclaration in bootstrap Dag")
+            .id;
+        let helper_result =
+            method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id);
+        assert!(
+            matches!(
+                helper_result,
+                Err(MethodTemplateProjectionError::DuplicateMethodTemplateRow { .. })
+            ),
+            "lookup helper must inherit duplicate-row fail-closed via row-list API; got {helper_result:?}"
+        );
     }
 
     #[test]
