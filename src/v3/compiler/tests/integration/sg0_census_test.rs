@@ -211,6 +211,7 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
+    "src/v3/compiler/src/emit_rust_bin_shim.rs",
     // R1C-E + m1_3: shared `PROGRAM_FIXTURES` / `REFLECTED_FIXTURES` tables (single source of truth).
     "src/v3/compiler/src/emit_rust_roundtrip_fixtures.rs",
     "src/v3/compiler/src/infer.rs",
@@ -222,6 +223,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/lower.rs",
     "src/v3/compiler/src/pipeline_authority.rs",
     "src/v3/compiler/src/post_emit_verifier.rs",
+    // PB-1 Item 5: host mirror of `dsl/std/process.dag` `ProcessExit` for emitted bin shims.
+    "src/v3/compiler/src/process_exit.rs",
     // R1C-E (T-Emit `.dag` `TestClaim` wrappers): shared `check_*` API the host
     // `#[test]` harness and `r1c_e_emit_gates` `bin` both call. Single source of
     // truth for the emit-gate assertions; scaffold until R1 close dissolves it.
@@ -240,6 +243,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
 // workspace root. T-PB-B owns shrinking this subset toward the
 // TESTING.md §"Post-R2 shape" residual. T-PB-A reductions must not
 // rely on this list moving.
+// Slice 1 census reconciliation (2026-05-02): this list matches the current
+// tree exactly; no additions or removals were needed.
 const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/boundary/m1_3_emit_go_test.rs",
     "src/v3/compiler/tests/boundary/m1_3_emit_rust_test.rs",
@@ -998,5 +1003,9 @@ fn sg0_stage0_hand_maintained_src_covers_emit_subtree_companions() {
     assert!(
         list.contains("\"rust_target.rs\""),
         "hand_maintained_src should exclude emit/rust_target.rs from recursive freshness drift"
+    );
+    assert!(
+        list.contains("\"emit_rust_bin_shim.rs\""),
+        "hand_maintained_src should exclude emit_rust_bin_shim.rs (PB-1 shell helper) from recursive freshness drift"
     );
 }

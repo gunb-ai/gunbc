@@ -2,7 +2,9 @@
 //!
 //! R3 Lane 1 + Lane 2 + L5 harness receipts: Lane 1 L4 now exercises the wired W1
 //! `DifferentialEquals(rust_emit_output, dag_eval_output)` path (plus a mixed-lineage
-//! `NotYetImplemented` control). Lane 2 / L5 rows remain intentionally deferred where noted.
+//! `NotYetImplemented` control), and Lane 1 L7 now exercises the wired `Associativity`
+//! and `Commutativity` operational witnesses. Lane 2 / L5 rows remain intentionally deferred
+//! where noted.
 //! Matrix: `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
 
 use std::sync::OnceLock;
@@ -17,6 +19,7 @@ const L4_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag";
 const L4_SUITE: &str = "r3_verification_l4_emit_eval_skeleton_suite";
 const L4_CLAIM: &str = "r3_verification_l4_emit_eval_match_skeleton";
+const L4_FALSE_CLAIM: &str = "r3_verification_l4_emit_eval_false_branch";
 
 const L4_MIXED_FIXTURE: &str =
     include_str!("../fixtures/r3_verification_l4_emit_eval_mixed_lineage.dag");
@@ -30,6 +33,8 @@ const L7_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l7_algebraic_laws.dag";
 const L7_SUITE: &str = "r3_verification_l7_algebra_skeleton_suite";
 const L7_CLAIM: &str = "r3_verification_l7_algebraic_laws_skeleton";
+const L7_SEMIGROUP_ASSOCIATIVITY_CLAIM: &str = "r3_l7_semigroup_associativity";
+const L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM: &str = "r3_l7_commutative_monoid_commutativity";
 const L7_MATRIX_SUITE: &str = "r3_verification_l7_algebra_matrix_suite";
 const L7_MATRIX_WIRED_COUNT: usize = 8;
 const L7_MATRIX_IDENTITY_NYI_COUNT: usize = 8;
@@ -84,12 +89,27 @@ fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
     run_on_larger_stack(|| {
         let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
         let results = TestRunner::new(dag).run_suite(L4_SUITE);
-        assert_eq!(results.len(), 1);
+        assert_eq!(results.len(), 2);
         assert_eq!(results[0].claim_name, L4_CLAIM);
         assert!(
             matches!(results[0].result, ClaimResult::Pass),
             "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
             results[0].result
+        );
+    });
+}
+
+#[test]
+fn r3_verification_l4_emit_eval_false_branch_passes_w1_emit_vs_eval() {
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
+        let results = TestRunner::new(dag).run_suite(L4_SUITE);
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[1].claim_name, L4_FALSE_CLAIM);
+        assert!(
+            matches!(results[1].result, ClaimResult::Pass),
+            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (false branch signed Int -4); got {:?}",
+            results[1].result
         );
     });
 }
@@ -114,6 +134,52 @@ fn r3_verification_l4_emit_eval_mixed_lineage_stays_not_yet_implemented() {
         assert!(
             msg.contains("#1495"),
             "NYI receipt should cite #1495 rebase / ratchet coordination; got {msg}"
+        );
+    });
+}
+
+#[test]
+fn r3_verification_l7_semigroup_associativity_passes_wired_associativity() {
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
+        let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
+        let result = results
+            .iter()
+            .find(|result| result.claim_name == L7_SEMIGROUP_ASSOCIATIVITY_CLAIM)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing `{}` in {}",
+                    L7_SEMIGROUP_ASSOCIATIVITY_CLAIM, L7_FIXTURE_PATH
+                )
+            });
+        assert!(
+            matches!(result.result, ClaimResult::Pass),
+            "expected L7 Associativity wire-up to pass for `{}`; got {:?}",
+            L7_SEMIGROUP_ASSOCIATIVITY_CLAIM,
+            result.result
+        );
+    });
+}
+
+#[test]
+fn r3_verification_l7_commutative_monoid_commutativity_passes_wired_commutativity() {
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L7_FIXTURE, L7_FIXTURE_PATH, &L7_DAG);
+        let results = TestRunner::new(dag).run_suite(L7_MATRIX_SUITE);
+        let result = results
+            .iter()
+            .find(|result| result.claim_name == L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM)
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing `{}` in {}",
+                    L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM, L7_FIXTURE_PATH
+                )
+            });
+        assert!(
+            matches!(result.result, ClaimResult::Pass),
+            "expected L7 Commutativity wire-up to pass for `{}`; got {:?}",
+            L7_COMMUTATIVE_MONOID_COMMUTATIVITY_CLAIM,
+            result.result
         );
     });
 }

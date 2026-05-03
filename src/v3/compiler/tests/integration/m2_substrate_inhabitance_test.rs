@@ -1,13 +1,14 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
     join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
     merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
-    promote_to_strict, size_bound_param, tree_size_bound, type_iteration_dimension, AlgebraProfile,
-    ArrowBody, AtomPayload, CallPattern, CardinalityBound, DescentEvidence, FieldValue, Interval,
-    IntervalWidth, IterationDimension, IterationPrimitive, LoweringTarget, PositiveDescentAmount,
+    promote_to_strict, size_bound_param, sub_value_relation_to_call_pattern, tree_size_bound,
+    type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
+    CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
+    IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget, PositiveDescentAmount,
     PositiveIntervalWidth, ProportionalDivisor, ShrinkFactor, SizeBound, SubValueRelation,
     TypeConnective, ValueBody,
 };
@@ -16,6 +17,7 @@ use v3_compiler::parse_surface;
 use v3_compiler::CompileError;
 use v3_compiler::Dag;
 use v3_compiler::Diagnostic;
+use v3_compiler::SourceSpan;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
 fn with_full_bootstrap_stack<F, R>(f: F) -> R
@@ -576,6 +578,44 @@ fn caller(n: Int) -> Int = helper(n)
         non_self.evidence,
         vec![SubValueRelation::SubValueUnknown],
         "resolved non-self callable edges must fail closed instead of disappearing"
+    );
+}
+
+#[test]
+fn e_p_per_call_pattern_projects_preserved_value_to_same_argument_call() {
+    assert_eq!(
+        sub_value_relation_to_call_pattern(&SubValueRelation::PreservedValue),
+        Some(CallPattern::SameArgumentCall),
+        "gate (1) broadens CallPattern coverage by projecting preserved self-call evidence \
+         to SameArgumentCall without authoring a new lowered carrier or lens consumer"
+    );
+}
+
+#[test]
+fn e_p_per_call_pattern_preserves_induction_child_accessor_projection() {
+    let field = v3_compiler::dag::InductiveField {
+        type_name: String::from("Tree"),
+        variant_name: String::from("Node"),
+        field_name: String::from("left"),
+        shape: v3_compiler::dag::RecursionShape::DirectRecursion,
+        element_type: String::from("Tree"),
+    };
+    assert_eq!(
+        sub_value_relation_to_call_pattern(&SubValueRelation::StrictSubValue {
+            field: field.clone(),
+            factor: ShrinkFactor::UnitShrink,
+        }),
+        Some(CallPattern::ChildAccessorCall {
+            accessor: String::from("left")
+        }),
+        "StrictSubValue has an authoritative ChildAccessorCall projection in std.induction.dag"
+    );
+    assert_eq!(
+        sub_value_relation_to_call_pattern(&SubValueRelation::IteratedSubValue { field }),
+        Some(CallPattern::ChildAccessorCall {
+            accessor: String::from("left")
+        }),
+        "IteratedSubValue has the same authoritative ChildAccessorCall projection in std.induction.dag"
     );
 }
 
@@ -1666,6 +1706,108 @@ fn substrate_coproducts_match_runtime_carriers() {
     );
 }
 
+// ValueBody mirror audit: on-disk `src/v3/std/substrate.dag` `type ValueBody` vs `dag::ValueBody`
+// (Evaluator retirement / R3 debt paydown #1531). Complements `sum_variants(…, "ValueBody")` above.
+const SUBSTRATE_VALUEBODY_SOURCE: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../std/substrate.dag");
+
+fn substrate_value_body_constructors_from_source() -> Vec<String> {
+    let substrate = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/substrate.dag"));
+    let start = substrate
+        .find("type ValueBody")
+        .unwrap_or_else(|| panic!("{SUBSTRATE_VALUEBODY_SOURCE}: missing `type ValueBody`"));
+    let tail = &substrate[start..];
+    let end = tail.find("\n// Type substrate.").unwrap_or_else(|| {
+        panic!("{SUBSTRATE_VALUEBODY_SOURCE}: missing `// Type substrate.` after ValueBody")
+    });
+    let block = &tail[..end];
+    let mut out = Vec::new();
+    for line in block.lines() {
+        let t = line.trim_start();
+        if !(t.starts_with('=') || t.starts_with('|')) {
+            continue;
+        }
+        let rest = t.trim_start_matches(['=', '|']).trim_start();
+        let name = rest
+            .split(|c: char| c == '(' || c == '{' || c.is_whitespace())
+            .next()
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| {
+                panic!("{SUBSTRATE_VALUEBODY_SOURCE}: malformed ValueBody variant line: {line:?}")
+            });
+        out.push(name.to_string());
+    }
+    out
+}
+
+fn rust_value_body_variant_tag(body: &ValueBody) -> &'static str {
+    match body {
+        ValueBody::Unparsed(_) => "Unparsed",
+        ValueBody::Structural { .. } => "Structural",
+        ValueBody::Scalar(_) => "Scalar",
+        ValueBody::List(_) => "List",
+        ValueBody::Map(_) => "Map",
+    }
+}
+
+fn sample_value_body_instances_covering_all_rust_variants() -> Vec<ValueBody> {
+    let span = SourceSpan::new("m2_value_body_mirror_audit.v3", 0, 1);
+    vec![
+        ValueBody::Unparsed(span),
+        ValueBody::Structural { fields: Vec::new() },
+        ValueBody::Scalar(LiteralBits::Int(0)),
+        ValueBody::List(Vec::new()),
+        ValueBody::Map(FieldMap::from_entries(Vec::new()).expect("empty FieldMap")),
+    ]
+}
+
+#[test]
+fn substrate_value_body_sum_matches_parsed_constructors() {
+    let parsed = substrate_value_body_constructors_from_source();
+    assert_eq!(
+        parsed,
+        vec![
+            "ValueBodyUnparsed".to_string(),
+            "ValueBodyStructural".to_string(),
+            "ValueBodyMap".to_string(),
+        ],
+        "`{SUBSTRATE_VALUEBODY_SOURCE}` `type ValueBody` must expose exactly these three constructors until substrate regen adds Scalar/List; update this ratchet when the sum changes"
+    );
+}
+
+#[test]
+fn rust_value_body_runtime_variants_are_exhaustively_tagged() {
+    let tags: HashSet<&str> = sample_value_body_instances_covering_all_rust_variants()
+        .iter()
+        .map(|b| rust_value_body_variant_tag(b))
+        .collect();
+    assert_eq!(
+        tags,
+        HashSet::from(["Unparsed", "Structural", "Scalar", "List", "Map"]),
+        "dag::ValueBody gained/lost a variant — update rust_value_body_variant_tag + this test"
+    );
+}
+
+#[test]
+fn value_body_substrate_rust_mirror_audit_documents_known_gap() {
+    let substrate_constructors = substrate_value_body_constructors_from_source();
+    let rust_tags: HashSet<&str> = sample_value_body_instances_covering_all_rust_variants()
+        .iter()
+        .map(|b| rust_value_body_variant_tag(b))
+        .collect();
+
+    assert_eq!(substrate_constructors.len(), 3);
+    assert_eq!(rust_tags.len(), 5);
+
+    // Missing generation surface (Disposition #1 debt paid target / Evaluator retirement):
+    // extend `substrate.dag` + bootstrap/regen when `ValueBodyScalar` / `ValueBodyList` (and
+    // refined map carrier) are generated from the Rust mirror — see `dag.rs` ValueBody docs.
+    assert!(
+        rust_tags.contains("Scalar") && rust_tags.contains("List"),
+        "Rust carries Scalar/List top-level bodies; substrate sum must eventually reflect them"
+    );
+}
+
 #[test]
 fn cardinality_bound_projects_to_interval_parent() {
     assert_eq!(
@@ -2722,16 +2864,94 @@ fn approximate_field_axes_live_in_v3_std_authority() {
         "InfinityPolicy",
         "SignedZeroPolicy",
         "SubnormalPolicy",
+        "SpecialValues",
+        "ApproximateField",
     ] {
         let decl = dag
             .declaration_by_name(name)
             .unwrap_or_else(|| panic!("`{name}` missing from full bootstrap"));
         assert_eq!(
             decl.span.file, "src/v3/std/approximate_field.dag",
-            "`{name}` must stay in the approximate-field axes precursor; the \
-             full ApproximateField carrier and Float migration land later"
+            "`{name}` must stay in the single approximate-field authority module"
         );
     }
+}
+
+/// T-Numeric-Construction — `ApproximateField<F>` carrier introduction per 6Q audit
+/// (`SpecialValues` + `ApproximateField<F>` slice). Pins `base: Field<F>` with `F`
+/// as the carrier parameter matching `dsl/std/algebra.dag`'s `Field<T>`.
+///
+/// **Does not** assert `Real = …` — see `docs/audit/t-numeric-construction-approximate-field-real-parameter-stop.md`.
+#[test]
+fn approximate_field_carrier_record_shape_ratchets() {
+    let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let approx_id = find_named(&dag, "ApproximateField");
+    let field_template = dag
+        .declaration_by_name("Field")
+        .expect("`Field` must load from dsl/std/algebra.dag");
+
+    let mut labels = record_fields(&dag, "ApproximateField");
+    labels.sort();
+    assert_eq!(
+        labels,
+        vec![
+            "base".to_string(),
+            "precision".to_string(),
+            "rounding".to_string(),
+            "special_values".to_string(),
+            "subnormal_policy".to_string(),
+        ],
+        "`ApproximateField<F>` must carry exactly the five 6Q axes"
+    );
+
+    let approx_decl = dag.declaration(approx_id);
+    assert_eq!(
+        approx_decl.type_params.len(),
+        1,
+        "ApproximateField<F> takes exactly one carrier type parameter"
+    );
+
+    let base_ty = conj_field_by_id(&dag, approx_id, "base");
+    match &dag.declaration(base_ty).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(
+                *template, field_template.id,
+                "`base` must instantiate `Field<F>`, not an ad hoc record"
+            );
+            assert_eq!(
+                arguments.len(),
+                1,
+                "`Field<F>` carries exactly one type argument"
+            );
+            assert_eq!(
+                arguments[0].parameter, field_template.type_params[0],
+                "`Field` instantiation must fill `Field`'s formal `<T>` slot"
+            );
+            assert_eq!(
+                arguments[0].value,
+                approx_decl.type_params[0],
+                "`base: Field<F>` must pass ApproximateField's carrier `<F>` as the `Field` argument \
+                 (parameter = template slot; value = argument binding)"
+            );
+        }
+        other => panic!("`base` must lower to a Field instantiation; got {other:?}"),
+    }
+
+    let mut sv_labels = record_fields(&dag, "SpecialValues");
+    sv_labels.sort();
+    assert_eq!(
+        sv_labels,
+        vec![
+            "infinity".to_string(),
+            "nan".to_string(),
+            "signed_zero".to_string(),
+        ],
+        "`SpecialValues` aggregates nan / infinity / signed-zero policy only"
+    );
 }
 
 #[test]

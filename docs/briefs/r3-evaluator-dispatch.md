@@ -136,6 +136,12 @@ structural fold-scope decision. E6 must not duplicate `lens_apply.rs`'s
 `FieldValue` interpreter or fabricate `DimensionReport<C>` values to keep
 moving.
 
+**Post-blocker gate packet:** [`r3-pr-e6-post-blocker-gate-packet.md`](r3-pr-e6-post-blocker-gate-packet.md)
+names the next actionable sequence as E6-G0: evaluator field/call API support
+for projected `Lens<C>` fields, followed by E6-G1: `Witness` /
+`OptionalDiagnostic` / `DimensionReport` lifting over the existing carriers.
+Descent stays an explicit residual unless termination evidence is executable.
+
 **Inputs:** PR-C complete reflection, PR-E reflect/apply slice, PR-B evaluator
 execution, and `docs/design-lens-framework.md`.
 
