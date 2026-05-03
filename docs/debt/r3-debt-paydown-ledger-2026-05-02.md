@@ -74,7 +74,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Lens fold fallback + file-path semantics | 2026-04-25 | Lens application / identity carrier | Open | Require structural callable edge and fold-shape carrier. |
 | `test_runner.rs` filename / sentinel bridges | 2026-04-25 | PB / Verification | Open | Structural claim roles and declaration refs replace filename/sentinel routing. |
 | B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. |
-| Duplicate record-literal fields silently accepted | 2026-04-30 | R3 Substrate | Open | Reject duplicate labels before type-field projection. |
+| Duplicate record-literal fields silently accepted | 2026-04-30 | R3 Substrate | Retired | PR #1551 (`929bfe650`) rejects duplicate fields in expression-position named-variant constructors before type-field projection. |
 | `ValueBody` Rust/.dag mirror drift | 2026-04-30 | R3 Substrate + Verification | Open | Mirror update plus generated isomorphism / `DagShapeReport` gate. |
 | `FieldMap` duplicate-free invariant lost in `.dag` mirror | 2026-04-30 | R3 Substrate | Open | Duplicate-free map carrier or keyed table construction. |
 | Operator inference synthetic-arrow fallback | 2026-04-30 | R3 Substrate | Open | Structural algebra walk is authoritative; typed unsupported-operator diagnostic on miss. |
@@ -82,13 +82,13 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Missing diagnostics-empty bootstrap gate | 2026-04-30 | R3 Substrate + Verification | Open | `diagnostics_empty_after_bootstrap` ratchet for new bootstrap authorities. |
 | `test_runner.rs` predicate-language growth | 2026-04-30 | R3 Evaluator + PB | Partial | Bundle 4b: `.github/PULL_REQUEST_TEMPLATE.md` Evaluator-freeze section + `docs/debt/r3-bundle-4b-test-runner-freeze-receipt.md` enforce a named dissolution hook for any `test_runner.rs` edit; bespoke arms remain until dissolved per brief table. |
 | `dsl/v3/std/emit_model.dag` facade | 2026-04-30 | R3 Substrate / Grounding | Open | Ratchet facade as non-canonical; retire when v2/CI resolves canonical v3 std. |
-| Method-template consumer migration | 2026-04-30 | R3 Grounding | Open | Migrate consumers off old runtime/emit tables before adding more rows. |
+| Method-template consumer migration | 2026-04-30 | R3 Grounding | Partial | PR #1549 (`dfc61af7e`) lands Phase 1 audit (`docs/briefs/method-template-consumer-migration-audit.md`): enumerates Rust + `.dag` consumers of `*_method_templates` / `rust_method_wraps_result` / `rust_simple_method_specs`, leaf-first retirement order. Phase 2 execution PRs in flight (#1560 PB-Zero projection packet, #1561 `string_contains` registry classification). |
 | Reflection completeness over-trusted | 2026-04-30 | R3 Verification | Open | Generated conformance walker or equivalent mechanical theorem. |
 | Provider/API mirror multiplication risk | 2026-04-30 | R3 Grounding | Open | Shared service ingestion path before more provider mirrors. |
 | Hand-Rust acceptance growth | 2026-04-30 | R3 Verification + Substrate | Open | `.dag` TestClaim capability for reflected-Dag structural assertions. |
 | `Json` + `Bytes` opaque kernel decomposition | 2026-05-01 | R3 Substrate | Open / disposition pending | Decide after T-Numeric-Construction whether this becomes an R3 lane. |
 | SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix normalization; add semiring law witnesses. |
-| SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix ordering/top semantics or stop claiming `BoundedLattice`. |
+| SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Retired | PR #1543 (`3c77a60c9`) stops claiming `BoundedLattice` in `src/v3/std/induction.dag` and restates the actual meet-oriented / auxiliary-join helpers per Path B of the algebra-claim audit. |
 | Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Retired | PR #1548 (`0427f96f7`) landed the typed `BindNodeId` witness on `ArrowBody::UserDefined`; all six emitter sites consume `(*bind_id).bind(self.dag)`, guarded site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`. Local-typed-error path was rejected at design split as parallel-representation debt. |
 | `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Open | Remove unsupported rows or add full token/parse/operator chain. |
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
