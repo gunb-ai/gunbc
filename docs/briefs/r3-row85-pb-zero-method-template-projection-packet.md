@@ -77,19 +77,30 @@ verbatim from that audit:
 Per `feedback_no_textual_enforcement_bridges.md` and
 `feedback_audit_adjacent_authority_first.md`: a PB worker that picks
 any of those answers in code unilaterally would create exactly the
-parallel-authority hazard both audits flagged. **The first PR on this
-ledger row is therefore not implementation; it is a decision-routing
-PR landed under Substrate/Director ownership.** This packet routes that
+parallel-authority hazard both audits flagged. **The first PR
+gating row 85 implementation is therefore not the implementation
+itself; it is a Substrate/Director-owned decision-routing PR
+(distinct from row 85's R3-Grounding-owned implementation work
+named in `ROADMAP.md:512` and the ledger).** This packet routes that
 decision and only describes the implementation packet that becomes
 dispatchable afterward.
 
 ## 4. Decision-routing artifact (this packet's first deliverable)
 
-**Owner:** active Substrate manager (R3 Substrate is the current owner
-for row 85 and adjacent method-template substrate gaps; older audits
-cited here name "R2 Substrate Manager" because they predated R3
-routing — read those references as "active Substrate manager") +
-Director (gate).
+**Owner of this §4 decision-routing artifact:** active Substrate
+manager + Director (gate). This is a **distinct deliverable from row
+85 itself**: `ROADMAP.md:512` and
+`docs/debt/r3-debt-paydown-ledger-2026-05-02.md:85` name **R3
+Grounding** as the owner of row 85 (the consumer-migration
+implementation work). The two audits cited in §2 route the *canonical
+read-surface decision* — which precedes implementation — to Substrate
++ Director per `INVARIANTS.md` `## P1` / `## P2`. Sequencing: the
+Substrate/Director §4 artifact lands first; the row-85 Grounding
+implementation work (Gap 4 + Gap 5 + leaf-emit migrations) consumes
+that decision and remains R3 Grounding-owned per the ledger. Older
+audits cited in §2 say "R2 Substrate Manager" because they predated
+R3 routing — read those references as "active Substrate manager"; row
+85's ledger ownership is unchanged.
 **Surface:** new short note under `docs/decisions/` (or extension of
 the active Substrate manager's brief) — Substrate manager chooses.
 **Required content:**
