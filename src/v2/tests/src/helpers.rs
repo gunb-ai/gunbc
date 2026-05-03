@@ -106,14 +106,20 @@ use std::sync::OnceLock;
 /// Build module index using the parser as single authority for module names.
 /// Scans source roots recursively, tokenizes+parses each .dag file to
 /// extract the module declaration. Built once via OnceLock.
-fn build_module_index() -> HashMap<String, std::path::PathBuf> {
+fn build_module_index_for_roots(
+    roots: &[std::path::PathBuf],
+) -> HashMap<String, std::path::PathBuf> {
     let mut index = HashMap::new();
-    for root in source_roots() {
+    for root in roots {
         if root.exists() {
-            scan_dag_files(&root, &mut index);
+            scan_dag_files(root, &mut index);
         }
     }
     index
+}
+
+fn build_module_index() -> HashMap<String, std::path::PathBuf> {
+    build_module_index_for_roots(&source_roots())
 }
 
 fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
@@ -171,6 +177,30 @@ fn extract_imports(source: &str) -> Vec<String> {
 /// set of SourceFiles needed — each module loaded exactly once.
 /// Lookups use the cached module index (parser-backed, built once).
 pub fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
+    resolve_imports_transitively_with_index(entry_path, entry_content, module_index())
+}
+
+pub fn resolve_imports_transitively_with_source_roots(
+    entry_path: &str,
+    entry_content: &str,
+    source_roots: &[std::path::PathBuf],
+) -> Vec<Rc<SourceFile>> {
+    let index = build_module_index_for_roots(source_roots);
+    resolve_imports_transitively_with_index(entry_path, entry_content, &index)
+}
+
+fn display_source_path(path: &std::path::Path, ws: &std::path::Path) -> String {
+    path.strip_prefix(ws)
+        .unwrap_or(path)
+        .to_string_lossy()
+        .to_string()
+}
+
+fn resolve_imports_transitively_with_index(
+    entry_path: &str,
+    entry_content: &str,
+    module_index: &HashMap<String, std::path::PathBuf>,
+) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue: Vec<(String, String)> = Vec::new(); // (path, content)
@@ -184,13 +214,9 @@ pub fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Ve
             if seen.contains_key(&module_path) {
                 continue; // already loaded — O(1) check
             }
-            if let Some(file_path) = module_index().get(&module_path) {
+            if let Some(file_path) = module_index.get(&module_path) {
                 if let Ok(file_content) = std::fs::read_to_string(file_path) {
-                    let rel_path = file_path
-                        .strip_prefix(&ws)
-                        .unwrap_or(file_path)
-                        .to_string_lossy()
-                        .to_string();
+                    let rel_path = display_source_path(file_path, &ws);
                     let source = Rc::new(SourceFile {
                         path: rel_path.clone(),
                         content: file_content.clone(),
@@ -226,6 +252,16 @@ pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResu
 
 pub fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source);
+    v2_compiler::v2_compiler_compile::compile_sources(Rc::new(sources), target)
+}
+
+pub fn compile_dag_named_with_source_roots(
+    filename: &str,
+    source: &str,
+    target: RenderTarget,
+    source_roots: &[std::path::PathBuf],
+) -> Rc<PipelineResult> {
+    let sources = resolve_imports_transitively_with_source_roots(filename, source, source_roots);
     v2_compiler::v2_compiler_compile::compile_sources(Rc::new(sources), target)
 }
 
@@ -339,5 +375,52 @@ mod tests {
             message.contains("duplicate module declaration for duplicate.test"),
             "panic should identify duplicate module names, got: {message}"
         );
+    }
+
+    #[test]
+    fn resolver_imports_ephemeral_generated_source_root() {
+        let entry_root = temp_dir("entry-root");
+        let generated_root = temp_dir("generated-root");
+        let generated_dir = generated_root.join("generated");
+        std::fs::create_dir_all(&generated_dir).expect("create generated dir");
+        std::fs::write(
+            generated_dir.join("method_template_projection.dag"),
+            "module generated.method_template_projection\n\nfn generated_answer() -> Int { 41 }\n",
+        )
+        .expect("write generated module");
+
+        let entry_source = "\
+module ephemeral.entry
+
+import generated.method_template_projection { generated_answer }
+
+fn main() -> Int { generated_answer() }
+";
+        let result = compile_dag_named_with_source_roots(
+            "ephemeral/entry.dag",
+            entry_source,
+            RenderTarget::Dag,
+            &[entry_root.clone(), generated_root.clone()],
+        );
+
+        assert_no_diagnostics(&result);
+        let loaded_paths: Vec<_> = result
+            .newline_indices
+            .iter()
+            .map(|index| index.file.as_str())
+            .collect();
+        assert!(
+            loaded_paths
+                .iter()
+                .any(|path| path.contains("generated/method_template_projection.dag")),
+            "expected generated temp-root module to be loaded, got: {loaded_paths:?}"
+        );
+        assert!(
+            !loaded_paths.iter().any(|path| path.starts_with("src/")),
+            "ephemeral generated dependency must not be committed under src/: {loaded_paths:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(entry_root);
+        let _ = std::fs::remove_dir_all(generated_root);
     }
 }
