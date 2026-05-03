@@ -278,8 +278,14 @@ S4. **Source-root / `collect_dag_sources` shortcut tempts.** Any
 S5. **`v3.std.*` import bridge tempts.** Hard STOP. Architectural
     boundary violation; non-option in the STOP matrix.
 S6. **Diagnostics-empty bootstrap gate (ledger row 82) still open at
-    dispatch time.** Gap-4 cannot land green; Substrate must close 82
-    first, or §4 must explicitly accept the temporarily-open state.
+    dispatch time.** Hard STOP, matching A5. Gap-4 cannot land green
+    until Substrate closes ledger row 82
+    (`docs/debt/r3-debt-paydown-ledger-2026-05-02.md:81-82`). No
+    implicit acceptance path: any deviation requires a named,
+    bounded `INVARIANTS.md` `## P5` responsible-bridge artifact
+    (named trigger, scoped surface, ratchet, closure condition)
+    authored by Substrate + Director — not a §4 hand-wave. Without
+    that explicit P5 bridge, S6 STOP stands and dispatch waits.
 S7. **Phase 2 emit retirement creep.** Either worker is asked to delete
     `dsl/extdeps/.../emit.dag` legacy authorities or migrate
     `src/v2/05_emit*.dag` leaves. That work is later PRs per the
