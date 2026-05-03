@@ -348,9 +348,11 @@ pub fn method_template_contract_row(
 ) -> Result<Option<MethodTemplateContractRow>, MethodTemplateProjectionError> {
     let method_declaration_id = method_declaration_carrier_id(dag)?;
     if !is_method_declaration_data_binding(dag, dag_method, method_declaration_id) {
-        return Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
-            decl_id: dag_method,
-        });
+        return Err(
+            MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+                decl_id: dag_method,
+            },
+        );
     }
     let rows = method_template_contract_rows(dag, target)?;
     Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
@@ -400,10 +402,8 @@ fn is_method_declaration_data_binding(
         &referenced.connective,
         TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
     );
-    let has_structural_value_body = matches!(
-        &referenced.value_body,
-        Some(ValueBody::Structural { .. })
-    );
+    let has_structural_value_body =
+        matches!(&referenced.value_body, Some(ValueBody::Structural { .. }));
     template_matches && has_structural_value_body
 }
 
