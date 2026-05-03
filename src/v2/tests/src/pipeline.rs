@@ -6391,6 +6391,36 @@ type RealEnum
 }
 
 #[test]
+fn coproduct_wire_contract_string_variant_requires_unit_variants() {
+    let source = r#"module fielded_string_variant_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data string_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "fielded_string_variant_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(
+        &result,
+        "src/fielded_string_variant_coproduct_wire_contract.rs",
+    );
+    assert!(
+        content.contains("compile_error!")
+            && content.contains("CoproductWireContract StringVariant requires a nullary-only coproduct: RealEnum"),
+        "fielded coproducts must not accept plain StringVariant wire contracts; got:\n{content}"
+    );
+}
+
+#[test]
 fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
     let source = r#"module no_wire_contract_unit_enum
 

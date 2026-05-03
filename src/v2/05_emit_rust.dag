@@ -520,6 +520,10 @@ fn coproduct_wire_contract_encoding(contract_item: Node, source_indices: Map<Str
   }
 }
 
+fn variant_encoding_is_string_variant(encoding: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: encoding) == "StringVariant"
+}
+
 fn coproduct_wire_contract_targets(contract_item: Node, coproduct_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
   match contract_item.body {
     Some { value: body } =>
@@ -592,7 +596,7 @@ fn emit_coproduct_wire_contract_validations(module_items: List<Node>, local_copr
     |> join(separator: "\n")
 }
 
-fn resolve_local_coproduct_wire_policy(coproduct_name: String, module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde? {
+fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants: Bool, module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde? {
   let contracts = module_items
     |> filter(item => is_coproduct_wire_contract_row(item: item, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, coproduct_name: coproduct_name, source_indices: source_indices))
   if contracts |> count == 0 {
@@ -602,7 +606,11 @@ fn resolve_local_coproduct_wire_policy(coproduct_name: String, module_items: Lis
       Some { value: contract } =>
         match coproduct_wire_contract_encoding(contract_item: contract, source_indices: source_indices) {
           Some { value: encoding } =>
-            Some { value: resolve_wire_serde_policy_from_encoding_node(ve: encoding, source_indices: source_indices) }
+            if variant_encoding_is_string_variant(encoding: encoding, source_indices: source_indices) && !all_unit_variants {
+              Some { value: rust_serde_error_policy(message: concat("CoproductWireContract StringVariant requires a nullary-only coproduct: ", coproduct_name)) }
+            } else {
+              Some { value: resolve_wire_serde_policy_from_encoding_node(ve: encoding, source_indices: source_indices) }
+            }
           None =>
             Some { value: rust_serde_error_policy(message: concat("CoproductWireContract missing encoding for ", coproduct_name)) }
         }
@@ -1472,7 +1480,7 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
     let all_unit_variants = item.children |> all(child => child.children |> count == 0)
     // Resolve serde policy in order: coproduct-local row, module fallback for
     // nullary string enums, then the existing tagged-object default.
-    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, module_items: module_items, source_indices: env.source_indices) {
+    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, source_indices: env.source_indices) {
       Some { value: local_policy } => local_policy
       None =>
         if all_unit_variants {
