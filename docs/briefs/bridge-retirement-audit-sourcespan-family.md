@@ -63,7 +63,7 @@ Do not budget a retirement row for the old path suffix.
 | `src/v3/std/bridge_ledger.dag` row | Relation to this family |
 | --- | --- |
 | `bridge_source_span_file_participation_retired` | **Primary** umbrella — this audit enumerates the open participation sites feeding that row’s prerequisites. |
-| `bridge_include_str_side_channels_retired` | **Overlap** — `include_str!` entries that **actually** `compile_to_dag` embedded bytes into a parallel `Dag` with real `SourceSpan.file` values (`test_runner.rs` canonical lenses, `pipeline_authority.rs` commentary, regen hosts). **Excludes** §Out-of-family embeds such as `INFER_HELPERS_SOURCE` (substring census only; no `compile_to_dag`). |
+| `bridge_include_str_side_channels_retired` | **Overlap** — Live **`compile_to_dag`** `include_str!` **parallel-`Dag`** bytes today: `test_runner.rs` canonical `R1_CANONICAL_*` lens embeds; PB-1-e regen hosts (`bootstrap-regen-fresh` / `bootstrap_regen_fresh.rs`). **`pipeline_authority.rs`** is tied to the **same ledger row** because PR #1171 disposition **rejects** `include_str!("../pipeline.dag")` and runtime `read_to_string` for compile-body drift checks; the module **only** reads **`PipelineStageBinding`** structurally (`ordered_pipeline_stages`) — it is **not** an active `include_str!` → `compile_to_dag` side channel. **Excludes** §Out-of-family embeds such as `INFER_HELPERS_SOURCE` (substring census only; no `compile_to_dag`). |
 | `bridge_canonical_lens_name_patching_residual` | **Sibling** — co-retirement with row **#13** (`R1_CANONICAL_*` bytes + lens-name dispatch). `INFER_HELPERS_SOURCE` is **not** in this sibling lane; route it under `bridge_exact_string_patching_residual_retired` / §Out of family. |
 
 ## Enumeration — per-entry shape
