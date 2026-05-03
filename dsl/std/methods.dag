@@ -36,8 +36,8 @@
 //     (rendered as `{arg} in {recv}` / `strings.Contains({recv}, {arg})`)
 //     is the first such entry. Dissolution trigger: when v2 emit
 //     migrates to algebra-profile-keyed method dispatch (PB projection
-//     scope, #1549 audit Recommendations §3-§4 / R3 \"Method-template
-//     consumer migration\" debt row), legacy alias bindings collapse
+//     scope, #1549 audit Recommendations §3-§4 / R3 Method-template
+//     consumer migration debt row), legacy alias bindings collapse
 //     back into algebra-typed `contains` dispatch and these entries
 //     can be deleted alongside the per-target legacy emit maps.
 //   - Flat name-only namespace (Director-locked option A on Q2):
