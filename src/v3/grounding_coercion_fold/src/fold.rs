@@ -8,9 +8,10 @@
 //! [`EmissionDiagnostic::FoldNotImplemented`](crate::diagnostic::EmissionDiagnostic::FoldNotImplemented).
 //!
 //! **Call-site (`ScratchIntExamples`):** counts declared `TargetIntegerTypeInhabitance` rows in `dag`
-//! (**INVARIANTS.md E-6** witness) before applying scratch outcomes; payload interpretation stays
-//! deferred until Slice C. Still fixes [`BindingId`](v3_grounding_lifetime::BindingId)`(0)` only;
-//! production wiring must not treat returned map keys as evidence of real program bindings (#1133 / #1286).
+//! (**INVARIANTS.md E-6** witness) before applying scratch outcomes. Examples 2 and 8 now
+//! select by full declared integer-row facts; the scratch driver still fixes
+//! [`BindingId`](v3_grounding_lifetime::BindingId)`(0)` only because real program-bound
+//! and algebra-intent extraction is still Slice C scope (#1133 / #1286).
 
 use std::collections::BTreeMap;
 
@@ -25,9 +26,8 @@ use crate::types::{IntScratchExample, LanguageSpecProjection, TargetInhabitance}
 
 /// Same-PR consumer for `TargetIntegerTypeInhabitance` spec rows (`emit_model.dag`, **E-6**).
 ///
-/// Counts declarations meta-tagged with the template; emitters still ignore payloads until
-/// Slice C. Coercion-Fold requires this count before scratch examples run so deleting or
-/// failing to lower inhabitance `data` breaks CI.
+/// Counts declarations meta-tagged with the template. Coercion-Fold requires this count
+/// before scratch examples run so deleting or failing to lower inhabitance `data` breaks CI.
 const MIN_TARGET_INTEGER_TYPE_INHABITANCE_ROWS: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -59,7 +59,17 @@ enum ScratchTargetLanguage {
 
 struct TargetIntegerTypeInhabitanceRow {
     language: DeclarationId,
+    kernel_integer: DeclarationId,
+    algebra: DeclarationId,
     bound: TargetIntegerInhabitanceBoundView,
+    type_realization: DeclarationId,
+}
+
+struct ProgramIntegerIntent {
+    target_language: DeclarationId,
+    kernel_integer: DeclarationId,
+    algebra: DeclarationId,
+    bound: BoundDeclarationView,
     type_realization: DeclarationId,
 }
 
@@ -290,30 +300,18 @@ fn parse_target_integer_type_inhabitance_row(
     };
     Some(TargetIntegerTypeInhabitanceRow {
         language: reference_field(fields, "language")?,
+        kernel_integer: reference_field(fields, "kernel_integer")?,
+        algebra: reference_field(fields, "algebra")?,
         bound: parse_target_integer_inhabitance_bound(dag, field(fields, "bound")?)?,
         type_realization: reference_field(fields, "type_realization")?,
     })
 }
 
 fn target_language_id(dag: &Dag, target: ScratchTargetLanguage) -> Option<DeclarationId> {
-    let name = match target {
-        ScratchTargetLanguage::Rust => "rust_language",
-        ScratchTargetLanguage::Python => "python_language",
-        ScratchTargetLanguage::Go => "go_language",
-    };
-    Some(dag.declaration_by_name(name)?.id)
-}
-
-fn target_inhabitance_from_type_realization(
-    dag: &Dag,
-    realization: DeclarationId,
-) -> Option<TargetInhabitance> {
-    match dag.declaration(realization).name.as_deref()? {
-        "rust_i32" => Some(TargetInhabitance::RustI32),
-        "python_int" => Some(TargetInhabitance::PythonInt),
-        "go_int32" => Some(TargetInhabitance::GoInt32),
-        "rust_u32" => Some(TargetInhabitance::RustU32),
-        _ => None,
+    match target {
+        ScratchTargetLanguage::Rust => dag.rust_language_spec(),
+        ScratchTargetLanguage::Python => dag.python_language_spec(),
+        ScratchTargetLanguage::Go => dag.go_language_spec(),
     }
 }
 
@@ -322,14 +320,17 @@ fn select_example_8_declared_inhabitance(
     target: ScratchTargetLanguage,
     program_bound: &BoundDeclarationView,
 ) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    let intent = example_8_program_intent(dag, target, program_bound.clone())?;
+    select_declared_inhabitance(dag, &intent)
+}
+
+fn select_declared_inhabitance(
+    dag: &Dag,
+    intent: &ProgramIntegerIntent,
+) -> Result<TargetInhabitance, EmissionDiagnostic> {
     let Some(meta) = dag.declaration_by_name("TargetIntegerTypeInhabitance") else {
         return Err(EmissionDiagnostic::UnderRefined {
             unspecified_axis: "declared_TargetIntegerTypeInhabitance_rows".to_string(),
-        });
-    };
-    let Some(language) = target_language_id(dag, target) else {
-        return Err(EmissionDiagnostic::UnderRefined {
-            unspecified_axis: "target_language".to_string(),
         });
     };
 
@@ -338,12 +339,15 @@ fn select_example_8_declared_inhabitance(
         .iter()
         .filter(|decl| decl.meta_tag == Some(meta.id))
         .filter_map(|decl| parse_target_integer_type_inhabitance_row(dag, decl))
-        .filter(|row| row.language == language)
-        .filter(|row| match_bound(program_bound, &row.bound) == BoundMatch::Matches)
+        .filter(|row| row.language == intent.target_language)
+        .filter(|row| row.kernel_integer == intent.kernel_integer)
+        .filter(|row| row.algebra == intent.algebra)
+        .filter(|row| row.type_realization == intent.type_realization)
+        .filter(|row| match_bound(&intent.bound, &row.bound) == BoundMatch::Matches)
         .collect();
     let exact_matches: Vec<&TargetIntegerTypeInhabitanceRow> = matches
         .iter()
-        .filter(|row| exact_static_bound_match(program_bound, &row.bound))
+        .filter(|row| exact_static_bound_match(&intent.bound, &row.bound))
         .collect();
 
     let selected = match (exact_matches.as_slice(), matches.as_slice()) {
@@ -364,14 +368,93 @@ fn select_example_8_declared_inhabitance(
     })
 }
 
+fn target_inhabitance_from_type_realization(
+    dag: &Dag,
+    realization: DeclarationId,
+) -> Option<TargetInhabitance> {
+    match dag.declaration(realization).name.as_deref()? {
+        "rust_i32" => Some(TargetInhabitance::RustI32),
+        "python_int" => Some(TargetInhabitance::PythonInt),
+        "go_int32" => Some(TargetInhabitance::GoInt32),
+        "rust_u32" => Some(TargetInhabitance::RustU32),
+        _ => None,
+    }
+}
+
+fn declaration_id_by_name(
+    dag: &Dag,
+    name: &str,
+    axis: &str,
+) -> Result<DeclarationId, EmissionDiagnostic> {
+    dag.declaration_by_name(name)
+        .map(|decl| decl.id)
+        .ok_or_else(|| EmissionDiagnostic::UnderRefined {
+            unspecified_axis: axis.to_string(),
+        })
+}
+
+fn example_8_program_intent(
+    dag: &Dag,
+    target: ScratchTargetLanguage,
+    bound: BoundDeclarationView,
+) -> Result<ProgramIntegerIntent, EmissionDiagnostic> {
+    let target_language =
+        target_language_id(dag, target).ok_or_else(|| EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_language".to_string(),
+        })?;
+    let (kernel_integer_name, algebra_name, type_realization_name) = match target {
+        ScratchTargetLanguage::Rust => ("Int32", "Int32", "rust_i32"),
+        ScratchTargetLanguage::Python => ("Int", "Int", "python_int"),
+        ScratchTargetLanguage::Go => ("Int32", "Int32", "go_int32"),
+    };
+    Ok(ProgramIntegerIntent {
+        target_language,
+        kernel_integer: declaration_id_by_name(dag, kernel_integer_name, "kernel_integer")?,
+        algebra: declaration_id_by_name(dag, algebra_name, "algebra")?,
+        bound,
+        type_realization: declaration_id_by_name(
+            dag,
+            type_realization_name,
+            "target_integer_type_realization",
+        )?,
+    })
+}
+
 fn fold_design_doc_example_1_unrefined_int() -> Result<TargetInhabitance, EmissionDiagnostic> {
     Err(EmissionDiagnostic::UnderRefined {
         unspecified_axis: "bound".to_string(),
     })
 }
 
-fn fold_design_doc_example_2_semiring_u32() -> Result<TargetInhabitance, EmissionDiagnostic> {
-    Ok(TargetInhabitance::RustU32)
+fn design_doc_example_2_program_bound() -> BoundDeclarationView {
+    BoundDeclarationView::StaticBound(Interval::BoundedInterval {
+        lower: 0,
+        width: IntervalWidth::PositiveWidth(PositiveIntervalWidth::UnitCount {
+            units: 4_294_967_295,
+        }),
+    })
+}
+
+fn fold_design_doc_example_2_semiring_u32(
+    dag: &Dag,
+) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    let target_language =
+        dag.rust_language_spec()
+            .ok_or_else(|| EmissionDiagnostic::UnderRefined {
+                unspecified_axis: "target_language".to_string(),
+            })?;
+    let intent = ProgramIntegerIntent {
+        target_language,
+        kernel_integer: declaration_id_by_name(dag, "UInt32", "kernel_integer")?,
+        algebra: declaration_id_by_name(dag, "UInt32", "algebra")?,
+        bound: design_doc_example_2_program_bound(),
+        type_realization: declaration_id_by_name(
+            dag,
+            "rust_u32",
+            "target_integer_type_realization",
+        )?,
+    };
+    select_declared_inhabitance(dag, &intent)
 }
 
 fn fold_design_doc_example_5_ambiguous_algebra() -> Result<TargetInhabitance, EmissionDiagnostic> {
@@ -431,6 +514,44 @@ pub(crate) fn fold_design_doc_example_8_for_testing(
     )
 }
 
+#[cfg(test)]
+pub(crate) fn select_program_integer_intent_for_testing(
+    dag: &Dag,
+    target: IntScratchExample,
+    kernel_integer_name: &str,
+    algebra_name: &str,
+    type_realization_name: &str,
+    program_bound: Interval<i64>,
+) -> Result<TargetInhabitance, EmissionDiagnostic> {
+    let target = match target {
+        IntScratchExample::DesignDocExample8Rust => ScratchTargetLanguage::Rust,
+        IntScratchExample::DesignDocExample8Python => ScratchTargetLanguage::Python,
+        IntScratchExample::DesignDocExample8Go => ScratchTargetLanguage::Go,
+        IntScratchExample::DesignDocExample2BoundedU32 => ScratchTargetLanguage::Rust,
+        _ => {
+            return Err(EmissionDiagnostic::UnderRefined {
+                unspecified_axis: "integer_intent_target".to_string(),
+            });
+        }
+    };
+    let target_language =
+        target_language_id(dag, target).ok_or_else(|| EmissionDiagnostic::UnderRefined {
+            unspecified_axis: "target_language".to_string(),
+        })?;
+    let intent = ProgramIntegerIntent {
+        target_language,
+        kernel_integer: declaration_id_by_name(dag, kernel_integer_name, "kernel_integer")?,
+        algebra: declaration_id_by_name(dag, algebra_name, "algebra")?,
+        bound: BoundDeclarationView::StaticBound(program_bound),
+        type_realization: declaration_id_by_name(
+            dag,
+            type_realization_name,
+            "target_integer_type_realization",
+        )?,
+    };
+    select_declared_inhabitance(dag, &intent)
+}
+
 /// Structural fold: program + lifetime analysis + LanguageSpec projection →
 /// per-binding target inhabitances, **or** a single typed diagnostic.
 ///
@@ -439,10 +560,10 @@ pub(crate) fn fold_design_doc_example_8_for_testing(
 /// - [`LanguageSpecProjection::ScratchIntExamples`](crate::types::LanguageSpecProjection::ScratchIntExamples): runs
 ///   design-doc Int Examples 1, 2, 5, 6, and 8 for a single synthetic binding [`BindingId`](v3_grounding_lifetime::BindingId)`(0)`
 ///   after verifying the bootstrap `dag` carries at least eight `TargetIntegerTypeInhabitance` meta-tagged rows (**E-6**).
-///   **Checkpoint:** on the scratch path, `lifetime_facts` must be
-///   empty in debug builds until this body reads real facts. Do not widen this arm to multiple
-///   bindings or real program facts without landing the declared projection / dissolution path
-///   first (#1133 / #1286).
+///   Examples 2 and 8 consume those rows structurally; Examples 1, 5, and 6 remain
+///   blocked on program-bound/algebra-intent extraction. **Checkpoint:** on the scratch path,
+///   `lifetime_facts` must be empty in debug builds. Do not widen this arm to multiple
+///   bindings without landing the declared projection / dissolution path first (#1133 / #1286).
 pub fn fold_program_to_target(
     dag: &Dag,
     lifetime_facts: &LifetimeAnalysisReport,
@@ -470,7 +591,7 @@ pub fn fold_program_to_target(
                     fold_design_doc_example_1_unrefined_int()?
                 }
                 IntScratchExample::DesignDocExample2BoundedU32 => {
-                    fold_design_doc_example_2_semiring_u32()?
+                    fold_design_doc_example_2_semiring_u32(dag)?
                 }
                 IntScratchExample::DesignDocExample5AmbiguousAlgebra => {
                     fold_design_doc_example_5_ambiguous_algebra()?
