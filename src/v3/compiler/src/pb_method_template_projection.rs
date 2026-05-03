@@ -346,28 +346,65 @@ pub fn method_template_contract_row(
     target: MethodTemplateTarget,
     dag_method: DeclarationId,
 ) -> Result<Option<MethodTemplateContractRow>, MethodTemplateProjectionError> {
-    let method_declaration_id = dag
-        .declaration_by_name("MethodDeclaration")
-        .ok_or(MethodTemplateProjectionError::MethodDeclarationCarrierMissing)?
-        .id;
-    let referenced = dag.declaration(dag_method);
-    // Same dual check as `project_dag_method`: connective must instantiate
-    // `MethodDeclaration` AND a `value_body` must be present. Without the
-    // value-body guard, a type alias like `type Foo = MethodDeclaration`
-    // would pass the connective test alone.
-    let is_method_declaration_data = matches!(
-        &referenced.connective,
-        TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
-    ) && referenced.value_body.is_some();
-    if !is_method_declaration_data {
-        return Err(
-            MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
-                decl_id: dag_method,
-            },
-        );
+    let method_declaration_id = method_declaration_carrier_id(dag)?;
+    if !is_method_declaration_data_binding(dag, dag_method, method_declaration_id) {
+        return Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+            decl_id: dag_method,
+        });
     }
     let rows = method_template_contract_rows(dag, target)?;
     Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
+}
+
+/// Locate the `MethodDeclaration` carrier declaration in the bootstrap
+/// `Dag` once. Surfaces [`MethodTemplateProjectionError::MethodDeclarationCarrierMissing`]
+/// when the carrier is absent rather than panicking.
+fn method_declaration_carrier_id(
+    dag: &Dag,
+) -> Result<DeclarationId, MethodTemplateProjectionError> {
+    Ok(dag
+        .declaration_by_name("MethodDeclaration")
+        .ok_or(MethodTemplateProjectionError::MethodDeclarationCarrierMissing)?
+        .id)
+}
+
+/// Test whether `decl_id` references a `MethodDeclaration` *data binding*
+/// — the substrate-side identity `src/v3/std/methods.dag` requires
+/// (`data <name>_method: MethodDeclaration = { name: "..." }`).
+///
+/// Three things must hold simultaneously:
+///
+///  1. `connective` is `TypeConnective::Instantiation { template, .. }`
+///     where `template == method_declaration_id`. This rules out type
+///     declarations (`Conj` / `Disj` / etc.) that are not instantiations
+///     of `MethodDeclaration`.
+///  2. `template` matches `MethodDeclaration` specifically. (Other
+///     instantiations point at unrelated targets.)
+///  3. `value_body` is `Some(ValueBody::Structural { .. })`. Without
+///     this, a type alias like `type Foo = MethodDeclaration` would
+///     pass (1) + (2) — `Instantiation { template = MethodDeclaration }`
+///     with **no value body**. The substrate-side contract is "data
+///     binding," not "any declaration whose connective resolves to
+///     `MethodDeclaration`."
+///
+/// Both `project_dag_method` (per-row check) and
+/// `method_template_contract_row` (lookup helper) consume this single
+/// helper so the data-binding identity is factored once.
+fn is_method_declaration_data_binding(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    method_declaration_id: DeclarationId,
+) -> bool {
+    let referenced = dag.declaration(decl_id);
+    let template_matches = matches!(
+        &referenced.connective,
+        TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
+    );
+    let has_structural_value_body = matches!(
+        &referenced.value_body,
+        Some(ValueBody::Structural { .. })
+    );
+    template_matches && has_structural_value_body
 }
 
 fn project_row(
@@ -528,24 +565,8 @@ fn project_dag_method(
     // so the projection enforces fail-closed at the boundary that
     // `decl` references a `MethodDeclaration`-instantiating data binding.
     // Pattern mirrors `method_registry_test.rs::method_registry_covers_*`.
-    let method_declaration_id = dag
-        .declaration_by_name("MethodDeclaration")
-        .ok_or(MethodTemplateProjectionError::MethodDeclarationCarrierMissing)?
-        .id;
-    let referenced = dag.declaration(decl_id);
-    // `src/v3/std/methods.dag` requires a `data <name>_method: MethodDeclaration`
-    // data binding, not just any declaration whose connective resolves to
-    // `MethodDeclaration`. Require both:
-    //   (a) `connective` is `Instantiation { template = MethodDeclaration }`
-    //       — rules out type aliases pointing at unrelated targets, and
-    //   (b) `value_body.is_some()` — rules out a type alias of the form
-    //       `type Foo = MethodDeclaration` (which lowers with an
-    //       `Instantiation` connective but no value body).
-    let is_method_declaration_data = matches!(
-        &referenced.connective,
-        TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
-    ) && referenced.value_body.is_some();
-    if !is_method_declaration_data {
+    let method_declaration_id = method_declaration_carrier_id(dag)?;
+    if !is_method_declaration_data_binding(dag, decl_id, method_declaration_id) {
         return Err(
             MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
                 list,
