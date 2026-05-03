@@ -29,8 +29,8 @@ use crate::dag::{
     BindNodeId, BranchEmitParticipation, BranchNode, BranchPattern, CardinalityBound, Cluster, Dag,
     Declaration, DeclarationId, Field, FieldMap, IntraClusterCall, LiteralBits, LoopBound,
     LoopNode, MemberDescent, NodeId, NominalOpacity, NonEmptyList, NonSingletonList, Path,
-    PayloadBinding, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective, ValueNode,
+    PayloadBinding, PhantomParameter, PortId, TemplateArgument, TransformNode, TransformTarget,
+    TypeConnective, ValueNode,
 };
 use crate::diagnostics::{
     declaration_display_name, witness_correction_for_decl, Diagnostic, SourceSpan,
@@ -7714,6 +7714,7 @@ mod tests {
     use crate::dag::Declaration;
     use crate::dag::Field;
     use crate::dag::LiteralBits;
+    use crate::dag::PortState;
     use crate::diagnostics::positive_interval_width_unit_count_requires_nonnegative_units_literal_message;
     use crate::diagnostics::{Diagnostic, SourceSpan};
     use std::collections::HashMap;
