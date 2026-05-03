@@ -108,11 +108,25 @@ fn rust_count_template() -> Map<String, String> { rust_method_template_emit }
         .iter()
         .map(|index| index.file.as_str())
         .collect();
+
+    // Build the absolute path the resolver should report for the
+    // generated module. v2's `display_source_path` strips the workspace
+    // root prefix; for files outside the workspace (i.e., a temp dir)
+    // it falls through to `to_string_lossy()` of the absolute path.
+    // Asserting equality against this exact path closes the suffix-
+    // aliasing gap an unanchored `contains()` check would leave open
+    // (an absolute committed path containing the same relative segment
+    // would otherwise slip through).
+    let expected_generated_path = generated_root
+        .join("generated/method_template_projection.dag")
+        .to_string_lossy()
+        .to_string();
     assert!(
         loaded_paths
             .iter()
-            .any(|path| path.contains("generated/method_template_projection.dag")),
-        "expected the ephemeral generated module to be loaded; got: {loaded_paths:?}"
+            .any(|path| *path == expected_generated_path.as_str()),
+        "expected the ephemeral generated module to load at exactly \
+         {expected_generated_path}; got: {loaded_paths:?}"
     );
     // The "do not commit" invariant: the generated file must be loaded
     // from the temp source-root, not from anywhere under `src/` or `dsl/`.
