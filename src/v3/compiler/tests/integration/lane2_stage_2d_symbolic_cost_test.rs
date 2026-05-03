@@ -58,6 +58,16 @@ fn mentions_linear(cost: &SymbolicCost) -> bool {
     }
 }
 
+fn mentions_log(cost: &SymbolicCost) -> bool {
+    match cost {
+        SymbolicCost::LogCost { .. } => true,
+        SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
+            terms.iter().any(|term| mentions_log(term.as_ref()))
+        }
+        _ => false,
+    }
+}
+
 // Two real PortIds from the bootstrap Dag — just need distinct
 // handles for the structural-equality checks the composition tests
 // exercise. `Dag::new()` ports are stable across runs.
@@ -353,6 +363,24 @@ budgeted_test! {
             "recursive fn with O(1) body should normalize Linear * 1 to Linear, got {cost:?}"
         );
     }
+}
+
+#[test]
+fn iterate_keeps_non_identity_body_cost_in_product() {
+    let (bound_port, body_port) = two_distinct_ports();
+    let cost = iterate(linear(bound_port), log_cost(body_port));
+    let SymbolicCost::ProductCost { _0: terms } = &cost else {
+        panic!("Linear-bound loop with non-identity body should stay ProductCost, got {cost:?}");
+    };
+    assert_eq!(
+        terms.iter().count(),
+        2,
+        "iterate should compose bound and body costs exactly once"
+    );
+    assert!(
+        mentions_linear(&cost) && mentions_log(&cost),
+        "iterate must retain both the loop-bound and body-cost terms, got {cost:?}"
+    );
 }
 
 budgeted_test! {
