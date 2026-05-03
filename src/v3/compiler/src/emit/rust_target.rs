@@ -47,9 +47,10 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     algebra_field_for_operator_shared, dag_needs_div_error_prelude,
-    div_prelude_reserved_name_collision, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    div_prelude_reserved_name_collision, fold_method_contract::require_fold_method_template_contract,
+    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
+    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -1462,6 +1463,12 @@ fn parse_collection_ops(
 ) -> Result<CollectionOpsBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
     let fold_contract = require_field_decl_ref(fields, "fold_contract", declaration)?;
+    require_fold_method_template_contract(dag, fold_contract).map_err(|detail| {
+        EmitError::MalformedTargetSyntax {
+            declaration: fold_contract,
+            detail,
+        }
+    })?;
     let fold = method_contract_single_emit_template_string(dag, fold_contract)?;
     Ok(CollectionOpsBinding {
         concat: syntax_field_string(fields, "concat", declaration)?,
