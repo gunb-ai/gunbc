@@ -1470,7 +1470,7 @@ pub(crate) fn dag_uses_arithmetic_div(
             TypeConnective::Arrow {
                 body: ArrowBody::UserDefined(body),
                 ..
-            } => port_depends_on_arithmetic_div(dag, behavior_result_port(dag.node(*body))),
+            } => port_depends_on_arithmetic_div(dag, (*body).bind(dag).value),
             _ => false,
         })
 }
@@ -2159,11 +2159,7 @@ impl<'a> Ctx<'a> {
                 "external or unparsed callable bodies are not yet supported".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         if inputs.len() != param_bindings.len() {
             return Err(EmitError::UnsupportedBehavior(
                 "callable parameter count does not match requested bindings".to_string(),
@@ -2207,11 +2203,7 @@ impl<'a> Ctx<'a> {
                 "external Arrow bodies are not yet supported in function emission".to_string(),
             ));
         };
-        let bind = self
-            .dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("UserDefined arrow body must point at a Bind");
+        let bind = (*bind_id).bind(self.dag);
         let mut locals = RenderLocals::default();
         let params = bind
             .params
