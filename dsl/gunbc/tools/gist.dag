@@ -18,7 +18,10 @@ import std.types { CommitSha, Url }
 // Guess a language tag from a file extension for code block syntax highlighting.
 fn lang_for_path(path: String) -> String {
   let parts = split(path, ".")
-  let ext = last(parts) ?? ""
+  let ext = match last(parts) {
+    Some { value: value } => value
+    None => ""
+  }
   match ext {
     "rs"   => "rust"
     "dag"  => "dag"
