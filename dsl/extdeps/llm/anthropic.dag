@@ -143,6 +143,10 @@ type AnthropicMessages200Body {
   usage: AnthropicMessages200Usage
 }
 
+data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|missing:container|AnthropicMessages200TextBlock|missing:thinking|missing:tool_use|missing:redacted_thinking|missing:web_search|missing:server_tool_use|missing:citations|AnthropicMessages200Usage|missing:cache_creation_input_tokens|missing:cache_read_input_tokens|missing:service_tier"
+]
+
 // Request wire: Messages API expects string `role` + flat `content[]` objects
 // keyed by `type` (https://docs.anthropic.com/en/api/messages). `type` is not
 // caller-authored model state on `TextBlock`; the future
