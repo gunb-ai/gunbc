@@ -14,7 +14,7 @@ use std::process::{Command, Stdio};
 
 use v3_compiler::dag::{
     dominates, iterate, max_path, normalize, sequential, Behavior, Dag, DegreeAtLeastTwo,
-    NonSingletonList, PortId, SizeVariable, SymbolicCost, TypeConnective,
+    NonSingletonList, PortId, SizeVariable, SymbolicCost, TransformTarget, TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
@@ -53,6 +53,16 @@ fn mentions_linear(cost: &SymbolicCost) -> bool {
         SymbolicCost::LinearCost { .. } => true,
         SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
             terms.iter().any(|term| mentions_linear(term.as_ref()))
+        }
+        _ => false,
+    }
+}
+
+fn mentions_log(cost: &SymbolicCost) -> bool {
+    match cost {
+        SymbolicCost::LogCost { .. } => true,
+        SymbolicCost::SumCost { _0: terms } | SymbolicCost::ProductCost { _0: terms } => {
+            terms.iter().any(|term| mentions_log(term.as_ref()))
         }
         _ => false,
     }
@@ -189,6 +199,87 @@ fn degree_at_least_two_is_structural_in_bootstrap_substrate() {
     );
 }
 
+#[test]
+fn symbolic_cost_semiring_inhabitance_is_bootstrap_substrate_fact() {
+    let dag = Dag::new();
+    let semiring = dag
+        .declaration_by_name("Semiring")
+        .expect("Semiring should bootstrap from std/algebra.dag")
+        .id;
+    let symbolic_cost = dag
+        .declaration_by_name("SymbolicCost")
+        .expect("SymbolicCost should bootstrap from v3 std algebra")
+        .clone();
+    let inhabitance = symbolic_cost
+        .inhabits
+        .expect("SymbolicCost should carry an inhabits edge");
+    match &dag.declaration(inhabitance).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            assert_eq!(*template, semiring);
+            assert_eq!(
+                arguments.iter().map(|arg| arg.value).collect::<Vec<_>>(),
+                vec![symbolic_cost.id],
+                "SymbolicCost must inhabit Semiring<SymbolicCost>"
+            );
+        }
+        other => panic!("expected Semiring<SymbolicCost> instantiation, got {other:?}"),
+    }
+}
+
+#[test]
+fn symbolic_cost_product_identity_stage_is_bootstrap_substrate_fact() {
+    let dag = Dag::new();
+    let reduce_product = dag
+        .declaration_by_name("reduce_product")
+        .expect("reduce_product should bootstrap from std/algebra.dag")
+        .id;
+    let drop_multiplicative_one = dag
+        .declaration_by_name("drop_multiplicative_one")
+        .expect("drop_multiplicative_one should bootstrap from std/algebra.dag")
+        .id;
+    let collapse_on_multiplicative_zero = dag
+        .declaration_by_name("collapse_on_multiplicative_zero")
+        .expect("collapse_on_multiplicative_zero should bootstrap from std/algebra.dag")
+        .id;
+
+    let found_product_identity_chain = dag.nodes().iter().any(|node| {
+        let Behavior::Transform(reduce) = node else {
+            return false;
+        };
+        if reduce.target != TransformTarget::Callable(reduce_product) {
+            return false;
+        }
+        let Some(drop_one) = reduce
+            .inputs
+            .iter()
+            .filter_map(|input| dag.resolve_producer_opt(input))
+            .find_map(Behavior::as_transform)
+        else {
+            return false;
+        };
+        if drop_one.target != TransformTarget::Callable(drop_multiplicative_one) {
+            return false;
+        }
+        drop_one
+            .inputs
+            .iter()
+            .filter_map(|input| dag.resolve_producer_opt(input))
+            .filter_map(Behavior::as_transform)
+            .any(|collapse_zero| {
+                collapse_zero.target == TransformTarget::Callable(collapse_on_multiplicative_zero)
+            })
+    });
+
+    assert!(
+        found_product_identity_chain,
+        "bootstrap normalize(ProductCost) path must preserve collapse-zero -> drop-one -> \
+         reduce-product so Semiring<SymbolicCost> has substrate-visible multiplicative identity"
+    );
+}
+
 // ── Per-Behavior lowering ────────────────────────────────────────
 
 budgeted_test! {
@@ -256,45 +347,40 @@ budgeted_test! {
         // Post-fix: `l.body: NodeId` is resolved through
         // `node(d, body_id)` → result_port, and THAT port's cost
         // enters the iterate composition. The recursive fn's Branch
-        // body has a `ConstantCost(1)` (the comparison op), which is
-        // non-zero and does NOT drop in `drop_zero`. The resulting
-        // shape is `ProductCost([LinearCost, ConstantCost])` — the
-        // iterate composition is preserved structurally.
-        //
-        // Pin the structural signal: the cost must be a `ProductCost`
-        // that carries BOTH a LinearCost term (from `l.source`) and a
-        // non-zero leaf (from the body). A regression that drops the
-        // body fact collapses this back to bare LinearCost, which
-        // this assertion catches.
+        // body has a `ConstantCost(1)` (the comparison op). With
+        // `SymbolicCost` now honestly inhabiting `Semiring<SymbolicCost>`,
+        // `ConstantCost(1)` is the multiplicative identity, so the final
+        // normalized result is a bare `LinearCost`. The regression guard here
+        // is therefore the semantic value: the loop must remain linear rather
+        // than collapsing to constant/missing cost.
         let dag = cached_compile_to_dag(
             "fn countdown(n: Int) -> Int =\n  if n == 0 then 0 else countdown(n - 1)",
             "loop_body_countdown.v3",
         );
         let cost = expect_cost(&dag, find_bind_value(&dag, "countdown"));
-        match &cost {
-            SymbolicCost::ProductCost { _0: terms } => {
-                let has_linear = terms
-                    .iter()
-                    .any(|t| matches!(t.as_ref(), SymbolicCost::LinearCost { .. }));
-                let has_nonzero_body = terms
-                    .iter()
-                    .any(|t| matches!(t.as_ref(), SymbolicCost::ConstantCost { _0: n } if *n != 0));
-                assert!(
-                    has_linear,
-                    "Loop cost must carry a LinearCost term from the bound port, got {cost:?}"
-                );
-                assert!(
-                    has_nonzero_body,
-                    "Loop cost must carry a non-zero body-cost term (regression of briansrls BLOCKING \
-                     on PR #537 — body fact silently dropped), got {cost:?}"
-                );
-            }
-            other => panic!(
-                "recursive fn should produce a ProductCost wrapping `iterate(Linear, body-cost)`; \
-                 a bare LinearCost means body is being dropped. Got {other:?}"
-            ),
-        }
+        assert!(
+            matches!(cost, SymbolicCost::LinearCost { .. }),
+            "recursive fn with O(1) body should normalize Linear * 1 to Linear, got {cost:?}"
+        );
     }
+}
+
+#[test]
+fn iterate_keeps_non_identity_body_cost_in_product() {
+    let (bound_port, body_port) = two_distinct_ports();
+    let cost = iterate(linear(bound_port), log_cost(body_port));
+    let SymbolicCost::ProductCost { _0: terms } = &cost else {
+        panic!("Linear-bound loop with non-identity body should stay ProductCost, got {cost:?}");
+    };
+    assert_eq!(
+        terms.iter().count(),
+        2,
+        "iterate should compose bound and body costs exactly once"
+    );
+    assert!(
+        mentions_linear(&cost) && mentions_log(&cost),
+        "iterate must retain both the loop-bound and body-cost terms, got {cost:?}"
+    );
 }
 
 budgeted_test! {
@@ -377,6 +463,42 @@ budgeted_test! {
         assert!(
             matches!(result, SymbolicCost::ProductCost { .. }),
             "Linear(a) * Linear(b) over different ports should stay Product, got {result:?}"
+        );
+    }
+}
+
+budgeted_test! {
+    product_with_constant_zero_collapses_to_zero,
+    {
+        let (port, _) = two_distinct_ports();
+        let result = iterate(linear(port), constant(0));
+        assert_eq!(
+            result,
+            constant(0),
+            "Semiring<SymbolicCost> multiplication must treat ConstantCost(0) as an annihilator"
+        );
+    }
+}
+
+budgeted_test! {
+    product_with_constant_one_normalizes_to_other_factor,
+    {
+        let (port, _) = two_distinct_ports();
+        let l = linear(port);
+        assert_eq!(
+            iterate(l.clone(), constant(1)),
+            l,
+            "Semiring<SymbolicCost> multiplication must treat trailing ConstantCost(1) as identity"
+        );
+        assert_eq!(
+            iterate(constant(1), l.clone()),
+            l,
+            "Semiring<SymbolicCost> multiplication must treat leading ConstantCost(1) as identity"
+        );
+        assert_eq!(
+            iterate(constant(1), constant(1)),
+            constant(1),
+            "product of multiplicative identities should remain ConstantCost(1)"
         );
     }
 }
