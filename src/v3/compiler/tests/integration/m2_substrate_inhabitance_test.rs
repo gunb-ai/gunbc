@@ -2711,6 +2711,21 @@ fn data_body_named_variant_duplicate_payload_fields_fail_closed() {
 }
 
 #[test]
+fn expr_named_variant_duplicate_payload_fields_fail_closed() {
+    let dag = semantic_dag_for(
+        "type Status = Ready { code: Int, retry: Bool } | Blocked\n\
+         fn make_status() -> Status =\n\
+           Ready { code: 1, code: 2, retry: false }\n",
+        "expr_named_variant_duplicate_payload_fields.v3",
+    );
+    assert!(
+        has_resolve_error(&dag),
+        "expected expression-position named-variant duplicate payload to report a ResolveError, got {:?}",
+        dag.diagnostics()
+    );
+}
+
+#[test]
 fn map_body_on_non_map_type_fails_closed() {
     let dag = semantic_dag_for(
         "data not_a_map: Bool = {\n  \"x\": true\n}\n",
