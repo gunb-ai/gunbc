@@ -112,6 +112,21 @@ pub enum MethodTemplateProjectionDagEmitError {
         path: PathBuf,
         cause: std::io::Error,
     },
+    /// Two distinct `MethodDeclaration` bindings project to the same
+    /// legacy map key (`name` string) within a single target. The Map
+    /// adapter shape would silently drop one of them; fail closed
+    /// instead so the producer cannot lose template text across the
+    /// typed-projection-to-Map boundary (P2 facts flow forward / P3
+    /// fail-closed). Resolution path: rename one method, or land a
+    /// richer structural carrier that keys on the typed `MethodRef.decl`
+    /// rather than the resolved `name` string (Gap 5 / new-carrier
+    /// territory — STOP+PING per dispatch).
+    LegacyMapKeyCollision {
+        target: MethodTemplateTarget,
+        name: String,
+        first_dag_method: crate::dag::DeclarationId,
+        duplicate_dag_method: crate::dag::DeclarationId,
+    },
 }
 
 impl std::fmt::Display for MethodTemplateProjectionDagEmitError {
@@ -155,7 +170,18 @@ pub fn write_method_template_projection_dag(
     for target in TARGETS.iter().copied() {
         let rows = method_template_contract_rows(dag, target)
             .map_err(|cause| MethodTemplateProjectionDagEmitError::Projection { target, cause })?;
+        // The Map<String, String> adapter keys on the resolved method
+        // *name* string, not the typed `MethodRef.decl` DeclarationId.
+        // `method_template_contract_rows` only proves per-target
+        // uniqueness by `dag_method` (DeclarationId), so two distinct
+        // `MethodDeclaration` bindings with the same `name: "..."` field
+        // would project to the same map key. Fail-closed on collision
+        // rather than silently dropping one row's template across the
+        // typed-projection-to-Map boundary (P2 facts flow forward /
+        // P3 fail-closed). The companion table tracks the prior
+        // `dag_method` so the error names both colliders.
         let mut map: BTreeMap<String, String> = BTreeMap::new();
+        let mut name_to_decl: BTreeMap<String, crate::dag::DeclarationId> = BTreeMap::new();
         for (row_index, row) in rows.iter().enumerate() {
             // Higher-order rows are deliberately skipped — the legacy
             // Map<String, String> shape doesn't carry the inline/fn-ref
@@ -175,9 +201,15 @@ pub fn write_method_template_projection_dag(
                     cause,
                 }
             })?;
-            // Per-target uniqueness by `dag_method` was already validated by
-            // `method_template_contract_rows`; the same `name` cannot appear
-            // twice within one target's map.
+            if let Some(prior) = name_to_decl.get(&name) {
+                return Err(MethodTemplateProjectionDagEmitError::LegacyMapKeyCollision {
+                    target,
+                    name,
+                    first_dag_method: *prior,
+                    duplicate_dag_method: row.dag_method,
+                });
+            }
+            name_to_decl.insert(name.clone(), row.dag_method);
             map.insert(name, template.clone());
         }
         per_target.push((target, map));
@@ -276,4 +308,86 @@ fn escape_dag_string(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for producer failure modes that need crate-private
+    //! `Dag` mutation to construct (e.g., forcing two `MethodDeclaration`
+    //! bindings to share a `name` so the legacy Map adapter would
+    //! collide). Behavior tests over the green bootstrap Dag live in
+    //! `tests/integration/pb_method_template_projection_dag_emit_test.rs`.
+
+    use super::*;
+    use crate::dag::{FieldValue, LiteralBits, ValueBody};
+    use crate::generated_full_bootstrap_dag;
+
+    /// Mutate `MethodDeclaration` data binding `decl_name`'s `name` field
+    /// to the given string. The substrate-side validation
+    /// (`validate_method_declaration_data_binding`) only requires the
+    /// `name` field to be a string literal, so this rewrite stays
+    /// well-formed. Used to force two distinct bindings to share a
+    /// resolved `name` and trigger the Map collision path.
+    fn rewrite_method_declaration_name(dag: &mut Dag, decl_name: &str, new_name: &str) {
+        let decl_id = dag
+            .declaration_by_name(decl_name)
+            .unwrap_or_else(|| panic!("`{decl_name}` missing from bootstrap"))
+            .id;
+        let decl = dag.declaration_mut(decl_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::Structural { fields } = body else {
+            panic!("MethodDeclaration body not Structural");
+        };
+        let (_, name_value) = fields
+            .iter_mut()
+            .find(|(label, _)| label == "name")
+            .expect("name field");
+        *name_value = FieldValue::Literal(LiteralBits::String(new_name.to_string()));
+    }
+
+    #[test]
+    fn legacy_map_key_collision_surfaces_typed_error() {
+        // The Map<String, String> adapter keys on the resolved method
+        // *name* string. Two distinct `MethodDeclaration` bindings with
+        // the same `name` field would project to the same map key,
+        // silently overwriting the first row's template. The producer
+        // must fail closed instead so template text cannot be lost
+        // across the typed-projection-to-Map boundary.
+        //
+        // Force the collision by rewriting `count_method.name` so
+        // another row in the same per-target list resolves to the same
+        // string. `last_method` is a SingleTemplate row in the Rust
+        // list (`src/v3/std/rust_method_template_contracts.dag`), so
+        // making both resolve to `"count"` triggers the path.
+        let mut dag = generated_full_bootstrap_dag();
+        rewrite_method_declaration_name(&mut dag, "last_method", "count");
+
+        let temp = std::env::temp_dir().join(format!(
+            "v3-pb-emit-collision-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock before unix epoch")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&temp).expect("temp dir");
+
+        let result = write_method_template_projection_dag(&dag, &temp);
+        match result {
+            Err(MethodTemplateProjectionDagEmitError::LegacyMapKeyCollision {
+                target,
+                name,
+                first_dag_method,
+                duplicate_dag_method,
+            }) => {
+                assert_eq!(target, MethodTemplateTarget::Rust);
+                assert_eq!(name, "count");
+                assert_ne!(first_dag_method, duplicate_dag_method);
+            }
+            other => panic!(
+                "expected LegacyMapKeyCollision for two MethodDeclaration bindings sharing a `name` string, got {other:?}"
+            ),
+        }
+
+        let _ = std::fs::remove_dir_all(&temp);
+    }
 }
