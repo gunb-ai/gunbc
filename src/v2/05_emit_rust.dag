@@ -231,6 +231,7 @@ type RustEnumWireSerde {
   rename_prefix: String?
   rename_suffix: String?
   rename_style: String?
+  error_message: String?
 }
 
 fn rust_serde_policy(enum_attr: String, rename_prefix: String?, rename_suffix: String?, rename_style: String?) -> RustEnumWireSerde {
@@ -238,7 +239,18 @@ fn rust_serde_policy(enum_attr: String, rename_prefix: String?, rename_suffix: S
     enum_attr: enum_attr,
     rename_prefix: rename_prefix,
     rename_suffix: rename_suffix,
-    rename_style: rename_style
+    rename_style: rename_style,
+    error_message: none
+  }
+}
+
+fn rust_serde_policy_error(message: String) -> RustEnumWireSerde {
+  RustEnumWireSerde {
+    enum_attr: "",
+    rename_prefix: none,
+    rename_suffix: none,
+    rename_style: none,
+    error_message: Some { value: message }
   }
 }
 
@@ -247,7 +259,7 @@ fn rust_tagged_object_policy() -> RustEnumWireSerde {
 }
 
 fn rust_serde_error_policy(message: String) -> RustEnumWireSerde {
-  rust_serde_policy(enum_attr: emit_error_expr(message: message, target: Rust), rename_prefix: none, rename_suffix: none, rename_style: none)
+  rust_serde_policy_error(message: message)
 }
 
 fn rust_string_as_authored_policy() -> RustEnumWireSerde {
@@ -618,12 +630,7 @@ fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants
     }
   } else {
     Some {
-      value: rust_serde_policy(
-        enum_attr: emit_error_expr(message: concat("ambiguous CoproductWireContract rows for ", coproduct_name), target: Rust),
-        rename_prefix: none,
-        rename_suffix: none,
-        rename_style: none
-      )
+      value: rust_serde_error_policy(message: concat("ambiguous CoproductWireContract rows for ", coproduct_name))
     }
   }
 }
@@ -1493,11 +1500,22 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
         }
     }
     let rename_validations = variant_rename_validations_for_policy(children: item.children, env: env, serde_policy: serde_policy)
+    let policy_validation = match serde_policy.error_message {
+      Some { value: message } => emit_rust_compile_error_item(message: message)
+      None => ""
+    }
+    let validations = if policy_validation == "" {
+      rename_validations
+    } else if rename_validations == "" {
+      policy_validation
+    } else {
+      concat(policy_validation, "\n", rename_validations)
+    }
     let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy)
-    if rename_validations == "" {
+    if validations == "" {
       enum_text
     } else {
-      concat(rename_validations, "\n", enum_text)
+      concat(validations, "\n", enum_text)
     }
   }
 }
