@@ -19606,7 +19606,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/methods.dag", 1474, 1515),
+            span: SourceSpan::new("src/v3/std/methods.dag", 1604, 1645),
         });
         declarations.push(Declaration {
             id: DeclarationId(759),
