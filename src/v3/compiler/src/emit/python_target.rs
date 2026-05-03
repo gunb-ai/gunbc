@@ -2,10 +2,11 @@ use std::collections::HashMap;
 
 use super::{
     algebra_field_for_operator_shared, dag_needs_div_error_prelude,
-    div_prelude_reserved_name_collision, fold_method_contract::require_fold_method_template_contract,
-    optional_match_variant_roles, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    div_prelude_reserved_name_collision,
+    fold_method_contract::require_fold_method_template_contract, optional_match_variant_roles,
+    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
+    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, DeclarationId, Field,
