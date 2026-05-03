@@ -842,6 +842,13 @@ pub fn type_mismatch_error(
     )
 }
 
+pub fn literal_value_is_string(value: Rc<LiteralValue>) -> bool {
+    match (*value).clone() {
+        LiteralValue::LitStr { .. } => true,
+        _ => false,
+    }
+}
+
 pub fn rejects_raw_string_for_optional_coproduct_field(
     expected: &Rc<Node>,
     got: Rc<Node>,
@@ -856,12 +863,7 @@ pub fn rejects_raw_string_for_optional_coproduct_field(
         let got_is_string =
             (authored_name_at(source_indices, &got).as_str() == "String".to_string().as_str());
         let value_is_string_literal = match (*value.expr_data.clone()).clone() {
-            ExprData::ExprLiteral { ref value, .. } => {
-                let LiteralValue::LitStr { .. } = value.as_ref() else {
-                    unreachable!()
-                };
-                true
-            }
+            ExprData::ExprLiteral { value: lit, .. } => literal_value_is_string(lit),
             _ => false,
         };
         ((expected_is_optional_coproduct && got_is_string) && value_is_string_literal)
