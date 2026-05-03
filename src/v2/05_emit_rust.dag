@@ -1648,52 +1648,55 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   concat("impl", type_params, " ", name, type_params, " {\n", fns_str, "\n}")
 }
 
-fn string_without_prefix(value: String, prefix: String) -> String {
+fn string_without_prefix(value: String, prefix: String) -> String? {
   if string_length(s: prefix) == 0 {
-    value
+    none
   } else if string_length(s: value) >= string_length(s: prefix) && substring(s: value, start: 0, end: string_length(s: prefix)) == prefix {
-    substring(s: value, start: string_length(s: prefix), end: string_length(s: value))
+    Some { value: substring(s: value, start: string_length(s: prefix), end: string_length(s: value)) }
   } else {
-    value
+    none
   }
 }
 
-fn string_without_suffix(value: String, suffix: String) -> String {
+fn string_without_suffix(value: String, suffix: String) -> String? {
   if string_length(s: suffix) == 0 {
-    value
+    none
   } else if string_length(s: value) >= string_length(s: suffix) && substring(s: value, start: string_length(s: value) - string_length(s: suffix), end: string_length(s: value)) == suffix {
-    substring(s: value, start: 0, end: string_length(s: value) - string_length(s: suffix))
+    Some { value: substring(s: value, start: 0, end: string_length(s: value) - string_length(s: suffix)) }
   } else {
-    value
+    none
   }
 }
 
-fn wire_variant_name_for_policy(authored: String, policy: RustEnumWireSerde) -> String? {
+fn wire_variant_rename_attr_for_policy(authored: String, policy: RustEnumWireSerde) -> String {
   match policy.rename_style {
     Some { value: style } =>
       if style == "StripAffixAndSnakeCase" {
         let without_prefix = match policy.rename_prefix {
-          Some { value: prefix } => string_without_prefix(value: authored, prefix: prefix)
+          Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
+            Some { value: stripped } => stripped
+            None => return concat("    compile_error!(\"variant ", authored, " does not satisfy declared wire rename prefix: ", prefix, "\");\n")
+          }
           None => authored
         }
         let without_suffix = match policy.rename_suffix {
-          Some { value: suffix } => string_without_suffix(value: without_prefix, suffix: suffix)
+          Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
+            Some { value: stripped } => stripped
+            None => return concat("    compile_error!(\"variant ", authored, " does not satisfy declared wire rename suffix: ", suffix, "\");\n")
+          }
           None => without_prefix
         }
-        Some { value: to_snake(name: without_suffix) }
+        concat("    #[serde(rename = \"", to_snake(name: without_suffix), "\")]\n")
       } else {
-        none
+        ""
       }
-    None => none
+    None => ""
   }
 }
 
 fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
   let child_text = authored_name(env: env, node: child)
-  let rename_attr = match wire_variant_name_for_policy(authored: child_text, policy: serde_policy) {
-    Some { value: wire_name } => concat("    #[serde(rename = \"", wire_name, "\")]\n")
-    None => ""
-  }
+  let rename_attr = wire_variant_rename_attr_for_policy(authored: child_text, policy: serde_policy)
   if child.children |> count == 0 {
     // Unit variant -- no fields
     concat(rename_attr, "    ", child_text, ",")
