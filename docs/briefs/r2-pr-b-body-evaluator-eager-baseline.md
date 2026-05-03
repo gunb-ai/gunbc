@@ -171,11 +171,11 @@ These are **not** in PR-B.0 design lock and **not** in PR-B.1 implementation:
 
 Full evaluator execution cannot ship in R2 because:
 
-1. **Strategy carriers absent at HEAD.** `EvalStrategy`,
-   `InputEvaluationOrder`, `EvalStateKey`, `EvalMemoKey` are audited but not
-   declared. Without the strategy carrier PR-B.1 has nothing to read, and
-   without `EvalMemoKey` the memoization boundary is undeclared. The
-   PR-A.3 audit explicitly lists these as the implementation-side gap.
+1. **Strategy and memo-key carriers now declared.** `EvalStrategy`,
+   `InputEvaluationOrder`, `EvalStateKey`, and `EvalMemoKey` live in
+   `src/v3/std/runtime.dag`. PR-B.1 may read the closed eager strategy and
+   structural memo-key boundary from the PR-A.3 carrier surface rather than
+   inventing a local no-memo or string-key convention.
 2. **Execution semantics for non-eager strategies undeclared.** `NormalOrder`
    has no rule, no thunk capture point, and no TC2 comparison obligation
    (PR-A.3 audit §EvalStrategy). Until those land, the evaluator cannot
