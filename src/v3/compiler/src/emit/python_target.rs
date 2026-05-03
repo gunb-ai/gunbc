@@ -3,9 +3,10 @@ use std::collections::HashMap;
 use super::{
     algebra_field_for_operator_shared, dag_needs_div_error_prelude,
     div_prelude_reserved_name_collision,
-    fold_method_contract::require_fold_method_template_contract, optional_match_variant_roles,
-    parse_pattern_strategy, primitive_type_id_for_port_shared, walk_to_disj, EmitMode,
-    PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    fold_method_contract::require_fold_method_template_contract,
+    method_emit_template_variant_label, optional_match_variant_roles, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
     VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
@@ -370,7 +371,7 @@ impl PythonIndexes {
                         detail,
                     }
                 })?;
-                method_contract_single_emit_template_string(dag, fold_contract, collections)?
+                method_contract_single_emit_template_string(dag, fold_contract)?
             },
             map: require_field_string(
                 structural_fields_for_decl(dag, collections)?,
@@ -1734,7 +1735,6 @@ fn parse_pattern_realization(
 fn method_contract_single_emit_template_string(
     dag: &Dag,
     contract_decl: DeclarationId,
-    parent: DeclarationId,
 ) -> Result<String, EmitPythonError> {
     let fields = structural_fields_for_decl(dag, contract_decl)?;
     let emit_value = fields
@@ -1755,16 +1755,15 @@ fn method_contract_single_emit_template_string(
             detail: "MethodTemplateContract.emit_template must be a sum variant",
         });
     };
-    let ctor = dag.declaration(*constructor);
-    let Some(ctor_name) = ctor.name.as_deref() else {
-        return Err(EmitPythonError::MalformedSpec {
-            declaration: contract_decl,
-            detail: "MethodTemplateContract.emit_template variant has no name",
-        });
-    };
+    let ctor_name = method_emit_template_variant_label(dag, *constructor)
+        .ok_or(EmitPythonError::MalformedSpec {
+        declaration: contract_decl,
+        detail:
+            "MethodTemplateContract.emit_template variant not found under MethodEmitTemplate disj",
+    })?;
     if ctor_name != "SingleTemplate" {
         return Err(EmitPythonError::MalformedSpec {
-            declaration: parent,
+            declaration: contract_decl,
             detail: "collection fold contract must use MethodEmitTemplate.SingleTemplate today",
         });
     }

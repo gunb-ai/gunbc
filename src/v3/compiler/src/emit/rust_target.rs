@@ -48,10 +48,10 @@ use std::collections::{HashMap, HashSet};
 use super::{
     algebra_field_for_operator_shared, dag_needs_div_error_prelude,
     div_prelude_reserved_name_collision,
-    fold_method_contract::require_fold_method_template_contract, parse_pattern_strategy,
-    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
-    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
-    VariantPayloadFieldAccessRuleBinding,
+    fold_method_contract::require_fold_method_template_contract,
+    method_emit_template_variant_label, parse_pattern_strategy, primitive_type_id_for_port_shared,
+    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
+    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -1511,13 +1511,12 @@ fn method_contract_single_emit_template_string(
             detail: "MethodTemplateContract.emit_template must be a sum variant",
         });
     };
-    let ctor = dag.declaration(*constructor);
-    let Some(ctor_name) = ctor.name.as_deref() else {
-        return Err(EmitError::MalformedTargetSyntax {
-            declaration: contract_decl,
-            detail: "MethodTemplateContract.emit_template variant has no name",
-        });
-    };
+    let ctor_name = method_emit_template_variant_label(dag, *constructor)
+        .ok_or(EmitError::MalformedTargetSyntax {
+        declaration: contract_decl,
+        detail:
+            "MethodTemplateContract.emit_template variant not found under MethodEmitTemplate disj",
+    })?;
     if ctor_name != "SingleTemplate" {
         return Err(EmitError::MalformedTargetSyntax {
             declaration: contract_decl,

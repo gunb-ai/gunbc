@@ -65,6 +65,25 @@ use crate::variant_payload::{
 };
 use crate::Dag;
 
+/// Recover `MethodEmitTemplate` sum-variant label for `constructor`.
+///
+/// Variant constructor declarations in the Dag often have `name: None`; labels
+/// live on the parent `Disj` in `emit_model`. Mirrors
+/// `pb_method_template_projection::disj_variant_label` (see comment there).
+pub(crate) fn method_emit_template_variant_label(
+    dag: &Dag,
+    constructor: DeclarationId,
+) -> Option<&str> {
+    let parent = dag.declaration_by_name("MethodEmitTemplate")?;
+    let TypeConnective::Disj { variants } = &parent.connective else {
+        return None;
+    };
+    variants
+        .iter()
+        .find(|v| v.ty == constructor)
+        .map(|v| v.label.as_str())
+}
+
 const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
 
 /// Result port of a finished `behavior` subgraph — shared by Go and Rust emit
