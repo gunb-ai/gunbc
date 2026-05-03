@@ -5,8 +5,11 @@ Status: **audit packet only** (no retirements). Anchors
 queue`), family **A** — **SourceSpan / compilation-unit file string** semantics
 in the v3 substrate (`src/v3/compiler/src/{dag,lower,infer,emit,lens_apply,
 bootstrap,pipeline_authority,lens_testgen,test_runner}.rs`) plus **`include_str!`
-cousins** that feed the same `compile_to_dag` / `SourceSpan::new(…, file, …)`
-resolution path as on-disk lenses and fixtures.
+cousins** that feed **`compile_to_dag`** (canonical lens bytes, lens `#[cfg(test)]`
+loads) **or** otherwise stamp the same **`SourceSpan.file`** story as an
+on-disk module load. **Excluded:** `INFER_HELPERS_SOURCE` — embedded text used
+only for **substring presence** ratchets (`test_runner.rs::compiler_std_positive_set_ratchet_count`),
+not for lowering; see §Out of family.
 
 Verification (`fierce-ferret-556`, issue `#1276`) owns per-row retirement PRs
 after this packet lands.
@@ -34,6 +37,16 @@ id) would be the steady-state identity.
 - **`PROGRAM_INPUT_SENTINEL`** — **retired** structurally (`ProgramInputRole` /
   `src/v3/std/verification.dag` carriers per `docs/briefs/r2-pb-canonical-lens-bridge-disposition.md`);
   do not resurrect as an open SourceSpan row.
+- **`INFER_HELPERS_SOURCE`** (`test_runner.rs`, `include_str!(…/infer_helpers.dag)`) —
+  **not** in this family: the runner never runs **`compile_to_dag`** on these bytes for
+  claims; it only runs **`.contains` substring** checks in
+  `compiler_std_positive_set_ratchet_count`. `canonical_lens_bridge_ratchet_test.rs`
+  documents that this is **outside Category A** canonical-lens `include_str!`
+  surface (lines `:235-238`: not `R1_CANONICAL_*_LENS`, not lens-name dispatch).
+  Map that debt under **exact-string / text-ratchet** discipline (see
+  `bridge_exact_string_patching_residual_retired` umbrella in
+  `docs/briefs/r3-v-bridge-row-by-row-retirement-audit.md`), not under
+  `bridge_source_span_file_participation_retired` / this SourceSpan/file audit row.
 
 **Fuzzy edge (documented, not escalated):** `include_str!` of canonical lens bytes
 is both **file-path identity** (this family) and **canonical-lens residual**
@@ -73,7 +86,7 @@ shape · **(d)** sibling / blocker.
 | 10 | **Deferred-claim fixture file constants** | `test_runner.rs` `RELEASE_ACCEPTANCE_FIXTURE`, `TC1_SUBSTRATE_LENS_ETA_DEFERRED_FIXTURE` + `decl.span.file !=` / `==` checks | 2 claim kinds, ~6 guard branches | Structural “claim must be declared in fixture X” via `DeclarationRef` to fixture module, not path string. | #9. |
 | 11 | **`SourceFilteringBinding::excludes` on `span.file`** | `emit.rs` (`excludes`, `normalize_source_filter_path`); emit walkers (`emit.rs`, `rust_target.rs`, `python_target.rs`) | **6** filter call sites (bind/decl walks) | Emit indexes keyed by module / declaration participation; prefix table becomes derived from structural “emit this decl” witness, not `span.file` string at walk time (may still read **data** from `.dag` lists — that part is already structural). | Target `ShapeATargetSourceFiltering` remains prefix-shaped in `.dag`; changing that is spec work. |
 | 12 | **`BOOTSTRAP_FIXTURE_PATH_KEYS` lockstep slice** | `bootstrap.rs` const array + `dag.rs` `bootstrap_fixture_virtual_paths` compare | Regen host (`bootstrap_regen_fresh.rs`) + bootstrap init | Single authority: substrate list only; Rust side is generated or `include!` from `.dag` with no hand-maintained path literals. | `bridge_ledger` B4.4 narrative — partially landed via `extdeps_bootstrap_fixtures.dag` but Rust slice remains a second source. |
-| 13 | **Canonical lens / infer-helper `include_str!` → `compile_to_dag` with real paths** | `test_runner.rs` `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS`, `R1_CANONICAL_COMPLEXITY_LENS`, `INFER_HELPERS_SOURCE`; `lens_apply.rs` **tests** `include_str!("../../lenses/…")` | Runner + `build.rs` splice (out of `src/` tree but same pattern) + ratchet `canonical_lens_bridge_ratchet_test.rs` | Lens bytes resolved through `program_dag` / typed lens registry; delete parallel `Dag` keyed by duplicated path strings. | **Strong overlap** with `bridge_canonical_lens_name_patching_residual` and PB-Runtime interpreter-as-data gate. |
+| 13 | **Canonical lens `include_str!` → `compile_to_dag` with real paths** | `test_runner.rs` `R1_CANONICAL_NAMED_FUNCTION_COUNT_LENS`, `R1_CANONICAL_COMPLEXITY_LENS`; `lens_apply.rs` **tests** `include_str!("../../lenses/…")`; `build.rs` splice for user-authored lens gate (same pattern) | Runner lens paths + ratchet `canonical_lens_bridge_ratchet_test.rs` **Category A** (`R1_CANONICAL_*_LENS` only — `INFER_HELPERS_SOURCE` **explicitly excluded** there) | Lens bytes resolved through `program_dag` / typed lens registry; delete parallel `Dag` keyed by duplicated path strings. | **Strong overlap** with `bridge_canonical_lens_name_patching_residual` and PB-Runtime interpreter-as-data gate. **Do not** conflate with `INFER_HELPERS_SOURCE` (out of family — §Out of family). |
 | 14 | **`declaration_name_preference_rank` + `Dag::declaration_by_name`** | `dag.rs` (`declaration_name_preference_rank`, `declaration_by_name`) | **`declaration_by_name(` ~188** matches under `src/v3/compiler/src` | Delete rank; require single-authority modules; fail-closed on duplicate top-level names after `dsl/std` ↔ `src/v3/std` convergence (ROADMAP checklist). | **Root blocker** for most name-keyed substrate; duplicates must converge first. |
 | 15 | **`collect_symbols` duplicate-authority mirror** | `lower.rs` `collect_symbols` (same rank helper as `dag.rs`) | Every `lower_into` module | Delete together with #14; one policy. | #14. |
 | 16 | **`bootstrap_regen_fresh.rs` duplicate `declaration_name_preference_rank`** | `bootstrap_regen_fresh.rs` | Fresh regen symbol merge | Delete when #14/#15 delete; keep one implementation. | #14. |
