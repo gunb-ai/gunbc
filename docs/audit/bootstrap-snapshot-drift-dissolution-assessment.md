@@ -78,3 +78,6 @@ snapshots from the full configured `.dag` source set, not from the specific
 This gate is a fallback enforcement measure. The remaining debt is to dissolve
 the checked-in generated snapshot surface through Path 1 or a separately
 designed artifact path.
+
+TODO: remove this required-`ci` gate once the committed bootstrap generated
+snapshot surface is dissolved. Tracking issue: #1559.
