@@ -3465,7 +3465,11 @@ impl Dag {
     /// Biconditional invariant, held by construction:
     ///   port.state == Unresolved  iff  diagnostics.contains(port_id)
     pub(crate) fn mark_unresolved(&mut self, port: PortId, diagnostic: Diagnostic) {
-        self.mark_unresolved_with_attribution(port, diagnostic, DiagnosticAttribution::Unattributed);
+        self.mark_unresolved_with_attribution(
+            port,
+            diagnostic,
+            DiagnosticAttribution::Unattributed,
+        );
     }
 
     /// `mark_unresolved` carrying an explicit

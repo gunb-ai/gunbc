@@ -163,9 +163,10 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
             dag.attach_bootstrap_diagnostic(
                 bool_authority,
                 Diagnostic::ResolveError {
-                    name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
+                    name:
+                        "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
                            cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
-                        .to_string(),
+                            .to_string(),
                     span: span_for_inst.clone(),
                     fixes: Vec::new(),
                 },

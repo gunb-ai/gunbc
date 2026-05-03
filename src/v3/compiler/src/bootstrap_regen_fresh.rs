@@ -240,12 +240,11 @@ mod tests {
         let bootstrap_count = dag
             .diagnostics()
             .iter_attributed()
-            .filter(|(_, _, attribution)| {
-                attribution.as_bootstrap_authority() == Some(&expected)
-            })
+            .filter(|(_, _, attribution)| attribution.as_bootstrap_authority() == Some(&expected))
             .count();
         assert_eq!(
-            bootstrap_count, 1,
+            bootstrap_count,
+            1,
             "tokenize-failure diagnostic must carry BootstrapAuthority({file:?}); table: {:?}",
             dag.diagnostics().iter_attributed().collect::<Vec<_>>()
         );
@@ -270,8 +269,7 @@ mod tests {
         assert!(
             dag.diagnostics()
                 .iter_attributed()
-                .any(|(_, _, attribution)| attribution.as_bootstrap_authority()
-                    == Some(&expected)),
+                .any(|(_, _, attribution)| attribution.as_bootstrap_authority() == Some(&expected)),
             "parse-failure diagnostic must carry BootstrapAuthority({file:?}); table: {:?}",
             dag.diagnostics().iter_attributed().collect::<Vec<_>>()
         );
