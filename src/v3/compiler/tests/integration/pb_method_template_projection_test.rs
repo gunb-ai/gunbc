@@ -273,9 +273,9 @@ fn inject_extra_placeholder_payload(dag: &mut Dag, list_name: &str, row_index: u
         constructor: *constructor,
         payload: {
             let mut new_payload = payload.clone();
-            new_payload.push(FieldValue::Literal(
-                v3_compiler::dag::LiteralBits::Bool(false),
-            ));
+            new_payload.push(FieldValue::Literal(v3_compiler::dag::LiteralBits::Bool(
+                false,
+            )));
             new_payload
         },
     };

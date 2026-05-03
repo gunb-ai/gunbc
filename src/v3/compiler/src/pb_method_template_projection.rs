@@ -432,11 +432,13 @@ fn project_placeholder(
         Some("IndexedArgs") => ("IndexedArgs", PlaceholderConventionProjection::IndexedArgs),
         Some("NamedArg") => ("NamedArg", PlaceholderConventionProjection::NamedArg),
         other => {
-            return Err(MethodTemplateProjectionError::PlaceholderConventionUnknown {
-                list,
-                row_index,
-                constructor: other.map(str::to_string),
-            });
+            return Err(
+                MethodTemplateProjectionError::PlaceholderConventionUnknown {
+                    list,
+                    row_index,
+                    constructor: other.map(str::to_string),
+                },
+            );
         }
     };
     if !payload.is_empty() {
