@@ -4641,7 +4641,7 @@ fn lower_fn_item_expr_body(
 
     // 4. Lower the body.
     let body_start_index = dag.nodes().len();
-    let body_return_port = lower_expr(
+    let lowered_body_return_port = lower_expr(
         body,
         dag,
         &body_scope,
@@ -4649,13 +4649,12 @@ fn lower_fn_item_expr_body(
         symbols,
         Some(return_decl_id),
     );
-    let body_return_port =
-        if return_type_diagnostic.is_some() && dag.port(body_return_port).produced_by.is_none() {
-            dag.alloc_port(None)
-        } else {
-            body_return_port
-        };
-    let body_root = dag.port(body_return_port).produced_by;
+    let body_root = dag.port(lowered_body_return_port).produced_by;
+    let body_return_port = if return_type_diagnostic.is_some() {
+        dag.alloc_port(None)
+    } else {
+        lowered_body_return_port
+    };
     let body_span = expr_span(body);
     let body_end_index = dag.nodes().len();
 
@@ -8171,6 +8170,70 @@ mod tests {
         let diagnostic = dag
             .diagnostics()
             .get(bind.value)
+            .expect("Bind value unresolved state must carry the return annotation diagnostic");
+        assert!(
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. } if name == "unknown type `MissingType`"
+            ),
+            "expected unknown return type diagnostic on Bind value, got {diagnostic:?}"
+        );
+    }
+
+    #[test]
+    fn unresolved_fn_return_annotation_does_not_poison_outer_scope_body_port() {
+        let dag = match crate::compile_to_dag(
+            "let y: Int = 1\nfn bad() -> MissingType = y",
+            "bad_return_outer_alias.v3",
+        ) {
+            Err(crate::CompileError::Semantic(dag)) => dag,
+            other => panic!("unknown return type must fail semantically, got {other:?}"),
+        };
+
+        let mut bad_bind = None;
+        let mut outer_bind = None;
+        for node in dag.nodes() {
+            if let Behavior::Bind(bind) = node {
+                match bind.name.as_str() {
+                    "bad" => bad_bind = Some(bind),
+                    "y" => outer_bind = Some(bind),
+                    _ => {}
+                }
+            }
+        }
+        let bad_bind = bad_bind.expect("lowering should still emit the bad function Bind");
+        let outer_bind = outer_bind.expect("test setup should lower the outer y binding");
+
+        assert_ne!(
+            bad_bind.value, outer_bind.value,
+            "invalid return annotation must not reuse an outer binding as the function result"
+        );
+        assert_eq!(
+            dag.port(bad_bind.value).state(),
+            &PortState::Unresolved,
+            "failed return annotation must leave the function Bind value unresolved"
+        );
+        assert!(
+            dag.port(bad_bind.value).value_type().is_none(),
+            "failed return annotation must not fabricate a TypeShape on the Bind value"
+        );
+
+        let int_shape = dag
+            .int_shape()
+            .expect("bootstrap should expose the Int type shape");
+        assert_eq!(
+            dag.port(outer_bind.value).state(),
+            &PortState::Resolved(int_shape),
+            "return annotation failure must not poison the outer binding port"
+        );
+        assert!(
+            dag.diagnostics().get(outer_bind.value).is_none(),
+            "return annotation diagnostic must stay on the function result port"
+        );
+
+        let diagnostic = dag
+            .diagnostics()
+            .get(bad_bind.value)
             .expect("Bind value unresolved state must carry the return annotation diagnostic");
         assert!(
             matches!(
