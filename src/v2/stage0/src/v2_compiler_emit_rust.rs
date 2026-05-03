@@ -879,7 +879,7 @@ pub fn node_is_std_serialization_coproduct_wire_contract(
         == "CoproductWireContract".to_string().as_str())
         && string_has_suffix(
             &node.span.clone().file.clone(),
-            &"dsl/std/serialization.dag".to_string(),
+            &"std/serialization.dag".to_string(),
         ))
 }
 

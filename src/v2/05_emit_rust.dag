@@ -606,7 +606,7 @@ fn string_has_suffix(value: String, suffix: String) -> Bool {
 
 fn node_is_std_serialization_coproduct_wire_contract(node: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: node) == "CoproductWireContract"
-  && string_has_suffix(value: node.span.file, suffix: "dsl/std/serialization.dag")
+  && string_has_suffix(value: node.span.file, suffix: "std/serialization.dag")
 }
 
 fn data_item_type_is_coproduct_wire_contract(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
