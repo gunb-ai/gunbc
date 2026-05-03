@@ -521,7 +521,7 @@ fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_cop
     Some { value: body } =>
       match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
         Some { value: target_name } =>
-          if contains(local_coproduct_names, item: target_name) {
+          if any(local_coproduct_names, predicate: name => name == target_name) {
             ""
           } else {
             emit_error_expr(message: concat("CoproductWireContract target does not name a local coproduct: ", target_name), target: Rust)
