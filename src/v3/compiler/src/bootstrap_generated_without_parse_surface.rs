@@ -24900,8 +24900,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(99),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    12177,
-                    12677,
+                    12138,
+                    12638,
                 )),
             },
             type_params: vec![],
@@ -24912,7 +24912,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 12115, 12677),
+            span: SourceSpan::new("src/v3/std/induction.dag", 12076, 12638),
         });
         declarations.push(Declaration {
             id: DeclarationId(944),
@@ -24922,8 +24922,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(941),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    13200,
-                    14612,
+                    13229,
+                    14641,
                 )),
             },
             type_params: vec![],
@@ -24934,7 +24934,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 13120, 14612),
+            span: SourceSpan::new("src/v3/std/induction.dag", 13149, 14641),
         });
         declarations.push(Declaration {
             id: DeclarationId(945),
@@ -24944,8 +24944,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(941),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    14944,
-                    16247,
+                    14973,
+                    16276,
                 )),
             },
             type_params: vec![],
@@ -24956,7 +24956,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 14864, 16247),
+            span: SourceSpan::new("src/v3/std/induction.dag", 14893, 16276),
         });
         declarations.push(Declaration {
             id: DeclarationId(946),
@@ -24966,8 +24966,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(941),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    17356,
-                    17478,
+                    17419,
+                    17541,
                 )),
             },
             type_params: vec![],
@@ -24978,7 +24978,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 17268, 17478),
+            span: SourceSpan::new("src/v3/std/induction.dag", 17331, 17541),
         });
         declarations.push(Declaration {
             id: DeclarationId(947),
@@ -24988,8 +24988,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(941),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    18334,
-                    19680,
+                    18397,
+                    19743,
                 )),
             },
             type_params: vec![],
@@ -25000,7 +25000,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 18226, 19680),
+            span: SourceSpan::new("src/v3/std/induction.dag", 18289, 19743),
         });
         declarations.push(Declaration {
             id: DeclarationId(948),
@@ -25010,8 +25010,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1938),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    20455,
-                    21251,
+                    20518,
+                    21314,
                 )),
             },
             type_params: vec![],
@@ -25022,7 +25022,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 20382, 21251),
+            span: SourceSpan::new("src/v3/std/induction.dag", 20445, 21314),
         });
         declarations.push(Declaration {
             id: DeclarationId(949),
@@ -25032,8 +25032,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1939),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    21843,
-                    22748,
+                    21906,
+                    22811,
                 )),
             },
             type_params: vec![],
@@ -25044,7 +25044,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 21764, 22748),
+            span: SourceSpan::new("src/v3/std/induction.dag", 21827, 22811),
         });
         declarations.push(Declaration {
             id: DeclarationId(950),
@@ -25077,7 +25077,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 23991, 24246),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24054, 24309),
         });
         declarations.push(Declaration {
             id: DeclarationId(951),
@@ -25087,8 +25087,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(950),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    24295,
-                    24334,
+                    24358,
+                    24397,
                 )),
             },
             type_params: vec![],
@@ -25099,7 +25099,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24248, 24334),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24311, 24397),
         });
         declarations.push(Declaration {
             id: DeclarationId(952),
@@ -25124,7 +25124,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24846, 24963),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24909, 25026),
         });
         declarations.push(Declaration {
             id: DeclarationId(953),
@@ -25169,7 +25169,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26593, 27353),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26656, 27416),
         });
         declarations.push(Declaration {
             id: DeclarationId(954),
@@ -25179,8 +25179,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    27764,
-                    27870,
+                    27827,
+                    27933,
                 )),
             },
             type_params: vec![],
@@ -25191,7 +25191,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 27714, 27870),
+            span: SourceSpan::new("src/v3/std/induction.dag", 27777, 27933),
         });
         declarations.push(Declaration {
             id: DeclarationId(955),
@@ -25201,8 +25201,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(99),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    28194,
-                    28447,
+                    28257,
+                    28510,
                 )),
             },
             type_params: vec![],
@@ -25213,7 +25213,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 28145, 28447),
+            span: SourceSpan::new("src/v3/std/induction.dag", 28208, 28510),
         });
         declarations.push(Declaration {
             id: DeclarationId(956),
@@ -25223,8 +25223,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    28481,
-                    28498,
+                    28544,
+                    28561,
                 )),
             },
             type_params: vec![],
@@ -25235,7 +25235,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 28449, 28498),
+            span: SourceSpan::new("src/v3/std/induction.dag", 28512, 28561),
         });
         declarations.push(Declaration {
             id: DeclarationId(957),
@@ -25245,8 +25245,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    28542,
-                    28626,
+                    28605,
+                    28689,
                 )),
             },
             type_params: vec![],
@@ -25257,7 +25257,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 28499, 28626),
+            span: SourceSpan::new("src/v3/std/induction.dag", 28562, 28689),
         });
         declarations.push(Declaration {
             id: DeclarationId(958),
@@ -25267,8 +25267,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    28681,
-                    29080,
+                    28744,
+                    29143,
                 )),
             },
             type_params: vec![],
@@ -25279,7 +25279,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 28627, 29080),
+            span: SourceSpan::new("src/v3/std/induction.dag", 28690, 29143),
         });
         declarations.push(Declaration {
             id: DeclarationId(959),
@@ -25289,8 +25289,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    29130,
-                    29404,
+                    29193,
+                    29467,
                 )),
             },
             type_params: vec![],
@@ -25301,7 +25301,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 29081, 29404),
+            span: SourceSpan::new("src/v3/std/induction.dag", 29144, 29467),
         });
         declarations.push(Declaration {
             id: DeclarationId(960),
@@ -25311,8 +25311,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    29446,
-                    29479,
+                    29509,
+                    29542,
                 )),
             },
             type_params: vec![],
@@ -25323,7 +25323,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 29405, 29479),
+            span: SourceSpan::new("src/v3/std/induction.dag", 29468, 29542),
         });
         declarations.push(Declaration {
             id: DeclarationId(961),
@@ -25333,8 +25333,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    29521,
-                    29554,
+                    29584,
+                    29617,
                 )),
             },
             type_params: vec![],
@@ -25345,7 +25345,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 29480, 29554),
+            span: SourceSpan::new("src/v3/std/induction.dag", 29543, 29617),
         });
         declarations.push(Declaration {
             id: DeclarationId(962),
@@ -25355,8 +25355,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    29595,
-                    29645,
+                    29658,
+                    29708,
                 )),
             },
             type_params: vec![],
@@ -25367,7 +25367,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 29555, 29645),
+            span: SourceSpan::new("src/v3/std/induction.dag", 29618, 29708),
         });
         declarations.push(Declaration {
             id: DeclarationId(963),
@@ -25377,8 +25377,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    29689,
-                    29807,
+                    29752,
+                    29870,
                 )),
             },
             type_params: vec![],
@@ -25389,7 +25389,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 29647, 29807),
+            span: SourceSpan::new("src/v3/std/induction.dag", 29710, 29870),
         });
         declarations.push(Declaration {
             id: DeclarationId(964),
@@ -25399,8 +25399,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    29877,
-                    30053,
+                    29940,
+                    30116,
                 )),
             },
             type_params: vec![],
@@ -25411,7 +25411,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 29809, 30053),
+            span: SourceSpan::new("src/v3/std/induction.dag", 29872, 30116),
         });
         declarations.push(Declaration {
             id: DeclarationId(965),
@@ -25444,7 +25444,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 31210, 31301),
+            span: SourceSpan::new("src/v3/std/induction.dag", 31273, 31364),
         });
         declarations.push(Declaration {
             id: DeclarationId(966),
@@ -25454,8 +25454,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1941),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    31892,
-                    32143,
+                    31955,
+                    32206,
                 )),
             },
             type_params: vec![],
@@ -25466,7 +25466,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 31849, 32143),
+            span: SourceSpan::new("src/v3/std/induction.dag", 31912, 32206),
         });
         declarations.push(Declaration {
             id: DeclarationId(967),
@@ -25476,8 +25476,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1942),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    32188,
-                    32977,
+                    32251,
+                    33040,
                 )),
             },
             type_params: vec![],
@@ -25488,7 +25488,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 32145, 32977),
+            span: SourceSpan::new("src/v3/std/induction.dag", 32208, 33040),
         });
         declarations.push(Declaration {
             id: DeclarationId(968),
@@ -25498,8 +25498,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1943),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    33437,
-                    33560,
+                    33500,
+                    33623,
                 )),
             },
             type_params: vec![],
@@ -25510,7 +25510,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33393, 33560),
+            span: SourceSpan::new("src/v3/std/induction.dag", 33456, 33623),
         });
         declarations.push(Declaration {
             id: DeclarationId(969),
@@ -25520,8 +25520,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1944),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    33912,
-                    34957,
+                    33975,
+                    35020,
                 )),
             },
             type_params: vec![],
@@ -25532,7 +25532,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33864, 34957),
+            span: SourceSpan::new("src/v3/std/induction.dag", 33927, 35020),
         });
         declarations.push(Declaration {
             id: DeclarationId(970),
@@ -25542,8 +25542,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1945),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    35175,
-                    35290,
+                    35238,
+                    35353,
                 )),
             },
             type_params: vec![],
@@ -25554,7 +25554,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35129, 35290),
+            span: SourceSpan::new("src/v3/std/induction.dag", 35192, 35353),
         });
         declarations.push(Declaration {
             id: DeclarationId(971),
@@ -25569,8 +25569,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(1946),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    35447,
-                    35809,
+                    35510,
+                    35872,
                 )),
             },
             type_params: vec![],
@@ -25581,7 +25581,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35376, 35809),
+            span: SourceSpan::new("src/v3/std/induction.dag", 35439, 35872),
         });
         declarations.push(Declaration {
             id: DeclarationId(972),
@@ -25591,8 +25591,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    35864,
-                    37901,
+                    35927,
+                    37964,
                 )),
             },
             type_params: vec![],
@@ -25603,7 +25603,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35811, 37901),
+            span: SourceSpan::new("src/v3/std/induction.dag", 35874, 37964),
         });
         declarations.push(Declaration {
             id: DeclarationId(973),
@@ -25613,8 +25613,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    38254,
-                    38412,
+                    38317,
+                    38475,
                 )),
             },
             type_params: vec![],
@@ -25625,7 +25625,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 38184, 38412),
+            span: SourceSpan::new("src/v3/std/induction.dag", 38247, 38475),
         });
         declarations.push(Declaration {
             id: DeclarationId(974),
@@ -25640,8 +25640,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    38911,
-                    39935,
+                    38974,
+                    39998,
                 )),
             },
             type_params: vec![],
@@ -25652,7 +25652,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 38810, 39935),
+            span: SourceSpan::new("src/v3/std/induction.dag", 38873, 39998),
         });
         declarations.push(Declaration {
             id: DeclarationId(975),
@@ -25662,8 +25662,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    40268,
-                    40325,
+                    40331,
+                    40388,
                 )),
             },
             type_params: vec![],
@@ -25674,7 +25674,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 40229, 40325),
+            span: SourceSpan::new("src/v3/std/induction.dag", 40292, 40388),
         });
         declarations.push(Declaration {
             id: DeclarationId(976),
@@ -25684,8 +25684,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    40368,
-                    40426,
+                    40431,
+                    40489,
                 )),
             },
             type_params: vec![],
@@ -25696,7 +25696,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 40327, 40426),
+            span: SourceSpan::new("src/v3/std/induction.dag", 40390, 40489),
         });
         declarations.push(Declaration {
             id: DeclarationId(977),
@@ -25706,8 +25706,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    40526,
-                    40581,
+                    40589,
+                    40644,
                 )),
             },
             type_params: vec![],
@@ -25718,7 +25718,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 40490, 40581),
+            span: SourceSpan::new("src/v3/std/induction.dag", 40553, 40644),
         });
         declarations.push(Declaration {
             id: DeclarationId(978),
@@ -25728,8 +25728,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    40778,
-                    40893,
+                    40841,
+                    40956,
                 )),
             },
             type_params: vec![],
@@ -25740,7 +25740,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 40740, 40893),
+            span: SourceSpan::new("src/v3/std/induction.dag", 40803, 40956),
         });
         declarations.push(Declaration {
             id: DeclarationId(979),
@@ -25750,8 +25750,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    40973,
-                    41088,
+                    41036,
+                    41151,
                 )),
             },
             type_params: vec![],
@@ -25762,7 +25762,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 40939, 41088),
+            span: SourceSpan::new("src/v3/std/induction.dag", 41002, 41151),
         });
         declarations.push(Declaration {
             id: DeclarationId(980),
@@ -25772,8 +25772,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    41255,
-                    41374,
+                    41318,
+                    41437,
                 )),
             },
             type_params: vec![],
@@ -25784,7 +25784,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 41221, 41374),
+            span: SourceSpan::new("src/v3/std/induction.dag", 41284, 41437),
         });
         declarations.push(Declaration {
             id: DeclarationId(981),
@@ -25794,8 +25794,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    41539,
-                    41653,
+                    41602,
+                    41716,
                 )),
             },
             type_params: vec![],
@@ -25806,7 +25806,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 41506, 41653),
+            span: SourceSpan::new("src/v3/std/induction.dag", 41569, 41716),
         });
         declarations.push(Declaration {
             id: DeclarationId(982),
@@ -25816,8 +25816,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    41770,
-                    41795,
+                    41833,
+                    41858,
                 )),
             },
             type_params: vec![],
@@ -25828,7 +25828,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 41731, 41795),
+            span: SourceSpan::new("src/v3/std/induction.dag", 41794, 41858),
         });
         declarations.push(Declaration {
             id: DeclarationId(983),
@@ -25838,8 +25838,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    41830,
-                    41855,
+                    41893,
+                    41918,
                 )),
             },
             type_params: vec![],
@@ -25850,7 +25850,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 41796, 41855),
+            span: SourceSpan::new("src/v3/std/induction.dag", 41859, 41918),
         });
         declarations.push(Declaration {
             id: DeclarationId(984),
@@ -25860,8 +25860,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    41937,
-                    41968,
+                    42000,
+                    42031,
                 )),
             },
             type_params: vec![],
@@ -25872,7 +25872,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 41898, 41968),
+            span: SourceSpan::new("src/v3/std/induction.dag", 41961, 42031),
         });
         declarations.push(Declaration {
             id: DeclarationId(985),
@@ -25882,8 +25882,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    42204,
-                    42255,
+                    42267,
+                    42318,
                 )),
             },
             type_params: vec![],
@@ -25894,7 +25894,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 42172, 42255),
+            span: SourceSpan::new("src/v3/std/induction.dag", 42235, 42318),
         });
         declarations.push(Declaration {
             id: DeclarationId(986),
@@ -25904,8 +25904,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    42346,
-                    42628,
+                    42409,
+                    42691,
                 )),
             },
             type_params: vec![],
@@ -25916,7 +25916,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 42313, 42628),
+            span: SourceSpan::new("src/v3/std/induction.dag", 42376, 42691),
         });
         declarations.push(Declaration {
             id: DeclarationId(987),
@@ -25926,8 +25926,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    42731,
-                    42891,
+                    42794,
+                    42954,
                 )),
             },
             type_params: vec![],
@@ -25938,7 +25938,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 42694, 42891),
+            span: SourceSpan::new("src/v3/std/induction.dag", 42757, 42954),
         });
         declarations.push(Declaration {
             id: DeclarationId(988),
@@ -25948,8 +25948,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                 output: DeclarationId(953),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
-                    42998,
-                    43036,
+                    43061,
+                    43099,
                 )),
             },
             type_params: vec![],
@@ -25960,7 +25960,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 42959, 43036),
+            span: SourceSpan::new("src/v3/std/induction.dag", 43022, 43099),
         });
         declarations.push(Declaration {
             id: DeclarationId(989),
@@ -54969,7 +54969,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 20442, 20454),
+            span: SourceSpan::new("src/v3/std/induction.dag", 20505, 20517),
         });
         declarations.push(Declaration {
             id: DeclarationId(1939),
@@ -54986,7 +54986,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 21827, 21842),
+            span: SourceSpan::new("src/v3/std/induction.dag", 21890, 21905),
         });
         declarations.push(Declaration {
             id: DeclarationId(1940),
@@ -55006,7 +55006,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 27734, 27749),
+            span: SourceSpan::new("src/v3/std/induction.dag", 27797, 27812),
         });
         declarations.push(Declaration {
             id: DeclarationId(1941),
@@ -55023,7 +55023,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 31887, 31891),
+            span: SourceSpan::new("src/v3/std/induction.dag", 31950, 31954),
         });
         declarations.push(Declaration {
             id: DeclarationId(1942),
@@ -55040,7 +55040,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 32183, 32187),
+            span: SourceSpan::new("src/v3/std/induction.dag", 32246, 32250),
         });
         declarations.push(Declaration {
             id: DeclarationId(1943),
@@ -55057,7 +55057,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33432, 33436),
+            span: SourceSpan::new("src/v3/std/induction.dag", 33495, 33499),
         });
         declarations.push(Declaration {
             id: DeclarationId(1944),
@@ -55074,7 +55074,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 33907, 33911),
+            span: SourceSpan::new("src/v3/std/induction.dag", 33970, 33974),
         });
         declarations.push(Declaration {
             id: DeclarationId(1945),
@@ -55091,7 +55091,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35170, 35174),
+            span: SourceSpan::new("src/v3/std/induction.dag", 35233, 35237),
         });
         declarations.push(Declaration {
             id: DeclarationId(1946),
@@ -55108,7 +55108,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 35442, 35446),
+            span: SourceSpan::new("src/v3/std/induction.dag", 35505, 35509),
         });
         declarations.push(Declaration {
             id: DeclarationId(1947),
@@ -55289,7 +55289,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24019, 24033),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24082, 24096),
         });
         declarations.push(Declaration {
             id: DeclarationId(1958),
@@ -55308,7 +55308,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24038, 24085),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24101, 24148),
         });
         declarations.push(Declaration {
             id: DeclarationId(1959),
@@ -55333,7 +55333,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24090, 24167),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24153, 24230),
         });
         declarations.push(Declaration {
             id: DeclarationId(1960),
@@ -55358,7 +55358,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24172, 24246),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24235, 24309),
         });
         declarations.push(Declaration {
             id: DeclarationId(1961),
@@ -55383,7 +55383,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24866, 24922),
+            span: SourceSpan::new("src/v3/std/induction.dag", 24929, 24985),
         });
         declarations.push(Declaration {
             id: DeclarationId(1962),
@@ -55402,7 +55402,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 24938, 24963),
+            span: SourceSpan::new("src/v3/std/induction.dag", 25001, 25026),
         });
         declarations.push(Declaration {
             id: DeclarationId(1963),
@@ -55416,7 +55416,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26612, 26625),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26675, 26688),
         });
         declarations.push(Declaration {
             id: DeclarationId(1964),
@@ -55435,7 +55435,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26669, 26701),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26732, 26764),
         });
         declarations.push(Declaration {
             id: DeclarationId(1965),
@@ -55455,7 +55455,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26764, 26780),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26827, 26843),
         });
         declarations.push(Declaration {
             id: DeclarationId(1966),
@@ -55474,7 +55474,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26740, 26782),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26803, 26845),
         });
         declarations.push(Declaration {
             id: DeclarationId(1967),
@@ -55494,7 +55494,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26844, 26860),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26907, 26923),
         });
         declarations.push(Declaration {
             id: DeclarationId(1968),
@@ -55514,7 +55514,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26839, 26861),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26902, 26924),
         });
         declarations.push(Declaration {
             id: DeclarationId(1969),
@@ -55533,7 +55533,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 26811, 26863),
+            span: SourceSpan::new("src/v3/std/induction.dag", 26874, 26926),
         });
         declarations.push(Declaration {
             id: DeclarationId(1970),
@@ -55553,7 +55553,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 27161, 27176),
+            span: SourceSpan::new("src/v3/std/induction.dag", 27224, 27239),
         });
         declarations.push(Declaration {
             id: DeclarationId(1971),
@@ -55572,7 +55572,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 27143, 27178),
+            span: SourceSpan::new("src/v3/std/induction.dag", 27206, 27241),
         });
         declarations.push(Declaration {
             id: DeclarationId(1972),
@@ -55586,7 +55586,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 27261, 27273),
+            span: SourceSpan::new("src/v3/std/induction.dag", 27324, 27336),
         });
         declarations.push(Declaration {
             id: DeclarationId(1973),
@@ -55600,7 +55600,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/induction.dag", 27343, 27353),
+            span: SourceSpan::new("src/v3/std/induction.dag", 27406, 27416),
         });
         declarations.push(Declaration {
             id: DeclarationId(1974),
