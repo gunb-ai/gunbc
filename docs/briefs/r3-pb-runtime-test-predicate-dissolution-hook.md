@@ -51,7 +51,7 @@ The PR cites which of the three cases in §2 the predicate falls into:
 
 - **(a) Value-domain fold over PB-Runtime evaluation result.** The arm dispatches to a `Lens<C>`-shaped fold that consumes a `Value` produced by PB-Runtime's `evaluate` (per `docs/design-pb-runtime-interpreter.md` §3). The arm is a thin adapter; it does not contain bespoke evaluation logic.
 - **(b) Reflection-only structural projection.** The arm dispatches to a structural query per `docs/design-reflection-completeness.md`. No PB-Runtime invocation; no execution. Static fold over reflected program structure.
-- **(c) P1-routed substrate gap.** Neither (a) nor (b) applies because the predicate semantics requires a primitive PB-Runtime cannot express via its 5-primitive base (`feedback_compiler_is_dag_processor.md`). **(c)-classified PRs do not land runner code in the same PR**; they land a P1 substrate-fact-introduction escalation row first.
+- **(c) P1-routed substrate gap.** Neither (a) nor (b) applies because the predicate semantics requires a primitive PB-Runtime cannot express via its 5-primitive base (`docs/design-pb-runtime-interpreter.md` §3.1 — `Node` / `Conj` / `Disj` / `Cardinality` / `Bit`). **(c)-classified PRs do not land runner code in the same PR**; they land a P1 substrate-fact-introduction escalation row first.
 
 PRs that cannot place the predicate in (a), (b), or (c) are not freeze-allowed. There is no "(d) bespoke pending cleanup".
 
