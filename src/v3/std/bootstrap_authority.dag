@@ -2,9 +2,9 @@ module v3.std.bootstrap_authority
 
 // Generalized bootstrap authority membership for the committed full bootstrap
 // snapshot. This is the substrate prerequisite for Verification row 82
-// (`diagnostics_empty_after_bootstrap`): Verification should consume
-// `bootstrap_authority.authorities` rather than re-deriving bootstrap
-// membership from Rust fixture arrays or source globs.
+// (`diagnostics_empty_after_bootstrap`): Verification should consume the
+// `bootstrap_authority` map rather than re-deriving bootstrap membership from
+// Rust fixture arrays or source globs.
 //
 // This carrier intentionally records membership only. It does not define the
 // bootstrap process, load ordering, diagnostics policy, or row-82 TestClaim.
@@ -91,5 +91,4 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/compiler/regen.dag": CompilerAuthority { path: "src/v3/compiler/regen.dag" },
 
     "dsl/extdeps/languages/rust/primitives.dag": ExtdepsFixtureAuthority { path: "dsl/extdeps/languages/rust/primitives.dag" }
-  }
 }

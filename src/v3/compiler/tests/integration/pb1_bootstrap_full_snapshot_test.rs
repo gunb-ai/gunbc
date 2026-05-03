@@ -151,15 +151,8 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
     let decl = dag
         .declaration_by_name("bootstrap_authority")
         .expect("full bootstrap loads bootstrap_authority");
-    let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
-        panic!("bootstrap_authority should lower to a structural record body");
-    };
-    let (_, authorities) = fields
-        .iter()
-        .find(|(label, _)| label == "authorities")
-        .expect("bootstrap_authority has authorities field");
-    let FieldValue::Map(rows) = authorities else {
-        panic!("bootstrap_authority.authorities should lower to a map");
+    let Some(ValueBody::Map(rows)) = decl.value_body.as_ref() else {
+        panic!("bootstrap_authority should lower to a structural map body");
     };
 
     rows.entries()
