@@ -601,14 +601,15 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 
-fn optional_inner_type_compatible(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn rejects_raw_string_for_optional_coproduct_field(expected: Node, got: Node, value: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   let expected_inner = with_required_cardinality(n: expected)
-  node_type_compatible(left: expected_inner, right: got, source_indices: source_indices)
-}
-
-fn record_field_value_compatible(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  node_type_compatible(left: expected, right: got, source_indices: source_indices)
-  || (expected.return_cardinality == CardOptional && optional_inner_type_compatible(expected: expected, got: got, source_indices: source_indices))
+  let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
+  let got_is_string = authored_name_at(source_indices: source_indices, node: got) == "String"
+  let value_is_string_literal = match value.expr_data {
+    ExprLiteral { value: LitStr { value: _ } } => true
+    _ => false
+  }
+  expected_is_optional_coproduct && got_is_string && value_is_string_literal
 }
 
 // Kernel List construction: diagnostics come from KernelTypeBuild (infer_types).
@@ -2328,15 +2329,20 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let field_type_diags = match field_expected {
       Some { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
-        if record_field_value_compatible(expected: expected_node, got: got_node, source_indices: scope.type_env.source_indices) {
-          []
-        } else {
+        if rejects_raw_string_for_optional_coproduct_field(
+          expected: expected_node,
+          got: got_node,
+          value: ar_typed,
+          source_indices: scope.type_env.source_indices
+        ) {
           [type_mismatch_error(
             expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
             got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
             span: ar_typed.span,
             module_name: scope.module_name
           )]
+        } else {
+          []
         }
       None => []
     }
