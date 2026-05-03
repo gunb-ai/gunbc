@@ -61,6 +61,13 @@ fails:
 Those gates make `bootstrap_generated.rs` a projection artifact. They do not
 make generated Rust source the row authority.
 
+Ratchet 1 may become vacuous or reshape under the #1558 dissolution-first
+transition if `bootstrap_generated.rs` stops being committed and the full
+bootstrap snapshot is materialized by `build.rs` or an `OUT_DIR` artifact. The
+substrate of this decision is invariant to that reshape: the full bootstrap Dag
+snapshot remains the canonical read surface regardless of whether its
+materialization is committed Rust or an ephemeral build artifact.
+
 ## PB Surface Classification
 
 The PB projection is both:
