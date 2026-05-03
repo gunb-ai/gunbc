@@ -20,16 +20,26 @@
 //     IS the closed-system namespace authority for every
 //     algebra-template method name; not a demand-shaped subset for the
 //     first Grounding consumer.
-//   - Target-only emit-shortcut method names that lack an algebra row
-//     but appear as keys in `dsl/extdeps/languages/{python,go}/emit.dag`
-//     also live here so per-target `MethodTemplateContract` rows can
-//     reference a `MethodRef` instead of a bare string. `string_contains`
-//     (substring test rendered as `{arg} in {recv}` / `strings.Contains`)
-//     is the first such entry. The algebra `contains` method already
-//     covers element membership for collections; `string_contains` is
-//     a separate emit identity because v2's emit map disambiguates the
-//     string substring shape from the collection-membership shape by
-//     name.
+//   - Legacy v2 emit-map aliases. v2's emit pipeline keys
+//     `dsl/extdeps/languages/{python,go}/emit.dag` by bare method-name
+//     string. When two algebra profiles inhabit the same name with
+//     different render shapes, v2 disambiguates by minting a separate
+//     legacy key (e.g. `string_contains` vs `contains`). The algebra
+//     authority itself does NOT split: `dsl/std/algebra.dag` declares
+//     `contains` once on `free_monoid_scalar_templates` (String
+//     substring test) and once on `*_collection_templates` /
+//     `boolean_algebra_*` (element/key membership) under the same
+//     method name; the algebra-profile coordinate carries the
+//     disambiguation. To give the legacy aliases a `MethodRef` row key
+//     until v2 retires its bare-string lookup, those aliases live
+//     here as additional `MethodDeclaration` bindings. `string_contains`
+//     (rendered as `{arg} in {recv}` / `strings.Contains({recv}, {arg})`)
+//     is the first such entry. Dissolution trigger: when v2 emit
+//     migrates to algebra-profile-keyed method dispatch (PB projection
+//     scope, #1549 audit Recommendations §3-§4 / R3 \"Method-template
+//     consumer migration\" debt row), legacy alias bindings collapse
+//     back into algebra-typed `contains` dispatch and these entries
+//     can be deleted alongside the per-target legacy emit maps.
 //   - Flat name-only namespace (Director-locked option A on Q2):
 //     `join` / `length` / `contains` / `map` / `fold` / etc. each
 //     appear once, regardless of how many algebra profiles inhabit

@@ -5509,7 +5509,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4073, 4114),
+            span: SourceSpan::new("dsl/std/methods.dag", 4783, 4824),
         });
         declarations.push(Declaration {
             id: DeclarationId(214),
@@ -5531,7 +5531,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4563, 4615),
+            span: SourceSpan::new("dsl/std/methods.dag", 5273, 5325),
         });
         declarations.push(Declaration {
             id: DeclarationId(215),
@@ -5553,7 +5553,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4616, 4668),
+            span: SourceSpan::new("dsl/std/methods.dag", 5326, 5378),
         });
         declarations.push(Declaration {
             id: DeclarationId(216),
@@ -5575,7 +5575,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4669, 4721),
+            span: SourceSpan::new("dsl/std/methods.dag", 5379, 5431),
         });
         declarations.push(Declaration {
             id: DeclarationId(217),
@@ -5597,7 +5597,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4722, 4780),
+            span: SourceSpan::new("dsl/std/methods.dag", 5432, 5490),
         });
         declarations.push(Declaration {
             id: DeclarationId(218),
@@ -5619,7 +5619,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4781, 4839),
+            span: SourceSpan::new("dsl/std/methods.dag", 5491, 5549),
         });
         declarations.push(Declaration {
             id: DeclarationId(219),
@@ -5641,7 +5641,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4840, 4896),
+            span: SourceSpan::new("dsl/std/methods.dag", 5550, 5606),
         });
         declarations.push(Declaration {
             id: DeclarationId(220),
@@ -5663,7 +5663,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4897, 4953),
+            span: SourceSpan::new("dsl/std/methods.dag", 5607, 5663),
         });
         declarations.push(Declaration {
             id: DeclarationId(221),
@@ -5685,7 +5685,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 4954, 5014),
+            span: SourceSpan::new("dsl/std/methods.dag", 5664, 5724),
         });
         declarations.push(Declaration {
             id: DeclarationId(222),
@@ -5707,7 +5707,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5015, 5081),
+            span: SourceSpan::new("dsl/std/methods.dag", 5725, 5791),
         });
         declarations.push(Declaration {
             id: DeclarationId(223),
@@ -5729,7 +5729,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5082, 5140),
+            span: SourceSpan::new("dsl/std/methods.dag", 5792, 5850),
         });
         declarations.push(Declaration {
             id: DeclarationId(224),
@@ -5751,7 +5751,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5141, 5203),
+            span: SourceSpan::new("dsl/std/methods.dag", 5851, 5913),
         });
         declarations.push(Declaration {
             id: DeclarationId(225),
@@ -5773,7 +5773,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5204, 5260),
+            span: SourceSpan::new("dsl/std/methods.dag", 5914, 5970),
         });
         declarations.push(Declaration {
             id: DeclarationId(226),
@@ -5795,7 +5795,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5261, 5315),
+            span: SourceSpan::new("dsl/std/methods.dag", 5971, 6025),
         });
         declarations.push(Declaration {
             id: DeclarationId(227),
@@ -5817,7 +5817,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5316, 5372),
+            span: SourceSpan::new("dsl/std/methods.dag", 6026, 6082),
         });
         declarations.push(Declaration {
             id: DeclarationId(228),
@@ -5839,7 +5839,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5373, 5437),
+            span: SourceSpan::new("dsl/std/methods.dag", 6083, 6147),
         });
         declarations.push(Declaration {
             id: DeclarationId(229),
@@ -5861,7 +5861,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5438, 5502),
+            span: SourceSpan::new("dsl/std/methods.dag", 6148, 6212),
         });
         declarations.push(Declaration {
             id: DeclarationId(230),
@@ -5883,7 +5883,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5503, 5561),
+            span: SourceSpan::new("dsl/std/methods.dag", 6213, 6271),
         });
         declarations.push(Declaration {
             id: DeclarationId(231),
@@ -5905,7 +5905,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5562, 5618),
+            span: SourceSpan::new("dsl/std/methods.dag", 6272, 6328),
         });
         declarations.push(Declaration {
             id: DeclarationId(232),
@@ -5927,7 +5927,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5619, 5681),
+            span: SourceSpan::new("dsl/std/methods.dag", 6329, 6391),
         });
         declarations.push(Declaration {
             id: DeclarationId(233),
@@ -5949,7 +5949,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5682, 5736),
+            span: SourceSpan::new("dsl/std/methods.dag", 6392, 6446),
         });
         declarations.push(Declaration {
             id: DeclarationId(234),
@@ -5971,7 +5971,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5737, 5789),
+            span: SourceSpan::new("dsl/std/methods.dag", 6447, 6499),
         });
         declarations.push(Declaration {
             id: DeclarationId(235),
@@ -5993,7 +5993,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5790, 5842),
+            span: SourceSpan::new("dsl/std/methods.dag", 6500, 6552),
         });
         declarations.push(Declaration {
             id: DeclarationId(236),
@@ -6015,7 +6015,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5843, 5907),
+            span: SourceSpan::new("dsl/std/methods.dag", 6553, 6617),
         });
         declarations.push(Declaration {
             id: DeclarationId(237),
@@ -6037,7 +6037,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5908, 5962),
+            span: SourceSpan::new("dsl/std/methods.dag", 6618, 6672),
         });
         declarations.push(Declaration {
             id: DeclarationId(238),
@@ -6059,7 +6059,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 5963, 6017),
+            span: SourceSpan::new("dsl/std/methods.dag", 6673, 6727),
         });
         declarations.push(Declaration {
             id: DeclarationId(239),
@@ -6081,7 +6081,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6018, 6072),
+            span: SourceSpan::new("dsl/std/methods.dag", 6728, 6782),
         });
         declarations.push(Declaration {
             id: DeclarationId(240),
@@ -6103,7 +6103,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6073, 6131),
+            span: SourceSpan::new("dsl/std/methods.dag", 6783, 6841),
         });
         declarations.push(Declaration {
             id: DeclarationId(241),
@@ -6125,7 +6125,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6132, 6196),
+            span: SourceSpan::new("dsl/std/methods.dag", 6842, 6906),
         });
         declarations.push(Declaration {
             id: DeclarationId(242),
@@ -6147,7 +6147,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6197, 6255),
+            span: SourceSpan::new("dsl/std/methods.dag", 6907, 6965),
         });
         declarations.push(Declaration {
             id: DeclarationId(243),
@@ -6169,7 +6169,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6256, 6308),
+            span: SourceSpan::new("dsl/std/methods.dag", 6966, 7018),
         });
         declarations.push(Declaration {
             id: DeclarationId(244),
@@ -6191,7 +6191,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6309, 6387),
+            span: SourceSpan::new("dsl/std/methods.dag", 7019, 7097),
         });
         declarations.push(Declaration {
             id: DeclarationId(245),
@@ -6213,7 +6213,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6388, 6448),
+            span: SourceSpan::new("dsl/std/methods.dag", 7098, 7158),
         });
         declarations.push(Declaration {
             id: DeclarationId(246),
@@ -6235,7 +6235,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6449, 6509),
+            span: SourceSpan::new("dsl/std/methods.dag", 7159, 7219),
         });
         declarations.push(Declaration {
             id: DeclarationId(247),
@@ -6257,7 +6257,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6510, 6576),
+            span: SourceSpan::new("dsl/std/methods.dag", 7220, 7286),
         });
         declarations.push(Declaration {
             id: DeclarationId(248),
@@ -6279,7 +6279,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6577, 6639),
+            span: SourceSpan::new("dsl/std/methods.dag", 7287, 7349),
         });
         declarations.push(Declaration {
             id: DeclarationId(249),
@@ -6301,7 +6301,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6640, 6704),
+            span: SourceSpan::new("dsl/std/methods.dag", 7350, 7414),
         });
         declarations.push(Declaration {
             id: DeclarationId(250),
@@ -6323,7 +6323,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6705, 6771),
+            span: SourceSpan::new("dsl/std/methods.dag", 7415, 7481),
         });
         declarations.push(Declaration {
             id: DeclarationId(251),
@@ -6345,7 +6345,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6772, 6826),
+            span: SourceSpan::new("dsl/std/methods.dag", 7482, 7536),
         });
         declarations.push(Declaration {
             id: DeclarationId(252),
@@ -6367,7 +6367,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6827, 6885),
+            span: SourceSpan::new("dsl/std/methods.dag", 7537, 7595),
         });
         declarations.push(Declaration {
             id: DeclarationId(253),
@@ -6389,7 +6389,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6886, 6938),
+            span: SourceSpan::new("dsl/std/methods.dag", 7596, 7648),
         });
         declarations.push(Declaration {
             id: DeclarationId(254),
@@ -6411,7 +6411,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6939, 6997),
+            span: SourceSpan::new("dsl/std/methods.dag", 7649, 7707),
         });
         declarations.push(Declaration {
             id: DeclarationId(255),
@@ -6433,7 +6433,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 6998, 7050),
+            span: SourceSpan::new("dsl/std/methods.dag", 7708, 7760),
         });
         declarations.push(Declaration {
             id: DeclarationId(256),
@@ -6455,7 +6455,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7051, 7117),
+            span: SourceSpan::new("dsl/std/methods.dag", 7761, 7827),
         });
         declarations.push(Declaration {
             id: DeclarationId(257),
@@ -6477,7 +6477,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7118, 7178),
+            span: SourceSpan::new("dsl/std/methods.dag", 7828, 7888),
         });
         declarations.push(Declaration {
             id: DeclarationId(258),
@@ -6499,7 +6499,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7179, 7239),
+            span: SourceSpan::new("dsl/std/methods.dag", 7889, 7949),
         });
         declarations.push(Declaration {
             id: DeclarationId(259),
@@ -6521,7 +6521,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7240, 7294),
+            span: SourceSpan::new("dsl/std/methods.dag", 7950, 8004),
         });
         declarations.push(Declaration {
             id: DeclarationId(260),
@@ -6543,7 +6543,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7295, 7355),
+            span: SourceSpan::new("dsl/std/methods.dag", 8005, 8065),
         });
         declarations.push(Declaration {
             id: DeclarationId(261),
@@ -6565,7 +6565,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7356, 7412),
+            span: SourceSpan::new("dsl/std/methods.dag", 8066, 8122),
         });
         declarations.push(Declaration {
             id: DeclarationId(262),
@@ -6587,7 +6587,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7413, 7481),
+            span: SourceSpan::new("dsl/std/methods.dag", 8123, 8191),
         });
         declarations.push(Declaration {
             id: DeclarationId(263),
@@ -6609,7 +6609,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7482, 7558),
+            span: SourceSpan::new("dsl/std/methods.dag", 8192, 8268),
         });
         declarations.push(Declaration {
             id: DeclarationId(264),
@@ -6631,7 +6631,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7559, 7623),
+            span: SourceSpan::new("dsl/std/methods.dag", 8269, 8333),
         });
         declarations.push(Declaration {
             id: DeclarationId(265),
@@ -6653,7 +6653,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7624, 7678),
+            span: SourceSpan::new("dsl/std/methods.dag", 8334, 8388),
         });
         declarations.push(Declaration {
             id: DeclarationId(266),
@@ -6675,7 +6675,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7679, 7737),
+            span: SourceSpan::new("dsl/std/methods.dag", 8389, 8447),
         });
         declarations.push(Declaration {
             id: DeclarationId(267),
@@ -6697,7 +6697,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7738, 7800),
+            span: SourceSpan::new("dsl/std/methods.dag", 8448, 8510),
         });
         declarations.push(Declaration {
             id: DeclarationId(268),
@@ -6719,7 +6719,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7801, 7865),
+            span: SourceSpan::new("dsl/std/methods.dag", 8511, 8575),
         });
         declarations.push(Declaration {
             id: DeclarationId(269),
@@ -6741,7 +6741,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7866, 7928),
+            span: SourceSpan::new("dsl/std/methods.dag", 8576, 8638),
         });
         declarations.push(Declaration {
             id: DeclarationId(270),
@@ -6763,7 +6763,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7929, 7981),
+            span: SourceSpan::new("dsl/std/methods.dag", 8639, 8691),
         });
         declarations.push(Declaration {
             id: DeclarationId(271),
@@ -6785,7 +6785,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 7982, 8036),
+            span: SourceSpan::new("dsl/std/methods.dag", 8692, 8746),
         });
         declarations.push(Declaration {
             id: DeclarationId(272),
@@ -6807,7 +6807,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 8037, 8093),
+            span: SourceSpan::new("dsl/std/methods.dag", 8747, 8803),
         });
         declarations.push(Declaration {
             id: DeclarationId(273),
@@ -6829,7 +6829,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 8094, 8152),
+            span: SourceSpan::new("dsl/std/methods.dag", 8804, 8862),
         });
         declarations.push(Declaration {
             id: DeclarationId(274),
@@ -6851,7 +6851,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 8153, 8207),
+            span: SourceSpan::new("dsl/std/methods.dag", 8863, 8917),
         });
         declarations.push(Declaration {
             id: DeclarationId(275),
@@ -6873,7 +6873,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/methods.dag", 8208, 8262),
+            span: SourceSpan::new("dsl/std/methods.dag", 8918, 8972),
         });
         declarations.push(Declaration {
             id: DeclarationId(276),
