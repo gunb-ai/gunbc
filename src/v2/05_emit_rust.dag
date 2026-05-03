@@ -411,68 +411,6 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
   } }
 }
 
-fn record_string_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
-  match record.expr_data {
-    ExprRecordLit { parent_enum: _ } =>
-      match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field_name) |> first {
-        Some { value: fi } => match field_init_node_value(n: fi).expr_data {
-          ExprLiteral { value: LitStr { value: s } } => Some { value: s }
-          ExprVar { binding_kind: _ } => Some { value: expr_var_name_at(texpr: field_init_node_value(n: fi), source_indices: source_indices) }
-          _ => none
-        }
-        None => none
-      }
-    _ => none
-  }
-}
-
-fn coproduct_wire_tag_attr_for_type(type_name: String, data_items: Map<String, List<Node>>, source_indices: Map<String, NewlineIndex>) -> String? {
-  match map_get(data_items, "coproduct_wire_tags") {
-    None => none
-    Some { value: candidates } =>
-      if candidates |> count != 1 {
-        Some { value: emit_error_expr(message: "coproduct_wire_tags: expected exactly one module-local data declaration", target: Rust) }
-      } else {
-        match candidates |> first {
-          None => none
-          Some { value: data_item } => match data_item.body {
-            None => Some { value: emit_error_expr(message: "coproduct_wire_tags: data item has no initializer body", target: Rust) }
-            Some { value: body } => match body.expr_data {
-              ExprListLit => {
-                let matches = body.children |> filter(row =>
-                  match record_string_field(record: row, field_name: "type_name", source_indices: source_indices) {
-                    Some { value: tn } => tn == type_name
-                    None => false
-                  }
-                )
-                if matches |> count == 0 { none }
-                else if matches |> count > 1 {
-                  Some { value: emit_error_expr(message: concat("coproduct_wire_tags: duplicate row for ", type_name), target: Rust) }
-                } else {
-                  match matches |> first {
-                    None => none
-                    Some { value: row } =>
-                      let tag_field = match record_string_field(record: row, field_name: "tag_field", source_indices: source_indices) {
-                        Some { value: tf } => tf
-                        None => emit_error_expr(message: concat("coproduct_wire_tags: missing tag_field for ", type_name), target: Rust)
-                      }
-                      let naming = match record_string_field(record: row, field_name: "naming", source_indices: source_indices) {
-                        Some { value: n } => n
-                        None => "AsAuthored"
-                      }
-                      let rename = if naming == "SnakeCase" { ", rename_all = \"snake_case\"" } else { "" }
-                      Some { value: concat("#[serde(tag = \"", tag_field, "\"", rename, ")]") }
-                  }
-                }
-              }
-              _ => Some { value: emit_error_expr(message: "coproduct_wire_tags: initializer must be a list of CoproductWireTag rows", target: Rust) }
-            }
-          }
-        }
-      }
-  }
-}
-
 fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
   modules |> fold(init: empty_map(), f: (acc, tm) =>
     let module_name = authored_name_at(source_indices: tm.type_env.source_indices, node: tm.module)
@@ -1318,12 +1256,9 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
     emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else {
     // Resolve serde tag per-enum from the module's wire contract data item
-    let serde_enum_tag = match coproduct_wire_tag_attr_for_type(type_name: item_text, data_items: data_items, source_indices: env.source_indices) {
-      Some { value: attr } => attr
-      None => match wire_contract_item {
-        Some { value: _ } => resolve_wire_serde_tag_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices, data_items: data_items)
-        None => rust_serde_tag_attr()
-      }
+    let serde_enum_tag = match wire_contract_item {
+      Some { value: _ } => resolve_wire_serde_tag_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices, data_items: data_items)
+      None => rust_serde_tag_attr()
     }
     emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_enum_tag: serde_enum_tag)
   }

@@ -317,7 +317,7 @@ Automated + human review threads on [PR #825](https://github.com/gunb-ai/gunbc/p
 
 [PR #901](https://github.com/gunb-ai/gunbc/pull/901) landed typed LLM/GitHub inputs and **named** downstream work as searchable **`closure:<identifier>`** strings in `dsl/extdeps/llm/*.dag`. The three triggers the program still tracks as **explicit closure work** (search these tokens in-repo and in issue bodies):
 
-1. **`rest_typed_response_body`** — Typed service inputs; **outputs** still use JSON-path projection until REST `response { 200 => Typed… }` (or equivalent) is implemented. Receipt rows: `structural_coverage_gap_openai_chat_completion_outputs`, `structural_coverage_gap_anthropic_messages_outputs` in `dsl/extdeps/llm/openai.dag` / `dsl/extdeps/llm/anthropic.dag`.
+1. **`rest_typed_response_body`** — Typed service inputs; REST `response { 200 => Typed… }` is implemented for the OpenAI ChatCompletion and Anthropic Messages 200-body carriers, and the stale `structural_coverage_gap_openai_chat_completion_outputs` / `structural_coverage_gap_anthropic_messages_outputs` receipts are retired with regression witnesses. Remaining `response { 200 => Json }` operations (for example OpenAI Responses) are separate typed-body follow-up scope, not part of the retired ChatCompletion/Messages receipts.
 
 2. **`openai_chat_message_full_coproduct`** — Narrow `OpenAiChatMessage` text row is intentional; full Chat Completions variants (tool role + `tool_call_id`, function role, multimodal `content`) remain gap-carried. Receipt: `structural_coverage_gap_openai_chat_message_full_api_surface` in `dsl/extdeps/llm/openai.dag` (first row carries `closure:openai_chat_message_full_coproduct|…`).
 

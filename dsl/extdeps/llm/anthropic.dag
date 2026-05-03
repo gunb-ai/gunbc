@@ -11,21 +11,11 @@ module extdeps.llm.anthropic
 import extdeps.llm.llm { TokenUsage, llm_snake_wire_contract }
 import std.errors { AnthropicErrorShape }
 import std.credentials { CredentialSource, EnvVar }
-import std.serialization { VariantEncoding, CoproductWireTag, SnakeCase }
+import std.serialization { VariantEncoding }
 import std.types { HttpMethod }
 
 // Wire contract: Anthropic API returns enum values as snake_case strings.
 data wire_contract: VariantEncoding = llm_snake_wire_contract
-
-// Anthropic mixes response enums encoded as snake_case strings (`stop_reason`)
-// with request coproducts encoded as internally tagged objects. These rows are
-// the per-coproduct request-wire authority: message variants tag on `role`,
-// content-block variants tag on `type`.
-data coproduct_wire_tags: List<CoproductWireTag> = [
-  { type_name: "AnthropicChatMessage", tag_field: "role", naming: SnakeCase },
-  { type_name: "AnthropicUserContentBlock", tag_field: "type", naming: SnakeCase },
-  { type_name: "AnthropicAssistantContentBlock", tag_field: "type", naming: SnakeCase }
-]
 
 // -- Models --------------------------------------------------------
 
@@ -56,14 +46,14 @@ data models: List<AnthropicModelSpec> = [
 // state. `UserToolResultBlock.content: String` is the narrow text-result slice;
 // non-string/nested result content is gap-carried below.
 type AnthropicUserContentBlock
-  = Text { text: String }
-  | ToolResult { tool_use_id: String, content: String, is_error: Bool? }
+  = UserTextBlock { text: String }
+  | UserToolResultBlock { tool_use_id: String, content: String, is_error: Bool? }
 
 // 🟢 TERMINAL provider-domain coproduct for assistant-message content.
 // Assistants can emit text or tool-use requests; tool results are user rows.
 type AnthropicAssistantContentBlock
-  = Text { text: String }
-  | ToolUse { id: String, name: String, input: Json }
+  = AssistantTextBlock { text: String }
+  | AssistantToolUseBlock { id: String, name: String, input: Json }
 
 // -- System prompt -------------------------------------------------
 
@@ -113,8 +103,8 @@ data current_api_version: AnthropicApiVersion = {
 // 🟢 TERMINAL provider-domain coproduct for the modeled Messages row roles.
 // Q4.5 P1 closure (#808 / #856 Substrate escalation).
 type AnthropicChatMessage
-  = User { content: List<AnthropicUserContentBlock> }
-  | Assistant { content: List<AnthropicAssistantContentBlock> }
+  = UserMessage { content: List<AnthropicUserContentBlock> }
+  | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
 // Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
 // Tool-use / image assistant rows remain outside this carrier.
@@ -152,6 +142,18 @@ type AnthropicMessages200Body {
   stop_sequence: String?
   usage: AnthropicMessages200Usage
 }
+
+// Request wire: Messages API expects string `role` + flat `content[]` objects
+// keyed by `type` (https://docs.anthropic.com/en/api/messages). `type` is not
+// caller-authored model state on `TextBlock`; the future
+// `rest_request_wire_serde_alignment` closure must emit it from the variant.
+data structural_coverage_gap_anthropic_messages_request_wire: List<String> = [
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|residue:message_variant_must_emit_role_string_user_assistant",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserTextBlock|residue:variant_must_emit_flat_type_text_wire_key",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock.AssistantTextBlock|residue:variant_must_emit_flat_type_text_wire_key",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock.AssistantToolUseBlock|residue:variant_must_emit_flat_type_tool_use_wire_key",
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock|residue:variant_must_emit_flat_type_tool_result_wire_key"
+]
 
 data structural_coverage_gap_anthropic_tool_result_full_content_surface: List<String> = [
   "closure:anthropic_tool_result_full_content_surface|AnthropicUserContentBlock.UserToolResultBlock|residue:content_modeled_as_string_only|missing:nested_content_blocks|missing:image_content"
