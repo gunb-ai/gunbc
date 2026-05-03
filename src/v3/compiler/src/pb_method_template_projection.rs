@@ -398,10 +398,15 @@ fn closed_record_lookup<'a>(
     fields: &'a [(String, FieldValue)],
     expected: &[&'static str],
 ) -> Result<HashMap<&'a str, &'a FieldValue>, MethodTemplateProjectionError> {
-    let mut lookup: HashMap<&str, &FieldValue> = HashMap::with_capacity(expected.len());
-    let mut first_seen_index: HashMap<&str, usize> = HashMap::with_capacity(expected.len());
+    let mut lookup: HashMap<&'static str, &FieldValue> = HashMap::with_capacity(expected.len());
+    let mut first_seen_index: HashMap<&'static str, usize> =
+        HashMap::with_capacity(expected.len());
     for (field_index, (label, value)) in fields.iter().enumerate() {
-        if !expected.contains(&label.as_str()) {
+        // Resolve the row-side `String` label to its `&'static str` in
+        // `expected`. Holding the static reference avoids re-scanning the
+        // expected slice (and the `.expect()` re-borrow) on the duplicate
+        // path; non-membership surfaces as `RowUnknownField`.
+        let Some(static_label) = expected.iter().copied().find(|exp| *exp == label.as_str()) else {
             return Err(MethodTemplateProjectionError::RowUnknownField {
                 list,
                 row_index,
@@ -409,15 +414,8 @@ fn closed_record_lookup<'a>(
                 field: label.clone(),
                 field_index,
             });
-        }
-        if let Some(prior_index) = first_seen_index.get(label.as_str()) {
-            // Re-borrow the matching expected label so the returned error
-            // carries a `&'static str` rather than a row-local borrow.
-            let static_label = expected
-                .iter()
-                .copied()
-                .find(|exp| *exp == label.as_str())
-                .expect("expected label must match a known constant");
+        };
+        if let Some(prior_index) = first_seen_index.get(static_label) {
             return Err(MethodTemplateProjectionError::RowDuplicateField {
                 list,
                 row_index,
@@ -427,8 +425,8 @@ fn closed_record_lookup<'a>(
                 duplicate_field_index: field_index,
             });
         }
-        lookup.insert(label.as_str(), value);
-        first_seen_index.insert(label.as_str(), field_index);
+        lookup.insert(static_label, value);
+        first_seen_index.insert(static_label, field_index);
     }
     Ok(lookup)
 }
