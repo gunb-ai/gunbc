@@ -58,7 +58,6 @@ enum ScratchTargetLanguage {
 }
 
 struct TargetIntegerTypeInhabitanceRow {
-    row_decl: DeclarationId,
     language: DeclarationId,
     kernel_integer: DeclarationId,
     algebra: DeclarationId,
@@ -301,7 +300,6 @@ fn parse_target_integer_type_inhabitance_row(
         return None;
     };
     Some(TargetIntegerTypeInhabitanceRow {
-        row_decl: decl.id,
         language: reference_field(fields, "language")?,
         kernel_integer: reference_field(fields, "kernel_integer")?,
         algebra: reference_field(fields, "algebra")?,
@@ -353,9 +351,9 @@ fn select_declared_inhabitance(
         .filter(|row| exact_static_bound_match(&intent.bound, &row.bound))
         .collect();
 
-    let selected = match (exact_matches.as_slice(), matches.as_slice()) {
-        ([selected], _) => *selected,
-        ([], [selected]) => selected,
+    match (exact_matches.as_slice(), matches.as_slice()) {
+        ([_], _) => {}
+        ([], [_]) => {}
         ([], []) => return Err(EmissionDiagnostic::NoInhabitant),
         _ => {
             return Err(EmissionDiagnostic::UnderRefined {
@@ -364,7 +362,6 @@ fn select_declared_inhabitance(
         }
     };
 
-    let _selected_row = selected.row_decl;
     Ok(intent.output.clone())
 }
 
