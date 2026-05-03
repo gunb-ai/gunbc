@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
+use v2_compiler::v2_std_core::CompilerDiagnostic;
 
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
@@ -6436,13 +6437,18 @@ data tool_results: List<AnthropicChatMessage> = [
         source,
         RenderTarget::Rust,
     );
-    let messages = diagnostic_messages(&result);
+    let has_type_mismatch = result.diagnostics.iter().any(|diag| {
+        matches!(
+            &*diag.diagnostic,
+            CompilerDiagnostic::TypeMismatch { expected, got, .. }
+                if expected == "Coproduct(AnthropicToolResultContent)"
+                    && got == "Primitive(String)"
+        )
+    });
     assert!(
-        messages.iter().any(|message| {
-            message.contains("AnthropicToolResultContent") && message.contains("String")
-        }),
+        has_type_mismatch,
         "legacy string tool_result content should produce a typed diagnostic, got:\n{}",
-        messages.join("\n")
+        diagnostic_messages(&result).join("\n")
     );
 }
 
