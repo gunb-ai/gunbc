@@ -64,6 +64,32 @@ fn generated_full_bootstrap_snapshots_have_no_diagnostics() {
 }
 
 #[test]
+fn diagnostics_empty_after_bootstrap_for_bootstrap_authority() {
+    let dag = generated_full_bootstrap_dag();
+    let violations: Vec<String> = dag
+        .diagnostics()
+        .iter_attributed()
+        .filter(|(_, _, attribution)| attribution.is_bootstrap())
+        .map(|(port, diagnostic, attribution)| {
+            let authority = attribution
+                .as_bootstrap_authority()
+                .expect("is_bootstrap attribution carries a BootstrapAuthorityKey");
+            format!(
+                "port {port:?}: bootstrap authority {} emitted diagnostic: {}",
+                authority.path(),
+                diagnostic.message()
+            )
+        })
+        .collect();
+
+    assert!(
+        violations.is_empty(),
+        "diagnostics_empty_after_bootstrap violations:\n{}",
+        violations.join("\n")
+    );
+}
+
+#[test]
 fn generated_full_bootstrap_snapshots_include_parse_stage() {
     for (label, dag) in [
         ("full", generated_full_bootstrap_dag()),
