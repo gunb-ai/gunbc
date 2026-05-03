@@ -232,6 +232,25 @@ type RustEnumWireSerde {
   rename_suffix: String?
   rename_style: String?
   error_message: String?
+}
+
+fn rust_serde_policy(enum_attr: String, rename_prefix: String?, rename_suffix: String?, rename_style: String?) -> RustEnumWireSerde {
+  RustEnumWireSerde {
+    enum_attr: enum_attr,
+    rename_prefix: rename_prefix,
+    rename_suffix: rename_suffix,
+    rename_style: rename_style,
+    error_message: none
+  }
+}
+
+fn rust_serde_policy_error(message: String) -> RustEnumWireSerde {
+  RustEnumWireSerde {
+    enum_attr: "",
+    rename_prefix: none,
+    rename_suffix: none,
+    rename_style: none,
+    error_message: Some { value: message }
   }
 }
 
