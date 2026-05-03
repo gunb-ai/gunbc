@@ -453,3 +453,79 @@ fn project_placeholder(
     }
     Ok(projection)
 }
+
+#[cfg(test)]
+mod tests {
+    //! Unit tests for projection-internal failure modes that require
+    //! crate-private `Dag` mutation to construct (e.g., injecting a
+    //! malformed value body that the on-disk row authorities cannot
+    //! produce). Behavior tests over the green bootstrap Dag live in
+    //! `tests/integration/pb_method_template_projection_test.rs`.
+
+    use super::*;
+    use crate::generated_full_bootstrap_dag;
+
+    /// Inject a non-empty payload onto the `placeholder_convention` variant
+    /// of the row at `row_index` of the named per-target list. Mutates only
+    /// the in-memory `Dag`; the row authority sources on disk are
+    /// untouched.
+    fn inject_extra_placeholder_payload(dag: &mut Dag, list_name: &str, row_index: usize) {
+        let decl_id = dag
+            .declaration_by_name(list_name)
+            .unwrap_or_else(|| panic!("`{list_name}` missing from bootstrap"))
+            .id;
+        let decl = dag.declaration_mut(decl_id);
+        let body = decl
+            .value_body
+            .as_mut()
+            .unwrap_or_else(|| panic!("`{list_name}` has no value body"));
+        let ValueBody::List(rows) = body else {
+            panic!("`{list_name}` value body is not a List");
+        };
+        let row = rows
+            .get_mut(row_index)
+            .unwrap_or_else(|| panic!("row {row_index} missing from `{list_name}`"));
+        let FieldValue::Record(fields) = row else {
+            panic!("row {row_index} is not a Record");
+        };
+        let placeholder_value = fields
+            .iter_mut()
+            .find(|(label, _)| label == "placeholder_convention")
+            .map(|(_, value)| value)
+            .expect("placeholder_convention field");
+        let FieldValue::Variant { payload, .. } = placeholder_value else {
+            panic!("placeholder_convention must be a Variant");
+        };
+        payload.push(FieldValue::Literal(LiteralBits::Bool(false)));
+    }
+
+    #[test]
+    fn malformed_placeholder_payload_surfaces_typed_error() {
+        // PlaceholderConvention is a nullary sum (`IndexedArgs | NamedArg`).
+        // A malformed bootstrap row carrying a non-empty placeholder payload
+        // must surface as `PlaceholderConventionPayloadNotEmpty`, not
+        // silently project to `IndexedArgs` / `NamedArg` with the payload
+        // discarded. Mirrors the substrate-side canonical-row check
+        // `placeholder_convention_canonical_rejects_payload_for_nullary_indexed_args`
+        // in `src/v3/grounding_tests/src/stratum_a.rs`.
+        let mut dag = generated_full_bootstrap_dag();
+        inject_extra_placeholder_payload(&mut dag, "rust_method_template_contracts", 0);
+
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::PlaceholderConventionPayloadNotEmpty {
+                list,
+                row_index,
+                payload_len,
+                ..
+            }) => {
+                assert_eq!(list, "rust_method_template_contracts");
+                assert_eq!(row_index, 0);
+                assert!(payload_len >= 1, "expected non-empty payload to be reported");
+            }
+            other => panic!(
+                "expected PlaceholderConventionPayloadNotEmpty for malformed placeholder, got {other:?}"
+            ),
+        }
+    }
+}
