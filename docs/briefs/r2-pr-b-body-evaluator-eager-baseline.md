@@ -20,8 +20,9 @@ the design slice for the body half.
 **Carrier authorities (live):**
 [`docs/briefs/r2-pr-a-runtime-value-model.md`](r2-pr-a-runtime-value-model.md)
 + [`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag) for `Value`,
-`NamedField`, `EvalFrame`, `EvalStateStack`. **Strategy / memoization
-authority (audit only, implementation pending):**
+`NamedField`, `EvalFrame`, `EvalStateStack`, `EvalStrategy`,
+`InputEvaluationOrder`, `EvalStateKey`, and `EvalMemoKey`. The PR-A.3 audit
+remains the design rationale for strategy / memoization decisions:
 [`docs/briefs/r2-pr-a3-strategy-memoization-audit.md`](r2-pr-a3-strategy-memoization-audit.md).
 
 ## Decision
@@ -32,9 +33,10 @@ named R3 residual:
 - **R2 slice — PR-B.0 (this brief, docs only):** lock the deterministic eager
   evaluation rule over bounded `.dag` bodies, name its carrier prerequisites,
   and define the residual boundary.
-- **R2 slice — PR-B.1 (next, after PR-A.3 implementation):** Rust eager
-  body-evaluator over `Value` / `EvalFrame` / `EvalStateStack`, behind a
-  fail-closed boundary that errors on every non-eager / non-bounded case.
+- **R2 slice — PR-B.1 (next body-evaluator implementation slice):** Rust eager
+  body-evaluator over `Value` / `EvalFrame` / `EvalStateStack` plus the closed
+  `EvalStrategy` / `EvalMemoKey` carrier boundary, behind a fail-closed boundary
+  that errors on every non-eager / non-bounded case.
 - **R3 residual:** lazy / normal-order evaluation, TC2 evaluation-order
   independence proof, witness construction surface (PR-B's other half),
   cross-target equivalence harness execution against the body evaluator
@@ -42,8 +44,8 @@ named R3 residual:
   fail-closed in PR-B.1, gated on a separate descent-execution slice that
   lowers `std.termination` `DescentEvidence` to bounded iteration.
 
-This brief covers PR-B.0 only. PR-B.1 cannot be authored as a worker brief
-until PR-A.3 implementation lands the strategy / memoization carriers.
+This brief covers PR-B.0 only. PR-B.1 no longer waits on carrier declaration;
+it still needs its worker dispatch / Rust implementation slice.
 
 ## Live prerequisites (carriers available today)
 
@@ -52,17 +54,17 @@ until PR-A.3 implementation lands the strategy / memoization carriers.
 | `Value` / `NamedField`                 | `src/v3/std/runtime.dag` (PR-A.1, #1243)                                  | LANDED on `main`                       |
 | `EvalFrame { bindings: Map<PortId, Value> }` | `src/v3/std/runtime.dag` (PR-A.2, #1255)                            | LANDED on `main`                       |
 | `EvalStateStack { frames: List<EvalFrame> }` | `src/v3/std/runtime.dag` (PR-A.2, #1255)                             | LANDED on `main`                       |
-| Strategy / memo decision surface       | `docs/briefs/r2-pr-a3-strategy-memoization-audit.md`                     | AUDIT only — carriers not yet declared |
+| `EvalStrategy` / `InputEvaluationOrder` | `src/v3/std/runtime.dag` (PR-A.3 carrier completion, #1544)              | LANDED in this PR                       |
+| `EvalStateKey` / `EvalMemoKey`         | `src/v3/std/runtime.dag` (PR-A.3 carrier completion, #1544)              | LANDED in this PR                       |
 
-PR-B.0 reads these as the substrate it will execute over. PR-B.1 cannot start
-on Rust execution until PR-A.3 implementation closes the strategy gap below.
+PR-B.0 reads these as the substrate it will execute over. PR-B.1 may now consume
+the closed eager strategy and structural memo-key carriers from `runtime.dag`;
+it must not invent local no-memo, string-key, or name-only substitutes.
 
-## Still-needed prerequisite (blocking PR-B.1, not PR-B.0)
+## Carrier boundary now closed (formerly blocking PR-B.1)
 
-PR-A.3 implementation must declare these carriers in
-[`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag) (or a successor
-runtime-module slice if PR-A.3 routes that way) before PR-B.1 can authoritatively
-implement an executable body evaluator:
+PR-A.3 carrier completion declares the PR-B.1 strategy / memo-key boundary in
+[`src/v3/std/runtime.dag`](../../src/v3/std/runtime.dag):
 
 - `EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }`
   (PR-A.3 audit §EvalStrategy).
@@ -79,9 +81,9 @@ need a lazy boundary. `EvalThunk` is part of the R3 residual.
 
 ## First implementation target — PR-B.1 scope
 
-After PR-A.3 implementation lands the carriers above, PR-B.1 authors the
-**deterministic eager body evaluator over bounded `.dag` bodies** in Rust.
-Scope is bounded by construction:
+PR-B.1 authors the **deterministic eager body evaluator over bounded `.dag`
+bodies** in Rust, consuming the carriers above as existing substrate. Scope is
+bounded by construction:
 
 1. **Inputs.** A `NodeId` for the body, an initial `EvalStateStack` containing
    one `EvalFrame` with the parameter bindings the caller supplied at the
@@ -196,8 +198,8 @@ PR-D harness running the evaluator across targets.
 ## Acceptance gates (this brief, PR-B.0)
 
 - ✅ Live prerequisites named with authority paths and merge IDs.
-- ✅ Still-needed prerequisite carriers named, each linked to the PR-A.3
-  audit section that authored them.
+- ✅ Formerly blocking PR-A.3 carriers named as live `runtime.dag` substrate,
+  each linked to the audit section that authored its design rationale.
 - ✅ First implementation target is exactly **deterministic eager body
   evaluator over bounded `.dag` bodies**, no lazy / no normal-order, no TC2
   proof, no witness construction.
@@ -208,9 +210,9 @@ PR-D harness running the evaluator across targets.
 
 ## Out of scope (this brief, PR-B.0)
 
-- Authoring PR-B.1 as a worker dispatch brief. That happens after PR-A.3
-  implementation lands the strategy / memoization carriers; this brief
-  states the scope, not the dispatch instructions.
+- Authoring PR-B.1 as a worker dispatch brief. PR-B.1 may now consume the
+  strategy / memoization carriers; this brief states the scope, not the
+  dispatch instructions.
 - Editing `r2-evaluator-manager.md` PR-table rows beyond a status / cross-ref
   note pointing to this brief.
 - Any change to PR-A.3 audit content. PR-A.3 implementation is owned by
