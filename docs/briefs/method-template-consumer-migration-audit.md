@@ -14,9 +14,10 @@ retirement can migrate those consumers.
 
 `ROADMAP.md:512` elevates the remaining work: row population alone does not buy
 the invariant while old runtime/emit tables still serve consumers. The R3 debt
-ledger row `Method-template consumer migration` keeps the debt open with the
-acceptance check "Migrate consumers off old runtime/emit tables before adding
-more rows."
+ledger row `Method-template consumer migration`
+(`docs/debt/r3-debt-paydown-ledger-2026-05-02.md:85`) keeps the debt open with
+the acceptance check "Migrate consumers off old runtime/emit tables before
+adding more rows."
 
 ## Replacement Authority Shape
 
