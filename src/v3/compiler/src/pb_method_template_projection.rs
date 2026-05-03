@@ -169,28 +169,32 @@ pub enum MethodTemplateProjectionError {
         list: &'static str,
         row_index: usize,
     },
-    /// `MethodRef.decl` references a declaration that does not instantiate
-    /// `MethodDeclaration`. This is the fail-closed boundary check
-    /// `src/v3/std/methods.dag` calls out: until refinement-typing on
-    /// `DeclarationRef` lands (`DeclarationRef<MethodDeclaration>`), the
-    /// projection enforces "decl points at a MethodDeclaration data
-    /// binding" structurally — the check the substrate grammar cannot yet
-    /// express type-system-side.
+    /// `MethodRef.decl` references a declaration that does not satisfy
+    /// the substrate-side `MethodDeclaration` *data-binding* contract
+    /// (`src/v3/std/methods.dag` + `dsl/std/methods.dag`). Mirrors the
+    /// Stratum A registry gate
+    /// (`src/v3/grounding_tests/src/stratum_a.rs::method_registry_name`):
+    /// the binding must (a) instantiate `MethodDeclaration`, (b) carry
+    /// a `Structural` value body, (c) have a closed single-`name` field
+    /// schema, (d) and the `name` value must be a string literal. The
+    /// `reason` payload identifies which sub-check failed.
     MethodRefDeclNotMethodDeclaration {
         list: &'static str,
         row_index: usize,
         decl_id: DeclarationId,
+        reason: MethodDeclarationBindingViolation,
     },
     /// `method_template_contract_row` was called with a `dag_method`
-    /// `DeclarationId` that does not instantiate `MethodDeclaration`. The
-    /// helper's contract is "look up by `MethodRef.decl`, which the
-    /// substrate enforces is a `MethodDeclaration`" — until refinement-
-    /// typing on `DeclarationRef` lands, the helper enforces that
-    /// invariant at the public boundary so callers cannot conflate
-    /// "valid method, no row" with "non-method declaration handed in"
-    /// (mirrors the per-row check at
-    /// `MethodRefDeclNotMethodDeclaration`).
-    LookupKeyNotMethodDeclaration { decl_id: DeclarationId },
+    /// `DeclarationId` that does not satisfy the
+    /// `MethodDeclaration` data-binding contract (same shape and
+    /// `reason` taxonomy as `MethodRefDeclNotMethodDeclaration`). The
+    /// helper validates at entry so callers cannot conflate
+    /// "valid method, no row" with "caller handed in a non-method
+    /// declaration."
+    LookupKeyNotMethodDeclaration {
+        decl_id: DeclarationId,
+        reason: MethodDeclarationBindingViolation,
+    },
     /// `MethodDeclaration` itself is missing from the bootstrap `Dag`.
     /// Should be impossible if the std fixtures lower cleanly; surfaced
     /// rather than panicked so consumers can act on it.
@@ -261,6 +265,38 @@ pub enum MethodTemplateProjectionError {
         first_row_index: usize,
         duplicate_row_index: usize,
     },
+}
+
+/// Granular reason for a `MethodDeclaration` data-binding contract failure.
+///
+/// 🟢 TERMINAL at the substrate-side data-binding contract scope
+/// (`src/v3/std/methods.dag` + Stratum A `method_registry_name`). Each
+/// variant maps one of the four sub-checks the contract requires; the
+/// substrate-side contract is closed (`MethodDeclaration` carries a
+/// single `name: String` field), so this enumeration is closed too.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MethodDeclarationBindingViolation {
+    /// Connective is not `TypeConnective::Instantiation { template, .. }`.
+    /// Rules out type / sum / record declarations.
+    ConnectiveNotInstantiation,
+    /// `Instantiation` connective, but `template` does not match
+    /// `MethodDeclaration`'s declaration id. Rules out instantiations of
+    /// unrelated targets.
+    InstantiationTemplateNotMethodDeclaration,
+    /// `value_body` is `None`. Rules out type aliases of the form
+    /// `type Foo = MethodDeclaration`.
+    ValueBodyMissing,
+    /// `value_body` is `Some(_)` but not `ValueBody::Structural`. Rules
+    /// out `List` / `Map` / scalar bodies that would be wrong-shaped for
+    /// a `MethodDeclaration` data binding.
+    ValueBodyNotStructural,
+    /// `Structural` body, but its field set does not match the closed
+    /// `MethodDeclaration` schema (single `name` field). Mirrors
+    /// `enforce_closed_record_schema` in Stratum A.
+    StructuralFieldsNotClosedNameOnly { observed_labels: Vec<String> },
+    /// Closed-schema match, but the `name` field's `FieldValue` is not
+    /// `Literal(LiteralBits::String(_))`.
+    NameNotStringLiteral,
 }
 
 /// Project the `MethodTemplateContract` rows for `target` from the full
