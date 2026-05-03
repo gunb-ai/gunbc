@@ -49,7 +49,10 @@ type AnthropicChatMessage
 // v3 file mirrors the reachable type surface directly because it is a
 // self-contained Anthropic callable precursor.
 type ImageSource
-  = Base64Image { media_type: String, data: String }
+  = Base64Image {
+      media_type: String
+      data: String
+    }
   | UrlImage { url: String }
 
 type ContentBlock
@@ -70,7 +73,11 @@ type AnthropicToolResultContent
 // coproduct.
 type AnthropicUserContentBlock
   = UserTextBlock       { text: String }
-  | UserToolResultBlock { tool_use_id: String, content: AnthropicToolResultContent?, is_error: Bool? }
+  | UserToolResultBlock {
+      tool_use_id: String
+      content: AnthropicToolResultContent?
+      is_error: Bool?
+    }
 
 // 🟢 TERMINAL provider-domain coproduct mirroring `AnthropicAssistantContentBlock`
 // (`dsl/extdeps/llm/anthropic.dag:54-56`). Assistant rows emit either
@@ -80,7 +87,11 @@ type AnthropicUserContentBlock
 // commitment in this mirror.
 type AnthropicAssistantContentBlock
   = AssistantTextBlock    { text: String }
-  | AssistantToolUseBlock { id: String, name: String, input: Json }
+  | AssistantToolUseBlock {
+      id: String
+      name: String
+      input: Json
+    }
 
 // 🟢 TERMINAL provider-domain enum mirroring `AnthropicStopReason`
 // (`dsl/extdeps/llm/anthropic.dag:127`). Closed Anthropic API enum;

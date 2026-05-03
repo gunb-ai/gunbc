@@ -608,17 +608,6 @@ fn literal_value_is_string(value: LiteralValue) -> Bool {
   }
 }
 
-fn rejects_raw_string_for_optional_coproduct_field(expected: Node, got: Node, value: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let expected_inner = with_required_cardinality(n: expected)
-  let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
-  let got_is_string = authored_name_at(source_indices: source_indices, node: got) == "String"
-  let value_is_string_literal = match value.expr_data {
-    ExprLiteral { value: lit } => literal_value_is_string(value: lit)
-    _ => false
-  }
-  expected_is_optional_coproduct && got_is_string && value_is_string_literal
-}
-
 fn rejects_legacy_anthropic_tool_result_string(type_name: String?, field_name: String, value: Node) -> Bool {
   let is_tool_result_content = match type_name {
     Some { value: tn } => tn == "UserToolResultBlock" && field_name == "content"
@@ -2353,30 +2342,10 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         module_name: scope.module_name
       )]
     } else { [] }
-    let field_type_diags = match field_expected {
-      Some { value: expected_node } =>
-        let got_node = resolved_type(n: ar_typed)
-        if rejects_raw_string_for_optional_coproduct_field(
-          expected: expected_node,
-          got: got_node,
-          value: ar_typed,
-          source_indices: scope.type_env.source_indices
-        ) {
-          [type_mismatch_error(
-            expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
-            got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
-            span: ar_typed.span,
-            module_name: scope.module_name
-          )]
-        } else {
-          []
-        }
-      None => []
-    }
     FieldInferResult {
       typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(concat(ar_diags, field_type_diags), legacy_tool_result_diags)
+      diagnostics: concat(ar_diags, legacy_tool_result_diags)
     }
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
