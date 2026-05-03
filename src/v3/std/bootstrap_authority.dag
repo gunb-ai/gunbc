@@ -1,5 +1,7 @@
 module v3.std.bootstrap_authority
 
+import std.types { FilePath }
+
 // Generalized bootstrap authority membership for the committed full bootstrap
 // snapshot. This is the substrate prerequisite for Verification row 82
 // (`diagnostics_empty_after_bootstrap`): Verification should consume the
@@ -14,12 +16,18 @@ module v3.std.bootstrap_authority
 // from today; each variant owns its path payload so category and path cannot
 // drift as independent record fields. If a future bootstrap root appears, this
 // coproduct must grow in the same PR as the authority row and ratchet.
+type StdAuthorityPath = FilePath where pattern("^dsl/std/")
+type V3StdAuthorityPath = FilePath where pattern("^src/v3/std/")
+type V3SpecAuthorityPath = FilePath where pattern("^src/v3/spec/")
+type CompilerAuthorityPath = FilePath where pattern("^src/v3/compiler/")
+type ExtdepsFixtureAuthorityPath = FilePath where pattern("^dsl/extdeps/")
+
 type BootstrapAuthority
-  = StdAuthority { path: String }
-  | V3StdAuthority { path: String }
-  | V3SpecAuthority { path: String }
-  | CompilerAuthority { path: String }
-  | ExtdepsFixtureAuthority { path: String }
+  = StdAuthority { path: StdAuthorityPath }
+  | V3StdAuthority { path: V3StdAuthorityPath }
+  | V3SpecAuthority { path: V3SpecAuthorityPath }
+  | CompilerAuthority { path: CompilerAuthorityPath }
+  | ExtdepsFixtureAuthority { path: ExtdepsFixtureAuthorityPath }
 
 // Map key is the canonical path and gives the set duplicate-free membership
 // semantics. The value repeats the path inside the typed root variant because
