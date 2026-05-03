@@ -173,7 +173,11 @@ fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
                     if label != "kind" {
                         return None;
                     }
-                    let FieldValue::Variant { constructor, payload } = value else {
+                    let FieldValue::Variant {
+                        constructor,
+                        payload,
+                    } = value
+                    else {
                         panic!("bootstrap_authority row kind should lower to a variant");
                     };
                     assert!(
