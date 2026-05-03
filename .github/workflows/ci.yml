@@ -116,6 +116,15 @@ jobs:
             cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
             cargo-${{ runner.os }}-
 
+      # Pre-merge gate for bootstrap-loaded substrate `.dag` edits. The v3 job
+      # also runs this verifier, but #1543 showed that a stale bootstrap snapshot
+      # can still merge when only this required `ci` job is green. Keep the gate
+      # here so paired `bootstrap_generated*.rs` regen is enforced before merge.
+      # TODO(#1559): remove this interim gate after committed bootstrap generated
+      # snapshots are dissolved as editable source.
+      - name: v3 bootstrap snapshot freshness gate
+        run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
+
       - name: Build Compiler
         run: cargo build -p v2-compiler --release
 
