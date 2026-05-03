@@ -6384,7 +6384,8 @@ type RealEnum
     let content = find_file(&result, "src/bad_affix_coproduct_wire_contract.rs");
     assert!(
         content.contains("compile_error!")
-            && content.contains("variant UserText does not satisfy declared wire rename prefix: Usr"),
+            && content
+                .contains("variant UserText does not satisfy declared wire rename prefix: Usr"),
         "declared affix policy must fail closed when a variant does not match; got:\n{content}"
     );
 }
