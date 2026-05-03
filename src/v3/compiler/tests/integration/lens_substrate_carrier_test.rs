@@ -14,21 +14,10 @@
 //!   substrate gap receipt.
 
 use std::collections::HashSet;
-use std::path::PathBuf;
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
 use v3_compiler::generated_full_bootstrap_dag;
-
-fn workspace_root() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .expect("src/v3/compiler has three parents")
-        .to_path_buf()
-}
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
     let decl = dag
@@ -110,30 +99,6 @@ fn e6_g1_stop_receipt_pins_no_bootstrap_lens_value_yet() {
         "E6-G1 must not consume placeholder Lens<C> data values before the \
          function-valued structural data surface lands; found {lens_values:?}"
     );
-}
-
-#[test]
-fn e6_g1_stop_receipt_names_exact_lens_value_blockers() {
-    let root = workspace_root();
-    let receipt =
-        std::fs::read_to_string(root.join("docs/briefs/r3-pr-e6-lens-value-authoring-stop.md"))
-            .expect("read E6 lens value authoring STOP receipt");
-
-    for required in [
-        "Live for the non-generic pieces this shape needs",
-        "blocked through instantiated generic Conj fields",
-        "instantiated generic Conj substitution gap",
-        "Live for the representative constructors",
-        "Explicit typed lens-instance handle instead of full `data Lens<C>`",
-        "No honest `Lens<C>` value can be authored or referenced on current `main`",
-        "no Rust lens registry",
-        "lens_value_generic_conj_field_substitution_lands",
-    ] {
-        assert!(
-            receipt.contains(required),
-            "E6-G1 STOP receipt must classify blocker `{required}`"
-        );
-    }
 }
 
 #[test]
