@@ -33,7 +33,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `rest_typed_response_body` | 2026-04-21 | Grounding services | Open | Typed REST response body support; remove JSON-path projection rows. |
 | `openai_chat_message_full_coproduct` | 2026-04-21 | Grounding services | Open | Full OpenAI chat message coproduct, not narrow text-only row. |
 | `anthropic_tool_result_full_content_surface` | 2026-04-21 | Grounding services | Open | Tool-result content modeled as nested/image-capable surface. |
-| REST request wire serde alignment | 2026-04-21 | Grounding services | Open | Wire serde consumes typed carrier rows end-to-end. |
+| REST request wire serde alignment | 2026-04-21 | Grounding services | Partial | Anthropic request coproduct wire authority is now source-level via `CoproductWireContract` rows for message/content payload enums; v2 Rust emit consumes coproduct-local contracts before module fallback/default and ratchets role/type serde. Remaining: Grounding Anthropic request-wire migration can resume after this lands and consume the substrate rows end-to-end. |
 | `repeat_string` constant-fold receipt | 2026-04 | PB / evaluator | Partial | Interim bridge retired; remaining target is in-runner / modeled std body evaluation. |
 | REST_OPS `CreateComment` test-table drift | 2026-04 | Grounding GitHub extdeps | Open | Test table consumes extdep operation facts; delete parallel path table. |
 | `__BUG_NO_PROFILE_...` sentinel | 2026-04 | PB / fail-closed | Open | Return `Option` / typed failure instead of fabricated string. |
@@ -74,7 +74,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Go branch emits `UnknownVariant` | 2026-04-25 | Emit / fail-closed | Retired | PR #820 added typed `EmitError::VariantParentNotFound`, removed the `UnknownVariant` fallback, and added missing-parent regression coverage. |
 | Lens fold fallback + file-path semantics | 2026-04-25 | Lens application / identity carrier | Open | Require structural callable edge and fold-shape carrier. |
 | `test_runner.rs` filename / sentinel bridges | 2026-04-25 | PB / Verification | Open | Structural claim roles and declaration refs replace filename/sentinel routing. |
-| B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. |
+| B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. **Receipt (2026-05-03):** family-B audit packet `docs/briefs/bridge-retirement-audit-include-str-family.md` (`include_str!` / patching); per-row retirements remain Verification (#1276). |
 | Duplicate record-literal fields silently accepted | 2026-04-30 | R3 Substrate | Retired | PR #1551 (`929bfe650`) rejects duplicate fields in expression-position named-variant constructors before type-field projection. |
 | `ValueBody` Rust/.dag mirror drift | 2026-04-30 | R3 Substrate + Verification | Open | Mirror update plus generated isomorphism / `DagShapeReport` gate. |
 | `FieldMap` duplicate-free invariant lost in `.dag` mirror | 2026-04-30 | R3 Substrate | Open | Duplicate-free map carrier or keyed table construction. |
