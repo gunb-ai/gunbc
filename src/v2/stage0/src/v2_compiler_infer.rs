@@ -853,7 +853,7 @@ pub fn rejects_raw_string_for_optional_coproduct_field(
         let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
             == Cardinality::CardOptional)
             && (expected_inner.connective.clone() == Connective::Disj));
-        let got_is_string = (authored_name_at(source_indices.clone(), got).as_str()
+        let got_is_string = (authored_name_at(source_indices.clone(), &got).as_str()
             == "String".to_string().as_str());
         let value_is_string_literal = match (*value.expr_data.clone()).clone() {
             ExprData::ExprLiteral { ref value, .. } => match value.as_ref() {

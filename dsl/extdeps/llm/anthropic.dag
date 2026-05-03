@@ -43,10 +43,15 @@ data models: List<AnthropicModelSpec> = [
 // 🟢 TERMINAL provider-domain coproduct for tool-result content. Anthropic
 // accepts either a scalar text result or a nested content-block list for image
 // capable tool responses. This keeps scalar text as an explicit arm and reuses
-// the shared `ContentBlock` coordinates for nested text/image blocks.
+// the shared `ContentBlock` coordinates for nested text/image blocks. Document,
+// search-result, and tool-reference nested blocks remain gap-carried below.
 type AnthropicToolResultContent
   = ToolResultText { text: String }
   | ToolResultBlocks { blocks: List<ContentBlock> }
+
+data structural_coverage_gap_anthropic_tool_result_additive_blocks: List<String> = [
+  "closure:anthropic_tool_result_additive_blocks|AnthropicToolResultContent.ToolResultBlocks|missing:document|missing:search_result|missing:tool_reference"
+]
 
 // 🟢 TERMINAL provider-domain coproduct for user-message content. `UserTextBlock`
 // and `UserToolResultBlock` are role-legal Anthropic Messages content rows; the
