@@ -383,12 +383,13 @@ pub fn method_template_contract_row(
     dag_method: DeclarationId,
 ) -> Result<Option<MethodTemplateContractRow>, MethodTemplateProjectionError> {
     let method_declaration_id = method_declaration_carrier_id(dag)?;
-    if !is_method_declaration_data_binding(dag, dag_method, method_declaration_id) {
-        return Err(
-            MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
-                decl_id: dag_method,
-            },
-        );
+    if let Err(reason) =
+        validate_method_declaration_data_binding(dag, dag_method, method_declaration_id)
+    {
+        return Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+            decl_id: dag_method,
+            reason,
+        });
     }
     let rows = method_template_contract_rows(dag, target)?;
     Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
@@ -406,41 +407,83 @@ fn method_declaration_carrier_id(
         .id)
 }
 
-/// Test whether `decl_id` references a `MethodDeclaration` *data binding*
-/// — the substrate-side identity `src/v3/std/methods.dag` requires
-/// (`data <name>_method: MethodDeclaration = { name: "..." }`).
+/// Validate that `decl_id` references a `MethodDeclaration` *data binding*
+/// per the substrate-side contract (`src/v3/std/methods.dag` +
+/// `dsl/std/methods.dag`).
 ///
-/// Three things must hold simultaneously:
+/// Mirrors `src/v3/grounding_tests/src/stratum_a.rs::method_registry_name`
+/// so projection-side and Stratum A-side enforcement of the same gate
+/// stay in lockstep. Four sub-checks must all pass:
 ///
-///  1. `connective` is `TypeConnective::Instantiation { template, .. }`
-///     where `template == method_declaration_id`. This rules out type
-///     declarations (`Conj` / `Disj` / etc.) that are not instantiations
-///     of `MethodDeclaration`.
-///  2. `template` matches `MethodDeclaration` specifically. (Other
-///     instantiations point at unrelated targets.)
-///  3. `value_body` is `Some(ValueBody::Structural { .. })`. Without
-///     this, a type alias like `type Foo = MethodDeclaration` would
-///     pass (1) + (2) — `Instantiation { template = MethodDeclaration }`
-///     with **no value body**. The substrate-side contract is "data
-///     binding," not "any declaration whose connective resolves to
-///     `MethodDeclaration`."
+///  1. **Connective is `Instantiation`.** Rules out type / sum / record
+///     declarations.
+///  2. **`Instantiation.template == MethodDeclaration`.** Rules out
+///     instantiations of unrelated targets.
+///  3. **`value_body` is `Some(ValueBody::Structural { .. })`.** Rules
+///     out type aliases (`type Foo = MethodDeclaration`, no value body)
+///     and wrong-shaped data bindings (`List` / `Map` / scalar bodies).
+///  4. **`Structural` fields are exactly `[name]` with a string literal
+///     value.** Closed schema check — mirrors
+///     `enforce_closed_record_schema` in Stratum A. Rules out extra
+///     fields, missing `name`, duplicate `name`, and non-string-literal
+///     `name` values.
 ///
-/// Both `project_dag_method` (per-row check) and
-/// `method_template_contract_row` (lookup helper) consume this single
-/// helper so the data-binding identity is factored once.
-fn is_method_declaration_data_binding(
+/// On success returns the projected method name (`name` field's string
+/// literal). On failure returns the typed
+/// [`MethodDeclarationBindingViolation`] reason.
+///
+/// Both `project_dag_method` (per-row) and `method_template_contract_row`
+/// (lookup helper) consume this helper so the data-binding identity is
+/// factored once.
+fn validate_method_declaration_data_binding(
     dag: &Dag,
     decl_id: DeclarationId,
     method_declaration_id: DeclarationId,
-) -> bool {
+) -> Result<String, MethodDeclarationBindingViolation> {
     let referenced = dag.declaration(decl_id);
-    let template_matches = matches!(
-        &referenced.connective,
-        TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
-    );
-    let has_structural_value_body =
-        matches!(&referenced.value_body, Some(ValueBody::Structural { .. }));
-    template_matches && has_structural_value_body
+
+    // (1) + (2) Connective + template.
+    let template = match &referenced.connective {
+        TypeConnective::Instantiation { template, .. } => *template,
+        _ => return Err(MethodDeclarationBindingViolation::ConnectiveNotInstantiation),
+    };
+    if template != method_declaration_id {
+        return Err(MethodDeclarationBindingViolation::InstantiationTemplateNotMethodDeclaration);
+    }
+
+    // (3) Value body present and Structural.
+    let value_body = referenced
+        .value_body
+        .as_ref()
+        .ok_or(MethodDeclarationBindingViolation::ValueBodyMissing)?;
+    let ValueBody::Structural { fields } = value_body else {
+        return Err(MethodDeclarationBindingViolation::ValueBodyNotStructural);
+    };
+
+    // (4) Closed `[name]` schema with string-literal value. Reject any
+    // duplicate or unknown label, require `name` to be present exactly
+    // once. Mirrors Stratum A's enforce_closed_record_schema.
+    const EXPECTED: &[&str] = &["name"];
+    let name_count = fields.iter().filter(|(label, _)| label == "name").count();
+    let any_unknown = fields
+        .iter()
+        .any(|(label, _)| !EXPECTED.contains(&label.as_str()));
+    if fields.len() != EXPECTED.len() || name_count != 1 || any_unknown {
+        let observed_labels: Vec<String> = fields.iter().map(|(label, _)| label.clone()).collect();
+        return Err(
+            MethodDeclarationBindingViolation::StructuralFieldsNotClosedNameOnly {
+                observed_labels,
+            },
+        );
+    }
+    let (_, name_value) = fields
+        .iter()
+        .find(|(label, _)| label == "name")
+        .expect("closed-schema check above guarantees a single `name` field");
+    match name_value {
+        FieldValue::Literal(LiteralBits::String(s)) => Ok(s.clone()),
+        _ => Err(MethodDeclarationBindingViolation::NameNotStringLiteral),
+    }
 }
 
 fn project_row(
@@ -602,12 +645,15 @@ fn project_dag_method(
     // `decl` references a `MethodDeclaration`-instantiating data binding.
     // Pattern mirrors `method_registry_test.rs::method_registry_covers_*`.
     let method_declaration_id = method_declaration_carrier_id(dag)?;
-    if !is_method_declaration_data_binding(dag, decl_id, method_declaration_id) {
+    if let Err(reason) =
+        validate_method_declaration_data_binding(dag, decl_id, method_declaration_id)
+    {
         return Err(
             MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
                 list,
                 row_index,
                 decl_id,
+                reason,
             },
         );
     }
@@ -988,25 +1034,35 @@ mod tests {
 
         // Per-row path: row 0 of `rust_method_template_contracts` is the
         // `count_method` row, so projecting it should now surface
-        // `MethodRefDeclNotMethodDeclaration` instead of returning a row.
+        // `MethodRefDeclNotMethodDeclaration` with `ValueBodyMissing`
+        // reason instead of returning a row.
         let row_result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
         match row_result {
             Err(MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
                 decl_id,
+                reason,
                 ..
-            }) => assert_eq!(decl_id, count_method_id),
+            }) => {
+                assert_eq!(decl_id, count_method_id);
+                assert_eq!(reason, MethodDeclarationBindingViolation::ValueBodyMissing);
+            }
             other => panic!(
                 "expected MethodRefDeclNotMethodDeclaration for alias-shaped target, got {other:?}"
             ),
         }
 
         // Lookup-helper path: same key, same shape; the helper validates
-        // at entry and surfaces `LookupKeyNotMethodDeclaration`.
+        // at entry and surfaces `LookupKeyNotMethodDeclaration` with the
+        // same reason.
         let helper_result =
             method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id);
         match helper_result {
-            Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration { decl_id }) => {
+            Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+                decl_id,
+                reason,
+            }) => {
                 assert_eq!(decl_id, count_method_id);
+                assert_eq!(reason, MethodDeclarationBindingViolation::ValueBodyMissing);
             }
             other => {
                 panic!("expected LookupKeyNotMethodDeclaration for alias-shaped key, got {other:?}")
@@ -1064,13 +1120,92 @@ mod tests {
                 list,
                 row_index,
                 decl_id,
+                reason,
             }) => {
                 assert_eq!(list, "rust_method_template_contracts");
                 assert_eq!(row_index, 0);
                 assert_eq!(decl_id, non_method_id);
+                // `MethodTemplateContract` is a type declaration (Conj),
+                // not an Instantiation — connective sub-check fails first.
+                assert_eq!(
+                    reason,
+                    MethodDeclarationBindingViolation::ConnectiveNotInstantiation
+                );
             }
             other => panic!(
                 "expected MethodRefDeclNotMethodDeclaration for non-MethodDeclaration target, got {other:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn method_ref_decl_extra_field_surfaces_closed_schema_violation() {
+        // A MethodDeclaration data binding with an extra field (beyond the
+        // closed `[name]` schema) must surface
+        // `StructuralFieldsNotClosedNameOnly`. Mirrors Stratum A's
+        // `enforce_closed_record_schema` gate.
+        let mut dag = generated_full_bootstrap_dag();
+        let count_method_id = dag
+            .declaration_by_name("count_method")
+            .expect("count_method")
+            .id;
+        let decl = dag.declaration_mut(count_method_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::Structural { fields } = body else {
+            panic!("expected Structural body");
+        };
+        fields.push((
+            "alias".to_string(),
+            FieldValue::Literal(LiteralBits::String("count_alias".to_string())),
+        ));
+
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
+                reason: MethodDeclarationBindingViolation::StructuralFieldsNotClosedNameOnly {
+                    observed_labels,
+                },
+                ..
+            }) => {
+                assert!(observed_labels.contains(&"name".to_string()));
+                assert!(observed_labels.contains(&"alias".to_string()));
+            }
+            other => panic!(
+                "expected StructuralFieldsNotClosedNameOnly for extra field, got {other:?}"
+            ),
+        }
+    }
+
+    #[test]
+    fn method_ref_decl_name_not_string_literal_surfaces_typed_error() {
+        // A MethodDeclaration data binding whose `name` value is not a
+        // string literal must surface
+        // `MethodDeclarationBindingViolation::NameNotStringLiteral`.
+        let mut dag = generated_full_bootstrap_dag();
+        let count_method_id = dag
+            .declaration_by_name("count_method")
+            .expect("count_method")
+            .id;
+        let decl = dag.declaration_mut(count_method_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::Structural { fields } = body else {
+            panic!("expected Structural body");
+        };
+        let (_, name_value) = fields
+            .iter_mut()
+            .find(|(label, _)| label == "name")
+            .expect("name field");
+        // Replace with a Bool literal — wrong shape for the contract.
+        *name_value = FieldValue::Literal(LiteralBits::Bool(true));
+
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
+                reason: MethodDeclarationBindingViolation::NameNotStringLiteral,
+                ..
+            }) => {}
+            other => panic!(
+                "expected NameNotStringLiteral for non-string name, got {other:?}"
             ),
         }
     }

@@ -29,7 +29,8 @@
 
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::pb_method_template_projection::{
-    method_template_contract_row, method_template_contract_rows, MethodEmitTemplateProjection,
+    method_template_contract_row, method_template_contract_rows,
+    MethodDeclarationBindingViolation, MethodEmitTemplateProjection,
     MethodTemplateProjectionError, MethodTemplateTarget, PlaceholderConventionProjection,
 };
 
@@ -214,8 +215,17 @@ fn lookup_helper_three_distinct_states() {
     let invalid =
         method_template_contract_row(&dag, MethodTemplateTarget::Rust, non_method_decl_id);
     match invalid {
-        Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration { decl_id }) => {
+        Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+            decl_id,
+            reason,
+        }) => {
             assert_eq!(decl_id, non_method_decl_id);
+            // `MethodTemplateContract` is a type declaration (Conj), not
+            // an Instantiation — connective sub-check fails first.
+            assert_eq!(
+                reason,
+                MethodDeclarationBindingViolation::ConnectiveNotInstantiation
+            );
         }
         other => panic!(
             "lookup with a non-MethodDeclaration key must surface LookupKeyNotMethodDeclaration, got {other:?}"
