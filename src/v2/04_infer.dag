@@ -609,6 +609,10 @@ fn literal_value_is_string(value: LiteralValue) -> Bool {
 }
 
 fn rejects_raw_string_for_optional_coproduct_field(expected: Node, got: Node, value: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  // Regression pin for legacy authoring forms that wrote a raw string into an
+  // optional coproduct field. This is deliberately narrow: non-literal string
+  // expressions and broader coproduct assignability belong to the general
+  // record-field type-check path.
   let expected_inner = with_required_cardinality(n: expected)
   let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
   let got_is_string = authored_name_at(source_indices: source_indices, node: got) == "String"
