@@ -8,11 +8,14 @@
 //! `cargo test`. See `docs/briefs/pb-1-e-residual-scaffold-retirement-worker.md`.
 
 use v3_compiler::{
+    dag::{FieldValue, LiteralBits, ValueBody},
     generated_full_bootstrap_dag, generated_full_bootstrap_without_parse_surface_dag,
     generated_std_bootstrap_dag,
     serialize::{first_difference, serialize_dag},
     Dag,
 };
+
+use std::collections::BTreeSet;
 
 #[test]
 fn full_bootstrap_extends_std_snapshot() {
@@ -95,4 +98,104 @@ fn dag_new_bootstrap_is_clean_and_byte_stable() {
         serialize_dag(&second),
         "Dag::new() serialized bootstrap bytes should be stable across clones"
     );
+}
+
+#[test]
+fn bootstrap_authority_rows_match_full_bootstrap_source_files() {
+    let dag = generated_full_bootstrap_dag();
+    let authority_rows = bootstrap_authority_rows(&dag);
+
+    let authority_paths: BTreeSet<&str> = authority_rows
+        .iter()
+        .map(|(_, path)| path.as_str())
+        .collect();
+    let source_files: BTreeSet<&str> = dag
+        .declarations()
+        .iter()
+        .map(|decl| decl.span.file.as_str())
+        .collect();
+
+    assert_eq!(
+        authority_paths, source_files,
+        "`bootstrap_authority.authorities` must match the committed full bootstrap snapshot's source-file membership"
+    );
+
+    for (kind, path) in authority_rows {
+        match kind.as_str() {
+            "StdAuthority" => assert!(
+                path.starts_with("dsl/std/"),
+                "StdAuthority row points outside dsl/std: {path}"
+            ),
+            "V3StdAuthority" => assert!(
+                path.starts_with("src/v3/std/"),
+                "V3StdAuthority row points outside src/v3/std: {path}"
+            ),
+            "V3SpecAuthority" => assert!(
+                path.starts_with("src/v3/spec/"),
+                "V3SpecAuthority row points outside src/v3/spec: {path}"
+            ),
+            "CompilerAuthority" => assert!(
+                path.starts_with("src/v3/compiler/"),
+                "CompilerAuthority row points outside src/v3/compiler: {path}"
+            ),
+            "ExtdepsFixtureAuthority" => assert!(
+                path.starts_with("dsl/extdeps/"),
+                "ExtdepsFixtureAuthority row points outside dsl/extdeps: {path}"
+            ),
+            other => panic!("unexpected BootstrapAuthorityKind row: {other}"),
+        }
+    }
+}
+
+fn bootstrap_authority_rows(dag: &Dag) -> Vec<(String, String)> {
+    let decl = dag
+        .declaration_by_name("bootstrap_authority")
+        .expect("full bootstrap loads bootstrap_authority");
+    let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
+        panic!("bootstrap_authority should lower to a structural record body");
+    };
+    let (_, authorities) = fields
+        .iter()
+        .find(|(label, _)| label == "authorities")
+        .expect("bootstrap_authority has authorities field");
+    let FieldValue::List(rows) = authorities else {
+        panic!("bootstrap_authority.authorities should lower to a list");
+    };
+
+    rows.iter()
+        .map(|row| {
+            let FieldValue::Record(fields) = row else {
+                panic!("bootstrap_authority row should lower to a record");
+            };
+            let kind = fields
+                .iter()
+                .find_map(|(label, value)| {
+                    if label != "kind" {
+                        return None;
+                    }
+                    let FieldValue::Variant { constructor, payload } = value else {
+                        panic!("bootstrap_authority row kind should lower to a variant");
+                    };
+                    assert!(
+                        payload.is_empty(),
+                        "BootstrapAuthorityKind variants should not carry payloads"
+                    );
+                    dag.declaration(*constructor).name.clone()
+                })
+                .expect("bootstrap_authority row has kind");
+            let path = fields
+                .iter()
+                .find_map(|(label, value)| {
+                    if label != "path" {
+                        return None;
+                    }
+                    match value {
+                        FieldValue::Literal(LiteralBits::String(path)) => Some(path.clone()),
+                        _ => panic!("bootstrap_authority row path should lower to a string"),
+                    }
+                })
+                .expect("bootstrap_authority row has path");
+            (kind, path)
+        })
+        .collect()
 }
