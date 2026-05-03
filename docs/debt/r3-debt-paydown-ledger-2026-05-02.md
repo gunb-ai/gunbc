@@ -74,7 +74,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Go branch emits `UnknownVariant` | 2026-04-25 | Emit / fail-closed | Retired | PR #820 added typed `EmitError::VariantParentNotFound`, removed the `UnknownVariant` fallback, and added missing-parent regression coverage. |
 | Lens fold fallback + file-path semantics | 2026-04-25 | Lens application / identity carrier | Open | Require structural callable edge and fold-shape carrier. |
 | `test_runner.rs` filename / sentinel bridges | 2026-04-25 | PB / Verification | Open | Structural claim roles and declaration refs replace filename/sentinel routing. |
-| B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. |
+| B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. **Receipt (2026-05-03):** family-B audit packet `docs/briefs/bridge-retirement-audit-include-str-family.md` (`include_str!` / patching); per-row retirements remain Verification (#1276). |
 | Duplicate record-literal fields silently accepted | 2026-04-30 | R3 Substrate | Retired | PR #1551 (`929bfe650`) rejects duplicate fields in expression-position named-variant constructors before type-field projection. |
 | `ValueBody` Rust/.dag mirror drift | 2026-04-30 | R3 Substrate + Verification | Open | Mirror update plus generated isomorphism / `DagShapeReport` gate. |
 | `FieldMap` duplicate-free invariant lost in `.dag` mirror | 2026-04-30 | R3 Substrate | Open | Duplicate-free map carrier or keyed table construction. |
