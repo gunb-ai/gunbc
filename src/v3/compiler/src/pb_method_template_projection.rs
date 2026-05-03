@@ -133,6 +133,30 @@ pub enum MethodTemplateProjectionError {
         row_index: usize,
         field: &'static str,
     },
+    /// Row carries a duplicate field — two entries share a label. The
+    /// substrate-side `MethodTemplateContract` (and `MethodRef`) carriers
+    /// declare each field exactly once; duplicates would mean two
+    /// authorities for the same row coordinate (P2 single-authority).
+    RowDuplicateField {
+        list: &'static str,
+        row_index: usize,
+        record: &'static str,
+        field: &'static str,
+        first_field_index: usize,
+        duplicate_field_index: usize,
+    },
+    /// Row carries a field whose label is not one of the closed schema
+    /// (`MethodTemplateContract` = five fields; `MethodRef` = one field).
+    /// Extra substrate fields land via the substrate carrier, not via
+    /// projection-side acceptance, so unknown labels surface here rather
+    /// than being silently ignored (P2 / C-8).
+    RowUnknownField {
+        list: &'static str,
+        row_index: usize,
+        record: &'static str,
+        field: String,
+        field_index: usize,
+    },
     /// `dag_method` field is not the `MethodRef { decl }` record shape.
     DagMethodNotMethodRefRecord {
         list: &'static str,
