@@ -386,10 +386,12 @@ pub fn method_template_contract_row(
     if let Err(reason) =
         validate_method_declaration_data_binding(dag, dag_method, method_declaration_id)
     {
-        return Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
-            decl_id: dag_method,
-            reason,
-        });
+        return Err(
+            MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+                decl_id: dag_method,
+                reason,
+            },
+        );
     }
     let rows = method_template_contract_rows(dag, target)?;
     Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
@@ -1162,17 +1164,18 @@ mod tests {
         let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
         match result {
             Err(MethodTemplateProjectionError::MethodRefDeclNotMethodDeclaration {
-                reason: MethodDeclarationBindingViolation::StructuralFieldsNotClosedNameOnly {
-                    observed_labels,
-                },
+                reason:
+                    MethodDeclarationBindingViolation::StructuralFieldsNotClosedNameOnly {
+                        observed_labels,
+                    },
                 ..
             }) => {
                 assert!(observed_labels.contains(&"name".to_string()));
                 assert!(observed_labels.contains(&"alias".to_string()));
             }
-            other => panic!(
-                "expected StructuralFieldsNotClosedNameOnly for extra field, got {other:?}"
-            ),
+            other => {
+                panic!("expected StructuralFieldsNotClosedNameOnly for extra field, got {other:?}")
+            }
         }
     }
 
@@ -1204,9 +1207,7 @@ mod tests {
                 reason: MethodDeclarationBindingViolation::NameNotStringLiteral,
                 ..
             }) => {}
-            other => panic!(
-                "expected NameNotStringLiteral for non-string name, got {other:?}"
-            ),
+            other => panic!("expected NameNotStringLiteral for non-string name, got {other:?}"),
         }
     }
 

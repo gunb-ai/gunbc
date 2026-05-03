@@ -29,9 +29,9 @@
 
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::pb_method_template_projection::{
-    method_template_contract_row, method_template_contract_rows,
-    MethodDeclarationBindingViolation, MethodEmitTemplateProjection,
-    MethodTemplateProjectionError, MethodTemplateTarget, PlaceholderConventionProjection,
+    method_template_contract_row, method_template_contract_rows, MethodDeclarationBindingViolation,
+    MethodEmitTemplateProjection, MethodTemplateProjectionError, MethodTemplateTarget,
+    PlaceholderConventionProjection,
 };
 
 #[test]
