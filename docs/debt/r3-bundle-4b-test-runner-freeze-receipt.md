@@ -4,7 +4,7 @@
 
 ## Ledger anchor
 
-- **`docs/debt/r3-debt-paydown-ledger-2026-05-02.md`** — row **`test_runner.rs` predicate-language growth`** (R3 Evaluator + PB; *Open* → enforcement via template gate + this receipt).
+- **`docs/debt/r3-debt-paydown-ledger-2026-05-02.md`** — row **`test_runner.rs` predicate-language growth`** (R3 Evaluator + PB; **Partial** — template gate + this receipt; bespoke arms remain until dissolved).
 
 ## ROADMAP anchor
 
@@ -14,11 +14,13 @@
 ## Freeze mechanism (reviewer-checkable)
 
 1. **`.github/PULL_REQUEST_TEMPLATE.md`** — section **Evaluator freeze — `src/v3/compiler/src/test_runner.rs` (R3 Bundle 4b)**. Any PR that touches `test_runner.rs` must fill that section with a **one-hop** dissolution citation.
-2. **`docs/briefs/r2-pr-b-2-runner-extension-bundle.md` — §Runner authority discipline** — dissolution-target table is the **preferred** hook list (W1/W2/W3 rows). PRs may instead cite the **ROADMAP** bullet above if the hook is deferral-only, but not vague prose alone.
+2. **Evaluator-side (preferred for W1/W2/W3 scaffolds):** **`docs/briefs/r2-pr-b-2-runner-extension-bundle.md` — §Runner authority discipline** — dissolution-target table.
+3. **PB-runtime allowed hook destination (parallel lane, PB packet #1550):** **`docs/briefs/r3-pb-runtime-test-predicate-dissolution-hook.md#pb-runtime-dissolution-hook-qualification`** — Q1–Q4 qualification plus explicit disqualifiers for new predicate/`Value` variants, discipline-marker fields, producer identities, substrate observation/channel carriers, convention-only observations, and self-citing arms.
+4. **Deferral-only:** **`ROADMAP.md`** bullet *`test_runner.rs` becoming a parallel test-predicate authority`* — not vague prose alone.
 
 ## PB lane boundary
 
-PB owns **runtime-hook** implementation in parallel; this receipt **does not** prescribe PB code edits — only cites the joint ledger row and points reviewers at the brief + ROADMAP for authority discipline.
+PB owns **runtime-hook** qualification (**#1550** / `r3-pb-runtime-test-predicate-dissolution-hook.md`); Evaluator bundle **4b** cites that brief as the **stable PB hook anchor** alongside the **r2-pr-b-2** runner-authority table. This receipt does not prescribe PB code edits.
 
 ## Escalation
 
