@@ -17,10 +17,10 @@ This pass classifies 69 ROADMAP-tracked debt rows in the ledger range:
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 50 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 49 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
 | Partially closed | 8 | Has a landed partial receipt but still names remaining work. |
-| Retired / stale receipt row | 10 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 11 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -30,7 +30,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 |---|---|---|---|---|
 | PR #726 E-I / E-C ship-with-debt receipt | 2026-04-24 | E-P / E-M | Open | Behavioral wiring, `promote_to_strict` dissolution, unified numeric-refinement authority. |
 | PR #825 pre-merge review audit | 2026-04 | B4.4 / substrate-const parity | Open | Close optional trigger rows in `docs/debt/pr-825-pre-merge-review-audit.md`. |
-| `rest_typed_response_body` | 2026-04-21 | Grounding services | Open | Typed REST response body support; remove JSON-path projection rows. |
+| `rest_typed_response_body` | 2026-04-21 | Grounding services | Retired | Typed 200-body projection receipts for OpenAI ChatCompletion and Anthropic Messages retired by PR #1576 regression witnesses; response-fidelity residuals remain tracked as `*_200_residual`, and other `response { 200 => Json }` operations are separate follow-up scope. |
 | `openai_chat_message_full_coproduct` | 2026-04-21 | Grounding services | Open | Full OpenAI chat message coproduct, not narrow text-only row. |
 | `anthropic_tool_result_full_content_surface` | 2026-04-21 | Grounding services | Open | Tool-result content modeled as nested/image-capable surface. |
 | REST request wire serde alignment | 2026-04-21 | Grounding services | Partial | Anthropic request coproduct wire authority is now source-level via `CoproductWireContract` rows for message/content payload enums; v2 Rust emit consumes coproduct-local contracts before module fallback/default and ratchets role/type serde. Remaining: Grounding Anthropic request-wire migration can resume after this lands and consume the substrate rows end-to-end. |
