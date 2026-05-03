@@ -149,8 +149,9 @@ form depends on §4:
 
 In all three cases the worker's **public API to v2 emit** is the same
 shape: a target-keyed projection that, given a `MethodRef`, returns a
-`MethodTemplateContract` row carrying `runtime_template`,
-`emit_template`, `wraps_result`, and `placeholder_convention`.
+`MethodTemplateContract` row carrying all five fields required by A4:
+`dag_method`, `runtime_template`, `emit_template`, `wraps_result`, and
+`placeholder_convention`.
 
 ### 5.2 Acceptance criteria (Gap 4)
 
