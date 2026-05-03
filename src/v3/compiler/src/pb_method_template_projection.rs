@@ -198,6 +198,17 @@ pub enum MethodTemplateProjectionError {
         list: &'static str,
         row_index: usize,
     },
+    /// The `(target, dag_method)` direct lookup helper found more than one row
+    /// for the same `MethodDeclaration` in the per-target list. Per-target
+    /// uniqueness by `dag_method` is the substrate-side claim
+    /// (`method_template_contract_per_target_dag_method_unique`); the helper
+    /// surfaces a violation rather than silently selecting the first row
+    /// (P2 single-authority + P3 fail-closed at the public lookup boundary).
+    DuplicateMethodTemplateRow {
+        list: &'static str,
+        first_row_index: usize,
+        duplicate_row_index: usize,
+    },
 }
 
 /// Project the `MethodTemplateContract` rows for `target` from the full
@@ -244,16 +255,36 @@ pub fn method_template_contract_rows(
 /// `MethodDeclaration`. Projection failures (typed
 /// [`MethodTemplateProjectionError`]) bubble through.
 ///
-/// Equivalent to `method_template_contract_rows(dag, target)?.into_iter()
-/// .find(|row| row.dag_method == dag_method)` but keeps Gap 5 / leaf
-/// migration from reimplementing selection logic.
+/// **Fail-closed on duplicate authorities.** Per-target uniqueness by
+/// `dag_method` is the substrate-side claim
+/// (`method_template_contract_per_target_dag_method_unique`); if two rows
+/// share a `dag_method`, the helper surfaces
+/// [`MethodTemplateProjectionError::DuplicateMethodTemplateRow`] rather
+/// than silently selecting the first match by iteration order. Gap 5 /
+/// leaf-emit consumers depend on the helper preserving "one row per
+/// `(target, MethodRef)`" as a public boundary.
 pub fn method_template_contract_row(
     dag: &Dag,
     target: MethodTemplateTarget,
     dag_method: DeclarationId,
 ) -> Result<Option<MethodTemplateContractRow>, MethodTemplateProjectionError> {
     let rows = method_template_contract_rows(dag, target)?;
-    Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
+    let list_name = target.list_declaration_name();
+    let mut found: Option<(usize, MethodTemplateContractRow)> = None;
+    for (index, row) in rows.into_iter().enumerate() {
+        if row.dag_method != dag_method {
+            continue;
+        }
+        if let Some((first_row_index, _)) = &found {
+            return Err(MethodTemplateProjectionError::DuplicateMethodTemplateRow {
+                list: list_name,
+                first_row_index: *first_row_index,
+                duplicate_row_index: index,
+            });
+        }
+        found = Some((index, row));
+    }
+    Ok(found.map(|(_, row)| row))
 }
 
 fn project_row(
@@ -520,6 +551,68 @@ mod tests {
             panic!("placeholder_convention must be a Variant");
         };
         payload.push(FieldValue::Literal(LiteralBits::Bool(false)));
+    }
+
+    /// Duplicate the row at `row_index` of the named per-target list by
+    /// pushing a clone onto the end of the list. The two rows share a
+    /// `dag_method`, breaking per-target uniqueness — the substrate-side
+    /// claim `method_template_contract_per_target_dag_method_unique`.
+    /// Mutates only the in-memory `Dag`.
+    fn duplicate_row(dag: &mut Dag, list_name: &str, row_index: usize) {
+        let decl_id = dag
+            .declaration_by_name(list_name)
+            .unwrap_or_else(|| panic!("`{list_name}` missing from bootstrap"))
+            .id;
+        let decl = dag.declaration_mut(decl_id);
+        let body = decl
+            .value_body
+            .as_mut()
+            .unwrap_or_else(|| panic!("`{list_name}` has no value body"));
+        let ValueBody::List(rows) = body else {
+            panic!("`{list_name}` value body is not a List");
+        };
+        let clone = rows
+            .get(row_index)
+            .unwrap_or_else(|| panic!("row {row_index} missing from `{list_name}`"))
+            .clone();
+        rows.push(clone);
+    }
+
+    #[test]
+    fn duplicate_row_in_lookup_helper_surfaces_typed_error() {
+        // Per-target uniqueness by `dag_method` is the substrate-side claim
+        // `method_template_contract_per_target_dag_method_unique`. The
+        // direct `(target, dag_method)` lookup helper must fail-closed on
+        // duplicate rows rather than silently selecting the first match by
+        // iteration order — Gap 5 / leaf-emit consumers depend on the
+        // helper preserving "one row per `(target, MethodRef)`" as a
+        // public boundary.
+        let mut dag = generated_full_bootstrap_dag();
+        duplicate_row(&mut dag, "rust_method_template_contracts", 0);
+
+        let count_method_id = dag
+            .declaration_by_name("count_method")
+            .expect("count_method MethodDeclaration in bootstrap Dag")
+            .id;
+
+        let result = method_template_contract_row(
+            &dag,
+            MethodTemplateTarget::Rust,
+            count_method_id,
+        );
+        match result {
+            Err(MethodTemplateProjectionError::DuplicateMethodTemplateRow {
+                list,
+                first_row_index,
+                duplicate_row_index,
+            }) => {
+                assert_eq!(list, "rust_method_template_contracts");
+                assert_ne!(first_row_index, duplicate_row_index);
+            }
+            other => panic!(
+                "expected DuplicateMethodTemplateRow for duplicate (target, dag_method), got {other:?}"
+            ),
+        }
     }
 
     #[test]
