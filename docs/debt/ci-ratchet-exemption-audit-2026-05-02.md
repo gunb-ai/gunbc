@@ -1,6 +1,6 @@
 # CI Ratchet Exemption Audit — 2026-05-02
 
-**Source:** `scripts/slow-test-exemptions.txt` and `scripts/check-test-timeout.sh` on branch `work/binshim-emitter-slice` (workspace snapshot 2026-05-02).
+**Source:** `scripts/slow-test-exemptions.txt` and `scripts/check-test-timeout.sh` (workspace snapshot **2026-05-02**). For provenance after merge to `main`, use the commit that last touched this file (`git log -1 --format=%H -- docs/debt/ci-ratchet-exemption-audit-2026-05-02.md`); PR branch names are dispatch metadata only.
 
 **Authority:** `TESTING.md` § test layers (`feedback_test_timeout_2s`, 2000 ms per `#[test]` wall-clock); `docs/briefs/ci-ratchet-architecture-audit.md` Phase 1 shape; prior pass [ci-ratchet-exemption-audit-2026-04-24.md](ci-ratchet-exemption-audit-2026-04-24.md).
 
