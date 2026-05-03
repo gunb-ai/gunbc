@@ -141,6 +141,17 @@ pub enum MethodTemplateProjectionError {
         row_index: usize,
         constructor: Option<String>,
     },
+    /// `placeholder_convention` is a nullary sum (`IndexedArgs | NamedArg`),
+    /// but the variant payload is non-empty. Mirrors the substrate-side
+    /// canonical-row check
+    /// `placeholder_convention_canonical_rejects_payload_for_nullary_indexed_args`
+    /// in `src/v3/grounding_tests/src/stratum_a.rs`.
+    PlaceholderConventionPayloadNotEmpty {
+        list: &'static str,
+        row_index: usize,
+        constructor: &'static str,
+        payload_len: usize,
+    },
     /// `emit_template` field is not a substrate variant constructor.
     EmitTemplateNotVariant {
         list: &'static str,
@@ -202,6 +213,24 @@ pub fn method_template_contract_rows(
         .enumerate()
         .map(|(row_index, row)| project_row(dag, list_name, row_index, row))
         .collect()
+}
+
+/// Direct `(target, dag_method)` lookup helper for Gap-5 / leaf-emit
+/// consumers. Returns the row whose `dag_method` matches `dag_method`, or
+/// `None` if the per-target list does not contain a row keyed by that
+/// `MethodDeclaration`. Projection failures (typed
+/// [`MethodTemplateProjectionError`]) bubble through.
+///
+/// Equivalent to `method_template_contract_rows(dag, target)?.into_iter()
+/// .find(|row| row.dag_method == dag_method)` but keeps Gap 5 / leaf
+/// migration from reimplementing selection logic.
+pub fn method_template_contract_row(
+    dag: &Dag,
+    target: MethodTemplateTarget,
+    dag_method: DeclarationId,
+) -> Result<Option<MethodTemplateContractRow>, MethodTemplateProjectionError> {
+    let rows = method_template_contract_rows(dag, target)?;
+    Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
 }
 
 fn project_row(
@@ -383,21 +412,42 @@ fn project_placeholder(
     row_index: usize,
     value: &FieldValue,
 ) -> Result<PlaceholderConventionProjection, MethodTemplateProjectionError> {
-    let FieldValue::Variant { constructor, .. } = value else {
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = value
+    else {
         return Err(
             MethodTemplateProjectionError::PlaceholderConventionNotVariant { list, row_index },
         );
     };
     let constructor_label = disj_variant_label(dag, "PlaceholderConvention", *constructor);
-    match constructor_label {
-        Some("IndexedArgs") => Ok(PlaceholderConventionProjection::IndexedArgs),
-        Some("NamedArg") => Ok(PlaceholderConventionProjection::NamedArg),
-        other => Err(
-            MethodTemplateProjectionError::PlaceholderConventionUnknown {
+    // `PlaceholderConvention` is a nullary sum (`IndexedArgs | NamedArg`)
+    // per `src/v3/std/emit_model.dag:449-451`. A non-empty payload would
+    // mean a malformed bootstrap row (e.g., `IndexedArgs(false)`) that the
+    // projection must surface as a typed error rather than silently
+    // discarding. Mirrors the substrate-side canonical-row check in
+    // `src/v3/grounding_tests/src/stratum_a.rs`.
+    let (label, projection) = match constructor_label {
+        Some("IndexedArgs") => ("IndexedArgs", PlaceholderConventionProjection::IndexedArgs),
+        Some("NamedArg") => ("NamedArg", PlaceholderConventionProjection::NamedArg),
+        other => {
+            return Err(MethodTemplateProjectionError::PlaceholderConventionUnknown {
                 list,
                 row_index,
                 constructor: other.map(str::to_string),
+            });
+        }
+    };
+    if !payload.is_empty() {
+        return Err(
+            MethodTemplateProjectionError::PlaceholderConventionPayloadNotEmpty {
+                list,
+                row_index,
+                constructor: label,
+                payload_len: payload.len(),
             },
-        ),
+        );
     }
+    Ok(projection)
 }

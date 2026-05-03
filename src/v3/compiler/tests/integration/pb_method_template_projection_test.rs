@@ -27,10 +27,11 @@
 //! - v2 leaf-emit migration.
 //! - Row population (the `string_contains` / Go `chars` parity gaps).
 
+use v3_compiler::dag::{Dag, FieldValue, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::pb_method_template_projection::{
-    method_template_contract_rows, MethodEmitTemplateProjection, MethodTemplateTarget,
-    PlaceholderConventionProjection,
+    method_template_contract_row, method_template_contract_rows, MethodEmitTemplateProjection,
+    MethodTemplateProjectionError, MethodTemplateTarget, PlaceholderConventionProjection,
 };
 
 #[test]
@@ -160,4 +161,122 @@ fn rust_count_row_anchors_runtime_emit_drift() {
         count_row.placeholder_convention,
         PlaceholderConventionProjection::NamedArg
     );
+}
+
+#[test]
+fn lookup_helper_finds_known_row_and_returns_none_for_unknown_method() {
+    // The `(target, dag_method)` direct lookup is a thin convenience over
+    // the row-list API; it must return the same row data and surface
+    // `None` cleanly when the method has no row for that target. This
+    // anchors the contract Gap 5 / leaf-emit consumers will rely on.
+    let dag = generated_full_bootstrap_dag();
+    let count_method_id = dag
+        .declaration_by_name("count_method")
+        .expect("count_method MethodDeclaration in bootstrap Dag")
+        .id;
+
+    let direct = method_template_contract_row(&dag, MethodTemplateTarget::Rust, count_method_id)
+        .expect("projection")
+        .expect("count_method row present for Rust target");
+    assert_eq!(direct.runtime_template, "{recv}.len()");
+
+    // `MethodTemplateContract` itself is a type declaration, not a
+    // `MethodDeclaration`, so no per-target row is keyed by it. The
+    // helper must return `Ok(None)` rather than fabricating one.
+    let non_method_decl_id = dag
+        .declaration_by_name("MethodTemplateContract")
+        .expect("MethodTemplateContract type")
+        .id;
+    let missing =
+        method_template_contract_row(&dag, MethodTemplateTarget::Rust, non_method_decl_id)
+            .expect("projection");
+    assert!(
+        missing.is_none(),
+        "lookup for a non-MethodDeclaration target must return None, not fabricate a row"
+    );
+}
+
+#[test]
+fn malformed_placeholder_payload_surfaces_typed_error() {
+    // PlaceholderConvention is a nullary sum (`IndexedArgs | NamedArg`).
+    // A malformed bootstrap row carrying a non-empty placeholder payload
+    // must surface as
+    // `MethodTemplateProjectionError::PlaceholderConventionPayloadNotEmpty`,
+    // not silently project to `IndexedArgs` / `NamedArg` with the payload
+    // discarded. Mirrors the substrate-side canonical-row check
+    // `placeholder_convention_canonical_rejects_payload_for_nullary_indexed_args`
+    // in `src/v3/grounding_tests/src/stratum_a.rs`.
+    //
+    // This test mutates an in-memory copy of the bootstrap Dag to inject
+    // a malformed payload — the row authority files on disk are
+    // unchanged.
+    let mut dag = generated_full_bootstrap_dag();
+    inject_extra_placeholder_payload(&mut dag, "rust_method_template_contracts", 0);
+
+    let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+    match result {
+        Err(MethodTemplateProjectionError::PlaceholderConventionPayloadNotEmpty {
+            list,
+            row_index,
+            constructor: _,
+            payload_len,
+        }) => {
+            assert_eq!(list, "rust_method_template_contracts");
+            assert_eq!(row_index, 0);
+            assert!(
+                payload_len >= 1,
+                "expected non-empty payload to be reported"
+            );
+        }
+        other => panic!(
+            "expected PlaceholderConventionPayloadNotEmpty for malformed placeholder, got {other:?}"
+        ),
+    }
+}
+
+/// Replace the `placeholder_convention` field on the row at `row_index` of
+/// the named per-target list with a `Variant` carrying a non-empty payload.
+/// Used only by the malformed-row regression test above; never applied to
+/// the row authority sources on disk.
+fn inject_extra_placeholder_payload(dag: &mut Dag, list_name: &str, row_index: usize) {
+    let decl_id = dag
+        .declaration_by_name(list_name)
+        .unwrap_or_else(|| panic!("`{list_name}` missing from bootstrap"))
+        .id;
+    let decl = dag.declaration_mut(decl_id);
+    let body = decl
+        .value_body
+        .as_mut()
+        .unwrap_or_else(|| panic!("`{list_name}` has no value body"));
+    let ValueBody::List(rows) = body else {
+        panic!("`{list_name}` value body is not a List");
+    };
+    let row = rows
+        .get_mut(row_index)
+        .unwrap_or_else(|| panic!("row {row_index} missing from `{list_name}`"));
+    let FieldValue::Record(fields) = row else {
+        panic!("row {row_index} is not a Record");
+    };
+    let placeholder_value = fields
+        .iter_mut()
+        .find(|(label, _)| label == "placeholder_convention")
+        .map(|(_, value)| value)
+        .expect("placeholder_convention field");
+    let FieldValue::Variant {
+        constructor,
+        payload,
+    } = placeholder_value
+    else {
+        panic!("placeholder_convention must be a Variant");
+    };
+    *placeholder_value = FieldValue::Variant {
+        constructor: *constructor,
+        payload: {
+            let mut new_payload = payload.clone();
+            new_payload.push(FieldValue::Literal(
+                v3_compiler::dag::LiteralBits::Bool(false),
+            ));
+            new_payload
+        },
+    };
 }
