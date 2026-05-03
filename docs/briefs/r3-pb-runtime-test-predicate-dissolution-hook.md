@@ -37,9 +37,11 @@ Concretely, this means a new predicate's evaluation either:
 
 Cases (a) + (b) are the dissolution path. Case (c) is the explicit STOP+PING. There is no fourth case; specifically, "open a new bespoke `match` arm pending future cleanup" is **not** a case under the freeze.
 
+<a id="pb-runtime-dissolution-hook-qualification"></a>
+
 ## PB-Runtime Dissolution Hook Qualification
 
-> **Stable citeable anchor.** Evaluator Manager's freeze template/docs cite this section by name. The heading text and slug (`#pb-runtime-dissolution-hook-qualification`) are stable; renames require Evaluator + PB Manager coordination.
+> **Stable citeable anchor.** Evaluator Manager's freeze template/docs cite this section via the explicit HTML anchor `#pb-runtime-dissolution-hook-qualification` immediately above the heading (independent of GitHub's auto-generated slug). The anchor id, heading text, and the four-criterion / disqualifier shape below are stable; renames require Evaluator + PB Manager coordination.
 
 A future PR adding or extending a `test_runner.rs::run_claim` predicate arm or producer path **qualifies as PB-runtime-routed** (and is therefore freeze-allowed) iff **all** of the following are cited in the PR description and present in-tree at PR landing:
 
