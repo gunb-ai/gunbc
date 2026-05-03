@@ -6441,10 +6441,7 @@ type RealEnum
         RenderTarget::Rust,
     );
     assert_no_diagnostics(&result);
-    let content = find_file(
-        &result,
-        "src/malformed_internal_coproduct_wire_contract.rs",
-    );
+    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
     assert!(
         content.contains("compile_error!")
             && content.contains("InternallyTaggedObject requires a literal tag_field"),
