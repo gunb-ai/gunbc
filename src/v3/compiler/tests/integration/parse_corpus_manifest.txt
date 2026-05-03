@@ -38,7 +38,7 @@ src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
 src/v3/std/diagnostics.dag	11	20274	a317777d55e36b19
 src/v3/std/dimensions.dag	21	40239	d595746d2bda22f6
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
-src/v3/std/emit_model.dag	43	77647	4b063e9a5ddc50a1
+src/v3/std/emit_model.dag	44	80869	6a5f2af76b0f80c9
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	14463	909ca7a1c1705e89
 src/v3/std/go_method_template_contracts.dag	5	110898	7eb5c9f1296f4a45
 src/v3/std/induction.dag	56	88794	e405e1549cf2fe08
