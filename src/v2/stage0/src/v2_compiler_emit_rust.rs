@@ -743,6 +743,13 @@ pub fn coproduct_wire_contract_encoding(
     }
 }
 
+pub fn variant_encoding_is_string_variant(
+    encoding: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (authored_name_at(source_indices, &encoding).as_str() == "StringVariant".to_string().as_str())
+}
+
 pub fn coproduct_wire_contract_targets(
     contract_item: Rc<Node>,
     coproduct_name: String,
@@ -900,6 +907,7 @@ pub fn emit_coproduct_wire_contract_validations(
 
 pub fn resolve_local_coproduct_wire_policy(
     coproduct_name: &String,
+    all_unit_variants: bool,
     module_items: Rc<Vec<Rc<Node>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<RustEnumWireSerde>> {
@@ -928,10 +936,20 @@ pub fn resolve_local_coproduct_wire_policy(
                         contract.clone(),
                         source_indices.clone(),
                     ) {
-                        Some(encoding) => Some(resolve_wire_serde_policy_from_encoding_node(
-                            &encoding,
-                            &source_indices,
-                        )),
+                        Some(encoding) => {
+                            if (variant_encoding_is_string_variant(
+                                encoding.clone(),
+                                source_indices.clone(),
+                            ) && !all_unit_variants)
+                            {
+                                Some(rust_serde_error_policy(v2_rt::concat("CoproductWireContract StringVariant requires a nullary-only coproduct: ".to_string(), coproduct_name.clone())))
+                            } else {
+                                Some(resolve_wire_serde_policy_from_encoding_node(
+                                    &encoding,
+                                    &source_indices,
+                                ))
+                            }
+                        }
                         None => Some(rust_serde_error_policy(v2_rt::concat(
                             "CoproductWireContract missing encoding for ".to_string(),
                             coproduct_name.clone(),
@@ -2742,12 +2760,13 @@ pub fn emit_type_def_from_connective(
                 };
                 let serde_policy = match resolve_local_coproduct_wire_policy(
                     &item_text,
+                    all_unit_variants.clone(),
                     module_items,
                     &env.source_indices.clone(),
                 ) {
                     Some(local_policy) => local_policy.clone(),
                     None => {
-                        if all_unit_variants {
+                        if all_unit_variants.clone() {
                             match wire_contract_item.clone() {
                                 Some(_) => resolve_wire_serde_policy_for_coproduct(
                                     wire_contract_item.clone(),

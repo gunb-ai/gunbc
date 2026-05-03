@@ -1492,7 +1492,13 @@ fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>,
           rust_tagged_object_policy()
         }
     }
-    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy)
+    let rename_validations = variant_rename_validations_for_policy(children: item.children, env: env, serde_policy: serde_policy)
+    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy)
+    if rename_validations == "" {
+      enum_text
+    } else {
+      concat(rename_validations, "\n", enum_text)
+    }
   }
 }
 
@@ -1683,14 +1689,14 @@ fn wire_variant_rename_attr_for_policy(authored: String, policy: RustEnumWireSer
         let without_prefix = match policy.rename_prefix {
           Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
             Some { value: stripped } => stripped
-            None => return concat("    compile_error!(\"variant ", authored, " does not satisfy declared wire rename prefix: ", prefix, "\");\n")
+            None => return ""
           }
           None => authored
         }
         let without_suffix = match policy.rename_suffix {
           Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
             Some { value: stripped } => stripped
-            None => return concat("    compile_error!(\"variant ", authored, " does not satisfy declared wire rename suffix: ", suffix, "\");\n")
+            None => return ""
           }
           None => without_prefix
         }
@@ -1700,6 +1706,38 @@ fn wire_variant_rename_attr_for_policy(authored: String, policy: RustEnumWireSer
       }
     None => ""
   }
+}
+
+fn variant_rename_validation_for_policy(authored: String, policy: RustEnumWireSerde) -> String {
+  match policy.rename_style {
+    Some { value: style } =>
+      if style == "StripAffixAndSnakeCase" {
+        let without_prefix = match policy.rename_prefix {
+          Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
+            Some { value: stripped } => stripped
+            None => return emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename prefix: ", prefix))
+          }
+          None => authored
+        }
+        match policy.rename_suffix {
+          Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
+            Some { value: _ } => ""
+            None => emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename suffix: ", suffix))
+          }
+          None => ""
+        }
+      } else {
+        ""
+      }
+    None => ""
+  }
+}
+
+fn variant_rename_validations_for_policy(children: List<Node>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
+  children
+    |> map(child => variant_rename_validation_for_policy(authored: authored_name(env: env, node: child), policy: serde_policy))
+    |> filter(text => text != "")
+    |> join(separator: "\n")
 }
 
 fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
