@@ -30,7 +30,7 @@
 use v3_compiler::generated_full_bootstrap_dag;
 use v3_compiler::pb_method_template_projection::{
     method_template_contract_row, method_template_contract_rows, MethodEmitTemplateProjection,
-    MethodTemplateTarget, PlaceholderConventionProjection,
+    MethodTemplateProjectionError, MethodTemplateTarget, PlaceholderConventionProjection,
 };
 
 #[test]

@@ -181,6 +181,16 @@ pub enum MethodTemplateProjectionError {
         row_index: usize,
         decl_id: DeclarationId,
     },
+    /// `method_template_contract_row` was called with a `dag_method`
+    /// `DeclarationId` that does not instantiate `MethodDeclaration`. The
+    /// helper's contract is "look up by `MethodRef.decl`, which the
+    /// substrate enforces is a `MethodDeclaration`" — until refinement-
+    /// typing on `DeclarationRef` lands, the helper enforces that
+    /// invariant at the public boundary so callers cannot conflate
+    /// "valid method, no row" with "non-method declaration handed in"
+    /// (mirrors the per-row check at
+    /// `MethodRefDeclNotMethodDeclaration`).
+    LookupKeyNotMethodDeclaration { decl_id: DeclarationId },
     /// `MethodDeclaration` itself is missing from the bootstrap `Dag`.
     /// Should be impossible if the std fixtures lower cleanly; surfaced
     /// rather than panicked so consumers can act on it.
@@ -314,8 +324,20 @@ pub fn method_template_contract_rows(
 /// Direct `(target, dag_method)` lookup helper for Gap-5 / leaf-emit
 /// consumers. Returns the row whose `dag_method` matches `dag_method`, or
 /// `None` if the per-target list does not contain a row keyed by that
-/// `MethodDeclaration`. Projection failures (typed
-/// [`MethodTemplateProjectionError`]) — including
+/// `MethodDeclaration`.
+///
+/// **Fail-closed on non-method keys.** `dag_method` must instantiate
+/// `MethodDeclaration` — the helper validates this at entry so a caller
+/// cannot conflate two distinct states: "valid `MethodDeclaration` with
+/// no row for this target" (returns `Ok(None)`) versus "caller supplied
+/// a declaration that is not a `MethodDeclaration` at all" (returns
+/// [`MethodTemplateProjectionError::LookupKeyNotMethodDeclaration`]).
+/// This mirrors the per-row `MethodRef.decl` check the projection
+/// already enforces; until `DeclarationRef<MethodDeclaration>`
+/// refinement-typing lands, this is the only place the boundary can
+/// hold.
+///
+/// Other typed projection failures — including
 /// [`MethodTemplateProjectionError::DuplicateMethodTemplateRow`], which is
 /// enforced at the canonical row-list boundary in
 /// [`method_template_contract_rows`] — bubble through.
@@ -324,6 +346,20 @@ pub fn method_template_contract_row(
     target: MethodTemplateTarget,
     dag_method: DeclarationId,
 ) -> Result<Option<MethodTemplateContractRow>, MethodTemplateProjectionError> {
+    let method_declaration_id = dag
+        .declaration_by_name("MethodDeclaration")
+        .ok_or(MethodTemplateProjectionError::MethodDeclarationCarrierMissing)?
+        .id;
+    let referenced = dag.declaration(dag_method);
+    let template_ok = matches!(
+        &referenced.connective,
+        TypeConnective::Instantiation { template, .. } if *template == method_declaration_id
+    );
+    if !template_ok {
+        return Err(MethodTemplateProjectionError::LookupKeyNotMethodDeclaration {
+            decl_id: dag_method,
+        });
+    }
     let rows = method_template_contract_rows(dag, target)?;
     Ok(rows.into_iter().find(|row| row.dag_method == dag_method))
 }
