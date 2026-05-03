@@ -619,6 +619,18 @@ fn rejects_raw_string_for_optional_coproduct_field(expected: Node, got: Node, va
   expected_is_optional_coproduct && got_is_string && value_is_string_literal
 }
 
+fn rejects_legacy_anthropic_tool_result_string(type_name: String?, field_name: String, value: Node) -> Bool {
+  let is_tool_result_content = match type_name {
+    Some { value: tn } => tn == "UserToolResultBlock" && field_name == "content"
+    None => false
+  }
+  let value_is_string_literal = match value.expr_data {
+    ExprLiteral { value: lit } => literal_value_is_string(value: lit)
+    _ => false
+  }
+  is_tool_result_content && value_is_string_literal
+}
+
 // Kernel List construction: diagnostics come from KernelTypeBuild (infer_types).
 type KernelListTyDiag {
   ty: Node
@@ -2333,6 +2345,14 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     let ar = infer_expr(texpr: field_init_node_value(n: fi), scope: scope, expected: field_expected)
     let ar_typed = ar.typed
     let ar_diags = ar.diagnostics
+    let legacy_tool_result_diags = if rejects_legacy_anthropic_tool_result_string(type_name: type_name, field_name: fi_name, value: ar_typed) {
+      [type_mismatch_error(
+        expected: "AnthropicToolResultContent?",
+        got: "String",
+        span: ar_typed.span,
+        module_name: scope.module_name
+      )]
+    } else { [] }
     let field_type_diags = match field_expected {
       Some { value: expected_node } =>
         let got_node = resolved_type(n: ar_typed)
@@ -2356,7 +2376,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     FieldInferResult {
       typed_field: make_field_init_node(name: fi_name, value: ar_typed, span: fi.span, name_span: node_name_span(n: fi)),
       infer_result: ar,
-      diagnostics: concat(ar_diags, field_type_diags)
+      diagnostics: concat(concat(ar_diags, field_type_diags), legacy_tool_result_diags)
     }
   )
   let typed_fields = fi_infer_results |> map(fir => fir.typed_field)
