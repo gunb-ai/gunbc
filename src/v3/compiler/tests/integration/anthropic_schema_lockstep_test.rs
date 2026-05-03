@@ -487,7 +487,21 @@ fn assert_disj_lockstep(type_name: &str) {
 }
 
 fn assert_llm_disj_lockstep(type_name: &str) {
-    assert_disj_lockstep_against(type_name, v2_llm_disj_variants(type_name));
+    let mut variants = v2_llm_disj_variants(type_name);
+    if type_name == "ImageSource" {
+        for (variant, payload) in &mut variants {
+            if variant == "Base64Image" {
+                if let Some(fields) = payload {
+                    for (label, _, _) in fields {
+                        if label == "data" {
+                            *label = "base64".to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_disj_lockstep_against(type_name, variants);
 }
 
 fn assert_disj_lockstep_against(type_name: &str, v2_variants: Vec<(String, V2VariantPayload)>) {

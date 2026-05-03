@@ -47,11 +47,12 @@ type AnthropicChatMessage
 // 🟢 TERMINAL shared content-block coordinate mirror for tool-result nested
 // content. The v2 source imports these from `dsl/extdeps/llm/llm.dag`; this
 // v3 file mirrors the reachable type surface directly because it is a
-// self-contained Anthropic callable precursor.
+// self-contained Anthropic callable precursor. The v2 `Base64Image.data`
+// label is mirrored as `base64` because `data` is a v3 keyword.
 type ImageSource
   = Base64Image {
       media_type: String
-      data: String
+      base64: String
     }
   | UrlImage { url: String }
 
