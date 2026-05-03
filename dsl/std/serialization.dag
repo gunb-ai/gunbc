@@ -28,6 +28,16 @@ type WireContract {
   variant_encoding: VariantEncoding
 }
 
+// Per-coproduct wire tag override for APIs that mix string-valued enums with
+// internally tagged request coproducts in one module. Example: Anthropic uses
+// snake-case string enums for response stop reasons, but request message rows
+// use `role` and content blocks use `type` as the variant tag field.
+type CoproductWireTag {
+  type_name: String
+  tag_field: String
+  naming: VariantNaming
+}
+
 // Wire format for response bodies.
 // Json: parse with serde_json (default for REST).
 // Text: read as raw string (diffs, plain-text APIs).

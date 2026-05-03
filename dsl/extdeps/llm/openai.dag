@@ -123,9 +123,9 @@ type OpenAiChatCompletion200Usage {
 // Chat completion **object** envelope per OpenAI Chat Completions reference
 // (https://platform.openai.com/docs/api-reference/chat/object): `id`, `object`,
 // `created`, `model`, `choices`, `usage`. `OpenAiChatCompletion200Message` is
-// still a narrow text slice of each `choices[].message` (same projection surface
-// as historical `from` paths); tool_calls, refusal, multimodal content, and
-// `choices[].logprobs` remain gap-carried on `structural_coverage_gap_openai_chat_completion_outputs`.
+// still a narrow text slice of each `choices[].message`; richer tool-call,
+// refusal, multimodal, audio, annotation, and token-detail surfaces remain
+// covered by their downstream typed-carrier closure rows.
 type OpenAiChatCompletion200Body {
   id: String
   object: String
@@ -137,10 +137,6 @@ type OpenAiChatCompletion200Body {
 
 // Residuals outside `OpenAiChatCompletion200Body` / nested narrow slices; envelope
 // fields `service_tier` and deprecated `system_fingerprint` are not modeled on the struct.
-data structural_coverage_gap_openai_chat_completion_outputs: List<String> = [
-  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Body|missing:service_tier|missing:system_fingerprint|OpenAiChatCompletion200Choice|missing:logprobs|OpenAiChatCompletion200Message|missing:refusal|missing:tool_calls|missing:function_call|missing:annotations|missing:audio|missing:non_string_content|CompletionUsage|missing:completion_tokens_details|missing:prompt_tokens_details"
-]
-
 // Full Chat Completions message coproduct (tool_call_id, tool role, function,
 // multimodal content parts) is not this row — downstream closure trigger.
 data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> = [
