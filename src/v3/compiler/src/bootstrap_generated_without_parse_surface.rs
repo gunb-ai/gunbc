@@ -63547,7 +63547,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_diagnostics() -> DiagnosticTab
             PortId(0),
             Diagnostic::ParseError {
                 message: "expected field label, got KwData".to_string(),
-                span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 2985, 2989),
+                span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 2996, 3000),
                 fixes: vec![],
             },
         );

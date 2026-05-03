@@ -67749,7 +67749,7 @@ fn bootstrapped_fixture_dag_diagnostics() -> DiagnosticTable {
             PortId(0),
             Diagnostic::ParseError {
                 message: "expected field label, got KwData".to_string(),
-                span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 2985, 2989),
+                span: SourceSpan::new("src/v3/std/anthropic_schema.dag", 2996, 3000),
                 fixes: vec![],
             },
         );
