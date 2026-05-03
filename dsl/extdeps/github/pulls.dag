@@ -34,7 +34,7 @@ type PullRequest {
   title: String
   body: String?
   state: String
-  html_url: String
+  html_url: Url
   user: GitHubUser
   head: PullRequestRef
   base: PullRequestRef
@@ -46,7 +46,7 @@ type PullRequest {
 
 type IssueComment {
   id: Int
-  html_url: String
+  html_url: Url
   body: String
   created_at: Timestamp
 }
@@ -185,7 +185,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: String from "html_url"
+      html_url: Url from "html_url"
     }
     transport rest {
       method: POST,
@@ -256,7 +256,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: String from "html_url"
+      html_url: Url from "html_url"
     }
     transport rest {
       method: POST,
@@ -310,7 +310,7 @@ type PullReview {
   body: String
   state: String
   commit_id: String
-  html_url: String
+  html_url: Url
 }
 
 type ReviewComment {
@@ -320,5 +320,5 @@ type ReviewComment {
   line: Int?
   original_line: Int?
   body: String
-  html_url: String
+  html_url: Url
 }
