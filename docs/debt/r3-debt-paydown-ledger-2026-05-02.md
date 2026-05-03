@@ -17,9 +17,10 @@ This pass classifies 69 ROADMAP-tracked debt rows in the ledger range:
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 58 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
-| Partially closed | 6 | Has a landed partial receipt but still names remaining work. |
-| Retired / stale receipt row | 5 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Open implementation / retirement work | 50 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
+| Partially closed | 8 | Has a landed partial receipt but still names remaining work. |
+| Retired / stale receipt row | 10 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -87,14 +88,14 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Provider/API mirror multiplication risk | 2026-04-30 | R3 Grounding | Open | Shared service ingestion path before more provider mirrors. |
 | Hand-Rust acceptance growth | 2026-04-30 | R3 Verification + Substrate | Open | `.dag` TestClaim capability for reflected-Dag structural assertions. |
 | `Json` + `Bytes` opaque kernel decomposition | 2026-05-01 | R3 Substrate | Open / disposition pending | Decide after T-Numeric-Construction whether this becomes an R3 lane. |
-| SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix normalization; add semiring law witnesses. |
+| SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Retired | PR #1555 (`5ef6530c7`) lands `SymbolicCost` semiring inhabitance with the zero-annihilation law witness. |
 | SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Retired | PR #1543 (`3c77a60c9`) stops claiming `BoundedLattice` in `src/v3/std/induction.dag` and restates the actual meet-oriented / auxiliary-join helpers per Path B of the algebra-claim audit. |
 | Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Retired | PR #1548 (`0427f96f7`) landed the typed `BindNodeId` witness on `ArrowBody::UserDefined`; all six emitter sites consume `(*bind_id).bind(self.dag)`, guarded site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`. Local-typed-error path was rejected at design split as parallel-representation debt. |
-| `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Open | Remove unsupported rows or add full token/parse/operator chain. |
+| `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Retired | PR #1552 (`d9bda3e3d`) deletes the unsupported `dag` operator rows and gates syntax coverage with a 4-authority cross-validation gate. |
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
 | Author-now/fire-later verification style | 2026-05-01 | R3 Verification | Open | Make one `BinaryDimensionReportEquals` claim actually execute. |
 | Typed-carrier-landed + Rust-mirror-remains pattern | 2026-05-01 | R3 PB debt discipline | Open | Pair mirror introductions with isomorphism/generation or deletion. |
-| BridgeLedgerZero known-open reporting | 2026-05-01 | R3 Verification | Open | Convert to decreasing-open-count ratchet or per-bridge closures. |
+| BridgeLedgerZero known-open reporting | 2026-05-01 | R3 Verification | Retired | PR #1571 (`c3138a946`) lands the decreasing-open-count ratchet (`test(v3): add BridgeLedger open-count ratchet`); known-open count can no longer silently grow. Closes Bundle 4a. |
 | Bare RHS alias table / numeric drift | 2026-05-01 | R3 Substrate | Open | Dissolve `PRELUDE_BARE_RHS_ALIAS_IDENTS`; add alias regression coverage. |
 
 ## De Facto Closed Or Cleanup-Only Rows
@@ -117,25 +118,16 @@ These rows should not consume implementation-worker capacity unless the ledger t
 2. **Bootstrap diagnostics-empty gate for method-template contracts.**
    One structural ratchet can close both the `go_method_template_contracts` mismatch and the broader "shape test passed over diagnostic Dag" pattern.
 
-3. **SymbolicCost semiring zero law.**
-   High correctness impact: fixes cost-lens facts and seeds the Verification law-witness closure path.
-
-4. **SubValueRelation algebra-claim correction.**
-   Pairs naturally with the law-witness lane; either fixes the law or removes an invalid guarantee.
-
-5. **`ValueBody` mirror update + first isomorphism receipt.**
+3. **`ValueBody` mirror update + first isomorphism receipt.**
    Slightly larger, but it attacks multiple rows at once: ValueBody drift, FieldMap illegal-state mirror, reflection-overtrust, and hand-mirror growth.
 
-6. **Method-template consumer migration audit-to-retirement slice.**
+4. **Method-template consumer migration audit-to-retirement slice.**
    PRs populated rows; the invariant gain lands only when old runtime/emit tables stop serving consumers.
 
-7. **BridgeLedgerZero decreasing-open-count ratchet.**
-   Turns a reporting scaffold into pressure for actual row retirement across bridge owners.
-
-8. **CI slow-test exemption fresh audit.**
+5. **CI slow-test exemption fresh audit.**
    Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
 
-(Two original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545.)
+(Five original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545; *BridgeLedgerZero decreasing-open-count ratchet* — retired by PR #1571 (ledger row 97); *SymbolicCost semiring zero law* — retired by PR #1555 (ledger row 90); *SubValueRelation algebra-claim correction* — retired by PR #1543 (ledger row 91).)
 
 ## Velocity Tripwire Baseline
 
@@ -154,6 +146,6 @@ Recommended first retirement bundle for the Debt-Paydown Manager to coordinate:
 1. **Substrate fail-closed mini-bundle:** duplicate record labels. (Emitter `as_bind()` retired by PR #1548 via `BindNodeId` witness; Go `UnknownVariant` retired by PR #820 / ledger close-out PR #1545.)
 2. **Verification/substrate executable-gate bundle:** diagnostics-empty bootstrap ratchet plus one `BinaryDimensionReportEquals` claim that actually compares produced reports.
 3. **Grounding consumer-retirement bundle:** method-template old-table consumer migration; prevent more row population from masking parallel authority.
-4. **PB/Verification bridge discipline bundle:** BridgeLedgerZero decreasing-open-count ratchet and `test_runner.rs` bespoke-arm freeze rule.
+4. **PB/Verification bridge discipline bundle:** `test_runner.rs` bespoke-arm freeze rule. (BridgeLedgerZero decreasing-open-count ratchet retired by PR #1571, ledger row 97.)
 
 Each bundle should require its PR body to name debt paid, debt newly found, and any remaining row by exact ROADMAP heading, matching the R3 per-PR debt receipt rule.
