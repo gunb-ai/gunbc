@@ -4649,6 +4649,12 @@ fn lower_fn_item_expr_body(
         symbols,
         Some(return_decl_id),
     );
+    let body_return_port =
+        if return_type_diagnostic.is_some() && dag.port(body_return_port).produced_by.is_none() {
+            dag.alloc_port(None)
+        } else {
+            body_return_port
+        };
     let body_root = dag.port(body_return_port).produced_by;
     let body_span = expr_span(body);
     let body_end_index = dag.nodes().len();
@@ -8098,6 +8104,68 @@ mod tests {
             dag.port(value.output).state(),
             &PortState::Unresolved,
             "the body ValueNode output must share the unresolved result port"
+        );
+
+        let diagnostic = dag
+            .diagnostics()
+            .get(bind.value)
+            .expect("Bind value unresolved state must carry the return annotation diagnostic");
+        assert!(
+            matches!(
+                diagnostic,
+                Diagnostic::ResolveError { name, .. } if name == "unknown type `MissingType`"
+            ),
+            "expected unknown return type diagnostic on Bind value, got {diagnostic:?}"
+        );
+    }
+
+    #[test]
+    fn unresolved_fn_return_annotation_does_not_poison_borrowed_body_port() {
+        let dag =
+            match crate::compile_to_dag("fn bad(x: Int) -> MissingType = x", "bad_return_alias.v3")
+            {
+                Err(crate::CompileError::Semantic(dag)) => dag,
+                other => panic!("unknown return type must fail semantically, got {other:?}"),
+            };
+
+        let bind = dag
+            .nodes()
+            .iter()
+            .find_map(|node| match node {
+                Behavior::Bind(bind) if bind.name == "bad" => Some(bind),
+                _ => None,
+            })
+            .expect("lowering should still emit the function Bind for inspection");
+        let [param_port] = bind.params.as_slice() else {
+            panic!("test function should lower exactly one parameter");
+        };
+
+        assert_ne!(
+            bind.value, *param_port,
+            "invalid return annotation must materialize a function-owned result port"
+        );
+        assert_eq!(
+            dag.port(bind.value).state(),
+            &PortState::Unresolved,
+            "failed return annotation must leave the function Bind value unresolved"
+        );
+        assert_eq!(
+            dag.port(bind.value).value_type(),
+            None,
+            "failed return annotation must not fabricate a TypeShape on the Bind value"
+        );
+
+        let int_shape = dag
+            .int_shape()
+            .expect("bootstrap should expose the Int type shape");
+        assert_eq!(
+            dag.port(*param_port).state(),
+            &PortState::Resolved(int_shape),
+            "return annotation failure must not poison the borrowed parameter port"
+        );
+        assert!(
+            dag.diagnostics().get(*param_port).is_none(),
+            "return annotation diagnostic must stay on the function result port"
         );
 
         let diagnostic = dag
