@@ -30,6 +30,18 @@ fn build_stage0() -> std::path::PathBuf {
     bin
 }
 
+fn temp_dir(name: &str) -> std::path::PathBuf {
+    let unique = format!(
+        "v2-bootstrap-{}-{}",
+        name,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("clock before unix epoch")
+            .as_nanos()
+    );
+    std::env::temp_dir().join(unique)
+}
+
 /// Run a self-compile: `<binary> compile --source-root src/v2 --source-root dsl --output-dir <dir>`.
 /// Does NOT assert success — caller decides how to handle failure.
 fn run_self_compile(
@@ -330,9 +342,9 @@ fn stage0_compile_accepts_dag_target() {
 fn stage0_compile_imports_ephemeral_generated_source_root() {
     let stage0_bin = build_stage0();
 
-    let entry_root = std::env::temp_dir().join("v2-ephemeral-entry-root");
-    let generated_root = std::env::temp_dir().join("v2-ephemeral-generated-root");
-    let out_dir = std::env::temp_dir().join("v2-ephemeral-generated-out");
+    let entry_root = temp_dir("ephemeral-entry-root");
+    let generated_root = temp_dir("ephemeral-generated-root");
+    let out_dir = temp_dir("ephemeral-generated-out");
     let _ = std::fs::remove_dir_all(&entry_root);
     let _ = std::fs::remove_dir_all(&generated_root);
     let _ = std::fs::remove_dir_all(&out_dir);
