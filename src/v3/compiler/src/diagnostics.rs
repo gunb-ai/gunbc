@@ -667,9 +667,79 @@ pub(crate) fn witness_correction_for_decl(
     })
 }
 
+/// Opaque, validated witness to a path in the substrate
+/// `bootstrap_authority` set declared by
+/// `src/v3/std/bootstrap_authority.dag`. Held internally as a
+/// `&'static str` because the only minters are the bootstrap loader
+/// (`bootstrap_regen_fresh::parse_fixture`) and bootstrap kernel-patch
+/// helpers (`bootstrap::patch_kernel_bool_boolean_algebra_inhabits`),
+/// both of which iterate the `&'static`-keyed authority arrays
+/// produced by `build.rs` (`STAGED_FILES`/`V3_SPECS`/`COMPILER_FILES`/
+/// `EXTDEPS_FILES`) — derivations of the same substrate
+/// `bootstrap_authority` set.
+///
+/// The constructor is deliberately `pub(crate)`. Consumers receive
+/// minted keys through [`DiagnosticAttribution::BootstrapAuthority`]
+/// and dispatch on witness identity (equality / hash). They MUST NOT
+/// rebuild a `BootstrapAuthorityKey` from a `SourceSpan.file` string
+/// to recover attribution — that would defeat the witness contract.
+/// `path()` is exposed for diagnostic display only.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct BootstrapAuthorityKey(&'static str);
+
+impl BootstrapAuthorityKey {
+    /// Mint a key from a `&'static str` known to be a row in the
+    /// substrate `bootstrap_authority` set. Bootstrap-only constructor
+    /// — see type-level doc for the witness contract.
+    pub(crate) fn new(path: &'static str) -> Self {
+        Self(path)
+    }
+
+    /// Canonical bootstrap-authority path. **Display only.** Consumers
+    /// dispatching on attribution must use witness equality, not this
+    /// string, to decide bootstrap membership; a string compare against
+    /// `SourceSpan.file` is precisely the path-string bridge this type
+    /// dissolves.
+    pub fn path(&self) -> &'static str {
+        self.0
+    }
+}
+
+/// Where a diagnostic originated in the bootstrap-vs-user dimension.
+///
+/// `Unattributed` is the default for diagnostics raised against
+/// user-compile sources or against not-yet-classified internal
+/// failures. `BootstrapAuthority` carries an opaque witness that the
+/// diagnostic was attached while loading or patching one of the
+/// substrate `bootstrap_authority` rows. Verification consumers (e.g.
+/// the row-82 `diagnostics_empty_after_bootstrap` ratchet) dispatch on
+/// this discriminant rather than scanning `Diagnostic.span().file`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DiagnosticAttribution {
+    Unattributed,
+    BootstrapAuthority(BootstrapAuthorityKey),
+}
+
+impl DiagnosticAttribution {
+    /// `true` iff this diagnostic was attached against a known
+    /// bootstrap-authority row. Verification surfaces should prefer
+    /// this over `span.file == "src/v3/std/..."` predicates.
+    pub fn is_bootstrap(&self) -> bool {
+        matches!(self, Self::BootstrapAuthority(_))
+    }
+
+    /// Borrow the bootstrap-authority witness, when present.
+    pub fn as_bootstrap_authority(&self) -> Option<&BootstrapAuthorityKey> {
+        match self {
+            Self::BootstrapAuthority(key) => Some(key),
+            Self::Unattributed => None,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct DiagnosticTable {
-    entries: HashMap<PortId, Diagnostic>,
+    entries: HashMap<PortId, (Diagnostic, DiagnosticAttribution)>,
 }
 
 impl DiagnosticTable {
@@ -688,7 +758,15 @@ impl DiagnosticTable {
     }
 
     pub fn get(&self, port: PortId) -> Option<&Diagnostic> {
-        self.entries.get(&port)
+        self.entries.get(&port).map(|(d, _)| d)
+    }
+
+    /// Borrow the structural attribution recorded alongside a
+    /// diagnostic. `Some(Unattributed)` for ordinary user-compile
+    /// failures; `Some(BootstrapAuthority(_))` for diagnostics attached
+    /// while loading or patching a substrate bootstrap-authority row.
+    pub fn attribution(&self, port: PortId) -> Option<&DiagnosticAttribution> {
+        self.entries.get(&port).map(|(_, a)| a)
     }
 
     pub fn len(&self) -> usize {
@@ -696,17 +774,32 @@ impl DiagnosticTable {
     }
 
     /// Iterate `(port, diagnostic)` pairs. Used by tests and callers
-    /// that need to scan all diagnostics for a specific kind.
+    /// that need to scan all diagnostics for a specific kind. For
+    /// attribution-aware iteration use [`Self::iter_attributed`].
     pub fn iter(&self) -> impl Iterator<Item = (PortId, &Diagnostic)> {
-        self.entries.iter().map(|(p, d)| (*p, d))
+        self.entries.iter().map(|(p, (d, _))| (*p, d))
+    }
+
+    /// Iterate `(port, diagnostic, attribution)` triples. Verification
+    /// consumers that need to count or filter by bootstrap attribution
+    /// without touching `SourceSpan.file` use this surface.
+    pub fn iter_attributed(
+        &self,
+    ) -> impl Iterator<Item = (PortId, &Diagnostic, &DiagnosticAttribution)> {
+        self.entries.iter().map(|(p, (d, a))| (*p, d, a))
     }
 
     /// Insert a diagnostic entry for a port. pub(crate) because the
-    /// only callers are Dag::mark_unresolved (which atomically also
+    /// only callers are Dag::mark_unresolved* (which atomically also
     /// clears the port's value_type) and should never be called
     /// independently from outside the crate.
-    pub(crate) fn insert(&mut self, port: PortId, diagnostic: Diagnostic) {
-        self.entries.insert(port, diagnostic);
+    pub(crate) fn insert(
+        &mut self,
+        port: PortId,
+        diagnostic: Diagnostic,
+        attribution: DiagnosticAttribution,
+    ) {
+        self.entries.insert(port, (diagnostic, attribution));
     }
 }
 
@@ -1202,5 +1295,78 @@ mod tests {
         )
         .expect("render");
         assert!(rendered.contains("\"\n    config[\n    \\\"path\\\\\\\\name\\\"\n    ]\""));
+    }
+
+    #[test]
+    fn diagnostic_attribution_default_is_unattributed_and_distinguishes_bootstrap() {
+        let key_a = BootstrapAuthorityKey::new("src/v3/std/induction.dag");
+        let key_b = BootstrapAuthorityKey::new("dsl/std/types.dag");
+
+        let unattributed = DiagnosticAttribution::Unattributed;
+        let bootstrap_a = DiagnosticAttribution::BootstrapAuthority(key_a.clone());
+        let bootstrap_a_again = DiagnosticAttribution::BootstrapAuthority(key_a.clone());
+        let bootstrap_b = DiagnosticAttribution::BootstrapAuthority(key_b.clone());
+
+        assert!(!unattributed.is_bootstrap());
+        assert_eq!(unattributed.as_bootstrap_authority(), None);
+
+        assert!(bootstrap_a.is_bootstrap());
+        assert_eq!(bootstrap_a.as_bootstrap_authority(), Some(&key_a));
+
+        // Witness identity (==) is the consumer dispatch path — no
+        // `span.file` string compare.
+        assert_eq!(bootstrap_a, bootstrap_a_again);
+        assert_ne!(bootstrap_a, bootstrap_b);
+        assert_ne!(bootstrap_a, unattributed);
+    }
+
+    #[test]
+    fn diagnostic_table_round_trips_bootstrap_attribution_per_port() {
+        // Drive through the public dag attach surface so we exercise
+        // the same biconditional (`Unresolved port iff diagnostic`) as
+        // production. `attach_diagnostic` is `pub(crate)`, so this
+        // test stays in-crate.
+        let mut dag = Dag::empty();
+        let key = BootstrapAuthorityKey::new("src/v3/std/python_method_template_contracts.dag");
+        let span = SourceSpan::new("src/v3/std/python_method_template_contracts.dag", 0, 0);
+
+        dag.attach_diagnostic(Diagnostic::ResolveError {
+            name: "user".to_string(),
+            span: span.clone(),
+            fixes: Vec::new(),
+        });
+        dag.attach_bootstrap_diagnostic(
+            key.clone(),
+            Diagnostic::ResolveError {
+                name: "bootstrap".to_string(),
+                span,
+                fixes: Vec::new(),
+            },
+        );
+
+        let mut unattr_seen = 0usize;
+        let mut bootstrap_seen = 0usize;
+        for (_port, diag, attribution) in dag.diagnostics().iter_attributed() {
+            let Diagnostic::ResolveError { name, .. } = diag else {
+                panic!("unexpected diagnostic kind: {diag:?}");
+            };
+            match (name.as_str(), attribution) {
+                ("user", DiagnosticAttribution::Unattributed) => unattr_seen += 1,
+                ("bootstrap", DiagnosticAttribution::BootstrapAuthority(k)) => {
+                    assert_eq!(k, &key);
+                    bootstrap_seen += 1;
+                }
+                other => panic!("unexpected (name, attribution) pair: {other:?}"),
+            }
+        }
+        assert_eq!(unattr_seen, 1);
+        assert_eq!(bootstrap_seen, 1);
+
+        let bootstrap_count = dag
+            .diagnostics()
+            .iter_attributed()
+            .filter(|(_, _, a)| a.is_bootstrap())
+            .count();
+        assert_eq!(bootstrap_count, 1);
     }
 }
