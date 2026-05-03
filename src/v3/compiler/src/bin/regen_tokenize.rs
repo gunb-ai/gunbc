@@ -519,29 +519,21 @@ fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(
     let mut covered_kinds = BTreeSet::new();
 
     for pattern in &shared_syntax.operators {
-        match classify_shared_operator_for_tokenizer(pattern) {
-            SharedOperatorTokenizerBoundary::Tokenized { kind } => {
-                assert!(
-                    punct_variants.contains(kind),
-                    "shared syntax operator `{pattern}` is classified as tokenizer punctuation \
-                     `PunctTokenKind::{kind}`, but `{TOKENIZE_AUTHORITY_FILE}` does not declare \
-                     that variant"
-                );
-                assert_token_kind_variant_exists(dag, kind, "PunctTokenKind");
-                assert!(
-                    covered_kinds.insert(kind.to_string()),
-                    "shared syntax operator `{pattern}` maps to duplicate punctuation kind \
-                     `PunctTokenKind::{kind}`"
-                );
-                rows.push((pattern.clone(), kind.to_string()));
-            }
-            SharedOperatorTokenizerBoundary::ParserOnlyDebt { reason } => {
-                assert!(
-                    !reason.is_empty(),
-                    "parser-only shared operator `{pattern}` should carry a dissolution note"
-                );
-            }
-        }
+        let SharedOperatorTokenizerBoundary::Tokenized { kind } =
+            classify_shared_operator_for_tokenizer(pattern);
+        assert!(
+            punct_variants.contains(kind),
+            "shared syntax operator `{pattern}` is classified as tokenizer punctuation \
+             `PunctTokenKind::{kind}`, but `{TOKENIZE_AUTHORITY_FILE}` does not declare \
+             that variant"
+        );
+        assert_token_kind_variant_exists(dag, kind, "PunctTokenKind");
+        assert!(
+            covered_kinds.insert(kind.to_string()),
+            "shared syntax operator `{pattern}` maps to duplicate punctuation kind \
+             `PunctTokenKind::{kind}`"
+        );
+        rows.push((pattern.clone(), kind.to_string()));
     }
 
     let shared_operator_patterns: BTreeSet<_> = shared_syntax.operators.iter().cloned().collect();
@@ -611,12 +603,11 @@ fn keyword_spelling_for_token_kind(kind: &str) -> String {
 }
 
 // SG-1a operator bridge: shared operators still lower through raw-source reads,
-// so every `dag_operators` symbol must be classified explicitly here as either
-// tokenizer punctuation or parser-only debt. Unknown symbols panic so upstream
-// authority edits cannot silently disappear.
+// so every `dag_operators` symbol must be classified explicitly here as
+// tokenizer punctuation. Unknown symbols panic so upstream authority edits
+// cannot silently advertise unsupported syntax.
 enum SharedOperatorTokenizerBoundary {
     Tokenized { kind: &'static str },
-    ParserOnlyDebt { reason: &'static str },
 }
 
 fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
@@ -635,18 +626,10 @@ fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokeni
         "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
         "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
         "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
-        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "null-coalescing is declared in shared syntax but the v3 tokenizer/parser \
-                     surface does not yet admit it as punctuation",
-        },
-        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "modulo is declared in shared syntax but the v3 tokenizer/parser surface \
-                     does not yet admit it as punctuation",
-        },
         other => panic!(
             "shared syntax operator `{other}` has no SG-1a tokenizer bridge classification. \
-             Update `classify_shared_operator_for_tokenizer` to mark it as tokenizer-owned \
-             punctuation or explicit parser-only debt so the authority boundary stays fail-closed."
+             Add the full tokenizer/parser/operator chain before advertising it in \
+             `dag_operators`."
         ),
     }
 }
