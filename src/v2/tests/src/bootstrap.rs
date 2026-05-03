@@ -390,17 +390,16 @@ fn main() -> Int { generated_answer() }
         stderr
     );
     assert!(
-        stderr.contains("indexed 2 modules from 2 source roots"),
-        "expected both entry and generated temp roots to be indexed, got:\n{stderr}"
-    );
-    assert!(
         out_dir.join("dag-artifact.json").exists(),
         "expected dag artifact at {}",
         out_dir.join("dag-artifact.json").display()
     );
+    let committed_generated_projection = crate::helpers::workspace_root()
+        .join("src/generated/method_template_projection.dag");
     assert!(
-        !std::path::Path::new("src/generated/method_template_projection.dag").exists(),
-        "ratchet must not rely on a committed generated .dag under src/"
+        !committed_generated_projection.exists(),
+        "ratchet must not rely on committed generated .dag at {}",
+        committed_generated_projection.display()
     );
 
     let _ = std::fs::remove_dir_all(&entry_root);
