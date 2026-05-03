@@ -17,9 +17,9 @@ This pass classifies 69 ROADMAP-tracked debt rows in the ledger range:
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 60 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 59 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Partially closed | 6 | Has a landed partial receipt but still names remaining work. |
-| Retired / stale receipt row | 3 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 4 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -70,7 +70,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Stale `docs/briefs/` sweep | 2026-04-21 | T-Receipts | Partial | One brief banner fixed; broad sweep remains. |
 | `lower_fn_body_into_existing_decl` fallback row | 2026-04-25 | Lowering | Retired | ROADMAP records stale finding resolved; ledger cleanup only. |
 | `patch_lower_helpers_generated_type_alias_refinement` | 2026-04-25 | PB B7 | Retired | ROADMAP records PR #1014 retirement; ledger cleanup only. |
-| Go branch emits `UnknownVariant` | 2026-04-25 | Emit / fail-closed | Open | Typed `EmitError::VariantParentNotFound`; no name fallback. |
+| Go branch emits `UnknownVariant` | 2026-04-25 | Emit / fail-closed | Retired | PR #820 added typed `EmitError::VariantParentNotFound`, removed the `UnknownVariant` fallback, and added missing-parent regression coverage. |
 | Lens fold fallback + file-path semantics | 2026-04-25 | Lens application / identity carrier | Open | Require structural callable edge and fold-shape carrier. |
 | `test_runner.rs` filename / sentinel bridges | 2026-04-25 | PB / Verification | Open | Structural claim roles and declaration refs replace filename/sentinel routing. |
 | B4 bridge-retirement queue | 2026-04-25 | Bridge owners + Verification ledger | Open | Retire SourceSpan/file, lens-name, `include_str!`, and patching bridges in order. |
@@ -104,8 +104,9 @@ These rows should not consume implementation-worker capacity unless the ledger t
 1. **Triple `MethodTranslation` schema**: retired by PR #1210; ROADMAP already records zero v2 consumers and safe deletion.
 2. **`lower_fn_body_into_existing_decl` defensive Arrow re-derive**: ROADMAP records the cited symbol no longer exists and live lowering fails closed.
 3. **`patch_lower_helpers_generated_type_alias_refinement` exact-string patching**: retired by PR #1014.
-4. **E-M method carrier parity framing** inside the substrate-carrier port program: closed by structural subsumption pick; remaining work belongs to E-P consumer/cementing and non-carrier lens blockers.
-5. **P0 repeat-string oracle bridge**: the interim `p0_repeat_string_v2_oracle_rust_bridge` is retired, but the broader modeled-evaluation target remains open. Track as partial, not as a fresh P0 bug.
+4. **Go branch emits `UnknownVariant`**: retired by PR #820; live Go branch emission now returns `EmitError::VariantParentNotFound` with regression coverage.
+5. **E-M method carrier parity framing** inside the substrate-carrier port program: closed by structural subsumption pick; remaining work belongs to E-P consumer/cementing and non-carrier lens blockers.
+6. **P0 repeat-string oracle bridge**: the interim `p0_repeat_string_v2_oracle_rust_bridge` is retired, but the broader modeled-evaluation target remains open. Track as partial, not as a fresh P0 bug.
 
 ## Highest-Leverage Retirement Targets
 
@@ -115,28 +116,25 @@ These rows should not consume implementation-worker capacity unless the ledger t
 2. **Replace emitter `as_bind().expect()` panics with typed errors.**
    Six localized call sites; converts crash behavior into fail-closed diagnostics and is adjacent to existing emitter error paths.
 
-3. **Go `UnknownVariant` fail-closed fix.**
-   Small emit-surface bug with direct P3/C-6/C-9 payoff. A typed `VariantParentNotFound` error is an easy receipt.
-
-4. **Bootstrap diagnostics-empty gate for method-template contracts.**
+3. **Bootstrap diagnostics-empty gate for method-template contracts.**
    One structural ratchet can close both the `go_method_template_contracts` mismatch and the broader "shape test passed over diagnostic Dag" pattern.
 
-5. **SymbolicCost semiring zero law.**
+4. **SymbolicCost semiring zero law.**
    High correctness impact: fixes cost-lens facts and seeds the Verification law-witness closure path.
 
-6. **SubValueRelation algebra-claim correction.**
+5. **SubValueRelation algebra-claim correction.**
    Pairs naturally with the law-witness lane; either fixes the law or removes an invalid guarantee.
 
-7. **`ValueBody` mirror update + first isomorphism receipt.**
+6. **`ValueBody` mirror update + first isomorphism receipt.**
    Slightly larger, but it attacks multiple rows at once: ValueBody drift, FieldMap illegal-state mirror, reflection-overtrust, and hand-mirror growth.
 
-8. **Method-template consumer migration audit-to-retirement slice.**
+7. **Method-template consumer migration audit-to-retirement slice.**
    PRs populated rows; the invariant gain lands only when old runtime/emit tables stop serving consumers.
 
-9. **BridgeLedgerZero decreasing-open-count ratchet.**
+8. **BridgeLedgerZero decreasing-open-count ratchet.**
    Turns a reporting scaffold into pressure for actual row retirement across bridge owners.
 
-10. **CI slow-test exemption fresh audit.**
+9. **CI slow-test exemption fresh audit.**
     Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
 
 ## Velocity Tripwire Baseline
@@ -153,7 +151,7 @@ Next cadence pass should record:
 
 Recommended first retirement bundle for the Debt-Paydown Manager to coordinate:
 
-1. **Substrate fail-closed mini-bundle:** duplicate record labels, emitter `as_bind()` typed errors, Go `UnknownVariant`.
+1. **Substrate fail-closed mini-bundle:** duplicate record labels and emitter `as_bind()` typed errors. Go `UnknownVariant` is already retired by PR #820.
 2. **Verification/substrate executable-gate bundle:** diagnostics-empty bootstrap ratchet plus one `BinaryDimensionReportEquals` claim that actually compares produced reports.
 3. **Grounding consumer-retirement bundle:** method-template old-table consumer migration; prevent more row population from masking parallel authority.
 4. **PB/Verification bridge discipline bundle:** BridgeLedgerZero decreasing-open-count ratchet and `test_runner.rs` bespoke-arm freeze rule.

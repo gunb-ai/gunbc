@@ -50,7 +50,7 @@ src/v3/std/methods.dag	3	1388	b61693641c32d74b
 src/v3/std/parse_surface.dag	18	99510	b73114d5b178303d
 src/v3/std/python_method_template_contracts.dag	5	150651	fd534d8bbd18cc04
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
-src/v3/std/runtime.dag	12	13724	61e250b2c0a425e9
+src/v3/std/runtime.dag	14	16342	4eaaff1aac38d20d
 src/v3/std/rust_method_template_contracts.dag	5	109753	7b10fcd0d9079900
 src/v3/std/services.dag	8	5791	840c901943fce7bf
 src/v3/std/substrate.dag	64	139633	25bd8acdc02f1ec3

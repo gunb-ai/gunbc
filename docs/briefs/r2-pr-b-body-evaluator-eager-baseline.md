@@ -169,20 +169,21 @@ These are **not** in PR-B.0 design lock and **not** in PR-B.1 implementation:
 
 ## R3 residual reason
 
-Full evaluator execution cannot ship in R2 because:
+The former PR-A.3 carrier absence is closed: `EvalStrategy`,
+`InputEvaluationOrder`, `EvalStateKey`, and `EvalMemoKey` live in
+`src/v3/std/runtime.dag`, so PR-B.1 may read the closed eager strategy and
+structural memo-key boundary rather than inventing a local no-memo or
+string-key convention.
 
-1. **Strategy carriers absent at HEAD.** `EvalStrategy`,
-   `InputEvaluationOrder`, `EvalStateKey`, `EvalMemoKey` are audited but not
-   declared. Without the strategy carrier PR-B.1 has nothing to read, and
-   without `EvalMemoKey` the memoization boundary is undeclared. The
-   PR-A.3 audit explicitly lists these as the implementation-side gap.
-2. **Execution semantics for non-eager strategies undeclared.** `NormalOrder`
+Full evaluator execution still cannot ship in R2 because:
+
+1. **Execution semantics for non-eager strategies undeclared.** `NormalOrder`
    has no rule, no thunk capture point, and no TC2 comparison obligation
    (PR-A.3 audit §EvalStrategy). Until those land, the evaluator cannot
    honor any inhabitant of `EvalStrategy` other than `ApplicativeOrder /
    LeftFirst`, which means TC2 cannot strengthen and PR-D harness execution
    cannot run two strategies for differential receipts.
-3. **Witness construction surface unauthored.** The witness half of PR-B has
+2. **Witness construction surface unauthored.** The witness half of PR-B has
    no design lock yet. Even with PR-B.1 landed, witness emission for
    downstream consumers (R3 lens producers, cross-target reflection
    consumers) is not in scope here.

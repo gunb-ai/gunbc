@@ -16,7 +16,7 @@ and [`r3-v-l4-l7-direct-scaffold-notes.md`](r3-v-l4-l7-direct-scaffold-notes.md)
 |---|---|---|
 | PR-A.2 frame state | `src/v3/std/runtime.dag` declares `EvalFrame { bindings: Map<PortId, Value> }` and `EvalStateStack { frames: List<EvalFrame> }`; Rust side has `EvalFrame<V>` / `EvalStateStack<V>` helpers in `src/v3/compiler/src/lib.rs`. | Landed enough for environment shape; no longer a blanket Lane 1 blocker. |
 | PR-A.3 strategy carriers | `EvalStrategy = ApplicativeOrder { input_order: InputEvaluationOrder }` and `InputEvaluationOrder = LeftFirst` are now declared in `runtime.dag`. | The eager/left-first strategy identity is live. |
-| PR-A.3 memo carriers | `EvalStateKey` and `EvalMemoKey` are still absent from `runtime.dag`. | Memoization identity remains open; do not claim PR-A.3 complete. Slice 1 can proceed only if PR-B.2 chooses no-memo or cites a Director-approved memo deferral. |
+| PR-A.3 memo carriers | `EvalStateKey { state: EvalStateStack }` and `EvalMemoKey { program: DeclarationId, node: NodeId, state_key: EvalStateKey, strategy: EvalStrategy }` are declared in `runtime.dag`. | Structural memo-key identity is live; this audit's former memo-carrier blocker is closed. |
 | PR-B body evaluator | `r2-pr-b-body-evaluator-eager-baseline.md` and `r2-pr-b-1-eager-evaluator-implementation-seed.md` are design/seed briefs; no full eager evaluator entry point is visible on main. | `dag_eval_output` cannot be a real producer yet. |
 | PR-E E2 environment | EvalFrame/Bind environment helpers landed on main via #1374. | Removes a frame API gap, but not the body-execution gap. |
 | PR-B.2/W1 runner extension | `r2-pr-b-2-runner-extension-bundle.md` owns `rust_emit_output` + `dag_eval_output`. `test_runner.rs::eval_differential_equals` still accepts only `(v3_program_cost, v2_oracle_cost)`. | L4 fixture row should wait for W1 producer dispatch, not invent a local predicate or stdout convention. |
@@ -68,10 +68,9 @@ variant is needed for slice 1.
 
 The open question is sequencing, not predicate shape. `rust_emit_output` can
 land independently of body evaluation, but `dag_eval_output` requires a real
-PR-B.1 eager evaluator. Because `EvalStateKey` / `EvalMemoKey` are absent at
-HEAD, the implementation brief must either wait for those memo carriers or
-explicitly scope slice 1 to no-memo eager evaluation under Director approval.
-Without that disposition, `dag_eval_output` would still be a fabricated oracle.
+PR-B.1 eager evaluator and W1 producer wiring. The PR-A.3 structural memo-key
+carriers are now declared, so this audit's former no-memo carve-out question is
+no longer the blocking gate for `dag_eval_output`.
 
 Cross-program flag: this is the same structural-observation/value-normalization
 surface called out by the Lane 2 readiness work. The shared comparator should

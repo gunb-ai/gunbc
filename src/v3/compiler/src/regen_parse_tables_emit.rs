@@ -163,7 +163,7 @@ pub fn render_parse_tables_generated_rs(
 /// - `And` ← bp 7/8 (`&&`)
 /// - `Comparison` ← bp 9/10 or 11/12 (`== != < <= > >=`)
 /// - `Additive` ← bp 13/14 (`+ -`)
-/// - `Multiplicative` ← bp 15/16 (`* / %`)
+/// - `Multiplicative` ← bp 15/16 (`* /`)
 ///
 /// If the shared authority introduces an operator at a bp outside these
 /// bands, regen fails closed (`BinaryOpLevel` does not yet cover it).
