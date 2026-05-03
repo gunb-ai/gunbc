@@ -135,7 +135,7 @@ These rows should not consume implementation-worker capacity unless the ledger t
 8. **CI slow-test exemption fresh audit.**
    Bounded docs/script work that turns a partial T-Receipts row into measurable deletion opportunities.
 
-(Previously item 2 — *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path; see ledger row 92. Previously item 3 — *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545.)
+(Two original highest-leverage targets are now retired and removed from this list: *Replace emitter `as_bind().expect()` panics with typed errors* — retired by PR #1548 via the stronger `BindNodeId` witness path (ledger row 92); *Go `UnknownVariant` fail-closed fix* — retired by PR #820, ledger close-out via PR #1545.)
 
 ## Velocity Tripwire Baseline
 
