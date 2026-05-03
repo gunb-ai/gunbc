@@ -700,6 +700,16 @@ impl BootstrapAuthorityKey {
     /// string, to decide bootstrap membership; a string compare against
     /// `SourceSpan.file` is precisely the path-string bridge this type
     /// dissolves.
+    ///
+    /// **Egress-only contract.** This accessor is intentionally a
+    /// one-way door: a consumer may read the path for diagnostic
+    /// rendering, but the only way *back* to a `BootstrapAuthorityKey`
+    /// witness is the `pub(crate)` [`Self::new`] constructor that the
+    /// bootstrap loader owns. Round-tripping `path()` through some
+    /// other public constructor is a contract-violation that the type
+    /// system cannot block on its own; reviewers should treat any new
+    /// `pub fn from_path` / `From<&str>` impl on this type as the same
+    /// path-string bridge re-introduced and reject it.
     pub fn path(&self) -> &'static str {
         self.0
     }
