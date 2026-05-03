@@ -25,6 +25,12 @@
 use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 
 /// Target language whose `MethodTemplateContract` row list is being projected.
+///
+/// 🟢 TERMINAL at the per-target row-list scope. The three inhabitants
+/// mirror the three closed list-declaration authorities under
+/// `src/v3/std/{rust,python,go}_method_template_contracts.dag`. New
+/// targets land by adding a row-list authority + a constructor here
+/// together; no other dissolution path applies.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MethodTemplateTarget {
     Rust,
@@ -48,6 +54,13 @@ impl MethodTemplateTarget {
 
 /// Projected `MethodEmitTemplate` (substrate sum at
 /// `src/v3/std/emit_model.dag:469-474`).
+///
+/// 🟢 TERMINAL at target method-emission-template scope, inheriting the
+/// terminality of the substrate carrier (`MethodEmitTemplate` is marked
+/// 🟢 TERMINAL at `emit_model.dag:453`). The two-variant split between
+/// inline-lambda and function-reference renderings is the closed semantic
+/// case the substrate already locks; new variants here would mean the
+/// substrate carrier itself moved.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MethodEmitTemplateProjection {
     Single {
@@ -61,6 +74,10 @@ pub enum MethodEmitTemplateProjection {
 
 /// Projected `PlaceholderConvention` (substrate sum at
 /// `src/v3/std/emit_model.dag:449-451`).
+///
+/// 🟢 TERMINAL: nullary two-inhabitant sum (`IndexedArgs | NamedArg`) that
+/// mirrors the closed substrate carrier. New conventions land by editing
+/// the substrate sum first; this projection follows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaceholderConventionProjection {
     IndexedArgs,
@@ -85,6 +102,12 @@ pub struct MethodTemplateContractRow {
 /// Fail-closed projection error. Every observable mismatch between the
 /// bootstrap `Dag` shape and the `MethodTemplateContract` substrate carrier
 /// surfaces here as a typed value (per `INVARIANTS.md` C-8).
+///
+/// 🟢 TERMINAL at the projection's bootstrap-mismatch scope. Each variant
+/// names a specific structural class the row authorities cannot satisfy;
+/// new variants only land if substrate shape grows a new sub-fact (which
+/// would itself follow §P1). The carrier is therefore a closed
+/// substrate-mismatch enumeration, not a transitional grab-bag.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MethodTemplateProjectionError {
     /// Per-target row-list declaration is absent from the bootstrap `Dag`.
