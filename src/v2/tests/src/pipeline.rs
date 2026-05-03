@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use v2_compiler::v2_compiler_artifact::RenderTarget;
 use v2_compiler::v2_compiler_compile::SourceFile;
+use v2_compiler::v2_std_core::CompilerDiagnostic;
 
 // ── Full DSL compilation (non-consensual: all files, no exceptions) ────
 
@@ -6363,6 +6364,7 @@ type RealEnum
 }
 
 #[test]
+<<<<<<< HEAD
 fn local_same_name_coproduct_wire_contract_is_not_authority() {
     let source = r#"module local_spoof_coproduct_wire_contract
 import std.serialization { VariantEncoding }
@@ -6396,6 +6398,8 @@ type RealEnum
 }
 
 #[test]
+=======
+>>>>>>> origin/main
 fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
     let source = r#"module bad_affix_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
@@ -6424,6 +6428,7 @@ type RealEnum
 }
 
 #[test]
+<<<<<<< HEAD
 fn coproduct_wire_contract_string_variant_requires_unit_variants() {
     let source = r#"module fielded_string_variant_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
@@ -6483,6 +6488,8 @@ type RealEnum
 }
 
 #[test]
+=======
+>>>>>>> origin/main
 fn unit_coproduct_without_wire_contract_keeps_tagged_default() {
     let source = r#"module no_wire_contract_unit_enum
 
@@ -6562,6 +6569,31 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     }
 }
 
+#[test]
+fn openai_chat_completion_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<OpenAiChatCompletion200Body> = response.json().await?"),
+        "expected ChatCompletion 200 response to deserialize through typed OpenAiChatCompletion200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).choices")
+            && content.contains(".message).content.clone()")
+            && content.contains("(__rest_wire).usage).prompt_tokens.clone()"),
+        "expected ChatCompletion output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/choices/0/message/content\")"),
+        "ChatCompletion content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
@@ -6608,6 +6640,31 @@ service test.Llm {
     assert!(
         content.contains("pointer(\"/model\")"),
         "RE-4b: expected JSON pointer extraction for model, got:\n{content}"
+    );
+}
+
+#[test]
+fn anthropic_messages_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<AnthropicMessages200Body> = response.json().await?"),
+        "expected Anthropic Messages 200 response to deserialize through typed AnthropicMessages200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).content")
+            && content.contains(".text.clone()")
+            && content.contains("(__rest_wire).usage).input_tokens.clone()"),
+        "expected Anthropic Messages output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/content/0/text\")"),
+        "Anthropic Messages content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
     );
 }
 
@@ -6668,6 +6725,93 @@ fn anthropic_dag_compiles_to_rust() {
     assert!(
         !result.files.is_empty(),
         "RE-4: anthropic.dag produced no emitted files"
+    );
+}
+
+#[test]
+fn anthropic_tool_result_content_accepts_text_and_image_blocks() {
+    let source = r#"module anthropic_tool_result_content_test
+
+import extdeps.llm.anthropic
+import extdeps.llm.llm { TextContent, ImageContent, Base64Image }
+
+data tool_results: List<AnthropicChatMessage> = [
+  UserMessage {
+    content: [
+      UserToolResultBlock {
+        tool_use_id: "toolu_text",
+        content: ToolResultText { text: "15 degrees" },
+        is_error: none
+      },
+      UserToolResultBlock {
+        tool_use_id: "toolu_image",
+        content: ToolResultBlocks {
+          blocks: [
+            TextContent { text: "chart" },
+            ImageContent {
+              source: Base64Image {
+                media_type: "image/jpeg",
+                data: "/9j/4AAQSkZJRg..."
+              }
+            }
+          ]
+        },
+        is_error: none
+      },
+      UserToolResultBlock {
+        tool_use_id: "toolu_empty",
+        content: none,
+        is_error: none
+      }
+    ]
+  }
+]
+"#;
+    let result = compile_dag_named(
+        "anthropic_tool_result_content_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn anthropic_tool_result_content_rejects_legacy_string_slot() {
+    let source = r#"module anthropic_tool_result_content_negative_test
+
+import extdeps.llm.anthropic
+
+data legacy_content: String = "15 degrees"
+
+data tool_results: List<AnthropicChatMessage> = [
+  UserMessage {
+    content: [
+      UserToolResultBlock {
+        tool_use_id: "toolu_legacy",
+        content: legacy_content,
+        is_error: none
+      }
+    ]
+  }
+]
+"#;
+    let result = compile_dag_named(
+        "anthropic_tool_result_content_negative_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    let has_type_mismatch = result.diagnostics.iter().any(|diag| {
+        matches!(
+            &*diag.diagnostic,
+            CompilerDiagnostic::TypeMismatch { expected, got, .. }
+                if expected == "Coproduct(AnthropicToolResultContent)"
+                    && got == "Primitive(String)"
+        )
+    });
+    assert!(
+        has_type_mismatch,
+        "legacy string tool_result content should produce a typed diagnostic, got:\n{}",
+        diagnostic_messages(&result).join("\n")
     );
 }
 
