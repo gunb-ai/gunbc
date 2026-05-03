@@ -105,8 +105,9 @@ These rows should not consume implementation-worker capacity unless the ledger t
 2. **`lower_fn_body_into_existing_decl` defensive Arrow re-derive**: ROADMAP records the cited symbol no longer exists and live lowering fails closed.
 3. **`patch_lower_helpers_generated_type_alias_refinement` exact-string patching**: retired by PR #1014.
 4. **Go branch emits `UnknownVariant`**: retired by PR #820; live Go branch emission now returns `EmitError::VariantParentNotFound` with regression coverage.
-5. **E-M method carrier parity framing** inside the substrate-carrier port program: closed by structural subsumption pick; remaining work belongs to E-P consumer/cementing and non-carrier lens blockers.
-6. **P0 repeat-string oracle bridge**: the interim `p0_repeat_string_v2_oracle_rust_bridge` is retired, but the broader modeled-evaluation target remains open. Track as partial, not as a fresh P0 bug.
+5. **Emitter `as_bind().expect()` panic paths**: retired by PR #1548 via the typed `BindNodeId` witness on `ArrowBody::UserDefined` (`src/v3/compiler/src/dag.rs:113`); all six emitter sites consume `(*bind_id).bind(self.dag)`; guarded `rust_target.rs:2503` site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`.
+6. **E-M method carrier parity framing** inside the substrate-carrier port program: closed by structural subsumption pick; remaining work belongs to E-P consumer/cementing and non-carrier lens blockers.
+7. **P0 repeat-string oracle bridge**: the interim `p0_repeat_string_v2_oracle_rust_bridge` is retired, but the broader modeled-evaluation target remains open. Track as partial, not as a fresh P0 bug.
 
 ## Highest-Leverage Retirement Targets
 
