@@ -26,9 +26,9 @@ requires a **named dissolution hook** the reviewer can open in **one hop**. Cite
 1. **`docs/briefs/r2-pr-b-2-runner-extension-bundle.md` — §Runner authority discipline** (dissolution-target table):
    name the **workstream row** this PR advances or the PR that **amends** this table; or
 2. **`docs/briefs/r3-pb-runtime-test-predicate-dissolution-hook.md` — §PB-runtime dissolution hook qualification**
-   (`#pb-runtime-dissolution-hook-qualification`): PB-runtime **allowed hook destination** — Q1–Q4 qualification,
-   disqualifiers for new predicate variants / `Value` variants / discipline-marker fields / producer identities /
-   substrate observation or channel carriers / convention-only observations / self-citing arms (PB packet **#1550**); or
+   (`#pb-runtime-dissolution-hook-qualification`): PB-runtime **allowed hook destination** (in-tree stub today;
+   full Q1–Q4 + disqualifiers land with **#1550**). Until **#1550** merges, cite **#1550** *in addition to* this
+   brief when using option **(2)** so PB scope is checkable; or
 3. **`ROADMAP.md`**: the concrete bullet **`test_runner.rs` becoming a parallel test-predicate authority**
    (tracked-debts / Pattern B row — search in-tree) as the freeze exception / deferral anchor.
 
