@@ -246,6 +246,10 @@ fn rust_tagged_object_policy() -> RustEnumWireSerde {
   rust_serde_policy(enum_attr: rust_serde_tag_attr(), rename_prefix: none, rename_suffix: none, rename_style: none)
 }
 
+fn rust_serde_error_policy(message: String) -> RustEnumWireSerde {
+  rust_serde_policy(enum_attr: emit_error_expr(message: message, target: Rust), rename_prefix: none, rename_suffix: none, rename_style: none)
+}
+
 fn rust_string_as_authored_policy() -> RustEnumWireSerde {
   rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
 }
@@ -387,20 +391,14 @@ fn resolve_wire_serde_policy_for_coproduct(wire_contract_item: Node?, source_ind
 
 fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>, seen_aliases: Map<String, Bool>, fuel: Int) -> RustEnumWireSerde {
   if fuel <= 0 {
-    emit_error_expr(
-      message: "wire_contract: VariantEncoding alias chain exceeded recursion limit",
-      target: Rust
-    )
+    rust_serde_error_policy(message: "wire_contract: VariantEncoding alias chain exceeded recursion limit")
   } else { match wire_contract_item {
     None => rust_tagged_object_policy()
     Some { value: wc } =>
       if is_data_def_item(item: wc) {
         match wc.body {
           None =>
-            emit_error_expr(
-              message: "wire_contract: data item has no initializer body",
-              target: Rust
-            )
+            rust_serde_error_policy(message: "wire_contract: data item has no initializer body")
           Some { value: init } =>
             match init.expr_data {
               ExprRecordLit { parent_enum: _ } =>
@@ -408,10 +406,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
               ExprVar { binding_kind: _ } =>
                 let alias_name = expr_var_name_at(texpr: init, source_indices: source_indices)
                 if map_get(seen_aliases, alias_name) != none {
-                  emit_error_expr(
-                    message: concat("wire_contract: cyclic VariantEncoding alias: ", alias_name),
-                    target: Rust
-                  )
+                  rust_serde_error_policy(message: concat("wire_contract: cyclic VariantEncoding alias: ", alias_name))
                 } else {
                   match map_get(data_items, alias_name) {
                     Some { value: candidates } =>
@@ -426,24 +421,15 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                               fuel: fuel - 1
                             )
                           None =>
-                            emit_error_expr(
-                              message: concat("wire_contract: missing VariantEncoding data alias: ", alias_name),
-                              target: Rust
-                            )
+                            rust_serde_error_policy(message: concat("wire_contract: missing VariantEncoding data alias: ", alias_name))
                         }
                       } else {
-                        emit_error_expr(
-                          message: concat("wire_contract: ambiguous VariantEncoding data alias: ", alias_name),
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: concat("wire_contract: ambiguous VariantEncoding data alias: ", alias_name))
                       }
                   None =>
                     match init.inferred {
                       None =>
-                        emit_error_expr(
-                          message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)",
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                       Some { value: inf } =>
                         match inf {
                           Resolved { node } =>
@@ -459,15 +445,9 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                               resolve_wire_serde_policy(wire_item: node, source_indices: source_indices)
                             }
                           CompilerError { message, span: _ } =>
-                            emit_error_expr(
-                              message: concat("wire_contract: ", message),
-                              target: Rust
-                            )
+                            rust_serde_error_policy(message: concat("wire_contract: ", message))
                           TypeVariable { id: _ } =>
-                            emit_error_expr(
-                              message: "wire_contract: unresolved type variable in wire_contract initializer",
-                              target: Rust
-                            )
+                            rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
                         }
                     }
                 }
@@ -475,10 +455,7 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
               _ =>
                 match init.inferred {
                   None =>
-                    emit_error_expr(
-                      message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)",
-                      target: Rust
-                    )
+                    rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                   Some { value: inf } =>
                     match inf {
                       Resolved { node } =>
@@ -494,15 +471,9 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
                           resolve_wire_serde_policy(wire_item: node, source_indices: source_indices)
                         }
                       CompilerError { message, span: _ } =>
-                        emit_error_expr(
-                          message: concat("wire_contract: ", message),
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: concat("wire_contract: ", message))
                       TypeVariable { id: _ } =>
-                        emit_error_expr(
-                          message: "wire_contract: unresolved type variable in wire_contract initializer",
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
                     }
                 }
             }
@@ -513,14 +484,11 @@ fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, sourc
   } }
 }
 
-fn coproduct_wire_contract_encoding(contract_item: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+fn coproduct_wire_contract_encoding(contract_item: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
   match contract_item.body {
     Some { value: body } =>
-      match field_value_by_name(record: body, field_name: "encoding", source_indices: source_indices) {
-        Some { value: encoding } => encoding
-        None => emit_error_expr(message: "CoproductWireContract missing encoding field", target: Rust)
-      }
-    None => emit_error_expr(message: "CoproductWireContract data item has no initializer body", target: Rust)
+      field_value_by_name(record: body, field_name: "encoding", source_indices: source_indices)
+    None => none
   }
 }
 
@@ -543,7 +511,12 @@ fn resolve_local_coproduct_wire_policy(coproduct_name: String, module_items: Lis
   } else if contracts |> count == 1 {
     match contracts |> first {
       Some { value: contract } =>
-        Some { value: resolve_wire_serde_policy_from_encoding_node(ve: coproduct_wire_contract_encoding(contract_item: contract, source_indices: source_indices), source_indices: source_indices) }
+        match coproduct_wire_contract_encoding(contract_item: contract, source_indices: source_indices) {
+          Some { value: encoding } =>
+            Some { value: resolve_wire_serde_policy_from_encoding_node(ve: encoding, source_indices: source_indices) }
+          None =>
+            Some { value: rust_serde_error_policy(message: concat("CoproductWireContract missing encoding for ", coproduct_name)) }
+        }
       None => none
     }
   } else {
