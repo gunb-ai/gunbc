@@ -9,16 +9,27 @@
 // `DeclarationRef` per #1175 substrate gap) has a real authority
 // target.
 //
-// Scope (Director-locked option A on parent inbox #1130):
+// Scope (Director-locked option A on parent inbox #1130; target-only
+// classification opened on the same inbox per #1549 Gap 1 / R3 dispatch):
 //   - Full union of unique method names across the seven
 //     `dsl/std/algebra.dag` per-profile template lists
 //     (`ordered_ring_templates`, `approximate_field_templates`,
 //     `boolean_algebra_templates`, `boolean_algebra_collection_templates`,
 //     `free_monoid_scalar_templates`, `free_monoid_collection_templates`,
-//     `partial_function_templates`). 63 unique names. The registry IS
-//     the closed-system namespace authority for every algebra-template
-//     method name; not a demand-shaped subset for the first Grounding
-//     consumer.
+//     `partial_function_templates`). 63 names from algebra. The registry
+//     IS the closed-system namespace authority for every
+//     algebra-template method name; not a demand-shaped subset for the
+//     first Grounding consumer.
+//   - Target-only emit-shortcut method names that lack an algebra row
+//     but appear as keys in `dsl/extdeps/languages/{python,go}/emit.dag`
+//     also live here so per-target `MethodTemplateContract` rows can
+//     reference a `MethodRef` instead of a bare string. `string_contains`
+//     (substring test rendered as `{arg} in {recv}` / `strings.Contains`)
+//     is the first such entry. The algebra `contains` method already
+//     covers element membership for collections; `string_contains` is
+//     a separate emit identity because v2's emit map disambiguates the
+//     string substring shape from the collection-membership shape by
+//     name.
 //   - Flat name-only namespace (Director-locked option A on Q2):
 //     `join` / `length` / `contains` / `map` / `fold` / etc. each
 //     appear once, regardless of how many algebra profiles inhabit
@@ -118,6 +129,7 @@ data skip_method: MethodDeclaration = { name: "skip" }
 data sort_by_method: MethodDeclaration = { name: "sort_by" }
 data split_method: MethodDeclaration = { name: "split" }
 data starts_with_method: MethodDeclaration = { name: "starts_with" }
+data string_contains_method: MethodDeclaration = { name: "string_contains" }
 data substring_method: MethodDeclaration = { name: "substring" }
 data take_method: MethodDeclaration = { name: "take" }
 data to_int_method: MethodDeclaration = { name: "to_int" }
