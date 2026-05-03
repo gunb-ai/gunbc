@@ -105,7 +105,7 @@ fn load_runtime_bootstrap_authorities(
         .copied()
         .filter(|(path, _)| !excluded_compiler_paths.contains(path));
     assert_bootstrap_fixture_keys_resolve();
-    let fixtures: Vec<(&str, &str)> = staged_iter
+    let fixtures: Vec<(&'static str, &'static str)> = staged_iter
         .chain(V3_SPECS.iter().copied())
         .chain(compiler_iter)
         .chain(extdeps_keyed_bootstrap_fixtures())
@@ -155,7 +155,7 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
     ]
 }
 
-fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
+fn load_fixtures(dag: &mut Dag, fixtures: &[(&'static str, &'static str)]) {
     let mut parsed: Vec<(SurfaceModule, Vec<bool>)> = Vec::with_capacity(fixtures.len());
     for (file, source) in fixtures.iter() {
         let Some(module) = parse_fixture(dag, source, file) else {
@@ -192,19 +192,86 @@ fn load_fixtures(dag: &mut Dag, fixtures: &[(&str, &str)]) {
     crate::bootstrap::patch_kernel_bool_boolean_algebra_inhabits(dag);
 }
 
-fn parse_fixture(dag: &mut Dag, source: &str, file: &str) -> Option<SurfaceModule> {
+fn parse_fixture(dag: &mut Dag, source: &str, file: &'static str) -> Option<SurfaceModule> {
+    let authority = crate::diagnostics::BootstrapAuthorityKey::new(file);
     let tokens = match tokenize(source, file) {
         Ok(t) => t,
         Err(diag) => {
-            dag.attach_diagnostic(diag);
+            dag.attach_bootstrap_diagnostic(authority, diag);
             return None;
         }
     };
     match parse(&tokens, file) {
         Ok(m) => Some(m),
         Err(diag) => {
-            dag.attach_diagnostic(diag);
+            dag.attach_bootstrap_diagnostic(authority, diag);
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    //! Bootstrap-side coverage of `BootstrapAuthorityKey` /
+    //! `DiagnosticAttribution::BootstrapAuthority` for the
+    //! parse/tokenize attach path. Sibling unit tests in
+    //! `crate::diagnostics` cover the type-level invariants;
+    //! `crate::bootstrap::tests` covers the kernel-Bool detached
+    //! phantom-port path. This test exercises the third bootstrap
+    //! attach path (`parse_fixture`'s tokenize/parse-failure branches).
+    //!
+    //! Verification (PR #1572 Worker B') consumes the resulting
+    //! attribution via [`DiagnosticTable::iter_attributed`] /
+    //! [`DiagnosticTable::attribution`] without ever asking
+    //! `Diagnostic.span().file`.
+
+    use super::*;
+    use crate::diagnostics::{BootstrapAuthorityKey, DiagnosticAttribution};
+
+    #[test]
+    fn parse_fixture_tokenize_failure_carries_bootstrap_authority() {
+        // Arbitrary illegal byte makes `tokenize` fail closed.
+        let source = "\u{0}";
+        let file: &'static str = "src/v3/std/bootstrap_regen_fresh_tokenize_smoke.dag";
+        let mut dag = Dag::empty();
+        let outcome = parse_fixture(&mut dag, source, file);
+        assert!(outcome.is_none(), "tokenize must fail for this fixture");
+        let expected = BootstrapAuthorityKey::new(file);
+        let bootstrap_count = dag
+            .diagnostics()
+            .iter_attributed()
+            .filter(|(_, _, attribution)| attribution.as_bootstrap_authority() == Some(&expected))
+            .count();
+        assert_eq!(
+            bootstrap_count,
+            1,
+            "tokenize-failure diagnostic must carry BootstrapAuthority({file:?}); table: {:?}",
+            dag.diagnostics().iter_attributed().collect::<Vec<_>>()
+        );
+        for (_, _, attribution) in dag.diagnostics().iter_attributed() {
+            assert!(
+                matches!(attribution, DiagnosticAttribution::BootstrapAuthority(_)),
+                "every diagnostic from parse_fixture must be BootstrapAuthority-attributed, got {attribution:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_fixture_parse_failure_carries_bootstrap_authority() {
+        // Tokenizes cleanly but trips parse (unmatched closing brace at
+        // top level — not a valid module item).
+        let source = "}\n";
+        let file: &'static str = "src/v3/std/bootstrap_regen_fresh_parse_smoke.dag";
+        let mut dag = Dag::empty();
+        let outcome = parse_fixture(&mut dag, source, file);
+        assert!(outcome.is_none(), "parse must fail for this fixture");
+        let expected = BootstrapAuthorityKey::new(file);
+        assert!(
+            dag.diagnostics()
+                .iter_attributed()
+                .any(|(_, _, attribution)| attribution.as_bootstrap_authority() == Some(&expected)),
+            "parse-failure diagnostic must carry BootstrapAuthority({file:?}); table: {:?}",
+            dag.diagnostics().iter_attributed().collect::<Vec<_>>()
+        );
     }
 }

@@ -121,19 +121,23 @@ pub const BOOTSTRAP_FIXTURE_PATH_KEYS: &[&str] = &[
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     const BOOL_TYPES_FILE: &str = "dsl/std/types.dag";
+    let bool_authority = crate::diagnostics::BootstrapAuthorityKey::new(BOOL_TYPES_FILE);
     let Some(bool_decl) = dag
         .declarations()
         .iter()
         .find(|d| d.name.as_deref() == Some("Bool") && d.span.file == BOOL_TYPES_FILE)
     else {
-        dag.attach_diagnostic(Diagnostic::ResolveError {
-            name: format!(
-                "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in `{BOOL_TYPES_FILE}`; \
-                 cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
-            ),
-            span: SourceSpan::new(BOOL_TYPES_FILE, 0, 0),
-            fixes: Vec::new(),
-        });
+        dag.attach_bootstrap_diagnostic(
+            bool_authority,
+            Diagnostic::ResolveError {
+                name: format!(
+                    "bootstrap: Lane 1e-2b Path A — kernel `Bool` not found in `{BOOL_TYPES_FILE}`; \
+                     cannot set `Declaration.inhabits` for `BooleanAlgebra<Bool>`"
+                ),
+                span: SourceSpan::new(BOOL_TYPES_FILE, 0, 0),
+                fixes: Vec::new(),
+            },
+        );
         return;
     };
     let bool_id = bool_decl.id;
@@ -143,23 +147,30 @@ pub(crate) fn patch_kernel_bool_boolean_algebra_inhabits(dag: &mut Dag) {
     }
     let (ba_template, param_id) = {
         let Some(ba) = dag.declaration_by_name("BooleanAlgebra") else {
-            dag.attach_diagnostic(Diagnostic::ResolveError {
-                name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` not present in the \
-                       bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
-                    .to_string(),
-                span: span_for_inst.clone(),
-                fixes: Vec::new(),
-            });
+            dag.attach_bootstrap_diagnostic(
+                bool_authority,
+                Diagnostic::ResolveError {
+                    name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` not present in the \
+                           bootstrap Dag; cannot wire kernel `Bool` `inhabits`"
+                        .to_string(),
+                    span: span_for_inst.clone(),
+                    fixes: Vec::new(),
+                },
+            );
             return;
         };
         let Some(&param_id) = ba.type_params.first() else {
-            dag.attach_diagnostic(Diagnostic::ResolveError {
-                name: "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
-                       cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
-                    .to_string(),
-                span: span_for_inst.clone(),
-                fixes: Vec::new(),
-            });
+            dag.attach_bootstrap_diagnostic(
+                bool_authority,
+                Diagnostic::ResolveError {
+                    name:
+                        "bootstrap: Lane 1e-2b Path A — `BooleanAlgebra` has no type parameters; \
+                           cannot instantiate `BooleanAlgebra<Bool>` for kernel `Bool` `inhabits`"
+                            .to_string(),
+                    span: span_for_inst.clone(),
+                    fixes: Vec::new(),
+                },
+            );
             return;
         };
         (ba.id, param_id)
@@ -269,11 +280,14 @@ pub(crate) fn materialize_pipeline_realizations(dag: &mut Dag) {
 
 #[cfg_attr(not(feature = "bootstrap-regen-fresh"), allow(dead_code))]
 fn report_pipeline_authority_error(dag: &mut Dag, name: String) {
-    dag.attach_diagnostic(Diagnostic::ResolveError {
-        name,
-        span: SourceSpan::new(PIPELINE_AUTHORITY_FILE, 0, 0),
-        fixes: Vec::new(),
-    });
+    dag.attach_bootstrap_diagnostic(
+        crate::diagnostics::BootstrapAuthorityKey::new(PIPELINE_AUTHORITY_FILE),
+        Diagnostic::ResolveError {
+            name,
+            span: SourceSpan::new(PIPELINE_AUTHORITY_FILE, 0, 0),
+            fixes: Vec::new(),
+        },
+    );
 }
 
 #[cfg(test)]
@@ -496,6 +510,65 @@ mod tests {
             }),
             "expected bootstrap Path A diagnostic, got {:?}",
             dag.diagnostics().iter().collect::<Vec<_>>()
+        );
+    }
+
+    /// PB row 82 surface: detached phantom-port bootstrap diagnostics
+    /// must carry [`DiagnosticAttribution::BootstrapAuthority`] so
+    /// Verification can recover bootstrap origin without comparing
+    /// `SourceSpan.file` against a known authority path. Drives the
+    /// same Path A failure as the sibling test above and asserts the
+    /// attribution surface; consumer-side dispatch uses
+    /// `attribution.is_bootstrap()` and witness identity.
+    #[test]
+    fn kernel_bool_path_a_diagnostic_carries_bootstrap_authority_attribution() {
+        use crate::diagnostics::{BootstrapAuthorityKey, DiagnosticAttribution};
+
+        let mut dag = Dag::new();
+        let bool_id = dag.declaration_by_name("Bool").expect("kernel Bool").id;
+        dag.declaration_mut(bool_id).inhabits = None;
+        let ba_id = dag
+            .declaration_by_name("BooleanAlgebra")
+            .expect("BooleanAlgebra")
+            .id;
+        dag.declaration_mut(ba_id).name = Some("__test_hidden_BooleanAlgebra".to_string());
+
+        super::patch_kernel_bool_boolean_algebra_inhabits(&mut dag);
+
+        let expected_key = BootstrapAuthorityKey::new("dsl/std/types.dag");
+        let mut bootstrap_attributed = 0usize;
+        for (port, diag, attribution) in dag.diagnostics().iter_attributed() {
+            // Sanity-check: the message we expect from this scenario.
+            let Diagnostic::ResolveError { name, .. } = diag else {
+                continue;
+            };
+            if !(name.contains("Lane 1e-2b Path A") && name.contains("BooleanAlgebra")) {
+                continue;
+            }
+            // Consumer-side dispatch: no `span.file ==` compare here.
+            assert!(
+                attribution.is_bootstrap(),
+                "Path A diagnostic at port {port:?} must be DiagnosticAttribution::BootstrapAuthority(_), got {attribution:?}"
+            );
+            assert_eq!(
+                attribution.as_bootstrap_authority(),
+                Some(&expected_key),
+                "attribution witness must match dsl/std/types.dag bootstrap-authority key"
+            );
+            // Same answer through the per-port accessor.
+            assert_eq!(
+                dag.diagnostics().attribution(port),
+                Some(&DiagnosticAttribution::BootstrapAuthority(
+                    expected_key.clone()
+                ))
+            );
+            bootstrap_attributed += 1;
+        }
+        assert_eq!(
+            bootstrap_attributed, 1,
+            "expected exactly one bootstrap-attributed Path A diagnostic, got {bootstrap_attributed} \
+             (table: {:?})",
+            dag.diagnostics().iter_attributed().collect::<Vec<_>>()
         );
     }
 }
