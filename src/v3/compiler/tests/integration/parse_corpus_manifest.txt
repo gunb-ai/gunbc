@@ -40,7 +40,7 @@ src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	43	77647	4b063e9a5ddc50a1
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	14463	909ca7a1c1705e89
 src/v3/std/go_method_template_contracts.dag	5	110898	7eb5c9f1296f4a45
-src/v3/std/induction.dag	56	88794	546f74c63c189c50
+src/v3/std/induction.dag	56	88794	e405e1549cf2fe08
 src/v3/std/integer_diagnostic_order.dag	6	8124	5d7b31594a5b3d5c
 src/v3/std/lens.dag	6	9852	28d5539a5b28716e
 src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
