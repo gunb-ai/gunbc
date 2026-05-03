@@ -14,7 +14,7 @@ use std::process::{Command, Stdio};
 
 use v3_compiler::dag::{
     dominates, iterate, max_path, normalize, sequential, Behavior, Dag, DegreeAtLeastTwo,
-    NonSingletonList, PortId, SizeVariable, SymbolicCost, TypeConnective,
+    NonSingletonList, PortId, SizeVariable, SymbolicCost, TransformTarget, TypeConnective,
 };
 use v3_compiler::emit_rust::emit_rust_module;
 use v3_compiler::lens_cost_symbolic::{symbolic_cost_of, SymbolicCostLookup};
@@ -217,6 +217,57 @@ fn symbolic_cost_semiring_inhabitance_is_bootstrap_substrate_fact() {
         }
         other => panic!("expected Semiring<SymbolicCost> instantiation, got {other:?}"),
     }
+}
+
+#[test]
+fn symbolic_cost_product_identity_stage_is_bootstrap_substrate_fact() {
+    let dag = Dag::new();
+    let reduce_product = dag
+        .declaration_by_name("reduce_product")
+        .expect("reduce_product should bootstrap from std/algebra.dag")
+        .id;
+    let drop_multiplicative_one = dag
+        .declaration_by_name("drop_multiplicative_one")
+        .expect("drop_multiplicative_one should bootstrap from std/algebra.dag")
+        .id;
+    let collapse_on_multiplicative_zero = dag
+        .declaration_by_name("collapse_on_multiplicative_zero")
+        .expect("collapse_on_multiplicative_zero should bootstrap from std/algebra.dag")
+        .id;
+
+    let found_product_identity_chain = dag.nodes().iter().any(|node| {
+        let Behavior::Transform(reduce) = node else {
+            return false;
+        };
+        if reduce.target != TransformTarget::Callable(reduce_product) {
+            return false;
+        }
+        let Some(drop_one) = reduce
+            .inputs
+            .iter()
+            .filter_map(|input| dag.resolve_producer_opt(input))
+            .find_map(Behavior::as_transform)
+        else {
+            return false;
+        };
+        if drop_one.target != TransformTarget::Callable(drop_multiplicative_one) {
+            return false;
+        }
+        drop_one
+            .inputs
+            .iter()
+            .filter_map(|input| dag.resolve_producer_opt(input))
+            .filter_map(Behavior::as_transform)
+            .any(|collapse_zero| {
+                collapse_zero.target == TransformTarget::Callable(collapse_on_multiplicative_zero)
+            })
+    });
+
+    assert!(
+        found_product_identity_chain,
+        "bootstrap normalize(ProductCost) path must preserve collapse-zero -> drop-one -> \
+         reduce-product so Semiring<SymbolicCost> has substrate-visible multiplicative identity"
+    );
 }
 
 // ── Per-Behavior lowering ────────────────────────────────────────
