@@ -3298,8 +3298,25 @@ fn pr_a_2_eval_frame_and_state_stack_carriers_match_pb_runtime_section_3_3() {
 }
 
 #[test]
-fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
+fn pr_a_3_strategy_and_memo_key_carriers_match_eager_baseline_shape() {
     let dag = v3_compiler::generated_full_bootstrap_dag();
+
+    let eval_state_key_id = find_named(&dag, "EvalStateKey");
+    let eval_memo_key_id = find_named(&dag, "EvalMemoKey");
+    let eval_state_stack_id = find_named(&dag, "EvalStateStack");
+
+    let state_key = dag
+        .declaration_by_name("EvalStateKey")
+        .expect("PR-A.3 EvalStateKey missing from full bootstrap");
+    assert_eq!(
+        state_key.span.file, "src/v3/std/runtime.dag",
+        "EvalStateKey must live in the single runtime authority module"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, eval_state_key_id, "state"),
+        eval_state_stack_id,
+        "EvalStateKey must key memoization by structural EvalStateStack state"
+    );
 
     let strategy = dag
         .declaration_by_name("EvalStrategy")
@@ -3347,6 +3364,34 @@ fn pr_a_3_eval_strategy_carriers_match_eager_baseline_shape() {
         ),
         other => panic!("LeftFirst payload must lower as empty Conj, got {other:?}"),
     }
+
+    let memo_key = dag
+        .declaration_by_name("EvalMemoKey")
+        .expect("PR-A.3 EvalMemoKey missing from full bootstrap");
+    assert_eq!(
+        memo_key.span.file, "src/v3/std/runtime.dag",
+        "EvalMemoKey must live in the single runtime authority module"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, eval_memo_key_id, "program"),
+        find_named(&dag, "DeclarationId"),
+        "EvalMemoKey.program must name the evaluated program declaration"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, eval_memo_key_id, "node"),
+        find_named(&dag, "NodeId"),
+        "EvalMemoKey.node must key by structural node identity"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, eval_memo_key_id, "state_key"),
+        eval_state_key_id,
+        "EvalMemoKey.state_key must use EvalStateKey, not a string or name-only fingerprint"
+    );
+    assert_eq!(
+        conj_field_by_id(&dag, eval_memo_key_id, "strategy"),
+        find_named(&dag, "EvalStrategy"),
+        "EvalMemoKey.strategy must use the closed EvalStrategy carrier"
+    );
 }
 
 /// T-Numeric-Construction Slice 2 — `Nat = CommutativeSemiring<Magnitude>` resolves
