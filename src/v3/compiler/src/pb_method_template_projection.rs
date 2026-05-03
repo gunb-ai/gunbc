@@ -399,8 +399,7 @@ fn closed_record_lookup<'a>(
     expected: &[&'static str],
 ) -> Result<HashMap<&'a str, &'a FieldValue>, MethodTemplateProjectionError> {
     let mut lookup: HashMap<&'static str, &FieldValue> = HashMap::with_capacity(expected.len());
-    let mut first_seen_index: HashMap<&'static str, usize> =
-        HashMap::with_capacity(expected.len());
+    let mut first_seen_index: HashMap<&'static str, usize> = HashMap::with_capacity(expected.len());
     for (field_index, (label, value)) in fields.iter().enumerate() {
         // Resolve the row-side `String` label to its `&'static str` in
         // `expected`. Holding the static reference avoids re-scanning the
