@@ -8095,14 +8095,13 @@ mod tests {
             .nodes()
             .iter()
             .find_map(|node| match node {
-                Behavior::Value(value) if value.output == bind.value => Some(value),
+                Behavior::Value(value) if value.data == LiteralBits::Int(1) => Some(value),
                 _ => None,
             })
-            .expect("literal function body should lower to a ValueNode feeding the Bind");
-        assert_eq!(
-            dag.port(value.output).state(),
-            &PortState::Unresolved,
-            "the body ValueNode output must share the unresolved result port"
+            .expect("literal function body should still lower to a ValueNode");
+        assert_ne!(
+            value.output, bind.value,
+            "invalid return annotation must use a distinct diagnostic result port"
         );
 
         let diagnostic = dag
