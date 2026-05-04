@@ -6796,6 +6796,327 @@ fn openai_chat_completion_uses_typed_200_body_projection() {
     );
 }
 
+#[test]
+fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        choices: Vec<Choice>,
+        usage: Usage,
+        service_tier: Option<String>,
+        system_fingerprint: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Choice {
+        message: Message,
+        logprobs: Option<Logprobs>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Message {
+        refusal: Option<String>,
+        annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Annotation {
+        #[serde(rename = "type")]
+        annotation_type: String,
+        url_citation: Option<UrlCitation>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct UrlCitation {
+        start_index: i64,
+        end_index: i64,
+        title: String,
+        url: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Logprobs {
+        content: Option<Vec<TokenLogprob>>,
+        refusal: Option<Vec<TokenLogprob>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TokenLogprob {
+        token: String,
+        bytes: Option<Vec<i64>>,
+        logprob: f64,
+        top_logprobs: Vec<TopLogprob>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TopLogprob {
+        token: String,
+        bytes: Option<Vec<i64>>,
+        logprob: f64,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        completion_tokens_details: Option<CompletionTokenDetails>,
+        prompt_tokens_details: Option<PromptTokenDetails>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct CompletionTokenDetails {
+        accepted_prediction_tokens: Option<i64>,
+        audio_tokens: Option<i64>,
+        reasoning_tokens: Option<i64>,
+        rejected_prediction_tokens: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct PromptTokenDetails {
+        audio_tokens: Option<i64>,
+        cached_tokens: Option<i64>,
+    }
+
+    let wire = serde_json::json!({
+        "choices": [{
+            "message": {
+                "refusal": "safety refusal",
+                "annotations": [{
+                    "type": "url_citation",
+                    "url_citation": {
+                        "start_index": 0,
+                        "end_index": 12,
+                        "title": "reference",
+                        "url": "https://example.com/ref"
+                    }
+                }]
+            },
+            "logprobs": {
+                "content": [{
+                    "token": "Hello",
+                    "bytes": [72, 101, 108, 108, 111],
+                    "logprob": -0.01,
+                    "top_logprobs": [{
+                        "token": "Hi",
+                        "bytes": [72, 105],
+                        "logprob": -0.2
+                    }]
+                }],
+                "refusal": [{
+                    "token": "No",
+                    "bytes": null,
+                    "logprob": -0.3,
+                    "top_logprobs": []
+                }]
+            }
+        }],
+        "usage": {
+            "completion_tokens_details": {
+                "accepted_prediction_tokens": 3,
+                "audio_tokens": 0,
+                "reasoning_tokens": 2,
+                "rejected_prediction_tokens": 1
+            },
+            "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 8
+            }
+        },
+        "service_tier": "default",
+        "system_fingerprint": "fp_mock"
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative ChatCompletion 200 wire");
+    assert_eq!(body.service_tier.as_deref(), Some("default"));
+    assert_eq!(body.system_fingerprint.as_deref(), Some("fp_mock"));
+    assert_eq!(body.choices[0].message.refusal.as_deref(), Some("safety refusal"));
+    let annotation = body.choices[0].message.annotations.as_ref().unwrap()[0]
+        .url_citation
+        .as_ref()
+        .unwrap();
+    assert_eq!(annotation.start_index, 0);
+    assert_eq!(annotation.end_index, 12);
+    assert_eq!(annotation.title, "reference");
+    assert_eq!(annotation.url, "https://example.com/ref");
+    assert_eq!(
+        body.choices[0].message.annotations.as_ref().unwrap()[0].annotation_type,
+        "url_citation"
+    );
+    let content_logprob = &body.choices[0]
+        .logprobs
+        .as_ref()
+        .unwrap()
+        .content
+        .as_ref()
+        .unwrap()[0];
+    assert_eq!(content_logprob.token, "Hello");
+    assert_eq!(content_logprob.bytes.as_ref().unwrap(), &[72, 101, 108, 108, 111]);
+    assert!(content_logprob.logprob < 0.0);
+    assert_eq!(content_logprob.top_logprobs[0].token, "Hi");
+    assert_eq!(content_logprob.top_logprobs[0].bytes.as_ref().unwrap(), &[72, 105]);
+    assert!(content_logprob.top_logprobs[0].logprob < 0.0);
+    assert_eq!(
+        body.choices[0]
+            .logprobs
+            .as_ref()
+            .unwrap()
+            .refusal
+            .as_ref()
+            .unwrap()[0]
+            .token,
+        "No"
+    );
+    let completion_details = body.usage.completion_tokens_details.unwrap();
+    assert_eq!(completion_details.accepted_prediction_tokens, Some(3));
+    assert_eq!(completion_details.audio_tokens, Some(0));
+    assert_eq!(completion_details.reasoning_tokens, Some(2));
+    assert_eq!(completion_details.rejected_prediction_tokens, Some(1));
+    let prompt_details = body.usage.prompt_tokens_details.unwrap();
+    assert_eq!(prompt_details.audio_tokens, Some(0));
+    assert_eq!(prompt_details.cached_tokens, Some(8));
+}
+
+#[test]
+fn openai_responses_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<OpenAiResponses200Body> = response.json().await?"),
+        "expected Responses 200 response to deserialize through typed OpenAiResponses200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).output")
+            && content.contains(".content")
+            && content.contains(".text.clone()")
+            && content.contains("(__rest_wire).usage).output_tokens.clone()"),
+        "expected Responses output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/output/0/content/0/text\")"),
+        "Responses content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
+#[test]
+fn openai_responses_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        id: String,
+        object: String,
+        created_at: Option<i64>,
+        status: Option<String>,
+        model: String,
+        output: Vec<OutputItem>,
+        usage: Usage,
+        service_tier: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputItem {
+        id: Option<String>,
+        #[serde(rename = "type")]
+        item_type: String,
+        status: Option<String>,
+        role: Option<String>,
+        content: Option<Vec<OutputContent>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputContent {
+        #[serde(rename = "type")]
+        content_type: String,
+        text: Option<String>,
+        annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Annotation {
+        #[serde(rename = "type")]
+        annotation_type: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        input_tokens: i64,
+        output_tokens: i64,
+        total_tokens: Option<i64>,
+        input_tokens_details: Option<InputTokenDetails>,
+        output_tokens_details: Option<OutputTokenDetails>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct InputTokenDetails {
+        cached_tokens: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputTokenDetails {
+        reasoning_tokens: Option<i64>,
+    }
+
+    let wire = serde_json::json!({
+        "id": "resp_mock",
+        "object": "response",
+        "created_at": 1741386163,
+        "status": "completed",
+        "model": "gpt-4o",
+        "output": [{
+            "id": "msg_mock",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{
+                "type": "output_text",
+                "text": "hello",
+                "annotations": [{ "type": "url_citation" }]
+            }]
+        }],
+        "usage": {
+            "input_tokens": 32,
+            "input_tokens_details": { "cached_tokens": 7 },
+            "output_tokens": 18,
+            "output_tokens_details": { "reasoning_tokens": 5 },
+            "total_tokens": 50
+        },
+        "service_tier": "default"
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative Responses 200 wire");
+    assert_eq!(body.id, "resp_mock");
+    assert_eq!(body.object, "response");
+    assert_eq!(body.created_at, Some(1741386163));
+    assert_eq!(body.status.as_deref(), Some("completed"));
+    assert_eq!(body.model, "gpt-4o");
+    assert_eq!(body.service_tier.as_deref(), Some("default"));
+    assert_eq!(body.output[0].id.as_deref(), Some("msg_mock"));
+    assert_eq!(body.output[0].item_type, "message");
+    assert_eq!(body.output[0].status.as_deref(), Some("completed"));
+    assert_eq!(body.output[0].role.as_deref(), Some("assistant"));
+    let content = &body.output[0].content.as_ref().unwrap()[0];
+    assert_eq!(content.content_type, "output_text");
+    assert_eq!(content.text.as_deref(), Some("hello"));
+    assert_eq!(content.annotations.as_ref().unwrap()[0].annotation_type, "url_citation");
+    assert_eq!(body.usage.input_tokens, 32);
+    assert_eq!(body.usage.output_tokens, 18);
+    assert_eq!(body.usage.total_tokens, Some(50));
+    assert_eq!(
+        body.usage
+            .input_tokens_details
+            .unwrap()
+            .cached_tokens,
+        Some(7)
+    );
+    assert_eq!(
+        body.usage
+            .output_tokens_details
+            .unwrap()
+            .reasoning_tokens,
+        Some(5)
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
@@ -6868,6 +7189,76 @@ fn anthropic_messages_uses_typed_200_body_projection() {
         !content.contains("json_body.pointer(\"/content/0/text\")"),
         "Anthropic Messages content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
     );
+}
+
+#[test]
+fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        content: Vec<TextBlock>,
+        usage: Usage,
+        container: Option<Value>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TextBlock {
+        citations: Option<Vec<Citation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Citation {
+        #[serde(rename = "type")]
+        citation_type: String,
+        url: Option<String>,
+        title: Option<String>,
+        cited_text: Option<String>,
+        document_index: Option<i64>,
+        start_char_index: Option<i64>,
+        end_char_index: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        cache_creation_input_tokens: Option<i64>,
+        cache_read_input_tokens: Option<i64>,
+        service_tier: Option<String>,
+    }
+
+    let wire = serde_json::json!({
+        "content": [{
+            "citations": [{
+                "type": "webpage_location",
+                "url": "https://example.com/source",
+                "title": "source",
+                "cited_text": "quoted text",
+                "document_index": 0,
+                "start_char_index": 4,
+                "end_char_index": 15
+            }]
+        }],
+        "usage": {
+            "cache_creation_input_tokens": 11,
+            "cache_read_input_tokens": 22,
+            "service_tier": "standard"
+        },
+        "container": {
+            "id": "container_mock"
+        }
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative Anthropic 200 wire");
+    let citation = &body.content[0].citations.as_ref().unwrap()[0];
+    assert_eq!(citation.citation_type, "webpage_location");
+    assert_eq!(citation.url.as_deref(), Some("https://example.com/source"));
+    assert_eq!(citation.title.as_deref(), Some("source"));
+    assert_eq!(citation.cited_text.as_deref(), Some("quoted text"));
+    assert_eq!(citation.document_index, Some(0));
+    assert_eq!(citation.start_char_index, Some(4));
+    assert_eq!(citation.end_char_index, Some(15));
+    assert_eq!(body.usage.cache_creation_input_tokens, Some(11));
+    assert_eq!(body.usage.cache_read_input_tokens, Some(22));
+    assert_eq!(body.usage.service_tier.as_deref(), Some("standard"));
+    assert_eq!(body.container.unwrap()["id"], "container_mock");
 }
 
 #[test]
