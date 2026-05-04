@@ -213,7 +213,7 @@ type OpenAiResponses200OutputContent {
 }
 
 data structural_coverage_gap_openai_responses_200_residual: List<String> = [
-  "closure:openai_responses_200_residual|OpenAiResponses200OutputContent|variant_pending:refusal|trigger:Responses output content coproduct surface",
+  "closure:openai_responses_200_residual|OpenAiResponses200OutputContent|json_pending:logprobs|variant_pending:refusal|trigger:Responses output content coproduct surface",
   "closure:openai_responses_200_residual|OpenAiResponses200OutputItem|variant_pending:tool_calls|variant_pending:reasoning|variant_pending:error|variant_pending:multimodal_output|trigger:Responses output item coproduct surface"
 ]
 
