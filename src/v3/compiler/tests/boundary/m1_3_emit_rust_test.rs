@@ -1026,7 +1026,7 @@ fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
 }
 
 #[test]
-fn rustc_roundtrip_list_filter_non_copy_record_predicate_prints_eight() {
+fn rustc_roundtrip_list_filter_non_copy_record_predicate_prints_two() {
     let stdout = roundtrip_stdout(
         "type Point { x: Int y: Int }\n\
          fn x_of(p: Point) -> Int = p.x\n\

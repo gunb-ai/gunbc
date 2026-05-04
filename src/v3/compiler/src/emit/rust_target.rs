@@ -5891,7 +5891,7 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
 
         assert_eq!(
             binding.filter,
-            "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }"
+            "{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }"
         );
 
         let fields =
