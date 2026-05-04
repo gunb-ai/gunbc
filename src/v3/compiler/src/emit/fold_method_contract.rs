@@ -12,14 +12,12 @@ pub(crate) fn require_fold_method_template_contract(
     contract_decl: DeclarationId,
 ) -> Result<(), &'static str> {
     let mtc_type_id = dag
-        .declaration_by_name("MethodTemplateContract")
-        .ok_or("internal: MethodTemplateContract type missing from dag")?
-        .id;
+        .method_template_contract_decl()
+        .ok_or("internal: MethodTemplateContract type missing from dag")?;
 
     let fold_method_id = dag
-        .declaration_by_name("fold_method")
-        .ok_or("internal: fold_method registry entry missing from dag")?
-        .id;
+        .fold_method_decl()
+        .ok_or("internal: fold_method registry entry missing from dag")?;
 
     let decl = dag.declaration(contract_decl);
     let template = match &decl.connective {

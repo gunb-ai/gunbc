@@ -40,6 +40,37 @@ use v3_compiler::generated_files::GENERATED_FILES;
 // informally named in `dsl/gunbc/compiler.dag`.
 const CENSUS_ROOT: &str = "src/v3/compiler";
 
+#[test]
+fn emit_production_code_has_no_declaration_by_name_calls() {
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let emit_root = manifest_dir.join("src").join("emit");
+    let mut files = vec![manifest_dir.join("src").join("emit.rs")];
+    for entry in fs::read_dir(&emit_root).expect("read src/emit") {
+        let path = entry.expect("emit dir entry").path();
+        if path.extension() == Some(OsStr::new("rs")) {
+            files.push(path);
+        }
+    }
+    files.sort();
+
+    let mut offenders = Vec::new();
+    for path in files {
+        let source = fs::read_to_string(&path).expect("read emit source");
+        let production_source = source
+            .split("\n#[cfg(test)]")
+            .next()
+            .expect("split always yields a prefix");
+        if production_source.contains(".declaration_by_name(") {
+            offenders.push(path.strip_prefix(manifest_dir).unwrap_or(&path).display().to_string());
+        }
+    }
+
+    assert!(
+        offenders.is_empty(),
+        "emit production modules must use cached DeclarationId accessors, not Dag::declaration_by_name. Offenders: {offenders:#?}"
+    );
+}
+
 // All non-test .rs files under `src/v3/compiler` that are currently
 // hand-authored. Sorted; one path per line, relative to the
 // workspace root. **Every SG-1..SG-7 PR shortens this list.**
