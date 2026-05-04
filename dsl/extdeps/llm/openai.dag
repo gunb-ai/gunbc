@@ -136,7 +136,7 @@ type OpenAiChatCompletion200Annotation
 
 type OpenAiChatCompletion200Message {
   role: String
-  content: String?
+  content: String
   refusal: String?
   annotations: List<OpenAiChatCompletion200Annotation>?
 }
@@ -190,7 +190,7 @@ type OpenAiChatCompletion200Body {
 // audio, and multimodal content need coproduct modeling rather than optional
 // coordinates on the current text-message carrier.
 data structural_coverage_gap_openai_chat_completion_200_residual: List<String> = [
-  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Message|variant_pending:tool_calls|variant_pending:function_call|variant_pending:audio|variant_pending:non_string_content|trigger:model response content/tool/audio coproduct surface"
+  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Message|variant_pending:tool_calls|variant_pending:function_call|variant_pending:audio|variant_pending:non_string_content|variant_pending:refusal_without_content|trigger:model response content/tool/audio coproduct surface"
 ]
 
 // Full Chat Completions message coproduct (tool_call_id, tool role, function,
