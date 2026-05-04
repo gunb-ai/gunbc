@@ -214,9 +214,20 @@ Owner: Substrate (not Evaluator).
   proofs.
 - Add `TransformDispatch::input_ports()`.
 - Migrate `dsl/std/` reflection sum to match.
-- Land everything *behind* the existing `Vec<PortId>` shape if
-  feasible, or atomically with all in-tree consumers updated.
-  Substrate worker decides.
+- Land atomically: `TransformNode.target` + `inputs` retire in
+  the same commit that introduces `TransformDispatch`, with all
+  in-tree consumers (§3 list 7–12 and §1 evaluator consumers)
+  updated in lockstep. No "behind the existing `Vec<PortId>`
+  shape" dual-authority bridge, no temporary parallel
+  representation. Per `INVARIANTS.md` P2 Boundary Discipline
+  (single-authority metadata) and
+  `feedback_parallel_representation_debt`, an unbounded
+  bridge between `(target, inputs)` and `dispatch` is
+  disallowed; the only acceptable alternative to atomic
+  migration would be a documented bounded bridge with a named
+  dissolution trigger, and this audit explicitly does not
+  authorize one — `Vec<PortId>` retires with `TransformDispatch`
+  or S1 does not merge.
 - Mechanical updates to all consumers in §3 list 7–12 plus the
   evaluator consumers in §1 (the evaluator updates here are
   pure mechanical — `t.inputs` → `t.dispatch.input_ports()`,
