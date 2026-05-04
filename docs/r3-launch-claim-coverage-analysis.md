@@ -62,21 +62,27 @@ These are *structural invariants of gunbc itself*, not preferences:
 
 These can't be opted out of. A program either expresses intent compatible with substrate commitments, or it doesn't compile.
 
-### 3b. Application-level conventions (user-declarable via `apply_lens`)
+### 3b. Application-level invariants (user-declarable via `apply_lens`)
 
-These are project-author preferences that ARE structural choices:
+These are project-author-declared invariants that gunbc enforces across declared scopes. `apply_lens` is the substrate-supported authoring surface; the carrier is `EnforcedApplication<Output, Budget>` per `docs/design-lens-application-surface.md` with `SectionRef::DeclarationScope | NodeScope` for scoping.
 
-- Builder vs constructor patterns
-- Module organization
-- Specific error-propagation styles within Diagnostic vocabulary
-- API shape conventions
-- Naming patterns (insofar as they're not lexical)
+Examples of application-level invariants:
+
+- **Complexity-contract enforcement**: *"this function never exceeds O(N log N)"* via `apply_lens(complexity, fn, Enforce { budget: O(N log N), ... })`
+- **CRDT cost-basis contracts**: *"this merge function is bounded by O(M)"* via `apply_lens(cost, fn, Enforce { ... })` with cost-axis Lens<C>
+- **Memory-peak contracts**: *"this transform never peaks above K"* via memory-peak Lens<C>
+- **Cross-iteration parallelism opt-in**: *"this loop has independent iterations"* via parallelism Lens<C>
+- **Custom user-defined lens enforcement**: any `Lens<Output>` the user authors over substrate facts (e.g., SSA-form for an LLVM-pipeline `.dag` program; project-specific deterministic-execution invariant)
 
 For these, the project author either:
-- **Models the convention explicitly** via `apply_lens(my_convention, module_scope, Enforce {...})` — gunbc enforces across the module
-- **Accepts whatever gunbc generates by default** — see §6 open question on default behavior
+- **Authors the invariant explicitly** via `apply_lens(my_invariant, scope, Enforce {...})` — gunbc enforces across the scope and emits Diagnostics on violation
+- **Authors as `Introspect`-only** for inspection without enforcement (lens output available downstream; no Diagnostic on "violation")
 
-The substrate carrier for this is `EnforcedApplication<Output, Budget>` (per `docs/design-lens-application-surface.md`) with `SectionRef::DeclarationScope | NodeScope` for scoping.
+**Default policy is RESOLVED** (not an open question — see §6c for authority cite): unannotated functions get synthesized `IntrospectApplication<ComplexitySummary>` only; no inferred `Enforce`; explicit Enforce requires explicit user authoring with declared budget.
+
+**What §3b does NOT cover** (worth disambiguating since the original framing conflated these):
+
+- **Code-style conventions** (builder vs constructor patterns; module organization; naming patterns; error-propagation phrasing). These aren't `apply_lens` use-cases — they're either compiler-emission choices (structurally determined) or user-program-shape choices (the user authors the code in the shape they want). gunbc doesn't synthesize style-convention defaults; the substrate or the user's program determines the shape directly.
 
 ## 4. Five-category intra-program bug partition
 
@@ -137,20 +143,19 @@ Measuring this partition on a moderate-complexity `.dag`-scope program is the **
 
 **Status**: routed to Brian via Director; pending response.
 
-### 6c. Default behavior on application-level conventions
+### 6c. Default policy for `apply_lens` invariant enforcement — RESOLVED (per existing lane authority)
 
-**Where**: not yet routed; surfaced through framing discussion 2026-05-04; sharpened by research PM review.
+**Status**: **RESOLVED**, not open. Cited here as a resolved fact for completeness; included to prevent reopening at the launch-claim-coverage layer.
 
-**Question**: when the user doesn't declare an application-level convention (§3b), what does gunbc produce by default?
+**Resolution**: per `docs/r3-structure.md:40, 148` + `docs/design-lens-application-surface.md` §3.2 + §5.1 + §8.3 (resolved at e9d67113e):
 
-Three options assessed:
-1. **Structurally-derived default** — simplest valid form per substrate
-2. **Project-config default** — project-level declaration shifts defaults (option 1 + project-scope override)
-3. **No default; arbitrary-but-consistent** — compiler picks one and is consistent
+> *Default policy for complexity contracts: user-driven. Unannotated functions get synthesized `Introspect`-only applications — no implicit baseline, no inferred `Enforce`. Enforcement requires explicit user authoring of `apply_lens(complexity, fn, Enforce { ... })`.*
 
-**Recommendation**: option 1 with optional option-2 project-scope override. **Option 3 explicitly rejected per research PM review** — under adversarial review, arbitrary-but-consistent introduces silent intent-vs-want drift that the behavioral-analysis surface cannot recover from after-the-fact (you can't surface "here's what your intent does" if the compiler chose the intent you didn't declare).
+The synthesized `IntrospectApplication<ComplexitySummary>` exists fold-pass-only (not stored in source) and ensures the lens-fold walk is total over function declarations without requiring explicit per-function authoring.
 
-**Status**: not yet routed to #1586 anchor 5; recommend folding into in-thread discussion alongside §6a §3c policy.
+This generalizes to any `apply_lens` invariant: **default for unannotated scope is `Introspect`-only synthesis (or no synthesis at all for non-default lenses); explicit `Enforce` requires explicit user authoring with declared budget.** Per `feedback_state_space_vs_behavioral_invariants` + design doc §2-3, the carrier shape (`EnforcedApplication<Output, Budget>` vs `IntrospectApplication<Output>` as separate top-level carriers) makes Enforce-without-budget structurally unrepresentable; `apply_lens` use without explicit Enforce can't accidentally activate enforcement.
+
+**Note on the original framing of this section** (kept for traceability): an earlier draft of this doc treated default-behavior as an open question and named three options (structurally-derived; project-config; arbitrary-but-consistent). That framing was a P1 violation — the question is resolved at the lane authority. This entry now cites the resolved policy directly. The "code-style conventions" examples that earlier-draft §3b conflated (builder vs constructor; module organization; etc.) are clarified in §3b as out-of-scope-for-`apply_lens`; not part of this resolved-policy authority.
 
 ### 6d. Tier 4 "out of scope, declared" — pending Director ratification (NEW; convergent across four adversarial PRs)
 
@@ -297,7 +302,7 @@ Phase 4 (launch-narrative reframing) drafting can advance against:
 - ✅ Cat 2 (operational equivalence) — explicit empirical-via-testgen + post-R3-ecosystem-integration stance ratified
 - ✅ Cat 4 (testgen integration) — 5th gate ratified
 - ✅ Cat 5 (termination/totality) — structurally covered
-- ⏳ Cat 3 — pending §3c policy (#1586) + default-behavior on application-level conventions (§6c)
+- ⏳ Cat 3 — pending §3c policy (#1586). (Default-policy on `apply_lens` per §6c is RESOLVED; only §3c invariant-list policy on #1586 remains.)
 - ⏳ OQ #4 — pending Director answer
 
 Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c + translator-rewrite-included on OQ #4) with explicit conditional-citation language; final lock is a quick pass when both pending pieces land.
@@ -318,7 +323,7 @@ Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c 
 - **`r2-r3-thesis-mapping.md` / `THESIS.md` amendment**: operational-equivalence thesis-stance (§7b) + bidirectional disposition-row from §7e + **Tier 4 "out of scope, declared" addition (§6d) if Director ratifies**. Queued for after #1586 design-doc lands.
 - **#1586 §3c policy convergence** (§6a): Substrate Mgr + Director response in-thread.
 - **Director response on OQ #4 cpp/ scope** (§6b): pending.
-- **#1586 default-behavior on application-level conventions** (§6c): not yet routed; recommend folding into anchor 5 discussion.
+- ~~#1586 default-behavior on application-level conventions (§6c)~~ — **N/A**: RESOLVED at the lane authority + design doc; not an open question. See §6c.
 - **Director ratification on Tier 4 "out of scope, declared"** (§6d, NEW): focused PM-to-Director ask after this doc lands. Convergent across four adversarial PRs; strongest single thesis-edit recommendation from leverage research.
 - **Substrate Mgr review of `Algebra<Precision>`** (§6e, NEW): substrate-extension scope question; could be R3 substrate-completion work absorbed under §187 standing protocol, or post-R3.
 
@@ -367,6 +372,6 @@ Will respond to review feedback in-thread; will author the queued amendments (r3
 - **Substrate Mgr signal**: `gunb-ai/gunbc#1130` comment-4367070285 (consumer-requirement reframing for `lens_enforcement_carrier_landed`)
 - **Thesis grounding for §2 framing**: `docs/thesis/what-else-falls-out.md:6-20` §"Frontend/backend agnosticism"; `THESIS.md:155-405` thesis claims list
 - **R3 lane structure**: `docs/r3-structure.md` (16 lanes + 1 standing program = 17 active surfaces; 9 standing R3 managers)
-- **Lens application surface**: `docs/design-lens-application-surface.md` (substrate carriers for §3b application-level conventions)
+- **Lens application surface**: `docs/design-lens-application-surface.md` (substrate carriers for §3b application-level invariants; §3.2/§5.1/§8.3 default policy authority cited from §6c)
 - **Tests-as-data design**: `docs/design-tests-as-data-completeness.md` (substrate for Category 5 + 5th gate work)
 - **R3 structural framework feedback memories**: `feedback_construction_over_ratchets`, `feedback_parallel_representation_debt`, `feedback_calibration_vs_oscillation`, `feedback_verify_thesis_claims`
