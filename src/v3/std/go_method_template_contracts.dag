@@ -27,10 +27,15 @@
 //     escaped-empty-string handling is a tokenizer-level question
 //     orthogonal to row population — flag for Phase 2 / parser-level
 //     follow-up rather than block Phase 1 dispatch.
-//   - Methods present only in `go_method_templates` (concat, map,
-//     filter, any, all, flat_map, skip, take, fold, sort_by, append)
+//   - Methods present only in `go_method_templates` (map,
+//     filter, any, all, flat_map, skip, take, sort_by, append)
 //     use the emit template for both row sides for the symmetric
 //     reason.
+//     `concat` / `fold` are **not** listed here — LanguageSpec
+//     `CollectionOps.{concat,fold}_contract` carries named
+//     `MethodTemplateContract` rows (`go_language_spec_free_monoid_*`) so we
+//     do not duplicate `dag_method: concat_method` / `fold_method` inside this
+//     list (P2 single authority; mirrors Python + fold).
 
 module v3.std.go_method_template_contracts
 
@@ -54,9 +59,40 @@ import std.methods {
   skip_method,
   take_method,
   fold_method,
+  is_empty_method,
+  length_method,
   sort_by_method,
   append_method,
   string_contains_method
+}
+
+// **P2 single authority** for `concat_method`: `CollectionOps.concat_contract` uses
+// `{left}` / `{right}` (monoid concat). It does **not** repeat inside the list below —
+// that row used `append({recv}, {arg}...)` (different placeholder shape), a second
+// parallel contract for the same registry method.
+data go_language_spec_free_monoid_concat_contract: MethodTemplateContract = {
+  dag_method: { decl: concat_method },
+  runtime_template: "append({left}, {right}...)",
+  emit_template: SingleTemplate { template: "append({left}, {right}...)" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data go_language_spec_free_monoid_length_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "int64(len({recv}))",
+  emit_template: SingleTemplate { template: "int64(len({recv}))" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// Emptiness — `dag_method` is `is_empty_method`; template is Go `len(...) == 0` sugar.
+data go_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
+  dag_method: { decl: is_empty_method },
+  runtime_template: "len({recv}) == 0",
+  emit_template: SingleTemplate { template: "len({recv}) == 0" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
 }
 
 // **P2 single authority** for `fold_method` on the Go target: LanguageSpec
@@ -92,13 +128,6 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
     dag_method: { decl: split_method },
     runtime_template: "strings.Split({recv}, {arg})",
     emit_template: SingleTemplate { template: "strings.Split({recv}, {arg})" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
-    dag_method: { decl: concat_method },
-    runtime_template: "append({recv}, {arg}...)",
-    emit_template: SingleTemplate { template: "append({recv}, {arg}...)" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },

@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, dag_needs_div_error_prelude,
-    div_prelude_reserved_name_collision,
-    fold_method_contract::require_fold_method_template_contract,
+    algebra_field_for_operator_shared,
+    collection_ops_method_contract::require_method_template_contract_dag_method,
+    dag_needs_div_error_prelude, div_prelude_reserved_name_collision,
     method_emit_template_variant_label, optional_match_variant_roles, parse_pattern_strategy,
     primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
     SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
@@ -347,29 +347,87 @@ impl PythonIndexes {
                 "cons",
                 collections,
             )?,
-            concat: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "concat",
-                collections,
-            )?,
-            length: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "length",
-                collections,
-            )?,
-            is_empty: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "is_empty",
-                collections,
-            )?,
+            concat: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let concat_method_decl = dag.declaration_by_name("concat_method").ok_or(
+                    EmitPythonError::MalformedSpec {
+                        declaration: collections,
+                        detail: "internal: concat_method missing from std.methods registry",
+                    },
+                )?;
+                let id = require_field_decl_ref(cfields, "concat_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    id,
+                    "concat_contract",
+                    concat_method_decl.id,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: id,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, id)?
+            },
+            length: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let length_method_decl = dag.declaration_by_name("length_method").ok_or(
+                    EmitPythonError::MalformedSpec {
+                        declaration: collections,
+                        detail: "internal: length_method missing from std.methods registry",
+                    },
+                )?;
+                let id = require_field_decl_ref(cfields, "length_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    id,
+                    "length_contract",
+                    length_method_decl.id,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: id,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, id)?
+            },
+            is_empty: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let is_empty_method_decl = dag.declaration_by_name("is_empty_method").ok_or(
+                    EmitPythonError::MalformedSpec {
+                        declaration: collections,
+                        detail: "internal: is_empty_method missing from std.methods registry",
+                    },
+                )?;
+                let id = require_field_decl_ref(cfields, "is_empty_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    id,
+                    "is_empty_contract",
+                    is_empty_method_decl.id,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: id,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, id)?
+            },
             fold: {
                 let cfields = structural_fields_for_decl(dag, collections)?;
-                let fold_contract = require_field_decl_ref(cfields, "fold_contract", collections)?;
-                require_fold_method_template_contract(dag, fold_contract).map_err(|detail| {
+                let fold_method_decl = dag.declaration_by_name("fold_method").ok_or(
                     EmitPythonError::MalformedSpec {
-                        declaration: fold_contract,
-                        detail,
-                    }
+                        declaration: collections,
+                        detail: "internal: fold_method missing from std.methods registry",
+                    },
+                )?;
+                let fold_contract = require_field_decl_ref(cfields, "fold_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    fold_contract,
+                    "fold_contract",
+                    fold_method_decl.id,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: fold_contract,
+                    detail,
                 })?;
                 method_contract_single_emit_template_string(dag, fold_contract)?
             },
@@ -1764,7 +1822,7 @@ fn method_contract_single_emit_template_string(
     if ctor_name != "SingleTemplate" {
         return Err(EmitPythonError::MalformedSpec {
             declaration: contract_decl,
-            detail: "collection fold contract must use MethodEmitTemplate.SingleTemplate today",
+            detail: "CollectionOps MethodTemplateContract must use MethodEmitTemplate.SingleTemplate today",
         });
     }
     let [FieldValue::Literal(LiteralBits::String(template))] = payload.as_slice() else {

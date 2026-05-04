@@ -36,7 +36,7 @@ Use existing **`MethodTemplateContract`** (`src/v3/std/emit_model.dag`):
 High confidence first (direct **FreeMonoid** hits, arity/shape already aligned with emitters):
 
 1. **`fold`** — monoid-shaped reducer; **done in Phase 1 proof** (`emit_model.CollectionOps.fold_contract` + per-target `MethodTemplateContract`): **Rust** named `rust_language_spec_free_monoid_fold_contract` in `src/v3/spec/rust.dag`; **Python** + **Go** named `python_language_spec_free_monoid_fold_contract` / `go_language_spec_free_monoid_fold_contract` in `src/v3/std/{python,go}_method_template_contracts.dag` (single authority — **not** duplicated in the per-target `List<MethodTemplateContract>` rows; those lists previously carried a conflicting `fold_method` row).
-2. **`concat`**, **`length`** (and **`is_empty`** where it mirrors `length` / monoid emptiness) — align to `concat` / `length` / derived emptiness on `FreeMonoid<T>`.
+2. **`concat`**, **`length`**, **`is_empty`** — align to `FreeMonoid<T>` (`is_empty: fn() -> Bool` is a first-class algebra field; `MethodTemplateContract.dag_method` uses `is_empty_method` so registry identity matches the Bool emptiness realization; templates remain target sugar).
 3. **`map`**, **`filter`**, **`flat_map`**, **`any`**, **`all`** — already have rich `MethodTemplateContract` rows on Rust; migrate `CollectionOps` fields to refs that **either** point at those list-backed rows (if made addressable) **or** named contracts that **share** the same templates (dedupe in a later “delete duplicate literal” pass).
 4. **List literal / cons / empty_list** — still monoid-shaped surface; likely `empty` / `append` realizations plus list-syntax scaffold.
 5. **`StringOps`** — align `concat` to `FreeMonoid<Char>` scalar profile; other fields to monoid / character methods as declared in algebra + `std.methods`.
@@ -50,15 +50,17 @@ High confidence first (direct **FreeMonoid** hits, arity/shape already aligned w
 
 ## Emitter contract
 
-At index-build time the emitter **resolves** `fold_contract: DeclarationRef` → `MethodTemplateContract` value body → **extracts** the `emit_template` `SingleTemplate` string for the fold site (fail-closed if higher-order shape appears where a single template is required today).
+At index-build time the emitter **resolves** each `CollectionOps.*_contract: DeclarationRef` → `MethodTemplateContract` value body → **extracts** the `emit_template` `SingleTemplate` string for that site (fail-closed if a higher-order shape appears where a single template is required today).
 
-Runtime render sites (`ListFold`, Python callable fold) use that resolved template; the old **`fold: String` field on `emit_model.CollectionOps` is deleted**.
+Runtime render sites use those resolved templates; the old **opaque `String` fields** on `emit_model.CollectionOps` for migrated operations are deleted in favor of contract refs.
 
 ### `%Q` vs `placeholder_convention` (Rust today)
 
 The **Rust** emitter applies **`template.replace("%Q", "\"")`** when loading **any** syntax or contract template string that came through the substrate (same path as legacy `CollectionOps` string fields). **`%Q`** is the v3 tokenizer’s stand-in for a literal double-quote inside a `.dag` string literal (see `src/v3/spec/rust.dag` header comment on `{quote}` / `%Q`). It is **not** declared on `MethodTemplateContract` rows today — it is an **emitter-side decoding** step for Rust-shaped carriers, not a second semantic axis.
 
 **Next slices:** either keep documenting `%Q` here (and in any new contract rows that use it) as long as the convention stays Rust-local, or **lift** quote-escaping into a first-class substrate fact (e.g. extend `placeholder_convention` or template-segment substrate) if Python/Go need the same escape channel from shared contract literals. Until then, any new `MethodTemplateContract` text consumed by `rust_target` should treat `%Q` like existing `LanguageSpec` templates.
+
+**Phase-2 receipt (concat / length / is_empty contracts, PR #1602):** lifting `%Q` into `placeholder_convention` (or another substrate fact) stays **deferred** — Python/Go `MethodTemplateContract` literals added for those fields do not use `%Q`; only `rust_target`'s `method_contract_single_emit_template_string` applies the Rust-local decode. Revisit when a **shared** cross-target contract literal needs escaped quotes.
 
 ## References
 

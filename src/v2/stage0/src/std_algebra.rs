@@ -136,6 +136,7 @@ pub struct FreeMonoid<T> {
     pub append: Rc<dyn Fn(T) -> Rc<FreeMonoid<T>>>,
     pub slice: Rc<dyn Fn(i64, i64) -> Rc<FreeMonoid<T>>>,
     pub length: Rc<dyn Fn() -> i64>,
+    pub is_empty: Rc<dyn Fn() -> bool>,
     pub count: Rc<dyn Fn() -> i64>,
     pub first: Rc<dyn Fn() -> Option<T>>,
     pub last: Rc<dyn Fn() -> Option<T>>,
@@ -713,6 +714,16 @@ pub fn free_monoid_scalar_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             callback_element_position: None,
         }),
         Rc::new(AlgebraFieldTemplate {
+            name: "is_empty".to_string(),
+            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
+            }),
+            size_effect: None,
+            cost_shape: None,
+            callback_element_position: None,
+        }),
+        Rc::new(AlgebraFieldTemplate {
             name: "chars".to_string(),
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::ContainerOf {
@@ -1157,6 +1168,16 @@ pub fn free_monoid_collection_templates() -> Rc<Vec<Rc<AlgebraFieldTemplate>>> {
             param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
             return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
                 name: "Int".to_string(),
+            }),
+            size_effect: None,
+            cost_shape: Some(CostShape::ShapeLinearScan),
+            callback_element_position: None,
+        }),
+        Rc::new(AlgebraFieldTemplate {
+            name: "is_empty".to_string(),
+            param_types: Rc::new(vec![Rc::new(AlgebraTypeTemplate::ReceiverSelf)]),
+            return_type: Rc::new(AlgebraTypeTemplate::NamedTemplate {
+                name: "Bool".to_string(),
             }),
             size_effect: None,
             cost_shape: Some(CostShape::ShapeLinearScan),

@@ -34,7 +34,6 @@ pub fn python_method_template_emit() -> Rc<HashMap<String, String>> {
             __m.insert("any".to_string(), "any({arg}(x) for x in {recv})".to_string());
             __m.insert("append".to_string(), "{recv} + [{arg}]".to_string());
             __m.insert("chars".to_string(), "[ord(c) for c in {recv}]".to_string());
-            __m.insert("concat".to_string(), "{recv} + {arg}".to_string());
             __m.insert("count".to_string(), "len({recv})".to_string());
             __m.insert("enumerate".to_string(), "list(enumerate({recv}))".to_string());
             __m.insert("filter".to_string(), "[x for x in {recv} if {arg}(x)]".to_string());
@@ -61,7 +60,6 @@ pub fn go_method_template_emit() -> Rc<HashMap<String, String>> {
             __m.insert("all".to_string(), "v2rt.All({recv}, {arg})".to_string());
             __m.insert("any".to_string(), "v2rt.Any({recv}, {arg})".to_string());
             __m.insert("append".to_string(), "append({recv}, {arg})".to_string());
-            __m.insert("concat".to_string(), "append({recv}, {arg}...)".to_string());
             __m.insert("count".to_string(), "len({recv})".to_string());
             __m.insert("filter".to_string(), "v2rt.Filter({recv}, {arg})".to_string());
             __m.insert("flat_map".to_string(), "v2rt.FlatMap({recv}, {arg})".to_string());
