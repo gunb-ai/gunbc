@@ -1473,26 +1473,26 @@ fn parse_collection_ops(
 ) -> Result<CollectionOpsBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
 
-    let concat_method_decl =
-        dag.declaration_by_name("concat_method")
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "internal: concat_method missing from std.methods registry",
-            })?;
-    let length_method_decl =
-        dag.declaration_by_name("length_method")
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "internal: length_method missing from std.methods registry",
-            })?;
-    let fold_method_decl =
-        dag.declaration_by_name("fold_method")
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "internal: fold_method missing from std.methods registry",
-            })?;
+    let concat_method_decl = dag
+        .concat_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: concat_method missing from std.methods registry",
+        })?;
+    let length_method_decl = dag
+        .length_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: length_method missing from std.methods registry",
+        })?;
+    let fold_method_decl = dag
+        .fold_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: fold_method missing from std.methods registry",
+        })?;
     let is_empty_method_decl =
-        dag.declaration_by_name("is_empty_method")
+        dag.is_empty_method_decl()
             .ok_or(EmitError::MalformedTargetSyntax {
                 declaration,
                 detail: "internal: is_empty_method missing from std.methods registry",
@@ -1527,7 +1527,7 @@ fn parse_collection_ops(
         dag,
         concat_contract,
         "concat_contract",
-        concat_method_decl.id,
+        concat_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: concat_contract,
@@ -1540,7 +1540,7 @@ fn parse_collection_ops(
         dag,
         length_contract,
         "length_contract",
-        length_method_decl.id,
+        length_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: length_contract,
@@ -1553,7 +1553,7 @@ fn parse_collection_ops(
         dag,
         is_empty_contract,
         "is_empty_contract",
-        is_empty_method_decl.id,
+        is_empty_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: is_empty_contract,
@@ -1566,7 +1566,7 @@ fn parse_collection_ops(
         dag,
         fold_contract,
         "fold_contract",
-        fold_method_decl.id,
+        fold_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: fold_contract,
@@ -1949,18 +1949,23 @@ fn parse_rust_field_access(
             });
         }
     };
-    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.DirectField declaration was not found",
-        },
-    )?;
-    let accessor_method = named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.AccessorMethod declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let direct_field =
+        variants
+            .field_access
+            .direct_field
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.DirectField declaration was not found",
+            })?;
+    let accessor_method =
+        variants
+            .field_access
+            .accessor_method
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.AccessorMethod declaration was not found",
+            })?;
     if *constructor == direct_field {
         Ok(RustFieldAccessBinding::DirectField(name))
     } else if *constructor == accessor_method {
@@ -2176,18 +2181,23 @@ fn parse_parameter_disposition(
             detail: "ParameterDisposition variants must not carry payload fields",
         });
     }
-    let borrowed = named_variant_id(dag, "ParameterDisposition", "Borrowed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Borrowed declaration was not found",
-        },
-    )?;
-    let consumed = named_variant_id(dag, "ParameterDisposition", "Consumed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Consumed declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let borrowed =
+        variants
+            .parameter_disposition
+            .borrowed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Borrowed declaration was not found",
+            })?;
+    let consumed =
+        variants
+            .parameter_disposition
+            .consumed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Consumed declaration was not found",
+            })?;
     if *constructor == borrowed {
         Ok(ParameterDispositionBinding::Borrowed)
     } else if *constructor == consumed {
@@ -2317,18 +2327,22 @@ fn require_read_strategy(
             detail: "ReadStrategy variants must not carry payload fields",
         });
     }
-    let borrow_variant = named_variant_id(dag, "ReadStrategy", "Borrow").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let borrow_variant = variants
+        .read_strategy
+        .borrow
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "ReadStrategy.Borrow declaration was not found",
-        },
-    )?;
-    let pass_variant = named_variant_id(dag, "ReadStrategy", "PassByValue").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ReadStrategy.PassByValue declaration was not found",
-        },
-    )?;
+        })?;
+    let pass_variant =
+        variants
+            .read_strategy
+            .pass_by_value
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ReadStrategy.PassByValue declaration was not found",
+            })?;
     if *constructor == borrow_variant {
         Ok(ReadStrategyBinding::Borrow)
     } else if *constructor == pass_variant {
@@ -2371,18 +2385,23 @@ fn require_construct_strategy(
             detail: "ConstructStrategy variants must not carry payload fields",
         });
     }
-    let copy_or_clone = named_variant_id(dag, "ConstructStrategy", "CopyOrClone").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ConstructStrategy.CopyOrClone declaration was not found",
-        },
-    )?;
-    let pass_variant = named_variant_id(dag, "ConstructStrategy", "PassByValue").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ConstructStrategy.PassByValue declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let copy_or_clone =
+        variants
+            .construct_strategy
+            .copy_or_clone
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ConstructStrategy.CopyOrClone declaration was not found",
+            })?;
+    let pass_variant =
+        variants
+            .construct_strategy
+            .pass_by_value
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ConstructStrategy.PassByValue declaration was not found",
+            })?;
     if *constructor == copy_or_clone {
         Ok(ConstructStrategyBinding::CopyOrClone)
     } else if *constructor == pass_variant {
@@ -2401,14 +2420,18 @@ fn require_source_mutability(
     declaration: DeclarationId,
 ) -> Result<SourceMutabilityBinding, EmitError> {
     let value = require_unit_variant_field(fields, "mutability", declaration)?;
-    let immutable = named_variant_id(dag, "Mutability", "Immutable").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let immutable = variants
+        .mutability
+        .immutable
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Mutability.Immutable declaration was not found",
-        },
-    )?;
-    let mutable =
-        named_variant_id(dag, "Mutability", "Mutable").ok_or(EmitError::MalformedTargetSyntax {
+        })?;
+    let mutable = variants
+        .mutability
+        .mutable
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Mutability.Mutable declaration was not found",
         })?;
@@ -2430,12 +2453,18 @@ fn require_source_purity(
     declaration: DeclarationId,
 ) -> Result<SourcePurityBinding, EmitError> {
     let value = require_unit_variant_field(fields, "purity", declaration)?;
-    let pure = named_variant_id(dag, "Purity", "Pure").ok_or(EmitError::MalformedTargetSyntax {
-        declaration,
-        detail: "Purity.Pure declaration was not found",
-    })?;
-    let effectful =
-        named_variant_id(dag, "Purity", "Effectful").ok_or(EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let pure = variants
+        .purity
+        .pure
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Purity.Pure declaration was not found",
+        })?;
+    let effectful = variants
+        .purity
+        .effectful
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Purity.Effectful declaration was not found",
         })?;
@@ -2457,18 +2486,21 @@ fn require_source_structure(
     declaration: DeclarationId,
 ) -> Result<SourceStructureBinding, EmitError> {
     let value = require_unit_variant_field(fields, "structure", declaration)?;
-    let explicit = named_variant_id(dag, "Structure", "ExplicitDAG").ok_or(
-        EmitError::MalformedTargetSyntax {
+    let variants = dag.emit_model_variants();
+    let explicit = variants
+        .structure
+        .explicit_dag
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Structure.ExplicitDAG declaration was not found",
-        },
-    )?;
-    let arbitrary = named_variant_id(dag, "Structure", "Arbitrary").ok_or(
-        EmitError::MalformedTargetSyntax {
+        })?;
+    let arbitrary = variants
+        .structure
+        .arbitrary
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Structure.Arbitrary declaration was not found",
-        },
-    )?;
+        })?;
     if value == explicit {
         Ok(SourceStructureBinding::ExplicitDag)
     } else if value == arbitrary {
@@ -2488,16 +2520,21 @@ fn require_source_iteration(
 ) -> Result<SourceIterationBinding, EmitError> {
     let value = require_unit_variant_field(fields, "iteration", declaration)?;
     let bounded =
-        named_variant_id(dag, "Iteration", "Bounded").ok_or(EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "Iteration.Bounded declaration was not found",
-        })?;
-    let unbounded = named_variant_id(dag, "Iteration", "Unbounded").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "Iteration.Unbounded declaration was not found",
-        },
-    )?;
+        dag.emit_model_variants()
+            .iteration
+            .bounded
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "Iteration.Bounded declaration was not found",
+            })?;
+    let unbounded =
+        dag.emit_model_variants()
+            .iteration
+            .unbounded
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "Iteration.Unbounded declaration was not found",
+            })?;
     if value == bounded {
         Ok(SourceIterationBinding::Bounded)
     } else if value == unbounded {
@@ -2516,35 +2553,34 @@ fn require_memory_model(
     declaration: DeclarationId,
 ) -> Result<MemoryModelBinding, EmitError> {
     let value = require_unit_variant_field(fields, "memory", declaration)?;
-    let variants = [
+    let variants = dag.emit_model_variants();
+    let memory_variants = [
         (
-            "ValueOnly",
+            variants.memory_model.value_only,
             MemoryModelBinding::ValueOnly,
             "MemoryModel.ValueOnly declaration was not found",
         ),
         (
-            "GarbageCollected",
+            variants.memory_model.garbage_collected,
             MemoryModelBinding::GarbageCollected,
             "MemoryModel.GarbageCollected declaration was not found",
         ),
         (
-            "RefCounted",
+            variants.memory_model.ref_counted,
             MemoryModelBinding::RefCounted,
             "MemoryModel.RefCounted declaration was not found",
         ),
         (
-            "OwnershipBased",
+            variants.memory_model.ownership_based,
             MemoryModelBinding::OwnershipBased,
             "MemoryModel.OwnershipBased declaration was not found",
         ),
     ];
-    for (variant_name, binding, detail) in variants {
-        let variant = named_variant_id(dag, "MemoryModel", variant_name).ok_or(
-            EmitError::MalformedTargetSyntax {
-                declaration,
-                detail,
-            },
-        )?;
+    for (variant, binding, detail) in memory_variants {
+        let variant = variant.ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?;
         if value == variant {
             return Ok(binding);
         }
@@ -2562,25 +2598,24 @@ fn require_scope_model(
     declaration: DeclarationId,
 ) -> Result<ScopeModelBinding, EmitError> {
     let value = require_unit_variant_field(fields, "scope", declaration)?;
-    let variants = [
+    let variants = dag.emit_model_variants();
+    let scope_variants = [
         (
-            "LexicalScoping",
+            variants.scope_model.lexical_scoping,
             ScopeModelBinding::LexicalScoping,
             "ScopeModel.LexicalScoping declaration was not found",
         ),
         (
-            "DynamicScoping",
+            variants.scope_model.dynamic_scoping,
             ScopeModelBinding::DynamicScoping,
             "ScopeModel.DynamicScoping declaration was not found",
         ),
     ];
-    for (variant_name, binding, detail) in variants {
-        let variant = named_variant_id(dag, "ScopeModel", variant_name).ok_or(
-            EmitError::MalformedTargetSyntax {
-                declaration,
-                detail,
-            },
-        )?;
+    for (variant, binding, detail) in scope_variants {
+        let variant = variant.ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?;
         if value == variant {
             return Ok(binding);
         }
@@ -2621,17 +2656,6 @@ fn require_unit_variant_field(
         });
     }
     Ok(*constructor)
-}
-
-fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
-    let parent = dag.declaration_by_name(parent_name)?;
-    let TypeConnective::Disj { variants } = &parent.connective else {
-        return None;
-    };
-    variants
-        .iter()
-        .find(|variant| variant.label == variant_label)
-        .map(|variant| variant.ty)
 }
 
 fn derive_callable_dispositions(
@@ -6148,9 +6172,15 @@ fn classify(s: Sign) -> Int = match s { Plus => 0, Minus => 1 }",
         )
         .expect("compiles");
         let rendering_decl = dag.rust_rendering_spec().expect("rust_rendering cached");
-        let pass_by_value = named_variant_id(&dag, "ReadStrategy", "PassByValue")
+        let pass_by_value = dag
+            .emit_model_variants()
+            .read_strategy
+            .pass_by_value
             .expect("ReadStrategy.PassByValue exists");
-        let copy_or_clone = named_variant_id(&dag, "ConstructStrategy", "CopyOrClone")
+        let copy_or_clone = dag
+            .emit_model_variants()
+            .construct_strategy
+            .copy_or_clone
             .expect("ConstructStrategy.CopyOrClone exists");
         dag.declaration_mut(rendering_decl).value_body = Some(ValueBody::Structural {
             fields: vec![
@@ -6330,10 +6360,16 @@ fn use_callback(base: Int) -> Int = apply_to_three(|x| base + x)",
     fn parameter_dispositions_reject_arity_drift_and_slot_collisions() {
         let dag = compile_to_dag("fn id(x: Int) -> Int = x", "arity_drift.v3").expect("compiles");
         let bogus_decl = dag.declaration_by_name("id").expect("id decl").id;
-        let borrowed =
-            named_variant_id(&dag, "ParameterDisposition", "Borrowed").expect("Borrowed");
-        let consumed =
-            named_variant_id(&dag, "ParameterDisposition", "Consumed").expect("Consumed");
+        let borrowed = dag
+            .emit_model_variants()
+            .parameter_disposition
+            .borrowed
+            .expect("Borrowed");
+        let consumed = dag
+            .emit_model_variants()
+            .parameter_disposition
+            .consumed
+            .expect("Consumed");
         let entry = |slot: i64, ctor: DeclarationId| {
             FieldValue::Record(vec![
                 (

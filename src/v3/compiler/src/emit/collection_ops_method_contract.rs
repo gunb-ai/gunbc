@@ -81,9 +81,8 @@ fn method_template_contract_fields(
     contract_decl: DeclarationId,
 ) -> Result<&[(String, FieldValue)], &'static str> {
     let mtc_type_id = dag
-        .declaration_by_name("MethodTemplateContract")
-        .ok_or("internal: MethodTemplateContract type missing from dag")?
-        .id;
+        .method_template_contract_decl()
+        .ok_or("internal: MethodTemplateContract type missing from dag")?;
 
     let decl = dag.declaration(contract_decl);
     let template = match &decl.connective {

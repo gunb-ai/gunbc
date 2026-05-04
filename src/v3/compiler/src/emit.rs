@@ -74,7 +74,7 @@ pub(crate) fn method_emit_template_variant_label(
     dag: &Dag,
     constructor: DeclarationId,
 ) -> Option<&str> {
-    let parent = dag.declaration_by_name("MethodEmitTemplate")?;
+    let parent = dag.declaration(dag.method_emit_template_decl()?);
     let TypeConnective::Disj { variants } = &parent.connective else {
         return None;
     };
@@ -1268,7 +1268,10 @@ pub(crate) fn parse_pattern_strategy(
     if !payload.is_empty() {
         return Err("PatternStrategy variants must not carry payload fields");
     }
-    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList")
+    let vector_list = dag
+        .emit_model_variants()
+        .pattern_strategy
+        .vector_list
         .ok_or("PatternStrategy.VectorList declaration was not found")?;
     if *constructor != vector_list {
         return Err("PatternStrategy constructor must be VectorList");
@@ -2769,18 +2772,23 @@ fn parse_field_access(
             });
         }
     };
-    let direct_field = named_variant_id(dag, "FieldAccess", "DirectField").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.DirectField declaration was not found",
-        },
-    )?;
-    let accessor_method = named_variant_id(dag, "FieldAccess", "AccessorMethod").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.AccessorMethod declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let direct_field =
+        variants
+            .field_access
+            .direct_field
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.DirectField declaration was not found",
+            })?;
+    let accessor_method =
+        variants
+            .field_access
+            .accessor_method
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.AccessorMethod declaration was not found",
+            })?;
     if *constructor == direct_field {
         Ok(GoFieldAccessBinding::DirectField(name))
     } else if *constructor == accessor_method {
@@ -2981,18 +2989,23 @@ fn parse_parameter_disposition(
             detail: "ParameterDisposition variants must not carry payload fields",
         });
     }
-    let borrowed = named_variant_id(dag, "ParameterDisposition", "Borrowed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Borrowed declaration was not found",
-        },
-    )?;
-    let consumed = named_variant_id(dag, "ParameterDisposition", "Consumed").ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Consumed declaration was not found",
-        },
-    )?;
+    let variants = dag.emit_model_variants();
+    let borrowed =
+        variants
+            .parameter_disposition
+            .borrowed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Borrowed declaration was not found",
+            })?;
+    let consumed =
+        variants
+            .parameter_disposition
+            .consumed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Consumed declaration was not found",
+            })?;
     if *constructor == borrowed {
         Ok(ParameterDispositionBinding::Borrowed)
     } else if *constructor == consumed {
@@ -3079,12 +3092,14 @@ fn require_pattern_realization(
             detail: "PatternStrategy variants must not carry payload fields",
         });
     }
-    let vector_list = named_variant_id(dag, "PatternStrategy", "VectorList").ok_or(
-        EmitError::MalformedRealization {
+    let vector_list = dag
+        .emit_model_variants()
+        .pattern_strategy
+        .vector_list
+        .ok_or(EmitError::MalformedRealization {
             declaration,
             detail: "PatternStrategy.VectorList declaration was not found",
-        },
-    )?;
+        })?;
     if *constructor != vector_list {
         return Err(EmitError::MalformedRealization {
             declaration,
@@ -3131,14 +3146,27 @@ fn require_memory_model(
             detail: "MemoryModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("ValueOnly", MemoryModelBinding::ValueOnly),
-        ("GarbageCollected", MemoryModelBinding::GarbageCollected),
-        ("RefCounted", MemoryModelBinding::RefCounted),
-        ("OwnershipBased", MemoryModelBinding::OwnershipBased),
+    let variants = dag.emit_model_variants();
+    let memory_variants = [
+        (
+            variants.memory_model.value_only,
+            MemoryModelBinding::ValueOnly,
+        ),
+        (
+            variants.memory_model.garbage_collected,
+            MemoryModelBinding::GarbageCollected,
+        ),
+        (
+            variants.memory_model.ref_counted,
+            MemoryModelBinding::RefCounted,
+        ),
+        (
+            variants.memory_model.ownership_based,
+            MemoryModelBinding::OwnershipBased,
+        ),
     ];
-    for (label, binding) in variants {
-        let Some(variant_id) = named_variant_id(dag, "MemoryModel", label) else {
+    for (variant_id, binding) in memory_variants {
+        let Some(variant_id) = variant_id else {
             return Err(EmitError::MalformedTargetSyntax {
                 declaration,
                 detail: "MemoryModel variant declaration was not found",
@@ -3184,12 +3212,19 @@ fn require_scope_model(
             detail: "ScopeModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("LexicalScoping", ScopeModelBinding::LexicalScoping),
-        ("DynamicScoping", ScopeModelBinding::DynamicScoping),
+    let variants = dag.emit_model_variants();
+    let scope_variants = [
+        (
+            variants.scope_model.lexical_scoping,
+            ScopeModelBinding::LexicalScoping,
+        ),
+        (
+            variants.scope_model.dynamic_scoping,
+            ScopeModelBinding::DynamicScoping,
+        ),
     ];
-    for (label, binding) in variants {
-        let Some(variant_id) = named_variant_id(dag, "ScopeModel", label) else {
+    for (variant_id, binding) in scope_variants {
+        let Some(variant_id) = variant_id else {
             return Err(EmitError::MalformedTargetSyntax {
                 declaration,
                 detail: "ScopeModel variant declaration was not found",
@@ -3301,17 +3336,6 @@ fn normalize_source_filter_path(file: &str) -> String {
         }
     }
     parts.join("/")
-}
-
-fn named_variant_id(dag: &Dag, parent_name: &str, variant_label: &str) -> Option<DeclarationId> {
-    let parent = dag.declaration_by_name(parent_name)?;
-    let TypeConnective::Disj { variants } = &parent.connective else {
-        return None;
-    };
-    variants
-        .iter()
-        .find(|variant| variant.label == variant_label)
-        .map(|variant| variant.ty)
 }
 
 fn render_named_template(template: &str, bindings: &[(&str, &str)]) -> String {
