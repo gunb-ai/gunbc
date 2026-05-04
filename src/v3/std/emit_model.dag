@@ -377,6 +377,8 @@ type CollectionOps {
   // Legacy literal fields remain for targets/render paths not yet migrated to
   // `MethodTemplateContract` references. Rust filter now consumes
   // `filter_contract`'s `HigherOrderTemplates.inline_template`.
+  // Dissolution trigger: delete these legacy collection render literals once
+  // all CollectionOps render paths select templates through contract refs.
   filter: String
   contains: String
   empty_list: String

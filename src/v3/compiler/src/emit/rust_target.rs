@@ -409,12 +409,6 @@ struct CollectionOpsBinding {
     fold: String,
     map: String,
     filter: String,
-    #[allow(dead_code)]
-    flat_map: String,
-    #[allow(dead_code)]
-    any: String,
-    #[allow(dead_code)]
-    all: String,
     contains: String,
     empty_list: String,
     list_literal: String,
@@ -1597,7 +1591,7 @@ fn parse_collection_ops(
         declaration: flat_map_contract,
         detail,
     })?;
-    let flat_map = require_higher_order_inline_template(flat_map_template, flat_map_contract)?;
+    require_higher_order_inline_template(flat_map_template, flat_map_contract)?;
 
     let any_contract = require_field_decl_ref(fields, "any_contract", declaration)?;
     let any_template = method_template_contract_decl_emit_template(
@@ -1610,7 +1604,7 @@ fn parse_collection_ops(
         declaration: any_contract,
         detail,
     })?;
-    let any = require_higher_order_inline_template(any_template, any_contract)?;
+    require_higher_order_inline_template(any_template, any_contract)?;
 
     let all_contract = require_field_decl_ref(fields, "all_contract", declaration)?;
     let all_template = method_template_contract_decl_emit_template(
@@ -1623,7 +1617,7 @@ fn parse_collection_ops(
         declaration: all_contract,
         detail,
     })?;
-    let all = require_higher_order_inline_template(all_template, all_contract)?;
+    require_higher_order_inline_template(all_template, all_contract)?;
 
     Ok(CollectionOpsBinding {
         concat,
@@ -1632,9 +1626,6 @@ fn parse_collection_ops(
         fold,
         map: syntax_field_string(fields, "map", declaration)?,
         filter,
-        flat_map,
-        any,
-        all,
         contains: syntax_field_string(fields, "contains", declaration)?,
         empty_list: syntax_field_string(fields, "empty_list", declaration)?,
         list_literal: syntax_field_string(fields, "list_literal", declaration)?,
@@ -5649,44 +5640,6 @@ impl<'a> Ctx<'a> {
             .is_some_and(|pfun| pfun == declaration)
     }
 
-    #[allow(dead_code)]
-    fn render_list_item_construct_expr(
-        &self,
-        list_port: PortId,
-        item_name: &str,
-    ) -> Result<String, EmitError> {
-        let ty = self
-            .dag
-            .port(list_port)
-            .value_type()
-            .ok_or(EmitError::UntypedPort(list_port))?;
-        let TypeConnective::Instantiation {
-            template,
-            arguments,
-        } = &self.dag.declaration(ty.declaration).connective
-        else {
-            return Err(EmitError::UnsupportedBehavior(
-                "list construct rendering expected an instantiated List type".to_string(),
-            ));
-        };
-        if !self.is_list_template(*template) {
-            return Err(EmitError::UnsupportedBehavior(
-                "list construct rendering expected the List template".to_string(),
-            ));
-        }
-        let [element] = arguments.as_slice() else {
-            return Err(EmitError::UnsupportedBehavior(
-                "List instantiation should carry exactly one element argument".to_string(),
-            ));
-        };
-        if self.decl_is_copy(element.value)? {
-            Ok(format!("(*({item_name}))"))
-        } else if self.decl_is_list(element.value)? {
-            Ok(format!("({item_name}).to_vec()"))
-        } else {
-            Ok(format!("({item_name}).clone()"))
-        }
-    }
 }
 
 /// Anonymous specialized `Disj` nodes from `lower::specialize_decl_for_lowering`
@@ -5946,18 +5899,38 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
             binding.filter,
             "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }"
         );
-        assert_eq!(
-            binding.flat_map,
-            "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }"
-        );
-        assert_eq!(
-            binding.any,
-            "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }"
-        );
-        assert_eq!(
-            binding.all,
-            "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }"
-        );
+
+        let fields =
+            structural_fields_for_decl(&dag, rust_collection_ops).expect("collection ops fields");
+        for (field, method, expected) in [
+            (
+                "flat_map_contract",
+                dag.flat_map_method_decl().expect("flat_map_method"),
+                "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }",
+            ),
+            (
+                "any_contract",
+                dag.any_method_decl().expect("any_method"),
+                "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }",
+            ),
+            (
+                "all_contract",
+                dag.all_method_decl().expect("all_method"),
+                "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }",
+            ),
+        ] {
+            let contract =
+                require_field_decl_ref(fields, field, rust_collection_ops).expect("contract ref");
+            let template = method_template_contract_decl_emit_template(
+                &dag, contract, field, method,
+            )
+            .expect("higher-order contract template");
+            assert_eq!(
+                require_higher_order_inline_template(template, contract)
+                    .expect("higher-order inline template"),
+                expected
+            );
+        }
     }
 
     #[test]
