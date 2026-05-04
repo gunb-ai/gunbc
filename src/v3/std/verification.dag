@@ -56,9 +56,12 @@ type DiagnosticKind
   = TokenizerError
   | ParseError
   | TypeMismatch
-  | UnitMismatch
   | ArityMismatch
   | ResolveError
+  | UnitMismatch
+  | BranchConditionNotBool
+  | MagnitudeOutOfRange
+  | MalformedIntegerRangeFact
   | NominalOpacityViolation
 
 // **🟡 Scaffold — DiagnosticDetailExpectation.** Bootstrap-local bridge

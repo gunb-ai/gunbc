@@ -220,6 +220,26 @@ pub enum Diagnostic {
     },
 }
 
+/// Layer-1 compiler diagnostic kind labels in **declaration order** of [`Diagnostic`].
+///
+/// `src/v3/std/diagnostics.dag` `CompilerDiagnosticKind` and `src/v3/std/verification.dag`
+/// `DiagnosticKind` must carry exactly this set (integration tests ratchet the bootstrap
+/// lowering against this slice). When adding a [`Diagnostic`] variant, extend this list in
+/// lock-step and update the `.dag` closed sums — lens-instance kinds stay on the Layer-2 path
+/// (Q6.5), not here.
+pub const LAYER1_DIAGNOSTIC_KIND_LABELS: &[&str] = &[
+    "TokenizerError",
+    "ParseError",
+    "TypeMismatch",
+    "ArityMismatch",
+    "ResolveError",
+    "UnitMismatch",
+    "BranchConditionNotBool",
+    "MagnitudeOutOfRange",
+    "MalformedIntegerRangeFact",
+    "NominalOpacityViolation",
+];
+
 impl Diagnostic {
     pub fn span(&self) -> &SourceSpan {
         match self {
