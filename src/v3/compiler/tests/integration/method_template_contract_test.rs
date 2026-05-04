@@ -252,9 +252,11 @@ fn method_template_contract_row_fields<'a>(
 fn method_ref_decl_from_row<'a>(
     dag: &'a Dag,
     row: &'a FieldValue,
+    list_name: &'static str,
+    row_index: usize,
     row_context: &str,
 ) -> (&'a DeclarationId, &'a FieldValue, &'a FieldValue) {
-    let fields = method_template_contract_row_fields(dag, row, row_context, 0);
+    let fields = method_template_contract_row_fields(dag, row, list_name, row_index);
     let (_, dag_method) = fields
         .iter()
         .find(|(label, _)| label == "dag_method")
@@ -321,8 +323,13 @@ fn rust_higher_order_method_template_contracts_are_present() {
     .collect();
 
     for (idx, row) in rows.iter().enumerate() {
-        let (decl_id, emit_template, wraps_result) =
-            method_ref_decl_from_row(&dag, row, &format!("rust row {idx}"));
+        let (decl_id, emit_template, wraps_result) = method_ref_decl_from_row(
+            &dag,
+            row,
+            "rust_method_template_contracts",
+            idx,
+            &format!("rust row {idx}"),
+        );
         let method_name = dag
             .declaration(*decl_id)
             .name
