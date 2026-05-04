@@ -705,7 +705,7 @@ remains an open call) as a separate parser/lowerer slice.
 - `docs/design-lens-fold-prerequisites.md` — original lens-fold
   audit; this Prereq-X is a follow-up that audit didn't catch.
 - `src/v3/std/lens.dag` — Lens<C> 6-field carrier (#1186).
-- `src/v3/std/dimensions.dag:72-78` — `AnalysisDimension<Carrier>`
+- `src/v3/std/dimensions.dag:82-87` — `AnalysisDimension<Carrier>`
   precedent for Arrow-typed Conj fields. Field assignment landed
   via Prereq-1; field invocation never exercised because
   `analyze_symbolic_cost_dimension` data binding was deferred per
