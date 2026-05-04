@@ -51,7 +51,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `declaration_by_name(...)` emit pattern | 2026-04 | Substrate / emit | Open | Typed substrate access with cached declaration ids. |
 | `pipeline_authority.rs` dual-authoring drift | 2026-04 / 2026-04-30 | Substrate / PB | Open | Generate one surface from the other or mark `fn compile` non-authoritative until structural lowering. |
 | LLM service flattening | 2026-04 | Grounding services | Open | Service operations consume typed carriers and return typed outputs. |
-| GitHub auth model bypass | 2026-04 | Grounding GitHub extdeps | Open | `github_token()` returns full `GitHubAuthToken`; remove hardcoded provider policy. |
+| GitHub auth model bypass | 2026-04 | Grounding GitHub extdeps | Closed 2026-05-04 | `github_token()` now returns full `GitHubAuthToken`; hardcoded GCP Secret Manager policy removed in favor of typed `CredentialSource::EnvVar` + `env_credential`. |
 | `errors.dag` dead generic layer | 2026-04 | Grounding / std errors | Open | Wire generic layer or delete it. |
 | Fixed-width types not structurally fixed | 2026-04 | T-Numeric-Construction | Open | Alias / field refinement or cardinality carrier. |
 | Surface int literals host-narrowed too early | 2026-04-24 | T-Numeric-Construction | Open | Concept-layer unbounded magnitude; target narrowing at reconciliation. |
