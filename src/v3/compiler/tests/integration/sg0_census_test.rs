@@ -61,7 +61,12 @@ fn emit_production_code_has_no_declaration_by_name_calls() {
             .next()
             .expect("split always yields a prefix");
         if production_source.contains(".declaration_by_name(") {
-            offenders.push(path.strip_prefix(manifest_dir).unwrap_or(&path).display().to_string());
+            offenders.push(
+                path.strip_prefix(manifest_dir)
+                    .unwrap_or(&path)
+                    .display()
+                    .to_string(),
+            );
         }
     }
 

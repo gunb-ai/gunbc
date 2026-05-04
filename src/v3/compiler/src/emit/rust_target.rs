@@ -1805,18 +1805,22 @@ fn parse_rust_field_access(
         }
     };
     let variants = dag.emit_model_variants();
-    let direct_field = variants.field_access.direct_field.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.DirectField declaration was not found",
-        },
-    )?;
-    let accessor_method = variants.field_access.accessor_method.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.AccessorMethod declaration was not found",
-        },
-    )?;
+    let direct_field =
+        variants
+            .field_access
+            .direct_field
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.DirectField declaration was not found",
+            })?;
+    let accessor_method =
+        variants
+            .field_access
+            .accessor_method
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.AccessorMethod declaration was not found",
+            })?;
     if *constructor == direct_field {
         Ok(RustFieldAccessBinding::DirectField(name))
     } else if *constructor == accessor_method {
@@ -2033,18 +2037,22 @@ fn parse_parameter_disposition(
         });
     }
     let variants = dag.emit_model_variants();
-    let borrowed = variants.parameter_disposition.borrowed.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Borrowed declaration was not found",
-        },
-    )?;
-    let consumed = variants.parameter_disposition.consumed.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Consumed declaration was not found",
-        },
-    )?;
+    let borrowed =
+        variants
+            .parameter_disposition
+            .borrowed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Borrowed declaration was not found",
+            })?;
+    let consumed =
+        variants
+            .parameter_disposition
+            .consumed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Consumed declaration was not found",
+            })?;
     if *constructor == borrowed {
         Ok(ParameterDispositionBinding::Borrowed)
     } else if *constructor == consumed {
@@ -2175,18 +2183,21 @@ fn require_read_strategy(
         });
     }
     let variants = dag.emit_model_variants();
-    let borrow_variant = variants.read_strategy.borrow.ok_or(
-        EmitError::MalformedTargetSyntax {
+    let borrow_variant = variants
+        .read_strategy
+        .borrow
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "ReadStrategy.Borrow declaration was not found",
-        },
-    )?;
-    let pass_variant = variants.read_strategy.pass_by_value.ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ReadStrategy.PassByValue declaration was not found",
-        },
-    )?;
+        })?;
+    let pass_variant =
+        variants
+            .read_strategy
+            .pass_by_value
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ReadStrategy.PassByValue declaration was not found",
+            })?;
     if *constructor == borrow_variant {
         Ok(ReadStrategyBinding::Borrow)
     } else if *constructor == pass_variant {
@@ -2230,18 +2241,22 @@ fn require_construct_strategy(
         });
     }
     let variants = dag.emit_model_variants();
-    let copy_or_clone = variants.construct_strategy.copy_or_clone.ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ConstructStrategy.CopyOrClone declaration was not found",
-        },
-    )?;
-    let pass_variant = variants.construct_strategy.pass_by_value.ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "ConstructStrategy.PassByValue declaration was not found",
-        },
-    )?;
+    let copy_or_clone =
+        variants
+            .construct_strategy
+            .copy_or_clone
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ConstructStrategy.CopyOrClone declaration was not found",
+            })?;
+    let pass_variant =
+        variants
+            .construct_strategy
+            .pass_by_value
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "ConstructStrategy.PassByValue declaration was not found",
+            })?;
     if *constructor == copy_or_clone {
         Ok(ConstructStrategyBinding::CopyOrClone)
     } else if *constructor == pass_variant {
@@ -2261,14 +2276,17 @@ fn require_source_mutability(
 ) -> Result<SourceMutabilityBinding, EmitError> {
     let value = require_unit_variant_field(fields, "mutability", declaration)?;
     let variants = dag.emit_model_variants();
-    let immutable = variants.mutability.immutable.ok_or(
-        EmitError::MalformedTargetSyntax {
+    let immutable = variants
+        .mutability
+        .immutable
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Mutability.Immutable declaration was not found",
-        },
-    )?;
-    let mutable =
-        variants.mutability.mutable.ok_or(EmitError::MalformedTargetSyntax {
+        })?;
+    let mutable = variants
+        .mutability
+        .mutable
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Mutability.Mutable declaration was not found",
         })?;
@@ -2291,12 +2309,17 @@ fn require_source_purity(
 ) -> Result<SourcePurityBinding, EmitError> {
     let value = require_unit_variant_field(fields, "purity", declaration)?;
     let variants = dag.emit_model_variants();
-    let pure = variants.purity.pure.ok_or(EmitError::MalformedTargetSyntax {
-        declaration,
-        detail: "Purity.Pure declaration was not found",
-    })?;
-    let effectful =
-        variants.purity.effectful.ok_or(EmitError::MalformedTargetSyntax {
+    let pure = variants
+        .purity
+        .pure
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "Purity.Pure declaration was not found",
+        })?;
+    let effectful = variants
+        .purity
+        .effectful
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Purity.Effectful declaration was not found",
         })?;
@@ -2319,18 +2342,20 @@ fn require_source_structure(
 ) -> Result<SourceStructureBinding, EmitError> {
     let value = require_unit_variant_field(fields, "structure", declaration)?;
     let variants = dag.emit_model_variants();
-    let explicit = variants.structure.explicit_dag.ok_or(
-        EmitError::MalformedTargetSyntax {
+    let explicit = variants
+        .structure
+        .explicit_dag
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Structure.ExplicitDAG declaration was not found",
-        },
-    )?;
-    let arbitrary = variants.structure.arbitrary.ok_or(
-        EmitError::MalformedTargetSyntax {
+        })?;
+    let arbitrary = variants
+        .structure
+        .arbitrary
+        .ok_or(EmitError::MalformedTargetSyntax {
             declaration,
             detail: "Structure.Arbitrary declaration was not found",
-        },
-    )?;
+        })?;
     if value == explicit {
         Ok(SourceStructureBinding::ExplicitDag)
     } else if value == arbitrary {
@@ -2350,16 +2375,21 @@ fn require_source_iteration(
 ) -> Result<SourceIterationBinding, EmitError> {
     let value = require_unit_variant_field(fields, "iteration", declaration)?;
     let bounded =
-        dag.emit_model_variants().iteration.bounded.ok_or(EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "Iteration.Bounded declaration was not found",
-        })?;
-    let unbounded = dag.emit_model_variants().iteration.unbounded.ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "Iteration.Unbounded declaration was not found",
-        },
-    )?;
+        dag.emit_model_variants()
+            .iteration
+            .bounded
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "Iteration.Bounded declaration was not found",
+            })?;
+    let unbounded =
+        dag.emit_model_variants()
+            .iteration
+            .unbounded
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "Iteration.Unbounded declaration was not found",
+            })?;
     if value == bounded {
         Ok(SourceIterationBinding::Bounded)
     } else if value == unbounded {

@@ -1872,7 +1872,10 @@ fn require_memory_model(
     }
     let variants = dag.emit_model_variants();
     let memory_variants = [
-        (variants.memory_model.value_only, MemoryModelBinding::ValueOnly),
+        (
+            variants.memory_model.value_only,
+            MemoryModelBinding::ValueOnly,
+        ),
         (
             variants.memory_model.garbage_collected,
             MemoryModelBinding::GarbageCollected,

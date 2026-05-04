@@ -3745,9 +3745,8 @@ impl Dag {
         self.emit_anchors.dag_type = self.declaration_by_name("Dag").map(|d| d.id);
         self.emit_anchors.std_list_fold = self.declaration_by_name("fold").map(|d| d.id);
         self.emit_anchors.rust_functions = self.declaration_by_name("rust_functions").map(|d| d.id);
-        self.emit_anchors.method_emit_template = self
-            .declaration_by_name("MethodEmitTemplate")
-            .map(|d| d.id);
+        self.emit_anchors.method_emit_template =
+            self.declaration_by_name("MethodEmitTemplate").map(|d| d.id);
         self.emit_anchors.method_template_contract = self
             .declaration_by_name("MethodTemplateContract")
             .map(|d| d.id);
@@ -3975,12 +3974,10 @@ impl Dag {
                 for variant in variants {
                     match variant.label.as_str() {
                         "CopyOrClone" => {
-                            emit_model_variants.construct_strategy.copy_or_clone =
-                                Some(variant.ty);
+                            emit_model_variants.construct_strategy.copy_or_clone = Some(variant.ty);
                         }
                         "PassByValue" => {
-                            emit_model_variants.construct_strategy.pass_by_value =
-                                Some(variant.ty);
+                            emit_model_variants.construct_strategy.pass_by_value = Some(variant.ty);
                         }
                         _ => {}
                     }
@@ -4456,12 +4453,18 @@ mod tests {
             variants.parameter_disposition.consumed.is_some(),
             "ParameterDisposition.Consumed"
         );
-        assert!(variants.memory_model.value_only.is_some(), "MemoryModel.ValueOnly");
+        assert!(
+            variants.memory_model.value_only.is_some(),
+            "MemoryModel.ValueOnly"
+        );
         assert!(
             variants.memory_model.garbage_collected.is_some(),
             "MemoryModel.GarbageCollected"
         );
-        assert!(variants.memory_model.ref_counted.is_some(), "MemoryModel.RefCounted");
+        assert!(
+            variants.memory_model.ref_counted.is_some(),
+            "MemoryModel.RefCounted"
+        );
         assert!(
             variants.memory_model.ownership_based.is_some(),
             "MemoryModel.OwnershipBased"
@@ -4474,7 +4477,10 @@ mod tests {
             variants.scope_model.dynamic_scoping.is_some(),
             "ScopeModel.DynamicScoping"
         );
-        assert!(variants.read_strategy.borrow.is_some(), "ReadStrategy.Borrow");
+        assert!(
+            variants.read_strategy.borrow.is_some(),
+            "ReadStrategy.Borrow"
+        );
         assert!(
             variants.read_strategy.pass_by_value.is_some(),
             "ReadStrategy.PassByValue"
@@ -4487,14 +4493,26 @@ mod tests {
             variants.construct_strategy.pass_by_value.is_some(),
             "ConstructStrategy.PassByValue"
         );
-        assert!(variants.mutability.immutable.is_some(), "Mutability.Immutable");
+        assert!(
+            variants.mutability.immutable.is_some(),
+            "Mutability.Immutable"
+        );
         assert!(variants.mutability.mutable.is_some(), "Mutability.Mutable");
         assert!(variants.purity.pure.is_some(), "Purity.Pure");
         assert!(variants.purity.effectful.is_some(), "Purity.Effectful");
-        assert!(variants.structure.explicit_dag.is_some(), "Structure.ExplicitDAG");
-        assert!(variants.structure.arbitrary.is_some(), "Structure.Arbitrary");
+        assert!(
+            variants.structure.explicit_dag.is_some(),
+            "Structure.ExplicitDAG"
+        );
+        assert!(
+            variants.structure.arbitrary.is_some(),
+            "Structure.Arbitrary"
+        );
         assert!(variants.iteration.bounded.is_some(), "Iteration.Bounded");
-        assert!(variants.iteration.unbounded.is_some(), "Iteration.Unbounded");
+        assert!(
+            variants.iteration.unbounded.is_some(),
+            "Iteration.Unbounded"
+        );
     }
 
     #[test]

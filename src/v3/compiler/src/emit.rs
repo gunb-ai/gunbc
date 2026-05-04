@@ -2773,18 +2773,22 @@ fn parse_field_access(
         }
     };
     let variants = dag.emit_model_variants();
-    let direct_field = variants.field_access.direct_field.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.DirectField declaration was not found",
-        },
-    )?;
-    let accessor_method = variants.field_access.accessor_method.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "FieldAccess.AccessorMethod declaration was not found",
-        },
-    )?;
+    let direct_field =
+        variants
+            .field_access
+            .direct_field
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.DirectField declaration was not found",
+            })?;
+    let accessor_method =
+        variants
+            .field_access
+            .accessor_method
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "FieldAccess.AccessorMethod declaration was not found",
+            })?;
     if *constructor == direct_field {
         Ok(GoFieldAccessBinding::DirectField(name))
     } else if *constructor == accessor_method {
@@ -2986,18 +2990,22 @@ fn parse_parameter_disposition(
         });
     }
     let variants = dag.emit_model_variants();
-    let borrowed = variants.parameter_disposition.borrowed.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Borrowed declaration was not found",
-        },
-    )?;
-    let consumed = variants.parameter_disposition.consumed.ok_or(
-        EmitError::MalformedRealization {
-            declaration,
-            detail: "ParameterDisposition.Consumed declaration was not found",
-        },
-    )?;
+    let borrowed =
+        variants
+            .parameter_disposition
+            .borrowed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Borrowed declaration was not found",
+            })?;
+    let consumed =
+        variants
+            .parameter_disposition
+            .consumed
+            .ok_or(EmitError::MalformedRealization {
+                declaration,
+                detail: "ParameterDisposition.Consumed declaration was not found",
+            })?;
     if *constructor == borrowed {
         Ok(ParameterDispositionBinding::Borrowed)
     } else if *constructor == consumed {
@@ -3088,12 +3096,10 @@ fn require_pattern_realization(
         .emit_model_variants()
         .pattern_strategy
         .vector_list
-        .ok_or(
-        EmitError::MalformedRealization {
+        .ok_or(EmitError::MalformedRealization {
             declaration,
             detail: "PatternStrategy.VectorList declaration was not found",
-        },
-    )?;
+        })?;
     if *constructor != vector_list {
         return Err(EmitError::MalformedRealization {
             declaration,
@@ -3142,7 +3148,10 @@ fn require_memory_model(
     }
     let variants = dag.emit_model_variants();
     let memory_variants = [
-        (variants.memory_model.value_only, MemoryModelBinding::ValueOnly),
+        (
+            variants.memory_model.value_only,
+            MemoryModelBinding::ValueOnly,
+        ),
         (
             variants.memory_model.garbage_collected,
             MemoryModelBinding::GarbageCollected,
