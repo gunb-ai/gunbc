@@ -49,6 +49,7 @@ import std.methods {
   skip_method,
   take_method,
   fold_method,
+  length_method,
   sort_by_method,
   append_method,
   string_contains_method
@@ -61,6 +62,31 @@ import std.methods {
 // used `functools.reduce({arg}, {recv})`, a different arity/shape and a
 // second parallel contract for the same registry method; see
 // `docs/briefs/collectionops-algebra-reframe.md`.
+data python_language_spec_free_monoid_concat_contract: MethodTemplateContract = {
+  dag_method: { decl: concat_method },
+  runtime_template: "[*{left}, *{right}]",
+  emit_template: SingleTemplate { template: "[*{left}, *{right}]" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data python_language_spec_free_monoid_length_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "len({recv})",
+  emit_template: SingleTemplate { template: "len({recv})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// Emptiness via `length_method` identity — `FreeMonoid<T>` has `length` but not `is_empty`.
+data python_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "(len({recv}) == 0)",
+  emit_template: SingleTemplate { template: "(len({recv}) == 0)" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data python_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   dag_method: { decl: fold_method },
   runtime_template: "__v3_fold({recv}, {init}, {body})",
