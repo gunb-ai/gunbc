@@ -335,42 +335,77 @@ wholesale replacement. **That list is stale.** On current `main`:
 ### 6.2.1 Remaining real work (out of this packet's PB scope)
 
 The unfinished portion of row-85 consumer migration after #1598 is
-not an overlay-merge. It is:
+not an overlay-merge. It splits into two ordered batches by current
+liveness:
+
+**Batch A — dead-authority deletions, gated on `fold` row disposition.**
+These authorities have zero live readers outside the source-audit
+ratchet and assignments to a dead field.
 
 - **Delete `LanguageSpec.method_templates: Map<String, String>?`
   field** (`src/v2/languages.dag:400`) and the four dead assignments
   (`:544, :688, :832, :979`) — structural change to a Substrate-shaped
   type. Editing `src/v2/languages.dag` and is therefore **Gap 5b
   territory**, not 5a.
-- **Delete legacy `dsl/extdeps/languages/{rust,python,go}/emit.dag::*_method_templates`
-  declarations and `dsl/extdeps/languages/rust/emit.dag::rust_simple_method_specs`
-  + `rust_method_wraps_result()`**, gated on `fold` row disposition:
-  Substrate either folds the standalone `*_language_spec_free_monoid_fold_contract`
-  rows into the per-target `<target>_method_template_contracts` list
-  (extending the contract list shape to admit the differently-shaped
-  fold contract or accepting a different arity row), or explicitly
-  classifies `fold` as target-only legacy text with no v3 row, and
-  the source-audit ratchet shrinks accordingly.
-- **Shrink `src/v2/tests/src/source_audit.rs::LEGACY_METHOD_TEMPLATE_AUTHORITIES`**
-  in lockstep with the deletions above.
+- **Delete legacy `dsl/extdeps/languages/{rust,python,go}/emit.dag::*_method_templates`**
+  (Rust `rust_method_templates()`, Python `python_method_templates`,
+  Go `go_method_templates`). Their only readers are the four dead
+  `LanguageSpec.method_templates` assignments above; deletion happens
+  in lockstep.
+- **Shrink the corresponding entries in
+  `src/v2/tests/src/source_audit.rs::LEGACY_METHOD_TEMPLATE_AUTHORITIES`**
+  (lines 12–15) for the deleted authorities.
 
-Owner: **R3 Grounding** for the deletion / ledger sequencing per
-`ROADMAP.md:512` and ledger row 85, **with R3 Substrate sign-off** on
-`fold` row disposition (which determines whether the legacy `fold`
-text can be deleted alongside the rest of the legacy maps or must
-remain as a target-only emit shortcut). PB-Bootstrap-Process role
-ends with #1598's producer + the docs lineage in this packet; PB
-does not dispatch the deletion work.
+Batch A gating: Substrate either folds the standalone
+`*_language_spec_free_monoid_fold_contract` rows into the per-target
+`<target>_method_template_contracts` list (extending the contract list
+shape to admit the differently-shaped fold contract or accepting a
+different arity row), or explicitly classifies `fold` as target-only
+legacy text with no v3 row.
+
+**Batch B — `wraps_result` consumer migration; P3b-gated.** The
+following authority is **live** and must not be deleted with Batch A:
+
+- `dsl/extdeps/languages/rust/emit.dag::rust_method_wraps_result()`
+  is read at `src/v2/05_emit_rust.dag:2843`
+  (`map_contains_key(rust_method_wraps_result(), function_name)` —
+  Rust Rc-wrapping decision). The current Map-shape adapter from
+  #1598 deliberately does **not** carry `wraps_result` (A4 partial,
+  parked on Gap 5b); the consumer therefore cannot migrate to a
+  generated-map read today.
+- `dsl/extdeps/languages/rust/emit.dag::rust_simple_method_specs`
+  is the substrate that derives both `rust_method_templates()` (dead,
+  Batch A) and `rust_method_wraps_result()` (live, Batch B). It can
+  only be deleted after Batch B retires `rust_method_wraps_result()`.
+
+Batch B gating: the **P3b typed-read carrier decision** (Gap 5b) must
+land first, exposing `MethodTemplateContract.wraps_result` to v2 emit
+through a typed projection. Then `src/v2/05_emit_rust.dag:2843`
+migrates to read `wraps_result` from the typed row, and only then can
+`rust_method_wraps_result()` + `rust_simple_method_specs` be deleted.
+Their entries in `LEGACY_METHOD_TEMPLATE_AUTHORITIES` (lines 11, 13)
+shrink in that same step.
+
+Owner: **R3 Grounding** for both batches' deletion / ledger sequencing
+per `ROADMAP.md:512` and ledger row 85. **R3 Substrate sign-off**
+required on `fold` row disposition for Batch A and on the typed-read
+carrier shape for Batch B. PB-Bootstrap-Process role ends with #1598's
+producer + the docs lineage in this packet; PB does not dispatch
+either batch.
 
 ### 6.2.2 Implication for §9 sequencing diagram
 
 §9 has been updated directly: the former "Gap 5a — Grounding leaf
 re-export migration" node is marked **SUPERSEDED 2026-05-04** with
-inline reasoning, and the next live node is **"Grounding/Substrate
-dead-field + legacy-authority deletion"** gated on `fold` row
-disposition (owners + deliverable named in the diagram body itself).
-The diagram is therefore self-authoritative; this subsection serves
-only as a lineage breadcrumb back to the §6.2 audit that drove the
+inline reasoning, and the next live nodes split into **Batch A —
+Grounding dead-authority deletion** (gated on `fold` row disposition)
+and **Batch B — Grounding `wraps_result` consumer migration +
+deletion** (P3b-gated, separated because `rust_method_wraps_result()`
+is still a live consumer at `src/v2/05_emit_rust.dag:2843` and the
+current Map adapter does not carry `wraps_result`). Owners +
+deliverables are named in the diagram body itself. The diagram is
+therefore self-authoritative; this subsection serves only as a
+lineage breadcrumb back to the §6.2 audit that drove the
 re-classification.
 
 **Gap 5b — typed `MethodTemplateContract` projection + structural
@@ -516,25 +551,40 @@ any later authority-deletion PR on this row) must include:
         │   only. No PB-implementable overlay-merge shape exists
         │   inside this packet's STOP boundary.
         ▼
-[Grounding/Substrate dead-field + legacy-authority deletion]   ← OUT OF PB SCOPE
+[Batch A — Grounding dead-authority deletion]   ← OUT OF PB SCOPE
         │   Owner: R3 Grounding (per ROADMAP.md:512 / ledger row 85)
         │   + R3 Substrate sign-off on `fold` row disposition.
         │   Gated on Substrate decision: fold standalone contract into
         │   per-target list (with shape extension), or accept `fold`
         │   as target-only legacy text without v3 row.
-        │   Deliverable: delete LanguageSpec.method_templates field +
-        │   four assignments in src/v2/languages.dag (also Gap 5b
-        │   territory) + delete dsl/extdeps/languages/*/emit.dag
-        │   legacy *_method_templates + rust_simple_method_specs +
-        │   rust_method_wraps_result + shrink LEGACY_METHOD_TEMPLATE_AUTHORITIES.
+        │   Deliverable (DEAD authorities only): delete
+        │   LanguageSpec.method_templates field + four assignments in
+        │   src/v2/languages.dag (also Gap 5b territory) + delete
+        │   dsl/extdeps/languages/*/emit.dag::*_method_templates
+        │   (rust_method_templates(), python_method_templates,
+        │   go_method_templates) + shrink corresponding
+        │   LEGACY_METHOD_TEMPLATE_AUTHORITIES entries.
+        │   NOT in this batch: rust_method_wraps_result() and
+        │   rust_simple_method_specs — both have a live consumer at
+        │   src/v2/05_emit_rust.dag:2843; see Batch B.
         ▼
 [Substrate/Director typed-read carrier decision]   ← P3b GATE (parked)
         │   Approve typed MethodTemplateContract read shape covering
-        │   higher-order rows + non-Single arms + five-field preservation.
+        │   higher-order rows + non-Single arms + five-field preservation
+        │   (notably `wraps_result`, which the current Map adapter
+        │   does not carry).
         ▼
 [Gap 5b — typed LanguageSpec rewrite PR]   ← acceptance B1–B7
-        │   May absorb dead-field + legacy-authority deletion above
-        │   if Grounding/Substrate sequence them together.
+        │   May absorb Batch A above if Grounding/Substrate sequence
+        │   them together.
+        ▼
+[Batch B — Grounding wraps_result consumer migration + deletion]
+        │   Owner: R3 Grounding. Gated on P3b above.
+        │   Deliverable: migrate src/v2/05_emit_rust.dag:2843 from
+        │   rust_method_wraps_result() to a typed
+        │   MethodTemplateContract.wraps_result read; then delete
+        │   rust_method_wraps_result() + rust_simple_method_specs +
+        │   shrink remaining LEGACY_METHOD_TEMPLATE_AUTHORITIES entries.
         ▼
 [Grounding leaf-emit migration PRs in src/v2/05_emit*.dag]   ← LARGELY DONE (#1598)
         │   Direct generated-map consumption already on main; this
