@@ -48,10 +48,16 @@ data int_lens: MiniLens<Int> = {
     let int_monoid = dag.declaration_by_name("int_monoid").unwrap().id;
     let int_lens = dag.declaration_by_name("int_lens").unwrap();
     let Some(ValueBody::Structural { fields }) = &int_lens.value_body else {
-        panic!("int_lens must lower to ValueBody::Structural, got {:?}", int_lens.value_body);
+        panic!(
+            "int_lens must lower to ValueBody::Structural, got {:?}",
+            int_lens.value_body
+        );
     };
     assert_eq!(
-        fields.iter().find(|(label, _)| label == "read").map(|(_, value)| value),
+        fields
+            .iter()
+            .find(|(label, _)| label == "read")
+            .map(|(_, value)| value),
         Some(&FieldValue::Reference(read_int))
     );
     assert_eq!(
