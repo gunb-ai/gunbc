@@ -223,11 +223,19 @@ Owner: Substrate (not Evaluator).
   `&t.target` → `&t.dispatch` — no semantic change). Renames
   fail-closed `kind` strings to match new variant names.
 
-S1 produces zero net behavior change: the host evaluator still
-fail-closes on `Callable` and `FieldProject`, gains fail-closed
-arms for `FieldCall` and `Indirect`. The lens-apply evaluator
-preserves its existing `Callable` / `FieldProject` evaluation,
-gains fail-closed arms for `FieldCall` and `Indirect`.
+S1 produces zero net behavior change relative to its starting
+point. Because S1 lands **after** G0c (per the hard precondition
+below), "starting point" includes G0c's evaluated `Callable` and
+`FieldProject` arms in `eval_transform_node`. S1 must preserve
+that G0c-introduced evaluation verbatim through the rename to
+`TransformDispatch::Callable` / `FieldProject`; it must **not**
+revert those arms to fail-closed. The only newly-fail-closed
+arms S1 adds are the X1.b-introduced variants `FieldCall` and
+`Indirect`, which remain fail-closed until a later evaluator
+slice (S3) implements them. The lens-apply evaluator preserves
+its existing `Callable` / `FieldProject` evaluation through the
+rename, and likewise gains fail-closed arms for `FieldCall` and
+`Indirect`.
 
 **Hard precondition:** S1 must not start until E6-G0c (host
 evaluator `FieldProject`/`Callable` work) is far enough along
@@ -258,9 +266,14 @@ This is the *first* genuinely Evaluator-authored slice in X1.b,
 and the only one that should be filed against this audit.
 
 - Extend `lib.rs:eval_transform_node` `Indirect` arm to evaluate
-  via the runtime-port's bound value (which must already be a
-  callable `Bind` per the Arrow-port proof). Compose with G0c's
-  `Callable` evaluation.
+  via the runtime-port's bound value. The `ArrowPortRef` proof
+  guarantees only that the producing port carries an
+  Arrow-*typed* value; how that Arrow value resolves to an
+  evaluatable callable body (a top-level `Bind`, a closed-over
+  `Bind` reference, a parameter that itself was bound to a
+  callable elsewhere, …) is the open Evaluator design question
+  for this slice. Composes with G0c's `Callable` evaluation
+  once the resolution path is settled.
 - Extend `lens_apply.rs:eval_transform` `Indirect` arm.
   Eligibility walker (`eligibility_walk_transform`) gains a
   port-resolution step: chase the `ArrowPortRef`'s producing
