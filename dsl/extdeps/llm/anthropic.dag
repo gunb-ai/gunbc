@@ -32,6 +32,11 @@ data anthropic_assistant_content_block_wire_contract: CoproductWireContract = {
   encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Assistant", suffix: "Block" } }
 }
 
+data anthropic_messages_200_content_block_wire_contract: CoproductWireContract = {
+  coproduct: "AnthropicMessages200ContentBlock",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Messages", suffix: "Block" } }
+}
+
 // -- Models --------------------------------------------------------
 
 type AnthropicModel
@@ -145,11 +150,13 @@ type AnthropicMessages200Citation
   | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
   | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
 
-type AnthropicMessages200TextBlock {
-  type: String
-  text: String
-  citations: List<AnthropicMessages200Citation>?
-}
+type AnthropicMessages200ContentBlock
+  = MessagesTextBlock { text: String, citations: List<AnthropicMessages200Citation>? }
+  | MessagesThinkingBlock { thinking: String, signature: String? }
+  | MessagesRedactedThinkingBlock { data: String }
+  | MessagesToolUseBlock { id: String, name: String, input: Json }
+  | MessagesServerToolUseBlock { id: String, name: String, input: Json }
+  | MessagesWebSearchToolResultBlock { tool_use_id: String, content: Json }
 
 type AnthropicMessages200Usage {
   input_tokens: Int
@@ -169,15 +176,12 @@ type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseT
 
 // Message object envelope for POST /v1/messages 200 responses per Anthropic docs
 // (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
-// `model`, `stop_reason`, optional `stop_sequence`, `usage`. `AnthropicMessages200TextBlock`
-// remains the narrow text slice inside `content[]`; thinking, tool_use, images,
-// and server tools stay gap-carried on the narrower downstream API-surface
-// receipts below.
+// `model`, `stop_reason`, optional `stop_sequence`, `usage`.
 type AnthropicMessages200Body {
   id: String
   type: String
   role: String
-  content: List<AnthropicMessages200TextBlock>
+  content: List<AnthropicMessages200ContentBlock>
   model: String
   stop_reason: AnthropicStopReason
   stop_sequence: String?
@@ -186,7 +190,7 @@ type AnthropicMessages200Body {
 }
 
 data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200TextBlock|variant_pending:thinking|variant_pending:tool_use|variant_pending:redacted_thinking|variant_pending:web_search|variant_pending:server_tool_use|trigger:content block coproduct plus container-management response surface"
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct"
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
