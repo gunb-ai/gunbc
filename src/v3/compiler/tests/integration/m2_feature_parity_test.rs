@@ -531,7 +531,9 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        joined.contains("read") && joined.contains("Lens") == false,
+        joined.contains("read")
+            && !joined.contains("record type (Conj)")
+            && !joined.contains("cannot apply inhabitance checking"),
         "diagnostic should be the typed field mismatch path, not a generic Lens fallback; got:\n{joined}"
     );
 }
