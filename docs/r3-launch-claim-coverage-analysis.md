@@ -12,7 +12,7 @@ Research PM (loyal-swift-270, `gunb-ai/ctrl`) ran a viability-research project o
 
 - Round 1: gunbc fits failure-cluster economics at the *adoption* level (Wing/Ballerina/Pony/Crystal pattern) — but this conflated technical-claim with adoption-economics.
 - Round 2: reframed around *technical-advantage demonstration*. Building demos that falsify or confirm gunbc's claim to exponential advantage over traditional languages.
-- Round 3 (in flight): adversarial-test of R3 design + prioritization against the sharpened claim. Phase 3 invariant-mapping landed at 6/21 = 28.6% Class B→A upgrade rate (within informed prior 5–30%).
+- Round 3 (in flight): adversarial-test of R3 design + prioritization against the sharpened claim. Phase 3 invariant-mapping landed at 6/21 = 28.6% Class B→A upgrade rate (within informed prior 5–30%). **Adversarial gap analyses against four target systems** — LLVM (`gunb-ai/ctrl#365`, merged; 0/35 As after adversarial review), Kubernetes (`gunb-ai/ctrl#366`, merged; 0/18), Discord/Elixir (`gunb-ai/ctrl#367`, merged; 0/18), PyTorch (`gunb-ai/ctrl#368`, open; 6/19) — provide convergent empirical grounding for §4 exhaustivity argument and §5 Class A/B/C measurement target. The four PRs converge on a substantive thesis recommendation (see §6e Tier 4 "out of scope, declared").
 
 Brian's reframe through this work surfaced three clarifications:
 
@@ -34,9 +34,15 @@ Two layers, decoupled:
 
 Both layers together, in honest framing:
 
-> *We validate intent soundness completely. We cannot validate intent-vs-want — no language can. We provide intent-vs-want analysis beyond alternatives.*
+> *We validate intent soundness completely **within the authored substrate**. We cannot validate intent-vs-want — no language can. We provide intent-vs-want analysis beyond alternatives.*
 
-This is the strong claim, and it's defensible because it's honest about the human-specification gap (which compiler-people read as epistemic seriousness, not weakness). The structural claim survives intact; the behavioral-analysis claim is sui-generis.
+The "within the authored substrate" qualifier is load-bearing per the four-PR adversarial-gap-analysis portfolio (PyTorch surfaced multiple intent-soundness properties — precision-parametric algebra; non-smooth subdifferential selectors; allocator-state-machine modeling — that the substrate cannot yet express, not because they're outside the thesis but because the carriers aren't authored). Three structural classes worth distinguishing:
+
+- **Today-banked substrate**: Tier 1 (R1) + L1/L7 + CX (R1+R2 closed). Intent-soundness validation already cashes for properties expressible against this substrate.
+- **Thesis-supported but not yet authored**: e.g., post-R3 phantom-parameters, `Algebra<Precision>`, `Determinism` lens, bounded-atom-creation lens — surfaced across the four adversarial PRs. Within thesis scope; substrate carriers pending. See §6f.
+- **Outside thesis** (intent-vs-want; truly empirical/statistical residuals; out-of-scope categories per §6e Tier 4 recommendation).
+
+This is the strong claim, and it's defensible because it's honest about both the human-specification gap (which compiler-people read as epistemic seriousness) AND the substrate-extension trajectory (which prevents collapsing in-flight substrate work into already-banked claims). The structural claim survives intact; the behavioral-analysis claim is sui-generis.
 
 ## 3. Convention preference split (refinement)
 
