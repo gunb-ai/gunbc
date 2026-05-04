@@ -45,7 +45,7 @@ type EmissionCell {
 }
 ```
 
-Stored in three cell-homogeneous-by-target lists (one per target) or a single combined list — see open sub-question §4.A.
+Stored in three cell-homogeneous-by-target lists (one per target) or a single combined list — see open sub-question §4.C.
 
 - Honors **C1**: zero changes to `MethodTemplateContract` rows. Authoring carriers stay clean; verification facts live on a verification-owned carrier.
 - Honors **C2**: every projection fact (`connective`, `behavior`, `target`) is a typed row-local field. The L6 walker reads each row directly — no list-name → cell prose, no template-string scan.
