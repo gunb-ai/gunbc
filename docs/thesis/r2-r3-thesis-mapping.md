@@ -139,6 +139,7 @@ Per THESIS §"Self-hosting — three facets":
 | **Facet 1: Compiler written in `.dag`** (partial today; full at SG-0=0) | R1 + R2 + R3 | T-PB-A SG-0 census reduction (R1 + R2) → 0 (R3) | 70 → 37+1 frag (R2 progress); 0 (R3 close via T-LensProducer-Retirement) | 🟡 R1+R2 partial / R3 close |
 | **Facet 2: Compiler self-emits (fixed-point) — bit-identical output** | R3 | T-FixedPoint / `pb_self_compile_fixed_point` | r3-structure.md §T-FixedPoint | ⏳ R3 (gated on R2-Evaluator + T-LensProducer-Retirement) |
 | **Facet 3: Tests are data — pipeline.rs equivalent ports to .dag** | R1 + R2 | T-PB-B (bulk migration of class-5 tests via ExecuteCommand) | R2 helper binary #1063 ✓; T-PB-B 2A/2B about to unblock post-#1049 | 🟡 R2 in flight |
+| **Facet 4 (NEW 2026-05-04): Recursive-flex / self-application** — gunbc applies its own correctness/cost/parallelism/timing lenses to its own build pipeline. The compiler that compiles gunbc programs validates the workflow that produces gunbc itself. | R3 | T-Workflow-As-Data + T-Lens-Self-Application | r3-structure.md §T-Workflow-As-Data + §T-Lens-Self-Application; Director ratification at [gunbc#828 inbox-4374342708](https://github.com/gunb-ai/gunbc/issues/828); Substrate Mgr design stance at [gunbc#1130 comment-4374109666](https://github.com/gunb-ai/gunbc/issues/1130#issuecomment-4374109666) | ⏳ R3 dispatch (gated on T-Lens-Behavioral-Parity COMPLETE + T-Lens-Application-Surface + R2-Evaluator) |
 
 ## Disposition table — Enumerable impossible-bug classes
 
