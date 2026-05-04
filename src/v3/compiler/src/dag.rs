@@ -2276,6 +2276,98 @@ pub(crate) struct EmitAnchorCache {
     /// `src/v3/spec/rust.dag` (bootstrap name resolution prefers `src/v3/`
     /// over the duplicate carrier in `dsl/std/languages.dag`).
     pub rust_functions: Option<DeclarationId>,
+    /// `MethodEmitTemplate` coproduct parent used to map a method-template
+    /// constructor id back to its variant label during target emission.
+    pub method_emit_template: Option<DeclarationId>,
+    /// `MethodTemplateContract` meta-type used by fold-method contract checks.
+    pub method_template_contract: Option<DeclarationId>,
+    /// `std.list.fold_method` contract method id.
+    pub fold_method: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PatternStrategyVariants {
+    pub vector_list: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct FieldAccessVariants {
+    pub direct_field: Option<DeclarationId>,
+    pub accessor_method: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ParameterDispositionVariants {
+    pub borrowed: Option<DeclarationId>,
+    pub consumed: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct MemoryModelVariants {
+    pub value_only: Option<DeclarationId>,
+    pub garbage_collected: Option<DeclarationId>,
+    pub ref_counted: Option<DeclarationId>,
+    pub ownership_based: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ScopeModelVariants {
+    pub lexical_scoping: Option<DeclarationId>,
+    pub dynamic_scoping: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ReadStrategyVariants {
+    pub borrow: Option<DeclarationId>,
+    pub pass_by_value: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ConstructStrategyVariants {
+    pub copy_or_clone: Option<DeclarationId>,
+    pub pass_by_value: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct MutabilityVariants {
+    pub immutable: Option<DeclarationId>,
+    pub mutable: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PurityVariants {
+    pub pure: Option<DeclarationId>,
+    pub effectful: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct StructureVariants {
+    pub explicit_dag: Option<DeclarationId>,
+    pub arbitrary: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct IterationVariants {
+    pub bounded: Option<DeclarationId>,
+    pub unbounded: Option<DeclarationId>,
+}
+
+/// Cached variant DeclarationIds for fixed emit-model coproducts.
+/// Populated once at bootstrap end so emitters dispatch on typed
+/// constructors instead of resolving parent/variant names at parse time.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct EmitModelVariants {
+    pub pattern_strategy: PatternStrategyVariants,
+    pub field_access: FieldAccessVariants,
+    pub parameter_disposition: ParameterDispositionVariants,
+    pub memory_model: MemoryModelVariants,
+    pub scope_model: ScopeModelVariants,
+    pub read_strategy: ReadStrategyVariants,
+    pub construct_strategy: ConstructStrategyVariants,
+    pub mutability: MutabilityVariants,
+    pub purity: PurityVariants,
+    pub structure: StructureVariants,
+    pub iteration: IterationVariants,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2474,6 +2566,9 @@ pub struct Dag {
     /// emitter plus Rust/Python target emitters when parsing
     /// `CallableRealization.strategy`.
     callable_strategy_variants: CallableStrategyVariants,
+    /// Cached fixed emit-model coproduct variant DeclarationIds used by
+    /// emit target parsers.
+    emit_model_variants: EmitModelVariants,
     /// Sidecar structural facts for mutually-recursive SCCs.
     clusters: Vec<Cluster>,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
@@ -2553,6 +2648,7 @@ impl Dag {
                 VariantPayloadFieldAccessRuleVariants::default(),
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             callable_strategy_variants: CallableStrategyVariants::default(),
+            emit_model_variants: EmitModelVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
             declaration_append_begin_after_bootstrap: 0,
