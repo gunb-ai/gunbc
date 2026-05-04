@@ -103,29 +103,76 @@ type OpenAiChatMessage {
 // Narrow 200-OK wire slice for Chat Completions (`response { 200 => … }` + serde).
 // Tool calls / multimodal message bodies remain outside this carrier (same narrow
 // slice as the historical `from` JSON-pointer paths).
+type OpenAiChatCompletion200TopLogprob {
+  token: String
+  bytes: List<Int>?
+  logprob: Float
+}
+
+type OpenAiChatCompletion200TokenLogprob {
+  token: String
+  bytes: List<Int>?
+  logprob: Float
+  top_logprobs: List<OpenAiChatCompletion200TopLogprob>
+}
+
+type OpenAiChatCompletion200Logprobs {
+  content: List<OpenAiChatCompletion200TokenLogprob>?
+  refusal: List<OpenAiChatCompletion200TokenLogprob>?
+}
+
+type OpenAiChatCompletion200UrlCitation {
+  start_index: Int
+  end_index: Int
+  title: String
+  url: String
+}
+
+type OpenAiChatCompletion200Annotation {
+  type: String
+  url_citation: OpenAiChatCompletion200UrlCitation?
+}
+
 type OpenAiChatCompletion200Message {
   role: String
   content: String
+  refusal: String?
+  annotations: List<OpenAiChatCompletion200Annotation>?
 }
 
 type OpenAiChatCompletion200Choice {
   index: Int
   message: OpenAiChatCompletion200Message
+  logprobs: OpenAiChatCompletion200Logprobs?
   finish_reason: OpenAiFinishReason
+}
+
+type OpenAiChatCompletion200CompletionTokenDetails {
+  accepted_prediction_tokens: Int?
+  audio_tokens: Int?
+  reasoning_tokens: Int?
+  rejected_prediction_tokens: Int?
+}
+
+type OpenAiChatCompletion200PromptTokenDetails {
+  audio_tokens: Int?
+  cached_tokens: Int?
 }
 
 type OpenAiChatCompletion200Usage {
   prompt_tokens: Int
   completion_tokens: Int
   total_tokens: Int
+  completion_tokens_details: OpenAiChatCompletion200CompletionTokenDetails?
+  prompt_tokens_details: OpenAiChatCompletion200PromptTokenDetails?
 }
 
 // Chat completion **object** envelope per OpenAI Chat Completions reference
 // (https://platform.openai.com/docs/api-reference/chat/object): `id`, `object`,
 // `created`, `model`, `choices`, `usage`. `OpenAiChatCompletion200Message` is
 // still a narrow text slice of each `choices[].message`; richer tool-call,
-// refusal, multimodal, audio, annotation, and token-detail surfaces remain
-// covered by their downstream typed-carrier closure rows.
+// multimodal, and audio surfaces remain covered by downstream typed-carrier
+// closure rows.
 type OpenAiChatCompletion200Body {
   id: String
   object: String
@@ -133,12 +180,16 @@ type OpenAiChatCompletion200Body {
   model: String
   choices: List<OpenAiChatCompletion200Choice>
   usage: OpenAiChatCompletion200Usage
+  service_tier: String?
+  system_fingerprint: String?
 }
 
-// Residuals outside `OpenAiChatCompletion200Body` / nested narrow slices; envelope
-// fields `service_tier` and deprecated `system_fingerprint` are not modeled on the struct.
+// Residuals outside `OpenAiChatCompletion200Body` / nested narrow slices. The
+// remaining entries are variant-shaped provider surfaces: tool/function calls,
+// audio, and multimodal content need coproduct modeling rather than optional
+// coordinates on the current text-message carrier.
 data structural_coverage_gap_openai_chat_completion_200_residual: List<String> = [
-  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Body|missing:service_tier|missing:system_fingerprint|OpenAiChatCompletion200Choice|missing:logprobs|OpenAiChatCompletion200Message|missing:refusal|missing:tool_calls|missing:function_call|missing:annotations|missing:audio|missing:non_string_content|CompletionUsage|missing:completion_tokens_details|missing:prompt_tokens_details"
+  "closure:openai_chat_completion_200_residual|OpenAiChatCompletion200Message|variant_pending:tool_calls|variant_pending:function_call|variant_pending:audio|variant_pending:non_string_content|trigger:model response content/tool/audio coproduct surface"
 ]
 
 // Full Chat Completions message coproduct (tool_call_id, tool role, function,
@@ -146,6 +197,52 @@ data structural_coverage_gap_openai_chat_completion_200_residual: List<String> =
 data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> = [
   "closure:openai_chat_message_full_coproduct|OpenAiChatMessage|missing:tool_role_with_tool_call_id|missing:function_role|missing:multimodal_content_array"
 ]
+
+// Narrow 200-OK wire slice for OpenAI Responses (`response { 200 => … }`).
+// The operation's current projections read text-output and usage token counts,
+// so this carrier models the stable message/output_text path plus token-detail
+// usage rows. Tool, reasoning-detail, error, and multimodal output item variants
+// remain outside this proof-of-shape slice.
+type OpenAiResponses200OutputContent {
+  type: String
+  text: String?
+  annotations: List<OpenAiChatCompletion200Annotation>?
+}
+
+type OpenAiResponses200OutputItem {
+  id: String?
+  type: String
+  status: String?
+  role: String?
+  content: List<OpenAiResponses200OutputContent>?
+}
+
+type OpenAiResponses200InputTokenDetails {
+  cached_tokens: Int?
+}
+
+type OpenAiResponses200OutputTokenDetails {
+  reasoning_tokens: Int?
+}
+
+type OpenAiResponses200Usage {
+  input_tokens: Int
+  output_tokens: Int
+  total_tokens: Int?
+  input_tokens_details: OpenAiResponses200InputTokenDetails?
+  output_tokens_details: OpenAiResponses200OutputTokenDetails?
+}
+
+type OpenAiResponses200Body {
+  id: String
+  object: String
+  created_at: Int?
+  status: String?
+  model: String
+  output: List<OpenAiResponses200OutputItem>
+  usage: OpenAiResponses200Usage
+  service_tier: String?
+}
 
 // -- Service: REST transport wiring ------------------------------
 
@@ -217,7 +314,7 @@ service llm.OpenAI {
       body: { model: model, input: input, instructions: instructions, max_output_tokens: max_output_tokens }
     }
     response {
-      200 => Json
+      200 => OpenAiResponses200Body
       400 => OpenAiErrorShape
       401 => OpenAiErrorShape
       403 => OpenAiErrorShape
