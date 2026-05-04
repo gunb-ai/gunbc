@@ -532,9 +532,12 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         .join("\n");
     assert!(
         joined.contains("read")
+            && joined.contains("declaration reference `lens_read`")
+            && joined.contains("Witness<String>")
+            && joined.contains("Witness<Int>")
             && !joined.contains("record type (Conj)")
             && !joined.contains("cannot apply inhabitance checking"),
-        "diagnostic should be the typed field mismatch path, not a generic Lens fallback; got:\n{joined}"
+        "diagnostic should be the typed substituted field mismatch path, not a generic Lens fallback; got:\n{joined}"
     );
 }
 

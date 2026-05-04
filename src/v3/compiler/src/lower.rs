@@ -3574,10 +3574,42 @@ fn lower_structural_field_value(
         {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
+        if is_value_level_arrow_declaration(referenced) {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` declaration reference `{}` has type `{}` but expected substituted type `{}`",
+                        declaration_display_name(dag, decl_id),
+                        structural_type_display(dag, decl_id, &LowerSubstStack::default(), 0),
+                        structural_type_display(dag, expected_type, subst, 0),
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
         if referenced.meta_tag.is_some_and(|actual| {
             declaration_ref_types_equivalent_with_subst(dag, actual, expected_type, subst, 0)
         }) {
             return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
+        if let Some(actual) = referenced.meta_tag {
+            report_declaration_error(
+                dag,
+                Diagnostic::ResolveError {
+                    name: format!(
+                        "data `{data_name}` field `{field_label}` declaration reference `{}` has meta type `{}` but expected substituted type `{}`",
+                        declaration_display_name(dag, decl_id),
+                        structural_type_display(dag, actual, &LowerSubstStack::default(), 0),
+                        structural_type_display(dag, expected_type, subst, 0),
+                    ),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
         }
     }
 
@@ -4007,6 +4039,70 @@ fn is_value_level_arrow_declaration(decl: &crate::dag::Declaration) -> bool {
             ..
         }
     )
+}
+
+fn structural_type_display(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> String {
+    if depth >= 32 {
+        return format!("<type-depth-limit:{}>", decl_id.raw());
+    }
+    let decl = dag.declaration(decl_id);
+    if decl.name.is_some() && !matches!(decl.connective, TypeConnective::Arrow { .. }) {
+        return declaration_display_name(dag, decl_id);
+    }
+    match &decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            if let Some(bound) = subst.lookup(decl_id) {
+                return structural_type_display(dag, bound, subst, depth + 1);
+            }
+            declaration_display_name(dag, decl_id)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            structural_type_display(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let template_name = declaration_display_name(dag, *template);
+            if arguments.is_empty() {
+                return template_name;
+            }
+            let args = arguments
+                .iter()
+                .map(|arg| structural_type_display(dag, arg.value, subst, depth + 1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            format!("{template_name}<{args}>")
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            let inputs = inputs
+                .iter()
+                .map(|input| structural_type_display(dag, *input, subst, depth + 1))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let output = structural_type_display(dag, *output, subst, depth + 1);
+            format!("fn({inputs}) -> {output}")
+        }
+        TypeConnective::Cardinality(payload) => {
+            let element = structural_type_display(dag, payload.element(), subst, depth + 1);
+            match payload.bound() {
+                CardinalityBound::Exact(1) => element,
+                CardinalityBound::Exact(n) => format!("{element}^{n}"),
+                CardinalityBound::AtMostOne => format!("{element}?"),
+                CardinalityBound::Unbounded => format!("List<{element}>"),
+            }
+        }
+        TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_)) => declaration_display_name(dag, decl_id),
+    }
 }
 
 /// 🟢 TERMINAL — file-local lowering outcome coproduct.
