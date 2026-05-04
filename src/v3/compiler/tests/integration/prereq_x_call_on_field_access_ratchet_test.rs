@@ -19,7 +19,7 @@
 //! - X3: brace-bodied block expression inside `=` body remains
 //!   blocked at parse time.
 
-use crate::common::cached_compile_to_dag;
+use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::dag::{Behavior, TransformTarget};
 use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
@@ -84,7 +84,7 @@ data holder: Holder = { x: 5 }
 
 fn r() -> Int = holder.x(7)
 "#;
-    let dag = cached_compile_to_dag(src, "x1a_non_arrow.v3");
+    let dag = cached_compile_any(src, "x1a_non_arrow.v3");
     let saw_resolve_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
         Diagnostic::ResolveError { name, .. } => {
             name.contains("does not resolve to a callable function reference")
@@ -112,7 +112,7 @@ type Wrapper { f: fn(Int) -> Int }
 fn invoke(w: Wrapper, x: Int) -> Int = w.f(x)
 "#;
     // Parsing now succeeds; the diagnostic surfaces during lowering.
-    let dag = cached_compile_to_dag(src, "x1b.v3");
+    let dag = cached_compile_any(src, "x1b.v3");
     let saw_x1b_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
         Diagnostic::ResolveError { name, .. } => {
             name.contains("Prereq-X1.b") || name.contains("parameter")
