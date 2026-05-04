@@ -5872,7 +5872,7 @@ fn gcp_iam_generate_access_token_200_body_round_trip_representative_wire() {
 fn google_oauth_refresh_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
     let source_path = ws.join("dsl/extdeps/cloud/gcp/gcp.dag");
-    let source = std::fs::read_to_string(&source_path).expect("read gcp core.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read gcp.dag");
     let result = compile_dag_named("dsl/extdeps/cloud/gcp/gcp.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_cloud_gcp_gcp.rs");
