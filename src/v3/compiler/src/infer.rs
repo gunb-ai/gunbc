@@ -4689,9 +4689,10 @@ fn substitute_receiver(
 }
 
 fn canonical_result_decl(dag: &Dag) -> Option<&Declaration> {
-    let mut matches = dag.declarations().iter().filter(|decl| {
-        substrate_result_type_decl_suppressed_for_emit(dag, decl)
-    });
+    let mut matches = dag
+        .declarations()
+        .iter()
+        .filter(|decl| substrate_result_type_decl_suppressed_for_emit(dag, decl));
     let result = matches.next()?;
     if matches.next().is_some() {
         return None;
@@ -6729,7 +6730,9 @@ mod bool_logical_operator_arrow_tests {
         let mut dag = Dag::new();
         let int = dag.int_shape().expect("bootstrap Int").declaration;
         let result = canonical_result_decl(&dag).expect("bootstrap Result").id;
-        let div_error = canonical_div_error_decl(&dag).expect("bootstrap DivError").id;
+        let div_error = canonical_div_error_decl(&dag)
+            .expect("bootstrap DivError")
+            .id;
 
         dag.declaration_mut(result).span.file = "renamed/std/errors.dag".to_string();
         dag.declaration_mut(div_error).span.file = "renamed/std/errors.dag".to_string();
@@ -6752,7 +6755,10 @@ mod bool_logical_operator_arrow_tests {
         assert_eq!(arguments.len(), 2);
         assert_eq!(arguments[0].value, int);
         assert_eq!(arguments[1].value, div_error);
-        assert_eq!(canonical_result_decl(&dag).expect("structural Result").id, result);
+        assert_eq!(
+            canonical_result_decl(&dag).expect("structural Result").id,
+            result
+        );
         assert_eq!(
             canonical_div_error_decl(&dag)
                 .expect("structural DivError")
