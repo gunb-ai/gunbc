@@ -631,6 +631,7 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         })
         .expect("read mismatch must surface as structured TypeMismatch on lens_read");
     let witness = dag.declaration_by_name("Witness").unwrap().id;
+    let int_decl = dag.declaration_by_name("Int").unwrap().id;
     let string_decl = dag.declaration_by_name("String").unwrap().id;
     let actual_arg = instantiation_arg(&dag, arrow_output_decl(&dag, lens_read_id), witness);
     let expected_arg = instantiation_arg(&dag, arrow_output_decl(&dag, expected_read_ty), witness);
@@ -639,8 +640,8 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         "actual read output must be Witness<String>"
     );
     assert!(
-        !same_instantiation_shape(&dag, expected_arg, string_decl),
-        "expected substituted read output must not remain Witness<String>"
+        same_instantiation_shape(&dag, expected_arg, int_decl),
+        "expected substituted read output must be Witness<Int>"
     );
     assert_ne!(
         expected_arg, actual_arg,

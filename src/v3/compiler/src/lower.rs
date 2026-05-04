@@ -3246,6 +3246,102 @@ fn resolve_decl_with_subst_lower(
     }
 }
 
+fn concretize_decl_with_lower_subst(
+    dag: &mut Dag,
+    current: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= 32 {
+        return current;
+    }
+    let decl = dag.declaration(current).clone();
+    match decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            concretize_decl_with_lower_subst(dag, next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let specialized_arguments: Vec<TemplateArgument> = arguments
+                .into_iter()
+                .map(|arg| TemplateArgument {
+                    parameter: arg.parameter,
+                    value: concretize_decl_with_lower_subst(dag, arg.value, subst, depth + 1),
+                })
+                .collect();
+            if let Some(existing) =
+                find_equivalent_decl_instantiation_lower(dag, template, &specialized_arguments)
+            {
+                return existing;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template,
+                    arguments: specialized_arguments,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: decl.nominal_opacity,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Cardinality(payload) => {
+            let element =
+                concretize_decl_with_lower_subst(dag, payload.element(), subst, depth + 1);
+            dag.alloc_cardinality_decl(element, payload.bound(), decl.span)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            let original_inputs = inputs.clone();
+            let specialized_inputs: Vec<DeclarationId> = inputs
+                .into_iter()
+                .map(|input| concretize_decl_with_lower_subst(dag, input, subst, depth + 1))
+                .collect();
+            let specialized_output =
+                concretize_decl_with_lower_subst(dag, output, subst, depth + 1);
+            if specialized_inputs == original_inputs && specialized_output == output {
+                return current;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Arrow {
+                    inputs: specialized_inputs,
+                    output: specialized_output,
+                    body: ArrowBody::NoBody,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_)) => current,
+    }
+}
+
 fn walk_to_conj_decl_with_subst_lower(
     dag: &Dag,
     start: DeclarationId,
@@ -3577,10 +3673,11 @@ fn lower_structural_field_value(
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
         if is_value_level_arrow_declaration(referenced) {
+            let expected = concretize_decl_with_lower_subst(dag, expected_type, subst, 0);
             report_declaration_error(
                 dag,
                 Diagnostic::TypeMismatch {
-                    expected: TypeShape::new(expected_type),
+                    expected: TypeShape::new(expected),
                     actual: TypeShape::new(decl_id),
                     span: span.clone(),
                     fixes: Vec::new(),
@@ -3594,10 +3691,11 @@ fn lower_structural_field_value(
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
         if let Some(actual) = referenced.meta_tag {
+            let expected = concretize_decl_with_lower_subst(dag, expected_type, subst, 0);
             report_declaration_error(
                 dag,
                 Diagnostic::TypeMismatch {
-                    expected: TypeShape::new(expected_type),
+                    expected: TypeShape::new(expected),
                     actual: TypeShape::new(actual),
                     span: span.clone(),
                     fixes: Vec::new(),
