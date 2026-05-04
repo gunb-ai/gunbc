@@ -170,12 +170,7 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
 
     let mut seen: HashSet<DeclarationId> = HashSet::new();
     for (idx, row) in rows.iter().enumerate() {
-        let FieldValue::Record(fields) = row else {
-            panic!(
-                "row {idx} in `{list_name}` is not a `FieldValue::Record` — \
-                 every `MethodTemplateContract` row must be a record literal"
-            );
-        };
+        let fields = method_template_contract_row_fields(dag, row, list_name, idx);
         let (_, dag_method) = fields
             .iter()
             .find(|(label, _)| label == "dag_method")
@@ -208,13 +203,60 @@ fn assert_per_target_list_dag_method_unique(dag: &Dag, list_name: &str) {
     }
 }
 
-fn method_ref_decl_from_row<'a>(
+fn method_template_contract_row_fields<'a>(
+    dag: &'a Dag,
     row: &'a FieldValue,
+    list_name: &str,
+    row_index: usize,
+) -> &'a [(String, FieldValue)] {
+    match row {
+        FieldValue::Record(fields) => fields,
+        FieldValue::Reference(decl_id) => {
+            let decl = dag.declaration_opt(decl_id).unwrap_or_else(|| {
+                panic!(
+                    "row {row_index} in `{list_name}` references missing declaration {decl_id:?}"
+                )
+            });
+            let method_template_contract = dag
+                .declaration_by_name("MethodTemplateContract")
+                .expect("MethodTemplateContract carrier")
+                .id;
+            let TypeConnective::Instantiation { template, .. } = &decl.connective else {
+                panic!(
+                    "row {row_index} in `{list_name}` references {decl_id:?}, \
+                     but it does not instantiate MethodTemplateContract"
+                );
+            };
+            assert_eq!(
+                *template, method_template_contract,
+                "row {row_index} in `{list_name}` references {decl_id:?}, \
+                 but it does not instantiate MethodTemplateContract"
+            );
+            let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
+                panic!(
+                    "row {row_index} in `{list_name}` references {decl_id:?}, \
+                     but it is not a structural MethodTemplateContract data declaration"
+                );
+            };
+            fields
+        }
+        _ => {
+            panic!(
+                "row {row_index} in `{list_name}` is neither a `FieldValue::Record` \
+                 nor a declaration ref to a MethodTemplateContract row"
+            );
+        }
+    }
+}
+
+fn method_ref_decl_from_row<'a>(
+    dag: &'a Dag,
+    row: &'a FieldValue,
+    list_name: &'static str,
+    row_index: usize,
     row_context: &str,
 ) -> (&'a DeclarationId, &'a FieldValue, &'a FieldValue) {
-    let FieldValue::Record(fields) = row else {
-        panic!("{row_context}: row is not a FieldValue::Record");
-    };
+    let fields = method_template_contract_row_fields(dag, row, list_name, row_index);
     let (_, dag_method) = fields
         .iter()
         .find(|(label, _)| label == "dag_method")
@@ -281,8 +323,13 @@ fn rust_higher_order_method_template_contracts_are_present() {
     .collect();
 
     for (idx, row) in rows.iter().enumerate() {
-        let (decl_id, emit_template, wraps_result) =
-            method_ref_decl_from_row(row, &format!("rust row {idx}"));
+        let (decl_id, emit_template, wraps_result) = method_ref_decl_from_row(
+            &dag,
+            row,
+            "rust_method_template_contracts",
+            idx,
+            &format!("rust row {idx}"),
+        );
         let method_name = dag
             .declaration(*decl_id)
             .name

@@ -109,6 +109,38 @@ data go_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   placeholder_convention: NamedArg
 }
 
+data go_filter_method_template_contract: MethodTemplateContract = {
+  dag_method: { decl: filter_method },
+  runtime_template: "v2rt.Filter({recv}, {arg})",
+  emit_template: SingleTemplate { template: "v2rt.Filter({recv}, {arg})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data go_any_method_template_contract: MethodTemplateContract = {
+  dag_method: { decl: any_method },
+  runtime_template: "v2rt.Any({recv}, {arg})",
+  emit_template: SingleTemplate { template: "v2rt.Any({recv}, {arg})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data go_all_method_template_contract: MethodTemplateContract = {
+  dag_method: { decl: all_method },
+  runtime_template: "v2rt.All({recv}, {arg})",
+  emit_template: SingleTemplate { template: "v2rt.All({recv}, {arg})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data go_flat_map_method_template_contract: MethodTemplateContract = {
+  dag_method: { decl: flat_map_method },
+  runtime_template: "v2rt.FlatMap({recv}, {arg})",
+  emit_template: SingleTemplate { template: "v2rt.FlatMap({recv}, {arg})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data go_method_template_contracts: List<MethodTemplateContract> = [
   {
     dag_method: { decl: count_method },
@@ -138,34 +170,10 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
     wraps_result: false,
     placeholder_convention: NamedArg
   },
-  {
-    dag_method: { decl: filter_method },
-    runtime_template: "v2rt.Filter({recv}, {arg})",
-    emit_template: SingleTemplate { template: "v2rt.Filter({recv}, {arg})" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
-    dag_method: { decl: any_method },
-    runtime_template: "v2rt.Any({recv}, {arg})",
-    emit_template: SingleTemplate { template: "v2rt.Any({recv}, {arg})" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
-    dag_method: { decl: all_method },
-    runtime_template: "v2rt.All({recv}, {arg})",
-    emit_template: SingleTemplate { template: "v2rt.All({recv}, {arg})" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
-    dag_method: { decl: flat_map_method },
-    runtime_template: "v2rt.FlatMap({recv}, {arg})",
-    emit_template: SingleTemplate { template: "v2rt.FlatMap({recv}, {arg})" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
+  go_filter_method_template_contract,
+  go_any_method_template_contract,
+  go_all_method_template_contract,
+  go_flat_map_method_template_contract,
   {
     dag_method: { decl: skip_method },
     runtime_template: "{recv}[{arg}:]",
