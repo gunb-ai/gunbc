@@ -104,7 +104,7 @@ That's measurable. See §5.
 
 **Category 5 sharpening (per K8s + PyTorch adversarial PRs)**: Cat 5 covers **axis derivation** — the structural facts that define the integration-testgen surface (build dependencies; linker section layout; sanitizer contracts; heuristic monotonicity). It does **NOT** claim exhaustive **cell sampling** across vendor-runtime cross-products (e.g., "every kernel × every accelerator × every driver × every CUDA version"). Cell sampling is empirical-residual territory; that's an explicit non-claim, not a gap. The 5th gate's `integration_testgen_demonstrated_on_at_least_one_domain` requires demonstrating axis derivation works on at least one domain; cell-sampling saturation is post-R3 ecosystem work bounded by the substrate's expressive surface.
 
-**The bounded-iteration-closed-system qualifier**: across the four-PR portfolio, the qualifier surfaces as load-bearing. LLVM (local thesis strong; toolchain/global limits genuinely outside) + Kubernetes (matrix-cell-sampling problem) + Discord/Elixir (OTP territory disclaimed by THESIS line 23) + PyTorch (data-dependent numerical instability + cross-process coordination) converge on naming the boundary explicitly. See §6d for the Tier 4 recommendation.
+**The bounded-iteration-closed-system qualifier**: across the four-PR portfolio, the qualifier surfaces as load-bearing. LLVM (local thesis strong; toolchain/global limits genuinely outside) + Kubernetes (matrix-cell-sampling problem) + Discord/Elixir (OTP-style fault tolerance is *adjacent* to but not explicitly bounded by THESIS line 23's closed-system framing — candidate Tier 4 boundary per §6d) + PyTorch (data-dependent numerical instability + cross-process coordination) converge on naming the boundary explicitly. See §6d for the Tier 4 recommendation.
 
 ## 5. Three-class behavioral partition (for exhaustive-coverage demo)
 
@@ -171,7 +171,7 @@ This generalizes to any `apply_lens` invariant: **default for unannotated scope 
 - **Vendor-runtime cross-product cell-sampling** — exhaustive coverage across hardware × driver × runtime version cells. gunbc derives the axes structurally; saturating cells is empirical-residual.
 - **Data-dependent numerical stability** — emergent training dynamics; algorithm-stability-as-empirical-property. Adjacent to but distinct from `Algebra<Precision>` substrate work (§6e).
 - **Cross-process coordination** — distributed-systems consensus; pi-calculus / TLA+ territory. gunbc local thesis strong; cross-process formal proof is its own discipline.
-- **OTP-style fault tolerance** — Erlang/Elixir-native. THESIS line 23 already disclaims; recommend making the disclaimer Tier-4-explicit.
+- **OTP-style fault tolerance** — Erlang/Elixir-native; supervision-tree-shaped runtime with let-it-crash discipline. Adjacent to but not currently in gunbc's thesis surface (THESIS line 23 establishes a closed-system bounding — "bounded data, bounded iteration, and composition that preserves those bounds" — which is *adjacent* to but does NOT explicitly disclaim OTP-style fault tolerance; that's a candidate Tier 4 *addition*, not an existing-disclaimer-made-explicit). Recommend explicit Tier 4 entry.
 
 **Why this matters for launch**:
 - Compiler-people reading the launch material will probe boundaries adversarially. Explicit Tier 4 naming defangs the probe (we already declared the boundary).
