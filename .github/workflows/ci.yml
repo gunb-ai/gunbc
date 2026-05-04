@@ -57,8 +57,8 @@ jobs:
       - name: cargo fmt --all --check
         run: cargo fmt --all --check
 
-  # Policy-only job (T-V2 G-2-prereq-ci): no v2-compiler transport. Historical v2
-  # CI ran `cargo build/run -p v2-compiler` + `run_ci_pipeline` here; that path
+  # Policy-only job (T-V2 G-2-prereq-ci): no legacy compiler transport. Historical
+  # CI ran the legacy DAG runner here; that path
   # is deleted to cut wall time. Bootstrap `--verify` and the full compiler/test
   # surface remain under the `v3` job. `dsl/gunbc/tools/ci_runner.dag::run_ci_pipeline`
   # still exists for local/manual reproduction.
