@@ -5106,7 +5106,14 @@ fn lower_fn_item_expr_body(
                 },
             );
             (err_port, err_port)
-        } else if !descent_provable(body, dag, param_decl_inputs[0], name, &params[0].name, &HashMap::new(, symbols),
+        } else if !descent_provable(
+            body,
+            dag,
+            param_decl_inputs[0],
+            name,
+            &params[0].name,
+            &HashMap::new(),
+            symbols,
         ) {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
