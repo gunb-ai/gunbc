@@ -365,9 +365,7 @@ type CollectionOps {
   // strings live only on those contracts; these fields are identity, not render data.
   concat_contract: DeclarationRef
   length_contract: DeclarationRef
-  // `FreeMonoid<T>` declares `length` but not `is_empty`; emptiness is realized as
-  // a zero-length test. The contract's `dag_method` pins `length_method`; the
-  // template may use target-native `.is_empty()` / `len(...) == 0` sugar.
+  // `FreeMonoid<T>.is_empty` — `dag_method` is `is_empty_method`; templates carry target sugar.
   is_empty_contract: DeclarationRef
   fold_contract: DeclarationRef
   map: String

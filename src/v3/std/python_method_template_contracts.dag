@@ -49,6 +49,7 @@ import std.methods {
   skip_method,
   take_method,
   fold_method,
+  is_empty_method,
   length_method,
   sort_by_method,
   append_method,
