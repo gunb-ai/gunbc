@@ -129,6 +129,20 @@ pub enum MethodTemplateProjectionError {
         list: &'static str,
         row_index: usize,
     },
+    /// Row is a declaration reference, but the referenced declaration is not
+    /// present in the bootstrap `Dag`.
+    RowReferenceMissing {
+        list: &'static str,
+        row_index: usize,
+        decl_id: DeclarationId,
+    },
+    /// Row is a declaration reference, but the referenced declaration is not a
+    /// `data` declaration carrying a structural `MethodTemplateContract` body.
+    RowReferenceNotStructural {
+        list: &'static str,
+        row_index: usize,
+        decl_id: DeclarationId,
+    },
     /// Row is missing one of the five required fields.
     RowMissingField {
         list: &'static str,
@@ -494,8 +508,28 @@ fn project_row(
     row_index: usize,
     row: &FieldValue,
 ) -> Result<MethodTemplateContractRow, MethodTemplateProjectionError> {
-    let FieldValue::Record(fields) = row else {
-        return Err(MethodTemplateProjectionError::RowNotRecord { list, row_index });
+    let fields = match row {
+        FieldValue::Record(fields) => fields,
+        FieldValue::Reference(decl_id) => {
+            let decl = dag.declaration_opt(decl_id).ok_or(
+                MethodTemplateProjectionError::RowReferenceMissing {
+                    list,
+                    row_index,
+                    decl_id: *decl_id,
+                },
+            )?;
+            match decl.value_body.as_ref() {
+                Some(ValueBody::Structural { fields }) => fields,
+                _ => {
+                    return Err(MethodTemplateProjectionError::RowReferenceNotStructural {
+                        list,
+                        row_index,
+                        decl_id: *decl_id,
+                    });
+                }
+            }
+        }
+        _ => return Err(MethodTemplateProjectionError::RowNotRecord { list, row_index }),
     };
 
     const EXPECTED: &[&str] = &[
