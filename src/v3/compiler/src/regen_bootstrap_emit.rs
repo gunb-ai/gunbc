@@ -91,6 +91,7 @@ fn emit_bootstrap_module(dag: &Dag, function_name: &str) -> String {
         "        verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),\n",
     );
     out.push_str("        callable_strategy_variants: CallableStrategyVariants::default(),\n");
+    out.push_str("        emit_model_variants: EmitModelVariants::default(),\n");
     push_field(&mut out, "clusters", &format!("{clusters_fn}()"), 2);
     push_field(
         &mut out,
