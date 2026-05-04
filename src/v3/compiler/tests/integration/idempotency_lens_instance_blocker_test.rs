@@ -2,52 +2,16 @@
 //!
 //! #1262 idempotency lens instance migration blocker receipt.
 //!
-//! The real `data idempotency_workflow_lens: Lens<...>` instance is deferred:
-//! current lowering rejects the generic function-valued data fields needed for
-//! `Lens<C>` / `Monoid<C>`, and function-body lowering can misclassify ordinary
-//! sum-return helper calls as constructor expressions. These tests pin those
-//! prerequisite gaps without introducing a Rust-only or test-only bridge.
+//! The real `data idempotency_workflow_lens: Lens<...>` instance is deferred,
+//! but E6-G0 closes the generic function-valued structural data field blocker
+//! for `Lens<C>` / `Monoid<C>`-shaped values. These tests keep the historical
+//! blocker receipt current without introducing a Rust-only or test-only bridge.
 
-use v3_compiler::{compile_to_dag, CompileError, Diagnostic};
-
-fn semantic_diagnostics(source: &str, file: &str) -> Vec<Diagnostic> {
-    let err = compile_to_dag(source, file).expect_err("fixture should pin current lowerer gap");
-    let CompileError::Semantic(dag) = err else {
-        panic!("expected semantic lowerer gap for {file}, got {err:?}");
-    };
-    dag.diagnostics()
-        .iter()
-        .map(|(_, diagnostic)| diagnostic.clone())
-        .collect()
-}
-
-fn has_function_field_ref_resolve_error(
-    diagnostics: &[Diagnostic],
-    source: &str,
-    file: &str,
-    expected_field_ref: &str,
-) -> bool {
-    diagnostics.iter().any(|diagnostic| {
-        let Diagnostic::ResolveError { span, .. } = diagnostic else {
-            return false;
-        };
-        if span.file != file {
-            return false;
-        }
-        let Ok(start) = usize::try_from(span.byte_start) else {
-            return false;
-        };
-        let Ok(end) = usize::try_from(span.byte_end) else {
-            return false;
-        };
-        source
-            .get(start..end)
-            .is_some_and(|text| text.contains(expected_field_ref))
-    })
-}
+use v3_compiler::compile_to_dag;
+use v3_compiler::dag::{FieldValue, ValueBody};
 
 #[test]
-fn generic_lens_monoid_function_field_refs_are_current_lowerer_gap() {
+fn generic_lens_monoid_function_field_refs_lower_structurally() {
     let source = r#"
 module blocker.lens_data_fields
 
@@ -73,12 +37,35 @@ data int_lens: MiniLens<Int> = {
 "#;
 
     let file = "idempotency_lens_function_field_gap.dag";
-    let diagnostics = semantic_diagnostics(source, file);
-
+    let dag = compile_to_dag(source, file)
+        .expect("E6-G0 should lower generic Lens/Monoid function field refs structurally");
     assert!(
-        has_function_field_ref_resolve_error(&diagnostics, source, file, "op: add_int")
-            || has_function_field_ref_resolve_error(&diagnostics, source, file, "read: read_int"),
-        "expected generic data-body function refs to hit the Lens/Monoid lowerer gap; got: {diagnostics:?}"
+        dag.diagnostics().is_empty(),
+        "generic Lens/Monoid function field fixture should compile cleanly; got {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+    let read_int = dag.declaration_by_name("read_int").unwrap().id;
+    let int_monoid = dag.declaration_by_name("int_monoid").unwrap().id;
+    let int_lens = dag.declaration_by_name("int_lens").unwrap();
+    let Some(ValueBody::Structural { fields }) = &int_lens.value_body else {
+        panic!(
+            "int_lens must lower to ValueBody::Structural, got {:?}",
+            int_lens.value_body
+        );
+    };
+    assert_eq!(
+        fields
+            .iter()
+            .find(|(label, _)| label == "read")
+            .map(|(_, value)| value),
+        Some(&FieldValue::Reference(read_int))
+    );
+    assert_eq!(
+        fields
+            .iter()
+            .find(|(label, _)| label == "sequential")
+            .map(|(_, value)| value),
+        Some(&FieldValue::Reference(int_monoid))
     );
 }
 
