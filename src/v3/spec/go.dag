@@ -17,7 +17,11 @@ import v3.std.go_method_template_contracts {
   go_language_spec_free_monoid_concat_contract,
   go_language_spec_free_monoid_length_contract,
   go_language_spec_free_monoid_emptiness_contract,
-  go_language_spec_free_monoid_fold_contract
+  go_language_spec_free_monoid_fold_contract,
+  go_filter_method_template_contract,
+  go_flat_map_method_template_contract,
+  go_any_method_template_contract,
+  go_all_method_template_contract
 }
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
@@ -1172,6 +1176,10 @@ data go_collection_ops: CollectionOps = {
   length_contract: go_language_spec_free_monoid_length_contract
   is_empty_contract: go_language_spec_free_monoid_emptiness_contract
   fold_contract: go_language_spec_free_monoid_fold_contract
+  filter_contract: go_filter_method_template_contract
+  flat_map_contract: go_flat_map_method_template_contract
+  any_contract: go_any_method_template_contract
+  all_contract: go_all_method_template_contract
   map: "/* map({recv}, {body}) */"
   filter: "/* filter({recv}, {body}) */"
   contains: "/* contains({recv}, {item}) */"
