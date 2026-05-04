@@ -237,6 +237,14 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
         extract_balanced_section(SHARED_SYNTAX_DAG, "data dag_operators", '[', ']'),
         "symbol",
     );
+    let v3_supported_operators: BTreeSet<_> = parse_map_string_keys(extract_balanced_section(
+        SHARED_SYNTAX_DAG,
+        "data v3_supported_dag_operators",
+        '{',
+        '}',
+    ))
+    .into_iter()
+    .collect();
     let punct_kind_decl = dag
         .declaration_by_name("PunctTokenKind")
         .expect("PunctTokenKind declaration");
@@ -253,7 +261,7 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
 
     let mut shared_tokenized_kinds = BTreeSet::new();
     for pattern in &shared_operators {
-        match classify_shared_operator_for_tokenizer(pattern) {
+        match classify_shared_operator_for_tokenizer(pattern, &v3_supported_operators) {
             SharedOperatorTokenizerBoundary::Tokenized { kind } => {
                 assert!(
                     punct_variant_labels.contains(kind),
@@ -323,7 +331,16 @@ enum SharedOperatorTokenizerBoundary {
     ParserOnlyDebt { reason: &'static str },
 }
 
-fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
+fn classify_shared_operator_for_tokenizer(
+    pattern: &str,
+    v3_supported: &BTreeSet<String>,
+) -> SharedOperatorTokenizerBoundary {
+    if !v3_supported.contains(pattern) {
+        return SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "operator is declared in external dag_operators but excluded from \
+                     v3_supported_dag_operators until v3 parses it end-to-end",
+        };
+    }
     match pattern {
         "==" => SharedOperatorTokenizerBoundary::Tokenized { kind: "EqEq" },
         "!=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "NotEq" },
@@ -339,17 +356,9 @@ fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokeni
         "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
         "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
         "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
-        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "null-coalescing is declared in external dag_operators but excluded from \
-                     v3_supported_dag_operators until v3 parses it end-to-end",
-        },
-        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "modulo is declared in external dag_operators but excluded from \
-                     v3_supported_dag_operators until v3 parses it end-to-end",
-        },
         other => panic!(
-            "shared syntax operator `{other}` must be classified as tokenizer punctuation or \
-             explicit parser-only debt"
+            "`v3_supported_dag_operators` includes `{other}`, but the SG-1 tokenizer bridge has \
+             no TokenKind mapping for it"
         ),
     }
 }
