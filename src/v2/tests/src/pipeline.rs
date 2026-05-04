@@ -7036,7 +7036,7 @@ fn openai_responses_200_body_round_trip_representative_wire() {
     struct OutputContent {
         #[serde(rename = "type")]
         content_type: String,
-        text: Option<String>,
+        text: String,
         annotations: Option<Vec<Annotation>>,
     }
 
@@ -7105,7 +7105,7 @@ fn openai_responses_200_body_round_trip_representative_wire() {
     assert_eq!(body.output[0].role.as_deref(), Some("assistant"));
     let content = &body.output[0].content.as_ref().unwrap()[0];
     assert_eq!(content.content_type, "output_text");
-    assert_eq!(content.text.as_deref(), Some("hello"));
+    assert_eq!(content.text, "hello");
     assert_eq!(
         content.annotations.as_ref().unwrap()[0].annotation_type,
         "url_citation"
@@ -7212,15 +7212,46 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
     }
 
     #[derive(serde::Deserialize)]
-    struct Citation {
-        #[serde(rename = "type")]
-        citation_type: String,
-        url: Option<String>,
-        title: Option<String>,
-        cited_text: Option<String>,
-        document_index: Option<i64>,
-        start_char_index: Option<i64>,
-        end_char_index: Option<i64>,
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Citation {
+        CharLocation {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_char_index: i64,
+            end_char_index: i64,
+        },
+        PageLocation {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_page_number: i64,
+            end_page_number: i64,
+        },
+        ContentBlockLocation {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_block_index: i64,
+            end_block_index: i64,
+        },
+        WebSearchResultLocation {
+            cited_text: String,
+            encrypted_index: String,
+            title: Option<String>,
+            url: String,
+        },
+        SearchResultLocation {
+            cited_text: String,
+            source: String,
+            title: Option<String>,
+            search_result_index: i64,
+            start_block_index: i64,
+            end_block_index: i64,
+        },
     }
 
     #[derive(serde::Deserialize)]
@@ -7232,15 +7263,51 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
 
     let wire = serde_json::json!({
         "content": [{
-            "citations": [{
-                "type": "webpage_location",
-                "url": "https://example.com/source",
-                "title": "source",
-                "cited_text": "quoted text",
-                "document_index": 0,
-                "start_char_index": 4,
-                "end_char_index": 15
-            }]
+            "citations": [
+                {
+                    "type": "char_location",
+                    "cited_text": "quoted text",
+                    "document_index": 0,
+                    "document_title": "doc",
+                    "file_id": "file_123",
+                    "start_char_index": 4,
+                    "end_char_index": 15
+                },
+                {
+                    "type": "page_location",
+                    "cited_text": "page text",
+                    "document_index": 1,
+                    "document_title": null,
+                    "file_id": null,
+                    "start_page_number": 2,
+                    "end_page_number": 3
+                },
+                {
+                    "type": "content_block_location",
+                    "cited_text": "block text",
+                    "document_index": 2,
+                    "document_title": "blocks",
+                    "file_id": null,
+                    "start_block_index": 5,
+                    "end_block_index": 6
+                },
+                {
+                    "type": "web_search_result_location",
+                    "cited_text": "web text",
+                    "encrypted_index": "enc_123",
+                    "title": "web result",
+                    "url": "https://example.com/source"
+                },
+                {
+                    "type": "search_result_location",
+                    "cited_text": "search text",
+                    "source": "search_source",
+                    "title": "search result",
+                    "search_result_index": 7,
+                    "start_block_index": 8,
+                    "end_block_index": 9
+                }
+            ]
         }],
         "usage": {
             "cache_creation_input_tokens": 11,
@@ -7253,14 +7320,93 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
     });
 
     let body: Body = serde_json::from_value(wire).expect("representative Anthropic 200 wire");
-    let citation = &body.content[0].citations.as_ref().unwrap()[0];
-    assert_eq!(citation.citation_type, "webpage_location");
-    assert_eq!(citation.url.as_deref(), Some("https://example.com/source"));
-    assert_eq!(citation.title.as_deref(), Some("source"));
-    assert_eq!(citation.cited_text.as_deref(), Some("quoted text"));
-    assert_eq!(citation.document_index, Some(0));
-    assert_eq!(citation.start_char_index, Some(4));
-    assert_eq!(citation.end_char_index, Some(15));
+    let citations = body.content[0].citations.as_ref().unwrap();
+    match &citations[0] {
+        Citation::CharLocation {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_char_index,
+            end_char_index,
+        } => {
+            assert_eq!(cited_text, "quoted text");
+            assert_eq!(*document_index, 0);
+            assert_eq!(document_title.as_deref(), Some("doc"));
+            assert_eq!(file_id.as_deref(), Some("file_123"));
+            assert_eq!(*start_char_index, 4);
+            assert_eq!(*end_char_index, 15);
+        }
+        _ => panic!("expected char_location citation"),
+    }
+    match &citations[1] {
+        Citation::PageLocation {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_page_number,
+            end_page_number,
+        } => {
+            assert_eq!(cited_text, "page text");
+            assert_eq!(*document_index, 1);
+            assert!(document_title.is_none());
+            assert!(file_id.is_none());
+            assert_eq!(*start_page_number, 2);
+            assert_eq!(*end_page_number, 3);
+        }
+        _ => panic!("expected page_location citation"),
+    }
+    match &citations[2] {
+        Citation::ContentBlockLocation {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_block_index,
+            end_block_index,
+        } => {
+            assert_eq!(cited_text, "block text");
+            assert_eq!(*document_index, 2);
+            assert_eq!(document_title.as_deref(), Some("blocks"));
+            assert!(file_id.is_none());
+            assert_eq!(*start_block_index, 5);
+            assert_eq!(*end_block_index, 6);
+        }
+        _ => panic!("expected content_block_location citation"),
+    }
+    match &citations[3] {
+        Citation::WebSearchResultLocation {
+            cited_text,
+            encrypted_index,
+            title,
+            url,
+        } => {
+            assert_eq!(cited_text, "web text");
+            assert_eq!(encrypted_index, "enc_123");
+            assert_eq!(title.as_deref(), Some("web result"));
+            assert_eq!(url, "https://example.com/source");
+        }
+        _ => panic!("expected web_search_result_location citation"),
+    }
+    match &citations[4] {
+        Citation::SearchResultLocation {
+            cited_text,
+            source,
+            title,
+            search_result_index,
+            start_block_index,
+            end_block_index,
+        } => {
+            assert_eq!(cited_text, "search text");
+            assert_eq!(source, "search_source");
+            assert_eq!(title.as_deref(), Some("search result"));
+            assert_eq!(*search_result_index, 7);
+            assert_eq!(*start_block_index, 8);
+            assert_eq!(*end_block_index, 9);
+        }
+        _ => panic!("expected search_result_location citation"),
+    }
     assert_eq!(body.usage.cache_creation_input_tokens, Some(11));
     assert_eq!(body.usage.cache_read_input_tokens, Some(22));
     assert_eq!(body.usage.service_tier.as_deref(), Some("standard"));

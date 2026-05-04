@@ -136,15 +136,12 @@ type AnthropicChatMessage
 
 // Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
 // Tool-use / image assistant rows remain outside this carrier.
-type AnthropicMessages200Citation {
-  type: String
-  url: String?
-  title: String?
-  cited_text: String?
-  document_index: Int?
-  start_char_index: Int?
-  end_char_index: Int?
-}
+type AnthropicMessages200Citation
+  = CharLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_char_index: Int, end_char_index: Int }
+  | PageLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_page_number: Int, end_page_number: Int }
+  | ContentBlockLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_block_index: Int, end_block_index: Int }
+  | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
+  | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
 
 type AnthropicMessages200TextBlock {
   type: String

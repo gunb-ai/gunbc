@@ -108,19 +108,15 @@ type AnthropicStopReason
   | Refusal
   | ModelContextWindowExceeded
 
-// 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200Citation`
-// in `dsl/extdeps/llm/anthropic.dag`. Citation variants use optional fields
-// because the provider's citation object family shares a `type` tag but exposes
-// source-specific coordinates.
-type AnthropicMessages200Citation {
-  type:             String
-  url:              String?
-  title:            String?
-  cited_text:       String?
-  document_index:   Int?
-  start_char_index: Int?
-  end_char_index:   Int?
-}
+// 🟢 TERMINAL response coproduct mirroring `AnthropicMessages200Citation`
+// in `dsl/extdeps/llm/anthropic.dag`. Each citation variant carries only the
+// documented coordinates for that wire tag.
+type AnthropicMessages200Citation
+  = CharLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_char_index: Int, end_char_index: Int }
+  | PageLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_page_number: Int, end_page_number: Int }
+  | ContentBlockLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_block_index: Int, end_block_index: Int }
+  | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
+  | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
 
 // 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200TextBlock`
 // in `dsl/extdeps/llm/anthropic.dag`. Narrow text slice of the 200 response's

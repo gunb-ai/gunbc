@@ -201,13 +201,20 @@ data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> 
 // Narrow 200-OK wire slice for OpenAI Responses (`response { 200 => … }`).
 // The operation's current projections read text-output and usage token counts,
 // so this carrier models the stable message/output_text path plus token-detail
-// usage rows. Tool, reasoning-detail, error, and multimodal output item variants
-// remain outside this proof-of-shape slice.
+// usage rows. Refusal content, tool, reasoning-detail, error, and multimodal
+// output item variants remain outside this proof-of-shape slice. `text` is
+// required here so the typed 200 body cannot inhabit this projection path
+// without the string field the operation declares.
 type OpenAiResponses200OutputContent {
   type: String
-  text: String?
+  text: String
   annotations: List<OpenAiChatCompletion200Annotation>?
 }
+
+data structural_coverage_gap_openai_responses_200_residual: List<String> = [
+  "closure:openai_responses_200_residual|OpenAiResponses200OutputContent|variant_pending:refusal|trigger:Responses output content coproduct surface",
+  "closure:openai_responses_200_residual|OpenAiResponses200OutputItem|variant_pending:tool_calls|variant_pending:reasoning|variant_pending:error|variant_pending:multimodal_output|trigger:Responses output item coproduct surface"
+]
 
 type OpenAiResponses200OutputItem {
   id: String?
