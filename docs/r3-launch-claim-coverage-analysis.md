@@ -12,7 +12,7 @@ Research PM (loyal-swift-270, `gunb-ai/ctrl`) ran a viability-research project o
 
 - Round 1: gunbc fits failure-cluster economics at the *adoption* level (Wing/Ballerina/Pony/Crystal pattern) — but this conflated technical-claim with adoption-economics.
 - Round 2: reframed around *technical-advantage demonstration*. Building demos that falsify or confirm gunbc's claim to exponential advantage over traditional languages.
-- Round 3 (in flight): adversarial-test of R3 design + prioritization against the sharpened claim. Phase 3 invariant-mapping landed at 6/21 = 28.6% Class B→A upgrade rate (within informed prior 5–30%). **Adversarial gap analyses against four target systems** — LLVM (`gunb-ai/ctrl#365`, merged; 0/35 As after adversarial review), Kubernetes (`gunb-ai/ctrl#366`, merged; 0/18), Discord/Elixir (`gunb-ai/ctrl#367`, merged; 0/18), PyTorch (`gunb-ai/ctrl#368`, open; 6/19) — provide convergent empirical grounding for §4 exhaustivity argument and §5 Class A/B/C measurement target. The four PRs converge on a substantive thesis recommendation (see §6e Tier 4 "out of scope, declared").
+- Round 3 (in flight): adversarial-test of R3 design + prioritization against the sharpened claim. Phase 3 invariant-mapping landed at 6/21 = 28.6% Class B→A upgrade rate (within informed prior 5–30%). **Adversarial gap analyses against four target systems** — LLVM (`gunb-ai/ctrl#365`, merged; 0/35 As after adversarial review), Kubernetes (`gunb-ai/ctrl#366`, merged; 0/18), Discord/Elixir (`gunb-ai/ctrl#367`, merged; 0/18), PyTorch (`gunb-ai/ctrl#368`, open; 6/19) — provide convergent empirical grounding for §4 exhaustivity argument and §5 Class A/B/C measurement target. The four PRs converge on a substantive thesis recommendation (see §6d Tier 4 "out of scope, declared").
 
 Brian's reframe through this work surfaced three clarifications:
 
@@ -39,8 +39,8 @@ Both layers together, in honest framing:
 The "within the authored substrate" qualifier is load-bearing per the four-PR adversarial-gap-analysis portfolio (PyTorch surfaced multiple intent-soundness properties — precision-parametric algebra; non-smooth subdifferential selectors; allocator-state-machine modeling — that the substrate cannot yet express, not because they're outside the thesis but because the carriers aren't authored). Three structural classes worth distinguishing:
 
 - **Today-banked substrate**: Tier 1 (R1) + L1/L7 + CX (R1+R2 closed). Intent-soundness validation already cashes for properties expressible against this substrate.
-- **Thesis-supported but not yet authored**: e.g., post-R3 phantom-parameters, `Algebra<Precision>`, `Determinism` lens, bounded-atom-creation lens — surfaced across the four adversarial PRs. Within thesis scope; substrate carriers pending. See §6f.
-- **Outside thesis** (intent-vs-want; truly empirical/statistical residuals; out-of-scope categories per §6e Tier 4 recommendation).
+- **Thesis-supported but not yet authored**: e.g., post-R3 phantom-parameters, `Algebra<Precision>`, `Determinism` lens, bounded-atom-creation lens — surfaced across the four adversarial PRs. Within thesis scope; substrate carriers pending. See §6e.
+- **Outside thesis** (intent-vs-want; truly empirical/statistical residuals; out-of-scope categories per §6d Tier 4 recommendation).
 
 This is the strong claim, and it's defensible because it's honest about both the human-specification gap (which compiler-people read as epistemic seriousness) AND the substrate-extension trajectory (which prevents collapsing in-flight substrate work into already-banked claims). The structural claim survives intact; the behavioral-analysis claim is sui-generis.
 
@@ -96,6 +96,10 @@ The "100% back it up" empirical question: **is 1+2+3+4 actually exhaustive over 
 
 That's measurable. See §5.
 
+**Category 5 sharpening (per K8s + PyTorch adversarial PRs)**: Cat 5 covers **axis derivation** — the structural facts that define the integration-testgen surface (build dependencies; linker section layout; sanitizer contracts; heuristic monotonicity). It does **NOT** claim exhaustive **cell sampling** across vendor-runtime cross-products (e.g., "every kernel × every accelerator × every driver × every CUDA version"). Cell sampling is empirical-residual territory; that's an explicit non-claim, not a gap. The 5th gate's `integration_testgen_demonstrated_on_at_least_one_domain` requires demonstrating axis derivation works on at least one domain; cell-sampling saturation is post-R3 ecosystem work bounded by the substrate's expressive surface.
+
+**The bounded-iteration-closed-system qualifier**: across the four-PR portfolio, the qualifier surfaces as load-bearing. LLVM (local thesis strong; toolchain/global limits genuinely outside) + Kubernetes (matrix-cell-sampling problem) + Discord/Elixir (OTP territory disclaimed by THESIS line 23) + PyTorch (data-dependent numerical instability + cross-process coordination) converge on naming the boundary explicitly. See §6d for the Tier 4 recommendation.
+
 ## 5. Three-class behavioral partition (for exhaustive-coverage demo)
 
 For a chosen `.dag`-scope program, intra-program bugs partition into three classes:
@@ -135,20 +139,56 @@ Measuring this partition on a moderate-complexity `.dag`-scope program is the **
 
 ### 6c. Default behavior on application-level conventions
 
-**Where**: not yet routed; surfaced through framing discussion 2026-05-04.
+**Where**: not yet routed; surfaced through framing discussion 2026-05-04; sharpened by research PM review.
 
 **Question**: when the user doesn't declare an application-level convention (§3b), what does gunbc produce by default?
 
-Three options:
+Three options assessed:
 1. **Structurally-derived default** — simplest valid form per substrate
-2. **Project-config default** — project-level declaration shifts defaults
+2. **Project-config default** — project-level declaration shifts defaults (option 1 + project-scope override)
 3. **No default; arbitrary-but-consistent** — compiler picks one and is consistent
 
-**PM read**: option (1) or (2) is structurally cleaner than (3). Worth surfacing on `gunb-ai/gunbc#1586` anchor 5 if the team hasn't worked through it.
+**Recommendation**: option 1 with optional option-2 project-scope override. **Option 3 explicitly rejected per research PM review** — under adversarial review, arbitrary-but-consistent introduces silent intent-vs-want drift that the behavioral-analysis surface cannot recover from after-the-fact (you can't surface "here's what your intent does" if the compiler chose the intent you didn't declare).
 
-**Status**: not yet routed; recommend folding into #1586 anchor 5 discussion alongside §3c policy.
+**Status**: not yet routed to #1586 anchor 5; recommend folding into in-thread discussion alongside §6a §3c policy.
 
-### 6d. Verification Mgr domain selection for 5th gate
+### 6d. Tier 4 "out of scope, declared" — pending Director ratification (NEW; convergent across four adversarial PRs)
+
+**Where**: not yet routed; surfaced through research PM PR review of this doc.
+
+**Recommendation**: add an explicit **Tier 4 — out of scope, declared** section to `THESIS.md` naming the boundaries gunbc *does not claim*. Today THESIS reads as unbounded; explicit boundaries make the surrounding claims more credible (compiler-people read scoped-with-named-boundaries as epistemically serious; unbounded-by-omission as marketing).
+
+**Convergent boundaries from the four-PR adversarial portfolio**:
+
+- **Kernel-implementation correctness** — verified-compilation territory (CompCert, F\*, Lean). gunbc provides structural facts those tools consume; pure Transform-preservation proof is their domain.
+- **Vendor-runtime cross-product cell-sampling** — exhaustive coverage across hardware × driver × runtime version cells. gunbc derives the axes structurally; saturating cells is empirical-residual.
+- **Data-dependent numerical stability** — emergent training dynamics; algorithm-stability-as-empirical-property. Adjacent to but distinct from `Algebra<Precision>` substrate work (§6e).
+- **Cross-process coordination** — distributed-systems consensus; pi-calculus / TLA+ territory. gunbc local thesis strong; cross-process formal proof is its own discipline.
+- **OTP-style fault tolerance** — Erlang/Elixir-native. THESIS line 23 already disclaims; recommend making the disclaimer Tier-4-explicit.
+
+**Why this matters for launch**:
+- Compiler-people reading the launch material will probe boundaries adversarially. Explicit Tier 4 naming defangs the probe (we already declared the boundary).
+- The §2 strong claim ("validates intent soundness completely within the authored substrate; provides behavioral analysis beyond alternatives") is more defensible against adversarial framing if Tier 4 is explicit.
+- Per `feedback_construction_over_ratchets`, Tier 4 isn't a heuristic patch — it's a structural commitment that the closed-system principle's *closure* is bounded; bounded closure with explicit non-claims survives review better than implicit unbounded closure.
+
+**Decision needed (Director / Brian)**: ratify Tier 4 addition to `THESIS.md` (or thesis-mapping doc). If ratified, recommend folding into the operational-equivalence-stance amendment cycle (§7b) — both are thesis-doc additions surfaced by the adversarial review.
+
+**Status**: pending Director routing; recommend separate focused PM-to-Director ask after this doc lands.
+
+### 6e. `Algebra<Precision>` substrate need — pending Substrate Mgr review (NEW; surfaced from PyTorch adversarial PR)
+
+**Where**: not yet routed; surfaced through research PM PR review.
+
+**Question**: PyTorch adversarial gap analysis (`gunb-ai/ctrl#368`) surfaced a substrate need: precision-parametric algebra. Adjacent to but stronger than post-R3 phantom-parameter wrappers. Would let users declare "this `Float` operation is precision-parametric over {f16, f32, f64}; algebraic laws hold within precision class; cross-precision conversion has typed cost."
+
+**Implications**:
+- Within thesis scope (algebra-with-typed-parameter is consonant with the `Algebra<C>` framing)
+- Substrate carriers pending — not in current R3 plan
+- Touches `T-Numeric-Construction` (refined integer types; Magnitude / ApproximateField work) but extends the carrier shape
+
+**Status**: pending Substrate Mgr (jolly-ram-908 #1130) review of substrate-extension scope. Could be R3 substrate-completion work absorbed under §187 standing protocol if classified as substrate-gap; otherwise post-R3 ecosystem.
+
+### 6f. Verification Mgr domain selection for 5th gate
 
 **Where**: Director-deferred to Verification Mgr (fierce-ferret-556 #1276) per ratification at [#828 comment-4367830997](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4367830997).
 
@@ -248,7 +288,7 @@ Pre-Framing-C: 5th R3 gate (`integration_testgen_demonstrated_on_at_least_one_do
 
 Post-Framing-C: **the 5th gate is the structural commitment that gunbc delivers on the "behavioral analyses beyond other languages" claim**. Without demonstration, that part of the strong claim doesn't cash. With demonstration, the claim is honest: *"here's intent-vs-want analysis that no other language gives you."*
 
-This makes Verification Mgr's domain selection (§6d) materially more important for launch positioning.
+This makes Verification Mgr's domain selection (§6f) materially more important for launch positioning.
 
 ### 8d. Cross-program impact on ctrl's Phase 4 launch narrative
 
@@ -266,18 +306,21 @@ Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c 
 
 ### 9a. ctrl-side dispatches
 
-- **vivid-dove-240 re-task**: from "find LLVM bugs" (retrospective citation) to "exhaustive coverage demo on chosen `.dag`-scope program with Class A/B/C partition measurement." Pending ctrl-side dispatch.
+- **vivid-dove-240 re-task**: from "find LLVM bugs" (retrospective citation) to "exhaustive coverage demo on chosen `.dag`-scope program with Class A/B/C partition measurement, ideally measured on both A/B/C bug-shape axis AND substrate-supported / proof-supported / empirical-residual evidentiary axis (per orthogonal-axis reframe in flight)." Pending ctrl-side dispatch.
 - **`.dag`-scope program selection**: purpose-built moderate complexity, ~100-300 LOC, all five Behaviors + multiple algebras + user invariants + effects + at least one Class B example. Pending ctrl-side decision.
-- **Phase 4 launch-narrative draft**: partial draft against ratified categories; final lock pending §6a + §6b resolution.
+- **Phase 4 launch-narrative draft**: partial draft against ratified categories; final lock pending §6a + §6b + §6d resolution.
+- **Three-bucket / two-axis viability synthesis artifact** (NEW; pending Brian's confirmation of orthogonal-axis reframe per `gunb-ai/ctrl#339`): consolidates the four adversarial findings (LLVM/K8s/Discord/PyTorch) into a single research artifact with the substrate-supported / proof-supported / empirical-residual partition + Tier 4 boundary recommendation. This artifact is what makes vivid-dove-240's re-task target measurable — without it, the Class A/B/C measurement on a chosen `.dag`-scope program lacks the partition framework to compare against external systems. Will dispatch on Brian's confirm.
 
 ### 9b. gunbc-side dispatches
 
-- **Verification Mgr domain selection** for 5th gate (§6d): pending.
+- **Verification Mgr domain selection** for 5th gate (§6f): pending.
 - **r3-structure.md amendment**: lane scope addition for 5th gate (§7a). Queued for after #1586 design-doc lands; folds into amendment cycle.
-- **`r2-r3-thesis-mapping.md` amendment**: operational-equivalence thesis-stance (§7b) + bidirectional disposition-row from §7e. Queued for after #1586 design-doc lands.
+- **`r2-r3-thesis-mapping.md` / `THESIS.md` amendment**: operational-equivalence thesis-stance (§7b) + bidirectional disposition-row from §7e + **Tier 4 "out of scope, declared" addition (§6d) if Director ratifies**. Queued for after #1586 design-doc lands.
 - **#1586 §3c policy convergence** (§6a): Substrate Mgr + Director response in-thread.
 - **Director response on OQ #4 cpp/ scope** (§6b): pending.
 - **#1586 default-behavior on application-level conventions** (§6c): not yet routed; recommend folding into anchor 5 discussion.
+- **Director ratification on Tier 4 "out of scope, declared"** (§6d, NEW): focused PM-to-Director ask after this doc lands. Convergent across four adversarial PRs; strongest single thesis-edit recommendation from leverage research.
+- **Substrate Mgr review of `Algebra<Precision>`** (§6e, NEW): substrate-extension scope question; could be R3 substrate-completion work absorbed under §187 standing protocol, or post-R3.
 
 ### 9c. Cross-program signal channels (active)
 
@@ -315,6 +358,11 @@ Will respond to review feedback in-thread; will author the queued amendments (r3
 
 - **Director ratifications**: `gunb-ai/gunbc#828` comment-4366929544 (bidirectional architecture); comment-4367089130 (cascade-slip protocol); comment-4367830997 (5th gate + operational-equivalence stance)
 - **Research PM thread**: `gunb-ai/ctrl#339` (full coordination history)
+- **Four-PR adversarial-gap-analysis portfolio** (empirical grounding for §4 + §5 + §6d):
+  - LLVM gap analysis: `gunb-ai/ctrl#365` (merged; 0/35 As after adversarial review)
+  - Kubernetes gap analysis: `gunb-ai/ctrl#366` (merged; 0/18; matrix-cell-sampling boundary)
+  - Discord/Elixir gap analysis: `gunb-ai/ctrl#367` (merged; 0/18; OTP territory disclaimed)
+  - PyTorch gap analysis: `gunb-ai/ctrl#368` (open; 6/19; surfaced `Algebra<Precision>` need + data-dependent numerical instability boundary)
 - **Coordination thread**: `gunb-ai/gunbc#1586` (bidirectional language-spec architecture; six anchor questions)
 - **Substrate Mgr signal**: `gunb-ai/gunbc#1130` comment-4367070285 (consumer-requirement reframing for `lens_enforcement_carrier_landed`)
 - **Thesis grounding for §2 framing**: `docs/thesis/what-else-falls-out.md:6-20` §"Frontend/backend agnosticism"; `THESIS.md:155-405` thesis claims list
