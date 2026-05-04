@@ -4268,8 +4268,9 @@ fn list_element_type_with_subst(
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             list_element_type_with_subst(dag, *next, subst, depth + 1)
         }
-        _ => list_element_type(dag, expected_type)
-            .map(|element| resolve_decl_with_subst_lower(dag, element, subst, 0).unwrap_or(element)),
+        _ => list_element_type(dag, expected_type).map(|element| {
+            resolve_decl_with_subst_lower(dag, element, subst, 0).unwrap_or(element)
+        }),
     }
 }
 
@@ -4346,9 +4347,11 @@ fn map_key_type_is_not_string_with_subst(
         return false;
     }
     match &dag.declaration(expected_type).connective {
-        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst
-            .lookup(expected_type)
-            .is_some_and(|bound| map_key_type_is_not_string_with_subst(dag, bound, subst, depth + 1)),
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            subst.lookup(expected_type).is_some_and(|bound| {
+                map_key_type_is_not_string_with_subst(dag, bound, subst, depth + 1)
+            })
+        }
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             map_key_type_is_not_string_with_subst(dag, *next, subst, depth + 1)

@@ -447,7 +447,10 @@ fn test_3a2_record_data_discovers_list_through_type_param_substitution() {
         .declaration_by_name("list_slot")
         .expect("list_slot must exist");
     let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
-        panic!("expected list_slot to lower structurally, got {:?}", decl.value_body);
+        panic!(
+            "expected list_slot to lower structurally, got {:?}",
+            decl.value_body
+        );
     };
     let value = fields
         .iter()
@@ -481,7 +484,10 @@ fn test_3a2_record_data_discovers_sum_through_type_param_substitution() {
         .declaration_by_name("maybe_slot")
         .expect("maybe_slot must exist");
     let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
-        panic!("expected maybe_slot to lower structurally, got {:?}", decl.value_body);
+        panic!(
+            "expected maybe_slot to lower structurally, got {:?}",
+            decl.value_body
+        );
     };
     let value = fields
         .iter()
