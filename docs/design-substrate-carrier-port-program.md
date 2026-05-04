@@ -52,7 +52,7 @@ For each family: **Shape** (sum/product/record/constraint) · **Consumers** (v2 
 - **Consumers.** v2: complexity.dag proof construction, cost composition, the termination checker (`std.graph.is_valid_proof`). v3 promotions unlocked: `complexity.dag` PROXY → COMPLETE (partial — also needs family I/C), `cost.dag` PROXY → COMPLETE (partial — needs family I for `SubValueRelation`).
 - **Dependencies.** Internal-only: `DescentEvidence` requires `Ordering` from `std.algebra` (already v3-reachable as `dsl/std/algebra.dag`). `RankingDimension.param: String` is a bootstrap-constraint bridge — file header explicitly says "When .dag supports function references, these should become structural." Port with `String` for now; do not widen scope to "teach substrate function refs" in this lane.
 - **Blockers.** None structural. This family is the cleanest port — it's pure data + pure lattice fns. Port target is either `src/v3/std/termination.dag` (mirroring v3 std layout) or direct consumption of `dsl/std/termination.dag` from v3 lenses once the v3 grammar subset covers it. The file-preference-rank scaffold (ROADMAP) means `src/v3/std/*` vs `dsl/std/*` is currently a routing call, not a shape decision.
-- **Lane size.** S. Mostly declarative — carriers + lattice fns. No substrate-level additions required.
+- **Lane size.** S. Mostly declarative — carriers + merge helpers. No substrate-level additions required.
 
 ### 3.2 Family C — `CallPattern` + lowering (`computation.dag`)
 
@@ -67,7 +67,7 @@ For each family: **Shape** (sum/product/record/constraint) · **Consumers** (v2 
 
 - **Shape.** Three tiers.
   - *Tier 1 (structural):* `RecursionShape` 5-variant enum; `InductiveField` record; `SubValueRelation` 5-variant coproduct with nested `InductiveField` / `ShrinkFactor` payloads.
-  - *Tier 2 (lattice):* `meet_sub_value` / `join_sub_value` / `compose_sub_value*` — five functions, each pure, each a total match.
+  - *Tier 2 (merge helpers):* `meet_sub_value` / `join_sub_value` / `compose_sub_value*` — five functions, each pure, each a total match.
   - *Tier 3 (cost algebra):* `CostBound` 5-variant recursive-in-product-slots sum (`ProductBound`, `SumBound`, `MaxBound` carry `List<CostBound>`), `AtomicCost`, `PolynomialExponent`, `RecurrenceForm`, plus `master_theorem` and ~15 named bound constructors.
 - **Consumers.** v2: complexity.dag cost derivation, the named-bound library for analysis receipts. v3 promotions: this is the tier that gets `cost.dag` and `complexity.dag` from PROXY to COMPLETE — v2's symbolic `CostExpr` / `SizeExpr` / work-span / asymptotic class are all phrased in terms of `CostBound` and `SubValueRelation`.
 - **Dependencies.** Family T (`DescentEvidence`, `RankingDimension`), family C (`ShrinkFactor`, `CallPattern`, `LoweringTarget`). Both must land first.
@@ -182,7 +182,7 @@ This is the same shape as the core port program at a different layer: **per-meth
 
 - **Emit gaps** (historical `match` on user-defined sums; largely closed per `docs/v3-lens-capability-register.md`). **`parallelism.dag`** remains blocked on Stage 2e wiring, not on the imported-sum emit path. Tracked in ROADMAP's receipt-closure wave where still relevant.
 - **File-preference rank routing** (`src/v3/std/*` vs `dsl/std/*`). The lanes inherit whatever the rank-scaffold decision is at the time they run. They do not re-open that call.
-- **Lattice-consolidation** (ROADMAP P2 "four hand-rolled `BoundedLattice<T>`"). `DescentEvidence` and `SubValueRelation` are two of the four. This program ports them as-is; the algebra-declaration consolidation is a separate lane that can run before, during, or after this program without coupling.
+- **Lattice-consolidation** (ROADMAP P2 "four hand-rolled `BoundedLattice<T>`"). `DescentEvidence` remains in that bucket; `SubValueRelation` is now classified as fail-closed merge helpers, not a `BoundedLattice` witness. The algebra-declaration consolidation is a separate lane that can run before, during, or after this program without coupling.
 - **SG-2c / parser cutover / any self-hosting-cycle work.** Orthogonal.
 
 ## 8. Related
