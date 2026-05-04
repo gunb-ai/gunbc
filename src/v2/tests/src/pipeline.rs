@@ -6364,6 +6364,39 @@ type RealEnum
 }
 
 #[test]
+fn local_same_name_coproduct_wire_contract_is_not_authority() {
+    let source = r#"module local_spoof_coproduct_wire_contract
+import std.serialization { VariantEncoding }
+
+type CoproductWireContract {
+  coproduct: String
+  encoding: VariantEncoding
+}
+
+data spoof_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "kind", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "local_spoof_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/local_spoof_coproduct_wire_contract.rs");
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "local same-name types must not spoof std.serialization.CoproductWireContract; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
 fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
     let source = r#"module bad_affix_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
@@ -6388,6 +6421,101 @@ type RealEnum
             && content
                 .contains("variant UserText does not satisfy declared wire rename prefix: Usr"),
         "declared affix policy must fail closed when a variant does not match; got:\n{content}"
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_string_variant_requires_unit_variants() {
+    let source = r#"module fielded_string_variant_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data string_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: StringVariant { naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "fielded_string_variant_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(
+        &result,
+        "src/fielded_string_variant_coproduct_wire_contract.rs",
+    );
+    assert!(
+        content.contains("compile_error!")
+            && content.contains(
+                "CoproductWireContract StringVariant requires a nullary-only coproduct: RealEnum"
+            ),
+        "fielded coproducts must not accept plain StringVariant wire contracts; got:\n{content}"
+    );
+}
+
+#[test]
+fn internally_tagged_coproduct_wire_contract_requires_literal_tag_field() {
+    let source = r#"module malformed_internal_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data bad_internal_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "malformed_internal_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/malformed_internal_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains("InternallyTaggedObject requires a literal tag_field"),
+        "malformed InternallyTaggedObject contracts must fail closed; got:\n{content}"
+    );
+}
+
+#[test]
+fn coproduct_wire_contract_requires_declared_naming_fields() {
+    let source = r#"module malformed_naming_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+data missing_naming_contract: CoproductWireContract = {
+  coproduct: "MissingNamingEnum",
+  encoding: InternallyTaggedObject { tag_field: "type" }
+}
+
+data missing_prefix_contract: CoproductWireContract = {
+  coproduct: "MissingPrefixEnum",
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixAndSnakeCase }
+}
+
+type MissingNamingEnum
+  = RealPayload { value: String }
+
+type MissingPrefixEnum
+  = UserText { text: String }
+"#;
+    let result = compile_dag_named(
+        "malformed_naming_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/malformed_naming_coproduct_wire_contract.rs");
+    assert!(
+        content.contains("compile_error!")
+            && content.contains("InternallyTaggedObject requires a naming policy")
+            && content.contains("StripPrefixAndSnakeCase requires a literal prefix"),
+        "malformed naming policies must fail closed at decode time; got:\n{content}"
     );
 }
 

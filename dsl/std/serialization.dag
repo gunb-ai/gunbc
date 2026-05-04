@@ -16,6 +16,16 @@ module std.serialization
 type DeclarationRef = String
 
 // How enum variant names map to wire strings.
+//
+// Dissolution receipt for this coproduct extension:
+// - Classification: retained domain vocabulary, not an emitter-local heuristic.
+// - Not dissolved into free strings: the variants are the provider wire naming
+//   policies authored in source rows and consumed by emitters.
+// - Not dissolved into per-provider side tables: provider-specific affixes stay
+//   row data on the exact contract that needs them.
+// - Removal trigger: when declaration references and wire schemas are fully
+//   data-native, these variants may move unchanged into that schema authority;
+//   until then, this coproduct is the single source-level naming policy surface.
 // AsAuthored: variant name as-is (User → "User", Bot → "Bot").
 // SnakeCase: variant name lowercased with underscores (EndTurn → "end_turn").
 // StripPrefixAndSnakeCase / StripSuffixAndSnakeCase /
