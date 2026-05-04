@@ -57,15 +57,17 @@ jobs:
       - name: cargo fmt --all --check
         run: cargo fmt --all --check
 
-  # Policy-only job (T-V2 G-2-prereq-ci): no legacy compiler transport. Historical
-  # CI ran the legacy DAG runner here; that path
-  # is deleted to cut wall time. Bootstrap `--verify` and the full compiler/test
-  # surface remain under the `v3` job. `dsl/gunbc/tools/ci_runner.dag::run_ci_pipeline`
-  # still exists for local/manual reproduction.
+  # Policy + bootstrap snapshot verify (T-V2 G-2-prereq-ci): shell policy checks
+  # plus `regen_bootstrap --verify` so stale `bootstrap_generated*.rs` cannot merge
+  # when only this job is green (#1543). Legacy CI previously built and ran the
+  # DAG-language compiler from `src/v2/` in this job; that release transport is
+  # removed to cut wall time. Full compiler + test surface stays in the `v3`
+  # job. Local reproduction of the old pipeline: `dsl/gunbc/tools/ci_runner.dag`
+  # `run_ci_pipeline`.
   ci:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
