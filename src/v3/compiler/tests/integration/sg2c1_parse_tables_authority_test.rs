@@ -22,6 +22,7 @@ use v3_compiler::operators;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
+use v3_compiler::tokenize::TokenKind;
 use v3_compiler::tokenize_for_test;
 
 const PARSE_TABLES_DAG: &str = include_str!("../../parse_tables.dag");
@@ -569,13 +570,13 @@ fn soft_keyword_ident_service_still_parses_in_name_position() {
     let tokens = tokenize_for_test(source, "soft_keyword_ident_service.v3")
         .expect("tokenize identifier service");
     assert!(
-        tokens.first().map(|t| format!("{:?}", t.kind)).as_deref() == Some("KwFn"),
+        matches!(tokens.first().map(|t| &t.kind), Some(TokenKind::KwFn)),
         "fixture should still start with fn"
     );
     assert!(
         tokens
             .iter()
-            .any(|t| format!("{:?}", t.kind) == "Ident(\"service\")"),
+            .any(|t| matches!(&t.kind, TokenKind::Ident(s) if s == "service")),
         "service should tokenize as a normal identifier while top-level service syntax is deactivated; tokens: {tokens:?}"
     );
     let parsed =
