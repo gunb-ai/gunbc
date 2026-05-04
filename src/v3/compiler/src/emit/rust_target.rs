@@ -1463,18 +1463,82 @@ fn parse_collection_ops(
     declaration: DeclarationId,
 ) -> Result<CollectionOpsBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
-    let fold_contract = require_field_decl_ref(fields, "fold_contract", declaration)?;
-    require_fold_method_template_contract(dag, fold_contract).map_err(|detail| {
+
+    let concat_method_decl = dag.declaration_by_name("concat_method").ok_or(
         EmitError::MalformedTargetSyntax {
-            declaration: fold_contract,
-            detail,
-        }
+            declaration,
+            detail: "internal: concat_method missing from std.methods registry",
+        },
+    )?;
+    let length_method_decl = dag.declaration_by_name("length_method").ok_or(
+        EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: length_method missing from std.methods registry",
+        },
+    )?;
+    let fold_method_decl = dag.declaration_by_name("fold_method").ok_or(
+        EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: fold_method missing from std.methods registry",
+        },
+    )?;
+
+    let concat_contract = require_field_decl_ref(fields, "concat_contract", declaration)?;
+    require_method_template_contract_dag_method(
+        dag,
+        concat_contract,
+        "concat_contract",
+        concat_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: concat_contract,
+        detail,
+    })?;
+    let concat = method_contract_single_emit_template_string(dag, concat_contract)?;
+
+    let length_contract = require_field_decl_ref(fields, "length_contract", declaration)?;
+    require_method_template_contract_dag_method(
+        dag,
+        length_contract,
+        "length_contract",
+        length_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: length_contract,
+        detail,
+    })?;
+    let length = method_contract_single_emit_template_string(dag, length_contract)?;
+
+    let is_empty_contract = require_field_decl_ref(fields, "is_empty_contract", declaration)?;
+    require_method_template_contract_dag_method(
+        dag,
+        is_empty_contract,
+        "is_empty_contract",
+        length_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: is_empty_contract,
+        detail,
+    })?;
+    let is_empty = method_contract_single_emit_template_string(dag, is_empty_contract)?;
+
+    let fold_contract = require_field_decl_ref(fields, "fold_contract", declaration)?;
+    require_method_template_contract_dag_method(
+        dag,
+        fold_contract,
+        "fold_contract",
+        fold_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: fold_contract,
+        detail,
     })?;
     let fold = method_contract_single_emit_template_string(dag, fold_contract)?;
+
     Ok(CollectionOpsBinding {
-        concat: syntax_field_string(fields, "concat", declaration)?,
-        length: syntax_field_string(fields, "length", declaration)?,
-        is_empty: syntax_field_string(fields, "is_empty", declaration)?,
+        concat,
+        length,
+        is_empty,
         fold,
         map: syntax_field_string(fields, "map", declaration)?,
         filter: syntax_field_string(fields, "filter", declaration)?,
@@ -1520,7 +1584,7 @@ fn method_contract_single_emit_template_string(
     if ctor_name != "SingleTemplate" {
         return Err(EmitError::MalformedTargetSyntax {
             declaration: contract_decl,
-            detail: "collection fold contract must use MethodEmitTemplate.SingleTemplate today",
+            detail: "CollectionOps MethodTemplateContract must use MethodEmitTemplate.SingleTemplate today",
         });
     }
     let [FieldValue::Literal(LiteralBits::String(template))] = payload.as_slice() else {

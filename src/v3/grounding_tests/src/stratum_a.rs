@@ -36,94 +36,154 @@ const METHOD_REF_FIELDS: &[&str] = &["decl"];
 /// Director-locked Phase 1 row counts (`t-ground-tests.md`; bump when `*_method_template_contracts.dag` grows).
 ///
 /// **List scope only:** these counts cover `data *_method_template_contracts: List<MethodTemplateContract>`.
-/// Per-target `fold_method` contracts promoted to named `CollectionOps.fold_contract` carriers are
-/// **not** list elements — `verify_stratum_a_lockstep_all_targets` closes that receipt separately
-/// (`verify_language_spec_fold_contract_wiring`).
+/// Per-target `CollectionOps.*_contract` carriers promoted to named
+/// `MethodTemplateContract` declarations outside the per-target lists are
+/// **not** list elements — `verify_stratum_a_lockstep_all_targets` closes that
+/// receipt separately (`verify_language_spec_collection_ops_contract_wiring`).
 pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
     &[(RUST_LIST, 13), (PYTHON_LIST, 18), (GO_LIST, 14)];
 
-/// `(CollectionOps data name, named MethodTemplateContract declaration for fold_method)`.
-const LANGUAGE_SPEC_FOLD_CONTRACT_WITNESSES: &[(&str, &str)] = &[
+/// (`CollectionOps` decl, field name, named `MethodTemplateContract` decl, expected registry method name).
+const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str)] = &[
     (
         "rust_collection_ops",
+        "concat_contract",
+        "rust_language_spec_free_monoid_concat_contract",
+        "concat",
+    ),
+    (
+        "rust_collection_ops",
+        "length_contract",
+        "rust_language_spec_free_monoid_length_contract",
+        "length",
+    ),
+    (
+        "rust_collection_ops",
+        "is_empty_contract",
+        "rust_language_spec_free_monoid_emptiness_contract",
+        "length",
+    ),
+    (
+        "rust_collection_ops",
+        "fold_contract",
         "rust_language_spec_free_monoid_fold_contract",
+        "fold",
     ),
     (
         "python_collections",
+        "concat_contract",
+        "python_language_spec_free_monoid_concat_contract",
+        "concat",
+    ),
+    (
+        "python_collections",
+        "length_contract",
+        "python_language_spec_free_monoid_length_contract",
+        "length",
+    ),
+    (
+        "python_collections",
+        "is_empty_contract",
+        "python_language_spec_free_monoid_emptiness_contract",
+        "length",
+    ),
+    (
+        "python_collections",
+        "fold_contract",
         "python_language_spec_free_monoid_fold_contract",
+        "fold",
     ),
     (
         "go_collection_ops",
+        "concat_contract",
+        "go_language_spec_free_monoid_concat_contract",
+        "concat",
+    ),
+    (
+        "go_collection_ops",
+        "length_contract",
+        "go_language_spec_free_monoid_length_contract",
+        "length",
+    ),
+    (
+        "go_collection_ops",
+        "is_empty_contract",
+        "go_language_spec_free_monoid_emptiness_contract",
+        "length",
+    ),
+    (
+        "go_collection_ops",
+        "fold_contract",
         "go_language_spec_free_monoid_fold_contract",
+        "fold",
     ),
 ];
 
-/// Fail-closed witness: each target `CollectionOps.fold_contract` ref resolves to a
-/// `MethodTemplateContract` instantiation whose `dag_method` is `fold_method` (registry name `fold`).
-///
-/// This is the Stratum A grounding receipt for fold rows **moved out of** the per-target
-/// `*_method_template_contracts` lists — those lists stay row-count ratcheted separately.
-fn verify_language_spec_fold_contract_wiring(dag: &Dag) -> Result<(), GroundingTestsDiagnostic> {
+/// Fail-closed witness: each target `CollectionOps.*_contract` ref resolves to the
+/// named `MethodTemplateContract` carrier with the expected `dag_method` registry name.
+fn verify_language_spec_collection_ops_contract_wiring(dag: &Dag) -> Result<(), GroundingTestsDiagnostic> {
     let mtc_id = dag
         .declaration_by_name("MethodTemplateContract")
         .ok_or_else(|| GroundingTestsDiagnostic::StratumADagProjectionFailed {
-            step: "fold_contract_witness.MethodTemplateContract",
+            step: "collection_ops_contract_witness.MethodTemplateContract",
             detail: "MethodTemplateContract missing from Dag".to_string(),
         })?
         .id;
 
-    for &(collection_ops_name, fold_contract_decl_name) in LANGUAGE_SPEC_FOLD_CONTRACT_WITNESSES {
+    for &(collection_ops_name, field, contract_decl_name, expected_method) in
+        LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES
+    {
         let cs_decl = dag
             .declaration_by_name(collection_ops_name)
             .ok_or_else(|| GroundingTestsDiagnostic::StratumADagProjectionFailed {
-                step: "fold_contract_witness.collection_ops",
+                step: "collection_ops_contract_witness.collection_ops",
                 detail: format!("missing `{collection_ops_name}`"),
             })?;
         let vb = cs_decl.value_body.as_ref().ok_or_else(|| {
             GroundingTestsDiagnostic::StratumADagProjectionFailed {
-                step: "fold_contract_witness.collection_ops.value_body",
+                step: "collection_ops_contract_witness.collection_ops.value_body",
                 detail: format!("`{collection_ops_name}` has no value_body"),
             }
         })?;
         let ValueBody::Structural { fields: cs_fields } = vb else {
             return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
-                step: "fold_contract_witness.collection_ops.shape",
+                step: "collection_ops_contract_witness.collection_ops.shape",
                 detail: format!("`{collection_ops_name}`: expected Structural value body"),
             });
         };
-        let fold_ref = row_field(cs_fields, collection_ops_name, 0, "fold_contract")?;
-        let FieldValue::Reference(expected_id) = fold_ref else {
+        let contract_ref = row_field(cs_fields, collection_ops_name, 0, field)?;
+        let FieldValue::Reference(expected_id) = contract_ref else {
             return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
                 list_name: collection_ops_name.to_string(),
                 row_index: 0,
-                detail: format!("fold_contract must be DeclarationRef, got {fold_ref:?}"),
+                detail: format!("`{field}` must be DeclarationRef, got {contract_ref:?}"),
             });
         };
 
-        let fold_decl = dag.declaration_by_name(fold_contract_decl_name).ok_or_else(|| {
+        let contract_decl = dag.declaration_by_name(contract_decl_name).ok_or_else(|| {
             GroundingTestsDiagnostic::StratumADagProjectionFailed {
-                step: "fold_contract_witness.named_decl",
+                step: "collection_ops_contract_witness.named_decl",
                 detail: format!(
-                    "missing `{fold_contract_decl_name}` (CollectionOps fold_contract ref {expected_id:?})"
+                    "missing `{contract_decl_name}` (CollectionOps `{field}` ref {expected_id:?})"
                 ),
             }
         })?;
-        if fold_decl.id != *expected_id {
+        if contract_decl.id != *expected_id {
             return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
                 list_name: collection_ops_name.to_string(),
                 row_index: 0,
                 detail: format!(
-                    "`fold_contract` ref {expected_id:?} does not match declaration `{fold_contract_decl_name}` ({:?})",
-                    fold_decl.id
+                    "`{field}` ref {expected_id:?} does not match declaration `{contract_decl_name}` ({:?})",
+                    contract_decl.id
                 ),
             });
         }
 
-        let template = match &fold_decl.connective {
+        let template = match &contract_decl.connective {
             TypeConnective::Instantiation { template, .. } => *template,
             other => {
                 return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                    list_name: fold_contract_decl_name.to_string(),
+                    list_name: contract_decl_name.to_string(),
                     row_index: 0,
                     detail: format!("expected MethodTemplateContract instantiation, got {other:?}"),
                 });
@@ -131,7 +191,7 @@ fn verify_language_spec_fold_contract_wiring(dag: &Dag) -> Result<(), GroundingT
         };
         if template != mtc_id {
             return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: fold_contract_decl_name.to_string(),
+                list_name: contract_decl_name.to_string(),
                 row_index: 0,
                 detail: format!(
                     "expected template MethodTemplateContract ({mtc_id:?}), got {template:?}"
@@ -139,10 +199,10 @@ fn verify_language_spec_fold_contract_wiring(dag: &Dag) -> Result<(), GroundingT
             });
         }
 
-        let contract_body = fold_decl.value_body.as_ref().ok_or_else(|| {
+        let contract_body = contract_decl.value_body.as_ref().ok_or_else(|| {
             GroundingTestsDiagnostic::StratumADagProjectionFailed {
-                step: "fold_contract_witness.named_decl.value_body",
-                detail: format!("`{fold_contract_decl_name}` missing value_body"),
+                step: "collection_ops_contract_witness.named_decl.value_body",
+                detail: format!("`{contract_decl_name}` missing value_body"),
             }
         })?;
         let ValueBody::Structural {
@@ -150,20 +210,20 @@ fn verify_language_spec_fold_contract_wiring(dag: &Dag) -> Result<(), GroundingT
         } = contract_body
         else {
             return Err(GroundingTestsDiagnostic::StratumADagProjectionFailed {
-                step: "fold_contract_witness.named_decl.shape",
+                step: "collection_ops_contract_witness.named_decl.shape",
                 detail: format!(
-                    "`{fold_contract_decl_name}`: expected Structural MethodTemplateContract data"
+                    "`{contract_decl_name}`: expected Structural MethodTemplateContract data"
                 ),
             });
         };
         let row = FieldValue::Record(contract_fields.clone());
-        let fp = row_fingerprint(dag, fold_contract_decl_name, 0, &row)?;
-        if fp.method_name != "fold" {
+        let fp = row_fingerprint(dag, contract_decl_name, 0, &row)?;
+        if fp.method_name != expected_method {
             return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
-                list_name: fold_contract_decl_name.to_string(),
+                list_name: contract_decl_name.to_string(),
                 row_index: 0,
                 detail: format!(
-                    "expected dag_method to resolve to registry name `fold`, got `{}`",
+                    "expected dag_method registry name `{expected_method}` for `{field}`, got `{}`",
                     fp.method_name
                 ),
             });
