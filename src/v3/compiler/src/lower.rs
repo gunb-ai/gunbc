@@ -7013,14 +7013,14 @@ fn lower_expr(
                 args: args.clone(),
                 span: span.clone(),
             };
-            return lower_expr(
+            lower_expr(
                 &synthetic,
                 dag,
                 scope,
                 callable_scope,
                 symbols,
                 expected_decl,
-            );
+            )
         }
         SurfaceExpr::Map { span, .. } => {
             // Map literals are not lowerable as expressions in M1(2.8) —
