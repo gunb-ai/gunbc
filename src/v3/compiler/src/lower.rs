@@ -7619,6 +7619,7 @@ fn descent_provable(
                                 self_name,
                                 first_param,
                                 bindings,
+                                symbols,
                             )
                         })
                     }
@@ -7645,6 +7646,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::Operator { args, .. } => args.iter().all(|a| {
@@ -7671,6 +7673,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) && descent_provable(
                 then_branch,
                 dag,
@@ -7678,6 +7681,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) && descent_provable(
                 else_branch,
                 dag,
@@ -7685,6 +7689,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }
         SurfaceExpr::Match {
@@ -7697,6 +7702,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) {
                 return false;
             }
@@ -7733,6 +7739,7 @@ fn descent_provable(
                     self_name,
                     first_param,
                     &arm_bindings,
+                    symbols,
                 )
             })
         }
@@ -7743,6 +7750,7 @@ fn descent_provable(
             self_name,
             first_param,
             bindings,
+            symbols,
         ),
         SurfaceExpr::Record { fields, .. } => fields.iter().all(|f| {
             descent_provable(
@@ -7752,6 +7760,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
@@ -7762,6 +7771,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
@@ -7772,6 +7782,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::PathCall { args, .. } => args.iter().all(|a| {
