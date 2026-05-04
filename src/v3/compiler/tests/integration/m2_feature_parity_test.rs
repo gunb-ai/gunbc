@@ -597,21 +597,16 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
     let witness = dag.declaration_by_name("Witness").unwrap().id;
     let int_decl = dag.declaration_by_name("Int").unwrap().id;
     let string_decl = dag.declaration_by_name("String").unwrap().id;
-    let actual_arg = instantiation_arg(
-        &dag,
-        arrow_output_decl(&dag, lens_read_id),
-        witness,
-    );
-    let expected_arg = instantiation_arg(
-        &dag,
-        arrow_output_decl(&dag, expected_read_ty),
-        witness,
-    );
+    let actual_arg = instantiation_arg(&dag, arrow_output_decl(&dag, lens_read_id), witness);
+    let expected_arg = instantiation_arg(&dag, arrow_output_decl(&dag, expected_read_ty), witness);
     assert!(
         same_instantiation_shape(&dag, actual_arg, string_decl),
         "actual read output must be Witness<String>"
     );
-    assert_eq!(expected_arg, int_decl, "expected read output must be Witness<Int>");
+    assert_eq!(
+        expected_arg, int_decl,
+        "expected read output must be Witness<Int>"
+    );
 }
 
 #[test]
