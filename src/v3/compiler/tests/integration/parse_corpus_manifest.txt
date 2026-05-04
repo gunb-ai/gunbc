@@ -40,7 +40,7 @@ src/v3/std/dimensions.dag	21	40239	d595746d2bda22f6
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
 src/v3/std/emit_model.dag	44	80937	343dfef37f05f953
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	14463	909ca7a1c1705e89
-src/v3/std/go_method_template_contracts.dag	9	140718	d012ad4884ca99f7
+src/v3/std/go_method_template_contracts.dag	9	133042	11c1a048ffc7325c
 src/v3/std/induction.dag	56	88794	e405e1549cf2fe08
 src/v3/std/integer_diagnostic_order.dag	6	8124	5d7b31594a5b3d5c
 src/v3/std/lens.dag	6	9852	28d5539a5b28716e
@@ -48,7 +48,7 @@ src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
 src/v3/std/methods.dag	3	1388	b61693641c32d74b
 src/v3/std/parse_surface.dag	18	99510	b73114d5b178303d
-src/v3/std/python_method_template_contracts.dag	9	172934	8678f4b4af64013b
+src/v3/std/python_method_template_contracts.dag	9	165218	55ab12684c40668d
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	14	16342	4eaaff1aac38d20d
 src/v3/std/rust_method_template_contracts.dag	5	109753	7b10fcd0d9079900
