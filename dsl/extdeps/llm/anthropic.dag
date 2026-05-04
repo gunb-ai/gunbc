@@ -178,18 +178,17 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
 // Request wire: Messages API expects string `role` + flat `content[]` objects
 // keyed by `type` (https://docs.anthropic.com/en/api/messages). These rows are
 // now source-level `CoproductWireContract` authorities above; the v2 Rust
-// emitter consumes them directly for serde attributes. `AnthropicToolResultContent`
-// is not present in the current canonical surface; the nested/image-capable
-// tool-result content shape remains gap-carried separately below.
+// emitter consumes them directly for serde attributes. Nested tool-result
+// `content` scalar-vs-block-array wire shape remains gap-carried separately
+// below; these paid rows cover the outer request coproduct discriminators only.
 data rest_request_wire_serde_alignment_receipt: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
-  "closure:rest_request_wire_serde_alignment|ROADMAP:326|partial_substrate_closure|remaining:Grounding_request_wire_migration_after_substrate_lands"
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use"
 ]
 
-data structural_coverage_gap_anthropic_tool_result_full_content_surface: List<String> = [
-  "closure:anthropic_tool_result_full_content_surface|AnthropicUserContentBlock.UserToolResultBlock|residue:content_modeled_as_string_only|missing:nested_content_blocks|missing:image_content|trigger:canonical Anthropic tool-result content surface adds nested/image blocks"
+data structural_coverage_gap_anthropic_tool_result_content_wire_shape: List<String> = [
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|residue:tool_result_content_must_serialize_scalar_text_or_content_block_array|trigger:emitted serde for AnthropicToolResultContent serializes ToolResultText as scalar string and ToolResultBlocks as content block array"
 ]
 
 // -- Service: REST transport wiring ------------------------------
