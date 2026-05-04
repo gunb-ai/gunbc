@@ -108,25 +108,39 @@ type AnthropicStopReason
   | Refusal
   | ModelContextWindowExceeded
 
+// 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200Citation`
+// in `dsl/extdeps/llm/anthropic.dag`. Citation variants use optional fields
+// because the provider's citation object family shares a `type` tag but exposes
+// source-specific coordinates.
+type AnthropicMessages200Citation {
+  type:             String
+  url:              String?
+  title:            String?
+  cited_text:       String?
+  document_index:   Int?
+  start_char_index: Int?
+  end_char_index:   Int?
+}
+
 // 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200TextBlock`
-// (`dsl/extdeps/llm/anthropic.dag:111-114`). Narrow text-only slice of
-// the 200 response's `content[]` per `from "content/0/text"` extraction
-// in the operation; thinking/tool-use/image content blocks remain
-// gap-carried on the v2 source's
+// in `dsl/extdeps/llm/anthropic.dag`. Narrow text slice of the 200 response's
+// `content[]` per `from "content/0/text"` extraction in the operation;
+// thinking/tool-use/image content blocks remain gap-carried on the v2 source's
 // `structural_coverage_gap_anthropic_messages_200_residual`.
 type AnthropicMessages200TextBlock {
-  type: String
-  text: String
+  type:      String
+  text:      String
+  citations: List<AnthropicMessages200Citation>?
 }
 
 // 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200Usage`
-// (`dsl/extdeps/llm/anthropic.dag:116-119`). Cache-token breakdowns
-// (`cache_creation_input_tokens`, `cache_read_input_tokens`) and
-// `service_tier` stay gap-carried on the v2 source per the same
-// `structural_coverage_gap_anthropic_messages_200_residual` row.
+// in `dsl/extdeps/llm/anthropic.dag`.
 type AnthropicMessages200Usage {
-  input_tokens:  Int
-  output_tokens: Int
+  input_tokens:                Int
+  output_tokens:               Int
+  cache_creation_input_tokens: Int?
+  cache_read_input_tokens:     Int?
+  service_tier:                String?
 }
 
 // 🟢 TERMINAL response envelope mirroring `AnthropicMessages200Body`

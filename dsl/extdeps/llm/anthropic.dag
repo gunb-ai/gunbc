@@ -136,14 +136,28 @@ type AnthropicChatMessage
 
 // Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
 // Tool-use / image assistant rows remain outside this carrier.
+type AnthropicMessages200Citation {
+  type: String
+  url: String?
+  title: String?
+  cited_text: String?
+  document_index: Int?
+  start_char_index: Int?
+  end_char_index: Int?
+}
+
 type AnthropicMessages200TextBlock {
   type: String
   text: String
+  citations: List<AnthropicMessages200Citation>?
 }
 
 type AnthropicMessages200Usage {
   input_tokens: Int
   output_tokens: Int
+  cache_creation_input_tokens: Int?
+  cache_read_input_tokens: Int?
+  service_tier: String?
 }
 
 // 🟢 TERMINAL provider-domain coproduct for Anthropic Messages `stop_reason`
@@ -158,8 +172,8 @@ type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseT
 // (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
 // `model`, `stop_reason`, optional `stop_sequence`, `usage`. `AnthropicMessages200TextBlock`
 // remains the narrow text slice inside `content[]`; thinking, tool_use, images,
-// server tools, citations, and `usage` cache-token breakdowns stay gap-carried on
-// the narrower downstream API-surface receipts below.
+// and server tools stay gap-carried on the narrower downstream API-surface
+// receipts below.
 type AnthropicMessages200Body {
   id: String
   type: String
@@ -172,7 +186,7 @@ type AnthropicMessages200Body {
 }
 
 data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|missing:container|AnthropicMessages200TextBlock|missing:thinking|missing:tool_use|missing:redacted_thinking|missing:web_search|missing:server_tool_use|missing:citations|AnthropicMessages200Usage|missing:cache_creation_input_tokens|missing:cache_read_input_tokens|missing:service_tier"
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|opaque_pending:container|AnthropicMessages200TextBlock|variant_pending:thinking|variant_pending:tool_use|variant_pending:redacted_thinking|variant_pending:web_search|variant_pending:server_tool_use|trigger:content block coproduct plus container-management response surface"
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
