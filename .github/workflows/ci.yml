@@ -57,10 +57,20 @@ jobs:
       - name: cargo fmt --all --check
         run: cargo fmt --all --check
 
+  # Policy + bootstrap snapshot verify (T-V2 G-2-prereq-ci): shell policy checks
+  # plus `regen_bootstrap --verify` so stale `bootstrap_generated*.rs` cannot merge
+  # when only this job is green (#1543). Legacy CI previously built and ran the
+  # DAG-language compiler from `src/v2/` in this job; that release transport is
+  # removed to cut wall time. Full compiler + test surface stays in the `v3`
+  # job. Local reproduction of the old pipeline: `dsl/gunbc/tools/ci_runner.dag`
+  # `run_ci_pipeline`.
+  # Dissolution trigger: remove the verify step below once the committed bootstrap
+  # snapshot surface dissolves (default-build regen or chosen artifact path). Track
+  # #1559; rationale: docs/audit/bootstrap-snapshot-drift-dissolution-assessment.md.
   ci:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 45
+    timeout-minutes: 25
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -99,41 +109,25 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
           toolchain: "1.93.0"
-          # `ci_` compile gates run `rustfmt` on self-compile output; lint gate runs clippy.
-          components: rustfmt, clippy
+          components: rustfmt
           cache: false
           rustflags: ""
 
-      - name: Cache Cargo
+      - name: Cache Cargo (ci bootstrap gate)
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry/index/
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v2/stage0/src/**') }}
+            target/
+          key: cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
           restore-keys: |
-            cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
-            cargo-${{ runner.os }}-
+            cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-ci-${{ runner.os }}-
 
-      # Pre-merge gate for bootstrap-loaded substrate `.dag` edits. The v3 job
-      # also runs this verifier, but #1543 showed that a stale bootstrap snapshot
-      # can still merge when only this required `ci` job is green. Keep the gate
-      # here so paired `bootstrap_generated*.rs` regen is enforced before merge.
-      # TODO(#1559): remove this interim gate after committed bootstrap generated
-      # snapshots are dissolved as editable source.
-      - name: v3 bootstrap snapshot freshness gate
+      - name: v3 bootstrap snapshot freshness gate (--verify)
         run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
-
-      - name: Build Compiler
-        run: cargo build -p v2-compiler --release
-
-      - name: CI Pipeline
-        run: cargo run -p v2-compiler --release -- run --source-root dsl --function run_ci_pipeline
-
-      - name: CI Timing
-        if: always()
-        run: cat /tmp/v2-ci-timing.txt 2>/dev/null || echo "no timing data"
 
   v3:
     if: github.event.pull_request.draft != true
@@ -273,8 +267,9 @@ jobs:
       - name: v3 test targets compile with bootstrap-regen-fresh
         run: cargo test -p v3-compiler --no-run --features bootstrap-regen-fresh
 
-      - name: v3 regen_bootstrap snapshot gate (--verify)
-        run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
+      # `regen_bootstrap --verify` runs in the required `ci` job (pre-merge
+      # fail-closed gate; #1543). Skip duplicate here. Dissolution trigger for
+      # both places: #1559 (see docs/audit/bootstrap-snapshot-drift-dissolution-assessment.md).
 
       - name: L-7 Substrate accessor reconstruction gate
         run: |
