@@ -209,13 +209,12 @@ impl<'a> Parser<'a> {
             Some(ItemDispatchKind::Let) => self.parse_let_item(),
             Some(ItemDispatchKind::Fn) => self.parse_fn_item(),
             Some(ItemDispatchKind::Type) => self.parse_type_item(),
-            Some(ItemDispatchKind::Service) => self.parse_service_item(),
             Some(ItemDispatchKind::Module) => self.parse_module_item(),
             Some(ItemDispatchKind::Import) => self.parse_import_item(),
             Some(ItemDispatchKind::Data) => self.parse_data_item(),
             None => Err(Diagnostic::ParseError {
                 message: format!(
-                    "expected `let`, `fn`, `type`, `service`, `module`, `import`, or `data`, got {tk:?}"
+                    "expected `let`, `fn`, `type`, `module`, `import`, or `data`, got {tk:?}"
                 ),
                 span: self.peek().span.clone(),
                 fixes: Vec::new(),
@@ -902,17 +901,6 @@ impl<'a> Parser<'a> {
                 span: SourceSpan::new(self.file, type_kw.span.byte_start, name_token.span.byte_end),
             }),
         }
-    }
-
-    fn parse_service_item(&mut self) -> Result<SurfaceItem, Diagnostic> {
-        let service_kw = self.expect_kind(TokenKind::KwService)?;
-        Err(Diagnostic::ParseError {
-            message: String::from(
-                "service items are recognized at the top-level boundary but the ServiceBlock parser scaffold is not landed yet",
-            ),
-            span: service_kw.span,
-            fixes: Vec::new(),
-        })
     }
 
     fn parse_optional_type_params(&mut self) -> Result<Vec<String>, Diagnostic> {
