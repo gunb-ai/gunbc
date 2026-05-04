@@ -29,6 +29,12 @@ PR #1430's product-zero bug class is the representative invariant: symbolic
 cost multiplication must treat `ConstantCost(0)` as a semiring annihilator, so a
 product such as `Linear(n) * 0` normalizes to `ConstantCost(0)`.
 
+That bug class is not an open prerequisite at this audit head: the R3
+debt-paydown ledger marks "SymbolicCost semiring annihilation violation" as
+Retired by PR #1555, and current `algebra.dag` contains the corresponding
+`collapse_on_multiplicative_zero` implementation plus the Rust acceptance test
+named below.
+
 The audit question is narrower than "does SymbolicCost currently have tests?"
 It asks whether Verification can author a generated `TestClaim` directly
 against current substrate, or whether the demonstration must route through
