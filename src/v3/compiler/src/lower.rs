@@ -6407,6 +6407,144 @@ struct VariantRecordExprRef<'a> {
     span: &'a SourceSpan,
 }
 
+/// Shared static-callable invocation lowerer, parametric over the
+/// resolved callee `DeclarationId`. Both the `Call` arm and the X1.a
+/// `PathCall` arm of `lower_expr` dispatch through this helper so the
+/// resolved-decl identity flows forward without name re-resolution.
+///
+/// `callable_diagnostic_name` is the human-readable label used in
+/// callable-binding-conflict diagnostics (the bare target name for
+/// `Call`; the dotted path for `PathCall`). It is purely diagnostic —
+/// the substrate authority is always `base_target_decl`.
+#[allow(clippy::too_many_arguments)]
+fn lower_resolved_callable_invocation(
+    base_target_decl: DeclarationId,
+    callable_diagnostic_name: &str,
+    args: &[SurfaceExpr],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> PortId {
+    let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
+    let mut input_ports: Vec<PortId> = Vec::new();
+    let mut template_arguments: Vec<TemplateArgument> = Vec::new();
+    if let (Some(expected_result), Some(target_output)) = (
+        expected_decl,
+        declaration_callable_output(dag, base_target_decl, 0),
+    ) {
+        let _ = bind_expected_type_to_actual(
+            dag,
+            target_output,
+            expected_result,
+            &mut template_arguments,
+            0,
+        );
+    }
+    for (idx, arg) in args.iter().enumerate() {
+        let raw_expected_input = target_inputs
+            .as_ref()
+            .and_then(|inputs| inputs.get(idx))
+            .copied();
+        let specialized_expected_input = raw_expected_input.map(|expected_decl| {
+            specialize_decl_for_lowering(dag, expected_decl, &template_arguments, 0)
+        });
+        if let Some(expected_decl) = raw_expected_input {
+            if declaration_is_callable(dag, expected_decl, 0) {
+                let specialized_expected = specialized_expected_input.unwrap_or(expected_decl);
+                let actual_callable = match arg {
+                    SurfaceExpr::Lambda { params, body, span } => {
+                        let mut lambda_ctx = LambdaLoweringContext {
+                            dag,
+                            scope,
+                            callable_scope,
+                            symbols,
+                        };
+                        match lower_lambda_expr(
+                            params,
+                            body,
+                            span,
+                            specialized_expected,
+                            &mut lambda_ctx,
+                        ) {
+                            Ok(lambda_decl_id) => lambda_decl_id,
+                            Err(diag) => {
+                                report_declaration_error(lambda_ctx.dag, diag);
+                                alloc_identifier_stub(lambda_ctx.dag, "__lambda__", span)
+                            }
+                        }
+                    }
+                    _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
+                };
+                let matches_expected = push_template_argument_binding(
+                    &mut template_arguments,
+                    expected_decl,
+                    actual_callable,
+                ) && bind_expected_type_to_actual(
+                    dag,
+                    specialized_expected,
+                    actual_callable,
+                    &mut template_arguments,
+                    0,
+                );
+                if !matches_expected {
+                    let port = dag.alloc_port(None);
+                    dag.mark_unresolved(
+                        port,
+                        callable_binding_conflict_diagnostic(
+                            callable_diagnostic_name,
+                            idx,
+                            &expr_span(arg),
+                        ),
+                    );
+                    return port;
+                }
+                continue;
+            }
+        }
+        let lowered = lower_expr(
+            arg,
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            specialized_expected_input,
+        );
+        if let Some(expected_decl) = raw_expected_input {
+            if let crate::dag::PortState::Resolved(actual_ty) = dag.port(lowered).state() {
+                let _ = bind_expected_type_to_actual(
+                    dag,
+                    expected_decl,
+                    actual_ty.declaration,
+                    &mut template_arguments,
+                    0,
+                );
+            }
+        }
+        input_ports.push(lowered);
+    }
+    let retained_arguments =
+        retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
+    let target_decl = materialize_callable_target_with_retained_arguments(
+        dag,
+        base_target_decl,
+        retained_arguments,
+        span,
+    );
+    let node_id = dag.alloc_node_id();
+    let output = dag.alloc_port(Some(node_id));
+    dag.push_node(Behavior::Transform(TransformNode {
+        id: node_id,
+        target: TransformTarget::Callable(target_decl),
+        inputs: input_ports,
+        output,
+        span: span.clone(),
+    }));
+    output
+}
+
 fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
@@ -6489,6 +6627,8 @@ fn lower_expr(
                     .or_else(|| callable_scope.get(target).copied())
                     .or_else(|| symbols.get(target).copied())
             else {
+                // (unresolved branch — kept inline to preserve diagnostic shape;
+                // resolved branch delegates to `lower_resolved_callable_invocation`)
                 for arg in args {
                     let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
                 }
@@ -6524,118 +6664,17 @@ fn lower_expr(
                 );
                 return port;
             };
-            let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
-            let mut input_ports: Vec<PortId> = Vec::new();
-            let mut template_arguments: Vec<TemplateArgument> = Vec::new();
-            if let (Some(expected_result), Some(target_output)) = (
-                expected_decl,
-                declaration_callable_output(dag, base_target_decl, 0),
-            ) {
-                let _ = bind_expected_type_to_actual(
-                    dag,
-                    target_output,
-                    expected_result,
-                    &mut template_arguments,
-                    0,
-                );
-            }
-            for (idx, arg) in args.iter().enumerate() {
-                let raw_expected_input = target_inputs
-                    .as_ref()
-                    .and_then(|inputs| inputs.get(idx))
-                    .copied();
-                let specialized_expected_input = raw_expected_input.map(|expected_decl| {
-                    specialize_decl_for_lowering(dag, expected_decl, &template_arguments, 0)
-                });
-                if let Some(expected_decl) = raw_expected_input {
-                    if declaration_is_callable(dag, expected_decl, 0) {
-                        let specialized_expected =
-                            specialized_expected_input.unwrap_or(expected_decl);
-                        let actual_callable = match arg {
-                            SurfaceExpr::Lambda { params, body, span } => {
-                                let mut lambda_ctx = LambdaLoweringContext {
-                                    dag,
-                                    scope,
-                                    callable_scope,
-                                    symbols,
-                                };
-                                match lower_lambda_expr(
-                                    params,
-                                    body,
-                                    span,
-                                    specialized_expected,
-                                    &mut lambda_ctx,
-                                ) {
-                                    Ok(lambda_decl_id) => lambda_decl_id,
-                                    Err(diag) => {
-                                        report_declaration_error(lambda_ctx.dag, diag);
-                                        alloc_identifier_stub(lambda_ctx.dag, "__lambda__", span)
-                                    }
-                                }
-                            }
-                            _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
-                        };
-                        let matches_expected = push_template_argument_binding(
-                            &mut template_arguments,
-                            expected_decl,
-                            actual_callable,
-                        ) && bind_expected_type_to_actual(
-                            dag,
-                            specialized_expected,
-                            actual_callable,
-                            &mut template_arguments,
-                            0,
-                        );
-                        if !matches_expected {
-                            let port = dag.alloc_port(None);
-                            dag.mark_unresolved(
-                                port,
-                                callable_binding_conflict_diagnostic(target, idx, &expr_span(arg)),
-                            );
-                            return port;
-                        }
-                        continue;
-                    }
-                }
-                let lowered = lower_expr(
-                    arg,
-                    dag,
-                    scope,
-                    callable_scope,
-                    symbols,
-                    specialized_expected_input,
-                );
-                if let Some(expected_decl) = raw_expected_input {
-                    if let crate::dag::PortState::Resolved(actual_ty) = dag.port(lowered).state() {
-                        let _ = bind_expected_type_to_actual(
-                            dag,
-                            expected_decl,
-                            actual_ty.declaration,
-                            &mut template_arguments,
-                            0,
-                        );
-                    }
-                }
-                input_ports.push(lowered);
-            }
-            let retained_arguments =
-                retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
-            let target_decl = materialize_callable_target_with_retained_arguments(
-                dag,
+            lower_resolved_callable_invocation(
                 base_target_decl,
-                retained_arguments,
+                target,
+                args,
                 span,
-            );
-            let node_id = dag.alloc_node_id();
-            let output = dag.alloc_port(Some(node_id));
-            dag.push_node(Behavior::Transform(TransformNode {
-                id: node_id,
-                target: TransformTarget::Callable(target_decl),
-                inputs: input_ports,
-                output,
-                span: span.clone(),
-            }));
-            output
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            )
         }
         SurfaceExpr::VariantRecord {
             target,
@@ -7018,34 +7057,18 @@ fn lower_expr(
                     },
                 );
             }
-            let callee_name = match dag.declaration(callee_decl_id).name.clone() {
-                Some(n) => n,
-                None => {
-                    for arg in args {
-                        let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
-                    }
-                    return unresolved_port(
-                        dag,
-                        Diagnostic::ResolveError {
-                            name: format!(
-                                "dotted path `{}` resolves to an anonymous declaration; only named top-level functions are valid X1.a callees",
-                                segments.join(".")
-                            ),
-                            span: span.clone(),
-                            fixes: Vec::new(),
-                        },
-                    );
-                }
-            };
-            // Synthesize a `Call` so we reuse the existing static
-            // callable lowerer (arity + per-position type validation).
-            let synthetic = SurfaceExpr::Call {
-                target: callee_name,
-                args: args.clone(),
-                span: span.clone(),
-            };
-            lower_expr(
-                &synthetic,
+            // Authority preserved: the resolved `callee_decl_id` flows
+            // directly into `lower_resolved_callable_invocation` —
+            // **not** re-resolved by name through the synthetic-Call
+            // detour. The dotted-path display is the diagnostic label
+            // for callable-binding-conflict messages; the substrate
+            // identity is `callee_decl_id`.
+            let diagnostic_label = segments.join(".");
+            lower_resolved_callable_invocation(
+                callee_decl_id,
+                &diagnostic_label,
+                args,
+                span,
                 dag,
                 scope,
                 callable_scope,
