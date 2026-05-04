@@ -190,8 +190,11 @@ remain live until §6 (Gap 5) and the leaf-emit migrations land. Worker
 does **not** weaken the ratchet.
 
 A7. **No row population.** Worker adds zero rows to the contract
-authorities. Row-parity gaps (`string_contains` Python/Go, Go `chars`)
-remain Substrate-owned and out of scope.
+authorities. Substrate row-parity work (today: `fold` row disposition
+for Python/Go — see §6.2 residue correction) remains Substrate-owned
+and out of scope. *Earlier revisions of this clause cited
+`string_contains` Python/Go and Go `chars` as residue; that list is
+stale post-#1549/#1598 and superseded by §6.2.*
 
 ### 5.3 Non-goals (Gap 4)
 
@@ -264,41 +267,146 @@ P3. **Split into P3a + P3b** as of #1598:
 
 ### 6.2 Landing surface — split into 5a (enabled) and 5b (parked)
 
-**Gap 5a — Single-row leaf-emit migration (enabled by #1598; R3
-Grounding owns dispatch, not this packet).** The legacy `dsl/extdeps/
-languages/{rust,python,go}/emit.dag::*_method_templates` map declarations
-re-source their entries from the generated
-`generated.method_template_projection.<target>_method_template_emit`
-maps **only for the keys actually present in the generated map**. Keys
-that exist in the legacy map but are not yet projected — verified at
-authoring time per the consumer-migration audit (`docs/briefs/method-template-consumer-migration-audit.md`)
-and the v3-row-file headers — must remain carried in the legacy
-declaration until substrate parity lands. Dropping any legacy key
-during 5a is a P2 boundary violation (facts must flow forward, not
-silently disappear). Concretely the keys still legacy-only at
-authoring time include Python `string_contains`
-(`src/v3/std/python_method_template_contracts.dag:12-18`), Go
-`string_contains` and Go `chars`
-(`src/v3/std/go_method_template_contracts.dag:12-29`); a Gap-5a worker
-must verify that list at HEAD before flipping any key.
+**Gap 5a — structurally degenerate / no-op post-#1598 (re-classified
+2026-05-04).** Earlier revisions of this section (PR #1603) framed 5a
+as an overlay-merge rewrite of legacy `dsl/extdeps/languages/{rust,
+python,go}/emit.dag::*_method_templates` maps. **That framing is
+obsolete.** Re-audit on `origin/main` post-#1598 (`a04ab525c` plus
+follow-ups) shows the consumer migration the overlay was meant to
+enable already happened in #1598's wider footprint:
 
-The 5a target shape is therefore **overlay-merge**, not wholesale
-replacement: legacy declaration becomes "generated rows ∪ legacy-only
-residue," with a structural ratchet that fails the build if any
-legacy-only key disappears without an explicit Substrate row landing.
-The existing `LanguageSpec.method_templates: Map<String, String>?`
-field shape and assignments stay untouched; no `src/v2/languages.dag`
-edit; no second authority introduced (the generated map is the only
-source of text for the keys it owns; the residue is text that already
-lives in the legacy `.dag` until Substrate adopts it). Legacy
-`rust_simple_method_specs` and `rust_method_wraps_result` and the
-higher-order rows stay on the existing path until 5b.
+- `src/v2/05_emit.dag:84-86` and `src/v2/05_emit_rust.dag:67` import
+  `generated.method_template_projection { rust_method_template_emit,
+  python_method_template_emit, go_method_template_emit }` directly
+  and consume them at `src/v2/05_emit.dag:2573-2584` and
+  `src/v2/05_emit_rust.dag:3889`.
+- `LanguageSpec.method_templates: Map<String, String>?` at
+  `src/v2/languages.dag:400` has **zero live readers** anywhere in
+  `src/v2/` or `src/v3/` (verified by `grep '\.method_templates\b'`
+  excluding stage0 mirrors and the projection module). The four
+  assignments at `src/v2/languages.dag:544, 688, 832, 979` write a
+  field nothing reads.
+- The legacy `*_method_templates` declarations in
+  `dsl/extdeps/languages/{rust,python,go}/emit.dag` are kept alive
+  only by `src/v2/tests/src/source_audit.rs::LEGACY_METHOD_TEMPLATE_AUTHORITIES`
+  (lines 12–15), not by any data flow.
 
-5a closure (full deletion of legacy `*_method_templates`) is gated on
-Substrate landing the missing rows (`string_contains` Python/Go, Go
-`chars`) **and** Gap 5b approval, not on 5a alone. This packet does
-**not** dispatch 5a — it is R3-Grounding-owned per ledger row 85; this
-section only records that #1598 unblocks the bounded overlay form.
+A 5a overlay-merge in `dsl/extdeps/languages/*/emit.dag` would
+therefore have nothing live to overlay for. None of the four feasible
+implementation paths fits this packet's STOP boundary:
+
+1. Rewrite legacy `*_method_templates` to import + overlay the
+   generated map → either requires uncertain `data` decl with
+   non-literal RHS or converts the data decl to `fn`, forcing
+   call-site edits at `src/v2/languages.dag:688, 832` (forbidden
+   per §6.4 / dispatch STOP).
+2. Hand-author the merged map literally → second template-text
+   authority (forbidden per A2 / §7 S5).
+3. Keep legacy maps as inert literals → no-op; nothing changes.
+4. Delete legacy `*_method_templates` + dead `LanguageSpec.method_templates`
+   field + four assignments → wholesale legacy deletion + structural
+   `LanguageSpec` change; that is Gap 5b territory and crosses §6.4
+   STOP.
+
+**Residue correction.** Earlier revisions cited Python/Go
+`string_contains` and Go `chars` as legacy-only residue blocking
+wholesale replacement. **That list is stale.** On current `main`:
+
+- `string_contains` is a row in `src/v3/std/python_method_template_contracts.dag`
+  and `src/v3/std/go_method_template_contracts.dag` (#1549 Gap 1
+  classified it as a target-only emit-shortcut name in
+  `dsl/std/methods.dag`, with `string_contains_method` rows in both
+  contract files).
+- Go `chars` was never in legacy `go_method_templates` — verify with
+  `grep '"chars"' dsl/extdeps/languages/go/emit.dag`; no hit.
+- The actual current residue is **`fold` (Python + Go)**: legacy
+  `python_method_templates` and `go_method_templates` carry `fold`
+  entries (`functools.reduce({arg}, {recv})` and `v2rt.Fold(...)`
+  respectively); the v3 substrate carries `fold_method` through a
+  separate `*_language_spec_free_monoid_fold_contract` standalone
+  declaration with the `__v3_fold(...)` shape — deliberately *not*
+  inside the per-target `<target>_method_template_contracts` list,
+  because it is a different arity/contract per
+  `docs/briefs/collectionops-algebra-reframe.md`. Rust legacy
+  `rust_method_templates()` has `∅` residue (the 9 Single specs
+  match the 9 `SingleTemplate` rows in
+  `src/v3/std/rust_method_template_contracts.dag`).
+
+### 6.2.1 Remaining real work (out of this packet's PB scope)
+
+The unfinished portion of row-85 consumer migration after #1598 is
+not an overlay-merge. It splits into two ordered batches by current
+liveness:
+
+**Batch A — dead-authority deletions, gated on `fold` row disposition.**
+These authorities have zero live readers outside the source-audit
+ratchet and assignments to a dead field.
+
+- **Delete `LanguageSpec.method_templates: Map<String, String>?`
+  field** (`src/v2/languages.dag:400`) and the four dead assignments
+  (`:544, :688, :832, :979`) — structural change to a Substrate-shaped
+  type. Editing `src/v2/languages.dag` is therefore **Gap 5b
+  territory**, not 5a.
+- **Delete legacy `dsl/extdeps/languages/{rust,python,go}/emit.dag::*_method_templates`**
+  (Rust `rust_method_templates()`, Python `python_method_templates`,
+  Go `go_method_templates`). Their only readers are the four dead
+  `LanguageSpec.method_templates` assignments above; deletion happens
+  in lockstep.
+- **Shrink the corresponding entries in
+  `src/v2/tests/src/source_audit.rs::LEGACY_METHOD_TEMPLATE_AUTHORITIES`**
+  (lines 12–15) for the deleted authorities.
+
+Batch A gating: Substrate either folds the standalone
+`*_language_spec_free_monoid_fold_contract` rows into the per-target
+`<target>_method_template_contracts` list (extending the contract list
+shape to admit the differently-shaped fold contract or accepting a
+different arity row), or explicitly classifies `fold` as target-only
+legacy text with no v3 row.
+
+**Batch B — `wraps_result` consumer migration; P3b-gated.** The
+following authority is **live** and must not be deleted with Batch A:
+
+- `dsl/extdeps/languages/rust/emit.dag::rust_method_wraps_result()`
+  is read at `src/v2/05_emit_rust.dag:2843`
+  (`map_contains_key(rust_method_wraps_result(), function_name)` —
+  Rust Rc-wrapping decision). The current Map-shape adapter from
+  #1598 deliberately does **not** carry `wraps_result` (A4 partial,
+  parked on Gap 5b); the consumer therefore cannot migrate to a
+  generated-map read today.
+- `dsl/extdeps/languages/rust/emit.dag::rust_simple_method_specs`
+  is the substrate that derives both `rust_method_templates()` (dead,
+  Batch A) and `rust_method_wraps_result()` (live, Batch B). It can
+  only be deleted after Batch B retires `rust_method_wraps_result()`.
+
+Batch B gating: the **P3b typed-read carrier decision** (Gap 5b) must
+land first, exposing `MethodTemplateContract.wraps_result` to v2 emit
+through a typed projection. Then `src/v2/05_emit_rust.dag:2843`
+migrates to read `wraps_result` from the typed row, and only then can
+`rust_method_wraps_result()` + `rust_simple_method_specs` be deleted.
+Their entries in `LEGACY_METHOD_TEMPLATE_AUTHORITIES` (lines 11, 13)
+shrink in that same step.
+
+Owner: **R3 Grounding** for both batches' deletion / ledger sequencing
+per `ROADMAP.md:512` and ledger row 85. **R3 Substrate sign-off**
+required on `fold` row disposition for Batch A and on the typed-read
+carrier shape for Batch B. PB-Bootstrap-Process role ends with #1598's
+producer + the docs lineage in this packet; PB does not dispatch
+either batch.
+
+### 6.2.2 Implication for §9 sequencing diagram
+
+§9 has been updated directly: the former "Gap 5a — Grounding leaf
+re-export migration" node is marked **SUPERSEDED 2026-05-04** with
+inline reasoning, and the next live nodes split into **Batch A —
+Grounding dead-authority deletion** (gated on `fold` row disposition)
+and **Batch B — Grounding `wraps_result` consumer migration +
+deletion** (P3b-gated, separated because `rust_method_wraps_result()`
+is still a live consumer at `src/v2/05_emit_rust.dag:2843` and the
+current Map adapter does not carry `wraps_result`). Owners +
+deliverables are named in the diagram body itself. The diagram is
+therefore self-authoritative; this subsection serves only as a
+lineage breadcrumb back to the §6.2 audit that drove the
+re-classification.
 
 **Gap 5b — typed `MethodTemplateContract` projection + structural
 `LanguageSpec` rewrite (parked).** Structural rewrite of
@@ -328,9 +436,10 @@ B3. **Stage0 regen clean.** Generated mirrors at
 1053` regenerate without hand-editing.
 
 B4. **Row-parity gaps preserved as ledger-tracked debt, not silently
-deleted.** `string_contains` (Python/Go) and Go `chars` remain
-substrate-owned; Gap 5b does not delete legacy `*_method_templates`
-maps yet — that is a later authority-deletion PR per audit §"Closing
+deleted.** Current residue (per §6.2 re-audit) is `fold` row
+disposition for Python and Go — Substrate-owned; Gap 5b does not
+delete legacy `*_method_templates` maps yet — that is a later
+authority-deletion PR per audit §"Closing
 PR Shapes" row 6.
 
 B5. **Per-PR debt receipt.** PR description explicitly cites
@@ -373,10 +482,18 @@ S2. **New carrier or snapshot-schema decision required.** Implementation
     cannot proceed without naming a substrate field, variant, or
     carrier shape that §4 did not authorize. Route to Substrate
     Manager per `INVARIANTS.md` `## P1` procedure.
-S3. **Row parity gap blocks acceptance.** A row authority is missing a
-    `MethodRef` (e.g., Python/Go `string_contains`) or a row
-    (`go chars`) needed to satisfy A4 / B-criteria. Route to Substrate;
-    do not paper over with placeholder rows in v2.
+S3. **Row parity gap blocks acceptance.** A row authority is missing
+    a `MethodRef` or row needed to satisfy A4 / B-criteria. Current
+    residue (per §6.2 re-audit) is `fold` for Python/Go: legacy
+    `python_method_templates` and `go_method_templates` carry `fold`
+    via `functools.reduce(...)` / `v2rt.Fold(...)`, but the v3
+    substrate routes `fold_method` through standalone
+    `*_language_spec_free_monoid_fold_contract` rows with a different
+    `__v3_fold(...)` arity rather than inside the per-target
+    `<target>_method_template_contracts` list. Route to Substrate; do
+    not paper over with placeholder rows in v2. *Earlier revisions of
+    this clause cited Python/Go `string_contains` and Go `chars`;
+    that list is stale and superseded by §6.2.*
 S4. **Source-root / `collect_dag_sources` shortcut tempts.** Any
     consideration of expanding v2 source roots as the *semantic* row
     consumer hits STOP-matrix row 5 — escalate, do not implement.
@@ -426,28 +543,64 @@ any later authority-deletion PR on this row) must include:
         │   producer = src/v3/compiler/src/pb_method_template_projection_dag_emit.rs;
         │   v2 ratchet = src/v2/tests/src/pb_method_template_projection_consumability.rs.
         ▼
-[Gap 5a — Grounding leaf re-export migration]   (R3 Grounding-owned;
-        │   not dispatched by this packet)
-        │   Flip dsl/extdeps/languages/{rust,python,go}/emit.dag::*_method_templates
-        │   to re-export generated.method_template_projection.<target>_method_template_emit;
-        │   no src/v2/languages.dag edit; LanguageSpec field shape unchanged.
+[~~Gap 5a — Grounding leaf re-export migration~~]   ← SUPERSEDED 2026-05-04
+        │   Re-classified in §6.2 as structurally degenerate / no-op
+        │   post-#1598: src/v2/05_emit*.dag already migrated; legacy
+        │   *_method_templates + LanguageSpec.method_templates field
+        │   are dead carriers held alive by source_audit.rs ratchet
+        │   only. No PB-implementable overlay-merge shape exists
+        │   inside this packet's STOP boundary.
+        ▼
+[Batch A — Grounding dead-authority deletion]   ← OUT OF PB SCOPE
+        │   Owner: R3 Grounding (per ROADMAP.md:512 / ledger row 85)
+        │   + R3 Substrate sign-off on `fold` row disposition.
+        │   Gated on Substrate decision: fold standalone contract into
+        │   per-target list (with shape extension), or accept `fold`
+        │   as target-only legacy text without v3 row.
+        │   Deliverable (DEAD authorities only): delete
+        │   LanguageSpec.method_templates field + four assignments in
+        │   src/v2/languages.dag (also Gap 5b territory) + delete
+        │   dsl/extdeps/languages/*/emit.dag::*_method_templates
+        │   (rust_method_templates(), python_method_templates,
+        │   go_method_templates) + shrink corresponding
+        │   LEGACY_METHOD_TEMPLATE_AUTHORITIES entries.
+        │   NOT in this batch: rust_method_wraps_result() and
+        │   rust_simple_method_specs — both have a live consumer at
+        │   src/v2/05_emit_rust.dag:2843; see Batch B.
         ▼
 [Substrate/Director typed-read carrier decision]   ← P3b GATE (parked)
         │   Approve typed MethodTemplateContract read shape covering
-        │   higher-order rows + non-Single arms + five-field preservation.
+        │   higher-order rows + non-Single arms + five-field preservation
+        │   (notably `wraps_result`, which the current Map adapter
+        │   does not carry).
         ▼
 [Gap 5b — typed LanguageSpec rewrite PR]   ← acceptance B1–B7
-        │
+        │   May absorb Batch A above if Grounding/Substrate sequence
+        │   them together.
         ▼
-[Grounding leaf-emit migration PRs in src/v2/05_emit*.dag]   (out of scope)
-        │
+[Batch B — Grounding wraps_result consumer migration + deletion]
+        │   Owner: R3 Grounding. Gated on P3b above.
+        │   Deliverable: migrate src/v2/05_emit_rust.dag:2843 from
+        │   rust_method_wraps_result() to a typed
+        │   MethodTemplateContract.wraps_result read; then delete
+        │   rust_method_wraps_result() + rust_simple_method_specs +
+        │   shrink remaining LEGACY_METHOD_TEMPLATE_AUTHORITIES entries.
         ▼
-[Authority-deletion PR — dsl/extdeps/.../emit.dag]   (out of scope)
+[Grounding leaf-emit migration PRs in src/v2/05_emit*.dag]   ← LARGELY DONE (#1598)
+        │   Direct generated-map consumption already on main; this
+        │   slot remains for any non-method-template leaf migrations
+        │   if discovered.
+        ▼
+[Authority-deletion PR — dsl/extdeps/.../emit.dag]   (folded into
+        the Grounding/Substrate node above on this row; kept in the
+        diagram as a separate slot for any non-method-template legacy
+        authorities, none currently identified)
 ```
 
 ## 10. References
 
 - `docs/decisions/r3-row85-method-template-read-surface.md` (§4 decision artifact, landed)
+- `docs/briefs/collectionops-algebra-reframe.md` (`fold_method` standalone-contract rationale; relevant to §6.2 residue correction)
 - `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs` (Gap-4 producer, PR #1598)
 - `src/v2/tests/src/pb_method_template_projection_consumability.rs` (v2 consumer ratchet)
 - `docs/briefs/method-template-consumer-migration-audit.md`
