@@ -52,7 +52,7 @@ Current facts asserted:
 
 | Surface | Current assertion |
 |---|---|
-| `rust_method_template_contracts`, `python_method_template_contracts`, `go_method_template_contracts` | Row lists exist in `generated_full_bootstrap_dag()` and have Director-locked Phase 1 counts: Rust 13, Python 18, Go 14. |
+| `rust_method_template_contracts`, `python_method_template_contracts`, `go_method_template_contracts` | Row lists exist in `generated_full_bootstrap_dag()` and have Director-locked Phase 1 counts: Rust 13, Python 17, Go 13. |
 | `MethodTemplateContract` rows | Each row is a closed record with exactly `dag_method`, `emit_template`, `placeholder_convention`, `runtime_template`, and `wraps_result`. Duplicate, missing, and extra fields fail closed. |
 | `MethodRef` | `dag_method` must be a `MethodRef { decl }` record, and `decl` must reference a declaration that instantiates `MethodDeclaration`. |
 | Templates | `runtime_template` must be a string, `emit_template` must be a known `MethodEmitTemplate` variant, `PlaceholderConvention` must be a known nullary variant, and `wraps_result` must be bool. |

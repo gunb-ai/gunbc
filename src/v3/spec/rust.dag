@@ -67,7 +67,7 @@ import v3.std.emit_model {
   TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound,
   MethodTemplateContract, SingleTemplate, NamedArg
 }
-import std.methods { fold_method }
+import std.methods { concat_method, fold_method, is_empty_method, length_method }
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
   port, node, resolve_producer, lane2_workflow_at, declaration_by_id
@@ -1360,6 +1360,32 @@ data rust_patterns: PatternMatchSyntax = {
   wildcard: "_"
 }
 
+data rust_language_spec_free_monoid_concat_contract: MethodTemplateContract = {
+  dag_method: { decl: concat_method },
+  runtime_template: "{ let mut __left = {left}; __left.extend({right}); __left }",
+  emit_template: SingleTemplate { template: "{ let mut __left = {left}; __left.extend({right}); __left }" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data rust_language_spec_free_monoid_length_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "({recv}).len() as i64",
+  emit_template: SingleTemplate { template: "({recv}).len() as i64" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// `FreeMonoid<T>.is_empty` → `Bool` (declared on the algebra record); templates
+// use target-native emptiness sugar (Rust `.is_empty()`, Python/Go `len(...) == 0`).
+data rust_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
+  dag_method: { decl: is_empty_method },
+  runtime_template: "({recv}).is_empty()",
+  emit_template: SingleTemplate { template: "({recv}).is_empty()" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data rust_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   dag_method: { decl: fold_method },
   runtime_template: "({recv}).iter().fold({init}, {body})",
@@ -1369,9 +1395,9 @@ data rust_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
 }
 
 data rust_collection_ops: CollectionOps = {
-  concat: "{ let mut __left = {left}; __left.extend({right}); __left }"
-  length: "({recv}).len() as i64"
-  is_empty: "({recv}).is_empty()"
+  concat_contract: rust_language_spec_free_monoid_concat_contract
+  length_contract: rust_language_spec_free_monoid_length_contract
+  is_empty_contract: rust_language_spec_free_monoid_emptiness_contract
   fold_contract: rust_language_spec_free_monoid_fold_contract
   map: "({recv}).iter().map({body}).collect::<Vec<_>>()"
   filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }"
