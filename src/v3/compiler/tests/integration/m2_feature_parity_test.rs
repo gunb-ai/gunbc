@@ -10,8 +10,8 @@
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, LogicalOp, OperatorKind, TransformTarget,
-    TypeConnective,
+    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId, LogicalOp, OperatorKind,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
@@ -24,6 +24,62 @@ fn compile_any(src: &str, file: &str) -> Dag {
         Ok(dag) => dag,
         Err(CompileError::Semantic(dag)) => dag,
         Err(other) => panic!("unexpected structural error: {other:?}"),
+    }
+}
+
+fn arrow_output_decl(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+    let TypeConnective::Arrow { output, .. } = &dag.declaration(decl_id).connective else {
+        panic!("expected {decl_id:?} to be an Arrow declaration");
+    };
+    *output
+}
+
+fn instantiation_arg(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    expected_template: DeclarationId,
+) -> DeclarationId {
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(decl_id).connective
+    else {
+        panic!("expected {decl_id:?} to be an Instantiation");
+    };
+    assert_eq!(
+        *template, expected_template,
+        "instantiation template mismatch"
+    );
+    assert_eq!(arguments.len(), 1, "expected one template argument");
+    arguments[0].value
+}
+
+fn same_instantiation_shape(dag: &Dag, lhs: DeclarationId, rhs: DeclarationId) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    match (
+        &dag.declaration(lhs).connective,
+        &dag.declaration(rhs).connective,
+    ) {
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            lhs_template == rhs_template
+                && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs, rhs)| same_instantiation_shape(dag, lhs.value, rhs.value))
+        }
+        _ => false,
     }
 }
 
@@ -341,6 +397,114 @@ fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
     );
 }
 
+#[test]
+fn test_3a2_record_data_substitutes_generic_list_fields() {
+    let src = "\
+        type GenericAggregates<T> {
+          items: List<T>
+        }\n\
+        data aggregate_int: GenericAggregates<Int> = {
+          items: [1, 2]
+        }";
+    let dag = cached_compile_to_dag(src, "generic_aggregate_fields.v3");
+    let decl = dag
+        .declaration_by_name("aggregate_int")
+        .expect("aggregate_int must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected aggregate_int to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let items = fields
+        .iter()
+        .find(|(label, _)| label == "items")
+        .map(|(_, value)| value)
+        .expect("items field");
+    let v3_compiler::dag::FieldValue::List(items) = items else {
+        panic!("items must lower as a structural list, got {items:?}");
+    };
+    assert_eq!(
+        items,
+        &vec![
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+        ]
+    );
+}
+
+#[test]
+fn test_3a2_record_data_discovers_list_through_type_param_substitution() {
+    let src = "\
+        type GenericSlot<T> {
+          value: T
+        }\n\
+        data list_slot: GenericSlot<List<Int>> = {
+          value: [1, 2]
+        }";
+    let dag = cached_compile_to_dag(src, "generic_slot_list_field.v3");
+    let decl = dag
+        .declaration_by_name("list_slot")
+        .expect("list_slot must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected list_slot to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "value")
+        .map(|(_, value)| value)
+        .expect("value field");
+    let v3_compiler::dag::FieldValue::List(items) = value else {
+        panic!("value must lower as a structural list, got {value:?}");
+    };
+    assert_eq!(
+        items,
+        &vec![
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+        ]
+    );
+}
+
+#[test]
+fn test_3a2_record_data_discovers_sum_through_type_param_substitution() {
+    let src = "\
+        type Maybe<T> = Some(T) | None\n\
+        type GenericSlot<T> {
+          value: T
+        }\n\
+        data maybe_slot: GenericSlot<Maybe<Int>> = {
+          value: Some(1)
+        }";
+    let dag = cached_compile_to_dag(src, "generic_slot_sum_field.v3");
+    let decl = dag
+        .declaration_by_name("maybe_slot")
+        .expect("maybe_slot must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected maybe_slot to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "value")
+        .map(|(_, value)| value)
+        .expect("value field");
+    let v3_compiler::dag::FieldValue::Variant { payload, .. } = value else {
+        panic!("value must lower as a structural variant, got {value:?}");
+    };
+    assert_eq!(
+        payload,
+        &vec![v3_compiler::dag::FieldValue::Literal(
+            v3_compiler::dag::LiteralBits::Int(1)
+        )]
+    );
+}
+
 /// Inbox #1130 / #1139 — complexity `Lens<Int>` migration readiness: Prereq-1
 /// (Arrow-typed record fields + nested `Monoid<C>`) already lowers `fn`
 /// declaration references. This shape matches `Lens<C>`'s `branch` /
@@ -424,6 +588,137 @@ fn test_3a2_lensish_int_carrier_lowers_branch_and_monoid_fn_refs() {
         .map(|(_, value)| value)
         .expect("op field");
     assert_eq!(op, &v3_compiler::dag::FieldValue::Reference(op_id));
+}
+
+#[test]
+fn test_3a2_lens_int_data_substitutes_generic_conj_fields() {
+    let src = "\
+        import std.algebra { Monoid }\n\
+        import std.substrate { Dag, Behavior, LoopBound }\n\
+        import v3.std.dimensions { Witness, OptionalDiagnostic }\n\
+        import v3.std.lens { Lens }\n\
+        fn lens_read(d: Dag, b: Behavior) -> Witness<Int> { Inhabits(1) }\n\
+        fn int_add(a: Int, b: Int) -> Int = a + b\n\
+        fn int_max(a: Int, b: Int) -> Int = if a > b then a else b\n\
+        fn lens_iterate(c: Int, bound: LoopBound) -> Int = c\n\
+        fn lens_validate(d: Dag, c: Int) -> OptionalDiagnostic { NoDiagnostic }\n\
+        data complexity_lens_seed: Lens<Int> = {\n\
+          name: \"complexity\",\n\
+          read: lens_read,\n\
+          sequential: { op: int_add, identity: 0 },\n\
+          branch: int_max,\n\
+          iterate: lens_iterate,\n\
+          validate: lens_validate\n\
+        }";
+    let dag = cached_compile_to_dag(src, "lens_int_generic_conj_substitution.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "Lens<Int> data body should compile after substituting Lens<C> and Monoid<C> fields: {:?}",
+        dag.diagnostics()
+    );
+    let read_id = dag.declaration_by_name("lens_read").unwrap().id;
+    let op_id = dag.declaration_by_name("int_add").unwrap().id;
+    let validate_id = dag.declaration_by_name("lens_validate").unwrap().id;
+    let decl = dag
+        .declaration_by_name("complexity_lens_seed")
+        .expect("complexity_lens_seed must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!(
+            "expected Lens<Int> data to lower structurally, got {:?}",
+            decl.value_body
+        );
+    };
+    assert_eq!(
+        fields.len(),
+        6,
+        "Lens<Int> carrier shape must stay six-field"
+    );
+    let read = fields.iter().find(|(label, _)| label == "read").unwrap();
+    assert_eq!(read.1, v3_compiler::dag::FieldValue::Reference(read_id));
+    let validate = fields
+        .iter()
+        .find(|(label, _)| label == "validate")
+        .unwrap();
+    assert_eq!(
+        validate.1,
+        v3_compiler::dag::FieldValue::Reference(validate_id)
+    );
+    let sequential = fields
+        .iter()
+        .find(|(label, _)| label == "sequential")
+        .map(|(_, value)| value)
+        .expect("sequential field");
+    let v3_compiler::dag::FieldValue::Record(nested) = sequential else {
+        panic!("`sequential` must lower as nested Monoid<Int> record, got {sequential:?}");
+    };
+    let op = nested.iter().find(|(label, _)| label == "op").unwrap();
+    assert_eq!(op.1, v3_compiler::dag::FieldValue::Reference(op_id));
+    let identity = nested
+        .iter()
+        .find(|(label, _)| label == "identity")
+        .unwrap();
+    assert_eq!(
+        identity.1,
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(0))
+    );
+}
+
+#[test]
+fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
+    let src = "\
+        import std.algebra { Monoid }\n\
+        import std.substrate { Dag, Behavior, LoopBound }\n\
+        import v3.std.dimensions { Witness, OptionalDiagnostic }\n\
+        import v3.std.lens { Lens }\n\
+        fn lens_read(d: Dag, b: Behavior) -> Witness<String> { Inhabits(\"bad\") }\n\
+        fn int_add(a: Int, b: Int) -> Int = a + b\n\
+        fn int_max(a: Int, b: Int) -> Int = if a > b then a else b\n\
+        fn lens_iterate(c: Int, bound: LoopBound) -> Int = c\n\
+        fn lens_validate(d: Dag, c: Int) -> OptionalDiagnostic { NoDiagnostic }\n\
+        data bad_complexity_lens_seed: Lens<Int> = {\n\
+          name: \"complexity\",\n\
+          read: lens_read,\n\
+          sequential: { op: int_add, identity: 0 },\n\
+          branch: int_max,\n\
+          iterate: lens_iterate,\n\
+          validate: lens_validate\n\
+        }";
+    let err = compile_to_dag(src, "lens_int_generic_conj_substitution_negative.v3")
+        .expect_err("Lens<Int>.read must reject Witness<String> after substituting C := Int");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic substitution mismatch, got {err:?}");
+    };
+    let lens_read_id = dag
+        .declaration_by_name("lens_read")
+        .expect("lens_read must exist")
+        .id;
+    let expected_read_ty = dag
+        .diagnostics()
+        .iter()
+        .find_map(|(_, diagnostic)| match diagnostic {
+            Diagnostic::TypeMismatch {
+                expected, actual, ..
+            } if actual.declaration == lens_read_id => Some(expected.declaration),
+            _ => None,
+        })
+        .expect("read mismatch must surface as structured TypeMismatch on lens_read");
+    let witness = dag.declaration_by_name("Witness").unwrap().id;
+    let int_decl = dag.declaration_by_name("Int").unwrap().id;
+    let string_decl = dag.declaration_by_name("String").unwrap().id;
+    let actual_arg = instantiation_arg(&dag, arrow_output_decl(&dag, lens_read_id), witness);
+    let expected_arg = instantiation_arg(&dag, arrow_output_decl(&dag, expected_read_ty), witness);
+    assert!(
+        same_instantiation_shape(&dag, actual_arg, string_decl),
+        "actual read output must be Witness<String>"
+    );
+    assert!(
+        same_instantiation_shape(&dag, expected_arg, int_decl),
+        "expected substituted read output must be Witness<Int>"
+    );
+    assert_ne!(
+        expected_arg, actual_arg,
+        "expected and actual witness carriers must differ"
+    );
 }
 
 #[test]
