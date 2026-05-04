@@ -4704,7 +4704,7 @@ fn canonical_div_error_decl(dag: &Dag) -> Option<&Declaration> {
     let mut matches = dag
         .declarations()
         .iter()
-        .filter(|decl| substrate_div_error_type_decl_suppressed_for_emit(decl));
+        .filter(|decl| substrate_div_error_type_decl_suppressed_for_emit(dag, decl));
     let div_error = matches.next()?;
     if matches.next().is_some() {
         return None;
@@ -6855,6 +6855,13 @@ mod bool_logical_operator_arrow_tests {
             nominal_opacity: None,
             span,
         });
+        assert!(
+            !substrate_div_error_type_decl_suppressed_for_emit(
+                &dag,
+                dag.declaration(shadow_div_error)
+            ),
+            "payload-bearing DivError twin must not match the canonical unit-variant fingerprint",
+        );
 
         let resolved = resolve_operator_arrow(
             &mut dag,

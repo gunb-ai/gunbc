@@ -2816,6 +2816,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
         // materializes it as `::core::result::Result<…>`. Generic `Result` is not
         // emitted as a Rust `enum` (and would collide with the prelude if it were).
         .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(dag, decl))
+        .filter(|decl| !super::substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -2894,6 +2895,7 @@ pub(crate) fn emit_rust_with_mode(dag: &Dag, mode: EmitRustMode) -> Result<Strin
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(
+            dag,
             type_decls.iter(),
             function_decls.iter(),
             top_level_binds.iter(),

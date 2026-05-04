@@ -147,15 +147,16 @@ pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
 }
 
 pub(crate) fn div_prelude_reserved_name_collision<'a>(
+    dag: &Dag,
     type_decls: impl IntoIterator<Item = &'a &'a Declaration>,
     function_decls: impl IntoIterator<Item = &'a &'a Declaration>,
     top_level_binds: impl IntoIterator<Item = &'a &'a BindNode>,
     helper_name: &'static str,
 ) -> Option<&'static str> {
-    if type_decls
-        .into_iter()
-        .any(|decl| decl.name.as_deref() == Some("DivError"))
-    {
+    if type_decls.into_iter().any(|decl| {
+        decl.name.as_deref() == Some("DivError")
+            && !substrate_div_error_type_decl_suppressed_for_emit(dag, decl)
+    }) {
         return Some("DivError");
     }
     function_decls
@@ -179,7 +180,7 @@ pub(crate) fn decl_uses_substrate_result_or_div_error(
         return false;
     }
     let decl = dag.declaration(declaration);
-    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
+    if substrate_div_error_type_decl_suppressed_for_emit(dag, decl) {
         return true;
     }
     match &decl.connective {
@@ -234,15 +235,31 @@ fn dag_needs_go_result_prelude(
 /// not the declaration source path. A declaration with this exact global shape is
 /// the substrate-owned integer-division error carrier and is materialized by the
 /// target division prelude when a program actually needs it.
-pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
+pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(
+    dag: &Dag,
+    decl: &Declaration,
+) -> bool {
     if decl.name.as_deref() != Some("DivError") || !decl.type_params.is_empty() {
         return false;
     }
     matches!(&decl.connective, TypeConnective::Disj { variants } if {
         variants.len() == 2
-            && variants.iter().any(|variant| variant.label == "DivideByZero")
-            && variants.iter().any(|variant| variant.label == "Overflow")
+            && variants.iter().any(|variant| {
+                variant.label == "DivideByZero"
+                    && substrate_div_error_variant_payload_is_unit(dag, variant.ty)
+            })
+            && variants.iter().any(|variant| {
+                variant.label == "Overflow"
+                    && substrate_div_error_variant_payload_is_unit(dag, variant.ty)
+            })
     })
+}
+
+fn substrate_div_error_variant_payload_is_unit(dag: &Dag, payload_ty: DeclarationId) -> bool {
+    matches!(
+        &dag.declaration(payload_ty).connective,
+        TypeConnective::Conj { children } if children.is_empty()
+    )
 }
 
 pub(crate) fn port_uses_substrate_result_or_div_error(dag: &Dag, port: PortId) -> bool {
@@ -261,7 +278,7 @@ fn decl_uses_substrate_div_error(
         return false;
     }
     let decl = dag.declaration(declaration);
-    if substrate_div_error_type_decl_suppressed_for_emit(decl) {
+    if substrate_div_error_type_decl_suppressed_for_emit(dag, decl) {
         return true;
     }
     match &decl.connective {
@@ -1332,6 +1349,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| !substrate_result_type_decl_suppressed_for_emit(dag, decl))
+        .filter(|decl| !substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -1405,6 +1423,7 @@ fn emit_go_with_mode(dag: &Dag, mode: EmitMode) -> Result<String, EmitError> {
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(
+            dag,
             type_decls.iter(),
             function_decls.iter(),
             top_level_binds.iter(),
@@ -3779,7 +3798,45 @@ mod tests {
             dag.declaration(result)
         ));
         assert!(super::substrate_div_error_type_decl_suppressed_for_emit(
+            &dag,
             dag.declaration(div_error)
+        ));
+    }
+
+    #[test]
+    fn payload_bearing_diverror_is_not_emit_suppressed() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let shadow_div_error = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: shadow_div_error,
+            name: Some("DivError".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "DivideByZero".to_string(),
+                        ty: int,
+                    },
+                    Field {
+                        label: "Overflow".to_string(),
+                        ty: int,
+                    },
+                ],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/errors.dag", 0, 0),
+        });
+
+        assert!(!super::substrate_div_error_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(shadow_div_error)
         ));
     }
 
