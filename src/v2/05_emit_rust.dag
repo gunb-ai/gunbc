@@ -617,7 +617,14 @@ fn data_item_type_is_coproduct_wire_contract(item: Node, imports: List<Node>, so
 
 fn module_defines_local_coproduct_wire_contract_type(module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
   module_items
-    |> any(item => is_type_def_item(item: item) && authored_name_at(source_indices: source_indices, node: item) == "CoproductWireContract")
+    |> any(item =>
+      (
+        is_type_def_item(item: item)
+        || is_type_alias_item(item: item, source_indices: source_indices)
+        || is_type_decl_item(item: item, source_indices: source_indices)
+      )
+      && authored_name_at(source_indices: source_indices, node: item) == "CoproductWireContract"
+    )
 }
 
 fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {

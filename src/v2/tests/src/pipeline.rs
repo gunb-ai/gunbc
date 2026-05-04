@@ -6366,7 +6366,7 @@ type RealEnum
 #[test]
 fn local_same_name_coproduct_wire_contract_is_not_authority() {
     let source = r#"module local_spoof_coproduct_wire_contract
-import std.serialization { VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding }
 
 type CoproductWireContract {
   coproduct: String
@@ -6392,6 +6392,36 @@ type RealEnum
     assert!(
         attrs.contains(&"#[serde(tag = \"_variant\")]"),
         "local same-name types must not spoof std.serialization.CoproductWireContract; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
+fn local_alias_coproduct_wire_contract_is_not_authority() {
+    let source = r#"module local_alias_spoof_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+type CoproductWireContract = String
+
+data spoof_contract: CoproductWireContract = {
+  coproduct: "RealEnum",
+  encoding: InternallyTaggedObject { tag_field: "kind", naming: SnakeCase }
+}
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "local_alias_spoof_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/local_alias_spoof_coproduct_wire_contract.rs");
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "local same-name aliases must not spoof std.serialization.CoproductWireContract; attrs: {:?}\n{content}",
         attrs
     );
 }
