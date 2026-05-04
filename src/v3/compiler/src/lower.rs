@@ -1097,7 +1097,9 @@ fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: Declar
 fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static str, SourceSpan)> {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => None,
-        SurfaceExpr::Call { args, .. } | SurfaceExpr::Operator { args, .. } => {
+        SurfaceExpr::Call { args, .. }
+        | SurfaceExpr::Operator { args, .. }
+        | SurfaceExpr::PathCall { args, .. } => {
             args.iter().find_map(refinement_predicate_out_of_fragment)
         }
         SurfaceExpr::Lambda { span, .. } => Some(("lambda", span.clone())),
@@ -1632,6 +1634,19 @@ fn collect_scope_bound_free_vars(
             // expression position.
             for entry in entries {
                 collect_scope_bound_free_vars(&entry.value, scope, out);
+            }
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // Like Path: head segment is a local-variable reference
+            // when it resolves to scope. Plus recurse into args like
+            // Call.
+            if let Some(head) = segments.first() {
+                if scope.contains_key(head) {
+                    out.insert(head.clone());
+                }
+            }
+            for arg in args {
+                collect_scope_bound_free_vars(arg, scope, out);
             }
         }
     }
@@ -5403,6 +5418,16 @@ fn collect_lambda_free_names(
                 collect_lambda_free_names(&entry.value, bound, free);
             }
         }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            if let Some(head) = segments.first() {
+                if !bound.contains(head) {
+                    free.insert(head.clone());
+                }
+            }
+            for arg in args {
+                collect_lambda_free_names(arg, bound, free);
+            }
+        }
     }
 }
 
@@ -6097,6 +6122,42 @@ fn lower_field_path_expr(
 /// Only scalar literals terminate the walk; nested `Record` payloads
 /// admit further descent but `List`, `Map`, and `Variant` terminal
 /// reads are out of scope for 3a.2 and fall through to `None`.
+/// Prereq-X1.a: walk a sequence of structural-body field segments
+/// to a `FieldValue::Reference(decl_id)` leaf. Returns `None` if the
+/// path traverses a non-structural value body, the leaf field is
+/// missing, the leaf is a non-Reference value, or the segments are
+/// empty.
+fn resolve_field_value_reference(
+    value_body: &crate::dag::ValueBody,
+    segments: &[String],
+) -> Option<DeclarationId> {
+    let crate::dag::ValueBody::Structural { fields } = value_body else {
+        return None;
+    };
+    walk_structural_to_reference(fields, segments)
+}
+
+fn walk_structural_to_reference(
+    fields: &[(String, crate::dag::FieldValue)],
+    segments: &[String],
+) -> Option<DeclarationId> {
+    let (head, rest) = segments.split_first()?;
+    let field_value = fields
+        .iter()
+        .find(|(label, _)| label == head)
+        .map(|(_, v)| v)?;
+    if rest.is_empty() {
+        return match field_value {
+            crate::dag::FieldValue::Reference(id) => Some(*id),
+            _ => None,
+        };
+    }
+    match field_value {
+        crate::dag::FieldValue::Record(inner) => walk_structural_to_reference(inner, rest),
+        _ => None,
+    }
+}
+
 fn resolve_data_path(
     dag: &mut Dag,
     value_body: &crate::dag::ValueBody,
@@ -6801,6 +6862,143 @@ fn lower_expr(
             segment_spans,
             span,
         } => lower_field_path_expr(segments, segment_spans, span, dag, scope, symbols),
+        SurfaceExpr::PathCall {
+            segments,
+            segment_spans: _,
+            args,
+            span,
+        } => {
+            // Prereq-X1.a: static call-on-field-access. Resolve the
+            // dotted-path callee through a `data` binding's
+            // structural value body to a top-level function decl, then
+            // dispatch through the existing `Call` lowering by
+            // constructing a synthetic `SurfaceExpr::Call` whose target
+            // is the resolved declaration's name. This reuses arity +
+            // per-argument type validation without duplicating the
+            // Call lowerer.
+            //
+            // Failure modes (each fail-closed with a typed diagnostic):
+            //
+            // - Empty path / non-`data` head / parameter-callee head:
+            //   ResolveError naming the unsupported head and pointing
+            //   at the X1.b prerequisite for parameter callees.
+            // - Missing/non-Reference field at the leaf: ResolveError.
+            // - Resolved declaration without a name: ResolveError.
+            //
+            // Parameter-callee dispatch (X1.b) is intentionally
+            // unsupported here; the diagnostic names the prerequisite.
+            let Some((head, rest)) = segments.split_first() else {
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: "empty dotted path in call expression".to_string(),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            // Parameter-callee head (X1.b): the head is a local-scope
+            // binding rather than a top-level `data` symbol. Surface a
+            // typed diagnostic naming the prerequisite — do not
+            // silently fall through.
+            if scope.contains_key(head) {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access through parameter `{head}` is not yet supported (Prereq-X1.b: requires runtime-callee dispatch substrate); only static `data` binding callees are accepted in this slice"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            }
+            let Some(&head_decl) = symbols.get(head) else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access head `{head}` is not a top-level `data` declaration; static call-on-field-access (Prereq-X1.a) requires a `data` binding head"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            let value_body_opt = dag.declaration(head_decl).value_body.clone();
+            let Some(value_body) = value_body_opt else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access head `{head}` has no compile-time value body; static call-on-field-access requires a `data` binding with a structural value body"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            let resolved_callee_decl = resolve_field_value_reference(&value_body, rest);
+            let Some(callee_decl_id) = resolved_callee_decl else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "dotted path `{}` does not resolve to a callable function reference (expected `FieldValue::Reference` at leaf); the field may be a non-Arrow value, missing, or the path may traverse a non-structural value body",
+                            segments.join(".")
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            let callee_name = match dag.declaration(callee_decl_id).name.clone() {
+                Some(n) => n,
+                None => {
+                    for arg in args {
+                        let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                    }
+                    return unresolved_port(
+                        dag,
+                        Diagnostic::ResolveError {
+                            name: format!(
+                                "dotted path `{}` resolves to an anonymous declaration; only named top-level functions are valid X1.a callees",
+                                segments.join(".")
+                            ),
+                            span: span.clone(),
+                            fixes: Vec::new(),
+                        },
+                    );
+                }
+            };
+            // Synthesize a `Call` so we reuse the existing static
+            // callable lowerer (arity + per-position type validation).
+            let synthetic = SurfaceExpr::Call {
+                target: callee_name,
+                args: args.clone(),
+                span: span.clone(),
+            };
+            return lower_expr(
+                &synthetic,
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            );
+        }
         SurfaceExpr::Map { span, .. } => {
             // Map literals are not lowerable as expressions in M1(2.8) —
             // the parser admits them only in top-level data-body

@@ -1890,6 +1890,7 @@ pub(crate) fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Match { span, .. }
         | SurfaceExpr::Record { span, .. }
         | SurfaceExpr::List { span, .. }
-        | SurfaceExpr::Map { span, .. } => span,
+        | SurfaceExpr::Map { span, .. }
+        | SurfaceExpr::PathCall { span, .. } => span,
     }
 }
