@@ -95,6 +95,39 @@ warrants). A sibling variant is the smallest honest carrier.
 Regenerate `src/v3/compiler/src/parse_surface_generated.rs` via the
 existing parse-surface emitter.
 
+**Carrier-addition discipline (required, not optional).** The
+implementation PR body MUST include all of the following — review will
+block on any of them missing:
+
+1. **Why a sibling variant is the smallest honest carrier.** Cite both
+   the opaque-string-target alternative and the `Call.target` widening
+   alternative, and explain why each is a wider blast radius than this
+   slice warrants.
+2. **Why this is not an opaque-string target.** Explicitly: `segments:
+   List<String>` is structured (per-segment tokens carry their own
+   `SourceSpan`), not a `String`-with-`.`-separators that would attract
+   a downstream parser-of-our-own-output.
+3. **Generated files changed by this slice.** Enumerate exactly:
+   `src/v3/compiler/src/parse_surface_generated.rs` (`SurfaceExpr`
+   variant emission) and `src/v3/compiler/src/parse_generated.rs`
+   (`parse_ident_expr` body splice). State that the
+   `regen_parse` ceremony was run and committed in the same PR.
+4. **Dissolution / scaffold status for the new variant.** Per
+   modeling-discipline coproduct classification, tag `PathCall` with
+   one of 🟢 keep / 🟡 future-dissolve / 🔴 dissolve-now, with the
+   tracking gate written explicitly. Recommended classification: 🟡
+   future-dissolve, with tracking gate "dissolves into the same
+   `Call { callee: CalleeRef, args }` shape that
+   `design-prereq-x-ho-field-call.md` §X1.b's dissolution ledger
+   describes for `Callable` / `FieldCall` / `Indirect`; see that
+   audit's 🟡 ledger entry." This avoids creating a parallel
+   classification surface for the same future collapse.
+5. **No silent SCAFFOLD lifecycle on the capability.** The
+   capability "static call-on-field-access dispatch" is a permanent
+   language surface; only the variant *spelling* is transitional.
+   Mirror the `design-prereq-x-ho-field-call.md` §X1.b "HO dispatch
+   capability is permanent / variant spelling is transitional" split.
+
 ### 2. Parser algorithm (`src/v3/compiler/parse_parser_body.txt`)
 
 In `parse_ident_expr`, after the `while matches!(self.peek().kind,
