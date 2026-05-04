@@ -13,7 +13,7 @@ S-1 unblocks the **G-1 implementation chain** for T-V2-Retirement:
 - **G-1**: deletion of Cargo.lock v2 dev-deps. Cascade-gated on §3.1 + §3.2 dispositions completing (one of which needs Substrate-side authority migration; the other needs PM choice between replace vs delete).
 - **G-2 prereq stack**: S-1 + S-2 + S-3 + S-4 + G-1. S-1 brief enumerates the entire chain (per Decision 6 below) so workers don't reconstruct it from the audit.
 
-The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port four internal v2-test property receipts to live v3 surfaces. S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
+The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port seven internal v2-test property receipts onto live v3 `std.induction` / `std.termination` surfaces. S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
 
 ## Consumes (authoritative inputs)
 
@@ -100,10 +100,12 @@ PB Mgr's recommended narrowest first dispatch under S-1 is **Pop A v3 property-t
 
 ### Dispatch 1 — Pop A v3 property-test migration (S-1-only; immediately dispatchable)
 
-**Scope**: port four internal v2-test property receipts onto live v3 surfaces:
-1. `prop_run_steps_termination` / `prop_run_steps_foo` (run-step termination property)
-2. Peano materialization cap (Peano arithmetic materialization upper bound)
-3. `behavior_round_trip` / `behavior_round_trip_bar` (behavior round-trip property)
+**Scope**: port **seven internal v2-test property receipts** onto live v3 `std.induction` / `std.termination` surfaces (per Director-corrected scope at [`gunb-ai/gunbc#828` inbox-4375387368](https://github.com/gunb-ai/gunbc/issues/828); supersedes earlier markdown-stripped property list):
+
+1. `derive_bound` / `master_theorem` (recursion-bound derivation; `std.termination`)
+2. `int_pow_bounded` / `ceil_log` (bounded integer operations; `std.induction`)
+3. Peano materialization cap (Peano arithmetic materialization upper bound; `std.induction`)
+4. `meet_sub_value` / `join_sub_value` (`SubValueRelation` lattice operations; `std.induction`)
 
 **Why this dispatch is narrowest**:
 - S-1-only (does NOT need R2-Evaluator/PB-Runtime/Substrate authority migration)
@@ -112,13 +114,12 @@ PB Mgr's recommended narrowest first dispatch under S-1 is **Pop A v3 property-t
 - Single-author work (no cross-program coordination per dispatch)
 
 **Live v3 surfaces** the migration targets:
-- Run-step termination: live v3 termination semantics in `dsl/std/termination.dag` + v3 Evaluator
-- Peano materialization cap: live v3 numeric carrier work per T-Numeric-Construction lane
-- Behavior round-trip: v3 substrate behaviors (Value / Transform / Branch / Loop / Bind) + serialization
+- `dsl/std/termination.dag` — `derive_bound`, `master_theorem`
+- `dsl/std/induction.dag` — `int_pow_bounded`, `ceil_log`, Peano materialization cap, `meet_sub_value`, `join_sub_value` (`SubValueRelation` lattice ops)
 
-**Recommended worker assignment**: silent-boar or witty-tern (per PB Mgr's at-the-time read at `docs/briefs/r3-pb-tv2-g1-readiness-receipt.md` + read-back at [#1134 comment-4375362161](https://github.com/gunb-ai/gunbc/issues/1134#issuecomment-4375362161)). PB Manager picks specific worker per their cadence + readiness.
+**Recommended worker assignment**: silent-boar or witty-tern (per PB Mgr's read-back at [#1134 comment-4375362161](https://github.com/gunb-ai/gunbc/issues/1134#issuecomment-4375362161)). PB Manager picks specific worker per their cadence + readiness.
 
-**Closure**: dispatch produces one PR migrating the four property receipts to v3 surfaces; PB Manager confirms the property ratchets are preserved on v3 side; PR merges; ratchet status tracked in PB Manager's inventory.
+**Closure**: dispatch produces one PR migrating the seven property receipts onto live `std.induction` / `std.termination` v3 surfaces; PB Manager confirms property ratchets are preserved on v3 side; PR merges; ratchet status tracked in PB Manager's inventory.
 
 ### Dispatch 2 — B.1 (peano_arith consumer) — gated on Decision 1 prerequisite
 
