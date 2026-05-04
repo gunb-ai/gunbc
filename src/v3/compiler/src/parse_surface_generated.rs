@@ -128,6 +128,12 @@ pub enum SurfaceExpr {
         args: Vec<SurfaceExpr>,
         span: SourceSpan,
     },
+    PathCall {
+        segments: Vec<String>,
+        segment_spans: Vec<SourceSpan>,
+        args: Vec<SurfaceExpr>,
+        span: SourceSpan,
+    },
     VariantRecord {
         target: String,
         fields: Vec<SurfaceRecordField>,
