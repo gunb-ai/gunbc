@@ -216,6 +216,8 @@ data structural_coverage_gap_openai_responses_200_residual: List<String> = [
   "closure:openai_responses_200_residual|OpenAiResponses200OutputItem|variant_pending:tool_calls|variant_pending:reasoning|variant_pending:error|variant_pending:multimodal_output|trigger:Responses output item coproduct surface"
 ]
 
+// 🟢 TERMINAL response annotation coproduct for the direct-coordinate
+// Responses `output_text.annotations[]` wire tags modeled in this narrow slice.
 type OpenAiResponses200Annotation
   = FileCitation { file_id: String, filename: String, index: Int }
   | UrlCitation { start_index: Int, end_index: Int, title: String, url: String }
@@ -227,7 +229,7 @@ type OpenAiResponses200OutputItem {
   type: String
   status: String?
   role: String?
-  content: List<OpenAiResponses200OutputContent>?
+  content: List<OpenAiResponses200OutputContent>
 }
 
 type OpenAiResponses200InputTokenDetails {

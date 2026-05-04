@@ -7032,7 +7032,7 @@ fn openai_responses_200_body_round_trip_representative_wire() {
         item_type: String,
         status: Option<String>,
         role: Option<String>,
-        content: Option<Vec<OutputContent>>,
+        content: Vec<OutputContent>,
     }
 
     #[derive(serde::Deserialize)]
@@ -7154,7 +7154,7 @@ fn openai_responses_200_body_round_trip_representative_wire() {
     assert_eq!(body.output[0].item_type, "message");
     assert_eq!(body.output[0].status.as_deref(), Some("completed"));
     assert_eq!(body.output[0].role.as_deref(), Some("assistant"));
-    let content = &body.output[0].content.as_ref().unwrap()[0];
+    let content = &body.output[0].content[0];
     assert_eq!(content.content_type, "output_text");
     assert_eq!(content.text, "hello");
     let annotations = content.annotations.as_ref().unwrap();
