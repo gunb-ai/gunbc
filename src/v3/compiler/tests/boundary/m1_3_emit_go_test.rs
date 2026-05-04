@@ -492,7 +492,7 @@ fn emit_go_checked_division_prelude_maps_overflow() {
 }
 
 #[test]
-fn emit_go_omits_div_prelude_for_user_diverror_signature_without_division() {
+fn emit_go_structural_diverror_signature_uses_substrate_prelude() {
     let dag = compile_to_dag(
         "type DivError = DivideByZero | Overflow\n\
 fn passthrough(x: DivError) -> DivError = x\n",
@@ -503,12 +503,12 @@ fn passthrough(x: DivError) -> DivError = x\n",
         .expect("emits go module")
         .text;
     assert!(
-        !out.contains("func v3intdiv"),
-        "user DivError signatures should not trigger integer division prelude; got: {out}"
+        out.contains("func v3intdiv"),
+        "structural DivError signatures use the substrate prelude, independent of source path; got: {out}"
     );
     assert!(
         out.matches("type DivError").count() == 1,
-        "user DivError should emit once without colliding with a std prelude; got: {out}"
+        "structural DivError should materialize once through the substrate prelude; got: {out}"
     );
 }
 

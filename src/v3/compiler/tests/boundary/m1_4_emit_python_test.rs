@@ -228,7 +228,7 @@ fn emit_python_checked_division_prelude_maps_overflow() {
 }
 
 #[test]
-fn emit_python_omits_div_prelude_for_user_diverror_signature_without_division() {
+fn emit_python_structural_diverror_signature_uses_substrate_prelude() {
     let dag = compile_to_dag(
         "type DivError = DivideByZero | Overflow\n\
 fn passthrough(x: DivError) -> DivError = x\n",
@@ -237,12 +237,12 @@ fn passthrough(x: DivError) -> DivError = x\n",
     .expect("compiles");
     let out = emit_python_module(&dag).expect("emits python module");
     assert!(
-        !out.contains("def __v3_idiv"),
-        "user DivError signatures should not trigger integer division prelude; got: {out}"
+        out.contains("def __v3_idiv"),
+        "structural DivError signatures use the substrate prelude, independent of source path; got: {out}"
     );
     assert!(
-        out.matches("class DivError:").count() == 1,
-        "user DivError should emit once without colliding with a std prelude; got: {out}"
+        out.matches("class DivError(enum.IntEnum):").count() == 1,
+        "structural DivError should materialize once through the substrate prelude; got: {out}"
     );
 }
 
