@@ -240,7 +240,7 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
 
 
 // =========================================================================
-// SubValueRelation lattice: meet/join for conservative/optimistic merge
+// SubValueRelation merge helpers
 // =========================================================================
 
 // Structural equality on shrink rates (P2 single authority for cost-relevant
@@ -271,7 +271,8 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
 // (`shrink_factor_eq`); otherwise the merge is incomparable → SubValueUnknown.
 // Different fields/params remain incomparable as before.
 //
-// Lattice ordering: SubValueUnknown < PreservedValue < {structural variants}
+// This is a fail-closed meet-oriented helper, not a bounded-lattice witness:
+// PreservedValue is a "same argument" relation, not a top element.
 
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   match a {
@@ -364,11 +365,11 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// SubValueRelation inhabits BoundedLattice:
-//   meet = meet_sub_value, join = join_sub_value
-//   top = PreservedValue (meet identity), bottom = SubValueUnknown
-// Data declaration deferred: compiler does not yet emit generic type
-// parameters for data constants (BoundedLattice<SubValueRelation>).
+// SubValueRelation intentionally does not claim BoundedLattice inhabitance:
+//   meet_sub_value is the conservative fail-closed merge helper.
+//   join_sub_value is an optimistic auxiliary helper.
+//   SubValueUnknown is the fail-closed sink and join identity.
+//   PreservedValue is a same-argument relation, not a meet identity/top.
 
 
 // =========================================================================

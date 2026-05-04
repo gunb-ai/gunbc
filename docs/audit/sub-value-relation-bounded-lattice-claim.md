@@ -2,11 +2,11 @@
 
 **Date:** 2026-05-02  
 **Lane:** R3 Substrate + Verification  
-**Scope:** audit / retirement spec only. No code changes.
+**Scope:** audit / retirement spec plus retirement receipt.
 
 ## Summary
 
-`src/v3/std/induction.dag` currently says:
+At audit time, `src/v3/std/induction.dag` said:
 
 - `SubValueRelation inhabits BoundedLattice`
 - `meet = meet_sub_value`
@@ -153,16 +153,19 @@ Routing:
 - Substrate Mgr inbox: `#1130`
 - Debt-Paydown Mgr inbox: `#1526`
 
-This audit does not retire the row. It confirms the row is live, the claim is
-wrong at HEAD, and the retirement shape is claim correction unless a new top
-variant is introduced.
+Retirement receipt:
+
+- `src/v3/std/induction.dag` now documents `meet_sub_value` /
+  `join_sub_value` as merge helpers, not a bounded-lattice witness.
+- `dsl/std/induction.dag` carries the same correction so the v2/v3 mirror text
+  stays aligned.
+- `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` marks the row `Retired`.
 
 ## 6. PR receipt text
 
 Use this disposition in the PR body:
 
-- **Debt found + routed**: `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`
-  line 91 (`SubValueRelation bounded-lattice law violation`); routed to
-  Substrate Mgr `#1130` and Debt-Paydown Mgr `#1526`. No retirement PR is
-  merged in this audit slice.
-
+- **Debt retired**: `SubValueRelation bounded-lattice law violation`; the
+  false `BoundedLattice` claim is removed from both v3 and dsl induction
+  authorities, and `SubValueRelation` is documented as fail-closed merge
+  helpers instead.
