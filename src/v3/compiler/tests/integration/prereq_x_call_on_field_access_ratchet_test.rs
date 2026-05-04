@@ -125,6 +125,45 @@ fn invoke(w: Wrapper, x: Int) -> Int = w.f(x)
     );
 }
 
+/// X1.a P4 regression: mutual recursion routed through a `data`
+/// binding indirection must contribute edges to the cluster
+/// descent gate. Without resolving PathCall through symbols+ValueBody,
+/// `data fns: Fns = { a: f, b: g }; fn f(x) = fns.b(x); fn g(x) =
+/// fns.a(x)` would parse + lower without engaging the strict-descent
+/// check (INVARIANTS P4 hole). This test pins the gate firing.
+#[test]
+fn x1a_mutual_recursion_via_data_binding_engages_descent_gate() {
+    let src = r#"
+type Fns { a: fn(Int) -> Int, b: fn(Int) -> Int }
+
+fn f(x: Int) -> Int = fns.b(x)
+fn g(x: Int) -> Int = fns.a(x)
+
+data fns: Fns = { a: f, b: g }
+"#;
+    let dag = cached_compile_any(src, "x1a_mutual_via_data.v3");
+    // Both `f` and `g` are mutually recursive via the `fns` data
+    // binding indirection. The cluster descent gate must fire because
+    // neither body strictly decreases its first argument; we expect a
+    // typed ResolveError or descent diagnostic mentioning recursion or
+    // descent. The exact wording is determined by the existing
+    // `cannot terminate` / descent-fail-closed diagnostic family;
+    // assert at least one such diagnostic surfaces.
+    let saw_decidability_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
+        Diagnostic::ResolveError { name, .. } => {
+            name.contains("recursive")
+                || name.contains("terminate")
+                || name.contains("descent")
+                || name.contains("cannot")
+        }
+        _ => false,
+    });
+    assert!(
+        saw_decidability_diagnostic,
+        "Mutual recursion via data-binding indirection must engage the decidability gate; got Dag without any termination/descent diagnostic. This regression-locks the X1.a P4 fix in is_recursive / descent_provable / ClusterDescentChecker / collect_recursive_callees."
+    );
+}
+
 /// X3: brace-bodied block expression inside `=` body, with a `let` head.
 /// Required to factor `let g = w.f; g(x)` out of a SingleRoot fold.
 /// **Unchanged by the X1.a slice** — block-expression bodies still fail
