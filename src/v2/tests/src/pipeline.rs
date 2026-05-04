@@ -7294,14 +7294,39 @@ fn anthropic_messages_uses_typed_200_body_projection() {
 fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
     #[derive(serde::Deserialize)]
     struct Body {
-        content: Vec<TextBlock>,
+        content: Vec<ContentBlock>,
         usage: Usage,
         container: Option<Value>,
     }
 
     #[derive(serde::Deserialize)]
-    struct TextBlock {
-        citations: Option<Vec<Citation>>,
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum ContentBlock {
+        Text {
+            text: String,
+            citations: Option<Vec<Citation>>,
+        },
+        Thinking {
+            thinking: String,
+            signature: Option<String>,
+        },
+        RedactedThinking {
+            data: String,
+        },
+        ToolUse {
+            id: String,
+            name: String,
+            input: Value,
+        },
+        ServerToolUse {
+            id: String,
+            name: String,
+            input: Value,
+        },
+        WebSearchToolResult {
+            tool_use_id: String,
+            content: Value,
+        },
     }
 
     #[derive(serde::Deserialize)]
@@ -7355,53 +7380,91 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
     }
 
     let wire = serde_json::json!({
-        "content": [{
-            "citations": [
-                {
-                    "type": "char_location",
-                    "cited_text": "quoted text",
-                    "document_index": 0,
-                    "document_title": "doc",
-                    "file_id": "file_123",
-                    "start_char_index": 4,
-                    "end_char_index": 15
-                },
-                {
-                    "type": "page_location",
-                    "cited_text": "page text",
-                    "document_index": 1,
-                    "document_title": null,
-                    "file_id": null,
-                    "start_page_number": 2,
-                    "end_page_number": 3
-                },
-                {
-                    "type": "content_block_location",
-                    "cited_text": "block text",
-                    "document_index": 2,
-                    "document_title": "blocks",
-                    "file_id": null,
-                    "start_block_index": 5,
-                    "end_block_index": 6
-                },
-                {
-                    "type": "web_search_result_location",
-                    "cited_text": "web text",
-                    "encrypted_index": "enc_123",
-                    "title": "web result",
-                    "url": "https://example.com/source"
-                },
-                {
-                    "type": "search_result_location",
-                    "cited_text": "search text",
-                    "source": "search_source",
-                    "title": "search result",
-                    "search_result_index": 7,
-                    "start_block_index": 8,
-                    "end_block_index": 9
-                }
-            ]
-        }],
+        "content": [
+            {
+                "type": "text",
+                "text": "answer",
+                "citations": [
+                    {
+                        "type": "char_location",
+                        "cited_text": "quoted text",
+                        "document_index": 0,
+                        "document_title": "doc",
+                        "file_id": "file_123",
+                        "start_char_index": 4,
+                        "end_char_index": 15
+                    },
+                    {
+                        "type": "page_location",
+                        "cited_text": "page text",
+                        "document_index": 1,
+                        "document_title": null,
+                        "file_id": null,
+                        "start_page_number": 2,
+                        "end_page_number": 3
+                    },
+                    {
+                        "type": "content_block_location",
+                        "cited_text": "block text",
+                        "document_index": 2,
+                        "document_title": "blocks",
+                        "file_id": null,
+                        "start_block_index": 5,
+                        "end_block_index": 6
+                    },
+                    {
+                        "type": "web_search_result_location",
+                        "cited_text": "web text",
+                        "encrypted_index": "enc_123",
+                        "title": "web result",
+                        "url": "https://example.com/source"
+                    },
+                    {
+                        "type": "search_result_location",
+                        "cited_text": "search text",
+                        "source": "search_source",
+                        "title": "search result",
+                        "search_result_index": 7,
+                        "start_block_index": 8,
+                        "end_block_index": 9
+                    }
+                ]
+            },
+            {
+                "type": "thinking",
+                "thinking": "Let me analyze this.",
+                "signature": "sig_123"
+            },
+            {
+                "type": "redacted_thinking",
+                "data": "encrypted_thinking"
+            },
+            {
+                "type": "tool_use",
+                "id": "toolu_01",
+                "name": "get_weather",
+                "input": { "location": "SF" }
+            },
+            {
+                "type": "server_tool_use",
+                "id": "srvtoolu_01",
+                "name": "web_search",
+                "input": { "query": "Claude Shannon birth date" }
+            },
+            {
+                "type": "web_search_tool_result",
+                "tool_use_id": "srvtoolu_01",
+                "content": [
+                    {
+                        "type": "web_search_result",
+                        "url": "https://example.com/source",
+                        "title": "Source",
+                        "encrypted_content": "enc_content",
+                        "page_age": "April 30, 2025"
+                    }
+                ]
+            }
+        ],
         "usage": {
             "cache_creation_input_tokens": 11,
             "cache_read_input_tokens": 22,
@@ -7413,7 +7476,13 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
     });
 
     let body: Body = serde_json::from_value(wire).expect("representative Anthropic 200 wire");
-    let citations = body.content[0].citations.as_ref().unwrap();
+    let citations = match &body.content[0] {
+        ContentBlock::Text { text, citations } => {
+            assert_eq!(text, "answer");
+            citations.as_ref().unwrap()
+        }
+        _ => panic!("expected text block"),
+    };
     match &citations[0] {
         Citation::CharLocation {
             cited_text,
@@ -7500,10 +7569,146 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         }
         _ => panic!("expected search_result_location citation"),
     }
+    match &body.content[1] {
+        ContentBlock::Thinking {
+            thinking,
+            signature,
+        } => {
+            assert_eq!(thinking, "Let me analyze this.");
+            assert_eq!(signature.as_deref(), Some("sig_123"));
+        }
+        _ => panic!("expected thinking block"),
+    }
+    match &body.content[2] {
+        ContentBlock::RedactedThinking { data } => {
+            assert_eq!(data, "encrypted_thinking");
+        }
+        _ => panic!("expected redacted_thinking block"),
+    }
+    match &body.content[3] {
+        ContentBlock::ToolUse { id, name, input } => {
+            assert_eq!(id, "toolu_01");
+            assert_eq!(name, "get_weather");
+            assert_eq!(input["location"], "SF");
+        }
+        _ => panic!("expected tool_use block"),
+    }
+    match &body.content[4] {
+        ContentBlock::ServerToolUse { id, name, input } => {
+            assert_eq!(id, "srvtoolu_01");
+            assert_eq!(name, "web_search");
+            assert_eq!(input["query"], "Claude Shannon birth date");
+        }
+        _ => panic!("expected server_tool_use block"),
+    }
+    match &body.content[5] {
+        ContentBlock::WebSearchToolResult {
+            tool_use_id,
+            content,
+        } => {
+            assert_eq!(tool_use_id, "srvtoolu_01");
+            assert_eq!(content[0]["type"], "web_search_result");
+            assert_eq!(content[0]["url"], "https://example.com/source");
+        }
+        _ => panic!("expected web_search_tool_result block"),
+    }
     assert_eq!(body.usage.cache_creation_input_tokens, Some(11));
     assert_eq!(body.usage.cache_read_input_tokens, Some(22));
     assert_eq!(body.usage.service_tier.as_deref(), Some("standard"));
     assert_eq!(body.container.unwrap()["id"], "container_mock");
+}
+
+#[test]
+fn anthropic_messages_200_content_blocks_accept_modeled_variants() {
+    let source = r#"module anthropic_messages_200_content_blocks_test
+
+import extdeps.llm.anthropic
+
+data response: AnthropicMessages200Body = {
+  id: "msg_01",
+  type: "message",
+  role: "assistant",
+  content: [
+    MessagesTextBlock {
+      text: "answer",
+      citations: none
+    },
+    MessagesThinkingBlock {
+      thinking: "Let me analyze this.",
+      signature: "sig_123"
+    },
+    MessagesRedactedThinkingBlock {
+      data: "encrypted_thinking"
+    },
+    MessagesToolUseBlock {
+      id: "toolu_01",
+      name: "get_weather",
+      input: { "location": "SF" }
+    },
+    MessagesServerToolUseBlock {
+      id: "srvtoolu_01",
+      name: "web_search",
+      input: { "query": "Claude Shannon birth date" }
+    },
+    MessagesWebSearchToolResultBlock {
+      tool_use_id: "srvtoolu_01",
+      content: [{
+        type: "web_search_result",
+        url: "https://example.com/source",
+        title: "Source",
+        encrypted_content: "enc_content",
+        page_age: "April 30, 2025"
+      }]
+    }
+  ],
+  model: "claude-sonnet-4-6-20250929",
+  stop_reason: EndTurn,
+  stop_sequence: none,
+  usage: {
+    input_tokens: 25,
+    output_tokens: 10,
+    cache_creation_input_tokens: none,
+    cache_read_input_tokens: none,
+    service_tier: none
+  },
+  container: none
+}
+"#;
+    let result = compile_dag_named(
+        "anthropic_messages_200_content_blocks_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+}
+
+#[test]
+fn anthropic_messages_200_content_blocks_reject_legacy_raw_text_record() {
+    let source = r#"module anthropic_messages_200_content_blocks_negative_test
+
+import extdeps.llm.anthropic
+
+data content: List<AnthropicMessages200ContentBlock> = [
+  { type: "text", text: "legacy raw text block" }
+]
+"#;
+    let result = compile_dag_named(
+        "anthropic_messages_200_content_blocks_negative_test.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    let has_type_mismatch = result.diagnostics.iter().any(|diag| {
+        matches!(
+            &*diag.diagnostic,
+            CompilerDiagnostic::TypeMismatch { expected, .. }
+                if expected == "Coproduct(AnthropicMessages200ContentBlock)"
+        )
+    });
+    assert!(
+        has_type_mismatch,
+        "legacy raw text block should produce a typed diagnostic, got:\n{}",
+        diagnostic_messages(&result).join("\n")
+    );
 }
 
 #[test]
