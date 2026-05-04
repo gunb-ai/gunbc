@@ -26,8 +26,18 @@ For this dispatch, the selected domain is heuristic-cost-function. The worked
 demonstration should prove that a cost-invariant test can be generated from
 structural `.dag` data rather than remaining as a hand-authored Rust assertion.
 PR #1430's product-zero bug class is the representative invariant: symbolic
-cost multiplication must treat `ConstantCost(0)` as a semiring annihilator, so a
-product such as `Linear(n) * 0` normalizes to `ConstantCost(0)`.
+cost multiplication must treat `ConstantCost(0)` as a multiplicative-zero
+annihilator, so a product such as `Linear(n) * 0` normalizes to
+`ConstantCost(0)`.
+
+That bug class is not an open prerequisite at this audit head: the R3
+debt-paydown ledger marks "SymbolicCost semiring annihilation violation" as
+Retired by PR #1555, and current `algebra.dag` contains the edge-only
+`SymbolicCost inhabits Semiring<SymbolicCost>` declaration, the corresponding
+`collapse_on_multiplicative_zero` implementation, and the Rust acceptance test
+named below. The full function-valued `data symbolic_cost_semiring:
+Semiring<SymbolicCost>` witness is still explicitly deferred in `algebra.dag`;
+this audit does not claim that L4-L7 law witnessing is complete.
 
 The audit question is narrower than "does SymbolicCost currently have tests?"
 It asks whether Verification can author a generated `TestClaim` directly
@@ -39,8 +49,9 @@ Substrate / Cost-Lens first.
 `src/v3/std/algebra.dag` has enough structural vocabulary to state the
 product-zero invariant:
 
-- `SymbolicCost` is the seven-variant asymptotic carrier and inhabits
-  `Semiring<SymbolicCost>`.
+- `SymbolicCost` is the seven-variant asymptotic carrier with an edge-only
+  `Semiring<SymbolicCost>` inhabitance declaration; the full function-valued
+  semiring witness remains deferred in `algebra.dag`.
 - `ProductCost(NonSingletonList<SymbolicCost>)`, `ConstantCost(Int)`, and
   `LinearCost(SizeVariable)` are first-class variants, not strings.
 - `iterate(bound, body)` constructs a product and calls `normalize`.
@@ -58,7 +69,8 @@ for a named `witness` bind and emits `TestPredicate::CostBounded`. The ignored
 spot-checks in `m1_5_testgen_test.rs` verify the representative generated claim
 `TestClaim witness has bounded cost`. That is real testgen precedent, but it is
 not the same property surface as SymbolicCost product-zero: `CostBounded` sees a
-scalar threshold, not a structural `SymbolicCost` expression or semiring law.
+scalar threshold, not a structural `SymbolicCost` expression or zero-law
+normalization invariant.
 
 The cost lens surface is less complete than the algebra surface:
 `src/v3/lenses/cost.dag` can produce `Lookup<SymbolicCost>` per port and the
