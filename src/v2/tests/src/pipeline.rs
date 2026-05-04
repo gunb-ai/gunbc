@@ -6436,6 +6436,35 @@ type RealEnum
 }
 
 #[test]
+fn local_decl_coproduct_wire_contract_suppresses_std_import() {
+    let source = r#"module local_decl_spoof_coproduct_wire_contract
+import std.serialization { CoproductWireContract, VariantEncoding }
+
+type CoproductWireContract
+
+type RealEnum
+  = RealPayload { value: String }
+"#;
+    let result = compile_dag_named(
+        "local_decl_spoof_coproduct_wire_contract.dag",
+        source,
+        RenderTarget::Rust,
+    );
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/local_decl_spoof_coproduct_wire_contract.rs");
+    assert!(
+        !content.contains("use crate::std_serialization::{CoproductWireContract"),
+        "local same-name declarations must suppress the imported std.serialization.CoproductWireContract; got:\n{content}"
+    );
+    let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
+    assert!(
+        attrs.contains(&"#[serde(tag = \"_variant\")]"),
+        "local same-name declarations must not affect unrelated coproduct serde; attrs: {:?}\n{content}",
+        attrs
+    );
+}
+
+#[test]
 fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
     let source = r#"module bad_affix_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
