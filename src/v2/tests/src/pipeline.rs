@@ -5692,14 +5692,16 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
     );
     assert!(
         content.contains("pub struct GitHubAuthSource")
-            && content.contains("pub scopes: Rc<Vec<GitHubScope>>")
-            && content.contains("pub expires_at: Option<String>"),
-        "ROADMAP:376: expected credential source metadata to carry scopes and expires_at, got:\n{content}"
+            && content.contains("pub token_metadata: Rc<GitHubTokenMetadataAuthority>")
+            && content.contains("pub enum GitHubTokenMetadataAuthority")
+            && content.contains("DeclaredGitHubTokenMetadata"),
+        "ROADMAP:376: expected credential source metadata to be explicitly declared/unverified, got:\n{content}"
     );
     assert!(
-        content.contains("scopes: default_github_auth_source().scopes.clone()")
-            && content.contains("expires_at: default_github_auth_source().expires_at.clone()"),
-        "ROADMAP:376: expected GitHubAuthToken metadata to come from GitHubAuthSource, got:\n{content}"
+        content.contains("structural_coverage_gap_github_token_metadata_verification")
+            && content.contains("declared_metadata:scopes")
+            && content.contains("declared_metadata:expires_at"),
+        "ROADMAP:376: expected declared token metadata verification gap to stay tracked, got:\n{content}"
     );
     assert!(
         content.contains("CredentialSource::EnvVar")

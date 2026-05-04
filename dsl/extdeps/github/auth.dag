@@ -10,17 +10,28 @@ import extdeps.github.github { GitHubAuthToken, GitHubScope, ScopeGist, ScopeRep
 import std.credentials { CredentialSource, EnvVar, env_credential }
 import std.types { NonEmptyStr, Timestamp }
 
+// The default PAT path cannot introspect GitHub-issued token claims. Keep the
+// locally declared policy explicit so callers can distinguish configured
+// assumptions from provider-verified token metadata when that surface lands.
+type GitHubTokenMetadataAuthority
+  = DeclaredGitHubTokenMetadata { scopes: List<GitHubScope>, expires_at: Timestamp? }
+
 type GitHubAuthSource {
   credential_source: CredentialSource
-  scopes: List<GitHubScope>
-  expires_at: Timestamp?
+  token_metadata: GitHubTokenMetadataAuthority
 }
 
 data default_github_auth_source: GitHubAuthSource = {
   credential_source: EnvVar { name: "GITHUB_TOKEN" },
-  scopes: [ScopeRepo, ScopeGist],
-  expires_at: None
+  token_metadata: DeclaredGitHubTokenMetadata {
+    scopes: [ScopeRepo, ScopeGist],
+    expires_at: None
+  }
 }
+
+data structural_coverage_gap_github_token_metadata_verification: List<String> = [
+  "closure:github_token_metadata_verification|GitHubAuthToken|declared_metadata:scopes|declared_metadata:expires_at|trigger:GitHub token introspection or installation-token issuance surface"
+]
 
 func github_token() -> GitHubAuthToken
 {
@@ -29,7 +40,11 @@ func github_token() -> GitHubAuthToken
   }
   return {
     token: cred.token,
-    scopes: default_github_auth_source.scopes,
-    expires_at: default_github_auth_source.expires_at
+    scopes: match default_github_auth_source.token_metadata {
+      DeclaredGitHubTokenMetadata { scopes, expires_at } => scopes
+    },
+    expires_at: match default_github_auth_source.token_metadata {
+      DeclaredGitHubTokenMetadata { scopes, expires_at } => expires_at
+    }
   }
 }
