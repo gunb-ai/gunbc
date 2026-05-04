@@ -433,6 +433,72 @@ fn test_3a2_record_data_substitutes_generic_list_fields() {
     );
 }
 
+#[test]
+fn test_3a2_record_data_discovers_list_through_type_param_substitution() {
+    let src = "\
+        type GenericSlot<T> {
+          value: T
+        }\n\
+        data list_slot: GenericSlot<List<Int>> = {
+          value: [1, 2]
+        }";
+    let dag = cached_compile_to_dag(src, "generic_slot_list_field.v3");
+    let decl = dag
+        .declaration_by_name("list_slot")
+        .expect("list_slot must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!("expected list_slot to lower structurally, got {:?}", decl.value_body);
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "value")
+        .map(|(_, value)| value)
+        .expect("value field");
+    let v3_compiler::dag::FieldValue::List(items) = value else {
+        panic!("value must lower as a structural list, got {value:?}");
+    };
+    assert_eq!(
+        items,
+        &vec![
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+        ]
+    );
+}
+
+#[test]
+fn test_3a2_record_data_discovers_sum_through_type_param_substitution() {
+    let src = "\
+        type Maybe<T> = Some(T) | None\n\
+        type GenericSlot<T> {
+          value: T
+        }\n\
+        data maybe_slot: GenericSlot<Maybe<Int>> = {
+          value: Some(1)
+        }";
+    let dag = cached_compile_to_dag(src, "generic_slot_sum_field.v3");
+    let decl = dag
+        .declaration_by_name("maybe_slot")
+        .expect("maybe_slot must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!("expected maybe_slot to lower structurally, got {:?}", decl.value_body);
+    };
+    let value = fields
+        .iter()
+        .find(|(label, _)| label == "value")
+        .map(|(_, value)| value)
+        .expect("value field");
+    let v3_compiler::dag::FieldValue::Variant { payload, .. } = value else {
+        panic!("value must lower as a structural variant, got {value:?}");
+    };
+    assert_eq!(
+        payload,
+        &vec![v3_compiler::dag::FieldValue::Literal(
+            v3_compiler::dag::LiteralBits::Int(1)
+        )]
+    );
+}
+
 /// Inbox #1130 / #1139 — complexity `Lens<Int>` migration readiness: Prereq-1
 /// (Arrow-typed record fields + nested `Monoid<C>`) already lowers `fn`
 /// declaration references. This shape matches `Lens<C>`'s `branch` /

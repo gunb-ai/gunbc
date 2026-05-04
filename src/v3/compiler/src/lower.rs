@@ -3154,6 +3154,31 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
     None
 }
 
+fn walk_to_disj_decl_with_subst_lower(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut LowerSubstStack,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => current = subst.lookup(current)?,
+            _ => return None,
+        }
+    }
+    None
+}
+
 #[derive(Clone, Default)]
 struct LowerSubstStack {
     frames: Vec<Vec<TemplateArgument>>,
@@ -3716,9 +3741,7 @@ fn lower_structural_field_value(
         }
     }
 
-    if let Some(element_type) = list_element_type(dag, expected_type) {
-        let element_type =
-            resolve_decl_with_subst_lower(dag, element_type, subst, 0).unwrap_or(element_type);
+    if let Some(element_type) = list_element_type_with_subst(dag, expected_type, subst, 0) {
         let SurfaceExpr::List { elements, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3750,7 +3773,7 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::List(lowered));
     }
 
-    if let Some(value_type) = map_value_type(dag, expected_type) {
+    if let Some(value_type) = map_value_type_with_subst(dag, expected_type, subst, 0) {
         let SurfaceExpr::Map { entries, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3776,7 +3799,7 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::Map(lowered));
     }
 
-    if map_key_type_is_not_string(dag, expected_type) {
+    if map_key_type_is_not_string_with_subst(dag, expected_type, subst, 0) {
         report_declaration_error(
             dag,
             Diagnostic::ResolveError {
@@ -3893,7 +3916,8 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::Record(lowered));
     }
 
-    if let Some(disj_id) = walk_to_disj_decl(dag, expected_type) {
+    let mut disj_subst = subst.clone();
+    if let Some(disj_id) = walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst) {
         let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
             TypeConnective::Disj { variants } => variants
                 .iter()
@@ -3987,10 +4011,10 @@ fn lower_structural_field_value(
                     return None;
                 }
             };
-        let payload_fields = match variant_payload_fields_for_lowering(
+        let payload_fields = match variant_payload_fields_for_lowering_with_subst(
             dag,
             variant_decl_id,
-            Some(expected_type),
+            &disj_subst,
         ) {
             Some(fields) => fields,
             other => {
@@ -4227,6 +4251,28 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
     }
 }
 
+fn list_element_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            list_element_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            list_element_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        _ => list_element_type(dag, expected_type)
+            .map(|element| resolve_decl_with_subst_lower(dag, element, subst, 0).unwrap_or(element)),
+    }
+}
+
 fn map_value_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
     let map_id = dag.declaration_by_name("Map")?.id;
     let string_id = dag.declaration_by_name("String")?.id;
@@ -4243,6 +4289,28 @@ fn map_value_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declaration
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => map_value_type(dag, *next),
         _ => None,
+    }
+}
+
+fn map_value_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            map_value_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            map_value_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        _ => map_value_type(dag, expected_type)
+            .map(|value| resolve_decl_with_subst_lower(dag, value, subst, 0).unwrap_or(value)),
     }
 }
 
@@ -4265,6 +4333,27 @@ fn map_key_type_is_not_string(dag: &Dag, expected_type: DeclarationId) -> bool {
             map_key_type_is_not_string(dag, *next)
         }
         _ => false,
+    }
+}
+
+fn map_key_type_is_not_string_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst
+            .lookup(expected_type)
+            .is_some_and(|bound| map_key_type_is_not_string_with_subst(dag, bound, subst, depth + 1)),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            map_key_type_is_not_string_with_subst(dag, *next, subst, depth + 1)
+        }
+        _ => map_key_type_is_not_string(dag, expected_type),
     }
 }
 
@@ -6116,6 +6205,28 @@ fn variant_payload_fields_for_lowering(
     if let Some(outer) = outer_instantiated_type {
         push_lower_subst_instantiation_prefix(dag, outer, &mut subst);
     }
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    Some(
+        children
+            .iter()
+            .map(|child| {
+                let specialized =
+                    resolve_decl_with_subst_lower(dag, child.ty, &subst, 0).unwrap_or(child.ty);
+                (child.label.clone(), specialized)
+            })
+            .collect(),
+    )
+}
+
+fn variant_payload_fields_for_lowering_with_subst(
+    dag: &Dag,
+    variant_decl: DeclarationId,
+    outer_subst: &LowerSubstStack,
+) -> Option<Vec<(String, DeclarationId)>> {
+    let mut subst = outer_subst.clone();
     let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
     let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
         return None;
