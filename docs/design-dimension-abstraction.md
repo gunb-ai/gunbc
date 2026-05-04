@@ -109,12 +109,12 @@ Rewriting Lane 2 Stage 2b's lens through the abstraction:
 // src/v3/lenses/idempotency.dag (Stage 2b)
 import std.dimensions { Dimension, Witness, Inhabits, Violates }
 import std.algebra { Monoid }
-import std.effects { EffectShape, is_idempotent_effect, compose_effects, ComposedEffect, idempotency_compose_monoid }
+import std.effects { EffectShape, is_idempotent_effect, compose_effects_pair, ComposedEffect, empty_composed_effect }
 
 data idempotency_dimension: Dimension<ComposedEffect> = {
   name: "idempotency"
   witness_of: |d, behavior| witness_idempotency(d, behavior)
-  compose: idempotency_compose_monoid       // Monoid<ComposedEffect>: pair-compose op + empty_composed_effect identity
+  compose: Monoid { op: compose_effects_pair, identity: empty_composed_effect() }
   break_diagnostic: |behavior, composed| idempotency_diagnostic(behavior, composed)
 }
 
@@ -144,8 +144,7 @@ fn witness_idempotency(d: Dag, behavior: Behavior) -> Witness<ComposedEffect> {
 data side_effects_dimension: Dimension<EffectSet> = {
   name: "side_effects"
   witness_of: |d, behavior| witness_side_effects(d, behavior)
-  compose: |a, b| union(a, b)
-  identity: empty_effect_set()
+  compose: Monoid { op: union, identity: empty_effect_set() }
   break_diagnostic: |behavior, composed|
     if declared_hermetic(behavior) && !is_empty(composed) {
       Some(Diagnostic {
@@ -165,8 +164,7 @@ data side_effects_dimension: Dimension<EffectSet> = {
 data space_bounds_dimension: Dimension<SpaceCost> = {
   name: "space_bounds"
   witness_of: |d, behavior| witness_space_cost(d, behavior)
-  compose: |a, b| add_space(a, b)
-  identity: SpaceCost::Zero
+  compose: Monoid { op: add_space, identity: SpaceCost::Zero }
   break_diagnostic: |behavior, composed|
     if exceeds_declared_bound(behavior, composed) {
       Some(Diagnostic { kind: SpaceBoundExceeded { op: ..., bound: ..., actual: composed } ... })
@@ -183,12 +181,12 @@ Users declare a new Dimension by writing the four fields. Example: a `memory_bou
 ```dag
 // user code, e.g. my_project/dimensions.dag
 import std.dimensions { Dimension }
+import std.algebra { Monoid }
 
 data memory_bounded_dimension: Dimension<MemoryUsage> = {
   name: "memory_bounded"
   witness_of: |d, behavior| estimate_memory_usage(d, behavior)
-  compose: |a, b| max_memory(a, b)
-  identity: MemoryUsage::Zero
+  compose: Monoid { op: max_memory, identity: MemoryUsage::Zero }
   break_diagnostic: |behavior, composed|
     if composed > memory_bound_of(behavior) {
       Some(Diagnostic { kind: MemoryBoundExceeded { ... } })

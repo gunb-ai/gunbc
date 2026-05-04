@@ -72,7 +72,7 @@ v2's `ComplexitySummary` carries `work: CostExpr` and `span: CostExpr` separatel
 ```dag
 // src/v3/lenses/complexity.dag — declare both dimensions
 
-import std.algebra { Monoid, SymbolicCost, sequential_monoid, max_path_monoid, ConstantCost }
+import std.algebra { Monoid, SymbolicCost, sequential, max_path, ConstantCost }
 import v3.std.dimensions { AnalysisDimension, Witness, Inhabits, Violates }
 
 // Work dimension: sequential composition is additive; parallel is also additive.
@@ -80,7 +80,7 @@ import v3.std.dimensions { AnalysisDimension, Witness, Inhabits, Violates }
 data work_dimension: AnalysisDimension<SymbolicCost> = {
   name: "work"
   witness_of: |d, behavior| witness_work(d, behavior)
-  compose: sequential_monoid              // Monoid<SymbolicCost>: SumCost op + ConstantCost(0) identity
+  compose: Monoid { op: sequential, identity: ConstantCost(0) }
   break_diagnostic: |behavior, composed| no_diagnostic_for_work()
 }
 
@@ -90,7 +90,7 @@ data work_dimension: AnalysisDimension<SymbolicCost> = {
 data span_dimension: AnalysisDimension<SymbolicCost> = {
   name: "span"
   witness_of: |d, behavior| witness_span(d, behavior)
-  compose: sequential_monoid              // sequential default; Branch witness uses max_path_monoid internally
+  compose: Monoid { op: sequential, identity: ConstantCost(0) }   // sequential default; Branch witness uses max_path internally
   break_diagnostic: |behavior, composed| no_diagnostic_for_span()
 }
 ```

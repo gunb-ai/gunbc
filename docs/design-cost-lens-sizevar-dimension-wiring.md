@@ -129,14 +129,17 @@ Today, [`v3_compiler::analyze_symbolic_cost_dimension`](../src/v3/compiler/src/)
 
 import std.dimensions { AnalysisDimension, Witness, Inhabits, Violates,
                         OptionalDiagnostic, NoDiagnostic, SomeDiagnostic }
-import std.algebra { Monoid, SymbolicCost, ConstantCost, sequential_monoid }
+import std.algebra { Monoid, SymbolicCost, ConstantCost, sequential }
 import v3.std.diagnostics { Diagnostic, MissingCostKind }
 
 // 🟢 TERMINAL. The cost dimension instance per DB-3.
+//
+// `compose: Monoid<SymbolicCost>` collapses the prior `compose: fn(C,C)->C` +
+// `identity: C` field pair into a single algebra-typed witness (F2 / PR #1607).
 data symbolic_cost_dimension: AnalysisDimension<SymbolicCost> = {
   name: "symbolic_cost"
-  witness_of: symbolic_cost_witness_of   // Behavior → Witness<SymbolicCost>
-  compose: sequential_monoid              // Monoid<SymbolicCost>: SumCost op + ConstantCost(0) identity (collapsed from prior compose+identity field pair, F2 / PR #1607)
+  witness_of: symbolic_cost_witness_of                         // Behavior → Witness<SymbolicCost>
+  compose: Monoid { op: sequential, identity: ConstantCost(0) }
   break_diagnostic: symbolic_cost_break_diagnostic
 }
 
