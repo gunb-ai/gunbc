@@ -606,9 +606,8 @@ pub mod evaluator {
                     .zip(operands.into_iter())
                     .collect();
                 state.push_frame(EvalFrame::empty());
-                let body_result = eval_callable_body_in_pushed_frame(
-                    dag, &bind, bindings, state, strategy,
-                );
+                let body_result =
+                    eval_callable_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
                 let pop_result = state.pop_frame();
                 match (body_result, pop_result) {
                     (Ok(value), Ok(_)) => Ok(value),
@@ -2197,8 +2196,7 @@ pub mod evaluator {
             );
             let entry = node_for_port(&dag, output);
 
-            let value =
-                eval_node(&dag, entry, &mut state, &eager_strategy()).expect("y projects");
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("y projects");
 
             assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
         }
