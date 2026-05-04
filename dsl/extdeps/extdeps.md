@@ -42,7 +42,7 @@ std/types.dag        "What is a refined type? A branded type? A sum type?"
 std/coordination.dag "What is a CAS mechanism? A lease? A delivery guarantee?"
 shared/behavioral.dag "What is a side effect? Determinism? A failure mode?"
 std/rate_limit.dag   "What is a rate limit? A backoff strategy? A retry trigger?"
-std/errors.dag       "What is an HTTP error shape? An auth error?"
+std/errors.dag       "What are provider error envelope shapes?"
 std/fermi.dag        "What is an order of magnitude?"
 ```
 
@@ -52,14 +52,12 @@ Example — `std/coordination.dag` defines CAS without knowing GCS exists:
 type CasMechanism = GenerationBased | ETagBased | VersionId | RowVersion
 ```
 
-Example — `std/errors.dag` defines HTTP error shapes without knowing GitHub exists:
+Example — `std/errors.dag` defines provider error envelope shapes without knowing individual operations:
 
 ```dag
-type HttpErrorShape {
-  status: Int
-  error_type: String
+type GitHubErrorShape {
   message: String
-  detail: String?
+  documentation_url: String?
 }
 ```
 
@@ -336,7 +334,7 @@ values from the API spec.
 **errors → provider error shapes → service operations**:
 
 ```
-std/errors.dag                  Layer 0: HttpErrorShape, GcpErrorShape, etc.
+std/errors.dag                  Layer 0: GitHubErrorShape, GcpErrorShape, etc.
     ↓ imported by
 cloud/gcp/secret_manager.dag   Layer 3: error: GcpErrorShape in service ops
 github/gists.dag                Layer 3: error: GitHubErrorShape in service ops
@@ -351,8 +349,9 @@ operation. When GitHub changes its error format, one type changes.
 When we add a new external dependency — say, Stripe — we don't invent types.
 We read the Stripe API documentation and transcribe:
 
-1. **Layer 0**: Already exists. `HttpErrorShape`, `RetryPolicy`,
-   `OperationBehavior` cover Stripe too.
+1. **Layer 0**: `RetryPolicy` and `OperationBehavior` already exist.
+   Stripe-specific error envelopes should be transcribed from Stripe docs, not
+   squeezed through a generic HTTP error shape.
 
 2. **Layer 2**: `extdeps/stripe/core.dag` — cite https://docs.stripe.com/api,
    declare API version `2024-12-18.acacia`, define `StripeAuthScheme = ApiKey`.
