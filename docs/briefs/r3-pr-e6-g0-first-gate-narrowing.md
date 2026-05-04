@@ -71,7 +71,7 @@ The E6 docs name four candidate "first gates." Listed in topological order:
 | --- | --- | --- | --- | --- |
 | C | Generic Conj field substitution in structural data-body checking (`Lens<C> → Lens<Int>`, `Monoid<C> → Monoid<Int>`) | type-checker (no substrate edit) | NO | [`r3-pr-e6-lens-value-authoring-stop.md`](r3-pr-e6-lens-value-authoring-stop.md) §Next Dispatch (`lens_value_generic_conj_field_substitution_lands`) |
 | A | Prereq-X1.a static call-on-field-access (`data v: WrapFn = { f: double }; v.f(x)`) | parser + lowerer (reuses existing `TransformTarget::Callable`) | NO | [`../design-prereq-x-ho-field-call.md`](../design-prereq-x-ho-field-call.md) §Prereq-X1.a |
-| D | Evaluator `TransformTarget::FieldProject` and `TransformTarget::Callable` execution | evaluator (host Rust) | NO — both fail closed at `src/v3/compiler/src/lib.rs:556-561` | [`r3-pr-e6-post-blocker-gate-packet.md`](r3-pr-e6-post-blocker-gate-packet.md) §E6-G0 |
+| D | Evaluator `TransformTarget::FieldProject` and `TransformTarget::Callable` execution | evaluator (host Rust) | NO — both fail closed in `src/v3/compiler/src/lib.rs::evaluator::eval_transform_node` | [`r3-pr-e6-post-blocker-gate-packet.md`](r3-pr-e6-post-blocker-gate-packet.md) §E6-G0 |
 | B | Prereq-X1.b `TransformNode.target+inputs → TransformDispatch` collapse + `Indirect(ArrowPortRef, args)` variant | substrate carrier shape | NO | [`../design-prereq-x-ho-field-call.md`](../design-prereq-x-ho-field-call.md) §Prereq-X1.b |
 
 **Key observation:** A and D are not interchangeable orderings of the same
@@ -202,12 +202,13 @@ generic fold scope is settled by E6-G1's non-parametric concrete fold
 - `src/v3/std/lens.dag` — `Lens<C>` 6-field carrier (live).
 - `src/v3/std/dimensions.dag` — `Witness<C>`, `OptionalDiagnostic`,
   `DimensionReport<C>` (live).
-- `src/v3/std/substrate.dag:585-616` — `WorkflowRoot` / `workflow_root_port`
-  (Prereq-3a, live).
+- `src/v3/std/substrate.dag` around `WorkflowRoot` / `workflow_root_port` —
+  Prereq-3a (live).
 - `src/v3/compiler/src/lens_apply.rs::fold_lens_over_reflected_program` —
   reflect→apply compatibility seam (preserved).
-- `src/v3/compiler/src/lib.rs:556-561` — `TransformTarget::FieldProject` /
-  `TransformTarget::Callable` evaluator fail-closed sites (E6-G0b).
+- `src/v3/compiler/src/lib.rs::evaluator::eval_transform_node` —
+  `TransformTarget::FieldProject` / `TransformTarget::Callable` fail-closed
+  match (E6-G0b).
 - `src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs` —
   parser ratchet pinning Prereq-X1 / X3 (red until E6-G0c / E6-G2 land).
 - `src/v3/lenses/complexity.dag`, `src/v3/lenses/cost.dag` — lens instances
