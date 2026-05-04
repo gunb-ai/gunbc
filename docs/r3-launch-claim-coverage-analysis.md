@@ -1,6 +1,6 @@
 # R3 Launch-Claim Coverage Analysis
 
-**Status**: PROPOSAL — review pending from Director (zesty-bear-812 #828) + Research PM (loyal-swift-270 in `gunb-ai/ctrl#339`).
+**Status**: PROPOSAL — Director review CONVERGED 2026-05-04 (zesty-bear-812 #828; verdict: "doc is the right consolidation; no objections; will treat as canonical reference for downstream amendments"). Research PM review CONVERGED 2026-05-04 (loyal-swift-270 in `gunb-ai/ctrl#339`; additions folded in commit eabac4130). Codex P1 finding addressed in commit 046e68863. Director additions (Verification domain pick + §3c open-ended support + §8e cascade-health surface + §9c per-manager inboxes) folded in this revision. Doc lands as canonical reference for downstream amendments.
 
 **Purpose**: Single source of truth for the launch-claim coverage analysis surfaced through the cross-program adversarial-test-of-R3 (research PM's Round 1+2 viability research) + Brian's framing reframes (Framing C; substrate-vs-application convention split). Captures what's been ratified, what's open, what's load-bearing for R3 release.
 
@@ -123,7 +123,7 @@ Measuring this partition on a moderate-complexity `.dag`-scope program is the **
 
 ## 6. Open questions (need disposition before R3 close / launch lock)
 
-### 6a. §3c invariant-list policy (open-ended vs closed)
+### 6a. §3c invariant-list policy (open-ended vs closed) — Director-supportive of open-ended
 
 **Where**: design-coord thread `gunb-ai/gunbc#1586` anchor 5 (carrier-general lens enforcement).
 
@@ -131,7 +131,9 @@ Measuring this partition on a moderate-complexity `.dag`-scope program is the **
 
 **PM recommendation**: **open-ended structurally** with ≥N demonstrated at launch as the closure criterion. Per `feedback_construction_over_ratchets` and `feedback_parallel_representation_debt`, closing the list creates a parallel-representation ratchet. Open-ended substrate accommodates user-declared invariants naturally per Framing C.
 
-**Status**: PM recommendation posted; awaiting Substrate Mgr (jolly-ram-908 #1130) + Director response in-thread.
+**Director read** (per #1608 review 2026-05-04): supports PM's open-ended-structurally recommendation. *"Closing creates parallel-representation ratchet (`feedback_parallel_representation_debt`); open-ended substrate accommodates user-declared invariants per Framing C. ≥N demonstrated at launch as closure criterion is the right shape."*
+
+**Status**: PM + Director aligned on open-ended; **awaiting Substrate Mgr (jolly-ram-908 #1130) response in-thread on #1586** for the substrate-shape sign-off. Substrate Mgr's authoring decision is the remaining gate.
 
 ### 6b. Tier 3 cpp/ extdeps scope (translator-rewrite in/out)
 
@@ -193,7 +195,7 @@ This generalizes to any `apply_lens` invariant: **default for unannotated scope 
 
 **Status**: pending Substrate Mgr (jolly-ram-908 #1130) review of substrate-extension scope. Could be R3 substrate-completion work absorbed under §187 standing protocol if classified as substrate-gap; otherwise post-R3 ecosystem.
 
-### 6f. Verification Mgr domain selection for 5th gate
+### 6f. Verification Mgr domain selection for 5th gate — RESOLVED 2026-05-04
 
 **Where**: Director-deferred to Verification Mgr (fierce-ferret-556 #1276) per ratification at [#828 comment-4367830997](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4367830997).
 
@@ -206,7 +208,13 @@ This generalizes to any `apply_lens` invariant: **default for unannotated scope 
 
 **PM read shifted under Framing C**: **build-system** is the strongest demonstration choice for the unprecedented claim. Build-system bugs in conventional languages are usually classed as "system" or "tooling" issues, not language issues — gunbc's claim that build is intra-program (because workflow) is sui-generis. Demonstrates behavioral analysis on a domain other languages don't try to validate at all.
 
-**Status**: pending Verification Mgr selection.
+**Status — RESOLVED 2026-05-04**: Verification Mgr (fierce-ferret-556 #1276) selected **heuristic-cost-function** at [#828 comment-4367835975](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4367835975) with three-point rationale:
+
+1. **Compounds with existing Verification artifacts** — Pattern A coverage roll-up §3 strict-fire preconditions name cost-related items; T-CostLens-Composition lane active in R3; rides on existing readiness signals rather than spawning parallel substrate readiness map.
+2. **Substrate-grounded today** — SymbolicCost on main (PR #1430 §G); concrete carriers without depending on novel substrate. Other three domains would require either fresh substrate authoring or coordination with non-Verification owner programs.
+3. **Doesn't double-gate on E6 runway** — heuristic-cost-function testgen demonstration can be authored against existing cost-lens substrate independent of E6's `DimensionReport<C>` producer/evaluator path.
+
+**PM disposition on the build-system shift**: per Director feedback, the launch-narrative-strength argument for build-system is worth surfacing in §10b Research PM review rather than overriding Verification's pick. Verification's pick stands on substrate-grounding + readiness criteria. If the launch-narrative case for build-system is materially stronger than substrate-grounding case, ctrl + PM can surface that and the team re-decides; for now, **heuristic-cost-function is the domain for the 5th gate demonstration**.
 
 ## 7. Ratified R3 decisions surfaced through this analysis
 
@@ -300,12 +308,28 @@ This makes Verification Mgr's domain selection (§6f) materially more important 
 Phase 4 (launch-narrative reframing) drafting can advance against:
 - ✅ Cat 1 (algebraic preservation) — structurally covered
 - ✅ Cat 2 (operational equivalence) — explicit empirical-via-testgen + post-R3-ecosystem-integration stance ratified
-- ✅ Cat 4 (testgen integration) — 5th gate ratified
+- ✅ Cat 4 (testgen integration) — 5th gate ratified; Verification Mgr selected heuristic-cost-function as the worked-instance domain (per §6f)
 - ✅ Cat 5 (termination/totality) — structurally covered
-- ⏳ Cat 3 — pending §3c policy (#1586). (Default-policy on `apply_lens` per §6c is RESOLVED; only §3c invariant-list policy on #1586 remains.)
+- ⏳ Cat 3 — pending §3c policy (#1586). (Default-policy on `apply_lens` per §6c is RESOLVED; only §3c invariant-list policy on #1586 remains; Director-supportive of open-ended.)
 - ⏳ OQ #4 — pending Director answer
 
-Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c + translator-rewrite-included on OQ #4) with explicit conditional-citation language; final lock is a quick pass when both pending pieces land.
+Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c per Director-supportive read + translator-rewrite-included on OQ #4 per existing scope-expansion pattern) with explicit conditional-citation language; final lock is a quick pass when both pending pieces land.
+
+### 8e. Director-side cascade-health-surface obligation (NEW per Director #1608 review 2026-05-04)
+
+Per §7c, Director committed to add cascade health to Substrate-monitoring at #1130 so the slip-trigger is reliable. **Operational shape of the surface needs PM-call disposition** — Director flagged at review that the verbal commitment isn't yet operationalized as visible signal:
+
+- **Periodic cascade-status surface** — Director posts cascade-health snapshot to PM inbox at TBD cadence; visible surface even when quiet
+- **Trigger-based only** — Director posts on observed slip; quiet otherwise; pattern-recognition discipline expected
+
+**PM disposition: trigger-based as primary; PM-requestable snapshot for ctrl's specific timing-sensitive windows.**
+
+Reasoning:
+- Original cascade-slip protocol (§7c) intent: *"no infrastructure to set up... visibility-if-slip only."* Periodic cadence introduces polling expectation that the protocol explicitly avoided.
+- Trigger-based fits the protocol's intended visibility shape (low-overhead; signal-when-relevant). Pattern-recognition discipline is acceptable cost — Director already monitors Substrate cadence operationally via #1130.
+- Escape hatch: PM can request cascade-health snapshot ad-hoc if ctrl needs visibility for Phase 4 launch-narrative timing (e.g., 2 weeks pre-launch, "cascade tracking nominal? any slip risk worth surfacing?"). Preserves the no-infrastructure-required intent while giving ctrl a window-specific lever.
+
+**Status**: PM disposition trigger-based-with-ad-hoc-snapshot; pending Director acknowledgment / counter-proposal in #1608 review thread or follow-up.
 
 ## 9. Outstanding work tracking
 
@@ -318,7 +342,7 @@ Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c 
 
 ### 9b. gunbc-side dispatches
 
-- **Verification Mgr domain selection** for 5th gate (§6f): pending.
+- ~~Verification Mgr domain selection for 5th gate (§6f)~~ — **RESOLVED 2026-05-04**: heuristic-cost-function selected at [#828 comment-4367835975](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4367835975).
 - **r3-structure.md amendment**: lane scope addition for 5th gate (§7a). Queued for after #1586 design-doc lands; folds into amendment cycle.
 - **`r2-r3-thesis-mapping.md` / `THESIS.md` amendment**: operational-equivalence thesis-stance (§7b) + bidirectional disposition-row from §7e + **Tier 4 "out of scope, declared" addition (§6d) if Director ratifies**. Queued for after #1586 design-doc lands.
 - **#1586 §3c policy convergence** (§6a): Substrate Mgr + Director response in-thread.
@@ -334,6 +358,7 @@ Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c 
 - **PM ↔ Research PM** via `gunb-ai/ctrl#339` ↔ `#846`
 - **Coordination thread** at `gunb-ai/gunbc#1586` (multi-participant)
 - **Cascade-slip protocol** ratified for Director → PM → ctrl
+- **Standing manager × Director per-manager inboxes** (per Director #1608 review): operational-cadence dispatches that compound into cross-program ratifications. Active inboxes: `#1130` Substrate, `#1131` Evaluator, `#1133` Grounding, `#1134` PB, `#1276` Verification, `#1526` Debt-Paydown.
 
 ## 10. Review asks
 
