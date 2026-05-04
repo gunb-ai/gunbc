@@ -305,13 +305,16 @@ This makes Verification Mgr's domain selection (§6f) materially more important 
 
 ### 8d. Cross-program impact on ctrl's Phase 4 launch narrative
 
-Phase 4 (launch-narrative reframing) drafting can advance against:
-- ✅ Cat 1 (algebraic preservation) — structurally covered
-- ✅ Cat 2 (operational equivalence) — explicit empirical-via-testgen + post-R3-ecosystem-integration stance ratified
-- ✅ Cat 4 (testgen integration) — 5th gate ratified; Verification Mgr selected heuristic-cost-function as the worked-instance domain (per §6f)
-- ✅ Cat 5 (termination/totality) — structurally covered
-- ⏳ Cat 3 — pending §3c policy (#1586). (Default-policy on `apply_lens` per §6c is RESOLVED; only §3c invariant-list policy on #1586 remains; Director-supportive of open-ended.)
-- ⏳ OQ #4 — pending Director answer
+Phase 4 drafting tracks status by **proof-category** (research PM's framework from `gunb-ai/ctrl#339` — distinct schema from §4's bug-category partition; the two are not 1:1). Stable proof-category labels used here:
+
+- ✅ **Algebraic-preservation** proof-category — structurally covered (maps to §4 Cat 2 algebraic correctness; L7 algebraic-inhabitance witnesses)
+- ✅ **Operational-equivalence** proof-category — explicit empirical-via-testgen + post-R3-ecosystem-integration stance ratified (covers §4 boundary-equivalence indirectly via L4/L5 differential)
+- ✅ **Behavioral-equivalence-via-testgen** proof-category — 5th gate ratified; Verification Mgr selected heuristic-cost-function as the worked-instance domain (per §6f). Maps to §4 Cat 5 (boundary equivalence).
+- ✅ **Termination-and-totality** proof-category — structurally covered (maps to §4 Cat 4; CX gate + Tier 2 + ownership lens)
+- ⏳ **Invariant-preservation** proof-category — pending §3c policy (#1586). Maps to §4 Cat 3. Default-policy on `apply_lens` per §6c is RESOLVED; only §3c invariant-list policy on #1586 remains; Director-supportive of open-ended.
+- ⏳ **Tier 3 cpp/ scope** (OQ #4) — pending Director answer
+
+**Naming discipline note**: this list deliberately uses stable proof-category labels rather than "Cat N" shorthand to avoid ambiguity with §4's bug-category numbering. Within this doc: §4 owns "Cat N" numbering for the **intra-program bug partition** (5 categories); §5 owns "Class A/B/C" labels for the **behavioral partition** (3 classes); §8d here uses **proof-category** stable labels for the launch-narrative status track. Three distinct schemas, three distinct label conventions.
 
 Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c per Director-supportive read + translator-rewrite-included on OQ #4 per existing scope-expansion pattern) with explicit conditional-citation language; final lock is a quick pass when both pending pieces land.
 
