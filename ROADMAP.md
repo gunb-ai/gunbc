@@ -593,6 +593,18 @@ Three meta-themes surface across both analyses:
 
 - **Integration-reflection cadence**: every ~few days, run a reflective + exploratory analysis pair. The 2026-04-15 and 2026-04-18 passes caught items individual PR reviews missed (authority split across PRs, silent cross-PR name-based lookups, the `CreateComment` drift, the `repeat_string` bug). Worth institutionalizing. **Velocity-tripwire reporting (added 2026-04-25 per [PR #810](https://github.com/gunb-ai/gunbc/pull/810) §4)**: each cadence pass also reports introduction:dissolution PR ratio for the window. Heuristic match: PR titles containing `retire`/`dissolve`/`delete`/`remove`/`collapse` count as dissolution; substantial-scaffold-introducing PRs (new hand-Rust file, new sentinel, new Rust mirror of a `.dag` authority) count as introduction. **Calibration caveat**: this is a lower-bound heuristic — feature PRs that ship dissolution work in the same diff (e.g., a T-LensAPI PR adding a lens and retiring three legacy paths) are undercounted. Before a ≥3:1 reading triggers Director review (per INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (c)), the cadence pass MUST do a manual sweep for dissolution-bearing feature PRs in the window to avoid false positives. Current 2026-04-18→2026-04-25 baseline: ~1.6:1 (8 dissolution-shaped + 13 substantial introductions; lower bound).
 
+### Post-merge debt (2026-05-04 paired exploratory + reflective analyses)
+
+Five novel-finding rows surfaced by the 2026-05-04 Exploratory + Reflective ingestion (Director routing per [#828 reply 4373106180](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4373106180)). Eight already-tracked findings from the same pass (F1, F3, F4, F6, F7, F8, F9, F10) confirm against existing rows in this section and are not duplicated.
+
+- **F2 — `Result` / `DivError` partly `span.file`-keyed**: remaining file-identity dispatch in `Result` / `DivError` paths violates P3/M8. Dissolution: replace with structural carrier reads. Routed to silent-deer-861 (R3 Substrate).
+- **F5 — `service` syntax authority vs parser hard-error**: `dsl/extdeps/languages/dag/syntax.dag` and the parser hard-error path must declare each other rather than hold parallel authority. Dissolution: one declares the other. Routed to stern-bee-22 (R3 Substrate).
+- **F11 — Diagnostic taxonomy mirror drift**: 7-variant Rust mirror vs 10-variant `.dag` source. Dissolution: generated isomorphism / shape-report gate over the mirror. Routed to keen-swift-519 (R3 Substrate).
+- **F12 — `ExecuteCommand` / `ForAllTargets` duplicate command record**: two consumers carry parallel command-record fields. Dissolution: single typed command-record carrier consumed by both. Queued (R3 Verification, post-Row-4 + heuristic-cost audit).
+- **R1 — `??` / `%` syntax authority deletion regression** *(fix-forward)*: P1/M3 regression on the prior PR #1552 deletion. Split path ratified — `dsl/extdeps/languages/dag/syntax.dag` retained as broader authority + new `v3_supported_dag_operators` subset. Dissolution trigger: split landed AND v3-supported subset consumed by parse tables. Routed to R3 Substrate (worker TBD).
+
+R3 Debt-Paydown ledger receipts and routing detail at [docs/debt/r3-debt-paydown-ledger-2026-05-02.md](docs/debt/r3-debt-paydown-ledger-2026-05-02.md).
+
 ## What NOT to build yet
 
 - Any fourth per-language emit file before Stage 1e consolidation finishes.
