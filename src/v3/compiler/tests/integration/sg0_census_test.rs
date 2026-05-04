@@ -189,6 +189,13 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     // survives.
     "src/v3/compiler/benches/tier3_mirror_perf.rs",
     "src/v3/compiler/build.rs",
+    // R3 row 85 / PB #1560 Gap 4 build-step shim: invokes
+    // `pb_method_template_projection_dag_emit` to materialize the
+    // ephemeral v2 source-root module consumed during stage0
+    // regeneration. Dissolution trigger: delete with the v2-retirement
+    // build-step consumer path once legacy v2 method-template reads are
+    // fully retired.
+    "src/v3/compiler/src/bin/emit_method_template_projection.rs",
     "src/v3/compiler/src/bin/r1c_e_emit_gates.rs",
     "src/v3/compiler/src/bin/regen_bootstrap.rs",
     "src/v3/compiler/src/bin/regen_lens.rs",
