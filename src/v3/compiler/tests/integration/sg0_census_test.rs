@@ -365,7 +365,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // method-name registry in `dsl/std/methods.dag` + `MethodRef` typed
     // reference in `src/v3/std/methods.dag` + `MethodTemplateContract.
     // dag_method` refinement from bare `DeclarationRef` to `MethodRef`.
-    // Four structural claims: registry covers all 63 algebra-template
+    // Four structural claims: registry covers all 64 algebra-template
     // names (drift-detection), `MethodDeclaration` identity-only,
     // `MethodTemplateContract.dag_method` field type points at
     // `MethodRef`, `MethodRef` is a single-field decl wrapper.
