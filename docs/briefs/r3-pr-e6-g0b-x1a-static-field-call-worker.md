@@ -221,6 +221,35 @@ honest on its own; the lens-corpus integration is a downstream follow-on.
 - Stage-0 strict-compile diagnostic ratchet (`v2_strict_compile_diagnostic_count`)
   unchanged.
 
+### Paired-dispatch / dissolution discipline (INVARIANTS P5)
+
+- **Dissolution trigger for the new `SurfaceExpr::PathCall` variant:**
+  `PathCall` dissolves into the same `Call { callee: CalleeRef, args }`
+  shape that `design-prereq-x-ho-field-call.md` §X1.b's dissolution
+  ledger names for `Callable` / `FieldCall` / `Indirect`. Tracking
+  gate: when `CalleeRef = Decl(...) | Field { … } | Port(ArrowPortRef)`
+  lands as a substrate carrier, `PathCall` retires and X1.a-shaped
+  programs lower as `Call { callee: CalleeRef::Field { … }, args }`.
+  Same dissolution lifecycle, single classification surface — see the
+  audit's 🟡 ledger entry.
+- **ROADMAP debt row this slice contributes to vs defers:** This slice
+  does **not** contribute to or move
+  [`lens-fold-file-path-semantics`](../../ROADMAP.md#lens-fold-file-path-semantics)
+  — that row is `lens_apply.rs`'s file-suffix helper and ambiguous
+  uniqueness fallback, which are downstream of the generic
+  `fold_lens<C>` path and untouched by X1.a parser/lowerer work. The
+  X1.a slice contributes upstream to that row by unblocking
+  static-data-binding lens-callee dispatch at the parser/lowerer
+  boundary, but does not by itself remove the file-suffix scaffold or
+  the uniqueness fallback. No new ROADMAP debt row is opened by this
+  slice; the new `PathCall` variant inherits its dissolution gate from
+  the existing `design-prereq-x-ho-field-call.md` §X1.b audit and does
+  not create a parallel ROADMAP entry.
+- **Contributes vs defers summary:** contributes to E6-G0b (new gate);
+  defers E6-G0c evaluator execution, E6-G2 parametric `fold_lens<C>`,
+  Prereq-X1.b runtime-callee dispatch, Prereq-X2 call-on-Var, Prereq-X3
+  block expressions, and `lens-fold-file-path-semantics` cleanup.
+
 ## STOP+PING
 
 - if the slice would require collapsing `TransformNode.target+inputs` →
