@@ -129,6 +129,28 @@ pub enum MethodTemplateProjectionError {
         list: &'static str,
         row_index: usize,
     },
+    /// Row is a declaration reference, but the referenced declaration is not
+    /// present in the bootstrap `Dag`.
+    RowReferenceMissing {
+        list: &'static str,
+        row_index: usize,
+        decl_id: DeclarationId,
+    },
+    /// Row is a declaration reference, but the referenced declaration is not a
+    /// `data` declaration carrying a structural `MethodTemplateContract` body.
+    RowReferenceNotStructural {
+        list: &'static str,
+        row_index: usize,
+        decl_id: DeclarationId,
+    },
+    /// Row is a declaration reference, but the referenced declaration does
+    /// not instantiate the `MethodTemplateContract` carrier. A structural
+    /// lookalike row is still not a contract row authority.
+    RowReferenceNotMethodTemplateContract {
+        list: &'static str,
+        row_index: usize,
+        decl_id: DeclarationId,
+    },
     /// Row is missing one of the five required fields.
     RowMissingField {
         list: &'static str,
@@ -494,8 +516,53 @@ fn project_row(
     row_index: usize,
     row: &FieldValue,
 ) -> Result<MethodTemplateContractRow, MethodTemplateProjectionError> {
-    let FieldValue::Record(fields) = row else {
-        return Err(MethodTemplateProjectionError::RowNotRecord { list, row_index });
+    let fields = match row {
+        FieldValue::Record(fields) => fields,
+        FieldValue::Reference(decl_id) => {
+            let decl = dag.declaration_opt(decl_id).ok_or(
+                MethodTemplateProjectionError::RowReferenceMissing {
+                    list,
+                    row_index,
+                    decl_id: *decl_id,
+                },
+            )?;
+            let method_template_contract = dag.method_template_contract_decl().ok_or(
+                MethodTemplateProjectionError::RowReferenceNotMethodTemplateContract {
+                    list,
+                    row_index,
+                    decl_id: *decl_id,
+                },
+            )?;
+            let TypeConnective::Instantiation { template, .. } = &decl.connective else {
+                return Err(
+                    MethodTemplateProjectionError::RowReferenceNotMethodTemplateContract {
+                        list,
+                        row_index,
+                        decl_id: *decl_id,
+                    },
+                );
+            };
+            if *template != method_template_contract {
+                return Err(
+                    MethodTemplateProjectionError::RowReferenceNotMethodTemplateContract {
+                        list,
+                        row_index,
+                        decl_id: *decl_id,
+                    },
+                );
+            }
+            match decl.value_body.as_ref() {
+                Some(ValueBody::Structural { fields }) => fields,
+                _ => {
+                    return Err(MethodTemplateProjectionError::RowReferenceNotStructural {
+                        list,
+                        row_index,
+                        decl_id: *decl_id,
+                    });
+                }
+            }
+        }
+        _ => return Err(MethodTemplateProjectionError::RowNotRecord { list, row_index }),
     };
 
     const EXPECTED: &[&str] = &[
@@ -872,6 +939,22 @@ mod tests {
         rows.push(clone);
     }
 
+    fn replace_row_with_reference(
+        dag: &mut Dag,
+        list_name: &str,
+        row_index: usize,
+        replacement: DeclarationId,
+    ) {
+        let decl_id = dag.declaration_by_name(list_name).expect("list").id;
+        let decl = dag.declaration_mut(decl_id);
+        let body = decl.value_body.as_mut().expect("value body");
+        let ValueBody::List(rows) = body else {
+            panic!("not a list");
+        };
+        let row = rows.get_mut(row_index).expect("row");
+        *row = FieldValue::Reference(replacement);
+    }
+
     /// Mutate the row at `row_index` of `list_name` by adding a second
     /// field with `field_label` (cloned from the first occurrence). Used
     /// by the closed-schema duplicate-field tests below.
@@ -961,6 +1044,37 @@ mod tests {
                 assert_eq!(field, "renamed_field");
             }
             other => panic!("expected RowUnknownField, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn reference_row_requires_method_template_contract_instance() {
+        let mut dag = generated_full_bootstrap_dag();
+        let non_contract_structural = dag
+            .declaration_by_name("count_method")
+            .expect("count_method MethodDeclaration")
+            .id;
+        replace_row_with_reference(
+            &mut dag,
+            "rust_method_template_contracts",
+            0,
+            non_contract_structural,
+        );
+
+        let result = method_template_contract_rows(&dag, MethodTemplateTarget::Rust);
+        match result {
+            Err(MethodTemplateProjectionError::RowReferenceNotMethodTemplateContract {
+                list,
+                row_index,
+                decl_id,
+            }) => {
+                assert_eq!(list, "rust_method_template_contracts");
+                assert_eq!(row_index, 0);
+                assert_eq!(decl_id, non_contract_structural);
+            }
+            other => panic!(
+                "expected RowReferenceNotMethodTemplateContract for structural lookalike row, got {other:?}"
+            ),
         }
     }
 
