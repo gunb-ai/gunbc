@@ -18,7 +18,7 @@ module v3.std.dimensions
 
 import std.list { List }
 import std.substrate { Dag, Behavior }
-import std.algebra { OrderedRing }
+import std.algebra { OrderedRing, Monoid }
 import v3.std.diagnostics { Diagnostic }
 
 // 🟢 TERMINAL at the structural-witness scope. `Witness<Carrier>`
@@ -60,20 +60,29 @@ type DimensionReport<Carrier>
       witnesses: List<Witness<Carrier>>
     }
 
-// 🟢 TERMINAL at the dimension-surface scope. The five fields are
+// 🟢 TERMINAL at the dimension-surface scope. The four fields are
 // the irreducible contract a compile-time property has to publish:
 //   - `name`      — human-facing identifier
 //   - `witness_of`— per-op evidence extraction
-//   - `compose`   — how two pieces of evidence combine along a
-//                   workflow (must form a monoid with `identity`;
-//                   monoid law is documented, not mechanically enforced)
-//   - `identity`  — fold unit / empty workflow value
+//   - `compose`   — `Monoid<Carrier>` (`dsl/std/algebra.dag`) carrying
+//                   both the binary combine and its identity in a
+//                   single field. Replaces the prior parallel
+//                   `compose: fn(Carrier, Carrier) -> Carrier` +
+//                   `identity: Carrier` pair (F2 dispatch on parent
+//                   inbox #1130): that shape duplicated the monoid-law
+//                   authority and was structurally identical to the
+//                   pre-2026-04-28 `Lens<C>` drift, which already
+//                   migrated to `sequential: Monoid<C>`
+//                   (`src/v3/std/lens.dag` §`sequential`). Mirroring
+//                   that precedent here means the monoid law lives once,
+//                   on `Monoid<Carrier>`, and structural inhabitance
+//                   over the algebra type is the enforcement vehicle —
+//                   not field-pair convention.
 //   - `break_diagnostic` — optional diagnostic when composition breaks
 type AnalysisDimension<Carrier> {
   name: String
   witness_of: fn(Dag, Behavior) -> Witness<Carrier>
-  compose: fn(Carrier, Carrier) -> Carrier
-  identity: Carrier
+  compose: Monoid<Carrier>
   break_diagnostic: fn(Behavior, Carrier) -> OptionalDiagnostic
 }
 
