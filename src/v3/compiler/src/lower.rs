@@ -2995,6 +2995,7 @@ fn lower_list_to_structural(
             "<list element>",
             element,
             element_type,
+            &LowerSubstStack::default(),
             symbols,
             dag,
             None,
@@ -3074,6 +3075,7 @@ fn lower_string_map_entries(
                 &entry.key,
                 &entry.value,
                 value_type,
+                &LowerSubstStack::default(),
                 symbols,
                 dag,
                 None,
@@ -3355,7 +3357,8 @@ fn lower_record_to_structural(
     dag: &mut Dag,
     pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::ValueBody> {
-    let Some(conj_id) = walk_to_conj_decl(dag, ty_decl_id) else {
+    let mut subst = LowerSubstStack::default();
+    let Some(conj_id) = walk_to_conj_decl_with_subst_lower(dag, ty_decl_id, &mut subst) else {
         report_declaration_error(
             dag,
             Diagnostic::ResolveError {
@@ -3372,7 +3375,15 @@ fn lower_record_to_structural(
     // while we walk the record literal.
     let type_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective {
         TypeConnective::Conj { children } => {
-            children.iter().map(|f| (f.label.clone(), f.ty)).collect()
+            children
+                .iter()
+                .map(|f| {
+                    (
+                        f.label.clone(),
+                        resolve_decl_with_subst_lower(dag, f.ty, &subst, 0).unwrap_or(f.ty),
+                    )
+                })
+                .collect()
         }
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
@@ -3444,6 +3455,7 @@ fn lower_record_to_structural(
             type_label,
             &record_field.value,
             *type_field_id,
+            &subst,
             symbols,
             dag,
             category,
@@ -3513,6 +3525,7 @@ fn lower_structural_field_value(
     field_label: &str,
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
+    subst: &LowerSubstStack,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     category: Option<RealizationCategoryTag>,
@@ -3559,13 +3572,15 @@ fn lower_structural_field_value(
         }
         let referenced = dag.declaration(decl_id);
         if is_value_level_arrow_declaration(referenced)
-            && declaration_ref_types_equivalent(dag, decl_id, expected_type, 0)
+            && declaration_ref_types_equivalent_with_subst(dag, decl_id, expected_type, subst, 0)
         {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
         if referenced
             .meta_tag
-            .is_some_and(|actual| declaration_ref_types_equivalent(dag, actual, expected_type, 0))
+            .is_some_and(|actual| {
+                declaration_ref_types_equivalent_with_subst(dag, actual, expected_type, subst, 0)
+            })
         {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
@@ -3603,6 +3618,7 @@ fn lower_structural_field_value(
                 field_label,
                 element,
                 element_type,
+                subst,
                 symbols,
                 dag,
                 None,
@@ -3652,7 +3668,9 @@ fn lower_structural_field_value(
         return None;
     }
 
-    if let Some(conj_id) = walk_to_conj_decl(dag, expected_type) {
+    let mut nested_subst = subst.clone();
+    if let Some(conj_id) = walk_to_conj_decl_with_subst_lower(dag, expected_type, &mut nested_subst)
+    {
         let SurfaceExpr::Record { fields, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3685,6 +3703,12 @@ fn lower_structural_field_value(
                 TypeConnective::Conj { children } => children
                     .iter()
                     .map(|child| (child.label.clone(), child.ty))
+                    .map(|(label, ty)| {
+                        (
+                            label,
+                            resolve_decl_with_subst_lower(dag, ty, &nested_subst, 0).unwrap_or(ty),
+                        )
+                    })
                     .collect(),
                 _ => unreachable!("walk_to_conj_decl returned non-Conj"),
             };
@@ -3735,6 +3759,7 @@ fn lower_structural_field_value(
                     &label,
                     &nested.value,
                     ty,
+                    &nested_subst,
                     symbols,
                     dag,
                     None,
@@ -3881,6 +3906,7 @@ fn lower_structural_field_value(
                     field_label,
                     arg,
                     *payload_field_ty,
+                    subst,
                     symbols,
                     dag,
                     None,
@@ -3941,6 +3967,7 @@ fn lower_structural_field_value(
                     field_label,
                     &field.value,
                     *payload_field_ty,
+                    subst,
                     symbols,
                     dag,
                     None,
@@ -4261,6 +4288,126 @@ fn declaration_ref_types_equivalent(
                     })
         }
         _ => false,
+    }
+}
+
+fn declaration_ref_types_equivalent_with_subst(
+    dag: &Dag,
+    lhs: DeclarationId,
+    rhs: DeclarationId,
+    rhs_subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    if depth >= 32 {
+        return false;
+    }
+    let lhs_decl = dag.declaration(lhs);
+    let rhs_decl = dag.declaration(rhs);
+    match (&lhs_decl.connective, &rhs_decl.connective) {
+        (
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+            _,
+        ) => declaration_ref_types_equivalent_with_subst(dag, *next, rhs, rhs_subst, depth + 1),
+        (
+            _,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+        ) => declaration_ref_types_equivalent_with_subst(dag, lhs, *next, rhs_subst, depth + 1),
+        (_, TypeConnective::Atom(AtomPayload::TypeParam(_))) => rhs_subst
+            .lookup(rhs)
+            .is_some_and(|bound| {
+                declaration_ref_types_equivalent_with_subst(
+                    dag,
+                    lhs,
+                    bound,
+                    rhs_subst,
+                    depth + 1,
+                )
+            }),
+        (
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+            _,
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent_with_subst(dag, *template, rhs, rhs_subst, depth + 1)
+        }
+        (
+            _,
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent_with_subst(dag, lhs, *template, rhs_subst, depth + 1)
+        }
+        (
+            TypeConnective::Arrow {
+                inputs: lhs_inputs,
+                output: lhs_output,
+                ..
+            },
+            TypeConnective::Arrow {
+                inputs: rhs_inputs,
+                output: rhs_output,
+                ..
+            },
+        ) => {
+            lhs_inputs.len() == rhs_inputs.len()
+                && lhs_inputs.iter().zip(rhs_inputs.iter()).all(|(lhs, rhs)| {
+                    declaration_ref_types_equivalent_with_subst(
+                        dag,
+                        *lhs,
+                        *rhs,
+                        rhs_subst,
+                        depth + 1,
+                    )
+                })
+                && declaration_ref_types_equivalent_with_subst(
+                    dag,
+                    *lhs_output,
+                    *rhs_output,
+                    rhs_subst,
+                    depth + 1,
+                )
+        }
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            declaration_ref_types_equivalent_with_subst(
+                dag,
+                *lhs_template,
+                *rhs_template,
+                rhs_subst,
+                depth + 1,
+            ) && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs_arg, rhs_arg)| {
+                        lhs_arg.parameter == rhs_arg.parameter
+                            && declaration_ref_types_equivalent_with_subst(
+                                dag,
+                                lhs_arg.value,
+                                rhs_arg.value,
+                                rhs_subst,
+                                depth + 1,
+                            )
+                    })
+        }
+        _ => declaration_ref_types_equivalent(dag, lhs, rhs, depth),
     }
 }
 
@@ -7940,6 +8087,7 @@ mod tests {
                 span: span.clone(),
             },
             aliased_style,
+            &LowerSubstStack::default(),
             &symbols,
             &mut dag,
             None,
