@@ -459,9 +459,16 @@ fn test_3a2_lens_int_data_substitutes_generic_conj_fields() {
         .declaration_by_name("complexity_lens_seed")
         .expect("complexity_lens_seed must exist");
     let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
-        panic!("expected Lens<Int> data to lower structurally, got {:?}", decl.value_body);
+        panic!(
+            "expected Lens<Int> data to lower structurally, got {:?}",
+            decl.value_body
+        );
     };
-    assert_eq!(fields.len(), 6, "Lens<Int> carrier shape must stay six-field");
+    assert_eq!(
+        fields.len(),
+        6,
+        "Lens<Int> carrier shape must stay six-field"
+    );
     let read = fields.iter().find(|(label, _)| label == "read").unwrap();
     assert_eq!(read.1, v3_compiler::dag::FieldValue::Reference(read_id));
     let validate = fields
