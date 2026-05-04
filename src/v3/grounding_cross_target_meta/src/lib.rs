@@ -87,8 +87,8 @@ mod tests {
 
     /// Expected L6 coverage at HEAD from Step 1 audit of
     /// `rust_method_template_contracts` / `python_method_template_contracts` /
-    /// `go_method_template_contracts`: each list is non-empty (Rust 13, Python 18,
-    /// Go 14 rows) and every Phase 1 row maps to the single structural bucket
+    /// `go_method_template_contracts`: each list is non-empty (Rust 13, Python 17,
+    /// Go 13 rows) and every Phase 1 row maps to the single structural bucket
     /// **Cardinality × Transform × &lt;target&gt;** for collection method templates.
     const EXPECTED_PRESENT_COUNT: usize = 3;
     const EXPECTED_MISSING_COUNT: usize = 90 - EXPECTED_PRESENT_COUNT;
