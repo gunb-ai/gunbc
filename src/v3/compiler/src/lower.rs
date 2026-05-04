@@ -7503,6 +7503,18 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
         SurfaceExpr::Map { entries, .. } => {
             entries.iter().any(|e| is_recursive(&e.value, self_name))
         }
+        SurfaceExpr::PathCall { args, .. } => {
+            // X1.a static path-call: the head segment is a `data`
+            // binding, not a function name. The callee resolves to a
+            // top-level decl whose name might equal `self_name`, but
+            // recursive self-call detection per modeling-discipline
+            // termination analysis tracks the *syntactic* `self(arg)`
+            // shape (`SurfaceExpr::Call { target: self_name, .. }`),
+            // not the resolved-decl form. Path-call is therefore not
+            // a recursive self-call here. Recurse into args for
+            // nested recursion checks.
+            args.iter().any(|a| is_recursive(a, self_name))
+        }
     }
 }
 
@@ -7715,6 +7727,9 @@ fn descent_provable(
                 first_param,
                 bindings,
             )
+        }),
+        SurfaceExpr::PathCall { args, .. } => args.iter().all(|a| {
+            descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)
         }),
     }
 }
@@ -8241,6 +8256,9 @@ impl ClusterDescentChecker<'_> {
             SurfaceExpr::Map { entries, .. } => entries
                 .iter()
                 .all(|entry| self.expr(&entry.value, bindings, shadowed)),
+            SurfaceExpr::PathCall { args, .. } => {
+                args.iter().all(|arg| self.expr(arg, bindings, shadowed))
+            }
         }
     }
 }
@@ -8313,6 +8331,11 @@ fn collect_recursive_callees(
         SurfaceExpr::Map { entries, .. } => {
             for entry in entries {
                 collect_recursive_callees(&entry.value, function_symbols, shadowed, out);
+            }
+        }
+        SurfaceExpr::PathCall { args, .. } => {
+            for a in args {
+                collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
     }

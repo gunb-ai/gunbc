@@ -1,18 +1,27 @@
-//! Prereq-X (call-on-field-access) blocker ratchet.
+//! Prereq-X (call-on-field-access) ratchet — post E6-G0b X1.a slice.
 //!
-//! Records the exact parser-grammar gap that blocks `fold_lens<C>` consumer
-//! wiring (Prereq-3b dispatch). The audit at
-//! `docs/design-prereq-x-ho-field-call.md` (PR #1264) decomposes this
-//! into X1 (call-on-field-access), X2 (call-on-Var if not subsumed by X1),
-//! and X3 (explicit block expressions inside `=` bodies).
+//! Records the parser+lowerer state after Prereq-X1.a (static
+//! call-on-field-access via `data` binding head) landed. The audit
+//! at `docs/design-prereq-x-ho-field-call.md` (PR #1264) decomposes
+//! Prereq-X into X1 (call-on-field-access), X2 (call-on-Var if not
+//! subsumed by X1), and X3 (explicit block expressions inside `=`
+//! bodies); the X1.a / X1.b split is named in
+//! `docs/briefs/r3-pr-e6-g0b-x1a-static-field-call-worker.md`.
 //!
-//! Each assertion below pins the *diagnostic shape* of a present gap. When
-//! the implementation lane lands, these tests flip to red and the lane
-//! owner is expected to retire each fixture (or re-shape it to a positive
-//! parse) at the same time as the parser/lowerer change. No hand-Rust
-//! scaffolding for `fold_lens<C>` ships here — the gap is structural; the
-//! only honest deliverable until X1/X3 land is this ratchet plus the audit.
+//! State after this slice:
+//!
+//! - X1.a: `data v: WrapFn = { f: double }; v.f(x)` parses **and
+//!   lowers** to a static-callable invocation.
+//! - X1.b: `fn invoke(w: WrapFn, x: Int) -> Int = w.f(x)` **parses**
+//!   (the parser surface accepts call-on-field-access) but **lowers**
+//!   to a typed `ResolveError` naming the X1.b prerequisite. Parser
+//!   parse-error ratchet is replaced by a lowering-diagnostic ratchet.
+//! - X3: brace-bodied block expression inside `=` body remains
+//!   blocked at parse time.
 
+use crate::common::cached_compile_to_dag;
+use v3_compiler::dag::{Behavior, TransformTarget};
+use v3_compiler::diagnostics::Diagnostic;
 use v3_compiler::{parse_for_test, tokenize_for_test};
 
 /// Control: the `type Wrapper { f: fn(Int) -> Int }` declaration on its
@@ -28,28 +37,98 @@ fn control_arrow_typed_field_decl_parses() {
     );
 }
 
-/// X1: direct call-on-field-access in fn body. The `lens.read(d, b)`
-/// dispatch shape used by `fold_lens<C>` reduces to exactly this.
+/// X1.a positive: `data v: WrapFn = { f: double }; ... v.f(x)` parses
+/// and lowers to a static `TransformTarget::Callable(decl_id_of_double)`
+/// transform. Asserted by structural inspection of the lowered Dag, not
+/// by emit-roundtrip output (E6-G0c scope).
 #[test]
-fn x1_direct_field_call_blocked() {
+fn x1a_static_data_field_call_lowers_to_callable() {
+    let src = r#"
+type Wrapper { f: fn(Int) -> Int }
+
+fn double(n: Int) -> Int = n + n
+
+data wrap: Wrapper = { f: double }
+
+fn invoke(x: Int) -> Int = wrap.f(x)
+"#;
+    let dag = cached_compile_to_dag(src, "x1a_positive.v3");
+    let double_decl_id = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("double"))
+        .map(|d| d.id)
+        .expect("`double` declaration");
+    let saw_callable_to_double = dag.nodes().iter().any(|node| match node {
+        Behavior::Transform(t) => matches!(
+            &t.target,
+            TransformTarget::Callable(id) if *id == double_decl_id
+        ),
+        _ => false,
+    });
+    assert!(
+        saw_callable_to_double,
+        "X1.a should lower `wrap.f(x)` to a TransformTarget::Callable pointing at `double`'s decl_id; got Dag without that target"
+    );
+}
+
+/// X1.a negative: `data v: { x: Int } = { x: 5 }; v.x(7)` lowers to a
+/// typed `ResolveError` naming the field as non-Arrow / non-callable —
+/// not a parse error.
+#[test]
+fn x1a_non_arrow_field_call_diagnostic() {
+    let src = r#"
+type Holder { x: Int }
+
+data holder: Holder = { x: 5 }
+
+fn r() -> Int = holder.x(7)
+"#;
+    let dag = cached_compile_to_dag(src, "x1a_non_arrow.v3");
+    let saw_resolve_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
+        Diagnostic::ResolveError { name, .. } => {
+            name.contains("does not resolve to a callable function reference")
+                || name.contains("non-Arrow")
+                || name.contains("FieldValue::Reference")
+        }
+        _ => false,
+    });
+    assert!(
+        saw_resolve_diagnostic,
+        "non-Arrow X1.a callee must produce a typed ResolveError naming the non-callable leaf"
+    );
+}
+
+/// X1.b: parameter-callee dispatch through `<param>.<field>(args)`
+/// **parses** (after X1.a landed the surface grammar) but **lowers**
+/// to a typed `ResolveError` naming the X1.b prerequisite (runtime-callee
+/// substrate / `TransformDispatch::Indirect`). Parser parse-error
+/// ratchet retired; lowering-diagnostic ratchet replaces it.
+#[test]
+fn x1b_parameter_field_call_blocked_at_lowering() {
     let src = r#"
 type Wrapper { f: fn(Int) -> Int }
 
 fn invoke(w: Wrapper, x: Int) -> Int = w.f(x)
 "#;
-    let tokens = tokenize_for_test(src, "x1.v3").expect("tokenize");
-    let err = parse_for_test(&tokens, "x1.v3").expect_err(
-        "Prereq-X1 still blocks `w.f(x)` — if this test panics, the parser was extended; retire this ratchet.",
-    );
+    // Parsing now succeeds; the diagnostic surfaces during lowering.
+    let dag = cached_compile_to_dag(src, "x1b.v3");
+    let saw_x1b_diagnostic = dag.diagnostics().iter().any(|(_, d)| match d {
+        Diagnostic::ResolveError { name, .. } => {
+            name.contains("Prereq-X1.b") || name.contains("parameter")
+        }
+        _ => false,
+    });
     assert!(
-        err.message().contains("LParen"),
-        "X1 diagnostic shape changed; verify against #1264 audit. Got: {}",
-        err.message()
+        saw_x1b_diagnostic,
+        "X1.b parameter-callee must lower-fail with a typed ResolveError naming the X1.b prerequisite"
     );
 }
 
 /// X3: brace-bodied block expression inside `=` body, with a `let` head.
 /// Required to factor `let g = w.f; g(x)` out of a SingleRoot fold.
+/// **Unchanged by the X1.a slice** — block-expression bodies still fail
+/// at parse time.
 #[test]
 fn x3_brace_block_with_let_head_blocked() {
     let src = r#"

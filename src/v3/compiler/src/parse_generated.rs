@@ -1537,6 +1537,13 @@ impl<'a> Parser<'a> {
                 span,
                 fixes: Vec::new(),
             }),
+            SurfaceExpr::PathCall { span, .. } => Err(Diagnostic::ParseError {
+                message:
+                    "expected function name or call after `|>`; dotted-path calls are not pipe targets in the current surface grammar"
+                        .to_string(),
+                span,
+                fixes: Vec::new(),
+            }),
             SurfaceExpr::VariantRecord { span, .. } => Err(Diagnostic::ParseError {
                 message:
                     "expected function name or call after `|>`; named constructor literals are values, not callable pipe targets"
@@ -1544,7 +1551,7 @@ impl<'a> Parser<'a> {
                 span,
                 fixes: Vec::new(),
             }),
-            _ => unreachable!("parse_ident_expr only returns Var, Call, Path, or VariantRecord"),
+            _ => unreachable!("parse_ident_expr only returns Var, Call, Path, PathCall, or VariantRecord"),
         }
     }
 
@@ -1672,6 +1679,24 @@ impl<'a> Parser<'a> {
                         });
                     }
                 }
+            }
+            // Prereq-X1: `<expr>.<ident>(args)` is call-on-field-access.
+            // After the dotted-segment walk, peek for `(`. If present,
+            // consume the call args and emit `PathCall`. The lowerer
+            // (Prereq-X1.a) only accepts `PathCall` whose head segment
+            // is a static `data` binding with `ValueBody::Structural`;
+            // parameter heads (X1.b) and other runtime-sourced heads
+            // produce typed lowering diagnostics.
+            if matches!(self.peek().kind, TokenKind::LParen) {
+                self.bump();
+                let args = self.parse_call_args()?;
+                let close = self.expect_kind(TokenKind::RParen)?;
+                return Ok(SurfaceExpr::PathCall {
+                    segments,
+                    segment_spans,
+                    args,
+                    span: SourceSpan::new(self.file, start, close.span.byte_end),
+                });
             }
             Ok(SurfaceExpr::Path {
                 segments,
@@ -1906,6 +1931,7 @@ pub(crate) fn expr_span(expr: &SurfaceExpr) -> &SourceSpan {
         | SurfaceExpr::Match { span, .. }
         | SurfaceExpr::Record { span, .. }
         | SurfaceExpr::List { span, .. }
-        | SurfaceExpr::Map { span, .. } => span,
+        | SurfaceExpr::Map { span, .. }
+        | SurfaceExpr::PathCall { span, .. } => span,
     }
 }
