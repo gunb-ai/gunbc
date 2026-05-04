@@ -5691,9 +5691,15 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
         "ROADMAP:376: expected github_token to return the typed GitHubAuthToken carrier, got:\n{content}"
     );
     assert!(
-        content.contains("scopes: default_github_token_scopes()")
-            && content.contains("expires_at: default_github_token_expires_at()"),
-        "ROADMAP:376: expected scopes and expires_at to survive on the typed token, got:\n{content}"
+        content.contains("pub struct GitHubAuthSource")
+            && content.contains("pub scopes: Rc<Vec<GitHubScope>>")
+            && content.contains("pub expires_at: Option<Timestamp>"),
+        "ROADMAP:376: expected credential source metadata to carry scopes and expires_at, got:\n{content}"
+    );
+    assert!(
+        content.contains("scopes: default_github_auth_source().scopes.clone()")
+            && content.contains("expires_at: default_github_auth_source().expires_at.clone()"),
+        "ROADMAP:376: expected GitHubAuthToken metadata to come from GitHubAuthSource, got:\n{content}"
     );
     assert!(
         content.contains("CredentialSource::EnvVar")

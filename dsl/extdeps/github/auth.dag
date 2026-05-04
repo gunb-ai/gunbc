@@ -10,20 +10,26 @@ import extdeps.github.github { GitHubAuthToken, GitHubScope, ScopeGist, ScopeRep
 import std.credentials { CredentialSource, EnvVar, env_credential }
 import std.types { NonEmptyStr, Timestamp }
 
-data default_github_auth_source: CredentialSource = EnvVar { name: "GITHUB_TOKEN" }
+type GitHubAuthSource {
+  credential_source: CredentialSource
+  scopes: List<GitHubScope>
+  expires_at: Timestamp?
+}
 
-data default_github_token_scopes: List<GitHubScope> = [ScopeRepo, ScopeGist]
-
-data default_github_token_expires_at: Timestamp? = None
+data default_github_auth_source: GitHubAuthSource = {
+  credential_source: EnvVar { name: "GITHUB_TOKEN" },
+  scopes: [ScopeRepo, ScopeGist],
+  expires_at: None
+}
 
 func github_token() -> GitHubAuthToken
 {
-  cred = match default_github_auth_source {
+  cred = match default_github_auth_source.credential_source {
     EnvVar { name } => env_credential(env_var: name as NonEmptyStr)
   }
   return {
     token: cred.token,
-    scopes: default_github_token_scopes,
-    expires_at: default_github_token_expires_at
+    scopes: default_github_auth_source.scopes,
+    expires_at: default_github_auth_source.expires_at
   }
 }
