@@ -4197,6 +4197,17 @@ mod tests {
     #[should_panic(expected = "generated bootstrap invariant violation")]
     fn generated_bootstrap_rejects_user_defined_body_that_is_not_a_bind() {
         let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+        let non_bind = dag
+            .nodes
+            .iter()
+            .find_map(|behavior| {
+                if matches!(behavior, Behavior::Bind(_)) {
+                    None
+                } else {
+                    Some(behavior.id())
+                }
+            })
+            .expect("generated bootstrap fixture should include a non-Bind behavior");
         let declaration = dag
             .declarations
             .iter_mut()
@@ -4213,7 +4224,7 @@ mod tests {
         let TypeConnective::Arrow { body, .. } = &mut declaration.connective else {
             unreachable!("declaration was selected by arrow body shape")
         };
-        *body = ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(0)));
+        *body = ArrowBody::UserDefined(BindNodeId::new_unchecked(non_bind));
 
         dag.finalize_runtime_bootstrap_from_generated_snapshot(
             RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot,
