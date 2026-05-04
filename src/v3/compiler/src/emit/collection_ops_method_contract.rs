@@ -14,9 +14,8 @@ pub(crate) fn require_method_template_contract_dag_method(
     expected_method_decl: DeclarationId,
 ) -> Result<(), &'static str> {
     let mtc_type_id = dag
-        .declaration_by_name("MethodTemplateContract")
-        .ok_or("internal: MethodTemplateContract type missing from dag")?
-        .id;
+        .method_template_contract_decl()
+        .ok_or("internal: MethodTemplateContract type missing from dag")?;
 
     let decl = dag.declaration(contract_decl);
     let template = match &decl.connective {

@@ -300,18 +300,18 @@ let x: Int = 42",
 }
 
 #[test]
-fn emit_rust_omits_div_prelude_for_user_diverror_signature_without_division() {
+fn emit_rust_structural_diverror_signature_uses_substrate_prelude() {
     let out = emit_module(
         "type DivError = DivideByZero | Overflow\n\
 fn passthrough(x: DivError) -> DivError = x\n",
     );
     assert!(
-        !out.contains("__v3_int_div"),
-        "user DivError signatures should not trigger integer division prelude; got: {out}"
+        out.contains("__v3_int_div"),
+        "structural DivError signatures use the substrate prelude, independent of source path; got: {out}"
     );
     assert!(
         out.matches("pub enum DivError").count() == 1,
-        "user DivError should emit once without colliding with a std prelude; got: {out}"
+        "structural DivError should materialize once through the substrate prelude; got: {out}"
     );
 }
 

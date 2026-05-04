@@ -64,10 +64,11 @@ node_modules/
 # --- Claude Code (session state, not project state) ---
 .claude/
 
-# --- Stage0 regeneration temp dirs ---
+# --- Stage0 regeneration temp dirs (from bootstrap) ---
 # Created by scripts/regenerate-stage0.sh; cleaned up on exit
 .regen-sources/
 .regen-output/
+.regen-generated-source-root/
 # Output of scripts/check-stage0-freshness.sh --output-dir
 .freshness-check/
 
