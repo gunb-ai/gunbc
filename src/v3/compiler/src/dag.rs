@@ -2400,6 +2400,14 @@ pub(crate) struct EmitAnchorCache {
     pub fold_method: Option<DeclarationId>,
     /// `std.list.is_empty_method` method declaration.
     pub is_empty_method: Option<DeclarationId>,
+    /// `std.list.filter_method` method declaration.
+    pub filter_method: Option<DeclarationId>,
+    /// `std.list.flat_map_method` method declaration.
+    pub flat_map_method: Option<DeclarationId>,
+    /// `std.list.any_method` method declaration.
+    pub any_method: Option<DeclarationId>,
+    /// `std.list.all_method` method declaration.
+    pub all_method: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -3262,6 +3270,26 @@ impl Dag {
         self.emit_anchors.is_empty_method
     }
 
+    /// `filter_method` method declaration.
+    pub(crate) fn filter_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.filter_method
+    }
+
+    /// `flat_map_method` method declaration.
+    pub(crate) fn flat_map_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.flat_map_method
+    }
+
+    /// `any_method` method declaration.
+    pub(crate) fn any_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.any_method
+    }
+
+    /// `all_method` method declaration.
+    pub(crate) fn all_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.all_method
+    }
+
     /// Typed accessor for the cached `PatternBindingRule` variant
     /// handles resolved from `src/v3/std/clean_emission.dag` at
     /// bootstrap end. Consumed by per-target emitters when
@@ -3910,6 +3938,11 @@ impl Dag {
         self.emit_anchors.fold_method = self.declaration_by_name("fold_method").map(|d| d.id);
         self.emit_anchors.is_empty_method =
             self.declaration_by_name("is_empty_method").map(|d| d.id);
+        self.emit_anchors.filter_method = self.declaration_by_name("filter_method").map(|d| d.id);
+        self.emit_anchors.flat_map_method =
+            self.declaration_by_name("flat_map_method").map(|d| d.id);
+        self.emit_anchors.any_method = self.declaration_by_name("any_method").map(|d| d.id);
+        self.emit_anchors.all_method = self.declaration_by_name("all_method").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
         // `std/clean_emission.dag` declaration's `Disj` variants
