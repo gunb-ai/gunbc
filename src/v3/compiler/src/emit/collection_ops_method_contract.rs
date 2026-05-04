@@ -6,6 +6,10 @@
 use super::method_emit_template_variant_label;
 use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits, TypeConnective, ValueBody};
 
+/// 🟢 TERMINAL at the CollectionOps contract-consumer projection boundary.
+/// This mirrors the substrate `MethodEmitTemplate` coproduct exactly so Rust
+/// CollectionOps can choose the HO inline rendering without flattening or
+/// copying template text into a third authority.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum MethodTemplateContractEmitTemplate {
     SingleTemplate(String),
