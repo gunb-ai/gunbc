@@ -52,15 +52,6 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         body_kind: BodyKind::BlockBody,
     }), Rc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
-        keyword: "service".to_string(),
-        has_type_params: false,
-        has_params: false,
-        has_return_type: false,
-        return_required: false,
-        has_uses: false,
-        body_kind: BodyKind::ServiceBody,
-    }), Rc::new(ItemForm {
-        kind: ItemFormKind::OtherForm,
         keyword: "resource".to_string(),
         has_type_params: false,
         has_params: false,
@@ -68,6 +59,15 @@ pub fn dag_item_forms() -> Rc<Vec<Rc<ItemForm>>> {
         return_required: false,
         has_uses: false,
         body_kind: BodyKind::ResourceBody,
+    }), Rc::new(ItemForm {
+        kind: ItemFormKind::OtherForm,
+        keyword: "service".to_string(),
+        has_type_params: false,
+        has_params: false,
+        has_return_type: false,
+        return_required: false,
+        has_uses: false,
+        body_kind: BodyKind::ServiceBody,
     }), Rc::new(ItemForm {
         kind: ItemFormKind::OtherForm,
         keyword: "data".to_string(),
@@ -128,8 +128,8 @@ pub fn dag_keyword_set() -> Rc<HashMap<String, bool>> {
             __m.insert("type".to_string(), true);
             __m.insert("fn".to_string(), true);
             __m.insert("func".to_string(), true);
-            __m.insert("service".to_string(), true);
             __m.insert("resource".to_string(), true);
+            __m.insert("service".to_string(), true);
             __m.insert("data".to_string(), true);
             __m.insert("interface".to_string(), true);
             __m.insert("pipeline".to_string(), true);
