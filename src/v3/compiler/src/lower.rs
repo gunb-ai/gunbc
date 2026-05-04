@@ -2995,6 +2995,7 @@ fn lower_list_to_structural(
             "<list element>",
             element,
             element_type,
+            &LowerSubstStack::default(),
             symbols,
             dag,
             None,
@@ -3038,6 +3039,7 @@ fn lower_map_to_structural(
         name,
         entries,
         value_type,
+        &LowerSubstStack::default(),
         symbols,
         dag,
         pending_refined_function_refs,
@@ -3049,6 +3051,7 @@ fn lower_string_map_entries(
     data_name: &str,
     entries: &[crate::parse_surface::SurfaceMapEntry],
     value_type: DeclarationId,
+    subst: &LowerSubstStack,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     pending_refined_function_refs: &HashSet<DeclarationId>,
@@ -3073,7 +3076,8 @@ fn lower_string_map_entries(
                 data_name,
                 &entry.key,
                 &entry.value,
-                value_type,
+                resolve_decl_with_subst_lower(dag, value_type, subst, 0).unwrap_or(value_type),
+                subst,
                 symbols,
                 dag,
                 None,
@@ -3144,6 +3148,31 @@ fn walk_to_disj_decl(dag: &Dag, start: DeclarationId) -> Option<DeclarationId> {
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
                 current = *next;
             }
+            _ => return None,
+        }
+    }
+    None
+}
+
+fn walk_to_disj_decl_with_subst_lower(
+    dag: &Dag,
+    start: DeclarationId,
+    subst: &mut LowerSubstStack,
+) -> Option<DeclarationId> {
+    let mut current = start;
+    for _ in 0..32 {
+        match &dag.declaration(current).connective {
+            TypeConnective::Disj { .. } => return Some(current),
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } => {
+                subst.push(arguments.clone());
+                current = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            TypeConnective::Atom(AtomPayload::TypeParam(_)) => current = subst.lookup(current)?,
             _ => return None,
         }
     }
@@ -3239,6 +3268,102 @@ fn resolve_decl_with_subst_lower(
         | TypeConnective::Disj { .. }
         | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
         | TypeConnective::Atom(AtomPayload::Literal(_)) => Some(current),
+    }
+}
+
+fn concretize_decl_with_lower_subst(
+    dag: &mut Dag,
+    current: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> DeclarationId {
+    if depth >= 32 {
+        return current;
+    }
+    let decl = dag.declaration(current).clone();
+    match decl.connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => subst.lookup(current).unwrap_or(current),
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            concretize_decl_with_lower_subst(dag, next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } => {
+            let specialized_arguments: Vec<TemplateArgument> = arguments
+                .into_iter()
+                .map(|arg| TemplateArgument {
+                    parameter: arg.parameter,
+                    value: concretize_decl_with_lower_subst(dag, arg.value, subst, depth + 1),
+                })
+                .collect();
+            if let Some(existing) =
+                find_equivalent_decl_instantiation_lower(dag, template, &specialized_arguments)
+            {
+                return existing;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Instantiation {
+                    template,
+                    arguments: specialized_arguments,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: decl.nominal_opacity,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Cardinality(payload) => {
+            let element =
+                concretize_decl_with_lower_subst(dag, payload.element(), subst, depth + 1);
+            dag.alloc_cardinality_decl(element, payload.bound(), decl.span)
+        }
+        TypeConnective::Arrow { inputs, output, .. } => {
+            let original_inputs = inputs.clone();
+            let specialized_inputs: Vec<DeclarationId> = inputs
+                .into_iter()
+                .map(|input| concretize_decl_with_lower_subst(dag, input, subst, depth + 1))
+                .collect();
+            let specialized_output =
+                concretize_decl_with_lower_subst(dag, output, subst, depth + 1);
+            if specialized_inputs == original_inputs && specialized_output == output {
+                return current;
+            }
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(Declaration {
+                id,
+                name: None,
+                connective: TypeConnective::Arrow {
+                    inputs: specialized_inputs,
+                    output: specialized_output,
+                    body: ArrowBody::NoBody,
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: decl.span,
+            });
+            id
+        }
+        TypeConnective::Conj { .. }
+        | TypeConnective::Disj { .. }
+        | TypeConnective::Atom(AtomPayload::UnresolvedIdentifier(_))
+        | TypeConnective::Atom(AtomPayload::Literal(_)) => current,
     }
 }
 
@@ -3355,7 +3480,8 @@ fn lower_record_to_structural(
     dag: &mut Dag,
     pending_refined_function_refs: &HashSet<DeclarationId>,
 ) -> Option<crate::dag::ValueBody> {
-    let Some(conj_id) = walk_to_conj_decl(dag, ty_decl_id) else {
+    let mut subst = LowerSubstStack::default();
+    let Some(conj_id) = walk_to_conj_decl_with_subst_lower(dag, ty_decl_id, &mut subst) else {
         report_declaration_error(
             dag,
             Diagnostic::ResolveError {
@@ -3371,9 +3497,15 @@ fn lower_record_to_structural(
     // Snapshot the Conj's children to avoid borrowing conflicts
     // while we walk the record literal.
     let type_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective {
-        TypeConnective::Conj { children } => {
-            children.iter().map(|f| (f.label.clone(), f.ty)).collect()
-        }
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|f| {
+                (
+                    f.label.clone(),
+                    resolve_decl_with_subst_lower(dag, f.ty, &subst, 0).unwrap_or(f.ty),
+                )
+            })
+            .collect(),
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
     if let Some(record_field) = duplicate_record_field(record_fields) {
@@ -3444,6 +3576,7 @@ fn lower_record_to_structural(
             type_label,
             &record_field.value,
             *type_field_id,
+            &subst,
             symbols,
             dag,
             category,
@@ -3513,6 +3646,7 @@ fn lower_structural_field_value(
     field_label: &str,
     expr: &SurfaceExpr,
     expected_type: DeclarationId,
+    subst: &LowerSubstStack,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     category: Option<RealizationCategoryTag>,
@@ -3559,15 +3693,40 @@ fn lower_structural_field_value(
         }
         let referenced = dag.declaration(decl_id);
         if is_value_level_arrow_declaration(referenced)
-            && declaration_ref_types_equivalent(dag, decl_id, expected_type, 0)
+            && declaration_ref_types_equivalent_with_subst(dag, decl_id, expected_type, subst, 0)
         {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
-        if referenced
-            .meta_tag
-            .is_some_and(|actual| declaration_ref_types_equivalent(dag, actual, expected_type, 0))
-        {
+        if is_value_level_arrow_declaration(referenced) {
+            let expected = concretize_decl_with_lower_subst(dag, expected_type, subst, 0);
+            report_declaration_error(
+                dag,
+                Diagnostic::TypeMismatch {
+                    expected: TypeShape::new(expected),
+                    actual: TypeShape::new(decl_id),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
+        }
+        if referenced.meta_tag.is_some_and(|actual| {
+            declaration_ref_types_equivalent_with_subst(dag, actual, expected_type, subst, 0)
+        }) {
             return Some(crate::dag::FieldValue::Reference(decl_id));
+        }
+        if let Some(actual) = referenced.meta_tag {
+            let expected = concretize_decl_with_lower_subst(dag, expected_type, subst, 0);
+            report_declaration_error(
+                dag,
+                Diagnostic::TypeMismatch {
+                    expected: TypeShape::new(expected),
+                    actual: TypeShape::new(actual),
+                    span: span.clone(),
+                    fixes: Vec::new(),
+                },
+            );
+            return None;
         }
     }
 
@@ -3582,7 +3741,7 @@ fn lower_structural_field_value(
         }
     }
 
-    if let Some(element_type) = list_element_type(dag, expected_type) {
+    if let Some(element_type) = list_element_type_with_subst(dag, expected_type, subst, 0) {
         let SurfaceExpr::List { elements, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3603,6 +3762,7 @@ fn lower_structural_field_value(
                 field_label,
                 element,
                 element_type,
+                subst,
                 symbols,
                 dag,
                 None,
@@ -3613,7 +3773,7 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::List(lowered));
     }
 
-    if let Some(value_type) = map_value_type(dag, expected_type) {
+    if let Some(value_type) = map_value_type_with_subst(dag, expected_type, subst, 0) {
         let SurfaceExpr::Map { entries, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3631,6 +3791,7 @@ fn lower_structural_field_value(
             data_name,
             entries,
             value_type,
+            subst,
             symbols,
             dag,
             pending_refined_function_refs,
@@ -3638,7 +3799,7 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::Map(lowered));
     }
 
-    if map_key_type_is_not_string(dag, expected_type) {
+    if map_key_type_is_not_string_with_subst(dag, expected_type, subst, 0) {
         report_declaration_error(
             dag,
             Diagnostic::ResolveError {
@@ -3652,7 +3813,9 @@ fn lower_structural_field_value(
         return None;
     }
 
-    if let Some(conj_id) = walk_to_conj_decl(dag, expected_type) {
+    let mut nested_subst = subst.clone();
+    if let Some(conj_id) = walk_to_conj_decl_with_subst_lower(dag, expected_type, &mut nested_subst)
+    {
         let SurfaceExpr::Record { fields, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3685,6 +3848,12 @@ fn lower_structural_field_value(
                 TypeConnective::Conj { children } => children
                     .iter()
                     .map(|child| (child.label.clone(), child.ty))
+                    .map(|(label, ty)| {
+                        (
+                            label,
+                            resolve_decl_with_subst_lower(dag, ty, &nested_subst, 0).unwrap_or(ty),
+                        )
+                    })
                     .collect(),
                 _ => unreachable!("walk_to_conj_decl returned non-Conj"),
             };
@@ -3735,6 +3904,7 @@ fn lower_structural_field_value(
                     &label,
                     &nested.value,
                     ty,
+                    &nested_subst,
                     symbols,
                     dag,
                     None,
@@ -3746,7 +3916,8 @@ fn lower_structural_field_value(
         return Some(crate::dag::FieldValue::Record(lowered));
     }
 
-    if let Some(disj_id) = walk_to_disj_decl(dag, expected_type) {
+    let mut disj_subst = subst.clone();
+    if let Some(disj_id) = walk_to_disj_decl_with_subst_lower(dag, expected_type, &mut disj_subst) {
         let variants: Vec<(String, DeclarationId)> = match &dag.declaration(disj_id).connective {
             TypeConnective::Disj { variants } => variants
                 .iter()
@@ -3840,10 +4011,10 @@ fn lower_structural_field_value(
                     return None;
                 }
             };
-        let payload_fields = match variant_payload_fields_for_lowering(
+        let payload_fields = match variant_payload_fields_for_lowering_with_subst(
             dag,
             variant_decl_id,
-            Some(expected_type),
+            &disj_subst,
         ) {
             Some(fields) => fields,
             other => {
@@ -3881,6 +4052,7 @@ fn lower_structural_field_value(
                     field_label,
                     arg,
                     *payload_field_ty,
+                    subst,
                     symbols,
                     dag,
                     None,
@@ -3941,6 +4113,7 @@ fn lower_structural_field_value(
                     field_label,
                     &field.value,
                     *payload_field_ty,
+                    subst,
                     symbols,
                     dag,
                     None,
@@ -4078,6 +4251,29 @@ fn list_element_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declarat
     }
 }
 
+fn list_element_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            list_element_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            list_element_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        _ => list_element_type(dag, expected_type).map(|element| {
+            resolve_decl_with_subst_lower(dag, element, subst, 0).unwrap_or(element)
+        }),
+    }
+}
+
 fn map_value_type(dag: &Dag, expected_type: DeclarationId) -> Option<DeclarationId> {
     let map_id = dag.declaration_by_name("Map")?.id;
     let string_id = dag.declaration_by_name("String")?.id;
@@ -4093,6 +4289,43 @@ fn map_value_type(dag: &Dag, expected_type: DeclarationId) -> Option<Declaration
         }
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => map_value_type(dag, *next),
+        _ => None,
+    }
+}
+
+fn map_value_type_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> Option<DeclarationId> {
+    if depth >= 32 {
+        return None;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            map_value_type_with_subst(dag, subst.lookup(expected_type)?, subst, depth + 1)
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            map_value_type_with_subst(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if dag
+            .declaration_by_name("Map")
+            .is_some_and(|decl| decl.id == *template)
+            && arguments.len() == 2 =>
+        {
+            let string_id = dag.declaration_by_name("String")?.id;
+            let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
+                .unwrap_or(arguments[0].value);
+            walks_to(dag, key, string_id).then(|| {
+                resolve_decl_with_subst_lower(dag, arguments[1].value, subst, 0)
+                    .unwrap_or(arguments[1].value)
+            })
+        }
         _ => None,
     }
 }
@@ -4114,6 +4347,44 @@ fn map_key_type_is_not_string(dag: &Dag, expected_type: DeclarationId) -> bool {
         TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             map_key_type_is_not_string(dag, *next)
+        }
+        _ => false,
+    }
+}
+
+fn map_key_type_is_not_string_with_subst(
+    dag: &Dag,
+    expected_type: DeclarationId,
+    subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if depth >= 32 {
+        return false;
+    }
+    match &dag.declaration(expected_type).connective {
+        TypeConnective::Atom(AtomPayload::TypeParam(_)) => {
+            subst.lookup(expected_type).is_some_and(|bound| {
+                map_key_type_is_not_string_with_subst(dag, bound, subst, depth + 1)
+            })
+        }
+        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+            map_key_type_is_not_string_with_subst(dag, *next, subst, depth + 1)
+        }
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if dag
+            .declaration_by_name("Map")
+            .is_some_and(|decl| decl.id == *template)
+            && arguments.len() == 2 =>
+        {
+            let Some(string_id) = dag.declaration_by_name("String").map(|decl| decl.id) else {
+                return false;
+            };
+            let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
+                .unwrap_or(arguments[0].value);
+            !walks_to(dag, key, string_id)
         }
         _ => false,
     }
@@ -4261,6 +4532,120 @@ fn declaration_ref_types_equivalent(
                     })
         }
         _ => false,
+    }
+}
+
+fn declaration_ref_types_equivalent_with_subst(
+    dag: &Dag,
+    lhs: DeclarationId,
+    rhs: DeclarationId,
+    rhs_subst: &LowerSubstStack,
+    depth: usize,
+) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    if depth >= 32 {
+        return false;
+    }
+    let lhs_decl = dag.declaration(lhs);
+    let rhs_decl = dag.declaration(rhs);
+    match (&lhs_decl.connective, &rhs_decl.connective) {
+        (
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+            _,
+        ) => declaration_ref_types_equivalent_with_subst(dag, *next, rhs, rhs_subst, depth + 1),
+        (
+            _,
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
+        ) => declaration_ref_types_equivalent_with_subst(dag, lhs, *next, rhs_subst, depth + 1),
+        (_, TypeConnective::Atom(AtomPayload::TypeParam(_))) => {
+            rhs_subst.lookup(rhs).is_some_and(|bound| {
+                declaration_ref_types_equivalent_with_subst(dag, lhs, bound, rhs_subst, depth + 1)
+            })
+        }
+        (
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+            _,
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent_with_subst(dag, *template, rhs, rhs_subst, depth + 1)
+        }
+        (
+            _,
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            },
+        ) if arguments.is_empty() => {
+            declaration_ref_types_equivalent_with_subst(dag, lhs, *template, rhs_subst, depth + 1)
+        }
+        (
+            TypeConnective::Arrow {
+                inputs: lhs_inputs,
+                output: lhs_output,
+                ..
+            },
+            TypeConnective::Arrow {
+                inputs: rhs_inputs,
+                output: rhs_output,
+                ..
+            },
+        ) => {
+            lhs_inputs.len() == rhs_inputs.len()
+                && lhs_inputs.iter().zip(rhs_inputs.iter()).all(|(lhs, rhs)| {
+                    declaration_ref_types_equivalent_with_subst(
+                        dag,
+                        *lhs,
+                        *rhs,
+                        rhs_subst,
+                        depth + 1,
+                    )
+                })
+                && declaration_ref_types_equivalent_with_subst(
+                    dag,
+                    *lhs_output,
+                    *rhs_output,
+                    rhs_subst,
+                    depth + 1,
+                )
+        }
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            declaration_ref_types_equivalent_with_subst(
+                dag,
+                *lhs_template,
+                *rhs_template,
+                rhs_subst,
+                depth + 1,
+            ) && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs_arg, rhs_arg)| {
+                        lhs_arg.parameter == rhs_arg.parameter
+                            && declaration_ref_types_equivalent_with_subst(
+                                dag,
+                                lhs_arg.value,
+                                rhs_arg.value,
+                                rhs_subst,
+                                depth + 1,
+                            )
+                    })
+        }
+        _ => declaration_ref_types_equivalent(dag, lhs, rhs, depth),
     }
 }
 
@@ -5853,6 +6238,28 @@ fn variant_payload_fields_for_lowering(
     if let Some(outer) = outer_instantiated_type {
         push_lower_subst_instantiation_prefix(dag, outer, &mut subst);
     }
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    Some(
+        children
+            .iter()
+            .map(|child| {
+                let specialized =
+                    resolve_decl_with_subst_lower(dag, child.ty, &subst, 0).unwrap_or(child.ty);
+                (child.label.clone(), specialized)
+            })
+            .collect(),
+    )
+}
+
+fn variant_payload_fields_for_lowering_with_subst(
+    dag: &Dag,
+    variant_decl: DeclarationId,
+    outer_subst: &LowerSubstStack,
+) -> Option<Vec<(String, DeclarationId)>> {
+    let mut subst = outer_subst.clone();
     let conj_id = walk_to_conj_decl_with_subst_lower(dag, variant_decl, &mut subst)?;
     let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
         return None;
@@ -7752,6 +8159,165 @@ mod tests {
         id
     }
 
+    fn push_anonymous_test_declaration(dag: &mut Dag, connective: TypeConnective) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: None,
+            connective,
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: test_span(),
+        });
+        id
+    }
+
+    #[test]
+    fn structural_map_field_lowers_values_with_active_substitution() {
+        let mut dag = Dag::new();
+        let int_id = dag.declaration_by_name("Int").expect("Int").id;
+        let string_id = dag.declaration_by_name("String").expect("String").id;
+        let map_id = dag.declaration_by_name("Map").expect("Map").id;
+        let map_key_param = dag.declaration(map_id).type_params[0];
+        let map_value_param = dag.declaration(map_id).type_params[1];
+        let c_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("C".to_string())),
+        );
+        let map_string_c = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: map_id,
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: map_key_param,
+                        value: string_id,
+                    },
+                    TemplateArgument {
+                        parameter: map_value_param,
+                        value: c_param,
+                    },
+                ],
+            },
+        );
+        let mut subst = LowerSubstStack::default();
+        subst.push(vec![TemplateArgument {
+            parameter: c_param,
+            value: int_id,
+        }]);
+        let span = test_span();
+        let lowered = lower_structural_field_value(
+            "aggregate_int",
+            "table",
+            &SurfaceExpr::Map {
+                entries: vec![crate::parse_surface::SurfaceMapEntry {
+                    key: "one".to_string(),
+                    key_span: span.clone(),
+                    value: SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(1),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                }],
+                span: span.clone(),
+            },
+            map_string_c,
+            &subst,
+            &HashMap::new(),
+            &mut dag,
+            None,
+            &span,
+            &HashSet::new(),
+        )
+        .expect("Map<String, C> value should lower under C := Int");
+        let crate::dag::FieldValue::Map(map) = lowered else {
+            panic!("expected structural map field, got {lowered:?}");
+        };
+        assert_eq!(
+            map.entries(),
+            &[(
+                "one".to_string(),
+                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+            )]
+        );
+
+        let k_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("K".to_string())),
+        );
+        let v_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("V".to_string())),
+        );
+        let map_k_v = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: map_id,
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: map_key_param,
+                        value: k_param,
+                    },
+                    TemplateArgument {
+                        parameter: map_value_param,
+                        value: v_param,
+                    },
+                ],
+            },
+        );
+        let mut key_value_subst = LowerSubstStack::default();
+        key_value_subst.push(vec![
+            TemplateArgument {
+                parameter: k_param,
+                value: string_id,
+            },
+            TemplateArgument {
+                parameter: v_param,
+                value: int_id,
+            },
+        ]);
+        let lowered = lower_structural_field_value(
+            "aggregate_int",
+            "table",
+            &SurfaceExpr::Map {
+                entries: vec![crate::parse_surface::SurfaceMapEntry {
+                    key: "one".to_string(),
+                    key_span: span.clone(),
+                    value: SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(1),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                }],
+                span: span.clone(),
+            },
+            map_k_v,
+            &key_value_subst,
+            &HashMap::new(),
+            &mut dag,
+            None,
+            &span,
+            &HashSet::new(),
+        )
+        .expect("Map<K, V> value should lower under K := String, V := Int");
+        let crate::dag::FieldValue::Map(map) = lowered else {
+            panic!("expected structural map field, got {lowered:?}");
+        };
+        assert_eq!(
+            map.entries(),
+            &[(
+                "one".to_string(),
+                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+            )]
+        );
+    }
+
     #[test]
     fn enforce_non_negative_unit_count_payload_rejects_negative_literal() {
         std::thread::Builder::new()
@@ -7940,6 +8506,7 @@ mod tests {
                 span: span.clone(),
             },
             aliased_style,
+            &LowerSubstStack::default(),
             &symbols,
             &mut dag,
             None,
