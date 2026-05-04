@@ -212,6 +212,9 @@ pub(crate) fn substrate_result_type_decl_suppressed_for_emit(
     let TypeConnective::Disj { variants } = &decl.connective else {
         return false;
     };
+    if variants.len() != 2 {
+        return false;
+    }
     let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
         return false;
     };

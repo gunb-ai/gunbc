@@ -3773,6 +3773,117 @@ mod tests {
     }
 
     #[test]
+    fn extra_variant_result_is_not_emit_suppressed() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let ok = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: ok,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("ok".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let err = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: err,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("err".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let ok_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: ok_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: ok,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let err_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: err_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: err,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+        let result = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: result,
+            name: Some("Result".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Ok".to_string(),
+                        ty: ok_payload,
+                    },
+                    Field {
+                        label: "Err".to_string(),
+                        ty: err_payload,
+                    },
+                    Field {
+                        label: "Other".to_string(),
+                        ty: int,
+                    },
+                ],
+            },
+            type_params: vec![ok, err],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("user/result_extra.dag", 0, 0),
+        });
+
+        assert!(!super::substrate_result_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(result)
+        ));
+    }
+
+    #[test]
     fn port_is_consumed_from_reaches_operand_ports_from_add_output() {
         let mut dag = Dag::new();
         let file = "emit_port_liveness_test.v3";
