@@ -5565,11 +5565,6 @@ impl<'a> Ctx<'a> {
         self.decl_is_copy_rec(ty.declaration, &mut visited)
     }
 
-    fn decl_is_copy(&self, declaration: DeclarationId) -> Result<bool, EmitError> {
-        let mut visited = HashSet::new();
-        self.decl_is_copy_rec(declaration, &mut visited)
-    }
-
     fn decl_is_copy_rec(
         &self,
         declaration: DeclarationId,
@@ -5639,7 +5634,6 @@ impl<'a> Ctx<'a> {
             .partial_function_template()
             .is_some_and(|pfun| pfun == declaration)
     }
-
 }
 
 /// Anonymous specialized `Disj` nodes from `lower::specialize_decl_for_lowering`
