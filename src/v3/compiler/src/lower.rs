@@ -3374,17 +3374,15 @@ fn lower_record_to_structural(
     // Snapshot the Conj's children to avoid borrowing conflicts
     // while we walk the record literal.
     let type_fields: Vec<(String, DeclarationId)> = match &dag.declaration(conj_id).connective {
-        TypeConnective::Conj { children } => {
-            children
-                .iter()
-                .map(|f| {
-                    (
-                        f.label.clone(),
-                        resolve_decl_with_subst_lower(dag, f.ty, &subst, 0).unwrap_or(f.ty),
-                    )
-                })
-                .collect()
-        }
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|f| {
+                (
+                    f.label.clone(),
+                    resolve_decl_with_subst_lower(dag, f.ty, &subst, 0).unwrap_or(f.ty),
+                )
+            })
+            .collect(),
         _ => unreachable!("walk_to_conj_decl returned a non-Conj declaration"),
     };
     if let Some(record_field) = duplicate_record_field(record_fields) {
@@ -3576,12 +3574,9 @@ fn lower_structural_field_value(
         {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
-        if referenced
-            .meta_tag
-            .is_some_and(|actual| {
-                declaration_ref_types_equivalent_with_subst(dag, actual, expected_type, subst, 0)
-            })
-        {
+        if referenced.meta_tag.is_some_and(|actual| {
+            declaration_ref_types_equivalent_with_subst(dag, actual, expected_type, subst, 0)
+        }) {
             return Some(crate::dag::FieldValue::Reference(decl_id));
         }
     }
@@ -4317,17 +4312,11 @@ fn declaration_ref_types_equivalent_with_subst(
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
             | TypeConnective::Atom(AtomPayload::ResolvedByName(next)),
         ) => declaration_ref_types_equivalent_with_subst(dag, lhs, *next, rhs_subst, depth + 1),
-        (_, TypeConnective::Atom(AtomPayload::TypeParam(_))) => rhs_subst
-            .lookup(rhs)
-            .is_some_and(|bound| {
-                declaration_ref_types_equivalent_with_subst(
-                    dag,
-                    lhs,
-                    bound,
-                    rhs_subst,
-                    depth + 1,
-                )
-            }),
+        (_, TypeConnective::Atom(AtomPayload::TypeParam(_))) => {
+            rhs_subst.lookup(rhs).is_some_and(|bound| {
+                declaration_ref_types_equivalent_with_subst(dag, lhs, bound, rhs_subst, depth + 1)
+            })
+        }
         (
             TypeConnective::Instantiation {
                 template,
