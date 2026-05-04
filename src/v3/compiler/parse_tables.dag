@@ -306,10 +306,6 @@ data top_level_kw_type: TopLevelItemKwRow = {
   token_variant: "KwType"
 }
 
-data top_level_kw_service: TopLevelItemKwRow = {
-  token_variant: "KwService"
-}
-
 data top_level_kw_module: TopLevelItemKwRow = {
   token_variant: "KwModule"
 }
@@ -324,11 +320,10 @@ data top_level_kw_data: TopLevelItemKwRow = {
 
 // --- SG-2c-5: keyword-token aliases that the parser accepts as bare
 // identifier spellings in label/name positions. Today this is the
-// `KwType -> "type"` and `KwService -> "service"` carveout used by
-// both record-field labels and sum-variant names. The parser consumes the generated
+// `KwType -> "type"` carveout used by both record-field labels and sum-variant names.
+// The parser consumes the generated
 // `soft_keyword_ident_spelling` projection rather than duplicating the
-// `TokenKind::KwType => "type"` / `TokenKind::KwService => "service"`
-// match at each call site.
+// `TokenKind::KwType => "type"` match at each call site.
 //
 // Dissolution classification: **🟡 YELLOW (scaffold)**. Same shape as
 // `TopLevelItemKwRow`: substrate rows author only `token_variant`; the
@@ -342,10 +337,6 @@ type SoftKeywordIdentRow {
 
 data soft_keyword_ident_type: SoftKeywordIdentRow = {
   token_variant: "KwType"
-}
-
-data soft_keyword_ident_service: SoftKeywordIdentRow = {
-  token_variant: "KwService"
 }
 
 // --- SG-2c-4: bracket opener / closer membership table. Parser helpers
