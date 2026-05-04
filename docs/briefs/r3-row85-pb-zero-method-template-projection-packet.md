@@ -267,15 +267,38 @@ P3. **Split into P3a + P3b** as of #1598:
 **Gap 5a — Single-row leaf-emit migration (enabled by #1598; R3
 Grounding owns dispatch, not this packet).** The legacy `dsl/extdeps/
 languages/{rust,python,go}/emit.dag::*_method_templates` map declarations
-can be replaced by re-exports of the generated
+re-source their entries from the generated
 `generated.method_template_projection.<target>_method_template_emit`
-maps, leaving the existing `LanguageSpec.method_templates: Map<String,
-String>?` field shape and assignments untouched. No `src/v2/languages.dag`
-edit; no second authority introduced; legacy `rust_simple_method_specs`
-and `rust_method_wraps_result` and the higher-order rows stay on the
-existing path until 5b. This packet does **not** dispatch 5a — it is
-R3-Grounding-owned per ledger row 85; this section only records that
-#1598 unblocks it.
+maps **only for the keys actually present in the generated map**. Keys
+that exist in the legacy map but are not yet projected — verified at
+authoring time per the consumer-migration audit (`docs/briefs/method-template-consumer-migration-audit.md`)
+and the v3-row-file headers — must remain carried in the legacy
+declaration until substrate parity lands. Dropping any legacy key
+during 5a is a P2 boundary violation (facts must flow forward, not
+silently disappear). Concretely the keys still legacy-only at
+authoring time include Python `string_contains`
+(`src/v3/std/python_method_template_contracts.dag:12-18`), Go
+`string_contains` and Go `chars`
+(`src/v3/std/go_method_template_contracts.dag:12-29`); a Gap-5a worker
+must verify that list at HEAD before flipping any key.
+
+The 5a target shape is therefore **overlay-merge**, not wholesale
+replacement: legacy declaration becomes "generated rows ∪ legacy-only
+residue," with a structural ratchet that fails the build if any
+legacy-only key disappears without an explicit Substrate row landing.
+The existing `LanguageSpec.method_templates: Map<String, String>?`
+field shape and assignments stay untouched; no `src/v2/languages.dag`
+edit; no second authority introduced (the generated map is the only
+source of text for the keys it owns; the residue is text that already
+lives in the legacy `.dag` until Substrate adopts it). Legacy
+`rust_simple_method_specs` and `rust_method_wraps_result` and the
+higher-order rows stay on the existing path until 5b.
+
+5a closure (full deletion of legacy `*_method_templates`) is gated on
+Substrate landing the missing rows (`string_contains` Python/Go, Go
+`chars`) **and** Gap 5b approval, not on 5a alone. This packet does
+**not** dispatch 5a — it is R3-Grounding-owned per ledger row 85; this
+section only records that #1598 unblocks the bounded overlay form.
 
 **Gap 5b — typed `MethodTemplateContract` projection + structural
 `LanguageSpec` rewrite (parked).** Structural rewrite of
