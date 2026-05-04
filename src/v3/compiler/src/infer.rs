@@ -40,6 +40,10 @@ use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
     Diagnostic, SourceSpan,
 };
+use crate::emit::{
+    substrate_div_error_type_decl_suppressed_for_emit,
+    substrate_result_type_decl_suppressed_for_emit,
+};
 use crate::infer_helpers::{
     behavior_output_port, behavior_span, generated_template_arguments_match,
     normalize_instantiation_arguments, payload_binding_span as generated_payload_binding_span,
@@ -4309,8 +4313,6 @@ fn resolve_field_project_targets(dag: &mut Dag) -> bool {
 }
 
 const WALK_DEPTH_LIMIT: usize = 32;
-const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
-
 /// §8.9 operator dispatch via structural algebra walk.
 ///
 /// Walks the LHS type's declaration chain (following `Instantiation`
@@ -4688,8 +4690,7 @@ fn substitute_receiver(
 
 fn canonical_result_decl(dag: &Dag) -> Option<&Declaration> {
     let mut matches = dag.declarations().iter().filter(|decl| {
-        decl.span.file == ERROR_PRIMITIVES_AUTHORITY_FILE
-            && substrate_result_decl_has_error_primitive_shape(dag, decl)
+        substrate_result_type_decl_suppressed_for_emit(dag, decl)
     });
     let result = matches.next()?;
     if matches.next().is_some() {
@@ -4698,63 +4699,11 @@ fn canonical_result_decl(dag: &Dag) -> Option<&Declaration> {
     Some(result)
 }
 
-fn substrate_result_decl_has_error_primitive_shape(dag: &Dag, decl: &Declaration) -> bool {
-    if decl.name.as_deref() != Some("Result") {
-        return false;
-    }
-    let [ok_param, err_param] = match decl.type_params.as_slice() {
-        [a, b] => [*a, *b],
-        _ => return false,
-    };
-    let ok_decl = dag.declaration(ok_param);
-    let err_decl = dag.declaration(err_param);
-    let ok_param_ok = matches!(
-        &ok_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
-    );
-    let err_param_ok = matches!(
-        &err_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
-    );
-    if !ok_param_ok || !err_param_ok {
-        return false;
-    }
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        return false;
-    };
-    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
-        return false;
-    };
-    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
-        return false;
-    };
-    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
-        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
-}
-
-fn substrate_result_variant_payload_is_value_of(
-    dag: &Dag,
-    payload_ty: DeclarationId,
-    type_param: DeclarationId,
-) -> bool {
-    let payload = dag.declaration(payload_ty);
-    let TypeConnective::Conj { children } = &payload.connective else {
-        return false;
-    };
-    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
-}
-
 fn canonical_div_error_decl(dag: &Dag) -> Option<&Declaration> {
-    let mut matches = dag.declarations().iter().filter(|decl| {
-        decl.span.file == ERROR_PRIMITIVES_AUTHORITY_FILE
-            && decl.name.as_deref() == Some("DivError")
-            && decl.type_params.is_empty()
-            && matches!(&decl.connective, TypeConnective::Disj { variants } if {
-                variants.len() == 2
-                    && variants.iter().any(|variant| variant.label == "DivideByZero")
-                    && variants.iter().any(|variant| variant.label == "Overflow")
-            })
-    });
+    let mut matches = dag
+        .declarations()
+        .iter()
+        .filter(|decl| substrate_div_error_type_decl_suppressed_for_emit(decl));
     let div_error = matches.next()?;
     if matches.next().is_some() {
         return None;
@@ -6773,6 +6722,43 @@ mod bool_logical_operator_arrow_tests {
         assert_eq!(arguments.len(), 2);
         assert_eq!(arguments[0].value, int);
         assert_eq!(arguments[1].value, std_div_error);
+    }
+
+    #[test]
+    fn arithmetic_division_canonical_result_and_diverror_are_structural_not_path_keyed() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let result = canonical_result_decl(&dag).expect("bootstrap Result").id;
+        let div_error = canonical_div_error_decl(&dag).expect("bootstrap DivError").id;
+
+        dag.declaration_mut(result).span.file = "renamed/std/errors.dag".to_string();
+        dag.declaration_mut(div_error).span.file = "renamed/std/errors.dag".to_string();
+
+        let resolved = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &TypeShape::new(int),
+        )
+        .expect("division must resolve through structural error primitives");
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(resolved.output.declaration).connective
+        else {
+            panic!("division output must remain an instantiation");
+        };
+
+        assert_eq!(*template, result);
+        assert_eq!(arguments.len(), 2);
+        assert_eq!(arguments[0].value, int);
+        assert_eq!(arguments[1].value, div_error);
+        assert_eq!(canonical_result_decl(&dag).expect("structural Result").id, result);
+        assert_eq!(
+            canonical_div_error_decl(&dag)
+                .expect("structural DivError")
+                .id,
+            div_error
+        );
     }
 
     #[test]

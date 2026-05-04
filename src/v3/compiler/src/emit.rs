@@ -84,8 +84,6 @@ pub(crate) fn method_emit_template_variant_label(
         .map(|v| v.label.as_str())
 }
 
-const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
-
 /// Result port of a finished `behavior` subgraph — shared by Go and Rust emit
 /// paths for [`port_is_consumed_from`] (including `Behavior::Loop` body walks).
 pub(super) fn behavior_result_port(behavior: &Behavior) -> PortId {
@@ -231,11 +229,13 @@ fn dag_needs_go_result_prelude(
             .any(|decl| decl_uses_substrate_result_or_div_error(dag, decl.id, &mut HashSet::new()))
 }
 
+/// `std.error_primitives` declares canonical `DivError = DivideByZero | Overflow`.
+/// Like `Result`, emit suppression keys off the resolved structural fingerprint,
+/// not the declaration source path. A declaration with this exact global shape is
+/// the substrate-owned integer-division error carrier and is materialized by the
+/// target division prelude when a program actually needs it.
 pub(crate) fn substrate_div_error_type_decl_suppressed_for_emit(decl: &Declaration) -> bool {
-    if decl.span.file != ERROR_PRIMITIVES_AUTHORITY_FILE
-        || decl.name.as_deref() != Some("DivError")
-        || !decl.type_params.is_empty()
-    {
+    if decl.name.as_deref() != Some("DivError") || !decl.type_params.is_empty() {
         return false;
     }
     matches!(&decl.connective, TypeConnective::Disj { variants } if {
@@ -3757,6 +3757,30 @@ mod tests {
         let producer = dag.port(sum).produced_by.expect("transform port");
         let behavior = dag.node(producer);
         assert_eq!(super::behavior_result_port(behavior), sum);
+    }
+
+    #[test]
+    fn result_and_diverror_emit_suppression_are_structural_not_path_keyed() {
+        let mut dag = Dag::new();
+        let result = dag
+            .declaration_by_name("Result")
+            .expect("bootstrap Result")
+            .id;
+        let div_error = dag
+            .declaration_by_name("DivError")
+            .expect("bootstrap DivError")
+            .id;
+
+        dag.declaration_mut(result).span.file = "renamed/std/errors.dag".to_string();
+        dag.declaration_mut(div_error).span.file = "renamed/std/errors.dag".to_string();
+
+        assert!(super::substrate_result_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(result)
+        ));
+        assert!(super::substrate_div_error_type_decl_suppressed_for_emit(
+            dag.declaration(div_error)
+        ));
     }
 
     #[test]
