@@ -7728,9 +7728,9 @@ fn descent_provable(
                 bindings,
             )
         }),
-        SurfaceExpr::PathCall { args, .. } => args.iter().all(|a| {
-            descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)
-        }),
+        SurfaceExpr::PathCall { args, .. } => args
+            .iter()
+            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)),
     }
 }
 
