@@ -413,7 +413,10 @@ fn test_3a2_record_data_substitutes_generic_list_and_map_fields() {
         .declaration_by_name("aggregate_int")
         .expect("aggregate_int must exist");
     let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
-        panic!("expected aggregate_int to lower structurally, got {:?}", decl.value_body);
+        panic!(
+            "expected aggregate_int to lower structurally, got {:?}",
+            decl.value_body
+        );
     };
     let items = fields
         .iter()
