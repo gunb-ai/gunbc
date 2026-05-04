@@ -57,7 +57,8 @@ fn write_method_template_projection_shape_fixture(name: &str) -> std::path::Path
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(root.join("generated")).unwrap();
     std::fs::write(
-        root.join("generated").join("method_template_projection.dag"),
+        root.join("generated")
+            .join("method_template_projection.dag"),
         "\
 module generated.method_template_projection
 
