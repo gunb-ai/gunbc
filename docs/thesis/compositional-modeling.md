@@ -19,7 +19,7 @@ summarizes before the body so readers can place each section.
 | Part 3 — arity | `List<T>`, `Option<T>`, `NonEmpty<T>` as cardinality tags | `[live]` for List/Option; `[target]` for NonEmpty | NonEmpty as a first-class type composes on cardinality-substrate work tracked at `ROADMAP.md:305` ("Fixed-width types aren't structurally fixed" — cardinality not substrate-enforced until alias `where` parses/lowers per DB-11 gap) |
 | Part 3 — arity | Nested-optional flatten by composition law | `[target]` | gated on cardinality-substrate row (`ROADMAP.md:305`) + DB-11 alias-RHS closure (`ROADMAP.md:231`) |
 | Part 3 — arity | Testgen generating boundary tests from cardinality | `[target]` | DB-15 schema landed (`ROADMAP.md:235`); runner + `MockBackedInvariant` wiring remain under T-TestGen lane (`ROADMAP.md:51`, `:65`) |
-| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for the `Dimension<Carrier>` proof-dimension framework (one-parameter); `[target]` for typed-value-wrapper shape shown and unit-mismatch enforcement consumer | `Dimension<Carrier>` decl at `src/v3/std/dimensions.dag:61` (one-parameter, `witness_of` / `compose` / `identity`); framework-name-collision noted in Part 4 body. Dimension wiring for lens consumers deferred under v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`:235`); typed-value-wrapper + unit-mismatch enforcement tracked at `ROADMAP.md:364` |
+| Part 4 — custom types | `Duration<Unit>`, `Money<Currency>` via dimensions | `[live]` for the `Dimension<Carrier>` proof-dimension framework (one-parameter); `[target]` for typed-value-wrapper shape shown and unit-mismatch enforcement consumer | `Dimension<Carrier>` decl at `src/v3/std/dimensions.dag` (one-parameter, `witness_of` / `compose: Monoid<Carrier>`); framework-name-collision noted in Part 4 body. Dimension wiring for lens consumers deferred under v3 lens honesty pass (`ROADMAP.md:333`) + DB-7 (`:235`); typed-value-wrapper + unit-mismatch enforcement tracked at `ROADMAP.md:364` |
 | Part 4 — custom types | `Secret<T>` as opaque nominal type | `[target]` | currently `Secret = String` alias per `dsl/std/types.dag:237`; nominal-wrapper graduation tracked at `ROADMAP.md:365` |
 | Part 5 — reconciliation | Cross-team AuthUser reconciliation | `[target]` | composes NonEmpty (cardinality substrate, `ROADMAP.md:305`) + Secret nominal wrapper (`ROADMAP.md:365`) + enforced refinement preservation (DB-11, `ROADMAP.md:231`) |
 | Part 6 — testgen | Generated integration tests for under-modeled boundaries | `[target]` | DB-15 runner + `MockBackedInvariant` wiring under T-TestGen (`ROADMAP.md:51`, `:65`, `:235`) |
@@ -601,7 +601,7 @@ through arithmetic.
 // wrappers with phantom parameters). The tree does not offer this
 // shape today; the closest live type, `Dimension<Carrier>` at
 // `src/v3/std/dimensions.dag:61`, is a one-parameter
-// proof-dimension framework (`witness_of` / `compose` / `identity`)
+// proof-dimension framework (`witness_of` / `compose: Monoid<Carrier>`)
 // for behavioral analysis — not a typed-value-wrapper for
 // arithmetic. Unit-mismatch enforcement consumer for the target
 // Duration shape is tracked at `ROADMAP.md:364`.

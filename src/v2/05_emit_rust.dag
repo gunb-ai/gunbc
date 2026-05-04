@@ -64,6 +64,7 @@ import v2.std.core {
 }
 
 import v2.compiler.artifact { RenderTarget, Rust }
+import generated.method_template_projection { rust_method_template_emit }
 import extdeps.languages.rust.emit {
   rt_functions, rt_ref_map_functions, rt_wraps_result, rt_bridge_function_names, rust_container_templates, rust_method_wraps_result,
   rust_struct_derives, rust_struct_derives_copy, rust_enum_derives, rust_enum_derives_copy,
@@ -3885,21 +3886,16 @@ fn emit_typed_method_call(method_call_node: Node, receiver: Node, method: String
         // Template-driven methods: lookup in language extdep data.
         let recv_str = emit_typed_expr(texpr: receiver, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
         let first_arg_str = emit_typed_first_arg(args: args, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-        let spec = language_spec(target: Rust)
-        match spec.method_templates {
-          Some { value: templates } => match map_get(templates, method_name) {
-            Some { value: tmpl } =>
-              let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
-              let raw = apply_named_template(template: tmpl, bindings: bindings)
-              // Rc wrapping comes from sharing authority, not templates
-              if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
-                concat("Rc::new(", raw, ")")
-              } else { raw }
-            None =>
-              // Generic bridge method: v2_rt::method_name(receiver, args...)
-              emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
-          }
+        match map_get(rust_method_template_emit, method_name) {
+          Some { value: tmpl } =>
+            let bindings = seed_bindings(key: "recv", value: recv_str) |> map_insert("arg", first_arg_str)
+            let raw = apply_named_template(template: tmpl, bindings: bindings)
+            // Rc wrapping comes from sharing authority, not templates
+            if rust_runtime_bridge_wraps_collection_result_in_rc(function_name: method_name) {
+              concat("Rc::new(", raw, ")")
+            } else { raw }
           None =>
+            // Generic bridge method: v2_rt::method_name(receiver, args...)
             emit_rust_generic_method_call(method_name: method_name, receiver: receiver, args: args, result_type: result_type, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
         }
       }
