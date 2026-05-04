@@ -7487,7 +7487,8 @@ fn is_recursive(
             if target == self_name {
                 return true;
             }
-            args.iter().any(|a| is_recursive(a, self_name, dag, symbols))
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
         SurfaceExpr::VariantRecord { fields, .. } => fields
             .iter()
@@ -7540,7 +7541,8 @@ fn is_recursive(
                     }
                 }
             }
-            args.iter().any(|a| is_recursive(a, self_name, dag, symbols))
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
     }
 }
@@ -7623,7 +7625,15 @@ fn descent_provable(
                 }
             } else {
                 args.iter().all(|a| {
-                    descent_provable(a, dag, first_param_decl, self_name, first_param, bindings, symbols)
+                    descent_provable(
+                        a,
+                        dag,
+                        first_param_decl,
+                        self_name,
+                        first_param,
+                        bindings,
+                        symbols,
+                    )
                 })
             }
         }
@@ -7637,9 +7647,17 @@ fn descent_provable(
                 bindings,
             )
         }),
-        SurfaceExpr::Operator { args, .. } => args
-            .iter()
-            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings, symbols)),
+        SurfaceExpr::Operator { args, .. } => args.iter().all(|a| {
+            descent_provable(
+                a,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+                symbols,
+            )
+        }),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -7756,9 +7774,17 @@ fn descent_provable(
                 bindings,
             )
         }),
-        SurfaceExpr::PathCall { args, .. } => args
-            .iter()
-            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings, symbols)),
+        SurfaceExpr::PathCall { args, .. } => args.iter().all(|a| {
+            descent_provable(
+                a,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+                symbols,
+            )
+        }),
     }
 }
 
