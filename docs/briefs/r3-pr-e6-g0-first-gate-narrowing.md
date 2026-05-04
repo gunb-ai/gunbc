@@ -112,10 +112,11 @@ brief picks it as the first E6-G0 slice; it does not rename or fork it).
 
 **Owner boundary:** R2 substrate / type-checker authority (same lane that
 landed Prereq-1 #1230 / #1239 and Prereq-3a #1232). Not the Evaluator
-worker; E6-G0 in the post-blocker gate packet renamed to "evaluator
-`FieldProject`/`Callable` execution" is sequenced **after** this slice and
-keeps its name as **E6-G0b** in the schedule below to avoid renaming the
-existing receipt.
+worker; the post-blocker gate packet's "evaluator `FieldProject`/`Callable`
+execution" slice appears as **E6-G0c** in the schedule below (parser X1.a
+is **E6-G0b**; the evaluator gate sequences after the parser slice because
+executing `Callable` is dead code until lowering produces it from a
+field-call site).
 
 **Acceptance tests:**
 
@@ -150,20 +151,23 @@ existing receipt.
 
 Once E6-G0 lands, the next gates in order are:
 
-- **E6-G0b (evaluator field/call API).** Make `TransformTarget::FieldProject`
-  and `TransformTarget::Callable` execute through the existing
-  `evaluate_body` / `eval_node` / `eval_port` entry points in
-  `src/v3/compiler/src/lib.rs`. Inputs are now non-empty because (C)
-  produced at least one declared `Lens<Int>` value whose static field
-  references can be projected and called. This is the "E6-G0" the existing
-  post-blocker gate packet names; renamed to **E6-G0b** here only for
-  ordering clarity. No substrate edit.
-- **E6-G0c (Prereq-X1.a static call-on-field-access surface).** Parser +
+- **E6-G0b (Prereq-X1.a static call-on-field-access surface).** Parser +
   lowerer extension so `complexity_lens.read(d, b)` parses and lowers to
   `TransformTarget::Callable(decl_id_of_complexity_read)` via static field
   projection on the `data` binding's `ValueBody::Structural`. Reuses the
   existing static-callee dispatch path; no `TransformDispatch` collapse, no
-  `Indirect`. Acceptance test matrix is `T1.1` from Prereq-X §X1.a.
+  `Indirect`. Acceptance test matrix is `T1.1` from Prereq-X §X1.a. Must
+  precede the evaluator slice: per the dependency graph above, executing
+  `FieldProject` / `Callable` is dead code until lowering emits them from
+  a static field-call site.
+- **E6-G0c (evaluator field/call API).** Make `TransformTarget::FieldProject`
+  and `TransformTarget::Callable` execute through the existing
+  `evaluate_body` / `eval_node` / `eval_port` entry points in
+  `src/v3/compiler/src/lib.rs`. Inputs are now non-empty because (C)
+  produced at least one declared `Lens<Int>` value and (E6-G0b) lowering
+  emits `Callable` from `complexity_lens.read(...)`. This is the "E6-G0"
+  the existing post-blocker gate packet names; renamed to **E6-G0c** here
+  only for ordering clarity. No substrate edit.
 - **E6-G1 (non-parametric report lifting).** A non-parametric per-lens fold
   (e.g., `fn fold_complexity(d: Dag) -> DimensionReport<Int> = …`) authored
   in `.dag` consuming `complexity_lens` as a static `data` binding. Lifts
@@ -208,8 +212,8 @@ generic fold scope is settled by E6-G1's non-parametric concrete fold
   reflect→apply compatibility seam (preserved).
 - `src/v3/compiler/src/lib.rs::evaluator::eval_transform_node` —
   `TransformTarget::FieldProject` / `TransformTarget::Callable` fail-closed
-  match (E6-G0b).
+  match (E6-G0c).
 - `src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs` —
-  parser ratchet pinning Prereq-X1 / X3 (red until E6-G0c / E6-G2 land).
+  parser ratchet pinning Prereq-X1 / X3 (red until E6-G0b / E6-G2 land).
 - `src/v3/lenses/complexity.dag`, `src/v3/lenses/cost.dag` — lens instances
   deferred pending E6-G0.
