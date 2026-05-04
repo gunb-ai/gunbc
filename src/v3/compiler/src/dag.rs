@@ -2281,8 +2281,14 @@ pub(crate) struct EmitAnchorCache {
     pub method_emit_template: Option<DeclarationId>,
     /// `MethodTemplateContract` meta-type used by fold-method contract checks.
     pub method_template_contract: Option<DeclarationId>,
-    /// `std.list.fold_method` contract method id.
+    /// `std.list.concat_method` method declaration.
+    pub concat_method: Option<DeclarationId>,
+    /// `std.list.length_method` method declaration.
+    pub length_method: Option<DeclarationId>,
+    /// `std.list.fold_method` method declaration.
     pub fold_method: Option<DeclarationId>,
+    /// `std.list.is_empty_method` method declaration.
+    pub is_empty_method: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -3130,6 +3136,21 @@ impl Dag {
         self.emit_anchors.fold_method
     }
 
+    /// `concat_method` method declaration.
+    pub(crate) fn concat_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.concat_method
+    }
+
+    /// `length_method` method declaration.
+    pub(crate) fn length_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.length_method
+    }
+
+    /// `is_empty_method` method declaration.
+    pub(crate) fn is_empty_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.is_empty_method
+    }
+
     /// Typed accessor for the cached `PatternBindingRule` variant
     /// handles resolved from `src/v3/std/clean_emission.dag` at
     /// bootstrap end. Consumed by per-target emitters when
@@ -3773,7 +3794,11 @@ impl Dag {
         self.emit_anchors.method_template_contract = self
             .declaration_by_name("MethodTemplateContract")
             .map(|d| d.id);
+        self.emit_anchors.concat_method = self.declaration_by_name("concat_method").map(|d| d.id);
+        self.emit_anchors.length_method = self.declaration_by_name("length_method").map(|d| d.id);
         self.emit_anchors.fold_method = self.declaration_by_name("fold_method").map(|d| d.id);
+        self.emit_anchors.is_empty_method =
+            self.declaration_by_name("is_empty_method").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
         // `std/clean_emission.dag` declaration's `Disj` variants
@@ -4416,6 +4441,12 @@ mod tests {
             "MethodTemplateContract anchor"
         );
         assert!(dag.fold_method_decl().is_some(), "fold_method anchor");
+        assert!(dag.concat_method_decl().is_some(), "concat_method anchor");
+        assert!(dag.length_method_decl().is_some(), "length_method anchor");
+        assert!(
+            dag.is_empty_method_decl().is_some(),
+            "is_empty_method anchor"
+        );
     }
 
     #[test]
