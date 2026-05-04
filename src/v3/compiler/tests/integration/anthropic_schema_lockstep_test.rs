@@ -619,6 +619,11 @@ fn anthropic_stop_reason_lockstep() {
 }
 
 #[test]
+fn anthropic_messages_200_citation_lockstep() {
+    assert_disj_lockstep("AnthropicMessages200Citation");
+}
+
+#[test]
 fn anthropic_messages_200_text_block_lockstep() {
     assert_record_lockstep("AnthropicMessages200TextBlock");
 }

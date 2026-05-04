@@ -519,7 +519,8 @@ fn collect_punct_rows(dag: &Dag, shared_syntax: &SharedSyntaxAuthority) -> Vec<(
     let mut covered_kinds = BTreeSet::new();
 
     for pattern in &shared_syntax.operators {
-        match classify_shared_operator_for_tokenizer(pattern) {
+        match classify_shared_operator_for_tokenizer(pattern, &shared_syntax.v3_supported_operators)
+        {
             SharedOperatorTokenizerBoundary::Tokenized { kind } => {
                 assert!(
                     punct_variants.contains(kind),
@@ -610,16 +611,24 @@ fn keyword_spelling_for_token_kind(kind: &str) -> String {
         .to_ascii_lowercase()
 }
 
-// SG-1a operator bridge: shared operators still lower through raw-source reads,
-// so every `dag_operators` symbol must be classified explicitly here as either
-// tokenizer punctuation or parser-only debt. Unknown symbols panic so upstream
-// authority edits cannot silently disappear.
+// SG-1a operator bridge: shared operators still lower through raw-source reads.
+// `v3_supported_dag_operators` is the single support/exclusion projection; this
+// table only maps supported symbols to their current tokenizer variant.
 enum SharedOperatorTokenizerBoundary {
     Tokenized { kind: &'static str },
     ParserOnlyDebt { reason: &'static str },
 }
 
-fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
+fn classify_shared_operator_for_tokenizer(
+    pattern: &str,
+    v3_supported: &BTreeSet<String>,
+) -> SharedOperatorTokenizerBoundary {
+    if !v3_supported.contains(pattern) {
+        return SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "operator is declared in external dag_operators but excluded from \
+                     v3_supported_dag_operators until v3 parses it end-to-end",
+        };
+    }
     match pattern {
         "==" => SharedOperatorTokenizerBoundary::Tokenized { kind: "EqEq" },
         "!=" => SharedOperatorTokenizerBoundary::Tokenized { kind: "NotEq" },
@@ -635,18 +644,10 @@ fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokeni
         "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
         "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
         "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
-        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "null-coalescing is declared in shared syntax but the v3 tokenizer/parser \
-                     surface does not yet admit it as punctuation",
-        },
-        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "modulo is declared in shared syntax but the v3 tokenizer/parser surface \
-                     does not yet admit it as punctuation",
-        },
         other => panic!(
-            "shared syntax operator `{other}` has no SG-1a tokenizer bridge classification. \
-             Update `classify_shared_operator_for_tokenizer` to mark it as tokenizer-owned \
-             punctuation or explicit parser-only debt so the authority boundary stays fail-closed."
+            "`v3_supported_dag_operators` includes `{other}`, but the SG-1a tokenizer bridge has \
+             no TokenKind mapping for it. Add tokenizer/parser/operator support or remove it from \
+             the v3 projection."
         ),
     }
 }
@@ -654,6 +655,7 @@ fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokeni
 struct SharedSyntaxAuthority {
     keywords: Vec<String>,
     operators: Vec<String>,
+    v3_supported_operators: BTreeSet<String>,
 }
 
 impl SharedSyntaxAuthority {
@@ -670,9 +672,15 @@ impl SharedSyntaxAuthority {
             extract_balanced_section(source, "data dag_operators", '[', ']'),
             "symbol",
         );
+        let v3_supported_operators: BTreeSet<_> = parse_all_string_literals(
+            extract_balanced_section(source, "data v3_supported_dag_operators", '{', '}'),
+        )
+        .into_iter()
+        .collect();
         Self {
             keywords,
             operators,
+            v3_supported_operators,
         }
     }
 }
@@ -726,6 +734,17 @@ fn parse_named_string_fields(section: &str, field_name: &str) -> Vec<String> {
         let (value, consumed) = parse_string_literal(&after_field[quote_idx..]);
         out.push(value);
         rest = &after_field[quote_idx + consumed..];
+    }
+    out
+}
+
+fn parse_all_string_literals(section: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = section;
+    while let Some(idx) = rest.find('"') {
+        let (value, consumed) = parse_string_literal(&rest[idx..]);
+        out.push(value);
+        rest = &rest[idx + consumed..];
     }
     out
 }

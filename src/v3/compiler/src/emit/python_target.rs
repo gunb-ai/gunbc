@@ -676,6 +676,7 @@ pub(crate) fn emit_python_with_mode(
         .filter(|decl| !indexes.source_filtering.excludes(&decl.span.file))
         .filter(|decl| decl.name.is_some())
         .filter(|decl| !super::substrate_result_type_decl_suppressed_for_emit(dag, decl))
+        .filter(|decl| !super::substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
         .filter(|decl| {
             matches!(
                 decl.connective,
@@ -754,6 +755,7 @@ pub(crate) fn emit_python_with_mode(
     if let (true, Some(name)) = (
         needs_int_div_prelude,
         div_prelude_reserved_name_collision(
+            dag,
             type_decls.iter(),
             function_decls.iter(),
             top_level_binds.iter(),

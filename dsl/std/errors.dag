@@ -2,33 +2,6 @@
 
 module std.errors
 
-type HttpErrorShape {
-  status: Int
-  error_type: String
-  message: String
-  detail: String?
-}
-
-type AuthError = Expired | InvalidToken | MissingCredential | InsufficientScope | Forbidden
-
-type RateLimitError {
-  retry_after_seconds: Int?
-  scope: String
-}
-
-type ConflictError {
-  resource: String
-  expected_version: String?
-  actual_version: String?
-}
-
-type ProviderError {
-  provider: String
-  operation: String
-  http_status: Int?
-  message: String
-}
-
 type GitHubErrorShape {
   message: String
   documentation_url: String?

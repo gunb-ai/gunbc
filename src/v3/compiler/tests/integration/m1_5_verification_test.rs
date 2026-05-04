@@ -194,6 +194,10 @@ fn bootstrap_loads_verification_authority_types() {
                 ],
             ),
             (
+                String::from("SymbolicCostExprEquals"),
+                vec![String::from("expected")],
+            ),
+            (
                 String::from("BinaryDimensionReportEquals"),
                 vec![
                     String::from("left_report_ref"),

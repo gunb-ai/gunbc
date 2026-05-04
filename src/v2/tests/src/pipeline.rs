@@ -5676,6 +5676,47 @@ service test.Api {
     );
 }
 
+#[test]
+fn github_token_returns_typed_auth_token_from_credential_source() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/github/auth.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read github auth.dag");
+    let result = compile_dag_named("dsl/extdeps/github/auth.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_github_auth.rs");
+
+    assert!(
+        content.contains("pub use crate::extdeps_github_github::{GitHubAuthToken, GitHubScope}")
+            && content.contains("Result<Rc<GitHubAuthToken>"),
+        "ROADMAP:376: expected github_token to return the typed GitHubAuthToken carrier, got:\n{content}"
+    );
+    assert!(
+        content.contains("pub struct GitHubAuthSource")
+            && content.contains("pub token_metadata: Rc<GitHubTokenMetadataAuthority>")
+            && content.contains("pub enum GitHubTokenMetadataAuthority")
+            && content.contains("DeclaredGitHubTokenMetadata"),
+        "ROADMAP:376: expected credential source metadata to be explicitly declared/unverified, got:\n{content}"
+    );
+    assert!(
+        content.contains("structural_coverage_gap_github_token_metadata_verification")
+            && content.contains("declared_metadata:scopes")
+            && content.contains("declared_metadata:expires_at"),
+        "ROADMAP:376: expected declared token metadata verification gap to stay tracked, got:\n{content}"
+    );
+    assert!(
+        content.contains("CredentialSource::EnvVar")
+            && content.contains("GITHUB_TOKEN")
+            && content.contains("env_credential"),
+        "ROADMAP:376: expected default credential source to use EnvVar via env_credential, got:\n{content}"
+    );
+    assert!(
+        !content.contains("gunbai-secrets")
+            && !content.contains("github-token")
+            && !content.contains("SecretManagerAccessVersion"),
+        "ROADMAP:376: github_token must not hardcode the GCP Secret Manager policy, got:\n{content}"
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.
@@ -6796,6 +6837,426 @@ fn openai_chat_completion_uses_typed_200_body_projection() {
     );
 }
 
+#[test]
+fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        choices: Vec<Choice>,
+        usage: Usage,
+        service_tier: Option<String>,
+        system_fingerprint: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Choice {
+        message: Message,
+        logprobs: Option<Logprobs>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Message {
+        content: String,
+        refusal: Option<String>,
+        annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Annotation {
+        UrlCitation { url_citation: UrlCitation },
+    }
+
+    #[derive(serde::Deserialize)]
+    struct UrlCitation {
+        start_index: i64,
+        end_index: i64,
+        title: String,
+        url: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Logprobs {
+        content: Option<Vec<TokenLogprob>>,
+        refusal: Option<Vec<TokenLogprob>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TokenLogprob {
+        token: String,
+        bytes: Option<Vec<i64>>,
+        logprob: f64,
+        top_logprobs: Vec<TopLogprob>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TopLogprob {
+        token: String,
+        bytes: Option<Vec<i64>>,
+        logprob: f64,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        completion_tokens_details: Option<CompletionTokenDetails>,
+        prompt_tokens_details: Option<PromptTokenDetails>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct CompletionTokenDetails {
+        accepted_prediction_tokens: Option<i64>,
+        audio_tokens: Option<i64>,
+        reasoning_tokens: Option<i64>,
+        rejected_prediction_tokens: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct PromptTokenDetails {
+        audio_tokens: Option<i64>,
+        cached_tokens: Option<i64>,
+    }
+
+    let wire = serde_json::json!({
+        "choices": [{
+            "message": {
+                "content": "safety response",
+                "refusal": "safety refusal",
+                "annotations": [{
+                    "type": "url_citation",
+                    "url_citation": {
+                        "start_index": 0,
+                        "end_index": 12,
+                        "title": "reference",
+                        "url": "https://example.com/ref"
+                    }
+                }]
+            },
+            "logprobs": {
+                "content": [{
+                    "token": "Hello",
+                    "bytes": [72, 101, 108, 108, 111],
+                    "logprob": -0.01,
+                    "top_logprobs": [{
+                        "token": "Hi",
+                        "bytes": [72, 105],
+                        "logprob": -0.2
+                    }]
+                }],
+                "refusal": [{
+                    "token": "No",
+                    "bytes": null,
+                    "logprob": -0.3,
+                    "top_logprobs": []
+                }]
+            }
+        }],
+        "usage": {
+            "completion_tokens_details": {
+                "accepted_prediction_tokens": 3,
+                "audio_tokens": 0,
+                "reasoning_tokens": 2,
+                "rejected_prediction_tokens": 1
+            },
+            "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cached_tokens": 8
+            }
+        },
+        "service_tier": "default",
+        "system_fingerprint": "fp_mock"
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative ChatCompletion 200 wire");
+    assert_eq!(body.service_tier.as_deref(), Some("default"));
+    assert_eq!(body.system_fingerprint.as_deref(), Some("fp_mock"));
+    assert_eq!(body.choices[0].message.content, "safety response");
+    assert_eq!(
+        body.choices[0].message.refusal.as_deref(),
+        Some("safety refusal")
+    );
+    let annotation = &body.choices[0].message.annotations.as_ref().unwrap()[0];
+    match annotation {
+        Annotation::UrlCitation { url_citation } => {
+            assert_eq!(url_citation.start_index, 0);
+            assert_eq!(url_citation.end_index, 12);
+            assert_eq!(url_citation.title, "reference");
+            assert_eq!(url_citation.url, "https://example.com/ref");
+        }
+    }
+    let content_logprob = &body.choices[0]
+        .logprobs
+        .as_ref()
+        .unwrap()
+        .content
+        .as_ref()
+        .unwrap()[0];
+    assert_eq!(content_logprob.token, "Hello");
+    assert_eq!(
+        content_logprob.bytes.as_ref().unwrap(),
+        &[72, 101, 108, 108, 111]
+    );
+    assert!(content_logprob.logprob < 0.0);
+    assert_eq!(content_logprob.top_logprobs[0].token, "Hi");
+    assert_eq!(
+        content_logprob.top_logprobs[0].bytes.as_ref().unwrap(),
+        &[72, 105]
+    );
+    assert!(content_logprob.top_logprobs[0].logprob < 0.0);
+    assert_eq!(
+        body.choices[0]
+            .logprobs
+            .as_ref()
+            .unwrap()
+            .refusal
+            .as_ref()
+            .unwrap()[0]
+            .token,
+        "No"
+    );
+    let completion_details = body.usage.completion_tokens_details.unwrap();
+    assert_eq!(completion_details.accepted_prediction_tokens, Some(3));
+    assert_eq!(completion_details.audio_tokens, Some(0));
+    assert_eq!(completion_details.reasoning_tokens, Some(2));
+    assert_eq!(completion_details.rejected_prediction_tokens, Some(1));
+    let prompt_details = body.usage.prompt_tokens_details.unwrap();
+    assert_eq!(prompt_details.audio_tokens, Some(0));
+    assert_eq!(prompt_details.cached_tokens, Some(8));
+}
+
+#[test]
+fn openai_responses_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_openai.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<OpenAiResponses200Body> = response.json().await?"),
+        "expected Responses 200 response to deserialize through typed OpenAiResponses200Body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).output")
+            && content.contains(".content")
+            && content.contains(".text.clone()")
+            && content.contains("(__rest_wire).usage).output_tokens.clone()"),
+        "expected Responses output fields to project from the typed 200 body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/output/0/content/0/text\")"),
+        "Responses content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
+    );
+}
+
+#[test]
+fn openai_responses_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        id: String,
+        object: String,
+        created_at: Option<i64>,
+        status: Option<String>,
+        model: String,
+        output: Vec<OutputItem>,
+        usage: Usage,
+        service_tier: Option<String>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputItem {
+        id: Option<String>,
+        #[serde(rename = "type")]
+        item_type: String,
+        status: Option<String>,
+        role: Option<String>,
+        content: Vec<OutputContent>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputContent {
+        #[serde(rename = "type")]
+        content_type: String,
+        text: String,
+        annotations: Option<Vec<Annotation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Annotation {
+        FileCitation {
+            file_id: String,
+            filename: String,
+            index: i64,
+        },
+        UrlCitation {
+            start_index: i64,
+            end_index: i64,
+            title: String,
+            url: String,
+        },
+        ContainerFileCitation {
+            container_id: String,
+            file_id: String,
+            filename: String,
+            start_index: i64,
+            end_index: i64,
+        },
+        FilePath {
+            file_id: String,
+            index: i64,
+        },
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        input_tokens: i64,
+        output_tokens: i64,
+        total_tokens: Option<i64>,
+        input_tokens_details: Option<InputTokenDetails>,
+        output_tokens_details: Option<OutputTokenDetails>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct InputTokenDetails {
+        cached_tokens: Option<i64>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct OutputTokenDetails {
+        reasoning_tokens: Option<i64>,
+    }
+
+    let wire = serde_json::json!({
+        "id": "resp_mock",
+        "object": "response",
+        "created_at": 1741386163,
+        "status": "completed",
+        "model": "gpt-4o",
+        "output": [{
+            "id": "msg_mock",
+            "type": "message",
+            "status": "completed",
+            "role": "assistant",
+            "content": [{
+                "type": "output_text",
+                "text": "hello",
+                "annotations": [
+                    {
+                        "type": "url_citation",
+                        "start_index": 0,
+                        "end_index": 5,
+                        "title": "reference",
+                        "url": "https://example.com/ref"
+                    },
+                    {
+                        "type": "file_citation",
+                        "file_id": "file_123",
+                        "filename": "notes.txt",
+                        "index": 1
+                    },
+                    {
+                        "type": "container_file_citation",
+                        "container_id": "cntr_123",
+                        "file_id": "file_456",
+                        "filename": "result.txt",
+                        "start_index": 6,
+                        "end_index": 11
+                    },
+                    {
+                        "type": "file_path",
+                        "file_id": "file_789",
+                        "index": 2
+                    }
+                ]
+            }]
+        }],
+        "usage": {
+            "input_tokens": 32,
+            "input_tokens_details": { "cached_tokens": 7 },
+            "output_tokens": 18,
+            "output_tokens_details": { "reasoning_tokens": 5 },
+            "total_tokens": 50
+        },
+        "service_tier": "default"
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative Responses 200 wire");
+    assert_eq!(body.id, "resp_mock");
+    assert_eq!(body.object, "response");
+    assert_eq!(body.created_at, Some(1741386163));
+    assert_eq!(body.status.as_deref(), Some("completed"));
+    assert_eq!(body.model, "gpt-4o");
+    assert_eq!(body.service_tier.as_deref(), Some("default"));
+    assert_eq!(body.output[0].id.as_deref(), Some("msg_mock"));
+    assert_eq!(body.output[0].item_type, "message");
+    assert_eq!(body.output[0].status.as_deref(), Some("completed"));
+    assert_eq!(body.output[0].role.as_deref(), Some("assistant"));
+    let content = &body.output[0].content[0];
+    assert_eq!(content.content_type, "output_text");
+    assert_eq!(content.text, "hello");
+    let annotations = content.annotations.as_ref().unwrap();
+    match &annotations[0] {
+        Annotation::UrlCitation {
+            start_index,
+            end_index,
+            title,
+            url,
+        } => {
+            assert_eq!(*start_index, 0);
+            assert_eq!(*end_index, 5);
+            assert_eq!(title, "reference");
+            assert_eq!(url, "https://example.com/ref");
+        }
+        _ => panic!("expected url_citation annotation"),
+    }
+    match &annotations[1] {
+        Annotation::FileCitation {
+            file_id,
+            filename,
+            index,
+        } => {
+            assert_eq!(file_id, "file_123");
+            assert_eq!(filename, "notes.txt");
+            assert_eq!(*index, 1);
+        }
+        _ => panic!("expected file_citation annotation"),
+    }
+    match &annotations[2] {
+        Annotation::ContainerFileCitation {
+            container_id,
+            file_id,
+            filename,
+            start_index,
+            end_index,
+        } => {
+            assert_eq!(container_id, "cntr_123");
+            assert_eq!(file_id, "file_456");
+            assert_eq!(filename, "result.txt");
+            assert_eq!(*start_index, 6);
+            assert_eq!(*end_index, 11);
+        }
+        _ => panic!("expected container_file_citation annotation"),
+    }
+    match &annotations[3] {
+        Annotation::FilePath { file_id, index } => {
+            assert_eq!(file_id, "file_789");
+            assert_eq!(*index, 2);
+        }
+        _ => panic!("expected file_path annotation"),
+    }
+    assert_eq!(body.usage.input_tokens, 32);
+    assert_eq!(body.usage.output_tokens, 18);
+    assert_eq!(body.usage.total_tokens, Some(50));
+    assert_eq!(
+        body.usage.input_tokens_details.unwrap().cached_tokens,
+        Some(7)
+    );
+    assert_eq!(
+        body.usage.output_tokens_details.unwrap().reasoning_tokens,
+        Some(5)
+    );
+}
+
 // ── RE-4: Anthropic REST API emission ────────────────────────────────────
 #[test]
 fn anthropic_response_extracts_content_text() {
@@ -6868,6 +7329,222 @@ fn anthropic_messages_uses_typed_200_body_projection() {
         !content.contains("json_body.pointer(\"/content/0/text\")"),
         "Anthropic Messages content must not use JSON-pointer extraction after typed 200-body projection, got:\n{content}"
     );
+}
+
+#[test]
+fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct Body {
+        content: Vec<TextBlock>,
+        usage: Usage,
+        container: Option<Value>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct TextBlock {
+        citations: Option<Vec<Citation>>,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Citation {
+        CharLocation {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_char_index: i64,
+            end_char_index: i64,
+        },
+        PageLocation {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_page_number: i64,
+            end_page_number: i64,
+        },
+        ContentBlockLocation {
+            cited_text: String,
+            document_index: i64,
+            document_title: Option<String>,
+            file_id: Option<String>,
+            start_block_index: i64,
+            end_block_index: i64,
+        },
+        WebSearchResultLocation {
+            cited_text: String,
+            encrypted_index: String,
+            title: Option<String>,
+            url: String,
+        },
+        SearchResultLocation {
+            cited_text: String,
+            source: String,
+            title: Option<String>,
+            search_result_index: i64,
+            start_block_index: i64,
+            end_block_index: i64,
+        },
+    }
+
+    #[derive(serde::Deserialize)]
+    struct Usage {
+        cache_creation_input_tokens: Option<i64>,
+        cache_read_input_tokens: Option<i64>,
+        service_tier: Option<String>,
+    }
+
+    let wire = serde_json::json!({
+        "content": [{
+            "citations": [
+                {
+                    "type": "char_location",
+                    "cited_text": "quoted text",
+                    "document_index": 0,
+                    "document_title": "doc",
+                    "file_id": "file_123",
+                    "start_char_index": 4,
+                    "end_char_index": 15
+                },
+                {
+                    "type": "page_location",
+                    "cited_text": "page text",
+                    "document_index": 1,
+                    "document_title": null,
+                    "file_id": null,
+                    "start_page_number": 2,
+                    "end_page_number": 3
+                },
+                {
+                    "type": "content_block_location",
+                    "cited_text": "block text",
+                    "document_index": 2,
+                    "document_title": "blocks",
+                    "file_id": null,
+                    "start_block_index": 5,
+                    "end_block_index": 6
+                },
+                {
+                    "type": "web_search_result_location",
+                    "cited_text": "web text",
+                    "encrypted_index": "enc_123",
+                    "title": "web result",
+                    "url": "https://example.com/source"
+                },
+                {
+                    "type": "search_result_location",
+                    "cited_text": "search text",
+                    "source": "search_source",
+                    "title": "search result",
+                    "search_result_index": 7,
+                    "start_block_index": 8,
+                    "end_block_index": 9
+                }
+            ]
+        }],
+        "usage": {
+            "cache_creation_input_tokens": 11,
+            "cache_read_input_tokens": 22,
+            "service_tier": "standard"
+        },
+        "container": {
+            "id": "container_mock"
+        }
+    });
+
+    let body: Body = serde_json::from_value(wire).expect("representative Anthropic 200 wire");
+    let citations = body.content[0].citations.as_ref().unwrap();
+    match &citations[0] {
+        Citation::CharLocation {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_char_index,
+            end_char_index,
+        } => {
+            assert_eq!(cited_text, "quoted text");
+            assert_eq!(*document_index, 0);
+            assert_eq!(document_title.as_deref(), Some("doc"));
+            assert_eq!(file_id.as_deref(), Some("file_123"));
+            assert_eq!(*start_char_index, 4);
+            assert_eq!(*end_char_index, 15);
+        }
+        _ => panic!("expected char_location citation"),
+    }
+    match &citations[1] {
+        Citation::PageLocation {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_page_number,
+            end_page_number,
+        } => {
+            assert_eq!(cited_text, "page text");
+            assert_eq!(*document_index, 1);
+            assert!(document_title.is_none());
+            assert!(file_id.is_none());
+            assert_eq!(*start_page_number, 2);
+            assert_eq!(*end_page_number, 3);
+        }
+        _ => panic!("expected page_location citation"),
+    }
+    match &citations[2] {
+        Citation::ContentBlockLocation {
+            cited_text,
+            document_index,
+            document_title,
+            file_id,
+            start_block_index,
+            end_block_index,
+        } => {
+            assert_eq!(cited_text, "block text");
+            assert_eq!(*document_index, 2);
+            assert_eq!(document_title.as_deref(), Some("blocks"));
+            assert!(file_id.is_none());
+            assert_eq!(*start_block_index, 5);
+            assert_eq!(*end_block_index, 6);
+        }
+        _ => panic!("expected content_block_location citation"),
+    }
+    match &citations[3] {
+        Citation::WebSearchResultLocation {
+            cited_text,
+            encrypted_index,
+            title,
+            url,
+        } => {
+            assert_eq!(cited_text, "web text");
+            assert_eq!(encrypted_index, "enc_123");
+            assert_eq!(title.as_deref(), Some("web result"));
+            assert_eq!(url, "https://example.com/source");
+        }
+        _ => panic!("expected web_search_result_location citation"),
+    }
+    match &citations[4] {
+        Citation::SearchResultLocation {
+            cited_text,
+            source,
+            title,
+            search_result_index,
+            start_block_index,
+            end_block_index,
+        } => {
+            assert_eq!(cited_text, "search text");
+            assert_eq!(source, "search_source");
+            assert_eq!(title.as_deref(), Some("search result"));
+            assert_eq!(*search_result_index, 7);
+            assert_eq!(*start_block_index, 8);
+            assert_eq!(*end_block_index, 9);
+        }
+        _ => panic!("expected search_result_location citation"),
+    }
+    assert_eq!(body.usage.cache_creation_input_tokens, Some(11));
+    assert_eq!(body.usage.cache_read_input_tokens, Some(22));
+    assert_eq!(body.usage.service_tier.as_deref(), Some("standard"));
+    assert_eq!(body.container.unwrap()["id"], "container_mock");
 }
 
 #[test]

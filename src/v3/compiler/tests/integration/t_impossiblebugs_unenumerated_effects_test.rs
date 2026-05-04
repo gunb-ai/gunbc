@@ -56,7 +56,7 @@ fn generated_effect_enumeration_lens_is_exported_and_consumed() {
 }
 
 #[test]
-fn audit_receipt_proves_path_ii_existence_case() {
+fn github_auth_no_longer_derives_network_from_ambient_uses() {
     let resources = read_workspace_file("dsl/std/resources.dag");
     let primitives = read_workspace_file("dsl/std/primitives.dag");
     let shell = read_workspace_file("dsl/extdeps/shell.dag");
@@ -75,7 +75,9 @@ fn audit_receipt_proves_path_ii_existence_case() {
         "shell.Exec.Run remains transport-effectful without resource-threaded signature shape"
     );
     assert!(
-        github_auth.contains("uses net: Network"),
-        "github_token still derives resource use from ambient `uses`, not its return shape"
+        github_auth.contains("CredentialSource")
+            && github_auth.contains("-> GitHubAuthToken")
+            && !github_auth.contains("uses net: Network"),
+        "github_token should consume typed CredentialSource and return GitHubAuthToken without ambient Network effect"
     );
 }

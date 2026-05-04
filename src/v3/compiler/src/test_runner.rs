@@ -1944,6 +1944,9 @@ impl<'a> TestRunner<'a> {
                         "BinaryDimensionReportEquals" => {
                             self.eval_binary_dimension_report_equals_shape(claim, &payload)
                         }
+                        "SymbolicCostExprEquals" => {
+                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
+                        }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -2400,6 +2403,87 @@ impl<'a> TestRunner<'a> {
         }
     }
 
+    fn eval_symbolic_cost_expr_equals_shape(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [expected_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals payload should be exactly one DeclarationRef field \
+                 (expected); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_decl = self.dag.declaration(expected_id);
+        let expected_name = decl_display_name(expected_id, expected_decl);
+        if expected_decl.value_body.is_none() {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals: expected `{expected_name}` has no value body to compare against"
+            ));
+        }
+        // The `expected: DeclarationRef` field is unrefined (`DeclarationRef`
+        // admits any declaration); validate at the runner boundary that the
+        // referenced declaration actually inhabits `SymbolicCost`. Mirror of
+        // the boundary check in `validate_dimension_report_ref` for
+        // `BinaryDimensionReportEquals`. Dissolution: when refinement-typing
+        // on `DeclarationRef` (or a `SymbolicCostRef` wrapper class) lands in
+        // substrate, this runner-side check retires alongside the wrapper.
+        if let Err(reason) = self.validate_symbolic_cost_ref(expected_id, "expected") {
+            return ClaimResult::Fail(reason);
+        }
+        ClaimResult::NotYetImplemented(format!(
+            "SymbolicCostExprEquals: structural shape is valid for `{expected_name}`, but runner \
+             evaluation waits for the heuristic-cost-function-5th-gate testgen dispatch \
+             (Verification follow-up). The eval will apply the symbolic-cost lens to the \
+             program-under-test (`TestClaim.source` for enumerated claims; `ProgramShape.source` \
+             for quantified claims once Slice 1 lands) and compare the result structurally to \
+             `{expected_name}`."
+        ))
+    }
+
+    /// Boundary check that `decl_id` references a declaration whose declared
+    /// type is `SymbolicCost`. The runner walks transparent aliases (no-arg
+    /// instantiations + ResolvedBy* atoms) to handle `data X: SymbolicCost
+    /// = ConstantCost(0)`-style declarations whose connective is an alias to
+    /// the algebra type. Same shape as `validate_dimension_report_ref`,
+    /// scoped to a single nominal type instead of `DimensionReport<C>`.
+    fn validate_symbolic_cost_ref(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<(), String> {
+        let symbolic_cost_id = self
+            .dag
+            .declaration_by_name("SymbolicCost")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEquals `{field_label}`: \
+                     `SymbolicCost` type not found in bootstrap"
+                )
+            })?;
+        let decl = self.dag.declaration(decl_id);
+        // For `fn`-shaped expected refs, walk through the arrow output;
+        // otherwise normalize the declaration itself.
+        let candidate = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.normalize_transparent_type(candidate) == symbolic_cost_id {
+            return Ok(());
+        }
+        Err(format!(
+            "SymbolicCostExprEquals `{field_label}` must reference a declaration of type \
+             `SymbolicCost`; `{}` does not (declared type does not normalize to `SymbolicCost`).",
+            decl_display_name(decl_id, decl)
+        ))
+    }
+
     fn eval_binary_dimension_report_equals_shape(
         &self,
         _claim: &TestClaimValue,
@@ -2532,11 +2616,11 @@ impl<'a> TestRunner<'a> {
         match value {
             FieldValue::Reference(id) => Ok(*id),
             FieldValue::Record(fields) if fields.is_empty() => Err(format!(
-                "LensOutputEquals `{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
+                "`{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
                  so lowering emits FieldValue::Reference(DeclarationId), not an empty record",
             )),
             other => Err(format!(
-                "LensOutputEquals `{field_label}`: expected FieldValue::Reference(DeclarationId) \
+                "`{field_label}`: expected FieldValue::Reference(DeclarationId) \
                  for a DeclarationRef edge, got {other:?}"
             )),
         }

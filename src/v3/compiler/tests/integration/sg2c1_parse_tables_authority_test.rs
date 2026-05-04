@@ -22,7 +22,7 @@ use v3_compiler::operators;
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_tables::soft_keyword_ident_spelling;
 use v3_compiler::render_parse_tables_generated_rs;
-use v3_compiler::tokenize_for_test;
+use v3_compiler::{token_is_ident_for_test, token_is_kw_fn_for_test, tokenize_for_test};
 
 const PARSE_TABLES_DAG: &str = include_str!("../../parse_tables.dag");
 const TOKENIZE_DAG: &str = include_str!("../../tokenize.dag");
@@ -187,42 +187,70 @@ fn dag_binary_operators_have_token_parse_table_and_operator_mapping() {
         );
     }
 
-    for spec in shared_dag_operator_specs(SHARED_SYNTAX_DAG) {
+    for spec in v3_supported_dag_operator_specs(SHARED_SYNTAX_DAG) {
         let Some(binop) = spec.binop else {
             continue;
         };
         let expected_token = token_kind_for_shared_dag_operator(&spec.symbol);
         assert!(
             token_variant_names.contains(expected_token),
-            "`dag_operators` symbol `{}` expects TokenKind::{expected_token} in tokenize.dag",
+            "`v3_supported_dag_operators` symbol `{}` expects TokenKind::{expected_token} in tokenize.dag",
             spec.symbol
         );
         let row_token = rows_by_symbol.get(&spec.symbol).unwrap_or_else(|| {
             panic!(
-                "`dag_operators` binary operator `{}` has no BinaryOpRow in parse_tables.dag",
+                "`v3_supported_dag_operators` binary operator `{}` has no BinaryOpRow in parse_tables.dag",
                 spec.symbol
             )
         });
         assert_eq!(
             row_token, expected_token,
-            "`dag_operators` binary operator `{}` maps to TokenKind::{expected_token}, but \
+            "`v3_supported_dag_operators` binary operator `{}` maps to TokenKind::{expected_token}, but \
              parse_tables.dag routes TokenKind::{row_token}",
             spec.symbol
         );
         let Some(operator_kind) = operators::from_symbol(&spec.symbol) else {
             panic!(
-                "`dag_operators` binary operator `{}` has no operators.dag::from_symbol mapping",
+                "`v3_supported_dag_operators` binary operator `{}` has no operators.dag::from_symbol mapping",
                 spec.symbol
             );
         };
         let actual_binop = operator_kind_binop_name(operator_kind);
         assert_eq!(
             actual_binop, binop,
-            "`dag_operators` binary operator `{}` records binop `{binop}`, but \
+            "`v3_supported_dag_operators` binary operator `{}` records binop `{binop}`, but \
              operators.dag maps it to `{actual_binop}`",
             spec.symbol
         );
     }
+}
+
+#[test]
+fn dag_operator_authority_keeps_external_rows_split_from_v3_projection() {
+    let all: std::collections::BTreeSet<_> = shared_dag_operator_specs(SHARED_SYNTAX_DAG)
+        .into_iter()
+        .map(|spec| spec.symbol)
+        .collect();
+    let v3_supported: std::collections::BTreeSet<_> =
+        v3_supported_dag_operator_specs(SHARED_SYNTAX_DAG)
+            .into_iter()
+            .map(|spec| spec.symbol)
+            .collect();
+
+    for symbol in ["??", "%"] {
+        assert!(
+            all.contains(symbol),
+            "`dag_operators` must retain external operator row `{symbol}`"
+        );
+        assert!(
+            !v3_supported.contains(symbol),
+            "`v3_supported_dag_operators` must exclude unsupported v3 operator `{symbol}`"
+        );
+    }
+    assert!(
+        v3_supported.is_subset(&all),
+        "`v3_supported_dag_operators` should be an explicit subset of `dag_operators`"
+    );
 }
 
 #[test]
@@ -445,17 +473,10 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
     // collected below). This literal exists as an explicit crash-on-edit pin:
     // extending `parse_item` match arms alone does **not** update `got`; you
     // must author matching rows first (then regen fills `top_level_item_dispatch`).
-    let expected: std::collections::BTreeSet<&'static str> = [
-        "KwLet",
-        "KwFn",
-        "KwType",
-        "KwService",
-        "KwModule",
-        "KwImport",
-        "KwData",
-    ]
-    .into_iter()
-    .collect();
+    let expected: std::collections::BTreeSet<&'static str> =
+        ["KwLet", "KwFn", "KwType", "KwModule", "KwImport", "KwData"]
+            .into_iter()
+            .collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
@@ -487,32 +508,31 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
 }
 
 #[test]
-fn service_top_level_item_dispatch_fails_closed_until_service_block_ast_lands() {
+fn service_top_level_item_dispatch_is_deactivated_until_service_block_ast_lands() {
     let tokens = tokenize_for_test("service Llm {}", "top_level_service_anchor.v3")
         .expect("tokenize service anchor");
     let err = parse_for_test(&tokens, "top_level_service_anchor.v3")
-        .expect_err("service should fail closed until the ServiceBlock AST/lowerer slice lands");
+        .expect_err("service should not be a top-level item until ServiceBlock support lands");
     let Diagnostic::ParseError { message, span, .. } = err else {
         panic!("expected ParseError for top-level service anchor, got {err:?}");
     };
     assert!(
-        message.contains("ServiceBlock parser scaffold"),
-        "service parse failure should name the ServiceBlock anchor explicitly, got: {message}"
+        message.contains("expected `let`, `fn`, `type`, `module`, `import`, or `data`"),
+        "service parse failure should use normal top-level item dispatch, got: {message}"
     );
     assert_eq!(
         span.file, "top_level_service_anchor.v3",
-        "service parse failure should be anchored to the service keyword span",
+        "service parse failure should be anchored to the leading identifier span",
     );
 }
 
 #[test]
 fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_names() {
-    // `parse_field_label` and `parse_variant` currently accept exactly two
-    // soft-keyword aliases as bare names: `KwType -> "type"` and
-    // `KwService -> "service"`. Keep the
-    // generated parser-name alias table fail-closed.
-    let expected: std::collections::BTreeSet<&'static str> =
-        ["KwType", "KwService"].into_iter().collect();
+    // `parse_field_label` and `parse_variant` currently accept exactly one
+    // soft-keyword alias as a bare name: `KwType -> "type"`. `service` is
+    // intentionally deactivated as a keyword until ServiceBlock support lands,
+    // so it parses through the ordinary `Ident("service")` path instead.
+    let expected: std::collections::BTreeSet<&'static str> = ["KwType"].into_iter().collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
@@ -547,13 +567,23 @@ fn soft_keyword_ident_rows_cover_exactly_the_keyword_aliases_parser_accepts_as_n
 fn soft_keyword_ident_service_still_parses_in_name_position() {
     let source = "fn demo() -> Int = { service: 1 }";
     let tokens = tokenize_for_test(source, "soft_keyword_ident_service.v3")
-        .expect("tokenize soft keyword service");
-    let parsed = parse_for_test(&tokens, "soft_keyword_ident_service.v3")
-        .expect("parse soft keyword service");
+        .expect("tokenize identifier service");
+    assert!(
+        tokens.first().is_some_and(token_is_kw_fn_for_test),
+        "fixture should still start with fn"
+    );
+    assert!(
+        tokens
+            .iter()
+            .any(|t| token_is_ident_for_test(t, "service")),
+        "service should tokenize as a normal identifier while top-level service syntax is deactivated; tokens: {tokens:?}"
+    );
+    let parsed =
+        parse_for_test(&tokens, "soft_keyword_ident_service.v3").expect("parse identifier service");
     let item = parsed.items.into_iter().next().expect("expected one item");
     assert!(
         matches!(item, v3_compiler::parse_surface::SurfaceItem::Fn { .. }),
-        "service should stay parseable in name position without weakening the top-level service anchor"
+        "service should stay parseable in name position without reactivating top-level service syntax"
     );
 }
 
@@ -739,13 +769,36 @@ fn primary_atom_rows_cover_exactly_the_tokens_parse_primary_atomic_arm() {
     );
 }
 
+#[derive(Clone)]
 struct SharedDagOperatorSpec {
     symbol: String,
     binop: Option<String>,
 }
 
 fn shared_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
-    extract_balanced_section(source, "data dag_operators", '[', ']')
+    dag_operator_specs(source, "data dag_operators")
+}
+
+fn v3_supported_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
+    let specs_by_symbol: std::collections::BTreeMap<_, _> = shared_dag_operator_specs(source)
+        .into_iter()
+        .map(|spec| (spec.symbol.clone(), spec))
+        .collect();
+    v3_supported_dag_operator_symbols(source)
+        .into_iter()
+        .map(|symbol| {
+            specs_by_symbol.get(&symbol).cloned().unwrap_or_else(|| {
+                panic!(
+                    "`v3_supported_dag_operators` symbol `{symbol}` is not present in external \
+                     `dag_operators`"
+                )
+            })
+        })
+        .collect()
+}
+
+fn dag_operator_specs(source: &str, anchor: &str) -> Vec<SharedDagOperatorSpec> {
+    extract_balanced_section(source, anchor, '[', ']')
         .split("OperatorSpec")
         .skip(1)
         .filter_map(|entry| {
@@ -765,6 +818,15 @@ fn shared_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
         .collect()
 }
 
+fn v3_supported_dag_operator_symbols(source: &str) -> Vec<String> {
+    parse_all_string_literals(extract_balanced_section(
+        source,
+        "data v3_supported_dag_operators",
+        '{',
+        '}',
+    ))
+}
+
 fn token_kind_for_shared_dag_operator(symbol: &str) -> &'static str {
     match symbol {
         "==" => "EqEq",
@@ -780,8 +842,8 @@ fn token_kind_for_shared_dag_operator(symbol: &str) -> &'static str {
         "&&" => "AmpAmp",
         "||" => "PipePipe",
         other => panic!(
-            "`dag_operators` binary operator `{other}` is not supported by the v3 token/parser/operator chain; \
-             delete the row until the full chain lands"
+            "`v3_supported_dag_operators` binary operator `{other}` is not supported by the v3 token/parser/operator chain; \
+             remove it from the v3 projection until the full chain lands"
         ),
     }
 }
@@ -841,6 +903,20 @@ fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close
         }
     }
     panic!("unterminated `{anchor}` section");
+}
+
+fn parse_all_string_literals(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = source;
+    while let Some(start) = rest.find('"') {
+        let tail = &rest[start + 1..];
+        let end = tail
+            .find('"')
+            .unwrap_or_else(|| panic!("unterminated string literal in `{source}`"));
+        out.push(tail[..end].to_string());
+        rest = &tail[end + 1..];
+    }
+    out
 }
 
 fn string_literal_after(source: &str, label: &str) -> Option<String> {
