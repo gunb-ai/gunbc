@@ -445,16 +445,10 @@ fn top_level_item_kw_rows_cover_exactly_the_tokens_parse_item_dispatches_on() {
     // collected below). This literal exists as an explicit crash-on-edit pin:
     // extending `parse_item` match arms alone does **not** update `got`; you
     // must author matching rows first (then regen fills `top_level_item_dispatch`).
-    let expected: std::collections::BTreeSet<&'static str> = [
-        "KwLet",
-        "KwFn",
-        "KwType",
-        "KwModule",
-        "KwImport",
-        "KwData",
-    ]
-    .into_iter()
-    .collect();
+    let expected: std::collections::BTreeSet<&'static str> =
+        ["KwLet", "KwFn", "KwType", "KwModule", "KwImport", "KwData"]
+            .into_iter()
+            .collect();
 
     let tables_dag = compile_to_dag(PARSE_TABLES_DAG, "src/v3/compiler/parse_tables.dag")
         .unwrap_or_else(|e| panic!("parse_tables.dag should compile: {e:?}"));
@@ -559,8 +553,8 @@ fn soft_keyword_ident_service_still_parses_in_name_position() {
             .any(|t| matches!(&t.kind, v3_compiler::tokenize::TokenKind::Ident(s) if s == "service")),
         "service should tokenize as a normal identifier while top-level service syntax is deactivated; tokens: {tokens:?}"
     );
-    let parsed = parse_for_test(&tokens, "soft_keyword_ident_service.v3")
-        .expect("parse identifier service");
+    let parsed =
+        parse_for_test(&tokens, "soft_keyword_ident_service.v3").expect("parse identifier service");
     let item = parsed.items.into_iter().next().expect("expected one item");
     assert!(
         matches!(item, v3_compiler::parse_surface::SurfaceItem::Fn { .. }),
