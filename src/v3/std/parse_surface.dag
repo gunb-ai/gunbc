@@ -151,6 +151,20 @@ type SurfaceExpr
       args: List<SurfaceExpr>
       span: SourceSpan
     }
+  // 🟡 SCAFFOLD — sibling of Path + Call for static call-on-field-access
+  // (Prereq-X1.a). Dissolution trigger: collapses into the same
+  // `Call { callee: CalleeRef, args }` shape that
+  // `docs/design-prereq-x-ho-field-call.md` §X1.b's dissolution ledger
+  // names for `Callable` / `FieldCall` / `Indirect`. When that
+  // CalleeRef substrate carrier lands, X1.a-shaped programs lower as
+  // `Call { callee: CalleeRef::Field { … }, args }` and PathCall
+  // retires. Single classification surface, no parallel ROADMAP row.
+  | PathCall {
+      segments: List<String>
+      segment_spans: List<SourceSpan>
+      args: List<SurfaceExpr>
+      span: SourceSpan
+    }
   | VariantRecord {
       target: String
       fields: List<SurfaceRecordField>
