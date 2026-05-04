@@ -1,3 +1,5 @@
+#![allow(clippy::disallowed_macros)]
+
 use std::process::ExitCode;
 
 use v3_compiler::generated_full_bootstrap_dag;
