@@ -12,7 +12,7 @@ Inspected recent runs:
 
 | PR | Run ID | Relevant result |
 | --- | ---: | --- |
-| #1663 | `25338908305` | `v3` passed in 8m17s; `self_host_ratchet` was still running past 8m; legacy `ci` failed in v2 compile gates. |
+| #1663 | `25338908305` | `v3` passed in 8m17s; `self_host_ratchet` completed in 11m04s; legacy `ci` failed in v2 compile gates. |
 | #1664 | `25339309924` | `v3` passed in 7m49s; `self_host_ratchet` passed in 8m45s; legacy `ci` failed. |
 | #1665 | `25341947478` | Fresh run was pending during the first profile; partial logs showed the same v3 shape, including a slower Stage 2d pass. |
 
