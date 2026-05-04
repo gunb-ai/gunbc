@@ -215,8 +215,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",
-    // CollectionOps `fold_contract` → `MethodTemplateContract` identity gate (PR #1577).
-    "src/v3/compiler/src/emit/fold_method_contract.rs",
+    // CollectionOps `*_contract` → `MethodTemplateContract` identity gate (PR #1577 / #1602).
+    "src/v3/compiler/src/emit/collection_ops_method_contract.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",
@@ -372,7 +372,7 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // method-name registry in `dsl/std/methods.dag` + `MethodRef` typed
     // reference in `src/v3/std/methods.dag` + `MethodTemplateContract.
     // dag_method` refinement from bare `DeclarationRef` to `MethodRef`.
-    // Four structural claims: registry covers all 63 algebra-template
+    // Four structural claims: registry covers all 64 algebra-template
     // names (drift-detection), `MethodDeclaration` identity-only,
     // `MethodTemplateContract.dag_method` field type points at
     // `MethodRef`, `MethodRef` is a single-field decl wrapper.
