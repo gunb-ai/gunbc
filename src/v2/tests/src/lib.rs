@@ -28,6 +28,8 @@ mod int_pow_bounded_test;
 #[cfg(test)]
 mod parse;
 #[cfg(test)]
+mod pb_method_template_projection_consumability;
+#[cfg(test)]
 mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;

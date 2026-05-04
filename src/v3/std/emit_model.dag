@@ -362,7 +362,11 @@ type CollectionOps {
   concat: String
   length: String
   is_empty: String
-  fold: String
+  // Realization of `FreeMonoid<T>.fold` for this target — `DeclarationRef`
+  // points at a `MethodTemplateContract` value (same carrier as per-target
+  // `*_method_template_contracts` rows). Template strings live only on that
+  // contract; this field is identity, not render data.
+  fold_contract: DeclarationRef
   map: String
   filter: String
   contains: String
