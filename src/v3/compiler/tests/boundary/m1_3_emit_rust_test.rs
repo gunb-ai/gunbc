@@ -1026,6 +1026,23 @@ fn rustc_roundtrip_list_filter_then_fold_prints_seven() {
 }
 
 #[test]
+fn rustc_roundtrip_list_filter_non_copy_record_predicate_prints_eight() {
+    let stdout = roundtrip_stdout(
+        "type Point { x: Int y: Int }\n\
+         fn x_of(p: Point) -> Int = p.x\n\
+         let p1: Point = { x: 1, y: 2 }\n\
+         let p2: Point = { x: 3, y: 4 }\n\
+         let p3: Point = { x: 5, y: 6 }\n\
+         fn keep(p: Point) -> Bool = x_of(p) > 2\n\
+         let total: Int = length(filter(cons(p1, cons(p2, singleton(p3))), keep))",
+    );
+    assert_eq!(
+        stdout, "2",
+        "filter should render predicate against a borrowed item and retain a cloned item"
+    );
+}
+
+#[test]
 fn rustc_roundtrip_nested_list_builtins_inside_lambda_prints_six() {
     let name = "nested_list_builtins_inside_lambda_six";
     let stdout = run_program(name);

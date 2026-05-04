@@ -4496,7 +4496,7 @@ impl<'a> Ctx<'a> {
                 let item = "__filter_item".to_string();
                 let predicate = self.render_callable_body(
                     fn_decl,
-                    &[(item.clone(), LocalBinding::Owned(item.clone()))],
+                    &[(item.clone(), LocalBinding::Borrowed(item.clone()))],
                     locals,
                 )?;
                 let list = self.render_collection_receiver(
@@ -4504,7 +4504,7 @@ impl<'a> Ctx<'a> {
                     InputSlot::Positional(0),
                     locals,
                 )?;
-                let iter = format!("({list}).iter().cloned()");
+                let iter = list;
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.filter,
                     &[("iter", &iter), ("param", &item), ("body", &predicate)],

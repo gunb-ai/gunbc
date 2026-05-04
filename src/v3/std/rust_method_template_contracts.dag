@@ -81,9 +81,9 @@ import std.methods {
 
 data rust_filter_method_template_contract: MethodTemplateContract = {
   dag_method: { decl: filter_method },
-  runtime_template: "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }",
+  runtime_template: "{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }",
   emit_template: HigherOrderTemplates {
-    inline_template: "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }",
+    inline_template: "{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }",
     fn_ref_template: "{iter}.filter({arg}).collect::<Vec<_>>()"
   },
   wraps_result: true,
