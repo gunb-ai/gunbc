@@ -88,6 +88,15 @@ pub fn generated_map_declaration_name(target: MethodTemplateTarget) -> &'static 
 /// any structural violation in the typed projection chain (closed schema,
 /// Stratum-A-grade `MethodDeclaration` bindings, payload shape, per-target
 /// uniqueness) surfaces here as a typed value (per `INVARIANTS.md` C-8).
+///
+/// 🟢 TERMINAL at the producer's structural-mismatch + I/O scope. Each
+/// variant names a specific, closed failure class the producer can
+/// observe at the typed-projection-to-Map boundary or at filesystem-write
+/// time; new variants only land if substrate shape grows a new sub-fact
+/// (which would itself follow `INVARIANTS.md` §P1) or if a new I/O
+/// boundary is introduced. The carrier is therefore a closed
+/// implementation-side diagnostic enumeration, not a transitional
+/// scaffold.
 #[derive(Debug)]
 pub enum MethodTemplateProjectionDagEmitError {
     /// Underlying typed projection failed for `target`.
