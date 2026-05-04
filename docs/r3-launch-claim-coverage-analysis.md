@@ -311,16 +311,18 @@ This makes Verification Mgr's domain selection (§6f) materially more important 
 
 ### 8d. Cross-program impact on ctrl's Phase 4 launch narrative
 
-Phase 4 drafting tracks status by **proof-category** (research PM's framework from `gunb-ai/ctrl#339` — distinct schema from §4's bug-category partition; the two are not 1:1). Stable proof-category labels used here:
+Phase 4 drafting tracks status by **proof-category** (research PM's framework from `gunb-ai/ctrl#339` — distinct schema from §4's bug-category partition; the two are not 1:1). Stable proof-category labels used here, with status distinguishing **ratified R3 path** (decision in place; not yet banked) from **banked sub-claims** (shipped) from **pending decisions**:
 
-- ✅ **Algebraic-preservation** proof-category — structurally covered (maps to §4 Cat 2 algebraic correctness; L7 algebraic-inhabitance witnesses)
-- ✅ **Operational-equivalence** proof-category — explicit empirical-via-testgen + post-R3-ecosystem-integration stance ratified (covers §4 boundary-equivalence indirectly via L4/L5 differential)
-- ✅ **Behavioral-equivalence-via-testgen** proof-category — 5th gate ratified; Verification Mgr selected heuristic-cost-function as the worked-instance domain (per §6f). Maps to §4 Cat 5 (boundary equivalence).
-- ✅ **Termination-and-totality** proof-category — structurally covered (maps to §4 Cat 4; CX gate + Tier 2 + ownership lens)
+- 🎯 **Algebraic-preservation** proof-category — **R3 path ratified** via `T-Verification-L4-L7-Direct` (per-(algebra, inhabitant, law) exhaustive coverage). Per-sub-claim status: ⏳ R3-dispatch (rows 68 `l7_algebraic_laws_witnessed`, 91 operations-fall-out-from-inhabitance). Maps to §4 Cat 2 (R3-dispatch). **Path exists; not yet banked.**
+- 🎯 **Operational-equivalence** proof-category — **stance ratified** per §7b (empirical-via-testgen + post-R3-ecosystem-integration framing). Per-sub-claim L4/L5: ⏳ R3-dispatch (rows 65-66). Maps to §4 boundary-equivalence indirectly via L4/L5 differential. **Stance ratified; underlying L4/L5 implementation pending.**
+- 🎯 **Behavioral-equivalence-via-testgen** proof-category — **5th gate ratified** per §7a; Verification Mgr selected heuristic-cost-function as the worked-instance domain (per §6f). T-Tests-As-Data-Completeness lane ⏳ R3-dispatch (gated on R2-Evaluator). Maps to §4 Cat 5. **Gate ratified; worked-instance demonstration pending.**
+- 🟡 **Termination-and-totality** proof-category — **Mixed disposition**: ownership ✅ L1-live (row 31); integer-overflow-at-i64 ✅ R2-landed (row 51); force-unwrap ✅ R2-landed (row 54); idempotency-as-algebraic-simplification ✅ R2-landed (row 81); CX gate 🟡 R1 closure (row 29); division-by-zero 🟡 R2-in-flight (row 50); OOB 🟡 R2-in-flight (row 53); partial-functions 🟡 R2-partial-R3-close (row 55); integer-overflow-at-full-magnitude ⏳ R3-dispatch (row 52). Maps to §4 Cat 4. **Some sub-claims banked; multiple sub-claims in-flight or R3-pending — see §4 Cat 4 for breakdown.**
 - ⏳ **Invariant-preservation** proof-category — pending §3c policy (#1586). Maps to §4 Cat 3. Default-policy on `apply_lens` per §6c is RESOLVED; only §3c invariant-list policy on #1586 remains; Director-supportive of open-ended.
 - ⏳ **Tier 3 cpp/ scope** (OQ #4) — pending Director answer
 
 **Naming discipline note**: this list deliberately uses stable proof-category labels rather than "Cat N" shorthand to avoid ambiguity with §4's bug-category numbering. Within this doc: §4 owns "Cat N" numbering for the **intra-program bug partition** (5 categories); §5 owns "Class A/B/C" labels for the **behavioral partition** (3 classes); §8d here uses **proof-category** stable labels for the launch-narrative status track. Three distinct schemas, three distinct label conventions.
+
+**Phase 4 launch narrative honest framing**: at any point in time, ctrl's launch material can claim (a) ratified R3 paths exist for Algebraic-preservation / Operational-equivalence / Behavioral-equivalence-via-testgen (per the 🎯 status above), and (b) per-sub-claim disposition for Termination-and-totality runs from L1-banked through R3-dispatch (mixed; cite §4 Cat 4 row breakdown). Drafting against the *current authored substrate* (per §2 qualifier) means citing what's banked + what's R3-dispatch-ratified, not collapsing both into "✅ structurally covered."
 
 Recommend: ctrl drafts Phase 4 against most-likely-disposition (open-ended §3c per Director-supportive read + translator-rewrite-included on OQ #4 per existing scope-expansion pattern) with explicit conditional-citation language; final lock is a quick pass when both pending pieces land.
 
