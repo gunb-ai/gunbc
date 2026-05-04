@@ -642,7 +642,10 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         !same_instantiation_shape(&dag, expected_arg, string_decl),
         "expected substituted read output must not remain Witness<String>"
     );
-    assert_ne!(expected_arg, actual_arg, "expected and actual witness carriers must differ");
+    assert_ne!(
+        expected_arg, actual_arg,
+        "expected and actual witness carriers must differ"
+    );
 }
 
 #[test]
