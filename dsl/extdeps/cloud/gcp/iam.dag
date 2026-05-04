@@ -73,6 +73,11 @@ data default_token_lifetime: TokenLifetime = {
   max_seconds: 43200
 }
 
+type GcpGenerateAccessToken200Body {
+  access_token: Secret from "accessToken"
+  expire_time: String from "expireTime"
+}
+
 // -- Service: REST transport wiring ------------------------------
 
 service gcp.IAM {
@@ -101,7 +106,7 @@ service gcp.IAM {
     idempotent
     transport rest { method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" }
     response {
-      200 => Json
+      200 => GcpGenerateAccessToken200Body
       401 => GcpErrorShape
       403 => GcpErrorShape
       404 => GcpErrorShape
