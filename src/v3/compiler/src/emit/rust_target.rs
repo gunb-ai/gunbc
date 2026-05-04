@@ -1600,21 +1600,29 @@ fn parse_collection_ops(
     let flat_map = require_higher_order_inline_template(flat_map_template, flat_map_contract)?;
 
     let any_contract = require_field_decl_ref(fields, "any_contract", declaration)?;
-    let any_template =
-        method_template_contract_decl_emit_template(dag, any_contract, "any_contract", any_method_decl.id)
-            .map_err(|detail| EmitError::MalformedTargetSyntax {
-                declaration: any_contract,
-                detail,
-            })?;
+    let any_template = method_template_contract_decl_emit_template(
+        dag,
+        any_contract,
+        "any_contract",
+        any_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: any_contract,
+        detail,
+    })?;
     let any = require_higher_order_inline_template(any_template, any_contract)?;
 
     let all_contract = require_field_decl_ref(fields, "all_contract", declaration)?;
-    let all_template =
-        method_template_contract_decl_emit_template(dag, all_contract, "all_contract", all_method_decl.id)
-            .map_err(|detail| EmitError::MalformedTargetSyntax {
-                declaration: all_contract,
-                detail,
-            })?;
+    let all_template = method_template_contract_decl_emit_template(
+        dag,
+        all_contract,
+        "all_contract",
+        all_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: all_contract,
+        detail,
+    })?;
     let all = require_higher_order_inline_template(all_template, all_contract)?;
 
     Ok(CollectionOpsBinding {
@@ -5957,19 +5965,24 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
             .declaration_by_name("rust_collection_ops")
             .expect("rust collection ops spec exists")
             .id;
-        let count_method = dag
-            .declaration_by_name("count_method")
-            .expect("count method registry row exists")
+        let fields =
+            structural_fields_for_decl(&dag, rust_collection_ops).expect("collection ops fields");
+        let length_contract =
+            require_field_decl_ref(fields, "length_contract", rust_collection_ops)
+                .expect("length contract ref");
+        let length_method = dag
+            .declaration_by_name("length_method")
+            .expect("length method registry row exists")
             .id;
 
-        let single = method_template_contract_list_emit_template_for_method(
+        let single = method_template_contract_decl_emit_template(
             &dag,
-            "rust_method_template_contracts",
-            "filter_contract",
-            count_method,
+            length_contract,
+            "length_contract",
+            length_method,
         )
-        .expect("count_method has a SingleTemplate row");
-        let err = require_higher_order_inline_template(single, rust_collection_ops)
+        .expect("length_contract has a SingleTemplate emit template");
+        let err = require_higher_order_inline_template(single, length_contract)
             .expect_err("SingleTemplate must not satisfy a higher-order CollectionOps field");
 
         assert!(matches!(
@@ -5978,7 +5991,7 @@ not user `fn` data; must not set return-carrier / Rc on callable params (PR #676
                 declaration,
                 detail:
                     "Rust CollectionOps higher-order MethodTemplateContract must use MethodEmitTemplate.HigherOrderTemplates",
-            } if declaration == rust_collection_ops
+            } if declaration == length_contract
         ));
     }
 
