@@ -135,7 +135,7 @@ type OpenAiChatCompletion200Annotation {
 
 type OpenAiChatCompletion200Message {
   role: String
-  content: String
+  content: String?
   refusal: String?
   annotations: List<OpenAiChatCompletion200Annotation>?
 }
@@ -170,9 +170,9 @@ type OpenAiChatCompletion200Usage {
 // Chat completion **object** envelope per OpenAI Chat Completions reference
 // (https://platform.openai.com/docs/api-reference/chat/object): `id`, `object`,
 // `created`, `model`, `choices`, `usage`. `OpenAiChatCompletion200Message` is
-// still a narrow text slice of each `choices[].message`; richer tool-call,
-// multimodal, and audio surfaces remain covered by downstream typed-carrier
-// closure rows.
+// still a narrow text/refusal slice of each `choices[].message`; richer
+// tool-call, multimodal, and audio surfaces remain covered by downstream
+// typed-carrier closure rows.
 type OpenAiChatCompletion200Body {
   id: String
   object: String

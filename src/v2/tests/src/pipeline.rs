@@ -6814,6 +6814,7 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
 
     #[derive(serde::Deserialize)]
     struct Message {
+        content: Option<String>,
         refusal: Option<String>,
         annotations: Option<Vec<Annotation>>,
     }
@@ -6877,6 +6878,7 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
     let wire = serde_json::json!({
         "choices": [{
             "message": {
+                "content": null,
                 "refusal": "safety refusal",
                 "annotations": [{
                     "type": "url_citation",
@@ -6926,6 +6928,10 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
     let body: Body = serde_json::from_value(wire).expect("representative ChatCompletion 200 wire");
     assert_eq!(body.service_tier.as_deref(), Some("default"));
     assert_eq!(body.system_fingerprint.as_deref(), Some("fp_mock"));
+    assert_eq!(
+        body.choices[0].message.content.as_deref(),
+        None
+    );
     assert_eq!(
         body.choices[0].message.refusal.as_deref(),
         Some("safety refusal")
