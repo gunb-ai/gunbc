@@ -198,7 +198,8 @@ type AnthropicMessages200Body {
 }
 
 data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct"
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct",
+  "closure:anthropic_messages_200_residual|llm.Anthropic.Messages.output.content|blocked:variant_aware_typed_rest_response_projection|path:content/0/text|requires_arm:AnthropicMessages200ContentBlock.MessagesTextBlock|trigger:structural projection metadata carrier lands"
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects
