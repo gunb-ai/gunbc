@@ -3365,7 +3365,7 @@ pub(crate) mod workflow_idempotency;
 pub(crate) mod workflow_parallelism;
 
 pub use dag::{Dag, NodeId};
-pub use diagnostics::{Diagnostic, SourceSpan};
+pub use diagnostics::{Diagnostic, SourceSpan, LAYER1_DIAGNOSTIC_KIND_LABELS};
 pub use emit::{EmitDispatchError, EmitMode, EmitTarget, EmittedSource};
 pub use emit_rust::EmitError;
 /// Lane 2 Stage 2b — supported public surface: [`analyze_workflow`] is the
