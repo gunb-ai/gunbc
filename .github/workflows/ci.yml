@@ -102,6 +102,30 @@ jobs:
         # silently neutering the consumer.
         run: bash scripts/test-check-manager-brief-authority.sh
 
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
+        with:
+          toolchain: "1.93.0"
+          components: rustfmt
+          cache: false
+          rustflags: ""
+
+      - name: Cache Cargo (ci bootstrap gate)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/src/**', 'src/v3/compiler/tests/**') }}
+          restore-keys: |
+            cargo-ci-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}-
+            cargo-ci-${{ runner.os }}-
+
+      - name: v3 bootstrap snapshot freshness gate (--verify)
+        run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
+
   v3:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
@@ -240,8 +264,8 @@ jobs:
       - name: v3 test targets compile with bootstrap-regen-fresh
         run: cargo test -p v3-compiler --no-run --features bootstrap-regen-fresh
 
-      - name: v3 regen_bootstrap snapshot gate (--verify)
-        run: cargo run -p v3-compiler --features bootstrap-regen-fresh --bin regen_bootstrap -- --verify
+      # `regen_bootstrap --verify` runs in the required `ci` job (pre-merge
+      # fail-closed gate; #1543). Skip duplicate here.
 
       - name: L-7 Substrate accessor reconstruction gate
         run: |
