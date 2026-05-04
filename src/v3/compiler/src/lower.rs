@@ -8019,7 +8019,13 @@ fn compute_mutually_recursive(
         let mut callees = HashSet::new();
         let mut shadowed: HashSet<String> =
             info.params.iter().map(|param| param.name.clone()).collect();
-        collect_recursive_callees(info.body, &function_symbols, dag, &mut shadowed, &mut callees);
+        collect_recursive_callees(
+            info.body,
+            &function_symbols,
+            dag,
+            &mut shadowed,
+            &mut callees,
+        );
         let mut sorted_callees: Vec<DeclarationId> = callees.into_iter().collect();
         sorted_callees.sort_by_key(|callee| order_index.get(callee).copied().unwrap_or(usize::MAX));
         calls.insert(*decl_id, sorted_callees);
@@ -8474,9 +8480,7 @@ fn collect_recursive_callees(
             if let Some(head) = segments.first() {
                 if !shadowed.contains(head) {
                     if let Some(&head_decl) = function_symbols.get(head) {
-                        if let Some(value_body) =
-                            dag.declaration(head_decl).value_body.as_ref()
-                        {
+                        if let Some(value_body) = dag.declaration(head_decl).value_body.as_ref() {
                             if let Some(leaf_decl) =
                                 resolve_field_value_reference(value_body, &segments[1..])
                             {
