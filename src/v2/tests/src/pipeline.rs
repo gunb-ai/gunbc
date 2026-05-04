@@ -6926,7 +6926,10 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
     let body: Body = serde_json::from_value(wire).expect("representative ChatCompletion 200 wire");
     assert_eq!(body.service_tier.as_deref(), Some("default"));
     assert_eq!(body.system_fingerprint.as_deref(), Some("fp_mock"));
-    assert_eq!(body.choices[0].message.refusal.as_deref(), Some("safety refusal"));
+    assert_eq!(
+        body.choices[0].message.refusal.as_deref(),
+        Some("safety refusal")
+    );
     let annotation = body.choices[0].message.annotations.as_ref().unwrap()[0]
         .url_citation
         .as_ref()
@@ -6947,10 +6950,16 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
         .as_ref()
         .unwrap()[0];
     assert_eq!(content_logprob.token, "Hello");
-    assert_eq!(content_logprob.bytes.as_ref().unwrap(), &[72, 101, 108, 108, 111]);
+    assert_eq!(
+        content_logprob.bytes.as_ref().unwrap(),
+        &[72, 101, 108, 108, 111]
+    );
     assert!(content_logprob.logprob < 0.0);
     assert_eq!(content_logprob.top_logprobs[0].token, "Hi");
-    assert_eq!(content_logprob.top_logprobs[0].bytes.as_ref().unwrap(), &[72, 105]);
+    assert_eq!(
+        content_logprob.top_logprobs[0].bytes.as_ref().unwrap(),
+        &[72, 105]
+    );
     assert!(content_logprob.top_logprobs[0].logprob < 0.0);
     assert_eq!(
         body.choices[0]
@@ -7097,22 +7106,19 @@ fn openai_responses_200_body_round_trip_representative_wire() {
     let content = &body.output[0].content.as_ref().unwrap()[0];
     assert_eq!(content.content_type, "output_text");
     assert_eq!(content.text.as_deref(), Some("hello"));
-    assert_eq!(content.annotations.as_ref().unwrap()[0].annotation_type, "url_citation");
+    assert_eq!(
+        content.annotations.as_ref().unwrap()[0].annotation_type,
+        "url_citation"
+    );
     assert_eq!(body.usage.input_tokens, 32);
     assert_eq!(body.usage.output_tokens, 18);
     assert_eq!(body.usage.total_tokens, Some(50));
     assert_eq!(
-        body.usage
-            .input_tokens_details
-            .unwrap()
-            .cached_tokens,
+        body.usage.input_tokens_details.unwrap().cached_tokens,
         Some(7)
     );
     assert_eq!(
-        body.usage
-            .output_tokens_details
-            .unwrap()
-            .reasoning_tokens,
+        body.usage.output_tokens_details.unwrap().reasoning_tokens,
         Some(5)
     );
 }
