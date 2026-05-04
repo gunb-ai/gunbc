@@ -541,16 +541,17 @@ fn soft_keyword_ident_service_still_parses_in_name_position() {
     let tokens = tokenize_for_test(source, "soft_keyword_ident_service.v3")
         .expect("tokenize identifier service");
     assert!(
-        matches!(
-            tokens.first().map(|t| &t.kind),
-            Some(v3_compiler::tokenize::TokenKind::KwFn)
-        ),
+        tokens
+            .first()
+            .map(|t| format!("{:?}", t.kind))
+            .as_deref()
+            == Some("KwFn"),
         "fixture should still start with fn"
     );
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, v3_compiler::tokenize::TokenKind::Ident(s) if s == "service")),
+            .any(|t| format!("{:?}", t.kind) == "Ident(\"service\")"),
         "service should tokenize as a normal identifier while top-level service syntax is deactivated; tokens: {tokens:?}"
     );
     let parsed =
