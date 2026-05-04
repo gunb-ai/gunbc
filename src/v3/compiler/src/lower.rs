@@ -8502,9 +8502,7 @@ fn collect_recursive_callees(
             // and insert that decl into the recursive-callee set. Without
             // this, mutual recursion via a data-binding indirection
             // bypasses the recursive-edge graph (P4).
-            let head_shadowed = segments
-                .first()
-                .is_some_and(|head| shadowed.contains(head));
+            let head_shadowed = segments.first().is_some_and(|head| shadowed.contains(head));
             if !head_shadowed {
                 if let Some(leaf_decl) =
                     resolve_path_to_function_decl(segments, dag, function_symbols)
