@@ -222,12 +222,13 @@ pub enum Diagnostic {
 
 /// Layer-1 compiler diagnostic kind labels in **declaration order** of [`Diagnostic`].
 ///
-/// The strings are the same as [`Diagnostic::layer1_kind_label`]; crate tests assert this slice
-/// stays aligned with that exhaustive mapping. Integration tests ratchet `CompilerDiagnosticKind`
-/// / `std.verification.DiagnosticKind` in the bootstrap DAG against this slice. When adding a
-/// [`Diagnostic`] variant, `layer1_kind_label` must gain an arm (compile-time exhaustiveness), then
-/// extend this list and the `.dag` closed sums — lens-instance kinds stay on the Layer-2 path
-/// (Q6.5), not here.
+/// This is the **only** source of label strings for [`Diagnostic::layer1_kind_label`], which
+/// indexes this slice using an exhaustive per-variant index match (no wildcard). Crate tests assert
+/// the declaration-order fixture matches those indices; integration tests ratchet
+/// `CompilerDiagnosticKind` / `std.verification.DiagnosticKind` in the bootstrap DAG against this
+/// slice. When adding a [`Diagnostic`] variant, extend this list, add an index arm next to
+/// `layer1_kind_label`, and update the `.dag` closed sums — lens-instance kinds stay on the
+/// Layer-2 path (Q6.5), not here.
 pub const LAYER1_DIAGNOSTIC_KIND_LABELS: &[&str] = &[
     "TokenizerError",
     "ParseError",
@@ -242,25 +243,35 @@ pub const LAYER1_DIAGNOSTIC_KIND_LABELS: &[&str] = &[
 ];
 
 impl Diagnostic {
+    /// Zero-based declaration index for Layer-1 kind strings (same order as [`Diagnostic`] and
+    /// [`LAYER1_DIAGNOSTIC_KIND_LABELS`]).
+    ///
+    /// This match is **exhaustive with no wildcard**: adding a [`Diagnostic`] variant is a compile
+    /// error until a new arm is authored here **and** [`LAYER1_DIAGNOSTIC_KIND_LABELS`] is extended
+    /// by one entry. [`Diagnostic::layer1_kind_label`] reads only from that slice, so the label
+    /// strings have a single authority.
+    fn layer1_declaration_index(&self) -> usize {
+        match self {
+            Diagnostic::TokenizerError { .. } => 0,
+            Diagnostic::ParseError { .. } => 1,
+            Diagnostic::TypeMismatch { .. } => 2,
+            Diagnostic::ArityMismatch { .. } => 3,
+            Diagnostic::ResolveError { .. } => 4,
+            Diagnostic::UnitMismatch { .. } => 5,
+            Diagnostic::BranchConditionNotBool { .. } => 6,
+            Diagnostic::MagnitudeOutOfRange { .. } => 7,
+            Diagnostic::MalformedIntegerRangeFact { .. } => 8,
+            Diagnostic::NominalOpacityViolation { .. } => 9,
+        }
+    }
+
     /// Stable Layer-1 kind name for substrate mirrors and test predicates (Q6.5).
     ///
-    /// This match is **exhaustive with no wildcard**: adding a [`Diagnostic`] variant is a
-    /// compile error until a new arm is authored here. [`LAYER1_DIAGNOSTIC_KIND_LABELS`] must stay
-    /// in the same **declaration order** as this enum; crate tests ratchet the slice against
-    /// representative diagnostics via this method.
+    /// Labels come only from [`LAYER1_DIAGNOSTIC_KIND_LABELS`]; an exhaustive per-variant index
+    /// match selects the row so new enum variants cannot compile without extending the const slice
+    /// and substrate closed sums.
     pub fn layer1_kind_label(&self) -> &'static str {
-        match self {
-            Diagnostic::TokenizerError { .. } => "TokenizerError",
-            Diagnostic::ParseError { .. } => "ParseError",
-            Diagnostic::TypeMismatch { .. } => "TypeMismatch",
-            Diagnostic::ArityMismatch { .. } => "ArityMismatch",
-            Diagnostic::ResolveError { .. } => "ResolveError",
-            Diagnostic::UnitMismatch { .. } => "UnitMismatch",
-            Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
-            Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
-            Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
-            Diagnostic::NominalOpacityViolation { .. } => "NominalOpacityViolation",
-        }
+        LAYER1_DIAGNOSTIC_KIND_LABELS[self.layer1_declaration_index()]
     }
 
     pub fn span(&self) -> &SourceSpan {
@@ -939,9 +950,14 @@ mod tests {
             "declaration-order fixture must list every Diagnostic variant exactly once"
         );
         let mut seen = std::collections::HashSet::new();
-        for (diag, expected) in examples.iter().zip(LAYER1_DIAGNOSTIC_KIND_LABELS.iter()) {
+        for (i, diag) in examples.iter().enumerate() {
+            let idx = diag.layer1_declaration_index();
+            assert_eq!(
+                idx, i,
+                "fixture must stay in declaration order and match layer1_declaration_index()"
+            );
             let label = diag.layer1_kind_label();
-            assert_eq!(label, *expected);
+            assert_eq!(label, LAYER1_DIAGNOSTIC_KIND_LABELS[i]);
             assert!(seen.insert(label), "duplicate layer1 label: {label}");
         }
     }
