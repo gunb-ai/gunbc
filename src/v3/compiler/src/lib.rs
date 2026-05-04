@@ -37,7 +37,6 @@ pub mod generated_files {
 pub mod emit;
 pub mod emit_rust;
 pub mod emit_rust_bin_shim;
-mod error_primitives;
 pub mod process_exit;
 pub mod self_host_receipt_p0;
 pub mod evaluator {

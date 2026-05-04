@@ -32,17 +32,15 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, BindNodeId, CardinalityBound, Dag,
-    Declaration, DeclarationId, Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter,
-    PortId, PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    substrate_div_error_type_decl_suppressed_for_emit,
+    substrate_result_type_decl_suppressed_for_emit, ArithmeticOp, ArrowBody, AtomPayload, Behavior,
+    BindNode, BindNodeId, CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits,
+    Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
     Diagnostic, SourceSpan,
-};
-use crate::error_primitives::{
-    substrate_div_error_type_decl_suppressed_for_emit,
-    substrate_result_type_decl_suppressed_for_emit,
 };
 use crate::infer_helpers::{
     behavior_output_port, behavior_span, generated_template_arguments_match,

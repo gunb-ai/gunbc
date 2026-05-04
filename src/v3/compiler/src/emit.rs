@@ -54,13 +54,11 @@ impl<T> VariantPayloadBinding<T> {
 pub use self::python_target::EmitPythonError;
 use self::rust_target::{EmitError, RealizationCategory, SubstrateMarkerRole};
 use crate::dag::{
-    ArrowBody, AtomPayload, Behavior, BindNode, BranchNode, BranchPattern, CardinalityBound,
-    Declaration, DeclarationId, Field, FieldValue, LiteralBits, Path, PortId, TemplateArgument,
-    TransformNode, TransformTarget, TypeConnective, ValueBody,
-};
-use crate::error_primitives::{
     substrate_div_error_type_decl_suppressed_for_emit,
-    substrate_result_type_decl_suppressed_for_emit,
+    substrate_result_type_decl_suppressed_for_emit, ArrowBody, AtomPayload, Behavior, BindNode,
+    BranchNode, BranchPattern, CardinalityBound, Declaration, DeclarationId, Field, FieldValue,
+    LiteralBits, Path, PortId, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    ValueBody,
 };
 use crate::infer::strip_refinement_to_base;
 use crate::operators::OperatorKind;
