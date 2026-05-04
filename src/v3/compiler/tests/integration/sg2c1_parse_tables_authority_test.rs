@@ -817,7 +817,7 @@ fn dag_operator_specs(source: &str, anchor: &str) -> Vec<SharedDagOperatorSpec> 
 }
 
 fn v3_supported_dag_operator_symbols(source: &str) -> Vec<String> {
-    parse_map_string_keys(extract_balanced_section(
+    parse_all_string_literals(extract_balanced_section(
         source,
         "data v3_supported_dag_operators",
         '{',
@@ -901,6 +901,20 @@ fn extract_balanced_section<'a>(source: &'a str, anchor: &str, open: char, close
         }
     }
     panic!("unterminated `{anchor}` section");
+}
+
+fn parse_all_string_literals(source: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut rest = source;
+    while let Some(start) = rest.find('"') {
+        let tail = &rest[start + 1..];
+        let end = tail
+            .find('"')
+            .unwrap_or_else(|| panic!("unterminated string literal in `{source}`"));
+        out.push(tail[..end].to_string());
+        rest = &tail[end + 1..];
+    }
+    out
 }
 
 fn string_literal_after(source: &str, label: &str) -> Option<String> {
