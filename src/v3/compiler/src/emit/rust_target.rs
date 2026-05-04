@@ -1496,30 +1496,30 @@ fn parse_collection_ops(
                 declaration,
                 detail: "internal: is_empty_method missing from std.methods registry",
             })?;
-    let filter_method_decl =
-        dag.declaration_by_name("filter_method")
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "internal: filter_method missing from std.methods registry",
-            })?;
+    let filter_method_decl = dag
+        .filter_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: filter_method missing from std.methods registry",
+        })?;
     let flat_map_method_decl =
-        dag.declaration_by_name("flat_map_method")
+        dag.flat_map_method_decl()
             .ok_or(EmitError::MalformedTargetSyntax {
                 declaration,
                 detail: "internal: flat_map_method missing from std.methods registry",
             })?;
-    let any_method_decl =
-        dag.declaration_by_name("any_method")
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "internal: any_method missing from std.methods registry",
-            })?;
-    let all_method_decl =
-        dag.declaration_by_name("all_method")
-            .ok_or(EmitError::MalformedTargetSyntax {
-                declaration,
-                detail: "internal: all_method missing from std.methods registry",
-            })?;
+    let any_method_decl = dag
+        .any_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: any_method missing from std.methods registry",
+        })?;
+    let all_method_decl = dag
+        .all_method_decl()
+        .ok_or(EmitError::MalformedTargetSyntax {
+            declaration,
+            detail: "internal: all_method missing from std.methods registry",
+        })?;
 
     let concat_contract = require_field_decl_ref(fields, "concat_contract", declaration)?;
     let concat_template = method_template_contract_decl_emit_template(
@@ -1578,7 +1578,7 @@ fn parse_collection_ops(
         dag,
         filter_contract,
         "filter_contract",
-        filter_method_decl.id,
+        filter_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: filter_contract,
@@ -1591,7 +1591,7 @@ fn parse_collection_ops(
         dag,
         flat_map_contract,
         "flat_map_contract",
-        flat_map_method_decl.id,
+        flat_map_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: flat_map_contract,
@@ -1604,7 +1604,7 @@ fn parse_collection_ops(
         dag,
         any_contract,
         "any_contract",
-        any_method_decl.id,
+        any_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: any_contract,
@@ -1617,7 +1617,7 @@ fn parse_collection_ops(
         dag,
         all_contract,
         "all_contract",
-        all_method_decl.id,
+        all_method_decl,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: all_contract,

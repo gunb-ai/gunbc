@@ -20,9 +20,9 @@ src/v3/compiler/tests/four_fixture_pressure/id.v3	2	2452	ec8b40edc3d3c017
 src/v3/compiler/tests/four_fixture_pressure/is_empty.v3	3	6755	00117f14eb43dd20
 src/v3/compiler/tests/four_fixture_pressure/wrap.v3	4	5189	ac633b042c944480
 src/v3/compiler/tokenize.dag	30	64719	286ece4c5bb39038
-src/v3/spec/go.dag	130	1162452	96f726af5b2bd19d
-src/v3/spec/python.dag	93	598707	eef051544eb52800
-src/v3/spec/rust.dag	160	1310000	b54b8150521b906c
+src/v3/spec/go.dag	130	1165765	0cab8f82665a00b4
+src/v3/spec/python.dag	93	602108	0d62f4d5e0888cbd
+src/v3/spec/rust.dag	161	1313701	8f76227430747bb4
 src/v3/spec/v3_l1.dag	8	2246	57294d687b4753f4
 src/v3/std/algebra.dag	47	339773	40b62a1381f56e84
 src/v3/std/anthropic_messages.dag	5	6056	25140dcf6faa8e6b
@@ -38,9 +38,9 @@ src/v3/std/computation_model.dag	14	22953	20e458fe097d175a
 src/v3/std/diagnostics.dag	11	20274	a317777d55e36b19
 src/v3/std/dimensions.dag	21	39170	c6833b618a39e0af
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
-src/v3/std/emit_model.dag	44	80937	343dfef37f05f953
+src/v3/std/emit_model.dag	44	82625	abf114451a79eb07
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	14463	909ca7a1c1705e89
-src/v3/std/go_method_template_contracts.dag	9	133042	11c1a048ffc7325c
+src/v3/std/go_method_template_contracts.dag	13	133538	4b33f13155d2efb6
 src/v3/std/induction.dag	56	88794	e405e1549cf2fe08
 src/v3/std/integer_diagnostic_order.dag	6	8124	5d7b31594a5b3d5c
 src/v3/std/lens.dag	6	9852	28d5539a5b28716e
@@ -48,10 +48,10 @@ src/v3/std/list.dag	19	40269	8c648d4a4fd05c21
 src/v3/std/lookup.dag	5	4734	f97d4e536b675b1b
 src/v3/std/methods.dag	3	1388	b61693641c32d74b
 src/v3/std/parse_surface.dag	18	99510	b73114d5b178303d
-src/v3/std/python_method_template_contracts.dag	9	165218	55ab12684c40668d
+src/v3/std/python_method_template_contracts.dag	13	165810	63f5d6834e49b17e
 src/v3/std/resources.dag	5	3632	5303e31e96b01ee5
 src/v3/std/runtime.dag	14	16342	4eaaff1aac38d20d
-src/v3/std/rust_method_template_contracts.dag	5	109753	7b10fcd0d9079900
+src/v3/std/rust_method_template_contracts.dag	9	109721	55c2d1d58dc6ddb0
 src/v3/std/services.dag	8	5791	840c901943fce7bf
 src/v3/std/substrate.dag	64	139633	25bd8acdc02f1ec3
 src/v3/std/substrate_minimal.dag	8	5372	feeb314c735f4672
