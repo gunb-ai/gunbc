@@ -29,7 +29,7 @@
 
 ## 2. Mapping to forward `Lens<C>` fields (paper exercise; ground in `AnalysisDimension` + DB-3)
 
-`Lens<C>` field names come from **`design-lens-framework.md`** (R2 proposal). **`AnalysisDimension<Carrier>`** in `dimensions.dag` is the landed analysis record (`witness_of` / `compose` / `identity` / `break_diagnostic`); DB-3 **`analyze(d, workflow, dim)`** is the evaluation entry. When lowering lands, reconcile names (`read` vs `witness_of`, `sequential` vs `compose`+`identity`, etc.) against that substrate — do not treat the lens doc alone as the dimension authority.
+`Lens<C>` field names come from **`design-lens-framework.md`** (R2 proposal). **`AnalysisDimension<Carrier>`** in `dimensions.dag` is the landed analysis record (`witness_of` / `compose: Monoid<Carrier>` / `break_diagnostic`; the prior `compose: fn(C,C)->C` + `identity: C` field pair was collapsed into a single `Monoid<Carrier>` field by F2 dispatch / PR #1607, mirroring the `Lens<C>` precedent); DB-3 **`analyze(d, workflow, dim)`** is the evaluation entry. When lowering lands, reconcile names (`read` vs `witness_of`, `sequential` vs `compose`, etc.) against that substrate — do not treat the lens doc alone as the dimension authority.
 
 | `Lens<C>` field | Idempotency analogue today | Gap / note |
 |-----------------|----------------------------|------------|
