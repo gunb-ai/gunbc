@@ -427,6 +427,109 @@ fn test_3a2_lensish_int_carrier_lowers_branch_and_monoid_fn_refs() {
 }
 
 #[test]
+fn test_3a2_lens_int_data_substitutes_generic_conj_fields() {
+    let src = "\
+        import std.algebra { Monoid }\n\
+        import std.substrate { Dag, Behavior, LoopBound }\n\
+        import v3.std.dimensions { Witness, OptionalDiagnostic }\n\
+        import v3.std.lens { Lens }\n\
+        fn lens_read(d: Dag, b: Behavior) -> Witness<Int> { Inhabits(1) }\n\
+        fn int_add(a: Int, b: Int) -> Int = a + b\n\
+        fn int_max(a: Int, b: Int) -> Int = if a > b then a else b\n\
+        fn lens_iterate(c: Int, bound: LoopBound) -> Int = c\n\
+        fn lens_validate(d: Dag, c: Int) -> OptionalDiagnostic { NoDiagnostic }\n\
+        data complexity_lens_seed: Lens<Int> = {\n\
+          name: \"complexity\",\n\
+          read: lens_read,\n\
+          sequential: { op: int_add, identity: 0 },\n\
+          branch: int_max,\n\
+          iterate: lens_iterate,\n\
+          validate: lens_validate\n\
+        }";
+    let dag = cached_compile_to_dag(src, "lens_int_generic_conj_substitution.v3");
+    assert!(
+        dag.diagnostics().is_empty(),
+        "Lens<Int> data body should compile after substituting Lens<C> and Monoid<C> fields: {:?}",
+        dag.diagnostics()
+    );
+    let read_id = dag.declaration_by_name("lens_read").unwrap().id;
+    let op_id = dag.declaration_by_name("int_add").unwrap().id;
+    let validate_id = dag.declaration_by_name("lens_validate").unwrap().id;
+    let decl = dag
+        .declaration_by_name("complexity_lens_seed")
+        .expect("complexity_lens_seed must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!("expected Lens<Int> data to lower structurally, got {:?}", decl.value_body);
+    };
+    assert_eq!(fields.len(), 6, "Lens<Int> carrier shape must stay six-field");
+    let read = fields.iter().find(|(label, _)| label == "read").unwrap();
+    assert_eq!(read.1, v3_compiler::dag::FieldValue::Reference(read_id));
+    let validate = fields
+        .iter()
+        .find(|(label, _)| label == "validate")
+        .unwrap();
+    assert_eq!(
+        validate.1,
+        v3_compiler::dag::FieldValue::Reference(validate_id)
+    );
+    let sequential = fields
+        .iter()
+        .find(|(label, _)| label == "sequential")
+        .map(|(_, value)| value)
+        .expect("sequential field");
+    let v3_compiler::dag::FieldValue::Record(nested) = sequential else {
+        panic!("`sequential` must lower as nested Monoid<Int> record, got {sequential:?}");
+    };
+    let op = nested.iter().find(|(label, _)| label == "op").unwrap();
+    assert_eq!(op.1, v3_compiler::dag::FieldValue::Reference(op_id));
+    let identity = nested
+        .iter()
+        .find(|(label, _)| label == "identity")
+        .unwrap();
+    assert_eq!(
+        identity.1,
+        v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(0))
+    );
+}
+
+#[test]
+fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
+    let src = "\
+        import std.algebra { Monoid }\n\
+        import std.substrate { Dag, Behavior, LoopBound }\n\
+        import v3.std.dimensions { Witness, OptionalDiagnostic }\n\
+        import v3.std.lens { Lens }\n\
+        fn lens_read(d: Dag, b: Behavior) -> Witness<String> { Inhabits(\"bad\") }\n\
+        fn int_add(a: Int, b: Int) -> Int = a + b\n\
+        fn int_max(a: Int, b: Int) -> Int = if a > b then a else b\n\
+        fn lens_iterate(c: Int, bound: LoopBound) -> Int = c\n\
+        fn lens_validate(d: Dag, c: Int) -> OptionalDiagnostic { NoDiagnostic }\n\
+        data bad_complexity_lens_seed: Lens<Int> = {\n\
+          name: \"complexity\",\n\
+          read: lens_read,\n\
+          sequential: { op: int_add, identity: 0 },\n\
+          branch: int_max,\n\
+          iterate: lens_iterate,\n\
+          validate: lens_validate\n\
+        }";
+    let err = compile_to_dag(src, "lens_int_generic_conj_substitution_negative.v3")
+        .expect_err("Lens<Int>.read must reject Witness<String> after substituting C := Int");
+    let CompileError::Semantic(dag) = err else {
+        panic!("expected semantic substitution mismatch, got {err:?}");
+    };
+    let joined = dag
+        .diagnostics()
+        .iter()
+        .map(|(_, d)| format!("{d:?}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        joined.contains("read") && joined.contains("Lens") == false,
+        "diagnostic should be the typed field mismatch path, not a generic Lens fallback; got:\n{joined}"
+    );
+}
+
+#[test]
 fn test_3a2_record_data_rejects_type_alias_as_function_ref_value() {
     let src = "\
         type Callback = fn(Int) -> Int\n\
