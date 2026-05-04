@@ -213,6 +213,8 @@ Director's role unchanged: cross-program conflict resolution + scope-change esca
 
 ## Dependency DAG
 
+**Authority note**: this DAG is **illustrative**; the canonical lane list with full per-lane R2-close dependencies lives in §"Lane structure" table. Counts/lane lists are not duplicated here — see §"Lane structure" + §61 lane-gating-summary + §"Dependency on R2" for the authoritative 18-lane / 14-gated state. This section visualizes critical-path shape only.
+
 ```
                                   R2 close
                                      │
@@ -257,9 +259,40 @@ T-Tier3-Diss  T-LensProducer  T-V-L4-L7-Direct  T-FixedPoint  T-Omni-Shape-B  (T
                                                               for Lens<C> instances;
                                                               T-CostLens-Composition for
                                                               cost-related claims)
+
+  R3 critical-path chain (NEW 2026-05-02 + extended 2026-05-04):
+                                  │
+                                  ▼
+                       T-E-P-Producer-Broadening (foundational substrate;
+                                                  Substrate-Mgr; M-L)
+                                  │
+                                  ▼
+                       T-Lens-Behavioral-Parity (L-XL; cross-program
+                                                 Substrate + Verification;
+                                                 4 sub-slices: complexity,
+                                                 cost, parallelism,
+                                                 effect_enumeration)
+                                  │
+                       ┌──────────┴──────────┐
+                       ▼                     ▼
+              T-Lens-Application-Surface   T-Tests-As-Data-Completeness
+              (L-XL; Substrate + Verif      (L; Verification-Mgr)
+               cross-program; carrier-       — parallel branch from
+               general apply_lens)             T-LBP COMPLETE
+                       │
+                       ▼
+              T-Workflow-As-Data (NEW 2026-05-04; Substrate-Mgr; M-L;
+                                  observation-driven lens-shape class —
+                                  workflow grammar + timing-lens substrate +
+                                  Shared External Attachment Pattern)
+                       │
+                       ▼
+              T-Lens-Self-Application (NEW 2026-05-04; Verification-Mgr; M-L;
+                                       recursive-flex demonstration — gunbc
+                                       applies own lenses to own build/CI workflow)
 ```
 
-**Parallel-capable work at steady state:** 9+ R3 lanes parallel-dispatchable post-R2-close. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint → T-V2-Retirement` (because fixed-point requires SG-0 = 0 which requires lens-producer retirement; v2 retirement cascades on fixed-point + lens-producer closing). Verification has its own internal critical path: `T-V-L4-L7-Direct → T-V-L5-Corpus` (because Corpus's L5 cross-target work consumes Direct's L4 corpus). T-Free-Consequences-Demonstration parallels the Verification critical path post-R2-Evaluator.
+**Parallel-capable work at steady state**: 14 of 18 lanes are R2-Evaluator-gated; 4 of 18 are non-gated parallel substrate-completion (T-Numeric-Construction, T-Anthropic-Wire, T-Bridge-Retirement, T-E-P-Producer-Broadening). Once R2-Evaluator lands + the cascade prerequisites close, the 14 gated lanes parallel-dispatch with critical-path serialization on the chain shown above. Critical path is `R2-Evaluator → T-LensProducer-Retirement → T-FixedPoint → T-V2-Retirement` (fixed-point requires SG-0 = 0 which requires lens-producer retirement; v2 retirement cascades on fixed-point + lens-producer closing). Verification has its own internal critical path: `T-V-L4-L7-Direct → T-V-L5-Corpus` (because Corpus's L5 cross-target work consumes Direct's L4 corpus). The new R3 critical-path chain (T-E-P-Producer-Broadening → T-Lens-Behavioral-Parity → T-Lens-Application-Surface → T-Workflow-As-Data + T-Lens-Self-Application) parallels both. T-Free-Consequences-Demonstration parallels the Verification critical path post-R2-Evaluator.
 
 ## Compromises being made
 
