@@ -1062,6 +1062,7 @@ fn rustfmt_stdout(source: &str) -> Result<String, String> {
 /// `ValueBody::Unparsed` (same state `regen_tokenize` encountered). A trimmed
 /// view of `OperatorSpec` is sufficient for regen cross-validation against
 /// `parse_tables.dag`.
+#[derive(Clone)]
 pub(crate) struct SharedOperatorSpec {
     pub left_bp: i64,
     /// Variant name from the external authority's `binop` field, e.g.
@@ -1083,6 +1084,22 @@ fn extract_v3_supported_operator_bps(
     source: &str,
 ) -> std::collections::BTreeMap<String, SharedOperatorSpec> {
     let supported_symbols = extract_v3_supported_operator_symbols(source);
+    let external_operators = extract_shared_operator_bps(source);
+    let mut out = std::collections::BTreeMap::new();
+    for symbol in supported_symbols {
+        let spec = external_operators.get(&symbol).unwrap_or_else(|| {
+            panic!(
+                "`v3_supported_dag_operators` symbol `{symbol}` is not present in external `dag_operators`"
+            )
+        });
+        out.insert(symbol, spec.clone());
+    }
+    out
+}
+
+fn extract_shared_operator_bps(
+    source: &str,
+) -> std::collections::BTreeMap<String, SharedOperatorSpec> {
     let section = extract_balanced_section(source, "data dag_operators", '[', ']');
     let mut out = std::collections::BTreeMap::new();
     // Each entry is `OperatorSpec { symbol: "X", left_bp: N, right_bp: M, binop: Y, ... }`.
@@ -1122,26 +1139,18 @@ fn extract_v3_supported_operator_bps(
             .unwrap_or(after_binop_trimmed.len());
         let binop_name = after_binop_trimmed[..ident_end].to_string();
 
-        if supported_symbols.contains(&symbol) {
-            assert!(
-                out.insert(
-                    symbol.clone(),
-                    SharedOperatorSpec {
-                        left_bp: bp,
-                        binop_name,
-                    },
-                )
-                .is_none(),
-                "duplicate `dag_operators` row for v3-supported symbol `{symbol}`"
-            );
-        }
-        rest = &after_binop_trimmed[ident_end..];
-    }
-    for symbol in supported_symbols {
         assert!(
-            out.contains_key(&symbol),
-            "`v3_supported_dag_operators` symbol `{symbol}` is not present in external `dag_operators`"
+            out.insert(
+                symbol.clone(),
+                SharedOperatorSpec {
+                    left_bp: bp,
+                    binop_name,
+                },
+            )
+            .is_none(),
+            "duplicate `dag_operators` row for symbol `{symbol}`"
         );
+        rest = &after_binop_trimmed[ident_end..];
     }
     out
 }
@@ -1239,4 +1248,37 @@ fn parse_string_literal(source: &str) -> (String, usize) {
         }
     }
     panic!("unterminated string literal in shared syntax authority");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unsupported_external_operator_duplicates_fail_closed() {
+        let source = r#"
+data dag_operators: List<OperatorSpec> = [
+  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
+  OperatorSpec { symbol: "??", left_bp: 8, right_bp: 9, binop: NullCoalesce, algebra_field: none },
+  OperatorSpec { symbol: "??", left_bp: 8, right_bp: 9, binop: NullCoalesce, algebra_field: none }
+]
+
+data v3_supported_dag_operators: Map<String, Bool> = {
+  "||": true
+}
+"#;
+        let err = match std::panic::catch_unwind(|| extract_v3_supported_operator_bps(source)) {
+            Ok(_) => panic!("duplicate unsupported external operator should panic"),
+            Err(err) => err,
+        };
+        let msg = err
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| err.downcast_ref::<&str>().copied())
+            .unwrap_or("<non-string panic>");
+        assert!(
+            msg.contains("duplicate `dag_operators` row for symbol `??`"),
+            "unexpected panic: {msg}"
+        );
+    }
 }
