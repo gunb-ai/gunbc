@@ -5113,8 +5113,8 @@ fn lower_fn_item_expr_body(
             name,
             &params[0].name,
             &HashMap::new(),
-                symbols,
-            ) {
+            symbols,
+        ) {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
                 err_port,
@@ -7487,7 +7487,8 @@ fn is_recursive(
             if target == self_name {
                 return true;
             }
-            args.iter().any(|a| is_recursive(a, self_name, dag, symbols))
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
         SurfaceExpr::VariantRecord { fields, .. } => fields
             .iter()
@@ -7540,7 +7541,8 @@ fn is_recursive(
                     }
                 }
             }
-            args.iter().any(|a| is_recursive(a, self_name, dag, symbols))
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
     }
 }
@@ -7617,16 +7619,22 @@ fn descent_provable(
                                 self_name,
                                 first_param,
                                 bindings,
-                symbols,
-            )
+                                symbols,
+                            )
                         })
                     }
                 }
             } else {
                 args.iter().all(|a| {
-                    descent_provable(a, dag, first_param_decl, self_name, first_param, bindings,
-                symbols,
-            )
+                    descent_provable(
+                        a,
+                        dag,
+                        first_param_decl,
+                        self_name,
+                        first_param,
+                        bindings,
+                        symbols,
+                    )
                 })
             }
         }
@@ -7641,11 +7649,17 @@ fn descent_provable(
                 symbols,
             )
         }),
-        SurfaceExpr::Operator { args, .. } => args
-            .iter()
-            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings,
+        SurfaceExpr::Operator { args, .. } => args.iter().all(|a| {
+            descent_provable(
+                a,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
                 symbols,
-            )),
+            )
+        }),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -7725,8 +7739,8 @@ fn descent_provable(
                     self_name,
                     first_param,
                     &arm_bindings,
-                symbols,
-            )
+                    symbols,
+                )
             })
         }
         SurfaceExpr::Lambda { body, .. } => descent_provable(
@@ -7736,8 +7750,8 @@ fn descent_provable(
             self_name,
             first_param,
             bindings,
-                symbols,
-            ),
+            symbols,
+        ),
         SurfaceExpr::Record { fields, .. } => fields.iter().all(|f| {
             descent_provable(
                 &f.value,
