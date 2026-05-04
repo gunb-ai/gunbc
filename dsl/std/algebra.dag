@@ -379,7 +379,7 @@ type BooleanAlgebra<T> {
 //
 // Declared surface (receiver-shaped fields — matches the record below):
 //   Monoid: concat(self, other), empty, append(element)
-//   Indexed carrier: length(), count(), slice(i, j), first() -> T?,
+//   Indexed carrier: length(), count(), is_empty() -> Bool, slice(i, j), first() -> T?,
 //     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
 //     in std/primitives.dag, not a partial algebra field.
 //   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
@@ -395,6 +395,7 @@ type FreeMonoid<T> {
   // Positional access — partial direct indexing is intentionally absent.
   slice: fn(Int, Int) -> FreeMonoid<T>
   length: fn() -> Int
+  is_empty: fn() -> Bool
   count: fn() -> Int
   first: fn() -> T?
   last: fn() -> T?
@@ -475,7 +476,8 @@ type Ordering = Less | Equal | Greater
 //   xor(a, b)  = meet(join(a, b), complement(meet(a, b)))
 //
 // From FreeMonoid:
-//   length and count are declared methods (Int). contains is a declared predicate.
+//   length and count are declared methods (Int); is_empty() -> Bool;
+//   contains is a declared predicate.
 //   The record's fold is monoid-shaped on T, not a generic catamorphism init: U.
 
 // =========================================================================
@@ -617,6 +619,7 @@ fn free_monoid_scalar_templates() -> List<AlgebraFieldTemplate> {
     { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "empty", param_types: [], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: none, callback_element_position: none },
+    { name: "is_empty", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: none, callback_element_position: none },
     { name: "chars", param_types: [ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: NamedTemplate { name: "Int" } }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "split", param_types: [ReceiverSelf, ReceiverSelf], return_type: ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "join", param_types: [ContainerOf { source: Named { name: "List" }, element: ReceiverSelf }, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
@@ -655,7 +658,8 @@ fn free_monoid_collection_templates() -> List<AlgebraFieldTemplate> {
     { name: "join", param_types: [ReceiverSelf, NamedTemplate { name: "String" }], return_type: NamedTemplate { name: "String" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "concat", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
     { name: "list_push", param_types: [ReceiverSelf, ReceiverElement], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
-    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none }
+    { name: "length", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Int" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none },
+    { name: "is_empty", param_types: [ReceiverSelf], return_type: NamedTemplate { name: "Bool" }, size_effect: none, cost_shape: Some { value: ShapeLinearScan }, callback_element_position: none }
   ]
 }
 

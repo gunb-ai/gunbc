@@ -17,11 +17,16 @@
 //     membership) which is not currently rendered through this list.
 //   - `{arg0}` → `{arg}` rewrite applied to runtime templates (`join`,
 //     `split`); rows use `placeholder_convention: NamedArg` uniformly.
-//   - Methods present only in `python_method_templates` (concat, map,
-//     filter, any, all, flat_map, skip, take, fold, sort_by, append)
+//   - Methods present only in `python_method_templates` (map,
+//     filter, any, all, flat_map, skip, take, sort_by, append)
 //     use the emit template for both row sides — v2's actual behavior
 //     is "python_method_templates for both consumption sites" since
 //     `collection_method_translations` doesn't declare them.
+//     `concat` / `fold` are **not** listed here — LanguageSpec
+//     `CollectionOps.{concat,fold}_contract` carries named
+//     `MethodTemplateContract` rows (`python_language_spec_free_monoid_*`)
+//     so we do not duplicate `dag_method: concat_method` / `fold_method`
+//     inside this list (P2 single authority; mirrors Rust + fold).
 
 module v3.std.python_method_template_contracts
 
@@ -49,17 +54,50 @@ import std.methods {
   skip_method,
   take_method,
   fold_method,
+  is_empty_method,
+  length_method,
   sort_by_method,
   append_method,
   string_contains_method
 }
 
-// **P2 single authority** for `fold_method` on the Python target: this is the
-// LanguageSpec / `CollectionOps.fold_contract` realization (`{recv}`,
-// `{init}`, `{body}` → `__v3_fold`). It intentionally does **not** appear
-// again inside `python_method_template_contracts` below — the prior list row
-// used `functools.reduce({arg}, {recv})`, a different arity/shape and a
-// second parallel contract for the same registry method; see
+// LanguageSpec `CollectionOps.{concat,length,is_empty}_contract` carriers live outside
+// `python_method_template_contracts` below (same fold pattern — list rows are a different authority).
+//
+// **P2 single authority** for `concat_method`: `CollectionOps.concat_contract` uses
+// `{left}` / `{right}` (monoid concat). It does **not** repeat inside the list below —
+// that row used `{recv} + {arg}` (different placeholder shape), a second parallel contract
+// for the same registry method.
+
+data python_language_spec_free_monoid_concat_contract: MethodTemplateContract = {
+  dag_method: { decl: concat_method },
+  runtime_template: "[*{left}, *{right}]",
+  emit_template: SingleTemplate { template: "[*{left}, *{right}]" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data python_language_spec_free_monoid_length_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "len({recv})",
+  emit_template: SingleTemplate { template: "len({recv})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// Emptiness — `dag_method` is `is_empty_method` (`FreeMonoid<T>.is_empty`); template is Python sugar.
+data python_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
+  dag_method: { decl: is_empty_method },
+  runtime_template: "(len({recv}) == 0)",
+  emit_template: SingleTemplate { template: "(len({recv}) == 0)" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// **P2 single authority** for `fold_method` on the Python target: LanguageSpec
+// `CollectionOps.fold_contract` (`{recv}`, `{init}`, `{body}` → `__v3_fold`).
+// Does **not** repeat inside `python_method_template_contracts` below — the prior
+// list row used `functools.reduce({arg}, {recv})` (different shape); see
 // `docs/briefs/collectionops-algebra-reframe.md`.
 data python_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   dag_method: { decl: fold_method },
@@ -116,13 +154,6 @@ data python_method_template_contracts: List<MethodTemplateContract> = [
     dag_method: { decl: chars_method },
     runtime_template: "[ord(c) for c in {recv}]",
     emit_template: SingleTemplate { template: "[ord(c) for c in {recv}]" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
-    dag_method: { decl: concat_method },
-    runtime_template: "{recv} + {arg}",
-    emit_template: SingleTemplate { template: "{recv} + {arg}" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },

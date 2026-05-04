@@ -13,7 +13,12 @@ import v3.std.emit_model {
   CollectionOps, ValueConstructionSyntax, LanguageSpec,
   TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound
 }
-import v3.std.go_method_template_contracts { go_language_spec_free_monoid_fold_contract }
+import v3.std.go_method_template_contracts {
+  go_language_spec_free_monoid_concat_contract,
+  go_language_spec_free_monoid_length_contract,
+  go_language_spec_free_monoid_emptiness_contract,
+  go_language_spec_free_monoid_fold_contract
+}
 import v3.std.computation_model {
   TargetExecutionModel, GarbageCollected, LexicalScoping,
   ShapeATargetSourceFiltering, ExecutionModelRequirement,
@@ -1163,9 +1168,9 @@ data go_patterns: PatternMatchSyntax = {
 }
 
 data go_collection_ops: CollectionOps = {
-  concat: "append({left}, {right}...)"
-  length: "int64(len({recv}))"
-  is_empty: "len({recv}) == 0"
+  concat_contract: go_language_spec_free_monoid_concat_contract
+  length_contract: go_language_spec_free_monoid_length_contract
+  is_empty_contract: go_language_spec_free_monoid_emptiness_contract
   fold_contract: go_language_spec_free_monoid_fold_contract
   map: "/* map({recv}, {body}) */"
   filter: "/* filter({recv}, {body}) */"
