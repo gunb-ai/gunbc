@@ -47,11 +47,14 @@ use std::collections::{HashMap, HashSet};
 
 use super::{
     algebra_field_for_operator_shared,
-    collection_ops_method_contract::require_method_template_contract_dag_method,
-    dag_needs_div_error_prelude, div_prelude_reserved_name_collision,
-    method_emit_template_variant_label, parse_pattern_strategy, primitive_type_id_for_port_shared,
-    walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
-    VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
+    collection_ops_method_contract::{
+        method_template_contract_decl_emit_template,
+        method_template_contract_list_emit_template_for_method, MethodTemplateContractEmitTemplate,
+    },
+    dag_needs_div_error_prelude, div_prelude_reserved_name_collision, parse_pattern_strategy,
+    primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
+    SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,
+    VariantPayloadFieldAccessRuleBinding,
 };
 use crate::dag::{
     ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, Dag, DeclarationId, Field,
@@ -407,6 +410,12 @@ struct CollectionOpsBinding {
     fold: String,
     map: String,
     filter: String,
+    #[allow(dead_code)]
+    flat_map: String,
+    #[allow(dead_code)]
+    any: String,
+    #[allow(dead_code)]
+    all: String,
     contains: String,
     empty_list: String,
     list_literal: String,
@@ -1488,9 +1497,33 @@ fn parse_collection_ops(
                 declaration,
                 detail: "internal: is_empty_method missing from std.methods registry",
             })?;
+    let filter_method_decl =
+        dag.declaration_by_name("filter_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: filter_method missing from std.methods registry",
+            })?;
+    let flat_map_method_decl =
+        dag.declaration_by_name("flat_map_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: flat_map_method missing from std.methods registry",
+            })?;
+    let any_method_decl =
+        dag.declaration_by_name("any_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: any_method missing from std.methods registry",
+            })?;
+    let all_method_decl =
+        dag.declaration_by_name("all_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: all_method missing from std.methods registry",
+            })?;
 
     let concat_contract = require_field_decl_ref(fields, "concat_contract", declaration)?;
-    require_method_template_contract_dag_method(
+    let concat_template = method_template_contract_decl_emit_template(
         dag,
         concat_contract,
         "concat_contract",
@@ -1500,10 +1533,10 @@ fn parse_collection_ops(
         declaration: concat_contract,
         detail,
     })?;
-    let concat = method_contract_single_emit_template_string(dag, concat_contract)?;
+    let concat = require_single_template(concat_template, concat_contract)?;
 
     let length_contract = require_field_decl_ref(fields, "length_contract", declaration)?;
-    require_method_template_contract_dag_method(
+    let length_template = method_template_contract_decl_emit_template(
         dag,
         length_contract,
         "length_contract",
@@ -1513,10 +1546,10 @@ fn parse_collection_ops(
         declaration: length_contract,
         detail,
     })?;
-    let length = method_contract_single_emit_template_string(dag, length_contract)?;
+    let length = require_single_template(length_template, length_contract)?;
 
     let is_empty_contract = require_field_decl_ref(fields, "is_empty_contract", declaration)?;
-    require_method_template_contract_dag_method(
+    let is_empty_template = method_template_contract_decl_emit_template(
         dag,
         is_empty_contract,
         "is_empty_contract",
@@ -1526,10 +1559,10 @@ fn parse_collection_ops(
         declaration: is_empty_contract,
         detail,
     })?;
-    let is_empty = method_contract_single_emit_template_string(dag, is_empty_contract)?;
+    let is_empty = require_single_template(is_empty_template, is_empty_contract)?;
 
     let fold_contract = require_field_decl_ref(fields, "fold_contract", declaration)?;
-    require_method_template_contract_dag_method(
+    let fold_template = method_template_contract_decl_emit_template(
         dag,
         fold_contract,
         "fold_contract",
@@ -1539,7 +1572,60 @@ fn parse_collection_ops(
         declaration: fold_contract,
         detail,
     })?;
-    let fold = method_contract_single_emit_template_string(dag, fold_contract)?;
+    let fold = require_single_template(fold_template, fold_contract)?;
+
+    let filter = require_higher_order_inline_template(
+        method_template_contract_list_emit_template_for_method(
+            dag,
+            "rust_method_template_contracts",
+            "filter_contract",
+            filter_method_decl.id,
+        )
+        .map_err(|detail| EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?,
+        declaration,
+    )?;
+    let flat_map = require_higher_order_inline_template(
+        method_template_contract_list_emit_template_for_method(
+            dag,
+            "rust_method_template_contracts",
+            "flat_map_contract",
+            flat_map_method_decl.id,
+        )
+        .map_err(|detail| EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?,
+        declaration,
+    )?;
+    let any = require_higher_order_inline_template(
+        method_template_contract_list_emit_template_for_method(
+            dag,
+            "rust_method_template_contracts",
+            "any_contract",
+            any_method_decl.id,
+        )
+        .map_err(|detail| EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?,
+        declaration,
+    )?;
+    let all = require_higher_order_inline_template(
+        method_template_contract_list_emit_template_for_method(
+            dag,
+            "rust_method_template_contracts",
+            "all_contract",
+            all_method_decl.id,
+        )
+        .map_err(|detail| EmitError::MalformedTargetSyntax {
+            declaration,
+            detail,
+        })?,
+        declaration,
+    )?;
 
     Ok(CollectionOpsBinding {
         concat,
@@ -1547,7 +1633,10 @@ fn parse_collection_ops(
         is_empty,
         fold,
         map: syntax_field_string(fields, "map", declaration)?,
-        filter: syntax_field_string(fields, "filter", declaration)?,
+        filter,
+        flat_map,
+        any,
+        all,
         contains: syntax_field_string(fields, "contains", declaration)?,
         empty_list: syntax_field_string(fields, "empty_list", declaration)?,
         list_literal: syntax_field_string(fields, "list_literal", declaration)?,
@@ -1555,51 +1644,37 @@ fn parse_collection_ops(
     })
 }
 
-/// `MethodTemplateContract.emit_template` as a `SingleTemplate` string — the
-/// shape collection fold emission supports today (higher-order split is not
-/// wired through this path yet).
-fn method_contract_single_emit_template_string(
-    dag: &Dag,
-    contract_decl: DeclarationId,
+fn require_single_template(
+    template: MethodTemplateContractEmitTemplate,
+    declaration: DeclarationId,
 ) -> Result<String, EmitError> {
-    let fields = structural_fields_for_decl(dag, contract_decl)?;
-    let emit_value = fields
-        .iter()
-        .find(|(label, _)| label == "emit_template")
-        .map(|(_, v)| v)
-        .ok_or(EmitError::MalformedTargetSyntax {
-            declaration: contract_decl,
-            detail: "MethodTemplateContract missing emit_template field",
-        })?;
-    let FieldValue::Variant {
-        constructor,
-        ref payload,
-    } = emit_value
-    else {
-        return Err(EmitError::MalformedTargetSyntax {
-            declaration: contract_decl,
-            detail: "MethodTemplateContract.emit_template must be a sum variant",
-        });
-    };
-    let ctor_name = method_emit_template_variant_label(dag, *constructor)
-        .ok_or(EmitError::MalformedTargetSyntax {
-        declaration: contract_decl,
-        detail:
-            "MethodTemplateContract.emit_template variant not found under MethodEmitTemplate disj",
-    })?;
-    if ctor_name != "SingleTemplate" {
-        return Err(EmitError::MalformedTargetSyntax {
-            declaration: contract_decl,
-            detail: "CollectionOps MethodTemplateContract must use MethodEmitTemplate.SingleTemplate today",
-        });
+    match template {
+        MethodTemplateContractEmitTemplate::SingleTemplate(template) => Ok(template),
+        MethodTemplateContractEmitTemplate::HigherOrderTemplates { .. } => {
+            Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "CollectionOps MethodTemplateContract must use MethodEmitTemplate.SingleTemplate",
+            })
+        }
     }
-    let [FieldValue::Literal(LiteralBits::String(template))] = payload.as_slice() else {
-        return Err(EmitError::MalformedTargetSyntax {
-            declaration: contract_decl,
-            detail: "SingleTemplate must carry exactly one string template payload",
-        });
-    };
-    Ok(template.replace("%Q", "\""))
+}
+
+fn require_higher_order_inline_template(
+    template: MethodTemplateContractEmitTemplate,
+    declaration: DeclarationId,
+) -> Result<String, EmitError> {
+    match template {
+        MethodTemplateContractEmitTemplate::HigherOrderTemplates {
+            inline_template, ..
+        } => Ok(inline_template),
+        MethodTemplateContractEmitTemplate::SingleTemplate(_) => {
+            Err(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail:
+                    "Rust CollectionOps higher-order MethodTemplateContract must use MethodEmitTemplate.HigherOrderTemplates",
+            })
+        }
+    }
 }
 
 fn parse_value_construction_syntax(
@@ -4406,7 +4481,7 @@ impl<'a> Ctx<'a> {
                 let item = "__filter_item".to_string();
                 let predicate = self.render_callable_body(
                     fn_decl,
-                    &[(item.clone(), LocalBinding::Borrowed(item.clone()))],
+                    &[(item.clone(), LocalBinding::Owned(item.clone()))],
                     locals,
                 )?;
                 let list = self.render_collection_receiver(
@@ -4414,15 +4489,10 @@ impl<'a> Ctx<'a> {
                     InputSlot::Positional(0),
                     locals,
                 )?;
-                let item_push = self.render_list_item_construct_expr(consumer.inputs[0], &item)?;
+                let iter = format!("({list}).iter().cloned()");
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.filter,
-                    &[
-                        ("recv", &list),
-                        ("item", &item),
-                        ("predicate", &predicate),
-                        ("item_push", &item_push),
-                    ],
+                    &[("iter", &iter), ("param", &item), ("body", &predicate)],
                 ))
             }
             RustCallableStrategyBinding::ListContains => {
@@ -5555,6 +5625,7 @@ impl<'a> Ctx<'a> {
             .is_some_and(|pfun| pfun == declaration)
     }
 
+    #[allow(dead_code)]
     fn render_list_item_construct_expr(
         &self,
         list_port: PortId,
@@ -5834,6 +5905,67 @@ mod tests {
             "`Map<K,V>`'s `PartialFunction` head carries `Arrow`+`NoBody` for algebra operations, \
 not user `fn` data; must not set return-carrier / Rc on callable params (PR #676)"
         );
+    }
+
+    #[test]
+    fn rust_collection_ops_selects_higher_order_inline_templates() {
+        let dag = Dag::new();
+        let rust_collection_ops = dag
+            .declaration_by_name("rust_collection_ops")
+            .expect("rust collection ops spec exists")
+            .id;
+
+        let binding = parse_collection_ops(&dag, rust_collection_ops)
+            .expect("rust collection ops binding parses");
+
+        assert_eq!(
+            binding.filter,
+            "{ let mut __result = Vec::new(); for {param} in {iter} { if {body} { __result.push({param}); } } __result }"
+        );
+        assert_eq!(
+            binding.flat_map,
+            "{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }"
+        );
+        assert_eq!(
+            binding.any,
+            "{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }"
+        );
+        assert_eq!(
+            binding.all,
+            "{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }"
+        );
+    }
+
+    #[test]
+    fn rust_collection_ops_rejects_single_template_for_higher_order_selection() {
+        let dag = Dag::new();
+        let rust_collection_ops = dag
+            .declaration_by_name("rust_collection_ops")
+            .expect("rust collection ops spec exists")
+            .id;
+        let count_method = dag
+            .declaration_by_name("count_method")
+            .expect("count method registry row exists")
+            .id;
+
+        let single = method_template_contract_list_emit_template_for_method(
+            &dag,
+            "rust_method_template_contracts",
+            "filter_contract",
+            count_method,
+        )
+        .expect("count_method has a SingleTemplate row");
+        let err = require_higher_order_inline_template(single, rust_collection_ops)
+            .expect_err("SingleTemplate must not satisfy a higher-order CollectionOps field");
+
+        assert!(matches!(
+            err,
+            EmitError::MalformedTargetSyntax {
+                declaration,
+                detail:
+                    "Rust CollectionOps higher-order MethodTemplateContract must use MethodEmitTemplate.HigherOrderTemplates",
+            } if declaration == rust_collection_ops
+        ));
     }
 
     #[test]
