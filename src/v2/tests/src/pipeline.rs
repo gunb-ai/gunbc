@@ -5676,6 +5676,39 @@ service test.Api {
     );
 }
 
+#[test]
+fn github_token_returns_typed_auth_token_from_credential_source() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/github/auth.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read github auth.dag");
+    let result = compile_dag_named("dsl/extdeps/github/auth.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_github_auth.rs");
+
+    assert!(
+        content.contains("pub use crate::extdeps_github_github::{GitHubAuthToken, GitHubScope}")
+            && content.contains("Result<Rc<GitHubAuthToken>"),
+        "ROADMAP:376: expected github_token to return the typed GitHubAuthToken carrier, got:\n{content}"
+    );
+    assert!(
+        content.contains("scopes: default_github_token_scopes()")
+            && content.contains("expires_at: default_github_token_expires_at()"),
+        "ROADMAP:376: expected scopes and expires_at to survive on the typed token, got:\n{content}"
+    );
+    assert!(
+        content.contains("CredentialSource::EnvVar")
+            && content.contains("GITHUB_TOKEN")
+            && content.contains("env_credential"),
+        "ROADMAP:376: expected default credential source to use EnvVar via env_credential, got:\n{content}"
+    );
+    assert!(
+        !content.contains("gunbai-secrets")
+            && !content.contains("github-token")
+            && !content.contains("SecretManagerAccessVersion"),
+        "ROADMAP:376: github_token must not hardcode the GCP Secret Manager policy, got:\n{content}"
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.

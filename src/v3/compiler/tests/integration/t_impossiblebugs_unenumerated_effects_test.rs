@@ -75,7 +75,9 @@ fn audit_receipt_proves_path_ii_existence_case() {
         "shell.Exec.Run remains transport-effectful without resource-threaded signature shape"
     );
     assert!(
-        github_auth.contains("uses net: Network"),
-        "github_token still derives resource use from ambient `uses`, not its return shape"
+        github_auth.contains("CredentialSource")
+            && github_auth.contains("-> GitHubAuthToken")
+            && !github_auth.contains("uses net: Network"),
+        "github_token should consume typed CredentialSource and return GitHubAuthToken without ambient Network effect"
     );
 }
