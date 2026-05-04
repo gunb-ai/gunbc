@@ -20,7 +20,7 @@ Inspected recent runs:
 
 | Job | Observed wall time | Dominant cost |
 | --- | ---: | --- |
-| `fmt` | 18-20s | Rust/toolchain setup and cache restore; `cargo fmt --all --check` itself is small. |
+| `fmt` | 18-20s | Rust/toolchain setup and `cargo fmt --all --check`; this job has `cache: false`, so cache restore is not part of its cost. |
 | legacy `ci` | About 9m11s before failure/pass boundary | v2 `run_ci_pipeline`, especially ignored `ci_*` tests and self-compile gates. |
 | `v3` | 7m49s-8m17s | Full v3 integration suite, Stage 2d duplication, clippy/no-run compile costs, bootstrap verify. |
 | `self_host_ratchet` | 8m45s-11m04s | Release compilation for DB-8 determinism and self-host fixed point; runtime is tiny. |
@@ -58,7 +58,7 @@ Approximate timings from `25338908305` / `25339309924`, with partial `2534194747
 | Bootstrap regen verify | 15-18s | Also present in legacy `ci`. |
 | L-7/L-8/compiler-std/banked ratchets | 0-1s each | Not bottlenecks. |
 
-The v3 integration tests do not appear inherently serial from CI shape; they are currently unsharded because `tests/integration.rs` is one large harness. Safe shard boundaries look feasible by module family: substrate/projection/parser; emit roundtrip/matrix; runner/lens/thesis; and lib/unit tests as a separate job. The lowest-risk version is to split `tests/integration.rs` into multiple integration binaries by existing module family rather than filtering one binary many ways.
+The v3 integration tests do not appear inherently serial from CI shape; they are currently unsharded because `tests/integration.rs` is one large harness. That consolidation has an existing rationale: one binary keeps shared fixture setup and cross-module integration discovery simple. Safe shard boundaries still look feasible by module family: substrate/projection/parser; emit roundtrip/matrix; runner/lens/thesis; and lib/unit tests as a separate job. The lowest-risk sharding path is not a blind split, but an intentional harness refactor that preserves the current consolidation benefits while creating a few module-family integration binaries instead of filtering one binary many ways.
 
 ## `self_host_ratchet` Breakdown
 
