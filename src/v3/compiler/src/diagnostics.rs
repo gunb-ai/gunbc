@@ -222,10 +222,11 @@ pub enum Diagnostic {
 
 /// Layer-1 compiler diagnostic kind labels in **declaration order** of [`Diagnostic`].
 ///
-/// `src/v3/std/diagnostics.dag` `CompilerDiagnosticKind` and `src/v3/std/verification.dag`
-/// `DiagnosticKind` must carry exactly this set (integration tests ratchet the bootstrap
-/// lowering against this slice). When adding a [`Diagnostic`] variant, extend this list in
-/// lock-step and update the `.dag` closed sums — lens-instance kinds stay on the Layer-2 path
+/// The strings are the same as [`Diagnostic::layer1_kind_label`]; crate tests assert this slice
+/// stays aligned with that exhaustive mapping. Integration tests ratchet `CompilerDiagnosticKind`
+/// / `std.verification.DiagnosticKind` in the bootstrap DAG against this slice. When adding a
+/// [`Diagnostic`] variant, `layer1_kind_label` must gain an arm (compile-time exhaustiveness), then
+/// extend this list and the `.dag` closed sums — lens-instance kinds stay on the Layer-2 path
 /// (Q6.5), not here.
 pub const LAYER1_DIAGNOSTIC_KIND_LABELS: &[&str] = &[
     "TokenizerError",
@@ -241,6 +242,27 @@ pub const LAYER1_DIAGNOSTIC_KIND_LABELS: &[&str] = &[
 ];
 
 impl Diagnostic {
+    /// Stable Layer-1 kind name for substrate mirrors and test predicates (Q6.5).
+    ///
+    /// This match is **exhaustive with no wildcard**: adding a [`Diagnostic`] variant is a
+    /// compile error until a new arm is authored here. [`LAYER1_DIAGNOSTIC_KIND_LABELS`] must stay
+    /// in the same **declaration order** as this enum; crate tests ratchet the slice against
+    /// representative diagnostics via this method.
+    pub fn layer1_kind_label(&self) -> &'static str {
+        match self {
+            Diagnostic::TokenizerError { .. } => "TokenizerError",
+            Diagnostic::ParseError { .. } => "ParseError",
+            Diagnostic::TypeMismatch { .. } => "TypeMismatch",
+            Diagnostic::ArityMismatch { .. } => "ArityMismatch",
+            Diagnostic::ResolveError { .. } => "ResolveError",
+            Diagnostic::UnitMismatch { .. } => "UnitMismatch",
+            Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
+            Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
+            Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
+            Diagnostic::NominalOpacityViolation { .. } => "NominalOpacityViolation",
+        }
+    }
+
     pub fn span(&self) -> &SourceSpan {
         match self {
             Diagnostic::TokenizerError { span, .. }
@@ -836,6 +858,93 @@ impl DiagnosticTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TypeShape;
+
+    fn layer1_diagnostic_examples_in_declaration_order() -> Vec<Diagnostic> {
+        let span = SourceSpan::new("layer1_kind_label_ratchets.v3", 0, 0);
+        let fixes = Vec::new();
+        let ty = TypeShape::new(DeclarationId(0));
+        vec![
+            Diagnostic::TokenizerError {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ParseError {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::TypeMismatch {
+                expected: ty,
+                actual: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ArityMismatch {
+                function: String::new(),
+                expected: 0,
+                actual: 0,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ResolveError {
+                name: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::UnitMismatch {
+                operator: String::new(),
+                parameter: String::new(),
+                expected: ty,
+                actual: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::BranchConditionNotBool {
+                port: PortId(0),
+                actual_type: None,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::MagnitudeOutOfRange {
+                literal: String::new(),
+                target: String::new(),
+                range_min_inclusive: String::new(),
+                range_max_inclusive: String::new(),
+                expected: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::MalformedIntegerRangeFact {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::NominalOpacityViolation {
+                declaration: DeclarationId(0),
+                accessor: None,
+                span,
+                fixes,
+            },
+        ]
+    }
+
+    #[test]
+    fn layer1_ordered_labels_match_layer1_kind_label() {
+        let examples = layer1_diagnostic_examples_in_declaration_order();
+        assert_eq!(
+            examples.len(),
+            LAYER1_DIAGNOSTIC_KIND_LABELS.len(),
+            "declaration-order fixture must list every Diagnostic variant exactly once"
+        );
+        let mut seen = std::collections::HashSet::new();
+        for (diag, expected) in examples.iter().zip(LAYER1_DIAGNOSTIC_KIND_LABELS.iter()) {
+            let label = diag.layer1_kind_label();
+            assert_eq!(label, *expected);
+            assert!(seen.insert(label), "duplicate layer1 label: {label}");
+        }
+    }
 
     #[test]
     fn apply_correction_replaces_the_requested_span() {
