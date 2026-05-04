@@ -1944,6 +1944,9 @@ impl<'a> TestRunner<'a> {
                         "BinaryDimensionReportEquals" => {
                             self.eval_binary_dimension_report_equals_shape(claim, &payload)
                         }
+                        "SymbolicCostExprEquals" => {
+                            self.eval_symbolic_cost_expr_equals_shape(claim, &payload)
+                        }
                         "AlgebraicLaw" => self.eval_algebraic_law(claim, &payload),
                         "ExecuteCommand" => self.eval_execute_command(claim, &payload),
                         "CensusBoundCheck" => self.eval_census_bound_check_shape(claim, &payload),
@@ -2398,6 +2401,39 @@ impl<'a> TestRunner<'a> {
                 render_field_value(self.dag, &computed),
             ))
         }
+    }
+
+    fn eval_symbolic_cost_expr_equals_shape(
+        &self,
+        _claim: &TestClaimValue,
+        payload: &[FieldValue],
+    ) -> ClaimResult {
+        let [expected_fv] = payload else {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals payload should be exactly one DeclarationRef field \
+                 (expected); got {} payload slot(s)",
+                payload.len()
+            ));
+        };
+        let expected_id = match self.resolve_declaration_ref_id(expected_fv, "expected") {
+            Ok(id) => id,
+            Err(msg) => return ClaimResult::Fail(msg),
+        };
+        let expected_decl = self.dag.declaration(expected_id);
+        let expected_name = decl_display_name(expected_id, expected_decl);
+        if expected_decl.value_body.is_none() {
+            return ClaimResult::Fail(format!(
+                "SymbolicCostExprEquals: expected `{expected_name}` has no value body to compare against"
+            ));
+        }
+        ClaimResult::NotYetImplemented(format!(
+            "SymbolicCostExprEquals: structural shape is valid for `{expected_name}`, but runner \
+             evaluation waits for the heuristic-cost-function-5th-gate testgen dispatch \
+             (Verification follow-up). The eval will apply the symbolic-cost lens to the \
+             program-under-test (`TestClaim.source` for enumerated claims; `ProgramShape.source` \
+             for quantified claims once Slice 1 lands) and compare the result structurally to \
+             `{expected_name}`."
+        ))
     }
 
     fn eval_binary_dimension_report_equals_shape(
