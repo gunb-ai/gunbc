@@ -5693,7 +5693,7 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
     assert!(
         content.contains("pub struct GitHubAuthSource")
             && content.contains("pub scopes: Rc<Vec<GitHubScope>>")
-            && content.contains("pub expires_at: Option<Timestamp>"),
+            && content.contains("pub expires_at: Option<String>"),
         "ROADMAP:376: expected credential source metadata to carry scopes and expires_at, got:\n{content}"
     );
     assert!(
