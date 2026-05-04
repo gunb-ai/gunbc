@@ -60,6 +60,31 @@ import std.methods {
   string_contains_method
 }
 
+data go_language_spec_free_monoid_concat_contract: MethodTemplateContract = {
+  dag_method: { decl: concat_method },
+  runtime_template: "append({left}, {right}...)",
+  emit_template: SingleTemplate { template: "append({left}, {right}...)" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+data go_language_spec_free_monoid_length_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "int64(len({recv}))",
+  emit_template: SingleTemplate { template: "int64(len({recv}))" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// Emptiness pins `length_method` — `FreeMonoid<T>` has `length` but not `is_empty`.
+data go_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
+  dag_method: { decl: length_method },
+  runtime_template: "len({recv}) == 0",
+  emit_template: SingleTemplate { template: "len({recv}) == 0" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 // **P2 single authority** for `fold_method` on the Go target: LanguageSpec
 // `CollectionOps.fold_contract` uses the explicit `{recv}` / `{init}` / `{body}`
 // stub. It does **not** repeat inside `go_method_template_contracts` below —

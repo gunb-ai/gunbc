@@ -55,13 +55,9 @@ import std.methods {
   string_contains_method
 }
 
-// **P2 single authority** for `fold_method` on the Python target: this is the
-// LanguageSpec / `CollectionOps.fold_contract` realization (`{recv}`,
-// `{init}`, `{body}` → `__v3_fold`). It intentionally does **not** appear
-// again inside `python_method_template_contracts` below — the prior list row
-// used `functools.reduce({arg}, {recv})`, a different arity/shape and a
-// second parallel contract for the same registry method; see
-// `docs/briefs/collectionops-algebra-reframe.md`.
+// LanguageSpec `CollectionOps.{concat,length,is_empty}_contract` carriers live outside
+// `python_method_template_contracts` below (same fold pattern — list rows are a different authority).
+
 data python_language_spec_free_monoid_concat_contract: MethodTemplateContract = {
   dag_method: { decl: concat_method },
   runtime_template: "[*{left}, *{right}]",
@@ -87,6 +83,11 @@ data python_language_spec_free_monoid_emptiness_contract: MethodTemplateContract
   placeholder_convention: NamedArg
 }
 
+// **P2 single authority** for `fold_method` on the Python target: LanguageSpec
+// `CollectionOps.fold_contract` (`{recv}`, `{init}`, `{body}` → `__v3_fold`).
+// Does **not** repeat inside `python_method_template_contracts` below — the prior
+// list row used `functools.reduce({arg}, {recv})` (different shape); see
+// `docs/briefs/collectionops-algebra-reframe.md`.
 data python_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   dag_method: { decl: fold_method },
   runtime_template: "__v3_fold({recv}, {init}, {body})",

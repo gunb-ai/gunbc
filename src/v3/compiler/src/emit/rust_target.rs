@@ -48,7 +48,7 @@ use std::collections::{HashMap, HashSet};
 use super::{
     algebra_field_for_operator_shared, dag_needs_div_error_prelude,
     div_prelude_reserved_name_collision,
-    fold_method_contract::require_fold_method_template_contract,
+    collection_ops_method_contract::require_method_template_contract_dag_method,
     method_emit_template_variant_label, parse_pattern_strategy, primitive_type_id_for_port_shared,
     walk_to_disj, EmitMode, PatternStrategyBinding, SharedEmitLookupError, SourceFilteringBinding,
     VariantPayloadBinding, VariantPayloadFieldAccessRuleBinding,
