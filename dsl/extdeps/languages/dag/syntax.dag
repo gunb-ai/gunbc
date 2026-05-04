@@ -118,26 +118,18 @@ data dag_operators: List<OperatorSpec> = [
 ]
 
 // Current v3 capability projection.
-// v3 tokenizer/parser/operator validation consumes this explicit subset; it
-// intentionally excludes external `dag_operators` rows that v3 does not parse
-// end-to-end yet, including `??` and `%`.
+// v3 tokenizer/parser/operator validation consumes these explicit supported
+// symbols, then reads precedence/binop facts from `dag_operators`. This avoids
+// duplicating operator semantics while still fencing current v3 capability.
+// It intentionally excludes external `dag_operators` rows that v3 does not
+// parse end-to-end yet, including `??` and `%`.
 
-data v3_supported_dag_operators: List<OperatorSpec> = [
-  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
-  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
-  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
-  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
-  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
-  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
-  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
-  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
-  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
-  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
-  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
-  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: none },
-  OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: none, algebra_field: none },
-  OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
-]
+data v3_supported_dag_operators: Map<String, Bool> = {
+  "||": true, "&&": true,
+  "==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true,
+  "+": true, "-": true, "*": true, "/": true,
+  "|>": true, ".": true
+}
 
 data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
   item_forms: dag_item_forms,

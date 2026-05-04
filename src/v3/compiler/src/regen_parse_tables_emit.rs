@@ -20,14 +20,13 @@
 //! **Cross-validation against v3 projection of shared authority.**
 //! `dag_operators` in `syntax.dag` owns external .dag syntax reality, including
 //! operators v3 does not yet parse end-to-end. `v3_supported_dag_operators` is
-//! the explicit current v3 capability projection. Each `BinaryOpRow` in
-//! `parse_tables.dag` is checked against that projection: the row's
-//! `operator_symbol` must appear in `v3_supported_dag_operators`, and its
-//! declared `level` must be consistent with the projected row's binding power
-//! (the coarse parser precedence level covers a contiguous bp range — see
-//! `level_for_bp`). If the v3 projection shifts an operator's bp into a
-//! different level, or drops a symbol, regen fails closed here without forcing
-//! v3 to support every externally modeled operator.
+//! the explicit current v3 capability projection as a symbol subset. Each
+//! `BinaryOpRow` in `parse_tables.dag` is checked against that projection: the
+//! row's `operator_symbol` must appear in `v3_supported_dag_operators`, while
+//! binding power and binop facts are read from the corresponding
+//! `dag_operators` row (the coarse parser precedence level covers a contiguous
+//! bp range — see `level_for_bp`). If the v3 projection shifts, regen fails
+//! closed here without forcing v3 to support every externally modeled operator.
 //!
 //! **SG-1a scaffold extension.** `syntax.dag`'s operator-list bodies still
 //! lower as `ValueBody::Unparsed` (same scaffold `regen_tokenize` extends), so
@@ -1058,14 +1057,14 @@ fn rustfmt_stdout(source: &str) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|e| format!("rustfmt stdout utf-8: {e}"))
 }
 
-/// SG-1a scaffold extension: read `data v3_supported_dag_operators: List<OperatorSpec>`
-/// directly from `syntax.dag` source text because that body still lowers
-/// as `ValueBody::Unparsed` (same state `regen_tokenize` encountered).
-/// A trimmed view of `OperatorSpec` sufficient for regen
-/// cross-validation against `parse_tables.dag`.
+/// SG-1a scaffold extension: read operator projection data directly from
+/// `syntax.dag` source text because `dag_operators` still lowers as
+/// `ValueBody::Unparsed` (same state `regen_tokenize` encountered). A trimmed
+/// view of `OperatorSpec` is sufficient for regen cross-validation against
+/// `parse_tables.dag`.
 pub(crate) struct SharedOperatorSpec {
     pub left_bp: i64,
-    /// Variant name from the v3 projection's `binop` field, e.g.
+    /// Variant name from the external authority's `binop` field, e.g.
     /// `"Or"`, `"Add"`, `"Eq"`. Matches the leaf variant label
     /// inside the corresponding `OperatorKind` (see
     /// `operator_kind_binop_name`), which is the structural join
@@ -1075,14 +1074,16 @@ pub(crate) struct SharedOperatorSpec {
 }
 
 /// Returns a symbol → (left_bp, binop_name) map for the current v3-supported
-/// operator projection. Fails closed on malformed input. Dissolution trigger:
-/// when `v3_supported_dag_operators` lowers structurally, swap this extractor
-/// for a typed read — same lane as `regen_tokenize`'s
+/// operator projection by filtering external `dag_operators` with the explicit
+/// `v3_supported_dag_operators` symbol set. Fails closed on malformed input.
+/// Dissolution trigger: when `dag_operators` lowers structurally, swap this
+/// extractor for a typed read — same lane as `regen_tokenize`'s
 /// `assert_shared_syntax_raw_source_scaffold_still_required`.
 fn extract_v3_supported_operator_bps(
     source: &str,
 ) -> std::collections::BTreeMap<String, SharedOperatorSpec> {
-    let section = extract_balanced_section(source, "data v3_supported_dag_operators", '[', ']');
+    let supported_symbols = extract_v3_supported_operator_symbols(source);
+    let section = extract_balanced_section(source, "data dag_operators", '[', ']');
     let mut out = std::collections::BTreeMap::new();
     // Each entry is `OperatorSpec { symbol: "X", left_bp: N, right_bp: M, binop: Y, ... }`.
     // Parse sequentially: symbol (string) → left_bp (int) → binop (bare identifier).
@@ -1094,7 +1095,7 @@ fn extract_v3_supported_operator_bps(
         let after_sym = &rest[sym_idx + "symbol:".len()..];
         let quote_idx = after_sym
             .find('"')
-            .expect("missing string literal for `symbol` in `v3_supported_dag_operators`");
+            .expect("missing string literal for `symbol` in `dag_operators`");
         let (symbol, consumed) = parse_string_literal(&after_sym[quote_idx..]);
         let tail = &after_sym[quote_idx + consumed..];
 
@@ -1121,18 +1122,44 @@ fn extract_v3_supported_operator_bps(
             .unwrap_or(after_binop_trimmed.len());
         let binop_name = after_binop_trimmed[..ident_end].to_string();
 
+        if supported_symbols.contains(&symbol) {
+            assert!(
+                out.insert(
+                    symbol.clone(),
+                    SharedOperatorSpec {
+                        left_bp: bp,
+                        binop_name,
+                    },
+                )
+                .is_none(),
+                "duplicate `dag_operators` row for v3-supported symbol `{symbol}`"
+            );
+        }
+        rest = &after_binop_trimmed[ident_end..];
+    }
+    for symbol in supported_symbols {
         assert!(
-            out.insert(
-                symbol.clone(),
-                SharedOperatorSpec {
-                    left_bp: bp,
-                    binop_name,
-                },
-            )
-            .is_none(),
+            out.contains_key(&symbol),
+            "`v3_supported_dag_operators` symbol `{symbol}` is not present in external `dag_operators`"
+        );
+    }
+    out
+}
+
+fn extract_v3_supported_operator_symbols(source: &str) -> BTreeSet<String> {
+    let section = extract_balanced_section(source, "data v3_supported_dag_operators", '{', '}');
+    let mut out = BTreeSet::new();
+    let mut rest = section;
+    loop {
+        let Some(quote_idx) = rest.find('"') else {
+            break;
+        };
+        let (symbol, consumed) = parse_string_literal(&rest[quote_idx..]);
+        assert!(
+            out.insert(symbol.clone()),
             "duplicate `v3_supported_dag_operators` row for symbol `{symbol}`"
         );
-        rest = &after_binop_trimmed[ident_end..];
+        rest = &rest[quote_idx + consumed..];
     }
     out
 }

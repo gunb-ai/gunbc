@@ -767,6 +767,7 @@ fn primary_atom_rows_cover_exactly_the_tokens_parse_primary_atomic_arm() {
     );
 }
 
+#[derive(Clone)]
 struct SharedDagOperatorSpec {
     symbol: String,
     binop: Option<String>,
@@ -777,7 +778,21 @@ fn shared_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
 }
 
 fn v3_supported_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
-    dag_operator_specs(source, "data v3_supported_dag_operators")
+    let specs_by_symbol: std::collections::BTreeMap<_, _> = shared_dag_operator_specs(source)
+        .into_iter()
+        .map(|spec| (spec.symbol.clone(), spec))
+        .collect();
+    v3_supported_dag_operator_symbols(source)
+        .into_iter()
+        .map(|symbol| {
+            specs_by_symbol.get(&symbol).cloned().unwrap_or_else(|| {
+                panic!(
+                    "`v3_supported_dag_operators` symbol `{symbol}` is not present in external \
+                     `dag_operators`"
+                )
+            })
+        })
+        .collect()
 }
 
 fn dag_operator_specs(source: &str, anchor: &str) -> Vec<SharedDagOperatorSpec> {
@@ -799,6 +814,15 @@ fn dag_operator_specs(source: &str, anchor: &str) -> Vec<SharedDagOperatorSpec> 
             })
         })
         .collect()
+}
+
+fn v3_supported_dag_operator_symbols(source: &str) -> Vec<String> {
+    parse_map_string_keys(extract_balanced_section(
+        source,
+        "data v3_supported_dag_operators",
+        '{',
+        '}',
+    ))
 }
 
 fn token_kind_for_shared_dag_operator(symbol: &str) -> &'static str {
