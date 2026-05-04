@@ -6725,9 +6725,7 @@ fn anthropic_messages_request_body_json_matches_messages_wire_tags() {
                     },
                     AnthropicUserContentBlock::UserToolResultBlock {
                         tool_use_id: "toolu_01".to_string(),
-                        content: Some(AnthropicToolResultContent::ToolResultText {
-                            text: "15 degrees".to_string(),
-                        }),
+                        content: None,
                         is_error: Some(false),
                     },
                 ],
