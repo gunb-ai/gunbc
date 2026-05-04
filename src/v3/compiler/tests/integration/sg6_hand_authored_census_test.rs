@@ -156,6 +156,14 @@ fn sg6_bin_census_is_locked_to_expected_regen_shims() {
     // the tokenizer share. Either path retires `regen_tokenize.rs` and
     // shrinks the parallel shim set.
     let expected: BTreeSet<String> = [
+        // R3 row 85 / PB #1560 Gap 4 build-step shim: projects
+        // `MethodTemplateContract` Single-template rows into the
+        // ephemeral `.dag` source root consumed by v2 stage0
+        // regeneration. It is not a lens-style `Dag -> generated Rust`
+        // producer, so it cannot share `regen.dag`'s lens registry.
+        // Dissolution trigger: delete with the v2-retirement build-step
+        // consumer path once legacy v2 method-template reads are retired.
+        "emit_method_template_projection.rs",
         // R1C-E (T-Emit `.dag` `TestClaim` wrappers): irreducible host-shim
         // for the `ExecuteCommand` logical child that the `.dag` claim
         // invokes. Calls into `v3_compiler::r1c_e_gates::check_*` (single
