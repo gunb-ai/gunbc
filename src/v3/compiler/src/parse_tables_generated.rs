@@ -61,7 +61,6 @@ pub enum ItemDispatchKind {
     Import,
     Let,
     Module,
-    Service,
     Type,
 }
 
@@ -75,7 +74,6 @@ pub fn top_level_item_dispatch(kind: &TokenKind) -> Option<ItemDispatchKind> {
         TokenKind::KwImport => Some(ItemDispatchKind::Import),
         TokenKind::KwLet => Some(ItemDispatchKind::Let),
         TokenKind::KwModule => Some(ItemDispatchKind::Module),
-        TokenKind::KwService => Some(ItemDispatchKind::Service),
         TokenKind::KwType => Some(ItemDispatchKind::Type),
         _ => None,
     }
@@ -92,7 +90,6 @@ pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {
             | TokenKind::KwImport
             | TokenKind::KwLet
             | TokenKind::KwModule
-            | TokenKind::KwService
             | TokenKind::KwType
     )
 }
@@ -103,7 +100,6 @@ pub fn is_type_rhs_boundary_keyword(kind: &TokenKind) -> bool {
 /// `src/v3/compiler/parse_tables.dag`.
 pub fn soft_keyword_ident_spelling(kind: &TokenKind) -> Option<&'static str> {
     match kind {
-        TokenKind::KwService => Some("service"),
         TokenKind::KwType => Some("type"),
         _ => None,
     }
