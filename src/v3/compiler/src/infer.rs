@@ -32,9 +32,11 @@
 use std::collections::HashSet;
 
 use crate::dag::{
-    ArithmeticOp, ArrowBody, AtomPayload, Behavior, BindNode, BindNodeId, CardinalityBound, Dag,
-    Declaration, DeclarationId, Field, LiteralBits, Lookup, NominalOpacity, PhantomParameter,
-    PortId, PortState, TemplateArgument, TransformNode, TransformTarget, TypeConnective,
+    substrate_div_error_type_decl_suppressed_for_emit,
+    substrate_result_type_decl_suppressed_for_emit, ArithmeticOp, ArrowBody, AtomPayload, Behavior,
+    BindNode, BindNodeId, CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits,
+    Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
+    TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -4309,8 +4311,6 @@ fn resolve_field_project_targets(dag: &mut Dag) -> bool {
 }
 
 const WALK_DEPTH_LIMIT: usize = 32;
-const ERROR_PRIMITIVES_AUTHORITY_FILE: &str = "dsl/std/error_primitives.dag";
-
 /// §8.9 operator dispatch via structural algebra walk.
 ///
 /// Walks the LHS type's declaration chain (following `Instantiation`
@@ -4687,79 +4687,15 @@ fn substitute_receiver(
 }
 
 fn canonical_result_decl(dag: &Dag) -> Option<&Declaration> {
-    let mut matches = dag.declarations().iter().filter(|decl| {
-        decl.span.file == ERROR_PRIMITIVES_AUTHORITY_FILE
-            && substrate_result_decl_has_error_primitive_shape(dag, decl)
-    });
-    let result = matches.next()?;
-    if matches.next().is_some() {
-        return None;
-    }
-    Some(result)
-}
-
-fn substrate_result_decl_has_error_primitive_shape(dag: &Dag, decl: &Declaration) -> bool {
-    if decl.name.as_deref() != Some("Result") {
-        return false;
-    }
-    let [ok_param, err_param] = match decl.type_params.as_slice() {
-        [a, b] => [*a, *b],
-        _ => return false,
-    };
-    let ok_decl = dag.declaration(ok_param);
-    let err_decl = dag.declaration(err_param);
-    let ok_param_ok = matches!(
-        &ok_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "ok"
-    );
-    let err_param_ok = matches!(
-        &err_decl.connective,
-        TypeConnective::Atom(AtomPayload::TypeParam(name)) if name == "err"
-    );
-    if !ok_param_ok || !err_param_ok {
-        return false;
-    }
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        return false;
-    };
-    let Some(ok_field) = variants.iter().find(|v| v.label == "Ok") else {
-        return false;
-    };
-    let Some(err_field) = variants.iter().find(|v| v.label == "Err") else {
-        return false;
-    };
-    substrate_result_variant_payload_is_value_of(dag, ok_field.ty, ok_param)
-        && substrate_result_variant_payload_is_value_of(dag, err_field.ty, err_param)
-}
-
-fn substrate_result_variant_payload_is_value_of(
-    dag: &Dag,
-    payload_ty: DeclarationId,
-    type_param: DeclarationId,
-) -> bool {
-    let payload = dag.declaration(payload_ty);
-    let TypeConnective::Conj { children } = &payload.connective else {
-        return false;
-    };
-    children.len() == 1 && children[0].label == "value" && children[0].ty == type_param
+    dag.declarations()
+        .iter()
+        .find(|decl| substrate_result_type_decl_suppressed_for_emit(dag, decl))
 }
 
 fn canonical_div_error_decl(dag: &Dag) -> Option<&Declaration> {
-    let mut matches = dag.declarations().iter().filter(|decl| {
-        decl.span.file == ERROR_PRIMITIVES_AUTHORITY_FILE
-            && decl.name.as_deref() == Some("DivError")
-            && decl.type_params.is_empty()
-            && matches!(&decl.connective, TypeConnective::Disj { variants } if {
-                variants.len() == 2
-                    && variants.iter().any(|variant| variant.label == "DivideByZero")
-                    && variants.iter().any(|variant| variant.label == "Overflow")
-            })
-    });
-    let div_error = matches.next()?;
-    if matches.next().is_some() {
-        return None;
-    }
-    Some(div_error)
+    dag.declarations()
+        .iter()
+        .find(|decl| substrate_div_error_type_decl_suppressed_for_emit(dag, decl))
 }
 
 /// Dispatch-time invariant check on an `ExternalRealization` target:
@@ -6776,6 +6712,48 @@ mod bool_logical_operator_arrow_tests {
     }
 
     #[test]
+    fn arithmetic_division_canonical_result_and_diverror_are_structural_not_path_keyed() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let result = canonical_result_decl(&dag).expect("bootstrap Result").id;
+        let div_error = canonical_div_error_decl(&dag)
+            .expect("bootstrap DivError")
+            .id;
+
+        dag.declaration_mut(result).span.file = "renamed/std/errors.dag".to_string();
+        dag.declaration_mut(div_error).span.file = "renamed/std/errors.dag".to_string();
+
+        let resolved = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &TypeShape::new(int),
+        )
+        .expect("division must resolve through structural error primitives");
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(resolved.output.declaration).connective
+        else {
+            panic!("division output must remain an instantiation");
+        };
+
+        assert_eq!(*template, result);
+        assert_eq!(arguments.len(), 2);
+        assert_eq!(arguments[0].value, int);
+        assert_eq!(arguments[1].value, div_error);
+        assert_eq!(
+            canonical_result_decl(&dag).expect("structural Result").id,
+            result
+        );
+        assert_eq!(
+            canonical_div_error_decl(&dag)
+                .expect("structural DivError")
+                .id,
+            div_error
+        );
+    }
+
+    #[test]
     fn arithmetic_division_ignores_user_shadowed_result_carriers() {
         let mut dag = Dag::new();
         let int = dag.int_shape().expect("bootstrap Int").declaration;
@@ -6863,6 +6841,13 @@ mod bool_logical_operator_arrow_tests {
             nominal_opacity: None,
             span,
         });
+        assert!(
+            !substrate_div_error_type_decl_suppressed_for_emit(
+                &dag,
+                dag.declaration(shadow_div_error)
+            ),
+            "payload-bearing DivError twin must not match the canonical unit-variant fingerprint",
+        );
 
         let resolved = resolve_operator_arrow(
             &mut dag,
@@ -6888,6 +6873,200 @@ mod bool_logical_operator_arrow_tests {
             arguments[1].value,
             canonical_div_error_decl(&dag).expect("std DivError").id
         );
+    }
+
+    #[test]
+    fn arithmetic_division_prefers_bootstrap_error_primitives_over_exact_twins() {
+        let mut dag = Dag::new();
+        let int = dag.int_shape().expect("bootstrap Int").declaration;
+        let std_result = canonical_result_decl(&dag).expect("std Result").id;
+        let std_div_error = canonical_div_error_decl(&dag).expect("std DivError").id;
+        let span = synthetic_span();
+
+        let twin_ok = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_ok,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("ok".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_err = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_err,
+            name: None,
+            connective: TypeConnective::Atom(AtomPayload::TypeParam("err".to_string())),
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_ok_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_ok_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: twin_ok,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_err_payload = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_err_payload,
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "value".to_string(),
+                    ty: twin_err,
+                }],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_result = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_result,
+            name: Some("Result".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "Ok".to_string(),
+                        ty: twin_ok_payload,
+                    },
+                    Field {
+                        label: "Err".to_string(),
+                        ty: twin_err_payload,
+                    },
+                ],
+            },
+            type_params: vec![twin_ok, twin_err],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_divide_by_zero = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_divide_by_zero,
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_overflow = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_overflow,
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: span.clone(),
+        });
+        let twin_div_error = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id: twin_div_error,
+            name: Some("DivError".to_string()),
+            connective: TypeConnective::Disj {
+                variants: vec![
+                    Field {
+                        label: "DivideByZero".to_string(),
+                        ty: twin_divide_by_zero,
+                    },
+                    Field {
+                        label: "Overflow".to_string(),
+                        ty: twin_overflow,
+                    },
+                ],
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span,
+        });
+
+        assert!(substrate_result_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(twin_result)
+        ));
+        assert!(substrate_div_error_type_decl_suppressed_for_emit(
+            &dag,
+            dag.declaration(twin_div_error)
+        ));
+        assert_eq!(canonical_result_decl(&dag).expect("Result").id, std_result);
+        assert_eq!(
+            canonical_div_error_decl(&dag).expect("DivError").id,
+            std_div_error
+        );
+
+        let resolved = resolve_operator_arrow(
+            &mut dag,
+            OperatorKind::Arithmetic(ArithmeticOp::Div),
+            &TypeShape::new(int),
+        )
+        .expect("division must resolve through bootstrap error primitives");
+        let TypeConnective::Instantiation {
+            template,
+            arguments,
+        } = &dag.declaration(resolved.output.declaration).connective
+        else {
+            panic!("division output must remain an instantiation");
+        };
+        assert_eq!(*template, std_result);
+        assert_eq!(arguments[1].value, std_div_error);
+        assert_ne!(*template, twin_result);
+        assert_ne!(arguments[1].value, twin_div_error);
     }
 
     #[test]
