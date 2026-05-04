@@ -28,29 +28,39 @@ The dispatch named three audit options and three decision criteria:
 - Fails the dispatch's "no broad `MethodTemplateContract` row migration unless strictly required" guardrail: every existing row across three target lists would need to gain L6 cell facts, even though the only consumer is the Verification walker.
 - Adds a 5th / 6th field to a load-bearing emit-model carrier whose own dissolution scope (LanguageSpec rewrite) is already tracked. Co-locating verification-only fields here also forecloses a clean future split where the emit-model carrier dissolves but the L6 projection survives.
 
-### Option 2 — Sibling projection carrier keyed by `MethodRef` *(RECOMMENDED)*
+### Option 2 — Sibling projection carrier keyed by `MethodTemplateContractKey` *(RECOMMENDED)*
 
 A new `EmissionPathProjection` carrier consumed by the L6 walker only:
 
 ```dag
+// Typed row identity for `MethodTemplateContract` rows. The source row
+// identity is the pair `(list_target, dag_method)`: the same
+// `MethodRef` (e.g. `count_method`) appears once per target list, so
+// `MethodRef` alone is not a unique row key. The projection carrier
+// names that pair structurally rather than relying on a containing
+// list's name to supply the target half.
+type MethodTemplateContractKey {
+  target: ShapeATarget             // Rust | Python | Go (one half of the join key)
+  dag_method: MethodRef             // other half — matches MethodTemplateContract.dag_method
+}
+
 type EmissionPathProjection {
-  row_identity: MethodRef          // matches MethodTemplateContract.dag_method
-  cells: List<EmissionCell>        // multi-cell rows union; single-cell rows carry a one-element list
+  row_identity: MethodTemplateContractKey
+  cells: List<EmissionCell>         // multi-cell rows union; single-cell rows carry a one-element list
 }
 
 type EmissionCell {
-  connective: FormAxis             // mirrors v3_compiler::dag::TypeConnective discriminant
-  behavior: BehaviorAxis           // mirrors v3_compiler::dag::Behavior discriminant
-  target: ShapeATarget             // Rust | Python | Go
+  connective: FormAxis              // mirrors v3_compiler::dag::TypeConnective discriminant
+  behavior: BehaviorAxis            // mirrors v3_compiler::dag::Behavior discriminant
 }
 ```
 
-Stored in three cell-homogeneous-by-target lists (one per target) or a single combined list — see open sub-question §4.C.
+A single combined `emission_path_projections: List<EmissionPathProjection>` declaration; no per-target list partition.
 
 - Honors **C1**: zero changes to `MethodTemplateContract` rows. Authoring carriers stay clean; verification facts live on a verification-owned carrier.
-- Honors **C2**: every projection fact (`connective`, `behavior`, `target`) is a typed row-local field. The L6 walker reads each row directly — no list-name → cell prose, no template-string scan.
-- Honors **C3**: row population is Grounding's. The carrier ships empty in this slice (or with the trivial Phase 1 mapping if Director prefers); Grounding's CrossTarget-Meta lane owns the population PR and the `coverage.rs` walker conversion.
-- `MethodRef`-keyed lookup means Verification can dispatch per-`MethodTemplateContract` row by joining `dag_method` against `EmissionPathProjection.row_identity`. No string identity anywhere.
+- Honors **C2**: every projection fact (`target`, `dag_method`, `connective`, `behavior`) is a typed row-local field. The L6 walker reads each row directly — no list-name → cell prose, no template-string scan.
+- Honors **C3**: row population is Grounding's. The carrier ships empty in this slice; Grounding's CrossTarget-Meta lane owns the population PR and the `coverage.rs` walker conversion.
+- `MethodTemplateContractKey`-keyed lookup means Verification can dispatch per-`MethodTemplateContract` row by joining the row's `(list_target, dag_method)` pair against `EmissionPathProjection.row_identity`. The join is 1:1 with the source row identity; no fan-out filtering, no string identity anywhere.
 
 ### Option 3 — Grounding row-class refactor with cell-homogeneous lists
 
@@ -95,14 +105,15 @@ Recommendation: **(a)** for this slice; flag **(c)** as the correct dissolution 
 
 Recommendation: `List<EmissionCell>` per the sketch. Phase 1 rows declare a 1-element list; multi-cell rows do not need a different shape.
 
-### 4.C — `target` placement: row field or per-list partition
+### 4.C — `target` placement: row-identity key vs cell vs per-list partition
 
-Two shapes are reasonable:
+The `MethodTemplateContract` source row identity is the pair `(list_target, dag_method)` — the same `MethodRef` appears once per target list. Three shapes are coherent:
 
-- **(i)** `target` lives on each `EmissionCell` (recommended). One global `emission_path_projections: List<EmissionPathProjection>` list. The walker reads target from each cell, no list-name dispatch.
-- **(ii)** Three per-target lists `{rust,python,go}_emission_path_projections: List<EmissionPathProjection>` mirroring today's `MethodTemplateContract` row-list shape, with `EmissionCell { connective, behavior }` and target on the list name. Reintroduces the very list-name dispatch the projection is supposed to eliminate.
+- **(i)** `target` lives on `MethodTemplateContractKey` (the row identity tuple) (**recommended**). One global `emission_path_projections: List<EmissionPathProjection>` list. The walker reads `target` from each row's identity; the projection-row ↔ source-row join is 1:1. `EmissionCell` carries only `connective × behavior`.
+- **(ii)** `target` lives on each `EmissionCell` instead, with `row_identity: MethodRef` only. One global list, but a projection row aggregates cross-target cells under a single method name. Walker must filter cells by `cell.target == list_target` per source row — fan-out join, weaker structural match between projection rows and source rows.
+- **(iii)** Three per-target lists `{rust,python,go}_emission_path_projections: List<EmissionPathProjection>` mirroring today's `MethodTemplateContract` row-list shape, with `target` on the list name. Reintroduces the very list-name dispatch the projection is supposed to eliminate.
 
-Recommendation: **(i)**. The list name is no longer cell authority for any axis.
+Recommendation: **(i)**. The row-identity tuple is the structurally sufficient match for the source row identity (per #1634 review), 1:1 join semantics, and `target` is still a typed row-local fact (just on the key half of the row, not on each cell). The list name carries no axis authority.
 
 ### 4.D — Grounding scope on this slice
 
