@@ -863,7 +863,7 @@ mod tests {
     fn layer1_diagnostic_examples_in_declaration_order() -> Vec<Diagnostic> {
         let span = SourceSpan::new("layer1_kind_label_ratchets.v3", 0, 0);
         let fixes = Vec::new();
-        let ty = TypeShape::new(DeclarationId(0));
+        let ty = TypeShape::new(DeclarationId::test_raw(0));
         vec![
             Diagnostic::TokenizerError {
                 message: String::new(),
@@ -902,7 +902,7 @@ mod tests {
                 fixes: fixes.clone(),
             },
             Diagnostic::BranchConditionNotBool {
-                port: PortId(0),
+                port: PortId::test_raw(0),
                 actual_type: None,
                 span: span.clone(),
                 fixes: fixes.clone(),
@@ -922,7 +922,7 @@ mod tests {
                 fixes: fixes.clone(),
             },
             Diagnostic::NominalOpacityViolation {
-                declaration: DeclarationId(0),
+                declaration: DeclarationId::test_raw(0),
                 accessor: None,
                 span,
                 fixes,

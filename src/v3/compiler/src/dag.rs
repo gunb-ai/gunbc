@@ -146,6 +146,13 @@ impl PortId {
     }
 }
 
+#[cfg(test)]
+impl PortId {
+    pub(crate) const fn test_raw(raw: u32) -> Self {
+        Self(raw)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct DeclarationId(u32);
 
@@ -156,6 +163,13 @@ impl DeclarationId {
 
     pub fn raw(self) -> u32 {
         self.0
+    }
+}
+
+#[cfg(test)]
+impl DeclarationId {
+    pub(crate) const fn test_raw(raw: u32) -> Self {
+        Self(raw)
     }
 }
 
