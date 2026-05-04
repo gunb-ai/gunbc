@@ -553,13 +553,83 @@ pub mod evaluator {
             TransformTarget::Operator(OperatorKind::Logical(_)) => {
                 Err(EvalError::UnsupportedTransformTarget { kind: "Logical" })
             }
-            TransformTarget::FieldProject { .. } => Err(EvalError::UnsupportedTransformTarget {
-                kind: "FieldProject",
-            }),
-            TransformTarget::Callable(_) => {
-                Err(EvalError::UnsupportedTransformTarget { kind: "Callable" })
+            TransformTarget::FieldProject {
+                field_label,
+                field_child: _,
+            } => {
+                if operands.len() != 1 {
+                    return Err(EvalError::TransformArityMismatch {
+                        expected: 1,
+                        got: operands.len(),
+                    });
+                }
+                let carrier = &operands[0];
+                let Value::RecordValue(fields) = carrier else {
+                    return Err(EvalError::BadTransformOperands {
+                        reason: "FieldProject carrier must be a RecordValue",
+                    });
+                };
+                let Some(field) = fields.iter().find(|f| &f.label == field_label) else {
+                    return Err(EvalError::BadTransformOperands {
+                        reason: "FieldProject label not present on RecordValue carrier",
+                    });
+                };
+                Ok(field.value.clone())
+            }
+            TransformTarget::Callable(callee_decl) => {
+                let connective = &dag.declaration(*callee_decl).connective;
+                let crate::dag::TypeConnective::Arrow { body, .. } = connective else {
+                    return Err(EvalError::BadTransformOperands {
+                        reason: "Callable target declaration is not an Arrow type",
+                    });
+                };
+                let crate::dag::ArrowBody::UserDefined(bind_id) = body else {
+                    return Err(EvalError::UnsupportedTransformTarget {
+                        kind: "Callable (non-UserDefined body)",
+                    });
+                };
+                let bind_node_id = bind_id.node_id();
+                let crate::dag::Behavior::Bind(bind) = dag.node(bind_node_id) else {
+                    return Err(EvalError::MissingNode { node: bind_node_id });
+                };
+                let bind = bind.clone();
+                if operands.len() != bind.params.len() {
+                    return Err(EvalError::TransformArityMismatch {
+                        expected: bind.params.len(),
+                        got: operands.len(),
+                    });
+                }
+                let bindings: Vec<(PortId, Value)> = bind
+                    .params
+                    .iter()
+                    .copied()
+                    .zip(operands.into_iter())
+                    .collect();
+                state.push_frame(EvalFrame::empty());
+                let body_result = eval_callable_body_in_pushed_frame(
+                    dag, &bind, bindings, state, strategy,
+                );
+                let pop_result = state.pop_frame();
+                match (body_result, pop_result) {
+                    (Ok(value), Ok(_)) => Ok(value),
+                    (Err(err), _) => Err(err),
+                    (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+                }
             }
         }
+    }
+
+    fn eval_callable_body_in_pushed_frame(
+        dag: &Dag,
+        bind: &crate::dag::BindNode,
+        bindings: Vec<(PortId, Value)>,
+        state: &mut EvalStateStack<Value>,
+        strategy: &EvalStrategy,
+    ) -> Result<Value, EvalError> {
+        for (param, value) in bindings {
+            state.bind_top(param, value)?;
+        }
+        eval_port(dag, bind.value, state, strategy)
     }
 
     fn expect_int_literal(value: &Value) -> Result<i64, EvalError> {
@@ -1925,7 +1995,10 @@ pub mod evaluator {
         }
 
         #[test]
-        fn transform_field_project_unsupported_in_e3_slice() {
+        fn transform_field_project_non_record_carrier_fails_closed() {
+            // E6-G0c: FieldProject now executes; non-record carrier must
+            // fail closed with a typed BadTransformOperands rather than
+            // returning an unrelated value.
             let mut dag = Dag::new();
             let v = dag.push_value(LiteralBits::Int(1), span());
             let output = dag.push_transform(
@@ -1943,26 +2016,19 @@ pub mod evaluator {
 
             assert_eq!(
                 err,
-                EvalError::UnsupportedTransformTarget {
-                    kind: "FieldProject",
+                EvalError::BadTransformOperands {
+                    reason: "FieldProject carrier must be a RecordValue",
                 }
             );
         }
 
         #[test]
-        fn transform_callable_unsupported_in_e3_slice() {
-            // The subject is `eval_node`'s rejection of `Callable` transform
-            // targets — the specific declaration is incidental; the test
-            // just needs *some* declaration whose `callable_runtime_arity`
-            // resolves to `None` (so the 0-input form is accepted at builder
-            // time). T-Numeric-Construction Slice 3 pivoted `Int` to
-            // `AbelianGroup<GroupCompletion<Nat>>` (direct Instantiation,
-            // arity = 3 from AbelianGroup's Conj children), and `Int64` is
-            // an Instantiation too (`OrderedRing<Word64>`). `Bool` is a
-            // `Disj` declaration — `callable_runtime_arity(Bool)` returns
-            // `None`, so the builder accepts the 0-input form regardless of
-            // the numeric construction-chain shape. Stable choice that
-            // doesn't drift with future numeric-substrate edits.
+        fn transform_callable_non_arrow_decl_fails_closed() {
+            // E6-G0c: Callable now executes for Arrow-bodied user
+            // functions; a non-Arrow declaration (e.g., Bool's Disj
+            // connective) must fail closed with a typed
+            // BadTransformOperands rather than the prior blanket
+            // UnsupportedTransformTarget.
             let mut dag = Dag::new();
             let target_decl = dag.declaration_by_name("Bool").expect("Bool").id;
             let output = dag.push_transform(TransformTarget::Callable(target_decl), vec![], span());
@@ -1973,7 +2039,9 @@ pub mod evaluator {
 
             assert_eq!(
                 err,
-                EvalError::UnsupportedTransformTarget { kind: "Callable" }
+                EvalError::BadTransformOperands {
+                    reason: "Callable target declaration is not an Arrow type",
+                }
             );
         }
 
@@ -2059,6 +2127,182 @@ pub mod evaluator {
                 EvalError::FrameError(EvalFrameError::DuplicateBinding { port: param })
             );
             assert_eq!(state.frames_outer_to_inner().len(), 1);
+        }
+
+        // ---- E6-G0c: Callable / FieldProject execution ----
+
+        fn alloc_arrow_decl_with_bind(
+            dag: &mut Dag,
+            bind_node: NodeId,
+            arity: usize,
+        ) -> DeclarationId {
+            // Wrap an existing Bind body in an Arrow declaration so the
+            // evaluator's Callable arm can find it via
+            // `dag.declaration(decl).connective`. `arity` matches the
+            // bind's parameter count; `inputs` holds `arity` Int decls
+            // so the builder's `callable_runtime_arity` agrees with the
+            // operand count at the call site.
+            let int_decl = dag.int_shape().expect("Int decl in bootstrap").declaration;
+            let bind_id =
+                crate::dag::BindNodeId::from_bind_node(dag, bind_node).expect("bind node id");
+            let id = dag.alloc_declaration_id();
+            dag.push_declaration(crate::dag::Declaration {
+                id,
+                name: Some("user_callable".to_string()),
+                connective: crate::dag::TypeConnective::Arrow {
+                    inputs: vec![int_decl; arity],
+                    output: int_decl,
+                    body: crate::dag::ArrowBody::UserDefined(bind_id),
+                },
+                type_params: Vec::new(),
+                phantom_params: Vec::new(),
+                meta_tag: None,
+                specialization_parent: None,
+                inhabits: None,
+                value_body: None,
+                refinement: None,
+                nominal_opacity: None,
+                span: span(),
+            });
+            id
+        }
+
+        #[test]
+        fn transform_field_project_returns_named_field_value() {
+            // Lift the RecordValue carrier directly into the caller frame
+            // — the FieldProject arm reads from the projected carrier's
+            // Value shape, not from a Record-lowering port path.
+            let mut dag = Dag::new();
+            let carrier_port = dag.alloc_port(None);
+            let carrier_value = Value::RecordValue(vec![
+                crate::evaluator::NamedField {
+                    label: "x".to_string(),
+                    value: Value::LiteralValue(LiteralBits::Int(7)),
+                },
+                crate::evaluator::NamedField {
+                    label: "y".to_string(),
+                    value: Value::LiteralValue(LiteralBits::Int(11)),
+                },
+            ]);
+            let frame =
+                EvalFrame::from_bindings([(carrier_port, carrier_value)]).expect("caller frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let output = dag.push_transform(
+                TransformTarget::FieldProject {
+                    field_label: "y".to_string(),
+                    field_child: None,
+                },
+                vec![carrier_port],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+
+            let value =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect("y projects");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
+        }
+
+        #[test]
+        fn transform_field_project_missing_label_fails_closed() {
+            let mut dag = Dag::new();
+            let carrier_port = dag.alloc_port(None);
+            let carrier_value = Value::RecordValue(vec![crate::evaluator::NamedField {
+                label: "only".to_string(),
+                value: Value::LiteralValue(LiteralBits::Int(1)),
+            }]);
+            let frame =
+                EvalFrame::from_bindings([(carrier_port, carrier_value)]).expect("caller frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let output = dag.push_transform(
+                TransformTarget::FieldProject {
+                    field_label: "missing".to_string(),
+                    field_child: None,
+                },
+                vec![carrier_port],
+                span(),
+            );
+            let entry = node_for_port(&dag, output);
+
+            let err =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect_err("missing label");
+
+            assert_eq!(
+                err,
+                EvalError::BadTransformOperands {
+                    reason: "FieldProject label not present on RecordValue carrier",
+                }
+            );
+        }
+
+        // (FieldProject / Callable arity mismatches are unrepresentable
+        // at construction: `Dag::push_transform`'s builder asserts arity
+        // matches `field_child`/`callable_runtime_arity`. The runtime
+        // arity guards in the evaluator are defense-in-depth for future
+        // builders that bypass that assertion; they are not exercisable
+        // through the standard construction path. No runtime-only arity
+        // tests here.)
+
+        #[test]
+        fn transform_callable_executes_user_function_body() {
+            // E6-G0c positive: build `fn user_callable(n) = n + n` as an
+            // Arrow declaration with UserDefined body. Invoke through
+            // TransformTarget::Callable with operand 21; expect 42.
+            let mut dag = Dag::new();
+            let param = dag.alloc_port(None);
+            let two_n = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Add)),
+                vec![param, param],
+                span(),
+            );
+            let bind_node = dag.push_bind("user_callable", two_n, vec![param], span());
+            let callee_decl = alloc_arrow_decl_with_bind(&mut dag, bind_node, /* arity */ 1);
+            let twenty_one = dag.push_value(LiteralBits::Int(21), span());
+            let call_output = dag.push_transform(
+                TransformTarget::Callable(callee_decl),
+                vec![twenty_one],
+                span(),
+            );
+            let entry = node_for_port(&dag, call_output);
+            let mut state = empty_state();
+
+            let value =
+                eval_node(&dag, entry, &mut state, &eager_strategy()).expect("user callable");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(42)));
+            assert_eq!(state.frames_outer_to_inner().len(), 1, "frame popped");
+        }
+
+        #[test]
+        fn transform_callable_evaluates_inputs_left_to_right() {
+            // Build `fn sub(a, b) = a - b` and invoke `sub(10, 3)` →
+            // expect 7. The argument-evaluation order is left-to-right;
+            // Sub is non-commutative, so a swap would surface a swap to
+            // -7. Pinning the orientation is enough for a left-first
+            // ordering check at this layer.
+            let mut dag = Dag::new();
+            let a = dag.alloc_port(None);
+            let b = dag.alloc_port(None);
+            let body = dag.push_transform(
+                TransformTarget::Operator(OperatorKind::Arithmetic(ArithmeticOp::Sub)),
+                vec![a, b],
+                span(),
+            );
+            let bind_node = dag.push_bind("sub", body, vec![a, b], span());
+            let callee_decl = alloc_arrow_decl_with_bind(&mut dag, bind_node, /* arity */ 2);
+            let ten = dag.push_value(LiteralBits::Int(10), span());
+            let three = dag.push_value(LiteralBits::Int(3), span());
+            let call_output = dag.push_transform(
+                TransformTarget::Callable(callee_decl),
+                vec![ten, three],
+                span(),
+            );
+            let entry = node_for_port(&dag, call_output);
+            let mut state = empty_state();
+
+            let value = eval_node(&dag, entry, &mut state, &eager_strategy()).expect("sub");
+
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(7)));
         }
 
         #[test]
