@@ -5106,14 +5106,7 @@ fn lower_fn_item_expr_body(
                 },
             );
             (err_port, err_port)
-        } else if !descent_provable(
-            body,
-            dag,
-            param_decl_inputs[0],
-            name,
-            &params[0].name,
-            &HashMap::new(),
-            symbols,
+        } else if !descent_provable(body, dag, param_decl_inputs[0], name, &params[0].name, &HashMap::new(, symbols),
         ) {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
@@ -6138,37 +6131,6 @@ fn resolve_field_value_reference(
     walk_structural_to_reference(fields, segments)
 }
 
-/// Prereq-X1.a: resolve a `PathCall.segments` slice to a leaf
-/// top-level function `DeclarationId`. Single resolution authority
-/// shared by `is_recursive`, `descent_provable`, the
-/// `ClusterDescentChecker` arm, `collect_recursive_callees`, and the
-/// `lower_expr` X1.a arm — so all five agree by construction.
-///
-/// Returns `None` when the head is not a top-level symbol, the head
-/// declaration has no compile-time value body, the path leaf is not a
-/// `FieldValue::Reference`, or the segments traverse a non-structural
-/// value body. Non-callable leaves are accepted at this layer; the
-/// lowerer enforces the Arrow check separately.
-fn resolve_path_to_function_decl(
-    segments: &[String],
-    dag: &Dag,
-    symbols: &HashMap<String, DeclarationId>,
-) -> Option<DeclarationId> {
-    let head = segments.first()?;
-    // Look up the head in the caller-supplied `symbols` map first
-    // (lowerer / is_recursive / descent_provable have the full
-    // top-level symbol table), then fall back to
-    // `Dag::declaration_by_name` so callers with narrower maps
-    // (e.g. `compute_mutually_recursive`'s `function_symbols`-only
-    // map) can still resolve `data`-binding heads.
-    let head_decl = match symbols.get(head).copied() {
-        Some(id) => id,
-        None => dag.declaration_by_name(head)?.id,
-    };
-    let value_body = dag.declaration(head_decl).value_body.as_ref()?;
-    resolve_field_value_reference(value_body, &segments[1..])
-}
-
 fn walk_structural_to_reference(
     fields: &[(String, crate::dag::FieldValue)],
     segments: &[String],
@@ -6996,28 +6958,6 @@ fn lower_expr(
                     },
                 );
             };
-            // Verify the resolved leaf is callable (Arrow). A
-            // FieldValue::Reference to a non-callable declaration
-            // (e.g., a typed-but-non-Arrow data binding referenced as
-            // a field) must produce a typed non-callable diagnostic
-            // here rather than relying on the synthetic Call lowerer
-            // to surface something ambiguous downstream.
-            if !declaration_is_callable(dag, callee_decl_id, 0) {
-                for arg in args {
-                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
-                }
-                return unresolved_port(
-                    dag,
-                    Diagnostic::ResolveError {
-                        name: format!(
-                            "dotted path `{}` resolves to a non-callable declaration; X1.a static call-on-field-access requires the leaf to reference a top-level function (Arrow type)",
-                            segments.join(".")
-                        ),
-                        span: span.clone(),
-                        fixes: Vec::new(),
-                    },
-                );
-            }
             let callee_name = match dag.declaration(callee_decl_id).name.clone() {
                 Some(n) => n,
                 None => {
@@ -7044,14 +6984,14 @@ fn lower_expr(
                 args: args.clone(),
                 span: span.clone(),
             };
-            lower_expr(
+            return lower_expr(
                 &synthetic,
                 dag,
                 scope,
                 callable_scope,
                 symbols,
                 expected_decl,
-            )
+            );
         }
         SurfaceExpr::Map { span, .. } => {
             // Map literals are not lowerable as expressions in M1(2.8) —
@@ -7540,8 +7480,7 @@ fn is_recursive(
             if target == self_name {
                 return true;
             }
-            args.iter()
-                .any(|a| is_recursive(a, self_name, dag, symbols))
+            args.iter().any(|a| is_recursive(a, self_name, dag, symbols))
         }
         SurfaceExpr::VariantRecord { fields, .. } => fields
             .iter()
@@ -7581,13 +7520,20 @@ fn is_recursive(
             // a recursive self-call (mutual or direct via data-binding
             // indirection) and must trigger the decidability gate
             // (INVARIANTS P4).
-            if let Some(leaf_decl) = resolve_path_to_function_decl(segments, dag, symbols) {
-                if dag.declaration(leaf_decl).name.as_deref() == Some(self_name) {
-                    return true;
+            if let Some(head) = segments.first() {
+                if let Some(&head_decl) = symbols.get(head) {
+                    if let Some(value_body) = dag.declaration(head_decl).value_body.as_ref() {
+                        if let Some(leaf_decl) =
+                            resolve_field_value_reference(value_body, &segments[1..])
+                        {
+                            if dag.declaration(leaf_decl).name.as_deref() == Some(self_name) {
+                                return true;
+                            }
+                        }
+                    }
                 }
             }
-            args.iter()
-                .any(|a| is_recursive(a, self_name, dag, symbols))
+            args.iter().any(|a| is_recursive(a, self_name, dag, symbols))
         }
     }
 }
@@ -7664,22 +7610,13 @@ fn descent_provable(
                                 self_name,
                                 first_param,
                                 bindings,
-                                symbols,
                             )
                         })
                     }
                 }
             } else {
                 args.iter().all(|a| {
-                    descent_provable(
-                        a,
-                        dag,
-                        first_param_decl,
-                        self_name,
-                        first_param,
-                        bindings,
-                        symbols,
-                    )
+                    descent_provable(a, dag, first_param_decl, self_name, first_param, bindings, symbols)
                 })
             }
         }
@@ -7691,20 +7628,11 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             )
         }),
-        SurfaceExpr::Operator { args, .. } => args.iter().all(|a| {
-            descent_provable(
-                a,
-                dag,
-                first_param_decl,
-                self_name,
-                first_param,
-                bindings,
-                symbols,
-            )
-        }),
+        SurfaceExpr::Operator { args, .. } => args
+            .iter()
+            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings, symbols)),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -7718,7 +7646,6 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             ) && descent_provable(
                 then_branch,
                 dag,
@@ -7726,7 +7653,6 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             ) && descent_provable(
                 else_branch,
                 dag,
@@ -7734,7 +7660,6 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             )
         }
         SurfaceExpr::Match {
@@ -7747,7 +7672,6 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             ) {
                 return false;
             }
@@ -7784,7 +7708,6 @@ fn descent_provable(
                     self_name,
                     first_param,
                     &arm_bindings,
-                    symbols,
                 )
             })
         }
@@ -7795,7 +7718,6 @@ fn descent_provable(
             self_name,
             first_param,
             bindings,
-            symbols,
         ),
         SurfaceExpr::Record { fields, .. } => fields.iter().all(|f| {
             descent_provable(
@@ -7805,7 +7727,6 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             )
         }),
         SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
@@ -7816,7 +7737,6 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             )
         }),
         SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
@@ -7827,52 +7747,11 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
-                symbols,
             )
         }),
-        SurfaceExpr::PathCall { segments, args, .. } => {
-            // X1.a static path-call: if the resolved leaf decl name
-            // equals `self_name`, this is a recursive self-call via
-            // data-binding indirection. Apply the same descent rule
-            // as `Call`: first arg must be strictly smaller, all
-            // other args descent-provable. Otherwise treat as
-            // non-recursive — recurse into args only.
-            let path_resolves_to_self = resolve_path_to_function_decl(segments, dag, symbols)
-                .is_some_and(|leaf| dag.declaration(leaf).name.as_deref() == Some(self_name));
-            if path_resolves_to_self {
-                match args.first() {
-                    None => false,
-                    Some(first_arg) => {
-                        if !is_strictly_smaller(first_arg, first_param, bindings) {
-                            return false;
-                        }
-                        args.iter().skip(1).all(|a| {
-                            descent_provable(
-                                a,
-                                dag,
-                                first_param_decl,
-                                self_name,
-                                first_param,
-                                bindings,
-                                symbols,
-                            )
-                        })
-                    }
-                }
-            } else {
-                args.iter().all(|a| {
-                    descent_provable(
-                        a,
-                        dag,
-                        first_param_decl,
-                        self_name,
-                        first_param,
-                        bindings,
-                        symbols,
-                    )
-                })
-            }
-        }
+        SurfaceExpr::PathCall { args, .. } => args
+            .iter()
+            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings, symbols)),
     }
 }
 
@@ -8030,13 +7909,7 @@ fn compute_mutually_recursive(
         let mut callees = HashSet::new();
         let mut shadowed: HashSet<String> =
             info.params.iter().map(|param| param.name.clone()).collect();
-        collect_recursive_callees(
-            info.body,
-            &function_symbols,
-            dag,
-            &mut shadowed,
-            &mut callees,
-        );
+        collect_recursive_callees(info.body, &function_symbols, &mut shadowed, &mut callees);
         let mut sorted_callees: Vec<DeclarationId> = callees.into_iter().collect();
         sorted_callees.sort_by_key(|callee| order_index.get(callee).copied().unwrap_or(usize::MAX));
         calls.insert(*decl_id, sorted_callees);
@@ -8404,30 +8277,7 @@ impl ClusterDescentChecker<'_> {
             SurfaceExpr::Map { entries, .. } => entries
                 .iter()
                 .all(|entry| self.expr(&entry.value, bindings, shadowed)),
-            SurfaceExpr::PathCall { segments, args, .. } => {
-                // X1.a static path-call: resolve segments to a leaf
-                // top-level function decl. If the leaf is in this
-                // cluster's recursive-callee set, apply the same
-                // assigned-slot strict-descent check as the `Call` arm.
-                // Without this, mutual recursion via `data` indirection
-                // (e.g. `data fns: Fns = { a: f, b: g }; fn f(x) =
-                // fns.b(x); fn g(x) = fns.a(x)`) bypasses the cluster
-                // descent gate (P4).
-                if let Some(callee_decl) =
-                    resolve_path_to_function_decl(segments, self.dag, self.function_symbols)
-                {
-                    if self.recursive_callees.contains(&callee_decl) {
-                        let Some(&callee_slot) = self.assignment.get(&callee_decl) else {
-                            return false;
-                        };
-                        let Some(callee_arg) = args.get(callee_slot) else {
-                            return false;
-                        };
-                        if !is_strictly_smaller(callee_arg, self.current_param, bindings) {
-                            return false;
-                        }
-                    }
-                }
+            SurfaceExpr::PathCall { args, .. } => {
                 args.iter().all(|arg| self.expr(arg, bindings, shadowed))
             }
         }
@@ -8437,7 +8287,6 @@ impl ClusterDescentChecker<'_> {
 fn collect_recursive_callees(
     expr: &SurfaceExpr,
     function_symbols: &HashMap<String, DeclarationId>,
-    dag: &Dag,
     shadowed: &mut HashSet<String>,
     out: &mut HashSet<DeclarationId>,
 ) {
@@ -8450,17 +8299,17 @@ fn collect_recursive_callees(
                 }
             }
             for a in args {
-                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
+                collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::VariantRecord { fields, .. } => {
             for field in fields {
-                collect_recursive_callees(&field.value, function_symbols, dag, shadowed, out);
+                collect_recursive_callees(&field.value, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::Operator { args, .. } => {
             for a in args {
-                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
+                collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::If {
@@ -8469,58 +8318,45 @@ fn collect_recursive_callees(
             else_branch,
             ..
         } => {
-            collect_recursive_callees(cond, function_symbols, dag, shadowed, out);
-            collect_recursive_callees(then_branch, function_symbols, dag, shadowed, out);
-            collect_recursive_callees(else_branch, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(cond, function_symbols, shadowed, out);
+            collect_recursive_callees(then_branch, function_symbols, shadowed, out);
+            collect_recursive_callees(else_branch, function_symbols, shadowed, out);
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            collect_recursive_callees(scrutinee, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(scrutinee, function_symbols, shadowed, out);
             for arm in arms {
                 let mut arm_shadowed = shadowed.clone();
                 for binding in pattern_binding_names(&arm.pattern) {
                     arm_shadowed.insert(binding.to_string());
                 }
-                collect_recursive_callees(&arm.body, function_symbols, dag, &mut arm_shadowed, out);
+                collect_recursive_callees(&arm.body, function_symbols, &mut arm_shadowed, out);
             }
         }
         SurfaceExpr::Lambda { params, body, .. } => {
             let mut lambda_shadowed = shadowed.clone();
             lambda_shadowed.extend(params.iter().cloned());
-            collect_recursive_callees(body, function_symbols, dag, &mut lambda_shadowed, out)
+            collect_recursive_callees(body, function_symbols, &mut lambda_shadowed, out)
         }
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
-                collect_recursive_callees(&f.value, function_symbols, dag, shadowed, out);
+                collect_recursive_callees(&f.value, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::List { elements, .. } => {
             for element in elements {
-                collect_recursive_callees(element, function_symbols, dag, shadowed, out);
+                collect_recursive_callees(element, function_symbols, shadowed, out);
             }
         }
         SurfaceExpr::Map { entries, .. } => {
             for entry in entries {
-                collect_recursive_callees(&entry.value, function_symbols, dag, shadowed, out);
+                collect_recursive_callees(&entry.value, function_symbols, shadowed, out);
             }
         }
-        SurfaceExpr::PathCall { segments, args, .. } => {
-            // X1.a static path-call: resolve segments through the head's
-            // `data` ValueBody to a leaf `FieldValue::Reference(decl_id)`
-            // and insert that decl into the recursive-callee set. Without
-            // this, mutual recursion via a data-binding indirection
-            // bypasses the recursive-edge graph (P4).
-            let head_shadowed = segments.first().is_some_and(|head| shadowed.contains(head));
-            if !head_shadowed {
-                if let Some(leaf_decl) =
-                    resolve_path_to_function_decl(segments, dag, function_symbols)
-                {
-                    out.insert(leaf_decl);
-                }
-            }
+        SurfaceExpr::PathCall { args, .. } => {
             for a in args {
-                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
+                collect_recursive_callees(a, function_symbols, shadowed, out);
             }
         }
     }
