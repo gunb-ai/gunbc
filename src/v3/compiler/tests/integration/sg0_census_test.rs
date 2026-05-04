@@ -208,8 +208,8 @@ const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[
     "src/v3/compiler/src/diagnostics.rs",
     "src/v3/compiler/src/dimension.rs",
     "src/v3/compiler/src/emit.rs",
-    // CollectionOps `fold_contract` → `MethodTemplateContract` identity gate (PR #1577).
-    "src/v3/compiler/src/emit/fold_method_contract.rs",
+    // CollectionOps `*_contract` → `MethodTemplateContract` identity gate (PR #1577 / #1602).
+    "src/v3/compiler/src/emit/collection_ops_method_contract.rs",
     "src/v3/compiler/src/emit/python_target.rs",
     "src/v3/compiler/src/emit/rust_target.rs",
     "src/v3/compiler/src/emit_rust.rs",

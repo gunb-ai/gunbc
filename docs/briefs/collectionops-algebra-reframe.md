@@ -50,15 +50,17 @@ High confidence first (direct **FreeMonoid** hits, arity/shape already aligned w
 
 ## Emitter contract
 
-At index-build time the emitter **resolves** `fold_contract: DeclarationRef` → `MethodTemplateContract` value body → **extracts** the `emit_template` `SingleTemplate` string for the fold site (fail-closed if higher-order shape appears where a single template is required today).
+At index-build time the emitter **resolves** each `CollectionOps.*_contract: DeclarationRef` → `MethodTemplateContract` value body → **extracts** the `emit_template` `SingleTemplate` string for that site (fail-closed if a higher-order shape appears where a single template is required today).
 
-Runtime render sites (`ListFold`, Python callable fold) use that resolved template; the old **`fold: String` field on `emit_model.CollectionOps` is deleted**.
+Runtime render sites use those resolved templates; the old **opaque `String` fields** on `emit_model.CollectionOps` for migrated operations are deleted in favor of contract refs.
 
 ### `%Q` vs `placeholder_convention` (Rust today)
 
 The **Rust** emitter applies **`template.replace("%Q", "\"")`** when loading **any** syntax or contract template string that came through the substrate (same path as legacy `CollectionOps` string fields). **`%Q`** is the v3 tokenizer’s stand-in for a literal double-quote inside a `.dag` string literal (see `src/v3/spec/rust.dag` header comment on `{quote}` / `%Q`). It is **not** declared on `MethodTemplateContract` rows today — it is an **emitter-side decoding** step for Rust-shaped carriers, not a second semantic axis.
 
 **Next slices:** either keep documenting `%Q` here (and in any new contract rows that use it) as long as the convention stays Rust-local, or **lift** quote-escaping into a first-class substrate fact (e.g. extend `placeholder_convention` or template-segment substrate) if Python/Go need the same escape channel from shared contract literals. Until then, any new `MethodTemplateContract` text consumed by `rust_target` should treat `%Q` like existing `LanguageSpec` templates.
+
+**Phase-2 receipt (concat / length / is_empty contracts, PR #1602):** lifting `%Q` into `placeholder_convention` (or another substrate fact) stays **deferred** — Python/Go `MethodTemplateContract` literals added for those fields do not use `%Q`; only `rust_target`'s `method_contract_single_emit_template_string` applies the Rust-local decode. Revisit when a **shared** cross-target contract literal needs escaped quotes.
 
 ## References
 

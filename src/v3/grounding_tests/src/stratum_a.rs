@@ -801,8 +801,8 @@ fn assert_expected_row_count(
 /// [`v3_compiler::generated_full_bootstrap_dag`] runs produce **bit-identical** digests per
 /// list (routing projection is a pure function of the embedded snapshot).
 ///
-/// Also asserts Rust/Python/Go `CollectionOps.fold_contract` wiring to the named
-/// `MethodTemplateContract` carriers for `fold_method` (list-external authority).
+/// Also asserts Rust/Python/Go `CollectionOps.{concat,length,is_empty,fold}_contract` wiring to the
+/// named `MethodTemplateContract` carriers (list-external authority; `is_empty_contract` pins `length_method`).
 pub fn verify_stratum_a_lockstep_all_targets() -> Result<(), GroundingTestsDiagnostic> {
     let bootstrap_a = v3_compiler::generated_full_bootstrap_dag();
     let bootstrap_b = v3_compiler::generated_full_bootstrap_dag();
@@ -828,7 +828,7 @@ pub fn verify_stratum_a_lockstep_all_targets() -> Result<(), GroundingTestsDiagn
             });
         }
     }
-    verify_language_spec_fold_contract_wiring(&bootstrap_a)?;
+    verify_language_spec_collection_ops_contract_wiring(&bootstrap_a)?;
     Ok(())
 }
 
@@ -1008,10 +1008,10 @@ mod stratum_a_tests {
     }
 
     #[test]
-    fn stratum_a_language_spec_fold_contract_wiring_ok() {
+    fn stratum_a_language_spec_collection_ops_contract_wiring_ok() {
         let dag = generated_full_bootstrap_dag();
-        super::verify_language_spec_fold_contract_wiring(&dag)
-            .unwrap_or_else(|e| panic!("fold_contract witness: {e}"));
+        super::verify_language_spec_collection_ops_contract_wiring(&dag)
+            .unwrap_or_else(|e| panic!("CollectionOps contract witness: {e}"));
     }
 
     #[test]
