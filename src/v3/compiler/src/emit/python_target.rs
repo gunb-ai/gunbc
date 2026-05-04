@@ -349,18 +349,18 @@ impl PythonIndexes {
             )?,
             concat: {
                 let cfields = structural_fields_for_decl(dag, collections)?;
-                let concat_method_decl = dag.declaration_by_name("concat_method").ok_or(
-                    EmitPythonError::MalformedSpec {
-                        declaration: collections,
-                        detail: "internal: concat_method missing from std.methods registry",
-                    },
-                )?;
+                let concat_method_decl =
+                    dag.concat_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: concat_method missing from std.methods registry",
+                        })?;
                 let id = require_field_decl_ref(cfields, "concat_contract", collections)?;
                 require_method_template_contract_dag_method(
                     dag,
                     id,
                     "concat_contract",
-                    concat_method_decl.id,
+                    concat_method_decl,
                 )
                 .map_err(|detail| EmitPythonError::MalformedSpec {
                     declaration: id,
@@ -370,18 +370,18 @@ impl PythonIndexes {
             },
             length: {
                 let cfields = structural_fields_for_decl(dag, collections)?;
-                let length_method_decl = dag.declaration_by_name("length_method").ok_or(
-                    EmitPythonError::MalformedSpec {
-                        declaration: collections,
-                        detail: "internal: length_method missing from std.methods registry",
-                    },
-                )?;
+                let length_method_decl =
+                    dag.length_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: length_method missing from std.methods registry",
+                        })?;
                 let id = require_field_decl_ref(cfields, "length_contract", collections)?;
                 require_method_template_contract_dag_method(
                     dag,
                     id,
                     "length_contract",
-                    length_method_decl.id,
+                    length_method_decl,
                 )
                 .map_err(|detail| EmitPythonError::MalformedSpec {
                     declaration: id,
@@ -391,18 +391,18 @@ impl PythonIndexes {
             },
             is_empty: {
                 let cfields = structural_fields_for_decl(dag, collections)?;
-                let is_empty_method_decl = dag.declaration_by_name("is_empty_method").ok_or(
-                    EmitPythonError::MalformedSpec {
-                        declaration: collections,
-                        detail: "internal: is_empty_method missing from std.methods registry",
-                    },
-                )?;
+                let is_empty_method_decl =
+                    dag.is_empty_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: is_empty_method missing from std.methods registry",
+                        })?;
                 let id = require_field_decl_ref(cfields, "is_empty_contract", collections)?;
                 require_method_template_contract_dag_method(
                     dag,
                     id,
                     "is_empty_contract",
-                    is_empty_method_decl.id,
+                    is_empty_method_decl,
                 )
                 .map_err(|detail| EmitPythonError::MalformedSpec {
                     declaration: id,
@@ -412,18 +412,18 @@ impl PythonIndexes {
             },
             fold: {
                 let cfields = structural_fields_for_decl(dag, collections)?;
-                let fold_method_decl = dag.declaration_by_name("fold_method").ok_or(
-                    EmitPythonError::MalformedSpec {
-                        declaration: collections,
-                        detail: "internal: fold_method missing from std.methods registry",
-                    },
-                )?;
+                let fold_method_decl =
+                    dag.fold_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: fold_method missing from std.methods registry",
+                        })?;
                 let fold_contract = require_field_decl_ref(cfields, "fold_contract", collections)?;
                 require_method_template_contract_dag_method(
                     dag,
                     fold_contract,
                     "fold_contract",
-                    fold_method_decl.id,
+                    fold_method_decl,
                 )
                 .map_err(|detail| EmitPythonError::MalformedSpec {
                     declaration: fold_contract,
@@ -1928,14 +1928,27 @@ fn require_memory_model(
             detail: "MemoryModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("ValueOnly", MemoryModelBinding::ValueOnly),
-        ("GarbageCollected", MemoryModelBinding::GarbageCollected),
-        ("RefCounted", MemoryModelBinding::RefCounted),
-        ("OwnershipBased", MemoryModelBinding::OwnershipBased),
+    let variants = dag.emit_model_variants();
+    let memory_variants = [
+        (
+            variants.memory_model.value_only,
+            MemoryModelBinding::ValueOnly,
+        ),
+        (
+            variants.memory_model.garbage_collected,
+            MemoryModelBinding::GarbageCollected,
+        ),
+        (
+            variants.memory_model.ref_counted,
+            MemoryModelBinding::RefCounted,
+        ),
+        (
+            variants.memory_model.ownership_based,
+            MemoryModelBinding::OwnershipBased,
+        ),
     ];
-    for (label, binding) in variants {
-        let variant_id = named_variant_id(dag, "MemoryModel", label)?;
+    for (variant_id, binding) in memory_variants {
+        let variant_id = variant_id.ok_or(EmitPythonError::MissingMeta("MemoryModel variant"))?;
         if constructor == variant_id {
             return Ok(binding);
         }
@@ -1961,12 +1974,19 @@ fn require_scope_model(
             detail: "ScopeModel variants must not carry payload fields",
         });
     }
-    let variants = [
-        ("LexicalScoping", ScopeModelBinding::LexicalScoping),
-        ("DynamicScoping", ScopeModelBinding::DynamicScoping),
+    let variants = dag.emit_model_variants();
+    let scope_variants = [
+        (
+            variants.scope_model.lexical_scoping,
+            ScopeModelBinding::LexicalScoping,
+        ),
+        (
+            variants.scope_model.dynamic_scoping,
+            ScopeModelBinding::DynamicScoping,
+        ),
     ];
-    for (label, binding) in variants {
-        let variant_id = named_variant_id(dag, "ScopeModel", label)?;
+    for (variant_id, binding) in scope_variants {
+        let variant_id = variant_id.ok_or(EmitPythonError::MissingMeta("ScopeModel variant"))?;
         if constructor == variant_id {
             return Ok(binding);
         }
@@ -1975,26 +1995,6 @@ fn require_scope_model(
         declaration,
         detail: "TargetExecutionModel.scope must be LexicalScoping/DynamicScoping",
     })
-}
-
-fn named_variant_id(
-    dag: &Dag,
-    parent_name: &str,
-    variant_label: &str,
-) -> Result<DeclarationId, EmitPythonError> {
-    let parent = dag
-        .declaration_by_name(parent_name)
-        .ok_or(EmitPythonError::MissingMeta("variant parent"))?;
-    let TypeConnective::Disj { variants } = &parent.connective else {
-        return Err(EmitPythonError::Unsupported(format!(
-            "{parent_name} is not a disjunction"
-        )));
-    };
-    variants
-        .iter()
-        .find(|variant| variant.label == variant_label)
-        .map(|variant| variant.ty)
-        .ok_or(EmitPythonError::MissingMeta("variant"))
 }
 
 fn render_named_template(template: &str, bindings: &[(&str, &str)]) -> String {

@@ -2276,6 +2276,104 @@ pub(crate) struct EmitAnchorCache {
     /// `src/v3/spec/rust.dag` (bootstrap name resolution prefers `src/v3/`
     /// over the duplicate carrier in `dsl/std/languages.dag`).
     pub rust_functions: Option<DeclarationId>,
+    /// `MethodEmitTemplate` coproduct parent used to map a method-template
+    /// constructor id back to its variant label during target emission.
+    pub method_emit_template: Option<DeclarationId>,
+    /// `MethodTemplateContract` meta-type used by fold-method contract checks.
+    pub method_template_contract: Option<DeclarationId>,
+    /// `std.list.concat_method` method declaration.
+    pub concat_method: Option<DeclarationId>,
+    /// `std.list.length_method` method declaration.
+    pub length_method: Option<DeclarationId>,
+    /// `std.list.fold_method` method declaration.
+    pub fold_method: Option<DeclarationId>,
+    /// `std.list.is_empty_method` method declaration.
+    pub is_empty_method: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PatternStrategyVariants {
+    pub vector_list: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct FieldAccessVariants {
+    pub direct_field: Option<DeclarationId>,
+    pub accessor_method: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ParameterDispositionVariants {
+    pub borrowed: Option<DeclarationId>,
+    pub consumed: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct MemoryModelVariants {
+    pub value_only: Option<DeclarationId>,
+    pub garbage_collected: Option<DeclarationId>,
+    pub ref_counted: Option<DeclarationId>,
+    pub ownership_based: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ScopeModelVariants {
+    pub lexical_scoping: Option<DeclarationId>,
+    pub dynamic_scoping: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ReadStrategyVariants {
+    pub borrow: Option<DeclarationId>,
+    pub pass_by_value: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct ConstructStrategyVariants {
+    pub copy_or_clone: Option<DeclarationId>,
+    pub pass_by_value: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct MutabilityVariants {
+    pub immutable: Option<DeclarationId>,
+    pub mutable: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct PurityVariants {
+    pub pure: Option<DeclarationId>,
+    pub effectful: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct StructureVariants {
+    pub explicit_dag: Option<DeclarationId>,
+    pub arbitrary: Option<DeclarationId>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub(crate) struct IterationVariants {
+    pub bounded: Option<DeclarationId>,
+    pub unbounded: Option<DeclarationId>,
+}
+
+/// Cached variant DeclarationIds for fixed emit-model coproducts.
+/// Populated once at bootstrap end so emitters dispatch on typed
+/// constructors instead of resolving parent/variant names at parse time.
+#[derive(Debug, Default, Clone)]
+pub(crate) struct EmitModelVariants {
+    pub pattern_strategy: PatternStrategyVariants,
+    pub field_access: FieldAccessVariants,
+    pub parameter_disposition: ParameterDispositionVariants,
+    pub memory_model: MemoryModelVariants,
+    pub scope_model: ScopeModelVariants,
+    pub read_strategy: ReadStrategyVariants,
+    pub construct_strategy: ConstructStrategyVariants,
+    pub mutability: MutabilityVariants,
+    pub purity: PurityVariants,
+    pub structure: StructureVariants,
+    pub iteration: IterationVariants,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -2474,6 +2572,9 @@ pub struct Dag {
     /// emitter plus Rust/Python target emitters when parsing
     /// `CallableRealization.strategy`.
     callable_strategy_variants: CallableStrategyVariants,
+    /// Cached fixed emit-model coproduct variant DeclarationIds used by
+    /// emit target parsers.
+    emit_model_variants: EmitModelVariants,
     /// Sidecar structural facts for mutually-recursive SCCs.
     clusters: Vec<Cluster>,
     /// Synthetic match carriers for anonymous `T?` cardinalities. Used when
@@ -2553,6 +2654,7 @@ impl Dag {
                 VariantPayloadFieldAccessRuleVariants::default(),
             verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
             callable_strategy_variants: CallableStrategyVariants::default(),
+            emit_model_variants: EmitModelVariants::default(),
             clusters: Vec::new(),
             optional_match_disjs: HashMap::new(),
             declaration_append_begin_after_bootstrap: 0,
@@ -3019,6 +3121,36 @@ impl Dag {
         self.emit_anchors.rust_functions
     }
 
+    /// `MethodEmitTemplate` coproduct parent.
+    pub(crate) fn method_emit_template_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.method_emit_template
+    }
+
+    /// `MethodTemplateContract` meta-type.
+    pub(crate) fn method_template_contract_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.method_template_contract
+    }
+
+    /// `fold_method` method declaration.
+    pub(crate) fn fold_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.fold_method
+    }
+
+    /// `concat_method` method declaration.
+    pub(crate) fn concat_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.concat_method
+    }
+
+    /// `length_method` method declaration.
+    pub(crate) fn length_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.length_method
+    }
+
+    /// `is_empty_method` method declaration.
+    pub(crate) fn is_empty_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.is_empty_method
+    }
+
     /// Typed accessor for the cached `PatternBindingRule` variant
     /// handles resolved from `src/v3/std/clean_emission.dag` at
     /// bootstrap end. Consumed by per-target emitters when
@@ -3054,6 +3186,11 @@ impl Dag {
     /// `CallableRealization.strategy`.
     pub(crate) fn callable_strategy_variants(&self) -> &CallableStrategyVariants {
         &self.callable_strategy_variants
+    }
+
+    /// Typed accessor for fixed emit-model coproduct variant handles.
+    pub(crate) fn emit_model_variants(&self) -> &EmitModelVariants {
+        &self.emit_model_variants
     }
 
     pub fn nodes(&self) -> &[Behavior] {
@@ -3652,6 +3789,16 @@ impl Dag {
         self.emit_anchors.dag_type = self.declaration_by_name("Dag").map(|d| d.id);
         self.emit_anchors.std_list_fold = self.declaration_by_name("fold").map(|d| d.id);
         self.emit_anchors.rust_functions = self.declaration_by_name("rust_functions").map(|d| d.id);
+        self.emit_anchors.method_emit_template =
+            self.declaration_by_name("MethodEmitTemplate").map(|d| d.id);
+        self.emit_anchors.method_template_contract = self
+            .declaration_by_name("MethodTemplateContract")
+            .map(|d| d.id);
+        self.emit_anchors.concat_method = self.declaration_by_name("concat_method").map(|d| d.id);
+        self.emit_anchors.length_method = self.declaration_by_name("length_method").map(|d| d.id);
+        self.emit_anchors.fold_method = self.declaration_by_name("fold_method").map(|d| d.id);
+        self.emit_anchors.is_empty_method =
+            self.declaration_by_name("is_empty_method").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
         // `std/clean_emission.dag` declaration's `Disj` variants
@@ -3778,6 +3925,174 @@ impl Dag {
             }
         }
         self.callable_strategy_variants = callable_strategy_variants;
+
+        let mut emit_model_variants = EmitModelVariants::default();
+        if let Some(parent) = self.declaration_by_name("PatternStrategy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    if variant.label == "VectorList" {
+                        emit_model_variants.pattern_strategy.vector_list = Some(variant.ty);
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("FieldAccess") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "DirectField" => {
+                            emit_model_variants.field_access.direct_field = Some(variant.ty);
+                        }
+                        "AccessorMethod" => {
+                            emit_model_variants.field_access.accessor_method = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ParameterDisposition") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Borrowed" => {
+                            emit_model_variants.parameter_disposition.borrowed = Some(variant.ty);
+                        }
+                        "Consumed" => {
+                            emit_model_variants.parameter_disposition.consumed = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("MemoryModel") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "ValueOnly" => {
+                            emit_model_variants.memory_model.value_only = Some(variant.ty);
+                        }
+                        "GarbageCollected" => {
+                            emit_model_variants.memory_model.garbage_collected = Some(variant.ty);
+                        }
+                        "RefCounted" => {
+                            emit_model_variants.memory_model.ref_counted = Some(variant.ty);
+                        }
+                        "OwnershipBased" => {
+                            emit_model_variants.memory_model.ownership_based = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ScopeModel") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "LexicalScoping" => {
+                            emit_model_variants.scope_model.lexical_scoping = Some(variant.ty);
+                        }
+                        "DynamicScoping" => {
+                            emit_model_variants.scope_model.dynamic_scoping = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ReadStrategy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Borrow" => {
+                            emit_model_variants.read_strategy.borrow = Some(variant.ty);
+                        }
+                        "PassByValue" => {
+                            emit_model_variants.read_strategy.pass_by_value = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("ConstructStrategy") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "CopyOrClone" => {
+                            emit_model_variants.construct_strategy.copy_or_clone = Some(variant.ty);
+                        }
+                        "PassByValue" => {
+                            emit_model_variants.construct_strategy.pass_by_value = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Mutability") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Immutable" => {
+                            emit_model_variants.mutability.immutable = Some(variant.ty);
+                        }
+                        "Mutable" => {
+                            emit_model_variants.mutability.mutable = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Purity") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Pure" => {
+                            emit_model_variants.purity.pure = Some(variant.ty);
+                        }
+                        "Effectful" => {
+                            emit_model_variants.purity.effectful = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Structure") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "ExplicitDAG" => {
+                            emit_model_variants.structure.explicit_dag = Some(variant.ty);
+                        }
+                        "Arbitrary" => {
+                            emit_model_variants.structure.arbitrary = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        if let Some(parent) = self.declaration_by_name("Iteration") {
+            if let TypeConnective::Disj { variants } = &parent.connective {
+                for variant in variants {
+                    match variant.label.as_str() {
+                        "Bounded" => {
+                            emit_model_variants.iteration.bounded = Some(variant.ty);
+                        }
+                        "Unbounded" => {
+                            emit_model_variants.iteration.unbounded = Some(variant.ty);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        self.emit_model_variants = emit_model_variants;
     }
 
     fn populate_target_clean_emission_bindings(&mut self) {
@@ -4117,6 +4432,21 @@ mod tests {
             dag.rust_functions_syntax_decl().is_some(),
             "rust_functions syntax anchor"
         );
+        assert!(
+            dag.method_emit_template_decl().is_some(),
+            "MethodEmitTemplate anchor"
+        );
+        assert!(
+            dag.method_template_contract_decl().is_some(),
+            "MethodTemplateContract anchor"
+        );
+        assert!(dag.fold_method_decl().is_some(), "fold_method anchor");
+        assert!(dag.concat_method_decl().is_some(), "concat_method anchor");
+        assert!(dag.length_method_decl().is_some(), "length_method anchor");
+        assert!(
+            dag.is_empty_method_decl().is_some(),
+            "is_empty_method anchor"
+        );
     }
 
     #[test]
@@ -4150,6 +4480,92 @@ mod tests {
         assert!(
             variants.list_contains.is_some(),
             "CallableStrategy.ListContains"
+        );
+    }
+
+    #[test]
+    fn emit_model_variants_populated_after_bootstrap() {
+        let dag = Dag::new();
+        let variants = dag.emit_model_variants();
+        assert!(
+            variants.pattern_strategy.vector_list.is_some(),
+            "PatternStrategy.VectorList"
+        );
+        assert!(
+            variants.field_access.direct_field.is_some(),
+            "FieldAccess.DirectField"
+        );
+        assert!(
+            variants.field_access.accessor_method.is_some(),
+            "FieldAccess.AccessorMethod"
+        );
+        assert!(
+            variants.parameter_disposition.borrowed.is_some(),
+            "ParameterDisposition.Borrowed"
+        );
+        assert!(
+            variants.parameter_disposition.consumed.is_some(),
+            "ParameterDisposition.Consumed"
+        );
+        assert!(
+            variants.memory_model.value_only.is_some(),
+            "MemoryModel.ValueOnly"
+        );
+        assert!(
+            variants.memory_model.garbage_collected.is_some(),
+            "MemoryModel.GarbageCollected"
+        );
+        assert!(
+            variants.memory_model.ref_counted.is_some(),
+            "MemoryModel.RefCounted"
+        );
+        assert!(
+            variants.memory_model.ownership_based.is_some(),
+            "MemoryModel.OwnershipBased"
+        );
+        assert!(
+            variants.scope_model.lexical_scoping.is_some(),
+            "ScopeModel.LexicalScoping"
+        );
+        assert!(
+            variants.scope_model.dynamic_scoping.is_some(),
+            "ScopeModel.DynamicScoping"
+        );
+        assert!(
+            variants.read_strategy.borrow.is_some(),
+            "ReadStrategy.Borrow"
+        );
+        assert!(
+            variants.read_strategy.pass_by_value.is_some(),
+            "ReadStrategy.PassByValue"
+        );
+        assert!(
+            variants.construct_strategy.copy_or_clone.is_some(),
+            "ConstructStrategy.CopyOrClone"
+        );
+        assert!(
+            variants.construct_strategy.pass_by_value.is_some(),
+            "ConstructStrategy.PassByValue"
+        );
+        assert!(
+            variants.mutability.immutable.is_some(),
+            "Mutability.Immutable"
+        );
+        assert!(variants.mutability.mutable.is_some(), "Mutability.Mutable");
+        assert!(variants.purity.pure.is_some(), "Purity.Pure");
+        assert!(variants.purity.effectful.is_some(), "Purity.Effectful");
+        assert!(
+            variants.structure.explicit_dag.is_some(),
+            "Structure.ExplicitDAG"
+        );
+        assert!(
+            variants.structure.arbitrary.is_some(),
+            "Structure.Arbitrary"
+        );
+        assert!(variants.iteration.bounded.is_some(), "Iteration.Bounded");
+        assert!(
+            variants.iteration.unbounded.is_some(),
+            "Iteration.Unbounded"
         );
     }
 
