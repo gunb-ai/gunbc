@@ -2601,6 +2601,7 @@ impl Dag {
         &mut self,
         kind: RuntimeBootstrapFixtureKind,
     ) {
+        self.assert_user_defined_arrow_bodies_point_at_binds();
         if matches!(
             kind,
             RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot
@@ -2615,6 +2616,28 @@ impl Dag {
             crate::int_literal_ranges::validate_rust_pilot_integer_primitives(self);
         }
         self.stamp_declaration_append_begin_after_bootstrap();
+    }
+
+    fn assert_user_defined_arrow_bodies_point_at_binds(&self) {
+        for declaration in &self.declarations {
+            let TypeConnective::Arrow {
+                body: ArrowBody::UserDefined(bind_id),
+                ..
+            } = &declaration.connective
+            else {
+                continue;
+            };
+            let node_id = bind_id.node_id();
+            if !matches!(self.node_opt(&node_id), Some(Behavior::Bind(_))) {
+                let name = declaration.name.as_deref().unwrap_or("<anonymous>");
+                panic!(
+                    "generated bootstrap invariant violation: declaration {name:?} ({:?}) has \
+                     ArrowBody::UserDefined({node_id:?}), but that NodeId does not point at \
+                     Behavior::Bind",
+                    declaration.id
+                );
+            }
+        }
     }
 
     /// Clone of the bootstrapped Dag used by [`crate::compile_parse_surface_std_authority_dag`]:
@@ -4167,6 +4190,44 @@ mod tests {
         assert!(
             secret.nominal_opacity.is_some(),
             "Secret must carry nominal opacity from std source authority"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "generated bootstrap invariant violation")]
+    fn generated_bootstrap_rejects_user_defined_body_that_is_not_a_bind() {
+        let mut dag = bootstrap_generated::bootstrapped_fixture_dag();
+        let non_bind = dag
+            .nodes
+            .iter()
+            .find_map(|behavior| {
+                if matches!(behavior, Behavior::Bind(_)) {
+                    None
+                } else {
+                    Some(behavior.id())
+                }
+            })
+            .expect("generated bootstrap fixture should include a non-Bind behavior");
+        let declaration = dag
+            .declarations
+            .iter_mut()
+            .find(|declaration| {
+                matches!(
+                    &declaration.connective,
+                    TypeConnective::Arrow {
+                        body: ArrowBody::UserDefined(_),
+                        ..
+                    }
+                )
+            })
+            .expect("generated bootstrap fixture should include a user-defined arrow body");
+        let TypeConnective::Arrow { body, .. } = &mut declaration.connective else {
+            unreachable!("declaration was selected by arrow body shape")
+        };
+        *body = ArrowBody::UserDefined(BindNodeId::new_unchecked(non_bind));
+
+        dag.finalize_runtime_bootstrap_from_generated_snapshot(
+            RuntimeBootstrapFixtureKind::FullExtdepsPipelineSnapshot,
         );
     }
 
