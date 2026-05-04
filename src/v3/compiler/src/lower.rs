@@ -6965,6 +6965,28 @@ fn lower_expr(
                     },
                 );
             };
+            // Verify the resolved leaf is callable (Arrow). A
+            // FieldValue::Reference to a non-callable declaration
+            // (e.g., a typed-but-non-Arrow data binding referenced as
+            // a field) must produce a typed non-callable diagnostic
+            // here rather than relying on the synthetic Call lowerer
+            // to surface something ambiguous downstream.
+            if !declaration_is_callable(dag, callee_decl_id, 0) {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "dotted path `{}` resolves to a non-callable declaration; X1.a static call-on-field-access requires the leaf to reference a top-level function (Arrow type)",
+                            segments.join(".")
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            }
             let callee_name = match dag.declaration(callee_decl_id).name.clone() {
                 Some(n) => n,
                 None => {
@@ -7997,7 +8019,7 @@ fn compute_mutually_recursive(
         let mut callees = HashSet::new();
         let mut shadowed: HashSet<String> =
             info.params.iter().map(|param| param.name.clone()).collect();
-        collect_recursive_callees(info.body, &function_symbols, &mut shadowed, &mut callees);
+        collect_recursive_callees(info.body, &function_symbols, dag, &mut shadowed, &mut callees);
         let mut sorted_callees: Vec<DeclarationId> = callees.into_iter().collect();
         sorted_callees.sort_by_key(|callee| order_index.get(callee).copied().unwrap_or(usize::MAX));
         calls.insert(*decl_id, sorted_callees);
@@ -8375,6 +8397,7 @@ impl ClusterDescentChecker<'_> {
 fn collect_recursive_callees(
     expr: &SurfaceExpr,
     function_symbols: &HashMap<String, DeclarationId>,
+    dag: &Dag,
     shadowed: &mut HashSet<String>,
     out: &mut HashSet<DeclarationId>,
 ) {
@@ -8387,17 +8410,17 @@ fn collect_recursive_callees(
                 }
             }
             for a in args {
-                collect_recursive_callees(a, function_symbols, shadowed, out);
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::VariantRecord { fields, .. } => {
             for field in fields {
-                collect_recursive_callees(&field.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&field.value, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::Operator { args, .. } => {
             for a in args {
-                collect_recursive_callees(a, function_symbols, shadowed, out);
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::If {
@@ -8406,45 +8429,65 @@ fn collect_recursive_callees(
             else_branch,
             ..
         } => {
-            collect_recursive_callees(cond, function_symbols, shadowed, out);
-            collect_recursive_callees(then_branch, function_symbols, shadowed, out);
-            collect_recursive_callees(else_branch, function_symbols, shadowed, out);
+            collect_recursive_callees(cond, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(then_branch, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(else_branch, function_symbols, dag, shadowed, out);
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            collect_recursive_callees(scrutinee, function_symbols, shadowed, out);
+            collect_recursive_callees(scrutinee, function_symbols, dag, shadowed, out);
             for arm in arms {
                 let mut arm_shadowed = shadowed.clone();
                 for binding in pattern_binding_names(&arm.pattern) {
                     arm_shadowed.insert(binding.to_string());
                 }
-                collect_recursive_callees(&arm.body, function_symbols, &mut arm_shadowed, out);
+                collect_recursive_callees(&arm.body, function_symbols, dag, &mut arm_shadowed, out);
             }
         }
         SurfaceExpr::Lambda { params, body, .. } => {
             let mut lambda_shadowed = shadowed.clone();
             lambda_shadowed.extend(params.iter().cloned());
-            collect_recursive_callees(body, function_symbols, &mut lambda_shadowed, out)
+            collect_recursive_callees(body, function_symbols, dag, &mut lambda_shadowed, out)
         }
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
-                collect_recursive_callees(&f.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&f.value, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::List { elements, .. } => {
             for element in elements {
-                collect_recursive_callees(element, function_symbols, shadowed, out);
+                collect_recursive_callees(element, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::Map { entries, .. } => {
             for entry in entries {
-                collect_recursive_callees(&entry.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&entry.value, function_symbols, dag, shadowed, out);
             }
         }
-        SurfaceExpr::PathCall { args, .. } => {
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // X1.a static path-call: resolve segments through the head's
+            // `data` ValueBody to a leaf `FieldValue::Reference(decl_id)`
+            // and insert that decl into the recursive-callee set. Without
+            // this, mutual recursion via a data-binding indirection
+            // bypasses the recursive-edge graph (P4).
+            if let Some(head) = segments.first() {
+                if !shadowed.contains(head) {
+                    if let Some(&head_decl) = function_symbols.get(head) {
+                        if let Some(value_body) =
+                            dag.declaration(head_decl).value_body.as_ref()
+                        {
+                            if let Some(leaf_decl) =
+                                resolve_field_value_reference(value_body, &segments[1..])
+                            {
+                                out.insert(leaf_decl);
+                            }
+                        }
+                    }
+                }
+            }
             for a in args {
-                collect_recursive_callees(a, function_symbols, shadowed, out);
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
     }
