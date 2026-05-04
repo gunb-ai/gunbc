@@ -5717,6 +5717,71 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
     );
 }
 
+#[test]
+fn github_create_review_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/github/pulls.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read github pulls.dag");
+    let result = compile_dag_named("dsl/extdeps/github/pulls.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_github_pulls.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<PullReview> = response.json().await?"),
+        "expected CreateReview 200 response to deserialize through typed PullReview, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).id.clone()")
+            && content.contains("(__rest_wire).html_url.clone()"),
+        "expected CreateReview output fields to project from typed PullReview, got:\n{content}"
+    );
+    assert!(
+        content.contains("structural_coverage_gap_github_pull_review_response_residual")
+            && content.contains("json_pending:user")
+            && content.contains("json_pending:submitted_at"),
+        "expected unmodeled GitHub review response fields to stay tracked, got:\n{content}"
+    );
+}
+
+#[test]
+fn github_create_review_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct PullReview {
+        id: i64,
+        body: String,
+        state: String,
+        commit_id: String,
+        html_url: String,
+    }
+
+    let body: PullReview = serde_json::from_value(serde_json::json!({
+        "id": 80,
+        "node_id": "MDE3OlB1bGxSZXF1ZXN0UmV2aWV3ODA=",
+        "user": { "login": "octocat", "id": 1, "type": "User", "site_admin": false },
+        "body": "This is close to perfect! Please address the suggested inline change.",
+        "state": "CHANGES_REQUESTED",
+        "html_url": "https://github.com/octocat/Hello-World/pull/12#pullrequestreview-80",
+        "pull_request_url": "https://api.github.com/repos/octocat/Hello-World/pulls/12",
+        "_links": {
+            "html": { "href": "https://github.com/octocat/Hello-World/pull/12#pullrequestreview-80" },
+            "pull_request": { "href": "https://api.github.com/repos/octocat/Hello-World/pulls/12" }
+        },
+        "submitted_at": "2019-11-17T17:43:43Z",
+        "commit_id": "ecdd80bb57125d7ba9641ffaa4d7d2c19d3f3091",
+        "author_association": "COLLABORATOR"
+    }))
+    .expect("representative GitHub create-review response should fit narrow PullReview");
+
+    assert_eq!(body.id, 80);
+    assert_eq!(body.state, "CHANGES_REQUESTED");
+    assert_eq!(body.commit_id, "ecdd80bb57125d7ba9641ffaa4d7d2c19d3f3091");
+    assert_eq!(
+        body.html_url,
+        "https://github.com/octocat/Hello-World/pull/12#pullrequestreview-80"
+    );
+    assert!(body.body.contains("suggested inline change"));
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.
