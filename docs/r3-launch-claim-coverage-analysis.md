@@ -394,7 +394,7 @@ Will respond to review feedback in-thread; will author the queued amendments (r3
 - **Four-PR adversarial-gap-analysis portfolio** (empirical grounding for §4 + §5 + §6d):
   - LLVM gap analysis: `gunb-ai/ctrl#365` (merged; 0/35 As after adversarial review)
   - Kubernetes gap analysis: `gunb-ai/ctrl#366` (merged; 0/18; matrix-cell-sampling boundary)
-  - Discord/Elixir gap analysis: `gunb-ai/ctrl#367` (merged; 0/18; OTP territory disclaimed)
+  - Discord/Elixir gap analysis: `gunb-ai/ctrl#367` (merged; 0/18; OTP-style fault tolerance flagged as candidate Tier 4 boundary per §6d — adjacent to but not currently disclaimed by THESIS)
   - PyTorch gap analysis: `gunb-ai/ctrl#368` (open; 6/19; surfaced `Algebra<Precision>` need + data-dependent numerical instability boundary)
 - **Coordination thread**: `gunb-ai/gunbc#1586` (bidirectional language-spec architecture; six anchor questions)
 - **Substrate Mgr signal**: `gunb-ai/gunbc#1130` comment-4367070285 (consumer-requirement reframing for `lens_enforcement_carrier_landed`)
