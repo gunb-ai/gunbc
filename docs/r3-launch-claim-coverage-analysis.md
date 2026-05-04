@@ -52,17 +52,16 @@ Conventions divide into two structurally-distinct classes:
 
 ### 3a. Substrate-level commitments (built into gunbc; not user-declarable-away)
 
-These are *structural invariants of gunbc itself*, not preferences:
+These are *structural invariants of gunbc itself*, not preferences. **Thesis-level commitments**: gunbc is committed to ruling these out by construction; per-claim authoring disposition is per §2's three-class structural distinction (today-banked / in-flight / R3-pending). Cite §4 and `r2-r3-thesis-mapping.md` for current per-row authoring status:
 
-- **No partial functions** — Tier 2: all partial functions made total. A developer who *prefers* nullable-return-style cannot have it; the substrate rules it out.
-- **No aliased mutation** — ownership lens (banked at L1).
-- **All recursion bounded** — CX gate (R1).
-- **Errors as Diagnostics** — fail-closed discipline (`feedback_fail_closed_discipline` C-8).
-- **Parallelism is the default** — sequential execution requires data-dependency justification.
-- **No metadata markers** — types are structural, not labeled.
-- ...etc.
+- **No aliased mutation** — ownership lens ✅ L1-live (row 31). **Banked.** A developer cannot opt into aliased mutation.
+- **No metadata markers** — INVARIANTS / `feedback_no_metadata_markers` discipline. **Banked** (continuous discipline).
+- **Parallelism is the default** — substrate commitment via dependency-graph-as-default-execution-model (M0 / M1 substrate). **Banked** (live since M1).
+- **Errors as Diagnostics** — fail-closed discipline per INVARIANTS C-8 + `feedback_fail_closed_discipline`. **Banked** (continuous discipline).
+- **No partial functions (Tier 2 thesis-level commitment)** — gunbc commits to ruling out partial functions; **per-sub-claim disposition is mixed** per §4 Cat 4: ownership ✅ L1-live; integer-overflow-at-i64 ✅ R2-landed (row 51); force-unwrap ✅ R2-landed (row 54); idempotency ✅ R2-landed (row 81); but division-by-zero 🟡 R2-in-flight (row 50); OOB 🟡 R2-in-flight (row 53); partial-functions 🟡 R2-partial-R3-close (row 55); integer-overflow-at-full-magnitude ⏳ R3-dispatch (row 52). **The thesis commitment is load-bearing; the per-sub-claim authoring is in-flight; "the substrate rules it out" cashes incrementally as each row lands.**
+- **All recursion bounded (CX gate thesis-level commitment)** — gunbc commits to bounded recursion via CX gate. **Per-sub-claim disposition: 🟡 R1 closure (row 29)** — CX gate is in flight at R1 closure, not yet banked. The thesis commitment exists; the gate is closing.
 
-These can't be opted out of. A program either expresses intent compatible with substrate commitments, or it doesn't compile.
+Thesis-level: gunbc is committed to ruling out the entire class. Per-sub-claim authoring: see §4 / `r2-r3-thesis-mapping.md` for current row dispositions. **Programs already authored against today's substrate cannot opt out of banked commitments**; programs depending on in-flight commitments cash as each row lands.
 
 ### 3b. Application-level invariants (user-declarable via `apply_lens`)
 
@@ -119,9 +118,9 @@ For a chosen `.dag`-scope program, intra-program bugs partition into three class
 - **Class C — boundary / integration**: cross-target, cross-mode, build/linker/sanitizer/heuristic. Caught via testgen. Maps to Category 5.
 
 The launch claim cashes if:
-- **Class A is high** (intent soundness is structurally complete)
+- **Class A is high** (intent soundness is structurally complete *within the authored substrate* per §2 qualifier; cashes incrementally as per-sub-claim rows land)
 - **Class B's behavioral-analysis surface is provably better than alternatives** (intent-vs-want analysis exceeds what other languages provide)
-- **Class C is demonstrated** (5th R3 gate ratified)
+- **Class C demonstration lands** — 5th R3 gate `integration_testgen_demonstrated_on_at_least_one_domain` is RATIFIED (per §7a) and Verification Mgr selected heuristic-cost-function as the worked-instance domain (per §6f); **demonstration itself is still pending** (T-Tests-As-Data-Completeness lane R3-dispatch, gated on R2-Evaluator). Ratification ≠ demonstration; both are needed for the launch claim to cash on Class C.
 
 Measuring this partition on a moderate-complexity `.dag`-scope program is the **exhaustive-coverage demo target** — the right framing for the demo work that ctrl is reshaping (see §9 outstanding work).
 
