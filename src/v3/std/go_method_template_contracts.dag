@@ -54,6 +54,7 @@ import std.methods {
   skip_method,
   take_method,
   fold_method,
+  is_empty_method,
   length_method,
   sort_by_method,
   append_method,
@@ -76,9 +77,9 @@ data go_language_spec_free_monoid_length_contract: MethodTemplateContract = {
   placeholder_convention: NamedArg
 }
 
-// Emptiness pins `length_method` — `FreeMonoid<T>` has `length` but not `is_empty`.
+// Emptiness — `dag_method` is `is_empty_method`; template is Go `len(...) == 0` sugar.
 data go_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
-  dag_method: { decl: length_method },
+  dag_method: { decl: is_empty_method },
   runtime_template: "len({recv}) == 0",
   emit_template: SingleTemplate { template: "len({recv}) == 0" },
   wraps_result: false,

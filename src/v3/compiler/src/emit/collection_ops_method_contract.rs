@@ -69,7 +69,7 @@ pub(crate) fn require_method_template_contract_dag_method(
             "concat_contract" => "CollectionOps.concat_contract must target concat_method",
             "length_contract" => "CollectionOps.length_contract must target length_method",
             "is_empty_contract" => {
-                "CollectionOps.is_empty_contract must target length_method (emptiness realized as zero-length / length-derived)"
+                "CollectionOps.is_empty_contract must target is_empty_method (FreeMonoid<T>.is_empty -> Bool)"
             }
             _ => "CollectionOps contract dag_method does not match expected registry method",
         });

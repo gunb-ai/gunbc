@@ -391,10 +391,10 @@ impl PythonIndexes {
             },
             is_empty: {
                 let cfields = structural_fields_for_decl(dag, collections)?;
-                let length_method_decl = dag.declaration_by_name("length_method").ok_or(
+                let is_empty_method_decl = dag.declaration_by_name("is_empty_method").ok_or(
                     EmitPythonError::MalformedSpec {
                         declaration: collections,
-                        detail: "internal: length_method missing from std.methods registry",
+                        detail: "internal: is_empty_method missing from std.methods registry",
                     },
                 )?;
                 let id = require_field_decl_ref(cfields, "is_empty_contract", collections)?;
@@ -402,7 +402,7 @@ impl PythonIndexes {
                     dag,
                     id,
                     "is_empty_contract",
-                    length_method_decl.id,
+                    is_empty_method_decl.id,
                 )
                 .map_err(|detail| EmitPythonError::MalformedSpec {
                     declaration: id,

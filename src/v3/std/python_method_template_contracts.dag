@@ -75,9 +75,9 @@ data python_language_spec_free_monoid_length_contract: MethodTemplateContract = 
   placeholder_convention: NamedArg
 }
 
-// Emptiness via `length_method` identity — `FreeMonoid<T>` has `length` but not `is_empty`.
+// Emptiness — `dag_method` is `is_empty_method` (`FreeMonoid<T>.is_empty`); template is Python sugar.
 data python_language_spec_free_monoid_emptiness_contract: MethodTemplateContract = {
-  dag_method: { decl: length_method },
+  dag_method: { decl: is_empty_method },
   runtime_template: "(len({recv}) == 0)",
   emit_template: SingleTemplate { template: "(len({recv}) == 0)" },
   wraps_result: false,

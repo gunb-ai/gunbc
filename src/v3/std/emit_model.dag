@@ -359,8 +359,8 @@ type PatternMatchSyntax {
 }
 
 type CollectionOps {
-  // Realizations of `FreeMonoid<T>.concat` / `length` / length-derived emptiness
-  // / `fold` — each `DeclarationRef` points at a `MethodTemplateContract` value
+  // Realizations of `FreeMonoid<T>.concat` / `length` / `is_empty` / `fold` — each
+  // `DeclarationRef` points at a `MethodTemplateContract` value
   // (same carrier as per-target `*_method_template_contracts` rows). Template
   // strings live only on those contracts; these fields are identity, not render data.
   concat_contract: DeclarationRef

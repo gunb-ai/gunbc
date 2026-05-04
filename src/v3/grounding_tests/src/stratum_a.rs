@@ -61,7 +61,7 @@ const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str
         "rust_collection_ops",
         "is_empty_contract",
         "rust_language_spec_free_monoid_emptiness_contract",
-        "length",
+        "is_empty",
     ),
     (
         "rust_collection_ops",
@@ -85,7 +85,7 @@ const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str
         "python_collections",
         "is_empty_contract",
         "python_language_spec_free_monoid_emptiness_contract",
-        "length",
+        "is_empty",
     ),
     (
         "python_collections",
@@ -109,7 +109,7 @@ const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str
         "go_collection_ops",
         "is_empty_contract",
         "go_language_spec_free_monoid_emptiness_contract",
-        "length",
+        "is_empty",
     ),
     (
         "go_collection_ops",
@@ -802,7 +802,7 @@ fn assert_expected_row_count(
 /// list (routing projection is a pure function of the embedded snapshot).
 ///
 /// Also asserts Rust/Python/Go `CollectionOps.{concat,length,is_empty,fold}_contract` wiring to the
-/// named `MethodTemplateContract` carriers (list-external authority; `is_empty_contract` pins `length_method`).
+/// named `MethodTemplateContract` carriers (list-external authority; `is_empty_contract` pins `is_empty_method`).
 pub fn verify_stratum_a_lockstep_all_targets() -> Result<(), GroundingTestsDiagnostic> {
     let bootstrap_a = v3_compiler::generated_full_bootstrap_dag();
     let bootstrap_b = v3_compiler::generated_full_bootstrap_dag();

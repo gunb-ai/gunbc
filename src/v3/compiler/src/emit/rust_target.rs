@@ -1482,6 +1482,12 @@ fn parse_collection_ops(
                 declaration,
                 detail: "internal: fold_method missing from std.methods registry",
             })?;
+    let is_empty_method_decl =
+        dag.declaration_by_name("is_empty_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: is_empty_method missing from std.methods registry",
+            })?;
 
     let concat_contract = require_field_decl_ref(fields, "concat_contract", declaration)?;
     require_method_template_contract_dag_method(
@@ -1514,7 +1520,7 @@ fn parse_collection_ops(
         dag,
         is_empty_contract,
         "is_empty_contract",
-        length_method_decl.id,
+        is_empty_method_decl.id,
     )
     .map_err(|detail| EmitError::MalformedTargetSyntax {
         declaration: is_empty_contract,
