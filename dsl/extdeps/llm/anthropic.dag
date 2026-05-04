@@ -183,10 +183,11 @@ type AnthropicMessages200Body {
   stop_reason: AnthropicStopReason
   stop_sequence: String?
   usage: AnthropicMessages200Usage
+  container: Json?
 }
 
 data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|opaque_pending:container|AnthropicMessages200TextBlock|variant_pending:thinking|variant_pending:tool_use|variant_pending:redacted_thinking|variant_pending:web_search|variant_pending:server_tool_use|trigger:content block coproduct plus container-management response surface"
+  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200TextBlock|variant_pending:thinking|variant_pending:tool_use|variant_pending:redacted_thinking|variant_pending:web_search|variant_pending:server_tool_use|trigger:content block coproduct plus container-management response surface"
 ]
 
 // Request wire: Messages API expects string `role` + flat `content[]` objects

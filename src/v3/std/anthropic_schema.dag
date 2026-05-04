@@ -157,4 +157,5 @@ type AnthropicMessages200Body {
   stop_reason:   AnthropicStopReason
   stop_sequence: String?
   usage:         AnthropicMessages200Usage
+  container:     Json?
 }
