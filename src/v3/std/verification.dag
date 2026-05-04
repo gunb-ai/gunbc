@@ -180,6 +180,40 @@ type TestPredicate
       oracle_ref: DeclarationRef
       input_ref: DeclarationRef
     }
+  // **🟡 Scaffold — SymbolicCostExprEquals.** Apply the symbolic-cost lens
+  // to the claim's program-under-test (`TestClaim.source` for enumerated
+  // claims; `ProgramShape.source` for quantified claims once Slice 1
+  // lands), then compare the resulting `SymbolicCost` value structurally
+  // to a declared expected `data X: SymbolicCost = …`. One `DeclarationRef`
+  // payload because `actual` is implicit (program-under-test convention,
+  // mirroring `Compiles` / `OutputEquals` / `CostBounded` — every other
+  // predicate that reads from the program also relies on this convention
+  // rather than carrying a redundant `input_ref`).
+  //
+  // Why a dedicated predicate, not `LensOutputEquals(symbolic_cost_lens, …)`
+  // or `BinaryDimensionReportEquals(left, right)`:
+  //   - `LensOutputEquals` carries an explicit `input_ref: DeclarationRef`,
+  //     so it cannot project against a generated `ProgramShape` from a
+  //     `QuantifiedTestClaim`. Heuristic-cost-function-5th-gate testgen
+  //     specifically needs the per-generated-program shape.
+  //   - `BinaryDimensionReportEquals` wraps `SymbolicCost` in
+  //     `DimensionReport<SymbolicCost>`'s `Ok | Fail` partition + witnesses;
+  //     law-shape equality (the heuristic-cost-function use case) does not
+  //     need the report partition, and the existing variant is shape-only
+  //     until the generic DimensionReport producer/evaluator path lands.
+  //
+  // Runner status: shape-only until the heuristic-cost-function-5th-gate
+  // testgen dispatch authors the eval (Verification follow-up). The runner
+  // stub returns `ClaimResult::NotYetImplemented` naming the missing eval,
+  // the same pattern other shape-only scaffolds (`BinaryDimensionReportEquals`,
+  // `CensusBoundCheck`, `FixedPointConverges`, etc.) already use.
+  // Dissolution trigger: when `SymbolicCost` is reflected as a
+  // first-class substrate fact and direct expression equality can be
+  // expressed as an ordinary surfaced comparison rather than a bespoke
+  // predicate envelope.
+  | SymbolicCostExprEquals {
+      expected: DeclarationRef
+    }
   // **🟡 Scaffold — BinaryDimensionReportEquals.** Compare two declarations
   // that produce `DimensionReport<C>` values by structural equality. This is
   // intentionally one binary predicate for TC1 eta-equivalence, TC2 strategy
