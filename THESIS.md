@@ -224,9 +224,9 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - `dag run` is the primary execution path.
 - Adding a CI gate, a Node field, or a target language requires editing one .dag file.
 
-**Self-hosting — three facets:**
+**Self-hosting — four facets:**
 
-Self-hosting is not one capability; it's three. All three are targets.
+Self-hosting is not one capability; it's four. All four are targets.
 
 1. **Compiler written in the language it compiles.** `.dag` source authors
    the compiler. Partially true today — `.dag` authors key compiler passes
@@ -253,6 +253,21 @@ Self-hosting is not one capability; it's three. All three are targets.
    go, python) migrate to `ExecuteCommand`-based `.dag` `TestClaim`
    declarations. Everything ports to `.dag`. **Pure Bootstrap's secondary
    deliverable, couples to testgen.**
+
+4. **Recursive-flex / self-application** (NEW 2026-05-04; per Director
+   ratification at [gunbc#828 inbox-4374342708](https://github.com/gunb-ai/gunbc/issues/828)).
+   gunbc applies its own correctness/cost/parallelism/timing lenses to
+   its own build pipeline. The compiler that compiles gunbc programs
+   validates the workflow that produces gunbc itself. The same lens
+   framework users get for their own programs applies recursively to
+   gunbc's own runtime behavior — modeling its CI workflow as `.dag`
+   data, applying typed lenses for cost / complexity / parallelism /
+   timing, surfacing dependency-tracking and observation-driven
+   validation as structural facts. **R3 deliverable** (T-Workflow-As-Data
+   substrate + T-Lens-Self-Application demonstration; per `r3-structure.md`
+   §T-Workflow-As-Data + §T-Lens-Self-Application). Distinguishes
+   gunbc from compilers that don't validate their own production
+   pipeline — observation-driven lens-shape class is sui-generis.
 
 Cost-of-change: editing any compiler concept — a new pass, substrate fact,
 target-language detail, or pipeline/contract test assertion — stays at
