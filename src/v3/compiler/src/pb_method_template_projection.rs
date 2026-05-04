@@ -400,7 +400,7 @@ pub fn method_template_contract_row(
 /// Locate the `MethodDeclaration` carrier declaration in the bootstrap
 /// `Dag` once. Surfaces [`MethodTemplateProjectionError::MethodDeclarationCarrierMissing`]
 /// when the carrier is absent rather than panicking.
-fn method_declaration_carrier_id(
+pub(crate) fn method_declaration_carrier_id(
     dag: &Dag,
 ) -> Result<DeclarationId, MethodTemplateProjectionError> {
     Ok(dag
@@ -437,7 +437,7 @@ fn method_declaration_carrier_id(
 /// Both `project_dag_method` (per-row) and `method_template_contract_row`
 /// (lookup helper) consume this helper so the data-binding identity is
 /// factored once.
-fn validate_method_declaration_data_binding(
+pub(crate) fn validate_method_declaration_data_binding(
     dag: &Dag,
     decl_id: DeclarationId,
     method_declaration_id: DeclarationId,
