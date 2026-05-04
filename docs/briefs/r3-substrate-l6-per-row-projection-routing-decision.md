@@ -126,7 +126,7 @@ Recommendation: **(b)** — preserves the dispatch's "Grounding owns row populat
 
 ## 5. Verdict
 
-**Routing:** Option 2 (sibling projection carrier `EmissionPathProjection` keyed by `MethodRef`). Options 1 and 3 rejected — see §2.
+**Routing:** Option 2 (sibling projection carrier `EmissionPathProjection` keyed by `MethodTemplateContractKey { target: ShapeATarget, dag_method: MethodRef }`). Options 1 and 3 rejected — see §2.
 
 **Code:** stops here pending Director sign-off on §4.A–§4.D. The shape is otherwise clear and ready to land in a small substrate slice plus ratchet.
 
