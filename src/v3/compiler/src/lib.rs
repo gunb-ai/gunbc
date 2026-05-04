@@ -3426,6 +3426,16 @@ pub fn tokenize_for_test(source: &str, file: &str) -> Result<Vec<tokenize::Token
     tokenize::tokenize(source, file)
 }
 
+#[doc(hidden)]
+pub fn token_is_kw_fn_for_test(token: &tokenize::Token) -> bool {
+    matches!(token.kind, tokenize::TokenKind::KwFn)
+}
+
+#[doc(hidden)]
+pub fn token_is_ident_for_test(token: &tokenize::Token, spelling: &str) -> bool {
+    matches!(&token.kind, tokenize::TokenKind::Ident(s) if s == spelling)
+}
+
 /// Test-only hook: parse a token stream into a surface module.
 #[doc(hidden)]
 pub fn parse_for_test(
