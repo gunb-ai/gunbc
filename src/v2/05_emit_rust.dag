@@ -1137,7 +1137,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let prelude = emit_prelude()
   // Collect locally-defined type names so imports can skip them.
   let local_type_names = typed_module.items
-    |> filter(item => is_type_def_item(item: item))
+    |> filter(item =>
+      is_type_def_item(item: item)
+      || is_type_alias_item(item: item, source_indices: scope.type_env.source_indices)
+      || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
+    )
     |> map(item => authored_name(env: scope.type_env, node: item))
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, source_indices: scope.type_env.source_indices)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }

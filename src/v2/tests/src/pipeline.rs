@@ -6418,6 +6418,10 @@ type RealEnum
     );
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/local_alias_spoof_coproduct_wire_contract.rs");
+    assert!(
+        !content.contains("use crate::std_serialization::{CoproductWireContract"),
+        "local same-name aliases must suppress the imported std.serialization.CoproductWireContract; got:\n{content}"
+    );
     let attrs = attrs_immediately_above_enum(&content, "pub enum RealEnum");
     assert!(
         attrs.contains(&"#[serde(tag = \"_variant\")]"),
