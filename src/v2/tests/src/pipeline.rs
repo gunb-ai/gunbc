@@ -6401,7 +6401,12 @@ fn local_alias_coproduct_wire_contract_is_not_authority() {
     let source = r#"module local_alias_spoof_coproduct_wire_contract
 import std.serialization { CoproductWireContract, VariantEncoding }
 
-type CoproductWireContract = String
+type LocalContractShape {
+  coproduct: String
+  encoding: VariantEncoding
+}
+
+type CoproductWireContract = LocalContractShape
 
 data spoof_contract: CoproductWireContract = {
   coproduct: "RealEnum",
