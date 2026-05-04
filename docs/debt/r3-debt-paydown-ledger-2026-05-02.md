@@ -3,7 +3,7 @@
 **Date:** 2026-05-02
 **Owner:** R3 Debt-Paydown Manager
 **Authority parent:** [#1518](https://github.com/gunb-ai/gunbc/pull/1518)
-**Scope:** ROADMAP.md tracked-debt rows under `## Tracked debts -- 2026-04 analyses` through the 2026-05-01 paired-analysis ingestion, plus rows that explicitly route to the R3 standing debt-paydown program.
+**Scope:** ROADMAP.md tracked-debt rows under `## Tracked debts -- 2026-04 analyses` through the 2026-05-04 Exploratory + Reflective paired-analysis ingestion, plus rows that explicitly route to the R3 standing debt-paydown program. (Original 2026-05-02 baseline extended on 2026-05-04 to absorb the F2/F5/F11/F12/R1 novel-finding routings; eight already-tracked findings from the same ingestion are confirmed against existing catalog rows rather than duplicated.)
 
 ## Authority Read
 
