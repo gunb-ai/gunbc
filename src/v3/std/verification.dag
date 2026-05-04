@@ -204,8 +204,9 @@ type TestPredicate
   //
   // Runner status: shape-only until the heuristic-cost-function-5th-gate
   // testgen dispatch authors the eval (Verification follow-up). The runner
-  // stub fails closed with a typed Diagnostic naming the missing eval, the
-  // same pattern other shape-only predicates already use.
+  // stub returns `ClaimResult::NotYetImplemented` naming the missing eval,
+  // the same pattern other shape-only scaffolds (`BinaryDimensionReportEquals`,
+  // `CensusBoundCheck`, `FixedPointConverges`, etc.) already use.
   // Dissolution trigger: when `SymbolicCost` is reflected as a
   // first-class substrate fact and direct expression equality can be
   // expressed as an ordinary surfaced comparison rather than a bespoke
