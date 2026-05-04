@@ -541,11 +541,7 @@ fn soft_keyword_ident_service_still_parses_in_name_position() {
     let tokens = tokenize_for_test(source, "soft_keyword_ident_service.v3")
         .expect("tokenize identifier service");
     assert!(
-        tokens
-            .first()
-            .map(|t| format!("{:?}", t.kind))
-            .as_deref()
-            == Some("KwFn"),
+        tokens.first().map(|t| format!("{:?}", t.kind)).as_deref() == Some("KwFn"),
         "fixture should still start with fn"
     );
     assert!(
