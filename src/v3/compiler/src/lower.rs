@@ -3039,6 +3039,7 @@ fn lower_map_to_structural(
         name,
         entries,
         value_type,
+        &LowerSubstStack::default(),
         symbols,
         dag,
         pending_refined_function_refs,
@@ -3050,6 +3051,7 @@ fn lower_string_map_entries(
     data_name: &str,
     entries: &[crate::parse_surface::SurfaceMapEntry],
     value_type: DeclarationId,
+    subst: &LowerSubstStack,
     symbols: &HashMap<String, DeclarationId>,
     dag: &mut Dag,
     pending_refined_function_refs: &HashSet<DeclarationId>,
@@ -3074,8 +3076,8 @@ fn lower_string_map_entries(
                 data_name,
                 &entry.key,
                 &entry.value,
-                value_type,
-                &LowerSubstStack::default(),
+                resolve_decl_with_subst_lower(dag, value_type, subst, 0).unwrap_or(value_type),
+                subst,
                 symbols,
                 dag,
                 None,
@@ -3617,6 +3619,8 @@ fn lower_structural_field_value(
     }
 
     if let Some(element_type) = list_element_type(dag, expected_type) {
+        let element_type =
+            resolve_decl_with_subst_lower(dag, element_type, subst, 0).unwrap_or(element_type);
         let SurfaceExpr::List { elements, .. } = expr else {
             report_declaration_error(
                 dag,
@@ -3666,6 +3670,7 @@ fn lower_structural_field_value(
             data_name,
             entries,
             value_type,
+            subst,
             symbols,
             dag,
             pending_refined_function_refs,

@@ -34,12 +34,11 @@ fn arrow_output_decl(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
     *output
 }
 
-fn assert_instantiation_arg(
+fn instantiation_arg(
     dag: &Dag,
     decl_id: DeclarationId,
     expected_template: DeclarationId,
-    expected_arg: DeclarationId,
-) {
+) -> DeclarationId {
     let TypeConnective::Instantiation {
         template,
         arguments,
@@ -52,10 +51,36 @@ fn assert_instantiation_arg(
         "instantiation template mismatch"
     );
     assert_eq!(arguments.len(), 1, "expected one template argument");
-    assert_eq!(
-        arguments[0].value, expected_arg,
-        "instantiation argument mismatch"
-    );
+    arguments[0].value
+}
+
+fn same_instantiation_shape(dag: &Dag, lhs: DeclarationId, rhs: DeclarationId) -> bool {
+    if lhs == rhs {
+        return true;
+    }
+    match (
+        &dag.declaration(lhs).connective,
+        &dag.declaration(rhs).connective,
+    ) {
+        (
+            TypeConnective::Instantiation {
+                template: lhs_template,
+                arguments: lhs_arguments,
+            },
+            TypeConnective::Instantiation {
+                template: rhs_template,
+                arguments: rhs_arguments,
+            },
+        ) => {
+            lhs_template == rhs_template
+                && lhs_arguments.len() == rhs_arguments.len()
+                && lhs_arguments
+                    .iter()
+                    .zip(rhs_arguments.iter())
+                    .all(|(lhs, rhs)| same_instantiation_shape(dag, lhs.value, rhs.value))
+        }
+        _ => false,
+    }
 }
 
 // =================================================================
@@ -572,18 +597,21 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
     let witness = dag.declaration_by_name("Witness").unwrap().id;
     let int_decl = dag.declaration_by_name("Int").unwrap().id;
     let string_decl = dag.declaration_by_name("String").unwrap().id;
-    assert_instantiation_arg(
+    let actual_arg = instantiation_arg(
         &dag,
         arrow_output_decl(&dag, lens_read_id),
         witness,
-        string_decl,
     );
-    assert_instantiation_arg(
+    let expected_arg = instantiation_arg(
         &dag,
         arrow_output_decl(&dag, expected_read_ty),
         witness,
-        int_decl,
     );
+    assert!(
+        same_instantiation_shape(&dag, actual_arg, string_decl),
+        "actual read output must be Witness<String>"
+    );
+    assert_eq!(expected_arg, int_decl, "expected read output must be Witness<Int>");
 }
 
 #[test]
