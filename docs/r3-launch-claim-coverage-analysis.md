@@ -291,9 +291,11 @@ Multi-stage substrate cascade. R3 close horizon may be different from launch hor
 
 The Framing C reframe (intent soundness vs intent-vs-want) makes the launch claim defensible:
 
-> *"We validate intent soundness completely. We cannot validate intent-vs-want — no language can. We provide intent-vs-want analysis beyond alternatives."*
+> *"We validate intent soundness completely **within the authored substrate**. We cannot validate intent-vs-want — no language can. We provide intent-vs-want analysis beyond alternatives."*
 
-The "we cannot validate intent-vs-want" admission is what makes the rest of the claim land. Compiler-people read this as epistemic seriousness; the over-claim ("no intra-program bugs") would have been read as marketing.
+This is the same qualified form established in §2; the qualifier is load-bearing per §2's three-class structural distinction (today-banked / thesis-supported-but-not-yet-authored / outside-thesis). Dropping it would let downstream launch copy re-introduce the over-claim Framing C is designed to prevent.
+
+The "we cannot validate intent-vs-want" admission is what makes the rest of the claim land. Compiler-people read this as epistemic seriousness; the over-claim ("no intra-program bugs") would have been read as marketing. The "within the authored substrate" qualifier is what makes the *first* part land — it acknowledges the trajectory of substrate-extension work without collapsing in-flight extensions into already-banked claims.
 
 ### 8c. Behavioral analyses are now load-bearing for the strong claim
 
