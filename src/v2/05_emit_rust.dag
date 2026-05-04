@@ -617,7 +617,14 @@ fn data_item_type_is_coproduct_wire_contract(item: Node, imports: List<Node>, so
 
 fn module_defines_local_coproduct_wire_contract_type(module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
   module_items
-    |> any(item => is_type_def_item(item: item) && authored_name_at(source_indices: source_indices, node: item) == "CoproductWireContract")
+    |> any(item =>
+      (
+        is_type_def_item(item: item)
+        || is_type_alias_item(item: item, source_indices: source_indices)
+        || is_type_decl_item(item: item, source_indices: source_indices)
+      )
+      && authored_name_at(source_indices: source_indices, node: item) == "CoproductWireContract"
+    )
 }
 
 fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
@@ -1130,7 +1137,11 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let prelude = emit_prelude()
   // Collect locally-defined type names so imports can skip them.
   let local_type_names = typed_module.items
-    |> filter(item => is_type_def_item(item: item))
+    |> filter(item =>
+      is_type_def_item(item: item)
+      || is_type_alias_item(item: item, source_indices: scope.type_env.source_indices)
+      || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
+    )
     |> map(item => authored_name(env: scope.type_env, node: item))
   let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, source_indices: scope.type_env.source_indices)
   let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }

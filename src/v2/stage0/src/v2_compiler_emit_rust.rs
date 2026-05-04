@@ -916,7 +916,8 @@ pub fn module_defines_local_coproduct_wire_contract_type(
     {
         let mut __found = false;
         for item in module_items.iter().cloned() {
-            if (is_type_def_item(&item)
+            if (((is_type_def_item(&item) || is_type_alias_item(&item, source_indices.clone()))
+                || is_type_decl_item(&item, source_indices.clone()))
                 && (authored_name_at(source_indices.clone(), &item).as_str()
                     == "CoproductWireContract".to_string().as_str()))
             {
@@ -2002,7 +2003,13 @@ pub fn emit_module_full(
             for item in Rc::new({
                 let mut __result = Vec::new();
                 for item in typed_module.items.clone().iter().cloned() {
-                    if is_type_def_item(&item) {
+                    if ((is_type_def_item(&item)
+                        || is_type_alias_item(
+                            &item,
+                            scope.type_env.clone().source_indices.clone(),
+                        ))
+                        || is_type_decl_item(&item, scope.type_env.clone().source_indices.clone()))
+                    {
                         __result.push(item);
                     }
                 }
