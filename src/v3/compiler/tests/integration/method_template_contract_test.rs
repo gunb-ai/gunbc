@@ -217,6 +217,21 @@ fn method_template_contract_row_fields<'a>(
                     "row {row_index} in `{list_name}` references missing declaration {decl_id:?}"
                 )
             });
+            let method_template_contract = dag
+                .declaration_by_name("MethodTemplateContract")
+                .expect("MethodTemplateContract carrier")
+                .id;
+            let TypeConnective::Instantiation { template, .. } = &decl.connective else {
+                panic!(
+                    "row {row_index} in `{list_name}` references {decl_id:?}, \
+                     but it does not instantiate MethodTemplateContract"
+                );
+            };
+            assert_eq!(
+                *template, method_template_contract,
+                "row {row_index} in `{list_name}` references {decl_id:?}, \
+                 but it does not instantiate MethodTemplateContract"
+            );
             let Some(ValueBody::Structural { fields }) = decl.value_body.as_ref() else {
                 panic!(
                     "row {row_index} in `{list_name}` references {decl_id:?}, \
