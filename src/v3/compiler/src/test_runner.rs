@@ -2426,6 +2426,16 @@ impl<'a> TestRunner<'a> {
                 "SymbolicCostExprEquals: expected `{expected_name}` has no value body to compare against"
             ));
         }
+        // The `expected: DeclarationRef` field is unrefined (`DeclarationRef`
+        // admits any declaration); validate at the runner boundary that the
+        // referenced declaration actually inhabits `SymbolicCost`. Mirror of
+        // the boundary check in `validate_dimension_report_ref` for
+        // `BinaryDimensionReportEquals`. Dissolution: when refinement-typing
+        // on `DeclarationRef` (or a `SymbolicCostRef` wrapper class) lands in
+        // substrate, this runner-side check retires alongside the wrapper.
+        if let Err(reason) = self.validate_symbolic_cost_ref(expected_id, "expected") {
+            return ClaimResult::Fail(reason);
+        }
         ClaimResult::NotYetImplemented(format!(
             "SymbolicCostExprEquals: structural shape is valid for `{expected_name}`, but runner \
              evaluation waits for the heuristic-cost-function-5th-gate testgen dispatch \
@@ -2433,6 +2443,44 @@ impl<'a> TestRunner<'a> {
              program-under-test (`TestClaim.source` for enumerated claims; `ProgramShape.source` \
              for quantified claims once Slice 1 lands) and compare the result structurally to \
              `{expected_name}`."
+        ))
+    }
+
+    /// Boundary check that `decl_id` references a declaration whose declared
+    /// type is `SymbolicCost`. The runner walks transparent aliases (no-arg
+    /// instantiations + ResolvedBy* atoms) to handle `data X: SymbolicCost
+    /// = ConstantCost(0)`-style declarations whose connective is an alias to
+    /// the algebra type. Same shape as `validate_dimension_report_ref`,
+    /// scoped to a single nominal type instead of `DimensionReport<C>`.
+    fn validate_symbolic_cost_ref(
+        &self,
+        decl_id: DeclarationId,
+        field_label: &str,
+    ) -> Result<(), String> {
+        let symbolic_cost_id = self
+            .dag
+            .declaration_by_name("SymbolicCost")
+            .map(|decl| decl.id)
+            .ok_or_else(|| {
+                format!(
+                    "SymbolicCostExprEquals `{field_label}`: \
+                     `SymbolicCost` type not found in bootstrap"
+                )
+            })?;
+        let decl = self.dag.declaration(decl_id);
+        // For `fn`-shaped expected refs, walk through the arrow output;
+        // otherwise normalize the declaration itself.
+        let candidate = match &decl.connective {
+            TypeConnective::Arrow { output, .. } => *output,
+            _ => decl_id,
+        };
+        if self.normalize_transparent_type(candidate) == symbolic_cost_id {
+            return Ok(());
+        }
+        Err(format!(
+            "SymbolicCostExprEquals `{field_label}` must reference a declaration of type \
+             `SymbolicCost`; `{}` does not (declared type does not normalize to `SymbolicCost`).",
+            decl_display_name(decl_id, decl)
         ))
     }
 
