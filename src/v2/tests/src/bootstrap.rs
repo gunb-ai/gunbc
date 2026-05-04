@@ -48,7 +48,26 @@ fn run_self_compile(
     binary: &std::path::Path,
     output_dir: &std::path::Path,
 ) -> std::process::Output {
-    run_self_compile_with_extra_source_roots(binary, output_dir, &[])
+    let generated_root = write_method_template_projection_shape_fixture("self-compile-generated");
+    run_self_compile_with_extra_source_roots(binary, output_dir, &[generated_root])
+}
+
+fn write_method_template_projection_shape_fixture(name: &str) -> std::path::PathBuf {
+    let root = temp_dir(name);
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("generated")).unwrap();
+    std::fs::write(
+        root.join("generated").join("method_template_projection.dag"),
+        "\
+module generated.method_template_projection
+
+data rust_method_template_emit: Map<String, String> = {}
+data python_method_template_emit: Map<String, String> = {}
+data go_method_template_emit: Map<String, String> = {}
+",
+    )
+    .unwrap();
+    root
 }
 
 /// Run self-compile with additional dependency source roots appended after the
