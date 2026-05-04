@@ -64,6 +64,9 @@ jobs:
   # removed to cut wall time. Full compiler + test surface stays in the `v3`
   # job. Local reproduction of the old pipeline: `dsl/gunbc/tools/ci_runner.dag`
   # `run_ci_pipeline`.
+  # Dissolution trigger: remove the verify step below once the committed bootstrap
+  # snapshot surface dissolves (default-build regen or chosen artifact path). Track
+  # #1559; rationale: docs/audit/bootstrap-snapshot-drift-dissolution-assessment.md.
   ci:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
@@ -265,7 +268,8 @@ jobs:
         run: cargo test -p v3-compiler --no-run --features bootstrap-regen-fresh
 
       # `regen_bootstrap --verify` runs in the required `ci` job (pre-merge
-      # fail-closed gate; #1543). Skip duplicate here.
+      # fail-closed gate; #1543). Skip duplicate here. Dissolution trigger for
+      # both places: #1559 (see docs/audit/bootstrap-snapshot-drift-dissolution-assessment.md).
 
       - name: L-7 Substrate accessor reconstruction gate
         run: |
