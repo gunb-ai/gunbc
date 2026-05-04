@@ -359,13 +359,16 @@ type PatternMatchSyntax {
 }
 
 type CollectionOps {
-  concat: String
-  length: String
-  is_empty: String
-  // Realization of `FreeMonoid<T>.fold` for this target — `DeclarationRef`
-  // points at a `MethodTemplateContract` value (same carrier as per-target
-  // `*_method_template_contracts` rows). Template strings live only on that
-  // contract; this field is identity, not render data.
+  // Realizations of `FreeMonoid<T>.concat` / `length` / length-derived emptiness
+  // / `fold` — each `DeclarationRef` points at a `MethodTemplateContract` value
+  // (same carrier as per-target `*_method_template_contracts` rows). Template
+  // strings live only on those contracts; these fields are identity, not render data.
+  concat_contract: DeclarationRef
+  length_contract: DeclarationRef
+  // `FreeMonoid<T>` declares `length` but not `is_empty`; emptiness is realized as
+  // a zero-length test. The contract's `dag_method` pins `length_method`; the
+  // template may use target-native `.is_empty()` / `len(...) == 0` sugar.
+  is_empty_contract: DeclarationRef
   fold_contract: DeclarationRef
   map: String
   filter: String
