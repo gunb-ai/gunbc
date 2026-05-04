@@ -345,7 +345,7 @@ ratchet and assignments to a dead field.
 - **Delete `LanguageSpec.method_templates: Map<String, String>?`
   field** (`src/v2/languages.dag:400`) and the four dead assignments
   (`:544, :688, :832, :979`) — structural change to a Substrate-shaped
-  type. Editing `src/v2/languages.dag` and is therefore **Gap 5b
+  type. Editing `src/v2/languages.dag` is therefore **Gap 5b
   territory**, not 5a.
 - **Delete legacy `dsl/extdeps/languages/{rust,python,go}/emit.dag::*_method_templates`**
   (Rust `rust_method_templates()`, Python `python_method_templates`,
