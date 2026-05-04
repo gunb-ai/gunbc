@@ -21,6 +21,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         ),
         verifier_output_policy_variants: VerifierOutputPolicyVariants::default(),
         callable_strategy_variants: CallableStrategyVariants::default(),
+        emit_model_variants: EmitModelVariants::default(),
         clusters: bootstrapped_std_fixture_dag_clusters(),
         optional_match_disjs: bootstrapped_std_fixture_dag_optional_match_disjs(),
         declaration_append_begin_after_bootstrap: 607,
