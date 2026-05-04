@@ -1097,7 +1097,9 @@ fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: Declar
 fn refinement_predicate_out_of_fragment(expr: &SurfaceExpr) -> Option<(&'static str, SourceSpan)> {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => None,
-        SurfaceExpr::Call { args, .. } | SurfaceExpr::Operator { args, .. } => {
+        SurfaceExpr::Call { args, .. }
+        | SurfaceExpr::Operator { args, .. }
+        | SurfaceExpr::PathCall { args, .. } => {
             args.iter().find_map(refinement_predicate_out_of_fragment)
         }
         SurfaceExpr::Lambda { span, .. } => Some(("lambda", span.clone())),
@@ -1632,6 +1634,19 @@ fn collect_scope_bound_free_vars(
             // expression position.
             for entry in entries {
                 collect_scope_bound_free_vars(&entry.value, scope, out);
+            }
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // Like Path: head segment is a local-variable reference
+            // when it resolves to scope. Plus recurse into args like
+            // Call.
+            if let Some(head) = segments.first() {
+                if scope.contains_key(head) {
+                    out.insert(head.clone());
+                }
+            }
+            for arg in args {
+                collect_scope_bound_free_vars(arg, scope, out);
             }
         }
     }
@@ -5067,7 +5082,7 @@ fn lower_fn_item_expr_body(
             span: body_span.clone(),
         });
         (body_return_port, loop_output)
-    } else if is_recursive(body, name) {
+    } else if is_recursive(body, name, dag, symbols) {
         if param_ports.is_empty() {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
@@ -5098,6 +5113,7 @@ fn lower_fn_item_expr_body(
             name,
             &params[0].name,
             &HashMap::new(),
+            symbols,
         ) {
             let err_port = dag.alloc_port(None);
             dag.mark_unresolved(
@@ -5401,6 +5417,16 @@ fn collect_lambda_free_names(
         SurfaceExpr::Map { entries, .. } => {
             for entry in entries {
                 collect_lambda_free_names(&entry.value, bound, free);
+            }
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            if let Some(head) = segments.first() {
+                if !bound.contains(head) {
+                    free.insert(head.clone());
+                }
+            }
+            for arg in args {
+                collect_lambda_free_names(arg, bound, free);
             }
         }
     }
@@ -6097,6 +6123,73 @@ fn lower_field_path_expr(
 /// Only scalar literals terminate the walk; nested `Record` payloads
 /// admit further descent but `List`, `Map`, and `Variant` terminal
 /// reads are out of scope for 3a.2 and fall through to `None`.
+/// Prereq-X1.a: walk a sequence of structural-body field segments
+/// to a `FieldValue::Reference(decl_id)` leaf. Returns `None` if the
+/// path traverses a non-structural value body, the leaf field is
+/// missing, the leaf is a non-Reference value, or the segments are
+/// empty.
+fn resolve_field_value_reference(
+    value_body: &crate::dag::ValueBody,
+    segments: &[String],
+) -> Option<DeclarationId> {
+    let crate::dag::ValueBody::Structural { fields } = value_body else {
+        return None;
+    };
+    walk_structural_to_reference(fields, segments)
+}
+
+/// Prereq-X1.a: resolve a `PathCall.segments` slice to a leaf
+/// top-level function `DeclarationId`. Single resolution authority
+/// shared by `is_recursive`, `descent_provable`, the
+/// `ClusterDescentChecker` arm, `collect_recursive_callees`, and the
+/// `lower_expr` X1.a arm — so all five agree by construction.
+///
+/// Returns `None` when the head is not a top-level symbol, the head
+/// declaration has no compile-time value body, the path leaf is not a
+/// `FieldValue::Reference`, or the segments traverse a non-structural
+/// value body. Non-callable leaves are accepted at this layer; the
+/// lowerer enforces the Arrow check separately.
+fn resolve_path_to_function_decl(
+    segments: &[String],
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> Option<DeclarationId> {
+    let head = segments.first()?;
+    // Look up the head in the caller-supplied `symbols` map first
+    // (lowerer / is_recursive / descent_provable have the full
+    // top-level symbol table), then fall back to
+    // `Dag::declaration_by_name` so callers with narrower maps
+    // (e.g. `compute_mutually_recursive`'s `function_symbols`-only
+    // map) can still resolve `data`-binding heads.
+    let head_decl = match symbols.get(head).copied() {
+        Some(id) => id,
+        None => dag.declaration_by_name(head)?.id,
+    };
+    let value_body = dag.declaration(head_decl).value_body.as_ref()?;
+    resolve_field_value_reference(value_body, &segments[1..])
+}
+
+fn walk_structural_to_reference(
+    fields: &[(String, crate::dag::FieldValue)],
+    segments: &[String],
+) -> Option<DeclarationId> {
+    let (head, rest) = segments.split_first()?;
+    let field_value = fields
+        .iter()
+        .find(|(label, _)| label == head)
+        .map(|(_, v)| v)?;
+    if rest.is_empty() {
+        return match field_value {
+            crate::dag::FieldValue::Reference(id) => Some(*id),
+            _ => None,
+        };
+    }
+    match field_value {
+        crate::dag::FieldValue::Record(inner) => walk_structural_to_reference(inner, rest),
+        _ => None,
+    }
+}
+
 fn resolve_data_path(
     dag: &mut Dag,
     value_body: &crate::dag::ValueBody,
@@ -6314,6 +6407,144 @@ struct VariantRecordExprRef<'a> {
     span: &'a SourceSpan,
 }
 
+/// Shared static-callable invocation lowerer, parametric over the
+/// resolved callee `DeclarationId`. Both the `Call` arm and the X1.a
+/// `PathCall` arm of `lower_expr` dispatch through this helper so the
+/// resolved-decl identity flows forward without name re-resolution.
+///
+/// `callable_diagnostic_name` is the human-readable label used in
+/// callable-binding-conflict diagnostics (the bare target name for
+/// `Call`; the dotted path for `PathCall`). It is purely diagnostic —
+/// the substrate authority is always `base_target_decl`.
+#[allow(clippy::too_many_arguments)]
+fn lower_resolved_callable_invocation(
+    base_target_decl: DeclarationId,
+    callable_diagnostic_name: &str,
+    args: &[SurfaceExpr],
+    span: &SourceSpan,
+    dag: &mut Dag,
+    scope: &HashMap<String, PortId>,
+    callable_scope: &CallableScope,
+    symbols: &HashMap<String, DeclarationId>,
+    expected_decl: Option<DeclarationId>,
+) -> PortId {
+    let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
+    let mut input_ports: Vec<PortId> = Vec::new();
+    let mut template_arguments: Vec<TemplateArgument> = Vec::new();
+    if let (Some(expected_result), Some(target_output)) = (
+        expected_decl,
+        declaration_callable_output(dag, base_target_decl, 0),
+    ) {
+        let _ = bind_expected_type_to_actual(
+            dag,
+            target_output,
+            expected_result,
+            &mut template_arguments,
+            0,
+        );
+    }
+    for (idx, arg) in args.iter().enumerate() {
+        let raw_expected_input = target_inputs
+            .as_ref()
+            .and_then(|inputs| inputs.get(idx))
+            .copied();
+        let specialized_expected_input = raw_expected_input.map(|expected_decl| {
+            specialize_decl_for_lowering(dag, expected_decl, &template_arguments, 0)
+        });
+        if let Some(expected_decl) = raw_expected_input {
+            if declaration_is_callable(dag, expected_decl, 0) {
+                let specialized_expected = specialized_expected_input.unwrap_or(expected_decl);
+                let actual_callable = match arg {
+                    SurfaceExpr::Lambda { params, body, span } => {
+                        let mut lambda_ctx = LambdaLoweringContext {
+                            dag,
+                            scope,
+                            callable_scope,
+                            symbols,
+                        };
+                        match lower_lambda_expr(
+                            params,
+                            body,
+                            span,
+                            specialized_expected,
+                            &mut lambda_ctx,
+                        ) {
+                            Ok(lambda_decl_id) => lambda_decl_id,
+                            Err(diag) => {
+                                report_declaration_error(lambda_ctx.dag, diag);
+                                alloc_identifier_stub(lambda_ctx.dag, "__lambda__", span)
+                            }
+                        }
+                    }
+                    _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
+                };
+                let matches_expected = push_template_argument_binding(
+                    &mut template_arguments,
+                    expected_decl,
+                    actual_callable,
+                ) && bind_expected_type_to_actual(
+                    dag,
+                    specialized_expected,
+                    actual_callable,
+                    &mut template_arguments,
+                    0,
+                );
+                if !matches_expected {
+                    let port = dag.alloc_port(None);
+                    dag.mark_unresolved(
+                        port,
+                        callable_binding_conflict_diagnostic(
+                            callable_diagnostic_name,
+                            idx,
+                            &expr_span(arg),
+                        ),
+                    );
+                    return port;
+                }
+                continue;
+            }
+        }
+        let lowered = lower_expr(
+            arg,
+            dag,
+            scope,
+            callable_scope,
+            symbols,
+            specialized_expected_input,
+        );
+        if let Some(expected_decl) = raw_expected_input {
+            if let crate::dag::PortState::Resolved(actual_ty) = dag.port(lowered).state() {
+                let _ = bind_expected_type_to_actual(
+                    dag,
+                    expected_decl,
+                    actual_ty.declaration,
+                    &mut template_arguments,
+                    0,
+                );
+            }
+        }
+        input_ports.push(lowered);
+    }
+    let retained_arguments =
+        retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
+    let target_decl = materialize_callable_target_with_retained_arguments(
+        dag,
+        base_target_decl,
+        retained_arguments,
+        span,
+    );
+    let node_id = dag.alloc_node_id();
+    let output = dag.alloc_port(Some(node_id));
+    dag.push_node(Behavior::Transform(TransformNode {
+        id: node_id,
+        target: TransformTarget::Callable(target_decl),
+        inputs: input_ports,
+        output,
+        span: span.clone(),
+    }));
+    output
+}
+
 fn lower_expr(
     expr: &SurfaceExpr,
     dag: &mut Dag,
@@ -6396,6 +6627,8 @@ fn lower_expr(
                     .or_else(|| callable_scope.get(target).copied())
                     .or_else(|| symbols.get(target).copied())
             else {
+                // (unresolved branch — kept inline to preserve diagnostic shape;
+                // resolved branch delegates to `lower_resolved_callable_invocation`)
                 for arg in args {
                     let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
                 }
@@ -6431,118 +6664,17 @@ fn lower_expr(
                 );
                 return port;
             };
-            let target_inputs = direct_invocation_input_decls(dag, base_target_decl, 0);
-            let mut input_ports: Vec<PortId> = Vec::new();
-            let mut template_arguments: Vec<TemplateArgument> = Vec::new();
-            if let (Some(expected_result), Some(target_output)) = (
-                expected_decl,
-                declaration_callable_output(dag, base_target_decl, 0),
-            ) {
-                let _ = bind_expected_type_to_actual(
-                    dag,
-                    target_output,
-                    expected_result,
-                    &mut template_arguments,
-                    0,
-                );
-            }
-            for (idx, arg) in args.iter().enumerate() {
-                let raw_expected_input = target_inputs
-                    .as_ref()
-                    .and_then(|inputs| inputs.get(idx))
-                    .copied();
-                let specialized_expected_input = raw_expected_input.map(|expected_decl| {
-                    specialize_decl_for_lowering(dag, expected_decl, &template_arguments, 0)
-                });
-                if let Some(expected_decl) = raw_expected_input {
-                    if declaration_is_callable(dag, expected_decl, 0) {
-                        let specialized_expected =
-                            specialized_expected_input.unwrap_or(expected_decl);
-                        let actual_callable = match arg {
-                            SurfaceExpr::Lambda { params, body, span } => {
-                                let mut lambda_ctx = LambdaLoweringContext {
-                                    dag,
-                                    scope,
-                                    callable_scope,
-                                    symbols,
-                                };
-                                match lower_lambda_expr(
-                                    params,
-                                    body,
-                                    span,
-                                    specialized_expected,
-                                    &mut lambda_ctx,
-                                ) {
-                                    Ok(lambda_decl_id) => lambda_decl_id,
-                                    Err(diag) => {
-                                        report_declaration_error(lambda_ctx.dag, diag);
-                                        alloc_identifier_stub(lambda_ctx.dag, "__lambda__", span)
-                                    }
-                                }
-                            }
-                            _ => resolve_callable_reference(arg, dag, callable_scope, symbols),
-                        };
-                        let matches_expected = push_template_argument_binding(
-                            &mut template_arguments,
-                            expected_decl,
-                            actual_callable,
-                        ) && bind_expected_type_to_actual(
-                            dag,
-                            specialized_expected,
-                            actual_callable,
-                            &mut template_arguments,
-                            0,
-                        );
-                        if !matches_expected {
-                            let port = dag.alloc_port(None);
-                            dag.mark_unresolved(
-                                port,
-                                callable_binding_conflict_diagnostic(target, idx, &expr_span(arg)),
-                            );
-                            return port;
-                        }
-                        continue;
-                    }
-                }
-                let lowered = lower_expr(
-                    arg,
-                    dag,
-                    scope,
-                    callable_scope,
-                    symbols,
-                    specialized_expected_input,
-                );
-                if let Some(expected_decl) = raw_expected_input {
-                    if let crate::dag::PortState::Resolved(actual_ty) = dag.port(lowered).state() {
-                        let _ = bind_expected_type_to_actual(
-                            dag,
-                            expected_decl,
-                            actual_ty.declaration,
-                            &mut template_arguments,
-                            0,
-                        );
-                    }
-                }
-                input_ports.push(lowered);
-            }
-            let retained_arguments =
-                retained_template_arguments_for_target(dag, base_target_decl, &template_arguments);
-            let target_decl = materialize_callable_target_with_retained_arguments(
-                dag,
+            lower_resolved_callable_invocation(
                 base_target_decl,
-                retained_arguments,
+                target,
+                args,
                 span,
-            );
-            let node_id = dag.alloc_node_id();
-            let output = dag.alloc_port(Some(node_id));
-            dag.push_node(Behavior::Transform(TransformNode {
-                id: node_id,
-                target: TransformTarget::Callable(target_decl),
-                inputs: input_ports,
-                output,
-                span: span.clone(),
-            }));
-            output
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            )
         }
         SurfaceExpr::VariantRecord {
             target,
@@ -6801,6 +6933,149 @@ fn lower_expr(
             segment_spans,
             span,
         } => lower_field_path_expr(segments, segment_spans, span, dag, scope, symbols),
+        SurfaceExpr::PathCall {
+            segments,
+            segment_spans: _,
+            args,
+            span,
+        } => {
+            // Prereq-X1.a: static call-on-field-access. Resolve the
+            // dotted-path callee through a `data` binding's
+            // structural value body to a top-level function decl, then
+            // dispatch through the existing `Call` lowering by
+            // constructing a synthetic `SurfaceExpr::Call` whose target
+            // is the resolved declaration's name. This reuses arity +
+            // per-argument type validation without duplicating the
+            // Call lowerer.
+            //
+            // Failure modes (each fail-closed with a typed diagnostic):
+            //
+            // - Empty path / non-`data` head / parameter-callee head:
+            //   ResolveError naming the unsupported head and pointing
+            //   at the X1.b prerequisite for parameter callees.
+            // - Missing/non-Reference field at the leaf: ResolveError.
+            // - Resolved declaration without a name: ResolveError.
+            //
+            // Parameter-callee dispatch (X1.b) is intentionally
+            // unsupported here; the diagnostic names the prerequisite.
+            let Some((head, rest)) = segments.split_first() else {
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: "empty dotted path in call expression".to_string(),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            // Parameter-callee head (X1.b): the head is a local-scope
+            // binding rather than a top-level `data` symbol. Surface a
+            // typed diagnostic naming the prerequisite — do not
+            // silently fall through.
+            if scope.contains_key(head) {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access through parameter `{head}` is not yet supported (Prereq-X1.b: requires runtime-callee dispatch substrate); only static `data` binding callees are accepted in this slice"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            }
+            let Some(&head_decl) = symbols.get(head) else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access head `{head}` is not a top-level `data` declaration; static call-on-field-access (Prereq-X1.a) requires a `data` binding head"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            let value_body_opt = dag.declaration(head_decl).value_body.clone();
+            let Some(value_body) = value_body_opt else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "call-on-field-access head `{head}` has no compile-time value body; static call-on-field-access requires a `data` binding with a structural value body"
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            let resolved_callee_decl = resolve_field_value_reference(&value_body, rest);
+            let Some(callee_decl_id) = resolved_callee_decl else {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "dotted path `{}` does not resolve to a callable function reference (expected `FieldValue::Reference` at leaf); the field may be a non-Arrow value, missing, or the path may traverse a non-structural value body",
+                            segments.join(".")
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            };
+            // Verify the resolved leaf is callable (Arrow). A
+            // FieldValue::Reference to a non-callable declaration
+            // (e.g., a typed-but-non-Arrow data binding referenced as
+            // a field) must produce a typed non-callable diagnostic
+            // here rather than relying on the synthetic Call lowerer
+            // to surface something ambiguous downstream.
+            if !declaration_is_callable(dag, callee_decl_id, 0) {
+                for arg in args {
+                    let _ = lower_expr(arg, dag, scope, callable_scope, symbols, None);
+                }
+                return unresolved_port(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: format!(
+                            "dotted path `{}` resolves to a non-callable declaration; X1.a static call-on-field-access requires the leaf to reference a top-level function (Arrow type)",
+                            segments.join(".")
+                        ),
+                        span: span.clone(),
+                        fixes: Vec::new(),
+                    },
+                );
+            }
+            // Authority preserved: the resolved `callee_decl_id` flows
+            // directly into `lower_resolved_callable_invocation` —
+            // **not** re-resolved by name through the synthetic-Call
+            // detour. The dotted-path display is the diagnostic label
+            // for callable-binding-conflict messages; the substrate
+            // identity is `callee_decl_id`.
+            let diagnostic_label = segments.join(".");
+            lower_resolved_callable_invocation(
+                callee_decl_id,
+                &diagnostic_label,
+                args,
+                span,
+                dag,
+                scope,
+                callable_scope,
+                symbols,
+                expected_decl,
+            )
+        }
         SurfaceExpr::Map { span, .. } => {
             // Map literals are not lowerable as expressions in M1(2.8) —
             // the parser admits them only in top-level data-body
@@ -7266,7 +7541,19 @@ fn producer_of(dag: &Dag, port: PortId) -> Option<NodeId> {
     dag.port(port).produced_by
 }
 
-fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
+/// X1.a-aware recursive-call detection.
+///
+/// `dag` and `symbols` are required so PathCall callees that resolve to
+/// the current function (e.g. via `data fns: Fns = { rec: <self_name> };
+/// fns.rec(arg)`) are caught — without that resolution, mutual recursion
+/// through a `data`-binding indirection would bypass the decidability
+/// gate (P4).
+fn is_recursive(
+    expr: &SurfaceExpr,
+    self_name: &str,
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> bool {
     match expr {
         SurfaceExpr::Literal { .. }
         | SurfaceExpr::Var { .. }
@@ -7276,34 +7563,54 @@ fn is_recursive(expr: &SurfaceExpr, self_name: &str) -> bool {
             if target == self_name {
                 return true;
             }
-            args.iter().any(|a| is_recursive(a, self_name))
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
         SurfaceExpr::VariantRecord { fields, .. } => fields
             .iter()
-            .any(|field| is_recursive(&field.value, self_name)),
-        SurfaceExpr::Operator { args, .. } => args.iter().any(|a| is_recursive(a, self_name)),
+            .any(|field| is_recursive(&field.value, self_name, dag, symbols)),
+        SurfaceExpr::Operator { args, .. } => args
+            .iter()
+            .any(|a| is_recursive(a, self_name, dag, symbols)),
         SurfaceExpr::If {
             cond,
             then_branch,
             else_branch,
             ..
         } => {
-            is_recursive(cond, self_name)
-                || is_recursive(then_branch, self_name)
-                || is_recursive(else_branch, self_name)
+            is_recursive(cond, self_name, dag, symbols)
+                || is_recursive(then_branch, self_name, dag, symbols)
+                || is_recursive(else_branch, self_name, dag, symbols)
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            is_recursive(scrutinee, self_name)
-                || arms.iter().any(|arm| is_recursive(&arm.body, self_name))
+            is_recursive(scrutinee, self_name, dag, symbols)
+                || arms
+                    .iter()
+                    .any(|arm| is_recursive(&arm.body, self_name, dag, symbols))
         }
-        SurfaceExpr::Lambda { body, .. } => is_recursive(body, self_name),
-        SurfaceExpr::Record { fields, .. } => {
-            fields.iter().any(|f| is_recursive(&f.value, self_name))
-        }
-        SurfaceExpr::Map { entries, .. } => {
-            entries.iter().any(|e| is_recursive(&e.value, self_name))
+        SurfaceExpr::Lambda { body, .. } => is_recursive(body, self_name, dag, symbols),
+        SurfaceExpr::Record { fields, .. } => fields
+            .iter()
+            .any(|f| is_recursive(&f.value, self_name, dag, symbols)),
+        SurfaceExpr::Map { entries, .. } => entries
+            .iter()
+            .any(|e| is_recursive(&e.value, self_name, dag, symbols)),
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // X1.a static path-call: resolve segments[0] through symbols
+            // → data binding's ValueBody → leaf FieldValue::Reference.
+            // If the leaf decl's name equals self_name, this PathCall is
+            // a recursive self-call (mutual or direct via data-binding
+            // indirection) and must trigger the decidability gate
+            // (INVARIANTS P4).
+            if let Some(leaf_decl) = resolve_path_to_function_decl(segments, dag, symbols) {
+                if dag.declaration(leaf_decl).name.as_deref() == Some(self_name) {
+                    return true;
+                }
+            }
+            args.iter()
+                .any(|a| is_recursive(a, self_name, dag, symbols))
         }
     }
 }
@@ -7360,6 +7667,7 @@ fn descent_provable(
     self_name: &str,
     first_param: &str,
     bindings: &HashMap<String, StructuralBindingInfo>,
+    symbols: &HashMap<String, DeclarationId>,
 ) -> bool {
     match expr {
         SurfaceExpr::Literal { .. } | SurfaceExpr::Var { .. } | SurfaceExpr::Path { .. } => true,
@@ -7379,13 +7687,22 @@ fn descent_provable(
                                 self_name,
                                 first_param,
                                 bindings,
+                                symbols,
                             )
                         })
                     }
                 }
             } else {
                 args.iter().all(|a| {
-                    descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)
+                    descent_provable(
+                        a,
+                        dag,
+                        first_param_decl,
+                        self_name,
+                        first_param,
+                        bindings,
+                        symbols,
+                    )
                 })
             }
         }
@@ -7397,11 +7714,20 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
-        SurfaceExpr::Operator { args, .. } => args
-            .iter()
-            .all(|a| descent_provable(a, dag, first_param_decl, self_name, first_param, bindings)),
+        SurfaceExpr::Operator { args, .. } => args.iter().all(|a| {
+            descent_provable(
+                a,
+                dag,
+                first_param_decl,
+                self_name,
+                first_param,
+                bindings,
+                symbols,
+            )
+        }),
         SurfaceExpr::If {
             cond,
             then_branch,
@@ -7415,6 +7741,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) && descent_provable(
                 then_branch,
                 dag,
@@ -7422,6 +7749,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) && descent_provable(
                 else_branch,
                 dag,
@@ -7429,6 +7757,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }
         SurfaceExpr::Match {
@@ -7441,6 +7770,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             ) {
                 return false;
             }
@@ -7477,6 +7807,7 @@ fn descent_provable(
                     self_name,
                     first_param,
                     &arm_bindings,
+                    symbols,
                 )
             })
         }
@@ -7487,6 +7818,7 @@ fn descent_provable(
             self_name,
             first_param,
             bindings,
+            symbols,
         ),
         SurfaceExpr::Record { fields, .. } => fields.iter().all(|f| {
             descent_provable(
@@ -7496,6 +7828,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::List { elements, .. } => elements.iter().all(|element| {
@@ -7506,6 +7839,7 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
         SurfaceExpr::Map { entries, .. } => entries.iter().all(|entry| {
@@ -7516,8 +7850,52 @@ fn descent_provable(
                 self_name,
                 first_param,
                 bindings,
+                symbols,
             )
         }),
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // X1.a static path-call: if the resolved leaf decl name
+            // equals `self_name`, this is a recursive self-call via
+            // data-binding indirection. Apply the same descent rule
+            // as `Call`: first arg must be strictly smaller, all
+            // other args descent-provable. Otherwise treat as
+            // non-recursive — recurse into args only.
+            let path_resolves_to_self = resolve_path_to_function_decl(segments, dag, symbols)
+                .is_some_and(|leaf| dag.declaration(leaf).name.as_deref() == Some(self_name));
+            if path_resolves_to_self {
+                match args.first() {
+                    None => false,
+                    Some(first_arg) => {
+                        if !is_strictly_smaller(first_arg, first_param, bindings) {
+                            return false;
+                        }
+                        args.iter().skip(1).all(|a| {
+                            descent_provable(
+                                a,
+                                dag,
+                                first_param_decl,
+                                self_name,
+                                first_param,
+                                bindings,
+                                symbols,
+                            )
+                        })
+                    }
+                }
+            } else {
+                args.iter().all(|a| {
+                    descent_provable(
+                        a,
+                        dag,
+                        first_param_decl,
+                        self_name,
+                        first_param,
+                        bindings,
+                        symbols,
+                    )
+                })
+            }
+        }
     }
 }
 
@@ -7675,7 +8053,13 @@ fn compute_mutually_recursive(
         let mut callees = HashSet::new();
         let mut shadowed: HashSet<String> =
             info.params.iter().map(|param| param.name.clone()).collect();
-        collect_recursive_callees(info.body, &function_symbols, &mut shadowed, &mut callees);
+        collect_recursive_callees(
+            info.body,
+            &function_symbols,
+            dag,
+            &mut shadowed,
+            &mut callees,
+        );
         let mut sorted_callees: Vec<DeclarationId> = callees.into_iter().collect();
         sorted_callees.sort_by_key(|callee| order_index.get(callee).copied().unwrap_or(usize::MAX));
         calls.insert(*decl_id, sorted_callees);
@@ -8043,6 +8427,32 @@ impl ClusterDescentChecker<'_> {
             SurfaceExpr::Map { entries, .. } => entries
                 .iter()
                 .all(|entry| self.expr(&entry.value, bindings, shadowed)),
+            SurfaceExpr::PathCall { segments, args, .. } => {
+                // X1.a static path-call: resolve segments to a leaf
+                // top-level function decl. If the leaf is in this
+                // cluster's recursive-callee set, apply the same
+                // assigned-slot strict-descent check as the `Call` arm.
+                // Without this, mutual recursion via `data` indirection
+                // (e.g. `data fns: Fns = { a: f, b: g }; fn f(x) =
+                // fns.b(x); fn g(x) = fns.a(x)`) bypasses the cluster
+                // descent gate (P4).
+                if let Some(callee_decl) =
+                    resolve_path_to_function_decl(segments, self.dag, self.function_symbols)
+                {
+                    if self.recursive_callees.contains(&callee_decl) {
+                        let Some(&callee_slot) = self.assignment.get(&callee_decl) else {
+                            return false;
+                        };
+                        let Some(callee_arg) = args.get(callee_slot) else {
+                            return false;
+                        };
+                        if !is_strictly_smaller(callee_arg, self.current_param, bindings) {
+                            return false;
+                        }
+                    }
+                }
+                args.iter().all(|arg| self.expr(arg, bindings, shadowed))
+            }
         }
     }
 }
@@ -8050,6 +8460,7 @@ impl ClusterDescentChecker<'_> {
 fn collect_recursive_callees(
     expr: &SurfaceExpr,
     function_symbols: &HashMap<String, DeclarationId>,
+    dag: &Dag,
     shadowed: &mut HashSet<String>,
     out: &mut HashSet<DeclarationId>,
 ) {
@@ -8062,17 +8473,17 @@ fn collect_recursive_callees(
                 }
             }
             for a in args {
-                collect_recursive_callees(a, function_symbols, shadowed, out);
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::VariantRecord { fields, .. } => {
             for field in fields {
-                collect_recursive_callees(&field.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&field.value, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::Operator { args, .. } => {
             for a in args {
-                collect_recursive_callees(a, function_symbols, shadowed, out);
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::If {
@@ -8081,40 +8492,58 @@ fn collect_recursive_callees(
             else_branch,
             ..
         } => {
-            collect_recursive_callees(cond, function_symbols, shadowed, out);
-            collect_recursive_callees(then_branch, function_symbols, shadowed, out);
-            collect_recursive_callees(else_branch, function_symbols, shadowed, out);
+            collect_recursive_callees(cond, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(then_branch, function_symbols, dag, shadowed, out);
+            collect_recursive_callees(else_branch, function_symbols, dag, shadowed, out);
         }
         SurfaceExpr::Match {
             scrutinee, arms, ..
         } => {
-            collect_recursive_callees(scrutinee, function_symbols, shadowed, out);
+            collect_recursive_callees(scrutinee, function_symbols, dag, shadowed, out);
             for arm in arms {
                 let mut arm_shadowed = shadowed.clone();
                 for binding in pattern_binding_names(&arm.pattern) {
                     arm_shadowed.insert(binding.to_string());
                 }
-                collect_recursive_callees(&arm.body, function_symbols, &mut arm_shadowed, out);
+                collect_recursive_callees(&arm.body, function_symbols, dag, &mut arm_shadowed, out);
             }
         }
         SurfaceExpr::Lambda { params, body, .. } => {
             let mut lambda_shadowed = shadowed.clone();
             lambda_shadowed.extend(params.iter().cloned());
-            collect_recursive_callees(body, function_symbols, &mut lambda_shadowed, out)
+            collect_recursive_callees(body, function_symbols, dag, &mut lambda_shadowed, out)
         }
         SurfaceExpr::Record { fields, .. } => {
             for f in fields {
-                collect_recursive_callees(&f.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&f.value, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::List { elements, .. } => {
             for element in elements {
-                collect_recursive_callees(element, function_symbols, shadowed, out);
+                collect_recursive_callees(element, function_symbols, dag, shadowed, out);
             }
         }
         SurfaceExpr::Map { entries, .. } => {
             for entry in entries {
-                collect_recursive_callees(&entry.value, function_symbols, shadowed, out);
+                collect_recursive_callees(&entry.value, function_symbols, dag, shadowed, out);
+            }
+        }
+        SurfaceExpr::PathCall { segments, args, .. } => {
+            // X1.a static path-call: resolve segments through the head's
+            // `data` ValueBody to a leaf `FieldValue::Reference(decl_id)`
+            // and insert that decl into the recursive-callee set. Without
+            // this, mutual recursion via a data-binding indirection
+            // bypasses the recursive-edge graph (P4).
+            let head_shadowed = segments.first().is_some_and(|head| shadowed.contains(head));
+            if !head_shadowed {
+                if let Some(leaf_decl) =
+                    resolve_path_to_function_decl(segments, dag, function_symbols)
+                {
+                    out.insert(leaf_decl);
+                }
+            }
+            for a in args {
+                collect_recursive_callees(a, function_symbols, dag, shadowed, out);
             }
         }
     }

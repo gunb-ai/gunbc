@@ -67,6 +67,7 @@ fn expr_span(expr: SurfaceExpr) -> SourceSpan =
     Record(e) => e.span
     List(e) => e.span
     Map(e) => e.span
+    PathCall(e) => e.span
   }
 
 fn item_span(item: SurfaceItem) -> SourceSpan =
