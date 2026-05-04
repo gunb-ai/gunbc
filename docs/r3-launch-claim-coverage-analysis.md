@@ -40,7 +40,7 @@ The "within the authored substrate" qualifier is load-bearing per the four-PR ad
 
 - **Today-banked substrate** (R1-live + L1-live + R2-landed rows in `docs/thesis/r2-r3-thesis-mapping.md`): most Tier 1 type-theoretic claims (rows 22-27); cross-target drift (row 28); ownership lens at L1 (row 31); 5-behavior / 6-connective substrate (rows 100-101); R2-landed items including integer-overflow-at-i64 (row 51), force-unwrap (row 54), idempotency-as-algebraic-simplification (row 81), `AnalysisDimension<Carrier>` (row 37), B-wave fabrication closures (row 40), shared-substrate math+domain primitives (row 92). Intent-soundness validation already cashes for properties expressible against this substrate.
 - **In-flight at R1/R2 — not yet banked**: CX gate 🟡 R1 closure (row 29); division-by-zero / OOB 🟡 R2-in-flight (rows 50, 53); partial-functions 🟡 R2 partial / R3 close (row 55); Grounding-Rust / Python in flight (rows 32-33, 35); Secret<T> 🟡 in flight (row 36). Will move to "today-banked" as each row lands.
-- **R3-dispatch (cascade-gated)**: L4 emit/eval match (row 65); L5 cross-target consistency (row 66); L7 algebraic-law witnesses (row 68); operations-fall-out-from-inhabitance (row 91); auto-parallelism / auto-memoization (rows 110-111); coercion-cost-equals-complexity (row 78); `T-Lens-Application-Surface` cascade (rows 165-166 of r3-structure.md). All ⏳ R3 dispatch.
+- **R3-dispatch (cascade-gated)**: L4 emit/eval match (row 65); L5 cross-target consistency (row 66); L7 algebraic-law witnesses (row 68); operations-fall-out-from-inhabitance (row 91); auto-parallelism / auto-memoization (rows 110-111); coercion-cost-equals-complexity (row 78); `T-Lens-Application-Surface` lane (`r3-structure.md:148`) + cascade rule (`r3-structure.md:399`). All ⏳ R3 dispatch.
 - **Thesis-supported but not yet authored**: e.g., post-R3 phantom-parameters (row 38; ⏳ post-R3, no lane), `Algebra<Precision>` (§6e), `Determinism` lens, bounded-atom-creation lens — surfaced across the four adversarial PRs. Within thesis scope; substrate carriers pending. See §6e for `Algebra<Precision>`.
 - **Outside thesis** (intent-vs-want; truly empirical/statistical residuals; out-of-scope categories per §6d Tier 4 recommendation).
 
@@ -166,7 +166,7 @@ This generalizes to any `apply_lens` invariant: **default for unannotated scope 
 
 **Where**: not yet routed; surfaced through research PM PR review of this doc.
 
-**Recommendation**: add an explicit **Tier 4 — out of scope, declared** section to `THESIS.md` naming the boundaries gunbc *does not claim*. Today THESIS reads as unbounded; explicit boundaries make the surrounding claims more credible (compiler-people read scoped-with-named-boundaries as epistemically serious; unbounded-by-omission as marketing).
+**Recommendation**: add an explicit **Tier 4 — out of scope, declared** section to `THESIS.md` naming the boundaries gunbc *does not claim*. THESIS.md has a complete claims list at lines 155-405 (Tier 1 / Tier 2 / Tier 3 / concept unifications / epistemic stacking / etc.) — by omission, anything outside that list isn't claimed; but THESIS does not explicitly name non-claim boundaries. Explicit boundaries make the surrounding claims more credible (compiler-people read scoped-with-named-boundaries as epistemically serious; unstated-by-omission can be read as oversight).
 
 **Convergent boundaries from the four-PR adversarial portfolio**:
 
