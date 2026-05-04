@@ -150,6 +150,14 @@ type AnthropicMessages200Citation
   | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
   | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
 
+// 🟡 SCAFFOLD provider-domain coproduct for Anthropic Messages 200 `content[]`
+// response rows. The outer wire shape is already stable and `type`-tagged, so
+// these arms belong as a coproduct instead of optional coordinates on a text
+// record. Scaffold trigger: `MessagesWebSearchToolResultBlock.content` remains
+// `Json` until the web-search result/error payload gains a structural payload
+// coproduct, and `AnthropicMessages200Body.content/0/text` output projection
+// needs variant-aware typed REST response-path support before this draft can
+// merge.
 type AnthropicMessages200ContentBlock
   = MessagesTextBlock { text: String, citations: List<AnthropicMessages200Citation>? }
   | MessagesThinkingBlock { thinking: String, signature: String? }
