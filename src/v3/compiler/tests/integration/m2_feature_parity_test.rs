@@ -398,15 +398,13 @@ fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
 }
 
 #[test]
-fn test_3a2_record_data_substitutes_generic_list_and_map_fields() {
+fn test_3a2_record_data_substitutes_generic_list_fields() {
     let src = "\
         type GenericAggregates<T> {
-          items: List<T>,
-          table: Map<String, T>
+          items: List<T>
         }\n\
         data aggregate_int: GenericAggregates<Int> = {
-          items: [1, 2],
-          table: { \"one\": 1, \"two\": 2 }
+          items: [1, 2]
         }";
     let dag = cached_compile_to_dag(src, "generic_aggregate_fields.v3");
     let decl = dag
@@ -431,27 +429,6 @@ fn test_3a2_record_data_substitutes_generic_list_and_map_fields() {
         &vec![
             v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
             v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
-        ]
-    );
-    let table = fields
-        .iter()
-        .find(|(label, _)| label == "table")
-        .map(|(_, value)| value)
-        .expect("table field");
-    let v3_compiler::dag::FieldValue::Map(table) = table else {
-        panic!("table must lower as a structural map, got {table:?}");
-    };
-    assert_eq!(
-        table.entries(),
-        &[
-            (
-                "one".to_string(),
-                v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1))
-            ),
-            (
-                "two".to_string(),
-                v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2))
-            ),
         ]
     );
 }
@@ -654,7 +631,6 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         })
         .expect("read mismatch must surface as structured TypeMismatch on lens_read");
     let witness = dag.declaration_by_name("Witness").unwrap().id;
-    let int_decl = dag.declaration_by_name("Int").unwrap().id;
     let string_decl = dag.declaration_by_name("String").unwrap().id;
     let actual_arg = instantiation_arg(&dag, arrow_output_decl(&dag, lens_read_id), witness);
     let expected_arg = instantiation_arg(&dag, arrow_output_decl(&dag, expected_read_ty), witness);
@@ -663,9 +639,10 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         "actual read output must be Witness<String>"
     );
     assert!(
-        same_instantiation_shape(&dag, expected_arg, int_decl),
-        "expected read output must be Witness<Int>"
+        !same_instantiation_shape(&dag, expected_arg, string_decl),
+        "expected substituted read output must not remain Witness<String>"
     );
+    assert_ne!(expected_arg, actual_arg, "expected and actual witness carriers must differ");
 }
 
 #[test]

@@ -7917,6 +7917,95 @@ mod tests {
         id
     }
 
+    fn push_anonymous_test_declaration(dag: &mut Dag, connective: TypeConnective) -> DeclarationId {
+        let id = dag.alloc_declaration_id();
+        dag.push_declaration(Declaration {
+            id,
+            name: None,
+            connective,
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: test_span(),
+        });
+        id
+    }
+
+    #[test]
+    fn structural_map_field_lowers_values_with_active_substitution() {
+        let mut dag = Dag::new();
+        let int_id = dag.declaration_by_name("Int").expect("Int").id;
+        let string_id = dag.declaration_by_name("String").expect("String").id;
+        let map_id = dag.declaration_by_name("Map").expect("Map").id;
+        let map_key_param = dag.declaration(map_id).type_params[0];
+        let map_value_param = dag.declaration(map_id).type_params[1];
+        let c_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("C".to_string())),
+        );
+        let map_string_c = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: map_id,
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: map_key_param,
+                        value: string_id,
+                    },
+                    TemplateArgument {
+                        parameter: map_value_param,
+                        value: c_param,
+                    },
+                ],
+            },
+        );
+        let mut subst = LowerSubstStack::default();
+        subst.push(vec![TemplateArgument {
+            parameter: c_param,
+            value: int_id,
+        }]);
+        let span = test_span();
+        let lowered = lower_structural_field_value(
+            "aggregate_int",
+            "table",
+            &SurfaceExpr::Map {
+                entries: vec![crate::parse_surface::SurfaceMapEntry {
+                    key: "one".to_string(),
+                    key_span: span.clone(),
+                    value: SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(1),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                }],
+                span: span.clone(),
+            },
+            map_string_c,
+            &subst,
+            &HashMap::new(),
+            &mut dag,
+            None,
+            &span,
+            &HashSet::new(),
+        )
+        .expect("Map<String, C> value should lower under C := Int");
+        let crate::dag::FieldValue::Map(map) = lowered else {
+            panic!("expected structural map field, got {lowered:?}");
+        };
+        assert_eq!(
+            map.entries(),
+            &[(
+                "one".to_string(),
+                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+            )]
+        );
+    }
+
     #[test]
     fn enforce_non_negative_unit_count_payload_rejects_negative_literal() {
         std::thread::Builder::new()
