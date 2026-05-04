@@ -6138,6 +6138,28 @@ fn resolve_field_value_reference(
     walk_structural_to_reference(fields, segments)
 }
 
+/// Prereq-X1.a: resolve a `PathCall.segments` slice to a leaf
+/// top-level function `DeclarationId`. Single resolution authority
+/// shared by `is_recursive`, `descent_provable`, the
+/// `ClusterDescentChecker` arm, `collect_recursive_callees`, and the
+/// `lower_expr` X1.a arm — so all five agree by construction.
+///
+/// Returns `None` when the head is not a top-level symbol, the head
+/// declaration has no compile-time value body, the path leaf is not a
+/// `FieldValue::Reference`, or the segments traverse a non-structural
+/// value body. Non-callable leaves are accepted at this layer; the
+/// lowerer enforces the Arrow check separately.
+fn resolve_path_to_function_decl(
+    segments: &[String],
+    dag: &Dag,
+    symbols: &HashMap<String, DeclarationId>,
+) -> Option<DeclarationId> {
+    let head = segments.first()?;
+    let head_decl = *symbols.get(head)?;
+    let value_body = dag.declaration(head_decl).value_body.as_ref()?;
+    resolve_field_value_reference(value_body, &segments[1..])
+}
+
 fn walk_structural_to_reference(
     fields: &[(String, crate::dag::FieldValue)],
     segments: &[String],
@@ -7550,17 +7572,9 @@ fn is_recursive(
             // a recursive self-call (mutual or direct via data-binding
             // indirection) and must trigger the decidability gate
             // (INVARIANTS P4).
-            if let Some(head) = segments.first() {
-                if let Some(&head_decl) = symbols.get(head) {
-                    if let Some(value_body) = dag.declaration(head_decl).value_body.as_ref() {
-                        if let Some(leaf_decl) =
-                            resolve_field_value_reference(value_body, &segments[1..])
-                        {
-                            if dag.declaration(leaf_decl).name.as_deref() == Some(self_name) {
-                                return true;
-                            }
-                        }
-                    }
+            if let Some(leaf_decl) = resolve_path_to_function_decl(segments, dag, symbols) {
+                if dag.declaration(leaf_decl).name.as_deref() == Some(self_name) {
+                    return true;
                 }
             }
             args.iter()
@@ -7814,20 +7828,8 @@ fn descent_provable(
             // as `Call`: first arg must be strictly smaller, all
             // other args descent-provable. Otherwise treat as
             // non-recursive — recurse into args only.
-            let mut path_resolves_to_self = false;
-            if let Some(head) = segments.first() {
-                if let Some(&head_decl) = symbols.get(head) {
-                    if let Some(value_body) = dag.declaration(head_decl).value_body.as_ref() {
-                        if let Some(leaf_decl) =
-                            resolve_field_value_reference(value_body, &segments[1..])
-                        {
-                            if dag.declaration(leaf_decl).name.as_deref() == Some(self_name) {
-                                path_resolves_to_self = true;
-                            }
-                        }
-                    }
-                }
-            }
+            let path_resolves_to_self = resolve_path_to_function_decl(segments, dag, symbols)
+                .is_some_and(|leaf| dag.declaration(leaf).name.as_deref() == Some(self_name));
             if path_resolves_to_self {
                 match args.first() {
                     None => false,
@@ -8393,7 +8395,30 @@ impl ClusterDescentChecker<'_> {
             SurfaceExpr::Map { entries, .. } => entries
                 .iter()
                 .all(|entry| self.expr(&entry.value, bindings, shadowed)),
-            SurfaceExpr::PathCall { args, .. } => {
+            SurfaceExpr::PathCall { segments, args, .. } => {
+                // X1.a static path-call: resolve segments to a leaf
+                // top-level function decl. If the leaf is in this
+                // cluster's recursive-callee set, apply the same
+                // assigned-slot strict-descent check as the `Call` arm.
+                // Without this, mutual recursion via `data` indirection
+                // (e.g. `data fns: Fns = { a: f, b: g }; fn f(x) =
+                // fns.b(x); fn g(x) = fns.a(x)`) bypasses the cluster
+                // descent gate (P4).
+                if let Some(callee_decl) =
+                    resolve_path_to_function_decl(segments, self.dag, self.function_symbols)
+                {
+                    if self.recursive_callees.contains(&callee_decl) {
+                        let Some(&callee_slot) = self.assignment.get(&callee_decl) else {
+                            return false;
+                        };
+                        let Some(callee_arg) = args.get(callee_slot) else {
+                            return false;
+                        };
+                        if !is_strictly_smaller(callee_arg, self.current_param, bindings) {
+                            return false;
+                        }
+                    }
+                }
                 args.iter().all(|arg| self.expr(arg, bindings, shadowed))
             }
         }
@@ -8477,17 +8502,14 @@ fn collect_recursive_callees(
             // and insert that decl into the recursive-callee set. Without
             // this, mutual recursion via a data-binding indirection
             // bypasses the recursive-edge graph (P4).
-            if let Some(head) = segments.first() {
-                if !shadowed.contains(head) {
-                    if let Some(&head_decl) = function_symbols.get(head) {
-                        if let Some(value_body) = dag.declaration(head_decl).value_body.as_ref() {
-                            if let Some(leaf_decl) =
-                                resolve_field_value_reference(value_body, &segments[1..])
-                            {
-                                out.insert(leaf_decl);
-                            }
-                        }
-                    }
+            let head_shadowed = segments
+                .first()
+                .is_some_and(|head| shadowed.contains(head));
+            if !head_shadowed {
+                if let Some(leaf_decl) =
+                    resolve_path_to_function_decl(segments, dag, function_symbols)
+                {
+                    out.insert(leaf_decl);
                 }
             }
             for a in args {
