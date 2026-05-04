@@ -4504,7 +4504,7 @@ impl<'a> Ctx<'a> {
                     InputSlot::Positional(0),
                     locals,
                 )?;
-                let iter = list;
+                let iter = format!("&({list})");
                 Ok(render_named_template(
                     &self.indexes.syntax.collection_ops.filter,
                     &[("iter", &iter), ("param", &item), ("body", &predicate)],
