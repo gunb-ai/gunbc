@@ -108,25 +108,35 @@ type AnthropicStopReason
   | Refusal
   | ModelContextWindowExceeded
 
+// 🟢 TERMINAL response coproduct mirroring `AnthropicMessages200Citation`
+// in `dsl/extdeps/llm/anthropic.dag`. Each citation variant carries only the
+// documented coordinates for that wire tag.
+type AnthropicMessages200Citation
+  = CharLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_char_index: Int, end_char_index: Int }
+  | PageLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_page_number: Int, end_page_number: Int }
+  | ContentBlockLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_block_index: Int, end_block_index: Int }
+  | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
+  | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
+
 // 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200TextBlock`
-// (`dsl/extdeps/llm/anthropic.dag:111-114`). Narrow text-only slice of
-// the 200 response's `content[]` per `from "content/0/text"` extraction
-// in the operation; thinking/tool-use/image content blocks remain
-// gap-carried on the v2 source's
+// in `dsl/extdeps/llm/anthropic.dag`. Narrow text slice of the 200 response's
+// `content[]` per `from "content/0/text"` extraction in the operation;
+// thinking/tool-use/image content blocks remain gap-carried on the v2 source's
 // `structural_coverage_gap_anthropic_messages_200_residual`.
 type AnthropicMessages200TextBlock {
-  type: String
-  text: String
+  type:      String
+  text:      String
+  citations: List<AnthropicMessages200Citation>?
 }
 
 // 🟢 TERMINAL response sub-record mirroring `AnthropicMessages200Usage`
-// (`dsl/extdeps/llm/anthropic.dag:116-119`). Cache-token breakdowns
-// (`cache_creation_input_tokens`, `cache_read_input_tokens`) and
-// `service_tier` stay gap-carried on the v2 source per the same
-// `structural_coverage_gap_anthropic_messages_200_residual` row.
+// in `dsl/extdeps/llm/anthropic.dag`.
 type AnthropicMessages200Usage {
-  input_tokens:  Int
-  output_tokens: Int
+  input_tokens:                Int
+  output_tokens:               Int
+  cache_creation_input_tokens: Int?
+  cache_read_input_tokens:     Int?
+  service_tier:                String?
 }
 
 // 🟢 TERMINAL response envelope mirroring `AnthropicMessages200Body`
@@ -143,4 +153,5 @@ type AnthropicMessages200Body {
   stop_reason:   AnthropicStopReason
   stop_sequence: String?
   usage:         AnthropicMessages200Usage
+  container:     Json?
 }
