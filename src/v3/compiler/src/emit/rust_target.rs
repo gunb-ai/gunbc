@@ -1464,24 +1464,24 @@ fn parse_collection_ops(
 ) -> Result<CollectionOpsBinding, EmitError> {
     let fields = structural_fields_for_decl(dag, declaration)?;
 
-    let concat_method_decl = dag.declaration_by_name("concat_method").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "internal: concat_method missing from std.methods registry",
-        },
-    )?;
-    let length_method_decl = dag.declaration_by_name("length_method").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "internal: length_method missing from std.methods registry",
-        },
-    )?;
-    let fold_method_decl = dag.declaration_by_name("fold_method").ok_or(
-        EmitError::MalformedTargetSyntax {
-            declaration,
-            detail: "internal: fold_method missing from std.methods registry",
-        },
-    )?;
+    let concat_method_decl =
+        dag.declaration_by_name("concat_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: concat_method missing from std.methods registry",
+            })?;
+    let length_method_decl =
+        dag.declaration_by_name("length_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: length_method missing from std.methods registry",
+            })?;
+    let fold_method_decl =
+        dag.declaration_by_name("fold_method")
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: fold_method missing from std.methods registry",
+            })?;
 
     let concat_contract = require_field_decl_ref(fields, "concat_contract", declaration)?;
     require_method_template_contract_dag_method(

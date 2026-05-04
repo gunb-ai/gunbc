@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use super::{
-    algebra_field_for_operator_shared, dag_needs_div_error_prelude,
-    div_prelude_reserved_name_collision,
+    algebra_field_for_operator_shared,
     collection_ops_method_contract::require_method_template_contract_dag_method,
+    dag_needs_div_error_prelude, div_prelude_reserved_name_collision,
     method_emit_template_variant_label, optional_match_variant_roles, parse_pattern_strategy,
     primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
     SharedEmitLookupError, SourceFilteringBinding, VariantPayloadBinding,

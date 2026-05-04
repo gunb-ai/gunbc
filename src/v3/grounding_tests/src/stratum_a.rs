@@ -121,7 +121,9 @@ const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str
 
 /// Fail-closed witness: each target `CollectionOps.*_contract` ref resolves to the
 /// named `MethodTemplateContract` carrier with the expected `dag_method` registry name.
-fn verify_language_spec_collection_ops_contract_wiring(dag: &Dag) -> Result<(), GroundingTestsDiagnostic> {
+fn verify_language_spec_collection_ops_contract_wiring(
+    dag: &Dag,
+) -> Result<(), GroundingTestsDiagnostic> {
     let mtc_id = dag
         .declaration_by_name("MethodTemplateContract")
         .ok_or_else(|| GroundingTestsDiagnostic::StratumADagProjectionFailed {
