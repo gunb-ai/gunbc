@@ -48,7 +48,30 @@ fn run_self_compile(
     binary: &std::path::Path,
     output_dir: &std::path::Path,
 ) -> std::process::Output {
-    run_self_compile_with_extra_source_roots(binary, output_dir, &[])
+    let generated_root = write_method_template_projection_generated_root("self-compile-generated");
+    run_self_compile_with_extra_source_roots(binary, output_dir, &[generated_root])
+}
+
+fn write_method_template_projection_generated_root(name: &str) -> std::path::PathBuf {
+    let root = temp_dir(name);
+    let _ = std::fs::remove_dir_all(&root);
+    let output = std::process::Command::new("cargo")
+        .arg("run")
+        .arg("-p")
+        .arg("v3-compiler")
+        .arg("--bin")
+        .arg("emit_method_template_projection")
+        .arg("--")
+        .arg(&root)
+        .output()
+        .expect("failed to run method-template projection producer");
+    assert!(
+        output.status.success(),
+        "method-template projection producer failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    root
 }
 
 /// Run self-compile with additional dependency source roots appended after the
