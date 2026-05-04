@@ -397,6 +397,62 @@ fn test_3a2_record_data_lowers_function_refs_and_nested_records() {
     );
 }
 
+#[test]
+fn test_3a2_record_data_substitutes_generic_list_and_map_fields() {
+    let src = "\
+        type GenericAggregates<T> {
+          items: List<T>,
+          table: Map<String, T>
+        }\n\
+        data aggregate_int: GenericAggregates<Int> = {
+          items: [1, 2],
+          table: { \"one\": 1, \"two\": 2 }
+        }";
+    let dag = cached_compile_to_dag(src, "generic_aggregate_fields.v3");
+    let decl = dag
+        .declaration_by_name("aggregate_int")
+        .expect("aggregate_int must exist");
+    let Some(v3_compiler::dag::ValueBody::Structural { fields }) = &decl.value_body else {
+        panic!("expected aggregate_int to lower structurally, got {:?}", decl.value_body);
+    };
+    let items = fields
+        .iter()
+        .find(|(label, _)| label == "items")
+        .map(|(_, value)| value)
+        .expect("items field");
+    let v3_compiler::dag::FieldValue::List(items) = items else {
+        panic!("items must lower as a structural list, got {items:?}");
+    };
+    assert_eq!(
+        items,
+        &vec![
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1)),
+            v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2)),
+        ]
+    );
+    let table = fields
+        .iter()
+        .find(|(label, _)| label == "table")
+        .map(|(_, value)| value)
+        .expect("table field");
+    let v3_compiler::dag::FieldValue::Map(table) = table else {
+        panic!("table must lower as a structural map, got {table:?}");
+    };
+    assert_eq!(
+        table.entries(),
+        &[
+            (
+                "one".to_string(),
+                v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(1))
+            ),
+            (
+                "two".to_string(),
+                v3_compiler::dag::FieldValue::Literal(v3_compiler::dag::LiteralBits::Int(2))
+            ),
+        ]
+    );
+}
+
 /// Inbox #1130 / #1139 — complexity `Lens<Int>` migration readiness: Prereq-1
 /// (Arrow-typed record fields + nested `Monoid<C>`) already lowers `fn`
 /// declaration references. This shape matches `Lens<C>`'s `branch` /
