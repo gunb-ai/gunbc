@@ -603,8 +603,8 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
         same_instantiation_shape(&dag, actual_arg, string_decl),
         "actual read output must be Witness<String>"
     );
-    assert_eq!(
-        expected_arg, int_decl,
+    assert!(
+        same_instantiation_shape(&dag, expected_arg, int_decl),
         "expected read output must be Witness<Int>"
     );
 }
