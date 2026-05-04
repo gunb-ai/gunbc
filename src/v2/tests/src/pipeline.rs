@@ -7041,9 +7041,30 @@ fn openai_responses_200_body_round_trip_representative_wire() {
     }
 
     #[derive(serde::Deserialize)]
-    struct Annotation {
-        #[serde(rename = "type")]
-        annotation_type: String,
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Annotation {
+        FileCitation {
+            file_id: String,
+            filename: String,
+            index: i64,
+        },
+        UrlCitation {
+            start_index: i64,
+            end_index: i64,
+            title: String,
+            url: String,
+        },
+        ContainerFileCitation {
+            container_id: String,
+            file_id: String,
+            filename: String,
+            start_index: i64,
+            end_index: i64,
+        },
+        FilePath {
+            file_id: String,
+            index: i64,
+        },
     }
 
     #[derive(serde::Deserialize)]
@@ -7079,7 +7100,34 @@ fn openai_responses_200_body_round_trip_representative_wire() {
             "content": [{
                 "type": "output_text",
                 "text": "hello",
-                "annotations": [{ "type": "url_citation" }]
+                "annotations": [
+                    {
+                        "type": "url_citation",
+                        "start_index": 0,
+                        "end_index": 5,
+                        "title": "reference",
+                        "url": "https://example.com/ref"
+                    },
+                    {
+                        "type": "file_citation",
+                        "file_id": "file_123",
+                        "filename": "notes.txt",
+                        "index": 1
+                    },
+                    {
+                        "type": "container_file_citation",
+                        "container_id": "cntr_123",
+                        "file_id": "file_456",
+                        "filename": "result.txt",
+                        "start_index": 6,
+                        "end_index": 11
+                    },
+                    {
+                        "type": "file_path",
+                        "file_id": "file_789",
+                        "index": 2
+                    }
+                ]
             }]
         }],
         "usage": {
@@ -7106,10 +7154,56 @@ fn openai_responses_200_body_round_trip_representative_wire() {
     let content = &body.output[0].content.as_ref().unwrap()[0];
     assert_eq!(content.content_type, "output_text");
     assert_eq!(content.text, "hello");
-    assert_eq!(
-        content.annotations.as_ref().unwrap()[0].annotation_type,
-        "url_citation"
-    );
+    let annotations = content.annotations.as_ref().unwrap();
+    match &annotations[0] {
+        Annotation::UrlCitation {
+            start_index,
+            end_index,
+            title,
+            url,
+        } => {
+            assert_eq!(*start_index, 0);
+            assert_eq!(*end_index, 5);
+            assert_eq!(title, "reference");
+            assert_eq!(url, "https://example.com/ref");
+        }
+        _ => panic!("expected url_citation annotation"),
+    }
+    match &annotations[1] {
+        Annotation::FileCitation {
+            file_id,
+            filename,
+            index,
+        } => {
+            assert_eq!(file_id, "file_123");
+            assert_eq!(filename, "notes.txt");
+            assert_eq!(*index, 1);
+        }
+        _ => panic!("expected file_citation annotation"),
+    }
+    match &annotations[2] {
+        Annotation::ContainerFileCitation {
+            container_id,
+            file_id,
+            filename,
+            start_index,
+            end_index,
+        } => {
+            assert_eq!(container_id, "cntr_123");
+            assert_eq!(file_id, "file_456");
+            assert_eq!(filename, "result.txt");
+            assert_eq!(*start_index, 6);
+            assert_eq!(*end_index, 11);
+        }
+        _ => panic!("expected container_file_citation annotation"),
+    }
+    match &annotations[3] {
+        Annotation::FilePath { file_id, index } => {
+            assert_eq!(file_id, "file_789");
+            assert_eq!(*index, 2);
+        }
+        _ => panic!("expected file_path annotation"),
+    }
     assert_eq!(body.usage.input_tokens, 32);
     assert_eq!(body.usage.output_tokens, 18);
     assert_eq!(body.usage.total_tokens, Some(50));

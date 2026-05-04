@@ -208,13 +208,19 @@ data structural_coverage_gap_openai_chat_message_full_api_surface: List<String> 
 type OpenAiResponses200OutputContent {
   type: String
   text: String
-  annotations: List<OpenAiChatCompletion200Annotation>?
+  annotations: List<OpenAiResponses200Annotation>?
 }
 
 data structural_coverage_gap_openai_responses_200_residual: List<String> = [
   "closure:openai_responses_200_residual|OpenAiResponses200OutputContent|variant_pending:refusal|trigger:Responses output content coproduct surface",
   "closure:openai_responses_200_residual|OpenAiResponses200OutputItem|variant_pending:tool_calls|variant_pending:reasoning|variant_pending:error|variant_pending:multimodal_output|trigger:Responses output item coproduct surface"
 ]
+
+type OpenAiResponses200Annotation
+  = FileCitation { file_id: String, filename: String, index: Int }
+  | UrlCitation { start_index: Int, end_index: Int, title: String, url: String }
+  | ContainerFileCitation { container_id: String, file_id: String, filename: String, start_index: Int, end_index: Int }
+  | FilePath { file_id: String, index: Int }
 
 type OpenAiResponses200OutputItem {
   id: String?
