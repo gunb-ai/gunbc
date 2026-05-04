@@ -1759,10 +1759,7 @@ let y = f(42)
         let ArrowBody::UserDefined(bind_id) = body else {
             continue;
         };
-        let bind = dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("lambda body bind should exist");
+        let bind = (*bind_id).bind(&dag);
         if bind.name.starts_with("__anon_lambda_") {
             saw_lambda_call = true;
             assert_eq!(
@@ -1969,10 +1966,7 @@ let y = f(3)
         let ArrowBody::UserDefined(bind_id) = body else {
             continue;
         };
-        let bind = dag
-            .node(*bind_id)
-            .as_bind()
-            .expect("lambda body bind should exist");
+        let bind = (*bind_id).bind(&dag);
         if bind.name.starts_with("__anon_lambda_") {
             saw_lambda_call = true;
             assert_eq!(

@@ -14,6 +14,30 @@ test fixtures, or hand-Rust outside `src/v3/` may delete the gate
 section.
 -->
 
+## Evaluator freeze — `src/v3/compiler/src/test_runner.rs` (R3 Bundle 4b)
+
+<!--
+**Delete this entire section** if the PR does not touch `src/v3/compiler/src/test_runner.rs`.
+
+If it **does** touch that file: debt ledger
+`docs/debt/r3-debt-paydown-ledger-2026-05-02.md` row **`test_runner.rs` predicate-language growth**
+requires a **named dissolution hook** the reviewer can open in **one hop**. Cite **exactly one** of:
+
+1. **`docs/briefs/r2-pr-b-2-runner-extension-bundle.md` — §Runner authority discipline** (dissolution-target table):
+   name the **workstream row** this PR advances or the PR that **amends** this table; or
+2. **`docs/briefs/r3-pb-runtime-test-predicate-dissolution-hook.md` — §PB-runtime dissolution hook qualification**
+   (`#pb-runtime-dissolution-hook-qualification`): PB-runtime **allowed hook destination** — Q1–Q4 qualification
+   and disqualifiers in that brief section; name in the PR body how this PR satisfies them when using option **(2)**; or
+3. **`ROADMAP.md`**: the concrete bullet **`test_runner.rs` becoming a parallel test-predicate authority**
+   (tracked-debts / Pattern B row — search in-tree) as the freeze exception / deferral anchor.
+
+**Frozen without hook:** new or expanded bespoke predicate arms, producer identities, oracle paths, or
+observation carve-outs in `test_runner.rs`. PB-runtime hook wiring remains a **parallel** lane — cite **(2)** or
+Evaluator brief **(1)** as appropriate; do not duplicate PB-owned implementation in this repo’s Evaluator PRs.
+
+**STOP+PING** if the change needs a **new substrate or census ratchet carrier** instead of a docs-listed hook.
+-->
+
 ## Summary
 
 (What changed and why.)

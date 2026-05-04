@@ -135,6 +135,10 @@ mod method_template_contract_test;
 mod p0_std_render_repeat_string_test;
 #[path = "integration/pb1_bootstrap_full_snapshot_test.rs"]
 mod pb1_bootstrap_full_snapshot_test;
+#[path = "integration/pb_method_template_projection_dag_emit_test.rs"]
+mod pb_method_template_projection_dag_emit_test;
+#[path = "integration/pb_method_template_projection_test.rs"]
+mod pb_method_template_projection_test;
 #[path = "integration/pipe_desugar.rs"]
 mod pipe_desugar;
 #[path = "integration/prereq_x_call_on_field_access_ratchet_test.rs"]

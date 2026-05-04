@@ -74,6 +74,34 @@ fn lens_carrier_has_locked_six_field_shape() {
 }
 
 #[test]
+fn e6_g1_stop_receipt_pins_no_bootstrap_lens_value_yet() {
+    let dag = generated_full_bootstrap_dag();
+    let lens = decl_id_by_name(&dag, "Lens");
+    let lens_values: Vec<String> = dag
+        .declarations()
+        .iter()
+        .filter(|decl| decl.value_body.is_some())
+        .filter(|decl| {
+            matches!(
+                &decl.connective,
+                TypeConnective::Instantiation { template, .. } if *template == lens
+            )
+        })
+        .map(|decl| {
+            decl.name
+                .clone()
+                .unwrap_or_else(|| format!("DeclarationId({})", decl.id.raw()))
+        })
+        .collect();
+
+    assert!(
+        lens_values.is_empty(),
+        "E6-G1 must not consume placeholder Lens<C> data values before the \
+         function-valued structural data surface lands; found {lens_values:?}"
+    );
+}
+
+#[test]
 fn diagnostic_kind_widened_to_any_diagnostic_kind() {
     let dag = generated_full_bootstrap_dag();
     let any_id = decl_id_by_name(&dag, "AnyDiagnosticKind");

@@ -10,10 +10,11 @@
 //     reopens substrate extension.
 //
 // The two substrates reference each other by typed ID, not by name. Transform.target
-// is a DeclarationId into the Declaration table; ArrowBody::UserDefined holds a NodeId
-// back into the computation substrate. There is no name-based dispatch at the substrate
-// layer — operators like `+` resolve to the `add` field of an inhabited algebra
-// declaration during inference (via M1_DESIGN §8.9), not at parse time.
+// is a DeclarationId into the Declaration table; ArrowBody::UserDefined holds a
+// BindNodeId witness back into the computation substrate. There is no name-based
+// dispatch at the substrate layer — operators like `+` resolve to the `add` field of
+// an inhabited algebra declaration during inference (via M1_DESIGN §8.9), not at
+// parse time.
 //
 // Dissolution receipt — M0.3 (UPDATED at M1(2.5)):
 //
@@ -50,7 +51,9 @@ use std::collections::{HashMap, HashSet};
 use std::sync::LazyLock;
 
 use crate::bootstrap::BOOTSTRAP_FIXTURE_PATH_KEYS;
-use crate::diagnostics::{Diagnostic, DiagnosticTable, SourceSpan};
+use crate::diagnostics::{
+    BootstrapAuthorityKey, Diagnostic, DiagnosticAttribution, DiagnosticTable, SourceSpan,
+};
 use crate::types::TypeShape;
 
 mod bootstrap_std_generated {
@@ -100,6 +103,37 @@ impl NodeId {
 
     pub(crate) fn raw(self) -> u32 {
         self.0
+    }
+}
+
+/// Typed witness that a `NodeId` identifies a [`BindNode`].
+///
+/// `ArrowBody::UserDefined` means "the declaration body is this bind." Keeping the
+/// witness here prevents every emitter/lens/inference consumer from revalidating the
+/// same raw `NodeId -> BindNode` invariant with `as_bind().expect(...)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BindNodeId(NodeId);
+
+impl BindNodeId {
+    fn new_unchecked(id: NodeId) -> Self {
+        Self(id)
+    }
+
+    pub(crate) fn from_bind_node(dag: &Dag, id: NodeId) -> Option<Self> {
+        dag.node_opt(&id).and_then(Behavior::as_bind)?;
+        Some(Self::new_unchecked(id))
+    }
+
+    pub fn node_id(self) -> NodeId {
+        self.0
+    }
+
+    pub fn bind_opt(self, dag: &Dag) -> Option<&BindNode> {
+        dag.node_opt(&self.0)?.as_bind()
+    }
+
+    pub fn bind(self, dag: &Dag) -> &BindNode {
+        self.bind_opt(dag).expect("BindNodeId must point at a Bind")
     }
 }
 
@@ -642,7 +676,7 @@ impl AtomPayload {
 ///      writes `Pending` for `fn foo(x) -> T = body` declarations as
 ///      the initial substrate state. `lower_fn_item` is responsible
 ///      for patching every such declaration to
-///      `ArrowBody::UserDefined(bind_id)` before the Dag is frozen
+///      `ArrowBody::UserDefined(BindNodeId::from_bind_node(dag, bind_id))` before the Dag is frozen
 ///      — including on error paths (R13 fix in `lower.rs`). A
 ///      final `Arrow(Pending)` surviving into the Dag is
 ///      structurally equivalent to "body lowering missed a path,"
@@ -744,10 +778,10 @@ impl AtomPayload {
 /// `Unparsed` stays gated (R14).
 #[derive(Debug, Clone)]
 pub enum ArrowBody {
-    /// User-defined function. NodeId is the root of a sub-DAG of L1 behavior
-    /// nodes in `Dag.nodes`. Inference walks the sub-DAG and checks the body
-    /// against the declared inputs/output.
-    UserDefined(NodeId),
+    /// User-defined function. BindNodeId is the root bind of a sub-DAG of L1
+    /// behavior nodes in `Dag.nodes`. Inference walks the sub-DAG and checks
+    /// the body against the declared inputs/output.
+    UserDefined(BindNodeId),
     /// Primitive whose realization is declared in an extdeps language spec.
     /// DeclarationId points at the realization declaration via a typed edge;
     /// inference verifies signature compatibility.
@@ -1342,7 +1376,7 @@ fn declaration_body_bind<'a>(dag: &'a Dag, decl: &Declaration) -> Option<&'a Bin
     else {
         return None;
     };
-    dag.node_opt(bind_id)?.as_bind()
+    Some((*bind_id).bind(dag))
 }
 
 fn bind_body_transform_ids(dag: &Dag, bind: &BindNode) -> HashSet<NodeId> {
@@ -3431,10 +3465,29 @@ impl Dag {
     /// Biconditional invariant, held by construction:
     ///   port.state == Unresolved  iff  diagnostics.contains(port_id)
     pub(crate) fn mark_unresolved(&mut self, port: PortId, diagnostic: Diagnostic) {
+        self.mark_unresolved_with_attribution(
+            port,
+            diagnostic,
+            DiagnosticAttribution::Unattributed,
+        );
+    }
+
+    /// `mark_unresolved` carrying an explicit
+    /// [`DiagnosticAttribution`]. The diagnostic is recorded against
+    /// the same fail-closed biconditional as ordinary
+    /// `mark_unresolved`; the attribution rides alongside on
+    /// [`DiagnosticTable`] so consumers can dispatch bootstrap-vs-user
+    /// origins without scanning `SourceSpan.file`.
+    pub(crate) fn mark_unresolved_with_attribution(
+        &mut self,
+        port: PortId,
+        diagnostic: Diagnostic,
+        attribution: DiagnosticAttribution,
+    ) {
         if let Some(p) = self.ports.get_mut(&port) {
             p.state = PortState::Unresolved;
         }
-        self.diagnostics.insert(port, diagnostic);
+        self.diagnostics.insert(port, diagnostic, attribution);
     }
 
     /// Attach a diagnostic to the Dag without a pre-existing port anchor.
@@ -3444,9 +3497,35 @@ impl Dag {
     /// PortId (unresolved declarations, tokenize/parse errors on
     /// bootstrap fixtures, duplicate top-level declarations, etc.).
     /// `compile_to_dag` surfaces these through `Err(CompileError::Semantic)`.
+    ///
+    /// Records [`DiagnosticAttribution::Unattributed`]. Bootstrap
+    /// loaders attaching tokenize/parse/fixture failures against a
+    /// substrate `bootstrap_authority` row should call
+    /// [`Self::attach_bootstrap_diagnostic`] instead so verification
+    /// consumers get a structural witness rather than a path string.
     pub(crate) fn attach_diagnostic(&mut self, diagnostic: Diagnostic) {
         let port = self.alloc_port(None);
         self.mark_unresolved(port, diagnostic);
+    }
+
+    /// Sibling of [`Self::attach_diagnostic`] for diagnostics raised
+    /// while loading or patching a substrate `bootstrap_authority` row.
+    /// Allocates the same detached phantom port (no fabricated producer
+    /// node) but records
+    /// [`DiagnosticAttribution::BootstrapAuthority(key)`] so consumers
+    /// can recover bootstrap origin via witness identity instead of a
+    /// `SourceSpan.file` string compare.
+    pub(crate) fn attach_bootstrap_diagnostic(
+        &mut self,
+        authority: BootstrapAuthorityKey,
+        diagnostic: Diagnostic,
+    ) {
+        let port = self.alloc_port(None);
+        self.mark_unresolved_with_attribution(
+            port,
+            diagnostic,
+            DiagnosticAttribution::BootstrapAuthority(authority),
+        );
     }
 
     /// Populate `primitives` by reading the declaration table for the

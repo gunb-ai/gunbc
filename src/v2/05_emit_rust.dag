@@ -226,6 +226,199 @@ fn rust_serde_tag_attr() -> String {
   }
 }
 
+type RustEnumWireSerde {
+  enum_attr: String
+  rename_prefix: String?
+  rename_suffix: String?
+  rename_style: String?
+  error_message: String?
+}
+
+fn rust_serde_policy(enum_attr: String, rename_prefix: String?, rename_suffix: String?, rename_style: String?) -> RustEnumWireSerde {
+  RustEnumWireSerde {
+    enum_attr: enum_attr,
+    rename_prefix: rename_prefix,
+    rename_suffix: rename_suffix,
+    rename_style: rename_style,
+    error_message: none
+  }
+}
+
+fn rust_serde_policy_error(message: String) -> RustEnumWireSerde {
+  RustEnumWireSerde {
+    enum_attr: "",
+    rename_prefix: none,
+    rename_suffix: none,
+    rename_style: none,
+    error_message: Some { value: message }
+  }
+}
+
+fn rust_tagged_object_policy() -> RustEnumWireSerde {
+  rust_serde_policy(enum_attr: rust_serde_tag_attr(), rename_prefix: none, rename_suffix: none, rename_style: none)
+}
+
+fn rust_serde_error_policy(message: String) -> RustEnumWireSerde {
+  rust_serde_policy_error(message: message)
+}
+
+fn rust_string_as_authored_policy() -> RustEnumWireSerde {
+  rust_serde_policy(enum_attr: "", rename_prefix: none, rename_suffix: none, rename_style: none)
+}
+
+fn rust_snake_string_policy() -> RustEnumWireSerde {
+  rust_serde_policy(enum_attr: "#[serde(rename_all = \"snake_case\")]", rename_prefix: none, rename_suffix: none, rename_style: none)
+}
+
+fn field_value_by_name(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match record.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == field_name) |> first {
+    Some { value: fi } => Some { value: field_init_node_value(n: fi) }
+    None => none
+  }
+}
+
+fn literal_string_value(n: Node) -> String? {
+  match n.expr_data {
+    ExprLiteral { value: lv } => match lv {
+      LitStr { value: s } => Some { value: s }
+      _ => none
+    }
+    _ => none
+  }
+}
+
+fn record_string_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
+    Some { value: value_node } => literal_string_value(n: value_node)
+    None => none
+  }
+}
+
+fn naming_policy_node(encoding: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  field_value_by_name(record: encoding, field_name: "naming", source_indices: source_indices)
+}
+
+fn optional_string_record_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
+    Some { value: n } => literal_string_value(n: n)
+    None => none
+  }
+}
+
+fn required_literal_string_policy_field(record: Node, field_name: String, source_indices: Map<String, NewlineIndex>) -> String? {
+  match field_value_by_name(record: record, field_name: field_name, source_indices: source_indices) {
+    Some { value: n } => literal_string_value(n: n)
+    None => none
+  }
+}
+
+fn rust_string_policy_for_naming(naming: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  let naming_name = authored_name_at(source_indices: source_indices, node: naming)
+  if naming_name == "AsAuthored" {
+    rust_string_as_authored_policy()
+  } else if naming_name == "SnakeCase" {
+    rust_snake_string_policy()
+  } else if naming_name == "StripPrefixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        rust_serde_policy(
+          enum_attr: "",
+          rename_prefix: Some { value: prefix },
+          rename_suffix: none,
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripPrefixAndSnakeCase requires a literal prefix")
+    }
+  } else if naming_name == "StripSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+      Some { value: suffix } =>
+        rust_serde_policy(
+          enum_attr: "",
+          rename_prefix: none,
+          rename_suffix: Some { value: suffix },
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripSuffixAndSnakeCase requires a literal suffix")
+    }
+  } else if naming_name == "StripPrefixSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+          Some { value: suffix } =>
+            rust_serde_policy(
+              enum_attr: "",
+              rename_prefix: Some { value: prefix },
+              rename_suffix: Some { value: suffix },
+              rename_style: Some { value: "StripAffixAndSnakeCase" }
+            )
+          None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal suffix")
+        }
+      None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal prefix")
+    }
+  } else {
+    rust_serde_error_policy(message: concat("unsupported VariantNaming: ", naming_name))
+  }
+}
+
+fn rust_internal_policy_for_naming(tag_field: String, naming: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  let naming_name = authored_name_at(source_indices: source_indices, node: naming)
+  if naming_name == "AsAuthored" {
+    rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
+  } else if naming_name == "SnakeCase" {
+    rust_serde_policy(enum_attr: concat("#[serde(tag = \"", tag_field, "\", rename_all = \"snake_case\")]"), rename_prefix: none, rename_suffix: none, rename_style: none)
+  } else if naming_name == "StripPrefixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        rust_serde_policy(
+          enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
+          rename_prefix: Some { value: prefix },
+          rename_suffix: none,
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripPrefixAndSnakeCase requires a literal prefix")
+    }
+  } else if naming_name == "StripSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+      Some { value: suffix } =>
+        rust_serde_policy(
+          enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
+          rename_prefix: none,
+          rename_suffix: Some { value: suffix },
+          rename_style: Some { value: "StripAffixAndSnakeCase" }
+        )
+      None => rust_serde_error_policy(message: "StripSuffixAndSnakeCase requires a literal suffix")
+    }
+  } else if naming_name == "StripPrefixSuffixAndSnakeCase" {
+    match required_literal_string_policy_field(record: naming, field_name: "prefix", source_indices: source_indices) {
+      Some { value: prefix } =>
+        match required_literal_string_policy_field(record: naming, field_name: "suffix", source_indices: source_indices) {
+          Some { value: suffix } =>
+            rust_serde_policy(
+              enum_attr: concat("#[serde(tag = \"", tag_field, "\")]"),
+              rename_prefix: Some { value: prefix },
+              rename_suffix: Some { value: suffix },
+              rename_style: Some { value: "StripAffixAndSnakeCase" }
+            )
+          None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal suffix")
+        }
+      None => rust_serde_error_policy(message: "StripPrefixSuffixAndSnakeCase requires a literal prefix")
+    }
+  } else {
+    rust_serde_error_policy(message: concat("unsupported VariantNaming: ", naming_name))
+  }
+}
+
+fn rust_internal_policy_for_encoding(encoding: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  match record_string_field(record: encoding, field_name: "tag_field", source_indices: source_indices) {
+    Some { value: tag_field } =>
+      match naming_policy_node(encoding: encoding, source_indices: source_indices) {
+        Some { value: naming } => rust_internal_policy_for_naming(tag_field: tag_field, naming: naming, source_indices: source_indices)
+        None => rust_serde_error_policy(message: "InternallyTaggedObject requires a naming policy")
+      }
+    None => rust_serde_error_policy(message: "InternallyTaggedObject requires a literal tag_field")
+  }
+}
+
 // Resolve serde enum attribute from a module-level wire_contract data item.
 // Reads WireContract.variant_encoding to determine the serde attribute:
 //   StringVariant { naming: AsAuthored } → "" (serde default: unit variants as strings)
@@ -235,29 +428,30 @@ fn rust_serde_tag_attr() -> String {
 // `data wire_contract = StringVariant { … }` stores the record literal on the data item's
 // `body` expression node; field inits live on `children`, not `body.body` — so when
 // `wire_item.body` is absent, fall back to `ExprRecordLit` on `wire_item` itself.
-fn resolve_wire_serde_tag_from_encoding_node(ve: Node, source_indices: Map<String, NewlineIndex>) -> String {
-  if ve.children |> count > 0 {
-    let naming_field = ve.children |> filter(fi => field_init_node_name_at(n: fi, source_indices: source_indices) == "naming") |> first
-    match naming_field {
-      Some { value: nf } =>
-        let nv = field_init_node_value(n: nf)
-        if authored_name_at(source_indices: source_indices, node: nv) == "SnakeCase" { "#[serde(rename_all = \"snake_case\")]" }
-        else { "" }
-      None => ""
+fn resolve_wire_serde_policy_from_encoding_node(ve: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
+  let encoding_name = authored_name_at(source_indices: source_indices, node: ve)
+  if encoding_name == "InternallyTaggedObject" {
+    rust_internal_policy_for_encoding(encoding: ve, source_indices: source_indices)
+  } else if encoding_name == "StringVariant" {
+    match naming_policy_node(encoding: ve, source_indices: source_indices) {
+      Some { value: nv } => rust_string_policy_for_naming(naming: nv, source_indices: source_indices)
+      None => rust_serde_error_policy(message: "StringVariant requires a naming policy")
     }
+  } else if encoding_name == "TaggedVariant" {
+    rust_tagged_object_policy()
   } else {
-    rust_serde_tag_attr()
+    rust_serde_error_policy(message: concat("unsupported VariantEncoding: ", encoding_name))
   }
 }
 
-fn resolve_wire_serde_tag(wire_item: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn resolve_wire_serde_policy(wire_item: Node, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde {
   match wire_item.body {
-    Some { value: ve } => resolve_wire_serde_tag_from_encoding_node(ve: ve, source_indices: source_indices)
+    Some { value: ve } => resolve_wire_serde_policy_from_encoding_node(ve: ve, source_indices: source_indices)
     None =>
       match wire_item.expr_data {
         ExprRecordLit { parent_enum: _ } =>
-          resolve_wire_serde_tag_from_encoding_node(ve: wire_item, source_indices: source_indices)
-        _ => rust_serde_tag_attr()
+          resolve_wire_serde_policy_from_encoding_node(ve: wire_item, source_indices: source_indices)
+        _ => rust_tagged_object_policy()
       }
   }
 }
@@ -273,8 +467,8 @@ fn item_binding_is_named(env: TypeEnv, node: Node, name: String) -> Bool {
 // data names and alias cycles fail closed instead of falling back to default serde.
 // Typed `data wire_contract: VariantEncoding = StringVariant { … }` bodies keep
 // `ExprRecordLit` while `inferred` may point at the type expression — prefer the literal.
-fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>) -> String {
-  resolve_wire_serde_tag_for_coproduct_seen(
+fn resolve_wire_serde_policy_for_coproduct(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>) -> RustEnumWireSerde {
+  resolve_wire_serde_policy_for_coproduct_seen(
     wire_contract_item: wire_contract_item,
     source_indices: source_indices,
     data_items: data_items,
@@ -283,40 +477,31 @@ fn resolve_wire_serde_tag_for_coproduct(wire_contract_item: Node?, source_indice
   )
 }
 
-fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>, seen_aliases: Map<String, Bool>, fuel: Int) -> String {
+fn resolve_wire_serde_policy_for_coproduct_seen(wire_contract_item: Node?, source_indices: Map<String, NewlineIndex>, data_items: Map<String, List<Node>>, seen_aliases: Map<String, Bool>, fuel: Int) -> RustEnumWireSerde {
   if fuel <= 0 {
-    emit_error_expr(
-      message: "wire_contract: VariantEncoding alias chain exceeded recursion limit",
-      target: Rust
-    )
+    rust_serde_error_policy(message: "wire_contract: VariantEncoding alias chain exceeded recursion limit")
   } else { match wire_contract_item {
-    None => rust_serde_tag_attr()
+    None => rust_tagged_object_policy()
     Some { value: wc } =>
       if is_data_def_item(item: wc) {
         match wc.body {
           None =>
-            emit_error_expr(
-              message: "wire_contract: data item has no initializer body",
-              target: Rust
-            )
+            rust_serde_error_policy(message: "wire_contract: data item has no initializer body")
           Some { value: init } =>
             match init.expr_data {
               ExprRecordLit { parent_enum: _ } =>
-                resolve_wire_serde_tag(wire_item: init, source_indices: source_indices)
+                resolve_wire_serde_policy(wire_item: init, source_indices: source_indices)
               ExprVar { binding_kind: _ } =>
                 let alias_name = expr_var_name_at(texpr: init, source_indices: source_indices)
                 if map_get(seen_aliases, alias_name) != none {
-                  emit_error_expr(
-                    message: concat("wire_contract: cyclic VariantEncoding alias: ", alias_name),
-                    target: Rust
-                  )
+                  rust_serde_error_policy(message: concat("wire_contract: cyclic VariantEncoding alias: ", alias_name))
                 } else {
                   match map_get(data_items, alias_name) {
                     Some { value: candidates } =>
                       if candidates |> count == 1 {
                         match first(candidates) {
                           Some { value: aliased_data } =>
-                            resolve_wire_serde_tag_for_coproduct_seen(
+                            resolve_wire_serde_policy_for_coproduct_seen(
                               wire_contract_item: Some { value: aliased_data },
                               source_indices: source_indices,
                               data_items: data_items,
@@ -324,29 +509,20 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
                               fuel: fuel - 1
                             )
                           None =>
-                            emit_error_expr(
-                              message: concat("wire_contract: missing VariantEncoding data alias: ", alias_name),
-                              target: Rust
-                            )
+                            rust_serde_error_policy(message: concat("wire_contract: missing VariantEncoding data alias: ", alias_name))
                         }
                       } else {
-                        emit_error_expr(
-                          message: concat("wire_contract: ambiguous VariantEncoding data alias: ", alias_name),
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: concat("wire_contract: ambiguous VariantEncoding data alias: ", alias_name))
                       }
                   None =>
                     match init.inferred {
                       None =>
-                        emit_error_expr(
-                          message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)",
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                       Some { value: inf } =>
                         match inf {
                           Resolved { node } =>
                             if is_data_def_item(item: node) {
-                              resolve_wire_serde_tag_for_coproduct_seen(
+                              resolve_wire_serde_policy_for_coproduct_seen(
                                 wire_contract_item: Some { value: node },
                                 source_indices: source_indices,
                                 data_items: data_items,
@@ -354,18 +530,12 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
                                 fuel: fuel - 1
                               )
                             } else {
-                              resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
+                              resolve_wire_serde_policy(wire_item: node, source_indices: source_indices)
                             }
                           CompilerError { message, span: _ } =>
-                            emit_error_expr(
-                              message: concat("wire_contract: ", message),
-                              target: Rust
-                            )
+                            rust_serde_error_policy(message: concat("wire_contract: ", message))
                           TypeVariable { id: _ } =>
-                            emit_error_expr(
-                              message: "wire_contract: unresolved type variable in wire_contract initializer",
-                              target: Rust
-                            )
+                            rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
                         }
                     }
                 }
@@ -373,15 +543,12 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
               _ =>
                 match init.inferred {
                   None =>
-                    emit_error_expr(
-                      message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)",
-                      target: Rust
-                    )
+                    rust_serde_error_policy(message: "wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)")
                   Some { value: inf } =>
                     match inf {
                       Resolved { node } =>
                         if is_data_def_item(item: node) {
-                          resolve_wire_serde_tag_for_coproduct_seen(
+                          resolve_wire_serde_policy_for_coproduct_seen(
                             wire_contract_item: Some { value: node },
                             source_indices: source_indices,
                             data_items: data_items,
@@ -389,26 +556,138 @@ fn resolve_wire_serde_tag_for_coproduct_seen(wire_contract_item: Node?, source_i
                             fuel: fuel - 1
                           )
                         } else {
-                          resolve_wire_serde_tag(wire_item: node, source_indices: source_indices)
+                          resolve_wire_serde_policy(wire_item: node, source_indices: source_indices)
                         }
                       CompilerError { message, span: _ } =>
-                        emit_error_expr(
-                          message: concat("wire_contract: ", message),
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: concat("wire_contract: ", message))
                       TypeVariable { id: _ } =>
-                        emit_error_expr(
-                          message: "wire_contract: unresolved type variable in wire_contract initializer",
-                          target: Rust
-                        )
+                        rust_serde_error_policy(message: "wire_contract: unresolved type variable in wire_contract initializer")
                     }
                 }
             }
         }
       } else {
-        resolve_wire_serde_tag(wire_item: wc, source_indices: source_indices)
+        resolve_wire_serde_policy(wire_item: wc, source_indices: source_indices)
       }
   } }
+}
+
+fn coproduct_wire_contract_encoding(contract_item: Node, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match contract_item.body {
+    Some { value: body } =>
+      field_value_by_name(record: body, field_name: "encoding", source_indices: source_indices)
+    None => none
+  }
+}
+
+fn variant_encoding_is_string_variant(encoding: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  authored_name_at(source_indices: source_indices, node: encoding) == "StringVariant"
+}
+
+fn coproduct_wire_contract_targets(contract_item: Node, coproduct_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match contract_item.body {
+    Some { value: body } =>
+      match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
+        Some { value: target_name } => target_name == coproduct_name
+        None => false
+      }
+    None => false
+  }
+}
+
+fn emit_rust_compile_error_item(message: String) -> String {
+  concat("compile_error!(\"", message, "\");")
+}
+
+fn module_imports_std_serialization_coproduct_wire_contract(imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  imports |> any(imp =>
+    authored_name_at(source_indices: source_indices, node: imp) == "std.serialization"
+    && (import_is_all(n: imp) || import_specific_names_at(n: imp, source_indices: source_indices) |> any(name => name == "CoproductWireContract"))
+  )
+}
+
+fn data_item_type_is_coproduct_wire_contract(item: Node, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  match item.type_annotation {
+    Some { value: type_node } =>
+      authored_name_at(source_indices: source_indices, node: type_node) == "CoproductWireContract"
+      && module_imports_std_serialization_coproduct_wire_contract(imports: imports, source_indices: source_indices)
+    None => false
+  }
+}
+
+fn module_defines_local_coproduct_wire_contract_type(module_items: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  module_items
+    |> any(item => is_type_def_item(item: item) && authored_name_at(source_indices: source_indices, node: item) == "CoproductWireContract")
+}
+
+fn is_coproduct_wire_contract_row(item: Node, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> Bool {
+  if !is_data_def_item(item: item) {
+    false
+  } else if module_defines_local_coproduct_wire_contract_type(module_items: module_items, source_indices: source_indices) {
+    false
+  } else if !data_item_type_is_coproduct_wire_contract(item: item, imports: imports, source_indices: source_indices) {
+    false
+  } else {
+    match item.body {
+      Some { value: body } =>
+        field_value_by_name(record: body, field_name: "coproduct", source_indices: source_indices) != none
+        && field_value_by_name(record: body, field_name: "encoding", source_indices: source_indices) != none
+      None => false
+    }
+  }
+}
+
+fn emit_coproduct_wire_contract_target_validation(contract_item: Node, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  match contract_item.body {
+    Some { value: body } =>
+      match record_string_field(record: body, field_name: "coproduct", source_indices: source_indices) {
+        Some { value: target_name } =>
+          if any(local_coproduct_names, predicate: name => name == target_name) {
+            ""
+          } else {
+            emit_rust_compile_error_item(message: concat("CoproductWireContract target does not name a local coproduct: ", target_name))
+          }
+        None =>
+          emit_rust_compile_error_item(message: "CoproductWireContract.coproduct must be a string declaration name")
+      }
+    None =>
+      emit_rust_compile_error_item(message: "CoproductWireContract row missing initializer body")
+  }
+}
+
+fn emit_coproduct_wire_contract_validations(module_items: List<Node>, imports: List<Node>, local_coproduct_names: List<String>, source_indices: Map<String, NewlineIndex>) -> String {
+  module_items
+    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices))
+    |> map(item => emit_coproduct_wire_contract_target_validation(contract_item: item, local_coproduct_names: local_coproduct_names, source_indices: source_indices))
+    |> filter(text => text != "")
+    |> join(separator: "\n")
+}
+
+fn resolve_local_coproduct_wire_policy(coproduct_name: String, all_unit_variants: Bool, module_items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> RustEnumWireSerde? {
+  let contracts = module_items
+    |> filter(item => is_coproduct_wire_contract_row(item: item, module_items: module_items, imports: imports, source_indices: source_indices) && coproduct_wire_contract_targets(contract_item: item, coproduct_name: coproduct_name, source_indices: source_indices))
+  if contracts |> count == 0 {
+    none
+  } else if contracts |> count == 1 {
+    match contracts |> first {
+      Some { value: contract } =>
+        match coproduct_wire_contract_encoding(contract_item: contract, source_indices: source_indices) {
+          Some { value: encoding } =>
+            if variant_encoding_is_string_variant(encoding: encoding, source_indices: source_indices) && !all_unit_variants {
+              Some { value: rust_serde_error_policy(message: concat("CoproductWireContract StringVariant requires a nullary-only coproduct: ", coproduct_name)) }
+            } else {
+              Some { value: resolve_wire_serde_policy_from_encoding_node(ve: encoding, source_indices: source_indices) }
+            }
+          None =>
+            Some { value: rust_serde_error_policy(message: concat("CoproductWireContract missing encoding for ", coproduct_name)) }
+        }
+      None => none
+    }
+  } else {
+    Some {
+      value: rust_serde_error_policy(message: concat("ambiguous CoproductWireContract rows for ", coproduct_name))
+    }
+  }
 }
 
 fn build_data_item_index(modules: List<TypedModule>) -> Map<String, Node> {
@@ -877,6 +1156,12 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_enum_uses = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => concat("use self::", authored_name(env: scope.type_env, node: item), "::*;"))
+  let local_coproduct_names = typed_module.items
+    |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
+    |> map(item => authored_name(env: scope.type_env, node: item))
+  let module_import_items = module_imports(n: m)
+  let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: typed_module.items, imports: module_import_items, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
+  let coproduct_wire_contract_validation_section = if coproduct_wire_contract_validations == "" { "" } else { concat(coproduct_wire_contract_validations, "\n\n") }
   let local_uses_str = if local_enum_uses |> count == 0 { "" }
     else { concat("\n", local_enum_uses |> join(separator: "\n")) }
   // Wire contract: find the module's wire_contract data item (if any)
@@ -895,7 +1180,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       })
     |> first
   let items_str = typed_module.items
-    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items))
+    |> map(item => emit_typed_item(item: item, module_name: authored_name(env: scope.type_env, node: m), registry: registry, scope: scope, shared_types: shared_types, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: scoped_data_items, module_items: typed_module.items, imports: module_import_items))
     |> join(separator: "\n\n")
   let raw_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   // Avoid collision with the CLI entry point (src/main.rs)
@@ -906,7 +1191,7 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let content = concat("// Generated by v2 compiler -- do not edit.\n",
     "// Source module: ", authored_name(env: scope.type_env, node: m), "\n\n",
     module_attrs, prelude, imports_section, svc_imports_str, local_uses_str, "\n\n",
-    items_str, "\n")
+    coproduct_wire_contract_validation_section, items_str, "\n")
   TextFile { path: concat(rust_source_root(), filename, rust_source_ext()), content: content }
 }
 
@@ -1076,13 +1361,13 @@ fn emit_non_empty_wrappers() -> String {
 // Item dispatch
 // =========================================================================
 
-fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>) -> String {
+fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemInfo>, scope: InferScope, shared_types: Map<String, Bool>, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let env = scope.type_env
   let qualified_name = concat(module_name, ".", authored_name(env: env, node: item))
   let item_text = authored_name(env: env, node: item)
   // Structural dispatch via shared predicates (CM: no taxonomy enum).
   if is_type_def_item(item: item) {
-    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items)
+    emit_type_def_from_connective(item: item, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, env: env, emit_info: emit_info, wire_contract_item: wire_contract_item, data_items: data_items, module_items: module_items, imports: imports)
   } else if is_type_alias_item(item: item, source_indices: env.source_indices) {
     concat(rust_visibility_prefix(), rust_items().type_alias_keyword, " ", item_text, " = ", render_rust_type(n: resolved_type(n: item), shared_types: shared_types, source_indices: env.source_indices), ";")
   } else if is_type_decl_item(item: item, source_indices: env.source_indices) {
@@ -1248,19 +1533,46 @@ fn function_type_params_have_collision(type_params: List<Node>) -> Bool {
   (names |> count) > (unique_strings(items: names) |> count)
 }
 
-fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>) -> String {
+fn emit_type_def_from_connective(item: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, emit_info: EmitGraphInfo, wire_contract_item: Node?, data_items: Map<String, List<Node>>, module_items: List<Node>, imports: List<Node>) -> String {
   let type_params = emit_type_params(params: item.params, source_indices: env.source_indices)
   let item_text = authored_name(env: env, node: item)
   let is_product = is_product_type(n: item)
   if is_product {
     emit_struct_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, emit_info: emit_info)
   } else {
-    // Resolve serde tag per-enum from the module's wire contract data item
-    let serde_enum_tag = match wire_contract_item {
-      Some { value: _ } => resolve_wire_serde_tag_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices, data_items: data_items)
-      None => rust_serde_tag_attr()
+    let all_unit_variants = item.children |> all(child => child.children |> count == 0)
+    // Resolve serde policy in order: coproduct-local row, module fallback for
+    // nullary string enums, then the existing tagged-object default.
+    let serde_policy = match resolve_local_coproduct_wire_policy(coproduct_name: item_text, all_unit_variants: all_unit_variants, module_items: module_items, imports: imports, source_indices: env.source_indices) {
+      Some { value: local_policy } => local_policy
+      None =>
+        if all_unit_variants {
+          match wire_contract_item {
+            Some { value: _ } => resolve_wire_serde_policy_for_coproduct(wire_contract_item: wire_contract_item, source_indices: env.source_indices, data_items: data_items)
+            None => rust_tagged_object_policy()
+          }
+        } else {
+          rust_tagged_object_policy()
+        }
     }
-    emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_enum_tag: serde_enum_tag)
+    let rename_validations = variant_rename_validations_for_policy(children: item.children, env: env, serde_policy: serde_policy)
+    let policy_validation = match serde_policy.error_message {
+      Some { value: message } => emit_rust_compile_error_item(message: message)
+      None => ""
+    }
+    let validations = if policy_validation == "" {
+      rename_validations
+    } else if rename_validations == "" {
+      policy_validation
+    } else {
+      concat(policy_validation, "\n", rename_validations)
+    }
+    let enum_text = emit_enum_from_children(name: item_text, type_params: type_params, children: item.children, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy)
+    if validations == "" {
+      enum_text
+    } else {
+      concat(validations, "\n", enum_text)
+    }
   }
 }
 
@@ -1349,13 +1661,13 @@ fn enum_derives(children: List<Node>) -> String {
   }
 }
 
-fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, serde_enum_tag: String) -> String {
+fn emit_enum_from_children(name: String, type_params: String, children: List<Node>, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
   let derives = enum_derives(children: children)
-  let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env))
+  let variant_lines = children |> map(child => emit_variant_from_child(child: child, recursive_types: recursive_types, shared_types: shared_types, env: env, serde_policy: serde_policy))
   let variants_str = variant_lines |> join(separator: "\n")
   // Wire contract: serde_enum_tag is "" for StringVariant/AsAuthored,
   // a rename_all attribute for SnakeCase, or the default _variant tag.
-  let tag_line = if serde_enum_tag == "" { "" } else { concat(serde_enum_tag, "\n") }
+  let tag_line = if serde_policy.enum_attr == "" { "" } else { concat(serde_policy.enum_attr, "\n") }
   let enum_def = concat(derives, "\n", tag_line, rust_visibility_prefix(), rust_items().enum_keyword, " ", name, type_params, " {\n", variants_str, "\n}")
   // Generate accessor methods for shared fields (fields present in ALL variants).
   let accessor_impl = emit_enum_shared_accessors(name: name, type_params: type_params, children: children, recursive_types: recursive_types, shared_types: shared_types, env: env)
@@ -1424,11 +1736,90 @@ fn emit_enum_shared_accessors(name: String, type_params: String, children: List<
   concat("impl", type_params, " ", name, type_params, " {\n", fns_str, "\n}")
 }
 
-fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv) -> String {
+fn string_without_prefix(value: String, prefix: String) -> String? {
+  if string_length(s: prefix) == 0 {
+    none
+  } else if string_length(s: value) >= string_length(s: prefix) && substring(s: value, start: 0, end: string_length(s: prefix)) == prefix {
+    Some { value: substring(s: value, start: string_length(s: prefix), end: string_length(s: value)) }
+  } else {
+    none
+  }
+}
+
+fn string_without_suffix(value: String, suffix: String) -> String? {
+  if string_length(s: suffix) == 0 {
+    none
+  } else if string_length(s: value) >= string_length(s: suffix) && substring(s: value, start: string_length(s: value) - string_length(s: suffix), end: string_length(s: value)) == suffix {
+    Some { value: substring(s: value, start: 0, end: string_length(s: value) - string_length(s: suffix)) }
+  } else {
+    none
+  }
+}
+
+fn wire_variant_rename_attr_for_policy(authored: String, policy: RustEnumWireSerde) -> String {
+  match policy.rename_style {
+    Some { value: style } =>
+      if style == "StripAffixAndSnakeCase" {
+        let without_prefix = match policy.rename_prefix {
+          Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
+            Some { value: stripped } => stripped
+            None => return ""
+          }
+          None => authored
+        }
+        let without_suffix = match policy.rename_suffix {
+          Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
+            Some { value: stripped } => stripped
+            None => return ""
+          }
+          None => without_prefix
+        }
+        concat("    #[serde(rename = \"", to_snake(name: without_suffix), "\")]\n")
+      } else {
+        ""
+      }
+    None => ""
+  }
+}
+
+fn variant_rename_validation_for_policy(authored: String, policy: RustEnumWireSerde) -> String {
+  match policy.rename_style {
+    Some { value: style } =>
+      if style == "StripAffixAndSnakeCase" {
+        let without_prefix = match policy.rename_prefix {
+          Some { value: prefix } => match string_without_prefix(value: authored, prefix: prefix) {
+            Some { value: stripped } => stripped
+            None => return emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename prefix: ", prefix))
+          }
+          None => authored
+        }
+        match policy.rename_suffix {
+          Some { value: suffix } => match string_without_suffix(value: without_prefix, suffix: suffix) {
+            Some { value: _ } => ""
+            None => emit_rust_compile_error_item(message: concat("variant ", authored, " does not satisfy declared wire rename suffix: ", suffix))
+          }
+          None => ""
+        }
+      } else {
+        ""
+      }
+    None => ""
+  }
+}
+
+fn variant_rename_validations_for_policy(children: List<Node>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
+  children
+    |> map(child => variant_rename_validation_for_policy(authored: authored_name(env: env, node: child), policy: serde_policy))
+    |> filter(text => text != "")
+    |> join(separator: "\n")
+}
+
+fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shared_types: Map<String, Bool>, env: TypeEnv, serde_policy: RustEnumWireSerde) -> String {
   let child_text = authored_name(env: env, node: child)
+  let rename_attr = wire_variant_rename_attr_for_policy(authored: child_text, policy: serde_policy)
   if child.children |> count == 0 {
     // Unit variant -- no fields
-    concat("    ", child_text, ",")
+    concat(rename_attr, "    ", child_text, ",")
   } else {
     // Fielded variant -- child's children are the variant's fields
     let field_lines = child.children |> map(f =>
@@ -1440,7 +1831,7 @@ fn emit_variant_from_child(child: Node, recursive_types: Map<String, Bool>, shar
       concat("        ", emit_ident(name: authored_name(env: env, node: f), target: Rust), ": ", final_ty, ",")
     )
     let fields_str = field_lines |> join(separator: "\n")
-    concat("    ", child_text, " {\n", fields_str, "\n    },")
+    concat(rename_attr, "    ", child_text, " {\n", fields_str, "\n    },")
   }
 }
 

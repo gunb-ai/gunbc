@@ -292,7 +292,10 @@ fn render_atom_payload(payload: &AtomPayload) -> String {
 
 fn render_arrow_body(body: &ArrowBody) -> String {
     match body {
-        ArrowBody::UserDefined(id) => format!("ArrowBody::UserDefined({})", render_node_id(*id)),
+        ArrowBody::UserDefined(id) => format!(
+            "ArrowBody::UserDefined(BindNodeId::new_unchecked({}))",
+            render_node_id(id.node_id())
+        ),
         ArrowBody::ExternalRealization(id) => {
             format!(
                 "ArrowBody::ExternalRealization({})",

@@ -7782,8 +7782,8 @@ pub fn int_to_string_acc(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Str
         if (value.clone() == 0) {
             break acc;
         } else {
-            let digit = (value.clone() % 10);
-            let rest = ((value.clone() - digit.clone()) / 10);
+            let rest = (value.clone() / 10);
+            let digit = (value.clone() - (rest.clone() * 10));
             let digit_chars = Rc::new(vec![
                 "0".to_string(),
                 "1".to_string(),
@@ -7822,7 +7822,7 @@ pub fn int_to_string_acc(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Str
                 None => "?".to_string(),
             };
             {
-                let __tco_0 = rest;
+                let __tco_0 = rest.clone();
                 let __tco_1 = v2_rt::concat(Rc::new(vec![ch]), acc);
                 value = __tco_0;
                 acc = __tco_1;

@@ -9,12 +9,12 @@
 //     `wraps_result`. Per Q4 four-property gate, every row's
 //     `wraps_result` is structurally `false` for Go — declared
 //     explicitly here, NOT silently inherited from Rust.
-//   - `string_contains` is in `go_method_templates` but NOT in the
-//     `dsl/std/methods.dag` registry (registry covers `algebra.dag`
-//     template-list names; `string_contains` is target-only). Open
-//     classification question deferred to Phase 2 / Modeling per
-//     manager call (#1133 msg ID 4343454397). No row authored in
-//     Phase 1; legacy emit map continues serving v2.
+//   - `string_contains` is now classified as a target-only emit-shortcut
+//     name in `dsl/std/methods.dag` (#1549 Gap 1 / R3 dispatch on parent
+//     inbox #1130). The row below references `string_contains_method`
+//     and renders Go's `strings.Contains({recv}, {arg})` for the
+//     substring shape; this is structurally distinct from algebra
+//     `contains` (collection membership).
 //   - `{arg0}` → `{arg}` rewrite applied to runtime templates (`join`,
 //     `split`); rows use `placeholder_convention: NamedArg` uniformly.
 //   - `chars` is present only in `collection_method_translations`
@@ -55,9 +55,23 @@ import std.methods {
   take_method,
   fold_method,
   sort_by_method,
-  append_method
+  append_method,
+  string_contains_method
 }
 
+// **P2 single authority** for `fold_method` on the Go target: LanguageSpec
+// `CollectionOps.fold_contract` uses the explicit `{recv}` / `{init}` / `{body}`
+// stub. It does **not** repeat inside `go_method_template_contracts` below —
+// that list row used `v2rt.Fold({recv}, {arg})` (different placeholder shape),
+// a second parallel contract for the same registry method; see
+// `docs/briefs/collectionops-algebra-reframe.md`.
+data go_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
+  dag_method: { decl: fold_method },
+  runtime_template: "/* fold({recv}, {init}, {body}) */",
+  emit_template: SingleTemplate { template: "/* fold({recv}, {init}, {body}) */" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
 
 data go_method_template_contracts: List<MethodTemplateContract> = [
   {
@@ -138,13 +152,6 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
     placeholder_convention: NamedArg
   },
   {
-    dag_method: { decl: fold_method },
-    runtime_template: "v2rt.Fold({recv}, {arg})",
-    emit_template: SingleTemplate { template: "v2rt.Fold({recv}, {arg})" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
     dag_method: { decl: sort_by_method },
     runtime_template: "v2rt.SortBy({recv}, {arg})",
     emit_template: SingleTemplate { template: "v2rt.SortBy({recv}, {arg})" },
@@ -155,6 +162,13 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
     dag_method: { decl: append_method },
     runtime_template: "append({recv}, {arg})",
     emit_template: SingleTemplate { template: "append({recv}, {arg})" },
+    wraps_result: false,
+    placeholder_convention: NamedArg
+  },
+  {
+    dag_method: { decl: string_contains_method },
+    runtime_template: "strings.Contains({recv}, {arg})",
+    emit_template: SingleTemplate { template: "strings.Contains({recv}, {arg})" },
     wraps_result: false,
     placeholder_convention: NamedArg
   }

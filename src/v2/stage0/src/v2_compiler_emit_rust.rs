@@ -240,55 +240,410 @@ pub fn rust_serde_tag_attr() -> String {
     }
 }
 
-pub fn resolve_wire_serde_tag_from_encoding_node(
-    ve: &Rc<Node>,
-    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
-    if ((ve.children.clone().len() as i64) > 0) {
-        {
-            let naming_field = Rc::new({
-                let mut __result = Vec::new();
-                for fi in ve.children.clone().iter().cloned() {
-                    if (field_init_node_name_at(fi.clone(), source_indices.clone()).as_str()
-                        == "naming".to_string().as_str())
-                    {
-                        __result.push(fi);
-                    }
-                }
-                __result
-            })
-            .first()
-            .cloned();
-            match naming_field {
-                Some(nf) => {
-                    let nv = field_init_node_value(&nf);
-                    if (authored_name_at(source_indices.clone(), &nv).as_str()
-                        == "SnakeCase".to_string().as_str())
-                    {
-                        "#[serde(rename_all = \"snake_case\")]".to_string()
-                    } else {
-                        "".to_string()
-                    }
-                }
-                None => "".to_string(),
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct RustEnumWireSerde {
+    pub enum_attr: String,
+    pub rename_prefix: Option<String>,
+    pub rename_suffix: Option<String>,
+    pub rename_style: Option<String>,
+    pub error_message: Option<String>,
+}
+
+pub fn rust_serde_policy(
+    enum_attr: String,
+    rename_prefix: Option<String>,
+    rename_suffix: Option<String>,
+    rename_style: Option<String>,
+) -> Rc<RustEnumWireSerde> {
+    Rc::new(RustEnumWireSerde {
+        enum_attr: enum_attr,
+        rename_prefix: rename_prefix,
+        rename_suffix: rename_suffix,
+        rename_style: rename_style,
+        error_message: None,
+    })
+}
+
+pub fn rust_serde_policy_error(message: String) -> Rc<RustEnumWireSerde> {
+    Rc::new(RustEnumWireSerde {
+        enum_attr: "".to_string(),
+        rename_prefix: None,
+        rename_suffix: None,
+        rename_style: None,
+        error_message: Some(message),
+    })
+}
+
+pub fn rust_tagged_object_policy() -> Rc<RustEnumWireSerde> {
+    rust_serde_policy(rust_serde_tag_attr(), None, None, None)
+}
+
+pub fn rust_serde_error_policy(message: String) -> Rc<RustEnumWireSerde> {
+    rust_serde_policy_error(message)
+}
+
+pub fn rust_string_as_authored_policy() -> Rc<RustEnumWireSerde> {
+    rust_serde_policy("".to_string(), None, None, None)
+}
+
+pub fn rust_snake_string_policy() -> Rc<RustEnumWireSerde> {
+    rust_serde_policy(
+        "#[serde(rename_all = \"snake_case\")]".to_string(),
+        None,
+        None,
+        None,
+    )
+}
+
+pub fn field_value_by_name(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match Rc::new({
+        let mut __result = Vec::new();
+        for fi in record.children.clone().iter().cloned() {
+            if (field_init_node_name_at(fi.clone(), source_indices.clone()).as_str()
+                == field_name.clone().as_str())
+            {
+                __result.push(fi);
             }
         }
-    } else {
-        rust_serde_tag_attr()
+        __result
+    })
+    .first()
+    .cloned()
+    {
+        Some(fi) => Some(field_init_node_value(&fi)),
+        None => None,
     }
 }
 
-pub fn resolve_wire_serde_tag(
+pub fn literal_string_value(n: Rc<Node>) -> Option<String> {
+    match (*n.expr_data.clone()).clone() {
+        ExprData::ExprLiteral { value: lv, .. } => match (*lv.clone()).clone() {
+            LiteralValue::LitStr { value: s, .. } => Some(s.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn record_string_field(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(record, field_name, source_indices) {
+        Some(value_node) => literal_string_value(value_node.clone()),
+        None => None,
+    }
+}
+
+pub fn naming_policy_node(
+    encoding: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    field_value_by_name(encoding, "naming".to_string(), source_indices)
+}
+
+pub fn optional_string_record_field(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(record, field_name, source_indices) {
+        Some(n) => literal_string_value(n.clone()),
+        None => None,
+    }
+}
+
+pub fn required_literal_string_policy_field(
+    record: Rc<Node>,
+    field_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    match field_value_by_name(record, field_name, source_indices) {
+        Some(n) => literal_string_value(n.clone()),
+        None => None,
+    }
+}
+
+pub fn rust_string_policy_for_naming(
+    naming: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<RustEnumWireSerde> {
+    {
+        let naming_name = authored_name_at(source_indices.clone(), &naming);
+        if (naming_name.clone().as_str() == "AsAuthored".to_string().as_str()) {
+            rust_string_as_authored_policy()
+        } else {
+            if (naming_name.clone().as_str() == "SnakeCase".to_string().as_str()) {
+                rust_snake_string_policy()
+            } else {
+                if (naming_name.clone().as_str() == "StripPrefixAndSnakeCase".to_string().as_str())
+                {
+                    match required_literal_string_policy_field(
+                        naming.clone(),
+                        "prefix".to_string(),
+                        source_indices.clone(),
+                    ) {
+                        Some(prefix) => rust_serde_policy(
+                            "".to_string(),
+                            Some(prefix.clone()),
+                            None,
+                            Some("StripAffixAndSnakeCase".to_string()),
+                        ),
+                        None => rust_serde_error_policy(
+                            "StripPrefixAndSnakeCase requires a literal prefix".to_string(),
+                        ),
+                    }
+                } else {
+                    if (naming_name.clone().as_str()
+                        == "StripSuffixAndSnakeCase".to_string().as_str())
+                    {
+                        match required_literal_string_policy_field(
+                            naming.clone(),
+                            "suffix".to_string(),
+                            source_indices.clone(),
+                        ) {
+                            Some(suffix) => rust_serde_policy(
+                                "".to_string(),
+                                None,
+                                Some(suffix.clone()),
+                                Some("StripAffixAndSnakeCase".to_string()),
+                            ),
+                            None => rust_serde_error_policy(
+                                "StripSuffixAndSnakeCase requires a literal suffix".to_string(),
+                            ),
+                        }
+                    } else {
+                        if (naming_name.clone().as_str()
+                            == "StripPrefixSuffixAndSnakeCase".to_string().as_str())
+                        {
+                            match required_literal_string_policy_field(
+                                naming.clone(),
+                                "prefix".to_string(),
+                                source_indices.clone(),
+                            ) {
+                                Some(prefix) => match required_literal_string_policy_field(
+                                    naming.clone(),
+                                    "suffix".to_string(),
+                                    source_indices.clone(),
+                                ) {
+                                    Some(suffix) => rust_serde_policy(
+                                        "".to_string(),
+                                        Some(prefix.clone()),
+                                        Some(suffix.clone()),
+                                        Some("StripAffixAndSnakeCase".to_string()),
+                                    ),
+                                    None => rust_serde_error_policy(
+                                        "StripPrefixSuffixAndSnakeCase requires a literal suffix"
+                                            .to_string(),
+                                    ),
+                                },
+                                None => rust_serde_error_policy(
+                                    "StripPrefixSuffixAndSnakeCase requires a literal prefix"
+                                        .to_string(),
+                                ),
+                            }
+                        } else {
+                            rust_serde_error_policy(v2_rt::concat(
+                                "unsupported VariantNaming: ".to_string(),
+                                naming_name.clone(),
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn rust_internal_policy_for_naming(
+    tag_field: String,
+    naming: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<RustEnumWireSerde> {
+    {
+        let naming_name = authored_name_at(source_indices.clone(), &naming);
+        if (naming_name.clone().as_str() == "AsAuthored".to_string().as_str()) {
+            rust_serde_policy(
+                v2_rt::concat(
+                    v2_rt::concat("#[serde(tag = \"".to_string(), tag_field),
+                    "\")]".to_string(),
+                ),
+                None,
+                None,
+                None,
+            )
+        } else {
+            if (naming_name.clone().as_str() == "SnakeCase".to_string().as_str()) {
+                rust_serde_policy(
+                    v2_rt::concat(
+                        v2_rt::concat("#[serde(tag = \"".to_string(), tag_field),
+                        "\", rename_all = \"snake_case\")]".to_string(),
+                    ),
+                    None,
+                    None,
+                    None,
+                )
+            } else {
+                if (naming_name.clone().as_str() == "StripPrefixAndSnakeCase".to_string().as_str())
+                {
+                    match required_literal_string_policy_field(
+                        naming.clone(),
+                        "prefix".to_string(),
+                        source_indices.clone(),
+                    ) {
+                        Some(prefix) => rust_serde_policy(
+                            v2_rt::concat(
+                                v2_rt::concat("#[serde(tag = \"".to_string(), tag_field),
+                                "\")]".to_string(),
+                            ),
+                            Some(prefix.clone()),
+                            None,
+                            Some("StripAffixAndSnakeCase".to_string()),
+                        ),
+                        None => rust_serde_error_policy(
+                            "StripPrefixAndSnakeCase requires a literal prefix".to_string(),
+                        ),
+                    }
+                } else {
+                    if (naming_name.clone().as_str()
+                        == "StripSuffixAndSnakeCase".to_string().as_str())
+                    {
+                        match required_literal_string_policy_field(
+                            naming.clone(),
+                            "suffix".to_string(),
+                            source_indices.clone(),
+                        ) {
+                            Some(suffix) => rust_serde_policy(
+                                v2_rt::concat(
+                                    v2_rt::concat("#[serde(tag = \"".to_string(), tag_field),
+                                    "\")]".to_string(),
+                                ),
+                                None,
+                                Some(suffix.clone()),
+                                Some("StripAffixAndSnakeCase".to_string()),
+                            ),
+                            None => rust_serde_error_policy(
+                                "StripSuffixAndSnakeCase requires a literal suffix".to_string(),
+                            ),
+                        }
+                    } else {
+                        if (naming_name.clone().as_str()
+                            == "StripPrefixSuffixAndSnakeCase".to_string().as_str())
+                        {
+                            match required_literal_string_policy_field(
+                                naming.clone(),
+                                "prefix".to_string(),
+                                source_indices.clone(),
+                            ) {
+                                Some(prefix) => match required_literal_string_policy_field(
+                                    naming.clone(),
+                                    "suffix".to_string(),
+                                    source_indices.clone(),
+                                ) {
+                                    Some(suffix) => rust_serde_policy(
+                                        v2_rt::concat(
+                                            v2_rt::concat(
+                                                "#[serde(tag = \"".to_string(),
+                                                tag_field,
+                                            ),
+                                            "\")]".to_string(),
+                                        ),
+                                        Some(prefix.clone()),
+                                        Some(suffix.clone()),
+                                        Some("StripAffixAndSnakeCase".to_string()),
+                                    ),
+                                    None => rust_serde_error_policy(
+                                        "StripPrefixSuffixAndSnakeCase requires a literal suffix"
+                                            .to_string(),
+                                    ),
+                                },
+                                None => rust_serde_error_policy(
+                                    "StripPrefixSuffixAndSnakeCase requires a literal prefix"
+                                        .to_string(),
+                                ),
+                            }
+                        } else {
+                            rust_serde_error_policy(v2_rt::concat(
+                                "unsupported VariantNaming: ".to_string(),
+                                naming_name.clone(),
+                            ))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn rust_internal_policy_for_encoding(
+    encoding: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<RustEnumWireSerde> {
+    match record_string_field(
+        encoding.clone(),
+        "tag_field".to_string(),
+        source_indices.clone(),
+    ) {
+        Some(tag_field) => match naming_policy_node(encoding.clone(), source_indices.clone()) {
+            Some(naming) => {
+                rust_internal_policy_for_naming(tag_field.clone(), &naming, &source_indices)
+            }
+            None => rust_serde_error_policy(
+                "InternallyTaggedObject requires a naming policy".to_string(),
+            ),
+        },
+        None => rust_serde_error_policy(
+            "InternallyTaggedObject requires a literal tag_field".to_string(),
+        ),
+    }
+}
+
+pub fn resolve_wire_serde_policy_from_encoding_node(
+    ve: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<RustEnumWireSerde> {
+    {
+        let encoding_name = authored_name_at(source_indices.clone(), &ve);
+        if (encoding_name.clone().as_str() == "InternallyTaggedObject".to_string().as_str()) {
+            rust_internal_policy_for_encoding(&ve, &source_indices)
+        } else {
+            if (encoding_name.clone().as_str() == "StringVariant".to_string().as_str()) {
+                match naming_policy_node(ve.clone(), source_indices.clone()) {
+                    Some(nv) => rust_string_policy_for_naming(&nv, &source_indices),
+                    None => rust_serde_error_policy(
+                        "StringVariant requires a naming policy".to_string(),
+                    ),
+                }
+            } else {
+                if (encoding_name.clone().as_str() == "TaggedVariant".to_string().as_str()) {
+                    rust_tagged_object_policy()
+                } else {
+                    rust_serde_error_policy(v2_rt::concat(
+                        "unsupported VariantEncoding: ".to_string(),
+                        encoding_name.clone(),
+                    ))
+                }
+            }
+        }
+    }
+}
+
+pub fn resolve_wire_serde_policy(
     wire_item: &Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> String {
+) -> Rc<RustEnumWireSerde> {
     match wire_item.body.clone() {
-        Some(ve) => resolve_wire_serde_tag_from_encoding_node(&ve, &source_indices),
+        Some(ve) => resolve_wire_serde_policy_from_encoding_node(&ve, &source_indices),
         None => match (*wire_item.expr_data.clone()).clone() {
             ExprData::ExprRecordLit { .. } => {
-                resolve_wire_serde_tag_from_encoding_node(&wire_item, &source_indices)
+                resolve_wire_serde_policy_from_encoding_node(&wire_item, &source_indices)
             }
-            _ => rust_serde_tag_attr(),
+            _ => rust_tagged_object_policy(),
         },
     }
 }
@@ -298,12 +653,12 @@ pub fn item_binding_is_named(env: Rc<TypeEnv>, node: &Rc<Node>, name: &String) -
         || (node.name.clone().as_str() == name.clone().as_str()))
 }
 
-pub fn resolve_wire_serde_tag_for_coproduct(
+pub fn resolve_wire_serde_policy_for_coproduct(
     wire_contract_item: Option<Rc<Node>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
-) -> String {
-    resolve_wire_serde_tag_for_coproduct_seen(
+) -> Rc<RustEnumWireSerde> {
+    resolve_wire_serde_policy_for_coproduct_seen(
         wire_contract_item,
         source_indices,
         data_items,
@@ -312,49 +667,44 @@ pub fn resolve_wire_serde_tag_for_coproduct(
     )
 }
 
-pub fn resolve_wire_serde_tag_for_coproduct_seen(
+pub fn resolve_wire_serde_policy_for_coproduct_seen(
     mut wire_contract_item: Option<Rc<Node>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
     mut seen_aliases: Rc<HashMap<String, bool>>,
     mut fuel: i64,
-) -> String {
+) -> Rc<RustEnumWireSerde> {
     loop {
         if (fuel.clone() <= 0) {
-            break emit_error_expr(
+            break rust_serde_error_policy(
                 "wire_contract: VariantEncoding alias chain exceeded recursion limit".to_string(),
-                RenderTarget::Rust,
             );
         } else {
             match wire_contract_item {
                 None => {
-                    break rust_serde_tag_attr();
+                    break rust_tagged_object_policy();
                 }
                 Some(wc) => {
                     if is_data_def_item(&wc) {
                         match wc.body.clone() {
                             None => {
-                                break emit_error_expr(
+                                break rust_serde_error_policy(
                                     "wire_contract: data item has no initializer body".to_string(),
-                                    RenderTarget::Rust,
                                 );
                             }
                             Some(init) => match (*init.expr_data.clone()).clone() {
                                 ExprData::ExprRecordLit { .. } => {
-                                    break resolve_wire_serde_tag(&init, source_indices.clone());
+                                    break resolve_wire_serde_policy(&init, source_indices.clone());
                                 }
                                 ExprData::ExprVar { .. } => {
                                     let alias_name =
                                         expr_var_name_at(init.clone(), source_indices.clone());
                                     if (v2_rt::map_get(&seen_aliases, alias_name.clone()) != None) {
-                                        break emit_error_expr(
-                                            v2_rt::concat(
-                                                "wire_contract: cyclic VariantEncoding alias: "
-                                                    .to_string(),
-                                                alias_name.clone(),
-                                            ),
-                                            RenderTarget::Rust,
-                                        );
+                                        break rust_serde_error_policy(v2_rt::concat(
+                                            "wire_contract: cyclic VariantEncoding alias: "
+                                                .to_string(),
+                                            alias_name.clone(),
+                                        ));
                                     } else {
                                         match v2_rt::map_get(&data_items, alias_name.clone()) {
                                             Some(candidates) => {
@@ -375,16 +725,16 @@ pub fn resolve_wire_serde_tag_for_coproduct_seen(
                                                             continue;
                                                         }
                                                         None => {
-                                                            break emit_error_expr(v2_rt::concat("wire_contract: missing VariantEncoding data alias: ".to_string(), alias_name.clone()), RenderTarget::Rust);
+                                                            break rust_serde_error_policy(v2_rt::concat("wire_contract: missing VariantEncoding data alias: ".to_string(), alias_name.clone()));
                                                         }
                                                     }
                                                 } else {
-                                                    break emit_error_expr(v2_rt::concat("wire_contract: ambiguous VariantEncoding data alias: ".to_string(), alias_name.clone()), RenderTarget::Rust);
+                                                    break rust_serde_error_policy(v2_rt::concat("wire_contract: ambiguous VariantEncoding data alias: ".to_string(), alias_name.clone()));
                                                 }
                                             }
                                             None => match init.inferred.clone() {
                                                 None => {
-                                                    break emit_error_expr("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string(), RenderTarget::Rust);
+                                                    break rust_serde_error_policy("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string());
                                                 }
                                                 Some(inf) => match (*inf.clone()).clone() {
                                                     InferredNode::Resolved { node, .. } => {
@@ -403,7 +753,7 @@ pub fn resolve_wire_serde_tag_for_coproduct_seen(
                                                                 continue;
                                                             }
                                                         } else {
-                                                            break resolve_wire_serde_tag(
+                                                            break resolve_wire_serde_policy(
                                                                 &node,
                                                                 source_indices.clone(),
                                                             );
@@ -412,16 +762,15 @@ pub fn resolve_wire_serde_tag_for_coproduct_seen(
                                                     InferredNode::CompilerError {
                                                         message, ..
                                                     } => {
-                                                        break emit_error_expr(
+                                                        break rust_serde_error_policy(
                                                             v2_rt::concat(
                                                                 "wire_contract: ".to_string(),
                                                                 message.clone(),
                                                             ),
-                                                            RenderTarget::Rust,
                                                         );
                                                     }
                                                     InferredNode::TypeVariable { .. } => {
-                                                        break emit_error_expr("wire_contract: unresolved type variable in wire_contract initializer".to_string(), RenderTarget::Rust);
+                                                        break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string());
                                                     }
                                                 },
                                             },
@@ -430,7 +779,7 @@ pub fn resolve_wire_serde_tag_for_coproduct_seen(
                                 }
                                 _ => match init.inferred.clone() {
                                     None => {
-                                        break emit_error_expr("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string(), RenderTarget::Rust);
+                                        break rust_serde_error_policy("wire_contract: missing type inference on initializer (cannot resolve VariantEncoding alias)".to_string());
                                     }
                                     Some(inf) => match (*inf.clone()).clone() {
                                         InferredNode::Resolved { node, .. } => {
@@ -443,32 +792,324 @@ pub fn resolve_wire_serde_tag_for_coproduct_seen(
                                                     continue;
                                                 }
                                             } else {
-                                                break resolve_wire_serde_tag(
+                                                break resolve_wire_serde_policy(
                                                     &node,
                                                     source_indices.clone(),
                                                 );
                                             }
                                         }
                                         InferredNode::CompilerError { message, .. } => {
-                                            break emit_error_expr(
-                                                v2_rt::concat(
-                                                    "wire_contract: ".to_string(),
-                                                    message.clone(),
-                                                ),
-                                                RenderTarget::Rust,
-                                            );
+                                            break rust_serde_error_policy(v2_rt::concat(
+                                                "wire_contract: ".to_string(),
+                                                message.clone(),
+                                            ));
                                         }
                                         InferredNode::TypeVariable { .. } => {
-                                            break emit_error_expr("wire_contract: unresolved type variable in wire_contract initializer".to_string(), RenderTarget::Rust);
+                                            break rust_serde_error_policy("wire_contract: unresolved type variable in wire_contract initializer".to_string());
                                         }
                                     },
                                 },
                             },
                         }
                     } else {
-                        break resolve_wire_serde_tag(&wc, source_indices.clone());
+                        break resolve_wire_serde_policy(&wc, source_indices.clone());
                     }
                 }
+            }
+        }
+    }
+}
+
+pub fn coproduct_wire_contract_encoding(
+    contract_item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match contract_item.body.clone() {
+        Some(body) => field_value_by_name(body.clone(), "encoding".to_string(), source_indices),
+        None => None,
+    }
+}
+
+pub fn variant_encoding_is_string_variant(
+    encoding: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (authored_name_at(source_indices, &encoding).as_str() == "StringVariant".to_string().as_str())
+}
+
+pub fn coproduct_wire_contract_targets(
+    contract_item: Rc<Node>,
+    coproduct_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match contract_item.body.clone() {
+        Some(body) => {
+            match record_string_field(body.clone(), "coproduct".to_string(), source_indices) {
+                Some(target_name) => (target_name.clone().as_str() == coproduct_name.as_str()),
+                None => false,
+            }
+        }
+        None => false,
+    }
+}
+
+pub fn emit_rust_compile_error_item(message: String) -> String {
+    v2_rt::concat(
+        v2_rt::concat("compile_error!(\"".to_string(), message),
+        "\");".to_string(),
+    )
+}
+
+pub fn module_imports_std_serialization_coproduct_wire_contract(
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for imp in imports.iter().cloned() {
+            if ((authored_name_at(source_indices.clone(), &imp).as_str()
+                == "std.serialization".to_string().as_str())
+                && (import_is_all(imp.clone()) || {
+                    let mut __found = false;
+                    for name in import_specific_names_at(imp.clone(), source_indices.clone())
+                        .iter()
+                        .cloned()
+                    {
+                        if (name.clone().as_str() == "CoproductWireContract".to_string().as_str()) {
+                            __found = true;
+                            break;
+                        }
+                    }
+                    __found
+                }))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn data_item_type_is_coproduct_wire_contract(
+    item: Rc<Node>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match item.type_annotation.clone() {
+        Some(type_node) => {
+            ((authored_name_at(source_indices.clone(), &type_node).as_str()
+                == "CoproductWireContract".to_string().as_str())
+                && module_imports_std_serialization_coproduct_wire_contract(
+                    imports,
+                    source_indices.clone(),
+                ))
+        }
+        None => false,
+    }
+}
+
+pub fn module_defines_local_coproduct_wire_contract_type(
+    module_items: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    {
+        let mut __found = false;
+        for item in module_items.iter().cloned() {
+            if (is_type_def_item(&item)
+                && (authored_name_at(source_indices.clone(), &item).as_str()
+                    == "CoproductWireContract".to_string().as_str()))
+            {
+                __found = true;
+                break;
+            }
+        }
+        __found
+    }
+}
+
+pub fn is_coproduct_wire_contract_row(
+    item: &Rc<Node>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    if !is_data_def_item(&item) {
+        false
+    } else {
+        if module_defines_local_coproduct_wire_contract_type(module_items, source_indices.clone()) {
+            false
+        } else {
+            if !data_item_type_is_coproduct_wire_contract(item.clone(), imports, &source_indices) {
+                false
+            } else {
+                match item.body.clone() {
+                    Some(body) => {
+                        ((field_value_by_name(
+                            body.clone(),
+                            "coproduct".to_string(),
+                            source_indices.clone(),
+                        ) != None)
+                            && (field_value_by_name(
+                                body.clone(),
+                                "encoding".to_string(),
+                                source_indices.clone(),
+                            ) != None))
+                    }
+                    None => false,
+                }
+            }
+        }
+    }
+}
+
+pub fn emit_coproduct_wire_contract_target_validation(
+    contract_item: Rc<Node>,
+    local_coproduct_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    match contract_item.body.clone() {
+        Some(body) => {
+            match record_string_field(body.clone(), "coproduct".to_string(), source_indices) {
+                Some(target_name) => {
+                    if {
+                        let mut __found = false;
+                        for name in local_coproduct_names.iter().cloned() {
+                            if (name.clone().as_str() == target_name.clone().as_str()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    } {
+                        "".to_string()
+                    } else {
+                        emit_rust_compile_error_item(v2_rt::concat(
+                            "CoproductWireContract target does not name a local coproduct: "
+                                .to_string(),
+                            target_name.clone(),
+                        ))
+                    }
+                }
+                None => emit_rust_compile_error_item(
+                    "CoproductWireContract.coproduct must be a string declaration name".to_string(),
+                ),
+            }
+        }
+        None => emit_rust_compile_error_item(
+            "CoproductWireContract row missing initializer body".to_string(),
+        ),
+    }
+}
+
+pub fn emit_coproduct_wire_contract_validations(
+    module_items: &Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    local_coproduct_names: Rc<Vec<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for text in Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in module_items.clone().iter().cloned() {
+                    if is_coproduct_wire_contract_row(
+                        &item,
+                        module_items.clone(),
+                        imports.clone(),
+                        &source_indices,
+                    ) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(emit_coproduct_wire_contract_target_validation(
+                    item.clone(),
+                    local_coproduct_names.clone(),
+                    source_indices.clone(),
+                ));
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            if (text.clone().as_str() != "".to_string().as_str()) {
+                __result.push(text);
+            }
+        }
+        __result
+    })
+    .join(&"\n".to_string())
+}
+
+pub fn resolve_local_coproduct_wire_policy(
+    coproduct_name: &String,
+    all_unit_variants: bool,
+    module_items: &Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<RustEnumWireSerde>> {
+    {
+        let contracts = Rc::new({
+            let mut __result = Vec::new();
+            for item in module_items.clone().iter().cloned() {
+                if (is_coproduct_wire_contract_row(
+                    &item,
+                    module_items.clone(),
+                    imports.clone(),
+                    &source_indices,
+                ) && coproduct_wire_contract_targets(
+                    item.clone(),
+                    coproduct_name.clone(),
+                    source_indices.clone(),
+                )) {
+                    __result.push(item);
+                }
+            }
+            __result
+        });
+        if ((contracts.clone().len() as i64) == 0) {
+            None
+        } else {
+            if ((contracts.clone().len() as i64) == 1) {
+                match contracts.clone().first().cloned() {
+                    Some(contract) => match coproduct_wire_contract_encoding(
+                        contract.clone(),
+                        source_indices.clone(),
+                    ) {
+                        Some(encoding) => {
+                            if (variant_encoding_is_string_variant(
+                                encoding.clone(),
+                                source_indices.clone(),
+                            ) && !all_unit_variants)
+                            {
+                                Some(rust_serde_error_policy(v2_rt::concat("CoproductWireContract StringVariant requires a nullary-only coproduct: ".to_string(), coproduct_name.clone())))
+                            } else {
+                                Some(resolve_wire_serde_policy_from_encoding_node(
+                                    &encoding,
+                                    &source_indices,
+                                ))
+                            }
+                        }
+                        None => Some(rust_serde_error_policy(v2_rt::concat(
+                            "CoproductWireContract missing encoding for ".to_string(),
+                            coproduct_name.clone(),
+                        ))),
+                    },
+                    None => None,
+                }
+            } else {
+                Some(rust_serde_error_policy(v2_rt::concat(
+                    "ambiguous CoproductWireContract rows for ".to_string(),
+                    coproduct_name.clone(),
+                )))
             }
         }
     }
@@ -1472,6 +2113,40 @@ pub fn emit_module_full(
             }
             __result
         });
+        let local_coproduct_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in typed_module.items.clone().iter().cloned() {
+                    if (is_type_def_item(&item) && is_coproduct_type(item.clone())) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.push(authored_name(scope.type_env.clone(), item.clone()));
+            }
+            __result
+        });
+        let module_import_items = module_imports(m.clone());
+        let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(
+            &typed_module.items.clone(),
+            module_import_items.clone(),
+            local_coproduct_names,
+            scope.type_env.clone().source_indices.clone(),
+        );
+        let coproduct_wire_contract_validation_section =
+            if (coproduct_wire_contract_validations.clone().as_str() == "".to_string().as_str()) {
+                "".to_string()
+            } else {
+                v2_rt::concat(
+                    coproduct_wire_contract_validations.clone(),
+                    "\n\n".to_string(),
+                )
+            };
         let local_uses_str = if ((local_enum_uses.clone().len() as i64) == 0) {
             "".to_string()
         } else {
@@ -1511,6 +2186,8 @@ pub fn emit_module_full(
                     &emit_info,
                     wire_contract_item.clone(),
                     scoped_data_items.clone(),
+                    typed_module.items.clone(),
+                    module_import_items.clone(),
                 ));
             }
             __result
@@ -1529,41 +2206,7 @@ pub fn emit_module_full(
         } else {
             "".to_string()
         };
-        let content = v2_rt::concat(
-            v2_rt::concat(
-                v2_rt::concat(
-                    v2_rt::concat(
-                        v2_rt::concat(
-                            v2_rt::concat(
-                                v2_rt::concat(
-                                    v2_rt::concat(
-                                        v2_rt::concat(
-                                            v2_rt::concat(
-                                                v2_rt::concat(
-                                                    "// Generated by v2 compiler -- do not edit.\n"
-                                                        .to_string(),
-                                                    "// Source module: ".to_string(),
-                                                ),
-                                                authored_name(scope.type_env.clone(), m.clone()),
-                                            ),
-                                            "\n\n".to_string(),
-                                        ),
-                                        module_attrs,
-                                    ),
-                                    prelude,
-                                ),
-                                imports_section,
-                            ),
-                            svc_imports_str,
-                        ),
-                        local_uses_str,
-                    ),
-                    "\n\n".to_string(),
-                ),
-                items_str,
-            ),
-            "\n".to_string(),
-        );
+        let content = v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat(v2_rt::concat("// Generated by v2 compiler -- do not edit.\n".to_string(), "// Source module: ".to_string()), authored_name(scope.type_env.clone(), m.clone())), "\n\n".to_string()), module_attrs), prelude), imports_section), svc_imports_str), local_uses_str), "\n\n".to_string()), coproduct_wire_contract_validation_section), items_str), "\n".to_string());
         Rc::new(TextFile {
             path: v2_rt::concat(
                 v2_rt::concat(rust_source_root(), filename),
@@ -1963,6 +2606,8 @@ pub fn emit_typed_item(
     emit_info: &Rc<EmitGraphInfo>,
     wire_contract_item: Option<Rc<Node>>,
     data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let env = scope.type_env.clone();
@@ -1980,6 +2625,8 @@ pub fn emit_typed_item(
                 emit_info.clone(),
                 &wire_contract_item,
                 data_items,
+                module_items,
+                imports,
             )
         } else {
             if is_type_alias_item(&item, env.source_indices.clone()) {
@@ -2228,6 +2875,8 @@ pub fn emit_type_def_from_connective(
     emit_info: Rc<EmitGraphInfo>,
     wire_contract_item: &Option<Rc<Node>>,
     data_items: Rc<HashMap<String, Rc<Vec<Rc<Node>>>>>,
+    module_items: Rc<Vec<Rc<Node>>>,
+    imports: Rc<Vec<Rc<Node>>>,
 ) -> String {
     {
         let type_params = emit_type_params(&item.params.clone(), env.source_indices.clone());
@@ -2245,23 +2894,78 @@ pub fn emit_type_def_from_connective(
             )
         } else {
             {
-                let serde_enum_tag = match wire_contract_item.clone() {
-                    Some(_) => resolve_wire_serde_tag_for_coproduct(
-                        wire_contract_item.clone(),
-                        env.source_indices.clone(),
-                        data_items,
-                    ),
-                    None => rust_serde_tag_attr(),
+                let all_unit_variants = {
+                    let mut __all = true;
+                    for child in item.children.clone().iter().cloned() {
+                        if !((child.children.clone().len() as i64) == 0) {
+                            __all = false;
+                            break;
+                        }
+                    }
+                    __all
                 };
-                emit_enum_from_children(
+                let serde_policy = match resolve_local_coproduct_wire_policy(
+                    &item_text,
+                    all_unit_variants.clone(),
+                    &module_items,
+                    imports,
+                    &env.source_indices.clone(),
+                ) {
+                    Some(local_policy) => local_policy.clone(),
+                    None => {
+                        if all_unit_variants.clone() {
+                            match wire_contract_item.clone() {
+                                Some(_) => resolve_wire_serde_policy_for_coproduct(
+                                    wire_contract_item.clone(),
+                                    env.source_indices.clone(),
+                                    data_items,
+                                ),
+                                None => rust_tagged_object_policy(),
+                            }
+                        } else {
+                            rust_tagged_object_policy()
+                        }
+                    }
+                };
+                let rename_validations = variant_rename_validations_for_policy(
+                    item.children.clone(),
+                    env.clone(),
+                    serde_policy.clone(),
+                );
+                let policy_validation = match serde_policy.error_message.clone() {
+                    Some(message) => emit_rust_compile_error_item(message.clone()),
+                    None => "".to_string(),
+                };
+                let validations = if (policy_validation.clone().as_str() == "".to_string().as_str())
+                {
+                    rename_validations.clone()
+                } else {
+                    if (rename_validations.clone().as_str() == "".to_string().as_str()) {
+                        policy_validation.clone()
+                    } else {
+                        v2_rt::concat(
+                            v2_rt::concat(policy_validation.clone(), "\n".to_string()),
+                            rename_validations.clone(),
+                        )
+                    }
+                };
+                let enum_text = emit_enum_from_children(
                     &item_text,
                     &type_params,
                     &item.children.clone(),
                     &recursive_types,
                     &shared_types,
                     &env,
-                    &serde_enum_tag,
-                )
+                    &serde_policy,
+                );
+                if (validations.clone().as_str() == "".to_string().as_str()) {
+                    enum_text
+                } else {
+                    v2_rt::concat(
+                        v2_rt::concat(validations.clone(), "\n".to_string()),
+                        enum_text,
+                    )
+                }
             }
         }
     }
@@ -2538,7 +3242,7 @@ pub fn emit_enum_from_children(
     recursive_types: &Rc<HashMap<String, bool>>,
     shared_types: &Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
-    serde_enum_tag: &String,
+    serde_policy: &Rc<RustEnumWireSerde>,
 ) -> String {
     {
         let derives = enum_derives(children.clone());
@@ -2550,15 +3254,16 @@ pub fn emit_enum_from_children(
                     recursive_types.clone(),
                     shared_types.clone(),
                     &env,
+                    serde_policy.clone(),
                 ));
             }
             __result
         });
         let variants_str = variant_lines.join(&"\n".to_string());
-        let tag_line = if (serde_enum_tag.clone().as_str() == "".to_string().as_str()) {
+        let tag_line = if (serde_policy.enum_attr.clone().as_str() == "".to_string().as_str()) {
             "".to_string()
         } else {
-            v2_rt::concat(serde_enum_tag.clone(), "\n".to_string())
+            v2_rt::concat(serde_policy.enum_attr.clone(), "\n".to_string())
         };
         let enum_def = v2_rt::concat(
             v2_rt::concat(
@@ -2884,17 +3589,178 @@ pub fn emit_enum_shared_accessors(
     }
 }
 
+pub fn string_without_prefix(value: &String, prefix: &String) -> Option<String> {
+    if (v2_rt::string_length(&prefix) == 0) {
+        None
+    } else {
+        if ((v2_rt::string_length(&value) >= v2_rt::string_length(&prefix))
+            && (v2_rt::substring(&value, 0, v2_rt::string_length(&prefix)).as_str()
+                == prefix.clone().as_str()))
+        {
+            Some(v2_rt::substring(
+                &value,
+                v2_rt::string_length(&prefix),
+                v2_rt::string_length(&value),
+            ))
+        } else {
+            None
+        }
+    }
+}
+
+pub fn string_without_suffix(value: &String, suffix: &String) -> Option<String> {
+    if (v2_rt::string_length(&suffix) == 0) {
+        None
+    } else {
+        if ((v2_rt::string_length(&value) >= v2_rt::string_length(&suffix))
+            && (v2_rt::substring(
+                &value,
+                (v2_rt::string_length(&value) - v2_rt::string_length(&suffix)),
+                v2_rt::string_length(&value),
+            )
+            .as_str()
+                == suffix.clone().as_str()))
+        {
+            Some(v2_rt::substring(
+                &value,
+                0,
+                (v2_rt::string_length(&value) - v2_rt::string_length(&suffix)),
+            ))
+        } else {
+            None
+        }
+    }
+}
+
+pub fn wire_variant_rename_attr_for_policy(
+    authored: String,
+    policy: &Rc<RustEnumWireSerde>,
+) -> String {
+    match policy.rename_style.clone() {
+        Some(style) => {
+            if (style.clone().as_str() == "StripAffixAndSnakeCase".to_string().as_str()) {
+                {
+                    let without_prefix = match policy.rename_prefix.clone() {
+                        Some(prefix) => match string_without_prefix(&authored, &prefix) {
+                            Some(stripped) => stripped.clone(),
+                            None => return "".to_string(),
+                        },
+                        None => authored,
+                    };
+                    let without_suffix = match policy.rename_suffix.clone() {
+                        Some(suffix) => match string_without_suffix(&without_prefix, &suffix) {
+                            Some(stripped) => stripped.clone(),
+                            None => return "".to_string(),
+                        },
+                        None => without_prefix,
+                    };
+                    v2_rt::concat(
+                        v2_rt::concat(
+                            "    #[serde(rename = \"".to_string(),
+                            to_snake(without_suffix),
+                        ),
+                        "\")]\n".to_string(),
+                    )
+                }
+            } else {
+                "".to_string()
+            }
+        }
+        None => "".to_string(),
+    }
+}
+
+pub fn variant_rename_validation_for_policy(
+    authored: &String,
+    policy: &Rc<RustEnumWireSerde>,
+) -> String {
+    match policy.rename_style.clone() {
+        Some(style) => {
+            if (style.clone().as_str() == "StripAffixAndSnakeCase".to_string().as_str()) {
+                {
+                    let without_prefix = match policy.rename_prefix.clone() {
+                        Some(prefix) => match string_without_prefix(&authored, &prefix) {
+                            Some(stripped) => stripped.clone(),
+                            None => {
+                                return emit_rust_compile_error_item(v2_rt::concat(
+                                    v2_rt::concat(
+                                        v2_rt::concat("variant ".to_string(), authored.clone()),
+                                        " does not satisfy declared wire rename prefix: "
+                                            .to_string(),
+                                    ),
+                                    prefix.clone(),
+                                ))
+                            }
+                        },
+                        None => authored.clone(),
+                    };
+                    match policy.rename_suffix.clone() {
+                        Some(suffix) => match string_without_suffix(&without_prefix, &suffix) {
+                            Some(_) => "".to_string(),
+                            None => emit_rust_compile_error_item(v2_rt::concat(
+                                v2_rt::concat(
+                                    v2_rt::concat("variant ".to_string(), authored.clone()),
+                                    " does not satisfy declared wire rename suffix: ".to_string(),
+                                ),
+                                suffix.clone(),
+                            )),
+                        },
+                        None => "".to_string(),
+                    }
+                }
+            } else {
+                "".to_string()
+            }
+        }
+        None => "".to_string(),
+    }
+}
+
+pub fn variant_rename_validations_for_policy(
+    children: Rc<Vec<Rc<Node>>>,
+    env: Rc<TypeEnv>,
+    serde_policy: Rc<RustEnumWireSerde>,
+) -> String {
+    Rc::new({
+        let mut __result = Vec::new();
+        for text in Rc::new({
+            let mut __result = Vec::new();
+            for child in children.iter().cloned() {
+                __result.push(variant_rename_validation_for_policy(
+                    &authored_name(env.clone(), child.clone()),
+                    &serde_policy,
+                ));
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            if (text.clone().as_str() != "".to_string().as_str()) {
+                __result.push(text);
+            }
+        }
+        __result
+    })
+    .join(&"\n".to_string())
+}
+
 pub fn emit_variant_from_child(
     child: &Rc<Node>,
     recursive_types: Rc<HashMap<String, bool>>,
     shared_types: Rc<HashMap<String, bool>>,
     env: &Rc<TypeEnv>,
+    serde_policy: Rc<RustEnumWireSerde>,
 ) -> String {
     {
         let child_text = authored_name(env.clone(), child.clone());
+        let rename_attr = wire_variant_rename_attr_for_policy(child_text.clone(), &serde_policy);
         if ((child.children.clone().len() as i64) == 0) {
             v2_rt::concat(
-                v2_rt::concat("    ".to_string(), child_text),
+                v2_rt::concat(
+                    v2_rt::concat(rename_attr, "    ".to_string()),
+                    child_text.clone(),
+                ),
                 ",".to_string(),
             )
         } else {
@@ -2946,7 +3812,10 @@ pub fn emit_variant_from_child(
                 v2_rt::concat(
                     v2_rt::concat(
                         v2_rt::concat(
-                            v2_rt::concat("    ".to_string(), child_text),
+                            v2_rt::concat(
+                                v2_rt::concat(rename_attr, "    ".to_string()),
+                                child_text.clone(),
+                            ),
                             " {\n".to_string(),
                         ),
                         fields_str,

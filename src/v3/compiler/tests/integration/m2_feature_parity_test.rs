@@ -616,9 +616,7 @@ fn test_db11_type_alias_refinement_predicate_bind_tags_alias_subject() {
         ArrowBody::UserDefined(n) => *n,
         _ => panic!("expected UserDefined pred body, got {body:?}"),
     };
-    let Behavior::Bind(b) = dag.node(bind_id) else {
-        panic!("expected predicate Bind, got {:?}", dag.node(bind_id));
-    };
+    let b = bind_id.bind(&dag);
     assert!(
         b.name.contains("PositiveInt") && b.name.contains("refinement:"),
         "expected `<refinement:PositiveInt>`-style bind tag, got {:?}",

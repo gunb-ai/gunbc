@@ -12,8 +12,9 @@
 /// **`ScratchIntExamples`** — **checkpoint only**: drives [`docs/design-emission-model.md`](../../../../docs/design-emission-model.md)
 /// Int-family examples. Still reads the bootstrap `Dag` once to count
 /// `TargetIntegerTypeInhabitance` declarations (`emit_model.dag`, **INVARIANTS.md E-6**
-/// same-PR witness); row payloads are not interpreted until Slice C replaces this path.
-/// Remove or supersede when a declared projection replaces this scratch path.
+/// same-PR witness). Examples 2 and 8 consume declared integer-row payloads, but the
+/// enum remains a scratch driver until real program-bound and algebra-intent extraction
+/// can replace it with a declared projection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum LanguageSpecProjection {
     #[default]

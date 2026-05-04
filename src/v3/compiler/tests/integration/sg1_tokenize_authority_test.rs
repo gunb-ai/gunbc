@@ -252,7 +252,6 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
         .collect();
 
     let mut shared_tokenized_kinds = BTreeSet::new();
-    let mut parser_only_patterns = BTreeSet::new();
     for pattern in &shared_operators {
         match classify_shared_operator_for_tokenizer(pattern) {
             SharedOperatorTokenizerBoundary::Tokenized { kind } => {
@@ -262,22 +261,8 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
                 );
                 shared_tokenized_kinds.insert(kind.to_string());
             }
-            SharedOperatorTokenizerBoundary::ParserOnlyDebt { reason } => {
-                assert!(
-                    !reason.is_empty(),
-                    "parser-only shared operator `{pattern}` should carry a dissolution note"
-                );
-                parser_only_patterns.insert(pattern.clone());
-            }
         }
     }
-
-    assert_eq!(
-        parser_only_patterns,
-        BTreeSet::from([String::from("%"), String::from("??")]),
-        "SG-1a banks exactly two parser-only shared operators today; changing that boundary \
-         must update the ratchet and the scaffold rationale together"
-    );
 
     let mut covered_punct_kinds = shared_tokenized_kinds;
     for decl in dag.declarations() {
@@ -329,7 +314,6 @@ fn keyword_spelling_for_token_kind(kind: &str) -> String {
 
 enum SharedOperatorTokenizerBoundary {
     Tokenized { kind: &'static str },
-    ParserOnlyDebt { reason: &'static str },
 }
 
 fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
@@ -348,15 +332,9 @@ fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokeni
         "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
         "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
         "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
-        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "null-coalescing remains outside the v3 tokenizer punctuation subset",
-        },
-        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
-            reason: "modulo remains outside the v3 tokenizer punctuation subset",
-        },
         other => panic!(
             "shared syntax operator `{other}` must be classified as tokenizer punctuation or \
-             explicit parser-only debt"
+             removed until v3 supports it end-to-end"
         ),
     }
 }
