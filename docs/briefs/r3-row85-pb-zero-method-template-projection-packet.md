@@ -364,11 +364,13 @@ does not dispatch the deletion work.
 
 ### 6.2.2 Implication for §9 sequencing diagram
 
-The "Gap 5a — Grounding leaf re-export migration" node in §9 is
-**superseded** by the diagram entry: "Grounding/Substrate dead-field
-+ legacy-authority deletion (gated on `fold` row disposition)". The
-packet does not re-author §9 inline so the lineage with #1603 stays
-readable; consumers should treat this §6.2 update as the authoritative
+§9 has been updated directly: the former "Gap 5a — Grounding leaf
+re-export migration" node is marked **SUPERSEDED 2026-05-04** with
+inline reasoning, and the next live node is **"Grounding/Substrate
+dead-field + legacy-authority deletion"** gated on `fold` row
+disposition (owners + deliverable named in the diagram body itself).
+The diagram is therefore self-authoritative; this subsection serves
+only as a lineage breadcrumb back to the §6.2 audit that drove the
 re-classification.
 
 **Gap 5b — typed `MethodTemplateContract` projection + structural
