@@ -184,12 +184,7 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
 data rest_request_wire_serde_alignment_receipt: List<String> = [
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
   "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
-  "closure:rest_request_wire_serde_alignment|ROADMAP:326|partial_substrate_closure|remaining:Grounding_request_wire_migration_after_substrate_lands"
-]
-
-data structural_coverage_gap_anthropic_tool_result_full_content_surface: List<String> = [
-  "closure:anthropic_tool_result_full_content_surface|AnthropicUserContentBlock.UserToolResultBlock|residue:content_modeled_as_string_only|missing:nested_content_blocks|missing:image_content"
+  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use"
 ]
 
 // -- Service: REST transport wiring ------------------------------
