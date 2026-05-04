@@ -1555,6 +1555,15 @@ fn substrate_coproducts_match_runtime_carriers() {
                 ],
             ),
             (
+                String::from("PathCall"),
+                vec![
+                    String::from("segments"),
+                    String::from("segment_spans"),
+                    String::from("args"),
+                    String::from("span"),
+                ],
+            ),
+            (
                 String::from("VariantRecord"),
                 vec![
                     String::from("target"),
