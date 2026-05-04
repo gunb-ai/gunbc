@@ -72,7 +72,7 @@ v2's `ComplexitySummary` carries `work: CostExpr` and `span: CostExpr` separatel
 ```dag
 // src/v3/lenses/complexity.dag — declare both dimensions
 
-import std.algebra { SymbolicCost, sequential, max_path, ConstantCost }
+import std.algebra { Monoid, SymbolicCost, sequential_monoid, max_path_monoid, ConstantCost }
 import v3.std.dimensions { AnalysisDimension, Witness, Inhabits, Violates }
 
 // Work dimension: sequential composition is additive; parallel is also additive.
@@ -80,24 +80,22 @@ import v3.std.dimensions { AnalysisDimension, Witness, Inhabits, Violates }
 data work_dimension: AnalysisDimension<SymbolicCost> = {
   name: "work"
   witness_of: |d, behavior| witness_work(d, behavior)
-  compose: |a, b| sequential(a, b)        // SumCost-shaped composition
-  identity: ConstantCost(0)
+  compose: sequential_monoid              // Monoid<SymbolicCost>: SumCost op + ConstantCost(0) identity
   break_diagnostic: |behavior, composed| no_diagnostic_for_work()
 }
 
 // Span dimension: sequential composition is additive; parallel composition is max.
-// The compose function takes the SEQUENTIAL composition by default; the
-// dimension's witness_of injects max-of-paths for Branch nodes.
+// The compose monoid is the SEQUENTIAL one by default; the dimension's
+// witness_of injects max-of-paths for Branch nodes.
 data span_dimension: AnalysisDimension<SymbolicCost> = {
   name: "span"
   witness_of: |d, behavior| witness_span(d, behavior)
-  compose: |a, b| sequential(a, b)        // sequential default; Branch witness uses max_path internally
-  identity: ConstantCost(0)
+  compose: sequential_monoid              // sequential default; Branch witness uses max_path_monoid internally
   break_diagnostic: |behavior, composed| no_diagnostic_for_span()
 }
 ```
 
-**Why two `AnalysisDimension` instances rather than one with both fields:** per DB-3 §"Algebraic constraints", the `compose` + `identity` pair must form a monoid. Work and span have *different monoids* (work-on-Branch is sum-of-paths; span-on-Branch is max-of-paths). Keeping them as two `AnalysisDimension<SymbolicCost>` instances honors that algebraic distinction structurally.
+**Why two `AnalysisDimension` instances rather than one with both fields:** per DB-3 §"Algebraic constraints", `compose` is a `Monoid<Carrier>` (carrying the binary op + identity together — F2 dispatch / PR #1607). Work and span have *different monoid witnesses* (work-on-Branch is sum-of-paths; span-on-Branch is max-of-paths). Keeping them as two `AnalysisDimension<SymbolicCost>` instances with two distinct `Monoid<SymbolicCost>` values honors that algebraic distinction structurally.
 
 **Cascade gate for the data declarations:** the `data work_dimension: AnalysisDimension<SymbolicCost> = { ... }` form requires class-5 record bodies in `data` declarations (see `src/v3/std/dimensions.dag` header — currently deferred). Until that grammar lands, the Rust execution authority is `v3_compiler::analyze_symbolic_cost_dimension` per existing pattern. The substrate-carrier spec stays here; the data-declaration receipt lands when class-5 ships. (Per [`../INVARIANTS.md`](../INVARIANTS.md) P5 — scaffold dissolution trigger named.)
 

@@ -129,15 +129,14 @@ Today, [`v3_compiler::analyze_symbolic_cost_dimension`](../src/v3/compiler/src/)
 
 import std.dimensions { AnalysisDimension, Witness, Inhabits, Violates,
                         OptionalDiagnostic, NoDiagnostic, SomeDiagnostic }
-import std.algebra { SymbolicCost, ConstantCost, sequential }
+import std.algebra { Monoid, SymbolicCost, ConstantCost, sequential_monoid }
 import v3.std.diagnostics { Diagnostic, MissingCostKind }
 
 // 🟢 TERMINAL. The cost dimension instance per DB-3.
 data symbolic_cost_dimension: AnalysisDimension<SymbolicCost> = {
   name: "symbolic_cost"
   witness_of: symbolic_cost_witness_of   // Behavior → Witness<SymbolicCost>
-  compose: sequential                     // SymbolicCost × SymbolicCost → SymbolicCost
-  identity: ConstantCost(0)               // additive identity in the cost algebra
+  compose: sequential_monoid              // Monoid<SymbolicCost>: SumCost op + ConstantCost(0) identity (collapsed from prior compose+identity field pair, F2 / PR #1607)
   break_diagnostic: symbolic_cost_break_diagnostic
 }
 
@@ -159,7 +158,7 @@ fn symbolic_cost_break_diagnostic(behavior: Behavior, composed: SymbolicCost) ->
   }
 ```
 
-The four monoid-shape obligations (`compose`, `identity`, monoid laws, break-diagnostic semantics) are satisfied:
+The four monoid-shape obligations (`compose.op`, `compose.identity`, monoid laws, break-diagnostic semantics — collapsed onto `compose: Monoid<SymbolicCost>` per F2 / PR #1607) are satisfied:
 
 - **Identity**: `ConstantCost(0)` is the additive identity; `sequential(ConstantCost(0), c) = normalize(SumCost([0, c])) = c` after `drop_zero` strips the zero (per `src/v3/std/algebra.dag::drop_zero`).
 - **Associativity**: `sequential(sequential(a, b), c) = SumCost([SumCost([a, b]), c])` and `sequential(a, sequential(b, c)) = SumCost([a, SumCost([b, c])])`. After `normalize` flattening (see §4 below for the full-flattening dependency), both produce the same flat sum modulo order. Currently `normalize` does not fully flatten nested sums; that gap is a separate landed-in-this-slice obligation.

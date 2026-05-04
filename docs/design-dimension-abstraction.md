@@ -38,11 +38,13 @@ import std.diagnostics { Diagnostic, DiagnosticKind }
 // of `.dag` programs. Idempotency, symbolic cost, parallelism, side
 // effects, and space bounds are all Dimension instances. Users declare
 // new Dimensions by declaring the four fields below.
+//
+// (Substrate name: `AnalysisDimension<Carrier>` — see substrate-naming
+// note in `design-lens-framework.md`.)
 type Dimension<Carrier> {
   name: String                                            // human-facing label
   witness_of: fn(Dag, Behavior) -> Witness<Carrier>       // extract per-op evidence
-  compose: fn(Carrier, Carrier) -> Carrier                // combine across a workflow
-  identity: Carrier                                        // unit for fold
+  compose: Monoid<Carrier>                                // sequential combine: op + identity from `dsl/std/algebra.dag`
   break_diagnostic: fn(Behavior, Carrier) -> Diagnostic?  // emit when composition breaks
 }
 
@@ -84,9 +86,9 @@ fn analyze<Carrier>(
 ) -> DimensionReport<Carrier> {
   let ops = flatten_workflow(d, workflow)  // List<Behavior> in execution order
   let witnesses = map(ops, |op| dim.witness_of(d, op))
-  let composed = fold(witnesses, dim.identity, |acc, w|
+  let composed = fold(witnesses, dim.compose.identity, |acc, w|
     match w {
-      Inhabits(c) => dim.compose(acc, c)
+      Inhabits(c) => dim.compose.op(acc, c)
       Violates(_) => acc  // composition stops being meaningful; diagnostics carry the violation
     }
   )
@@ -106,13 +108,13 @@ Rewriting Lane 2 Stage 2b's lens through the abstraction:
 ```dag
 // src/v3/lenses/idempotency.dag (Stage 2b)
 import std.dimensions { Dimension, Witness, Inhabits, Violates }
-import std.effects { EffectShape, is_idempotent_effect, compose_effects, ComposedEffect }
+import std.algebra { Monoid }
+import std.effects { EffectShape, is_idempotent_effect, compose_effects, ComposedEffect, idempotency_compose_monoid }
 
 data idempotency_dimension: Dimension<ComposedEffect> = {
   name: "idempotency"
   witness_of: |d, behavior| witness_idempotency(d, behavior)
-  compose: |a, b| compose_effects_pair(a, b)
-  identity: empty_composed_effect()
+  compose: idempotency_compose_monoid       // Monoid<ComposedEffect>: pair-compose op + empty_composed_effect identity
   break_diagnostic: |behavior, composed| idempotency_diagnostic(behavior, composed)
 }
 
@@ -200,12 +202,12 @@ The compiler picks up any declared `Dimension<_>` at bootstrap, runs `analyze(d,
 
 ### Algebraic constraints on Dimension parameters
 
-The `compose` + `identity` pair must form a **monoid** on `Carrier`:
-- `compose(identity, x) == x` (left identity)
-- `compose(x, identity) == x` (right identity)
-- `compose(compose(x, y), z) == compose(x, compose(y, z))` (associativity)
+`compose: Monoid<Carrier>` carries the binary op + identity from `dsl/std/algebra.dag`, so the **monoid** laws on `Carrier` are inherited from the algebra type:
+- `compose.op(compose.identity, x) == x` (left identity)
+- `compose.op(x, compose.identity) == x` (right identity)
+- `compose.op(compose.op(x, y), z) == compose.op(x, compose.op(y, z))` (associativity)
 
-This isn't checked at compile time today (requires algebra inhabitance verification), but it's a documented requirement on Dimension authors. Violating it means `analyze` gives inconsistent results depending on fold direction.
+These laws are not yet algorithmically checked (requires algebra inhabitance verification), but the laws live on `Monoid<Carrier>` itself rather than being restated on each `AnalysisDimension` instance. Violating them means `analyze` gives inconsistent results depending on fold direction.
 
 Additional constraints for specific dimensions:
 
@@ -221,7 +223,9 @@ Additional constraints for specific dimensions:
 
 **Why a generic abstraction over ad-hoc lenses?** Because the user-declared-dimensions thesis goal (Lane 2 Stage 2f) requires a uniform interface. Without it, declaring a new dimension means writing a full lens; with it, declaring = filling in four fields.
 
-**Why expose `compose` + `identity` as fields, not hardcode monoid operations?** Because Carrier types differ across dimensions. Idempotency's Carrier is `ComposedEffect` with lattice meet; space's is `MemoryUsage` with addition. One-size-fits-all doesn't. (Parallelism is explicitly outside this abstraction — it composes over dependency structure, not monoidal evidence — and ships as an ordinary lens in Lane 2 Stage 2e.)
+**Why expose `compose: Monoid<Carrier>` as a single field, not hardcode monoid operations?** Because Carrier types differ across dimensions. Idempotency's Carrier is `ComposedEffect` with lattice meet; space's is `MemoryUsage` with addition. One-size-fits-all doesn't. (Parallelism is explicitly outside this abstraction — it composes over dependency structure, not monoidal evidence — and ships as an ordinary lens in Lane 2 Stage 2e.)
+
+**Why `Monoid<Carrier>` instead of a parallel `compose: fn(C,C)->C` + `identity: C` field pair?** The pre-2026-05-04 shape duplicated the monoid-law authority across two fields; the law (associativity + identity) was documented but not structurally enforced. Per F2 dispatch (parent inbox #1130, PR #1607), `AnalysisDimension<Carrier>` now consumes `Monoid<Carrier>` from `dsl/std/algebra.dag` so the law lives once on the algebra type and structural inhabitance carries the enforcement. This mirrors the same collapse `Lens<C>` already underwent on 2026-04-28 (`docs/design-lens-framework.md` §The `Lens<C>` primitive).
 
 **Why `Witness<Carrier>` instead of `Option<Carrier>`?** Because "no evidence" and "evidence says violation" are different. `None` could mean "this behavior is invisible to the dimension" (ok — compose skips it) OR "this behavior violates the dimension's algebra" (not ok — diagnostic fires). Splitting into `Inhabits` / `Violates` makes the distinction structural.
 
@@ -313,9 +317,9 @@ Alternate ordering: implement Dimension first in 2a prep, then 2b/2d/2e use it f
 
 ## Open questions
 
-1. **Does parallelism fit the Dimension abstraction? — RESOLVED: no.** Parallelism composition reasons about independent subgraphs and dependency structure, not per-operation evidence along a monoidal carrier. Forcing it into `Dimension<DependencyGraph>` would stretch the abstraction to the point where `compose` and `identity` stop carrying useful meaning — the abstraction's payload moves into the lens body, leaving the surface shape as a vestige. Decision: parallelism ships as an ordinary lens (Lane 2 Stage 2e), not a Dimension instance. The Dimension abstraction is the authority for *per-operation monoidal* properties; other structural properties are valid lenses without claiming the Dimension interface.
+1. **Does parallelism fit the Dimension abstraction? — RESOLVED: no.** Parallelism composition reasons about independent subgraphs and dependency structure, not per-operation evidence along a monoidal carrier. Forcing it into `Dimension<DependencyGraph>` would stretch the abstraction to the point where the `Monoid<Carrier>` carried in `compose` stops carrying useful meaning — the abstraction's payload moves into the lens body, leaving the surface shape as a vestige. Decision: parallelism ships as an ordinary lens (Lane 2 Stage 2e), not a Dimension instance. The Dimension abstraction is the authority for *per-operation monoidal* properties; other structural properties are valid lenses without claiming the Dimension interface.
 
-2. **Algebra-law enforcement on Dimension authors?** Monoid laws are a requirement but not mechanically checked. Follow-up work: add `monoid_witness: MonoidInstance<Carrier>` field to `Dimension` that ties to the algebra.dag inhabitance system. Deferred.
+2. **Algebra-law enforcement on Dimension authors? — RESOLVED structurally:** the `compose: Monoid<Carrier>` field landed on 2026-05-04 (F2 dispatch / PR #1607) ties to the `dsl/std/algebra.dag` inhabitance system directly — no separate `monoid_witness` field is needed. Mechanical checking of monoid laws across user-supplied `Monoid<C>` values is still future work, but the structural authority is now where it belongs.
 
 3. **Cross-dimension interaction?** E.g., a Dimension that references another ("space bound must be respected alongside idempotency"). Deferred; first concrete case arises in Lane 4 if at all.
 

@@ -195,7 +195,7 @@ Emits diagnostic for unexpected complexity (e.g., hidden O(n²) via captured lis
 
 **Scope:** the infrastructure from 2b–2e (lens walks workflow, composes algebra, emits diagnostic) has a common shape. Generalize so users can add new compile-time dimensions via `.dag` declaration alone.
 
-Type shape is **locked in [DB-3](./design-dimension-abstraction.md)** — `Dimension<Carrier>` with `name`, `witness_of`, `compose`, `identity`, `break_diagnostic` fields. See DB-3 for full signature, algebraic requirements (monoid laws on compose), and instance declarations.
+Type shape is **locked in [DB-3](./design-dimension-abstraction.md)** — `Dimension<Carrier>` (substrate name `AnalysisDimension<Carrier>`) with `name`, `witness_of`, `compose: Monoid<Carrier>`, `break_diagnostic` fields. See DB-3 for full signature, algebraic requirements (monoid laws inherited from the `Monoid<Carrier>` algebra type — F2 / PR #1607), and instance declarations.
 
 **Landed (Lane C / core 2f):** `std/dimensions.dag` + `workflows.dag` terminal types; `v3_compiler::analyze_symbolic_cost_dimension` migrates symbolic cost onto `DimensionReport<SymbolicCost>`. Authoring `data … : Dimension<Carrier> = …` remains class-5-blocked; when it lands, discovery can walk declarations — no speculative compiler registry required until a pass consumes it. **Parallelism (2e) is NOT a Dimension instance** — per DB-3 OQ §1, parallelism stays an ordinary lens.
 
