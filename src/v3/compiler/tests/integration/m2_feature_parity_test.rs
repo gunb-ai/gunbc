@@ -10,8 +10,8 @@
 use crate::common::cached_compile_to_dag;
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
-    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, LogicalOp, OperatorKind, TransformTarget,
-    TypeConnective,
+    ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId, LogicalOp, OperatorKind,
+    TransformTarget, TypeConnective,
 };
 use v3_compiler::parse_for_test;
 use v3_compiler::parse_surface::{SurfaceExpr, SurfaceItem};
@@ -25,6 +25,37 @@ fn compile_any(src: &str, file: &str) -> Dag {
         Err(CompileError::Semantic(dag)) => dag,
         Err(other) => panic!("unexpected structural error: {other:?}"),
     }
+}
+
+fn arrow_output_decl(dag: &Dag, decl_id: DeclarationId) -> DeclarationId {
+    let TypeConnective::Arrow { output, .. } = &dag.declaration(decl_id).connective else {
+        panic!("expected {decl_id:?} to be an Arrow declaration");
+    };
+    *output
+}
+
+fn assert_instantiation_arg(
+    dag: &Dag,
+    decl_id: DeclarationId,
+    expected_template: DeclarationId,
+    expected_arg: DeclarationId,
+) {
+    let TypeConnective::Instantiation {
+        template,
+        arguments,
+    } = &dag.declaration(decl_id).connective
+    else {
+        panic!("expected {decl_id:?} to be an Instantiation");
+    };
+    assert_eq!(
+        *template, expected_template,
+        "instantiation template mismatch"
+    );
+    assert_eq!(arguments.len(), 1, "expected one template argument");
+    assert_eq!(
+        arguments[0].value, expected_arg,
+        "instantiation argument mismatch"
+    );
 }
 
 // =================================================================
@@ -524,20 +555,34 @@ fn test_3a2_lens_int_data_rejects_unsubstituted_read_witness_mismatch() {
     let CompileError::Semantic(dag) = err else {
         panic!("expected semantic substitution mismatch, got {err:?}");
     };
-    let joined = dag
+    let lens_read_id = dag
+        .declaration_by_name("lens_read")
+        .expect("lens_read must exist")
+        .id;
+    let expected_read_ty = dag
         .diagnostics()
         .iter()
-        .map(|(_, d)| format!("{d:?}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    assert!(
-        joined.contains("read")
-            && joined.contains("declaration reference `lens_read`")
-            && joined.contains("Witness<String>")
-            && joined.contains("Witness<Int>")
-            && !joined.contains("record type (Conj)")
-            && !joined.contains("cannot apply inhabitance checking"),
-        "diagnostic should be the typed substituted field mismatch path, not a generic Lens fallback; got:\n{joined}"
+        .find_map(|(_, diagnostic)| match diagnostic {
+            Diagnostic::TypeMismatch {
+                expected, actual, ..
+            } if actual.declaration == lens_read_id => Some(expected.declaration),
+            _ => None,
+        })
+        .expect("read mismatch must surface as structured TypeMismatch on lens_read");
+    let witness = dag.declaration_by_name("Witness").unwrap().id;
+    let int_decl = dag.declaration_by_name("Int").unwrap().id;
+    let string_decl = dag.declaration_by_name("String").unwrap().id;
+    assert_instantiation_arg(
+        &dag,
+        arrow_output_decl(&dag, lens_read_id),
+        witness,
+        string_decl,
+    );
+    assert_instantiation_arg(
+        &dag,
+        arrow_output_decl(&dag, expected_read_ty),
+        witness,
+        int_decl,
     );
 }
 
