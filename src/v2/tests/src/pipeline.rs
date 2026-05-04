@@ -6667,6 +6667,110 @@ fn openai_chat_message_row_json_matches_chat_completions_wire_tags() {
     }
 }
 
+// Golden JSON for Anthropic Messages request rows under the same serde policy
+// emitted from `CoproductWireContract` rows in `dsl/extdeps/llm/anthropic.dag`.
+// Guards outer `messages[].role` and flat content-block `type` discriminators.
+#[test]
+fn anthropic_messages_request_body_json_matches_messages_wire_tags() {
+    #[derive(serde::Serialize)]
+    #[serde(tag = "role")]
+    enum AnthropicChatMessage {
+        #[serde(rename = "user")]
+        UserMessage {
+            content: Vec<AnthropicUserContentBlock>,
+        },
+        #[serde(rename = "assistant")]
+        AssistantMessage {
+            content: Vec<AnthropicAssistantContentBlock>,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "type")]
+    enum AnthropicUserContentBlock {
+        #[serde(rename = "text")]
+        UserTextBlock { text: String },
+        #[serde(rename = "tool_result")]
+        UserToolResultBlock {
+            tool_use_id: String,
+            content: Option<AnthropicToolResultContent>,
+            is_error: Option<bool>,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    #[serde(tag = "type")]
+    enum AnthropicAssistantContentBlock {
+        #[serde(rename = "text")]
+        AssistantTextBlock { text: String },
+        #[serde(rename = "tool_use")]
+        AssistantToolUseBlock {
+            id: String,
+            name: String,
+            input: Value,
+        },
+    }
+
+    #[derive(serde::Serialize)]
+    enum AnthropicToolResultContent {
+        ToolResultText { text: String },
+    }
+
+    let body = serde_json::json!({
+        "messages": [
+            AnthropicChatMessage::UserMessage {
+                content: vec![
+                    AnthropicUserContentBlock::UserTextBlock {
+                        text: "hello".to_string(),
+                    },
+                    AnthropicUserContentBlock::UserToolResultBlock {
+                        tool_use_id: "toolu_01".to_string(),
+                        content: None,
+                        is_error: Some(false),
+                    },
+                ],
+            },
+            AnthropicChatMessage::AssistantMessage {
+                content: vec![
+                    AnthropicAssistantContentBlock::AssistantTextBlock {
+                        text: "checking".to_string(),
+                    },
+                    AnthropicAssistantContentBlock::AssistantToolUseBlock {
+                        id: "toolu_01".to_string(),
+                        name: "get_weather".to_string(),
+                        input: serde_json::json!({ "city": "SF" }),
+                    },
+                ],
+            },
+        ],
+    });
+
+    assert_eq!(
+        body["messages"][0]["role"], "user",
+        "UserMessage must serialize as Anthropic role=user"
+    );
+    assert_eq!(
+        body["messages"][0]["content"][0]["type"], "text",
+        "UserTextBlock must serialize as Anthropic type=text"
+    );
+    assert_eq!(
+        body["messages"][0]["content"][1]["type"], "tool_result",
+        "UserToolResultBlock must serialize as Anthropic type=tool_result"
+    );
+    assert_eq!(
+        body["messages"][1]["role"], "assistant",
+        "AssistantMessage must serialize as Anthropic role=assistant"
+    );
+    assert_eq!(
+        body["messages"][1]["content"][0]["type"], "text",
+        "AssistantTextBlock must serialize as Anthropic type=text"
+    );
+    assert_eq!(
+        body["messages"][1]["content"][1]["type"], "tool_use",
+        "AssistantToolUseBlock must serialize as Anthropic type=tool_use"
+    );
+}
+
 #[test]
 fn openai_chat_completion_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
