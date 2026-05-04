@@ -54,6 +54,26 @@ Each lane owns one concrete `.dag` gate. Lane owners do the comprehensive decomp
 | T-PB-B | M | Tests-as-data — pipeline/contract tests port to `.dag`. ~~The two `TESTING.md §Post-R2 shape` residual categories (compiler-internal unit tests for Rust-only helpers; external-toolchain boundary tests invoking rustc/go/python) remain Rust-authored.~~ **Retracted via cascade promotion 2026-04-25**: the residual carve-out dissolves under the 0-floor framing — Rust-only-helper unit tests vanish naturally; external-toolchain tests migrate to `ExecuteCommand`-based `.dag` `TestClaim` declarations. **PB-Runtime `ExecuteCommand` runner** (arbitrary `command` + `args` + exit-code, **bounded** — wall timeout + null child stdio + fail-closed on exceed; not unbounded `output()`) is the program lane that unblocks *expressing and running* those claims in CI; **landed** (PB-Runtime / PR #792, brief + `t_pb_b_1_execute_command_boundary` receipt, `TESTING.md` callout). The `ExecuteCommand` shell `&` / combined-flag guard (incl. argv tail after an embedded shell token) lives in `test_runner` and is the bounded-execution receipt for class-5 arbitrary-command claims, not a separate “hole.” **Remaining T-PB-B work** is *bulk* migration of legacy class-5 Rust boundary tests, not a runner gap. | DB-15 + T-TestGen (PB-Runtime runner is the enabler; track closure in that lane) |
 | T-Demo | M | Two canonical fixtures + impossible-bugs suite + narrative | — (new) |
 
+### Forward-Tracked Lane: T-Workflow-As-Data
+
+**T-Workflow-As-Data** is the forward substrate lane for modeling workflow definitions
+as `.dag` data, emitting GitHub Actions YAML from that model, and eventually
+ingesting observed workflow facts back onto stable workflow structure. It is not an
+R1 gate, but it is a tracked substrate direction because CI/workflow modeling now
+feeds multiple active design threads: timing-as-lens, v2-retirement/CI throughput,
+and recursive self-application of gunbc to the workflows that build gunbc.
+
+Current evidence receipts:
+
+- [`docs/audit/gunb-ai-workflowgen-action-wrapper-port.md`](docs/audit/gunb-ai-workflowgen-action-wrapper-port.md) — action wrapper / constraint survey from `gunb-ai/gunb.ai`; survey-only, no carriers. Key open carrier point: current `dsl/extdeps/github/actions.dag::ActionRef { owner, repo, ref }` models marketplace actions only and does **not** represent local composite actions (`./.github/actions/...`) or reusable workflow calls (`./.github/workflows/...`). A future `uses` target carrier must distinguish marketplace actions, local composite actions, and reusable workflow calls before these surfaces become authoritative workflow data.
+- [`docs/audit/gunb-ai-workflowgen-schema-port.md`](docs/audit/gunb-ai-workflowgen-schema-port.md) — workflow/job/step/trigger/permission/runner schema survey from `gunb-ai/gunb.ai`; survey-only, no carriers.
+- [`docs/briefs/r3-ci-performance-profile-2026-05-04.md`](docs/briefs/r3-ci-performance-profile-2026-05-04.md) — measured CI timing profile that motivates workflow-as-data and timing-lens exemplars without making CI profiling depend on new substrate.
+
+Dissolution / next-authoring trigger: land a design receipt for workflow-as-data
+carriers before authoring live substrate. That receipt must decide the `uses` target
+shape, job/step/dependency carriers, permissions/secret policy modeling, and how it
+relates to the timing-lens `WorkflowObservationAnchor` / external-attachment pattern.
+
 ### Lane acceptance — `.dag` gates
 
 This section lists gate names + schema-compilability tags; full `TestClaim` declarations will land as deliverables of the lane-brief drafting step (lane owners author them as `.dag` after being named). Each predicate is tagged `[Day 1]` (compiles against today's DB-15 schema — `Compiles`, `FailsWithDiagnostic`, `OutputEquals`, `CostBounded`, `PortHasState`) or `[ext]` (requires a T-TestGen schema extension before compiling). Day-1 predicates are a minority — the majority block on T-TestGen's runner + schema work, which is why T-TestGen is the gate-enabling lane.
