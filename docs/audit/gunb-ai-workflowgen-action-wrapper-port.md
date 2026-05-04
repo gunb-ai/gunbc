@@ -1,6 +1,6 @@
 # Audit: gunb.ai workflowgen — action-wrapper & constraint port survey
 
-**Dispatch:** T-Workflow-As-Data prep (survey / catalog only).  
+**Dispatch:** T-Workflow-As-Data prep (survey / catalog only).
 **Scope:** Read-only inspection of `gunb-ai/gunb.ai` — especially `tools/ci/workflowgen/actions/`, `tools/ci/workflowgen/constraints/`, and how generated workflows consume wrappers. **No** workflow YAML edits, **no** substrate carriers, **no** CI timing / job-DAG design beyond noting wrapper dependencies.
 
 **Surveyed revision:** shallow clone `gunb-ai/gunb.ai` @ `085febfb7279215039c6ce9fd15659726d7c1e3e` (oneline: `085febf Fix Docker push to GitHub Container Registry (#918)`).
