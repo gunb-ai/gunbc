@@ -17,24 +17,23 @@
 //! hermetic integration snapshot test (compare in-memory only — avoids a
 //! `cargo run` subprocess that blows the 2s per-test ratchet on cold CI).
 //!
-//! **Cross-validation against shared authority.** `dag_operators` in
-//! `syntax.dag` owns the canonical (symbol, left_bp, right_bp, binop) for
-//! every binary operator. Each `BinaryOpRow` in `parse_tables.dag` is
-//! checked against that authority: the row's `operator_symbol` must
-//! appear in `dag_operators`, and its declared `level` must be consistent
-//! with the shared row's binding power (the coarse parser precedence
-//! level covers a contiguous bp range — see `level_for_bp`). If the
-//! shared authority shifts an operator's bp into a different level, or
-//! drops a symbol, regen fails closed here. This closes the token ↔
-//! symbol ↔ precedence drift surface the initial SG-2c-1 landing left
-//! open (`parse_tables.dag` used to carry `(symbol, level)` without any
-//! structural tie to the shared authority's bp).
+//! **Cross-validation against v3 projection of shared authority.**
+//! `dag_operators` in `syntax.dag` owns external .dag syntax reality, including
+//! operators v3 does not yet parse end-to-end. `v3_supported_dag_operators` is
+//! the explicit current v3 capability projection. Each `BinaryOpRow` in
+//! `parse_tables.dag` is checked against that projection: the row's
+//! `operator_symbol` must appear in `v3_supported_dag_operators`, and its
+//! declared `level` must be consistent with the projected row's binding power
+//! (the coarse parser precedence level covers a contiguous bp range — see
+//! `level_for_bp`). If the v3 projection shifts an operator's bp into a
+//! different level, or drops a symbol, regen fails closed here without forcing
+//! v3 to support every externally modeled operator.
 //!
-//! **SG-1a scaffold extension.** `syntax.dag`'s `dag_operators` body
-//! still lowers as `ValueBody::Unparsed` (same scaffold `regen_tokenize`
-//! extends), so this bridge reads the raw source text. When the shared
-//! authority lowers structurally, the raw-text extractor folds into a
-//! typed read — same dissolution trigger as `regen_tokenize`.
+//! **SG-1a scaffold extension.** `syntax.dag`'s operator-list bodies still
+//! lower as `ValueBody::Unparsed` (same scaffold `regen_tokenize` extends), so
+//! this bridge reads the raw source text. When the shared authority lowers
+//! structurally, the raw-text extractor folds into a typed read — same
+//! dissolution trigger as `regen_tokenize`.
 
 use std::collections::BTreeSet;
 use std::fmt;
@@ -81,7 +80,7 @@ impl fmt::Display for RenderParseTablesGeneratedError {
 /// `parse_tables_generated.rs`, format with `rustfmt --emit stdout`.
 ///
 /// Validation: `BinaryOpRow` vs `tokenize.dag` + `operators.dag` + shared-syntax
-/// `dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`-strip dispatch
+/// `v3_supported_dag_operators`; `TopLevelItemKwRow` vs `tokenize.dag` + `Kw`-strip dispatch
 /// labels (SG-2c-2/SG-2c-3); `SoftKeywordIdentRow` vs `tokenize.dag` + shared keyword set
 /// (SG-2c-5); `PrimaryPrefixRow` / `PrimaryAtomRow` vs `tokenize.dag` + regen
 /// dispatch labels (SG-2c-6/SG-2c-7).
@@ -95,7 +94,7 @@ pub fn render_parse_tables_generated_rs(
 ) -> Result<String, RenderParseTablesGeneratedError> {
     let tables_dag = compile_authority(parse_tables_source, parse_tables_file)?;
     let tokenize_dag = compile_authority(tokenize_source, tokenize_file)?;
-    let shared_operators = extract_shared_operator_bps(shared_syntax_source);
+    let shared_operators = extract_v3_supported_operator_bps(shared_syntax_source);
     let shared_keywords = extract_shared_keyword_set(shared_syntax_source);
 
     let token_variants = collect_variant_labels(&tokenize_dag, "TokenKind");
@@ -278,25 +277,28 @@ fn collect_binary_op_rows(
                      `OperatorKind` mapping in `operators.dag::from_symbol`"
             )
         });
-        // Structural cross-validation against the shared syntax
-        // authority at `dsl/extdeps/languages/dag/syntax.dag`. Three
+        // Structural cross-validation against the v3-supported
+        // projection in `dsl/extdeps/languages/dag/syntax.dag`. Three
         // joins, closing three drift surfaces:
-        //  (1) symbol ∈ `dag_operators` — operator is declared
-        //      canonically; deletion there fails regen here.
-        //  (2) shared `left_bp` implies the declared `level` via
+        //  (1) symbol ∈ `v3_supported_dag_operators` — operator is in
+        //      the current v3 tokenizer/parser/operator capability
+        //      subset; capability drift fails regen here without
+        //      shrinking external `dag_operators`.
+        //  (2) projected `left_bp` implies the declared `level` via
         //      `level_for_bp` — precedence drift fails closed.
         //  (3) `operators.dag::from_symbol(symbol)` returns an
-        //      `OperatorKind` whose leaf variant matches the shared
+        //      `OperatorKind` whose leaf variant matches the projected
         //      `binop` name — `symbol → OperatorKind` drift between
-        //      `operators.dag` and `dag_operators` fails closed.
+        //      `operators.dag` and `v3_supported_dag_operators` fails closed.
         // Together, these turn `parse_tables.dag` into a structural
-        // projection of the shared authority rather than a parallel
+        // projection of the v3 capability subset rather than a parallel
         // restatement of it.
         let shared = shared_operators.get(&operator_symbol).unwrap_or_else(|| {
             panic!(
                 "`parse_tables.dag::{name}`: operator_symbol `{operator_symbol}` is not declared \
-                 in `dag_operators` at `dsl/extdeps/languages/dag/syntax.dag`. Every binary-operator \
-                 row must be grounded in the shared-syntax authority so drift fails closed."
+                 in `v3_supported_dag_operators` at `dsl/extdeps/languages/dag/syntax.dag`. Every \
+                 v3 binary-operator row must be grounded in the v3 capability projection so drift \
+                 fails closed without shrinking external `dag_operators`."
             )
         });
         let expected_level = level_for_bp(shared.left_bp).unwrap_or_else(|| {
@@ -310,7 +312,7 @@ fn collect_binary_op_rows(
         assert!(
             expected_level == level,
             "`parse_tables.dag::{name}`: declared level `{level}` disagrees with shared-syntax \
-             authority. `dag_operators` assigns `{operator_symbol}` `left_bp = {}` which \
+             authority. `v3_supported_dag_operators` assigns `{operator_symbol}` `left_bp = {}` which \
              implies level `{expected_level}`. Either update the row to match or reclassify \
              `left_bp = {}` in `level_for_bp`.",
             shared.left_bp,
@@ -320,7 +322,7 @@ fn collect_binary_op_rows(
         assert!(
             actual_binop == shared.binop_name,
             "`parse_tables.dag::{name}`: `operators.dag::from_symbol(\"{operator_symbol}\")` returns \
-             `OperatorKind` leaf `{actual_binop}`, but `dag_operators` in \
+             `OperatorKind` leaf `{actual_binop}`, but `v3_supported_dag_operators` in \
              `dsl/extdeps/languages/dag/syntax.dag` records `binop: {}` for the same symbol. One of \
              the two authorities drifted — fix both to agree before shipping.",
             shared.binop_name
@@ -1056,30 +1058,31 @@ fn rustfmt_stdout(source: &str) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|e| format!("rustfmt stdout utf-8: {e}"))
 }
 
-/// SG-1a scaffold extension: read `data dag_operators: List<OperatorSpec>`
+/// SG-1a scaffold extension: read `data v3_supported_dag_operators: List<OperatorSpec>`
 /// directly from `syntax.dag` source text because that body still lowers
 /// as `ValueBody::Unparsed` (same state `regen_tokenize` encountered).
 /// A trimmed view of `OperatorSpec` sufficient for regen
 /// cross-validation against `parse_tables.dag`.
 pub(crate) struct SharedOperatorSpec {
     pub left_bp: i64,
-    /// Variant name from the shared-authority `binop` field, e.g.
+    /// Variant name from the v3 projection's `binop` field, e.g.
     /// `"Or"`, `"Add"`, `"Eq"`. Matches the leaf variant label
     /// inside the corresponding `OperatorKind` (see
     /// `operator_kind_binop_name`), which is the structural join
     /// that closes `symbol → OperatorKind` drift between
-    /// `operators.dag` and `dag_operators`.
+    /// `operators.dag` and `v3_supported_dag_operators`.
     pub binop_name: String,
 }
 
-/// Returns a symbol → (left_bp, binop_name) map. Fails closed on malformed input.
-/// Dissolution trigger: when `dag_operators` lowers structurally, swap
-/// this extractor for a typed read — same lane as `regen_tokenize`'s
+/// Returns a symbol → (left_bp, binop_name) map for the current v3-supported
+/// operator projection. Fails closed on malformed input. Dissolution trigger:
+/// when `v3_supported_dag_operators` lowers structurally, swap this extractor
+/// for a typed read — same lane as `regen_tokenize`'s
 /// `assert_shared_syntax_raw_source_scaffold_still_required`.
-fn extract_shared_operator_bps(
+fn extract_v3_supported_operator_bps(
     source: &str,
 ) -> std::collections::BTreeMap<String, SharedOperatorSpec> {
-    let section = extract_balanced_section(source, "data dag_operators", '[', ']');
+    let section = extract_balanced_section(source, "data v3_supported_dag_operators", '[', ']');
     let mut out = std::collections::BTreeMap::new();
     // Each entry is `OperatorSpec { symbol: "X", left_bp: N, right_bp: M, binop: Y, ... }`.
     // Parse sequentially: symbol (string) → left_bp (int) → binop (bare identifier).
@@ -1091,7 +1094,7 @@ fn extract_shared_operator_bps(
         let after_sym = &rest[sym_idx + "symbol:".len()..];
         let quote_idx = after_sym
             .find('"')
-            .expect("missing string literal for `symbol` in `dag_operators`");
+            .expect("missing string literal for `symbol` in `v3_supported_dag_operators`");
         let (symbol, consumed) = parse_string_literal(&after_sym[quote_idx..]);
         let tail = &after_sym[quote_idx + consumed..];
 
@@ -1127,7 +1130,7 @@ fn extract_shared_operator_bps(
                 },
             )
             .is_none(),
-            "duplicate `dag_operators` row for symbol `{symbol}`"
+            "duplicate `v3_supported_dag_operators` row for symbol `{symbol}`"
         );
         rest = &after_binop_trimmed[ident_end..];
     }
@@ -1153,10 +1156,10 @@ fn extract_shared_keyword_set(source: &str) -> BTreeSet<String> {
 }
 
 /// Variant-name projection of an `OperatorKind` — the leaf label inside
-/// the nested enum (e.g. `Or`, `Add`, `Eq`). The shared-syntax authority's
+/// the nested enum (e.g. `Or`, `Add`, `Eq`). The v3-supported projection's
 /// `OperatorSpec.binop` uses the same vocabulary, so comparing on this
 /// label is the structural join that closes `symbol → OperatorKind`
-/// drift between `operators.dag` and `dag_operators` — without a
+/// drift between `operators.dag` and `v3_supported_dag_operators` — without a
 /// parallel name-to-name table (the projection is a pure value read).
 fn operator_kind_binop_name(op: OperatorKind) -> &'static str {
     match op {

@@ -187,42 +187,70 @@ fn dag_binary_operators_have_token_parse_table_and_operator_mapping() {
         );
     }
 
-    for spec in shared_dag_operator_specs(SHARED_SYNTAX_DAG) {
+    for spec in v3_supported_dag_operator_specs(SHARED_SYNTAX_DAG) {
         let Some(binop) = spec.binop else {
             continue;
         };
         let expected_token = token_kind_for_shared_dag_operator(&spec.symbol);
         assert!(
             token_variant_names.contains(expected_token),
-            "`dag_operators` symbol `{}` expects TokenKind::{expected_token} in tokenize.dag",
+            "`v3_supported_dag_operators` symbol `{}` expects TokenKind::{expected_token} in tokenize.dag",
             spec.symbol
         );
         let row_token = rows_by_symbol.get(&spec.symbol).unwrap_or_else(|| {
             panic!(
-                "`dag_operators` binary operator `{}` has no BinaryOpRow in parse_tables.dag",
+                "`v3_supported_dag_operators` binary operator `{}` has no BinaryOpRow in parse_tables.dag",
                 spec.symbol
             )
         });
         assert_eq!(
             row_token, expected_token,
-            "`dag_operators` binary operator `{}` maps to TokenKind::{expected_token}, but \
+            "`v3_supported_dag_operators` binary operator `{}` maps to TokenKind::{expected_token}, but \
              parse_tables.dag routes TokenKind::{row_token}",
             spec.symbol
         );
         let Some(operator_kind) = operators::from_symbol(&spec.symbol) else {
             panic!(
-                "`dag_operators` binary operator `{}` has no operators.dag::from_symbol mapping",
+                "`v3_supported_dag_operators` binary operator `{}` has no operators.dag::from_symbol mapping",
                 spec.symbol
             );
         };
         let actual_binop = operator_kind_binop_name(operator_kind);
         assert_eq!(
             actual_binop, binop,
-            "`dag_operators` binary operator `{}` records binop `{binop}`, but \
+            "`v3_supported_dag_operators` binary operator `{}` records binop `{binop}`, but \
              operators.dag maps it to `{actual_binop}`",
             spec.symbol
         );
     }
+}
+
+#[test]
+fn dag_operator_authority_keeps_external_rows_split_from_v3_projection() {
+    let all: std::collections::BTreeSet<_> = shared_dag_operator_specs(SHARED_SYNTAX_DAG)
+        .into_iter()
+        .map(|spec| spec.symbol)
+        .collect();
+    let v3_supported: std::collections::BTreeSet<_> =
+        v3_supported_dag_operator_specs(SHARED_SYNTAX_DAG)
+            .into_iter()
+            .map(|spec| spec.symbol)
+            .collect();
+
+    for symbol in ["??", "%"] {
+        assert!(
+            all.contains(symbol),
+            "`dag_operators` must retain external operator row `{symbol}`"
+        );
+        assert!(
+            !v3_supported.contains(symbol),
+            "`v3_supported_dag_operators` must exclude unsupported v3 operator `{symbol}`"
+        );
+    }
+    assert!(
+        v3_supported.is_subset(&all),
+        "`v3_supported_dag_operators` should be an explicit subset of `dag_operators`"
+    );
 }
 
 #[test]
@@ -745,7 +773,15 @@ struct SharedDagOperatorSpec {
 }
 
 fn shared_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
-    extract_balanced_section(source, "data dag_operators", '[', ']')
+    dag_operator_specs(source, "data dag_operators")
+}
+
+fn v3_supported_dag_operator_specs(source: &str) -> Vec<SharedDagOperatorSpec> {
+    dag_operator_specs(source, "data v3_supported_dag_operators")
+}
+
+fn dag_operator_specs(source: &str, anchor: &str) -> Vec<SharedDagOperatorSpec> {
+    extract_balanced_section(source, anchor, '[', ']')
         .split("OperatorSpec")
         .skip(1)
         .filter_map(|entry| {
@@ -780,8 +816,8 @@ fn token_kind_for_shared_dag_operator(symbol: &str) -> &'static str {
         "&&" => "AmpAmp",
         "||" => "PipePipe",
         other => panic!(
-            "`dag_operators` binary operator `{other}` is not supported by the v3 token/parser/operator chain; \
-             delete the row until the full chain lands"
+            "`v3_supported_dag_operators` binary operator `{other}` is not supported by the v3 token/parser/operator chain; \
+             remove it from the v3 projection until the full chain lands"
         ),
     }
 }

@@ -261,6 +261,12 @@ fn shared_operator_boundary_is_explicit_and_fail_closed() {
                 );
                 shared_tokenized_kinds.insert(kind.to_string());
             }
+            SharedOperatorTokenizerBoundary::ParserOnlyDebt { reason } => {
+                assert!(
+                    !reason.is_empty(),
+                    "parser-only shared operator `{pattern}` should document the v3 boundary"
+                );
+            }
         }
     }
 
@@ -314,6 +320,7 @@ fn keyword_spelling_for_token_kind(kind: &str) -> String {
 
 enum SharedOperatorTokenizerBoundary {
     Tokenized { kind: &'static str },
+    ParserOnlyDebt { reason: &'static str },
 }
 
 fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokenizerBoundary {
@@ -332,9 +339,17 @@ fn classify_shared_operator_for_tokenizer(pattern: &str) -> SharedOperatorTokeni
         "||" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipePipe" },
         "|>" => SharedOperatorTokenizerBoundary::Tokenized { kind: "PipeArrow" },
         "." => SharedOperatorTokenizerBoundary::Tokenized { kind: "Dot" },
+        "??" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "null-coalescing is declared in external dag_operators but excluded from \
+                     v3_supported_dag_operators until v3 parses it end-to-end",
+        },
+        "%" => SharedOperatorTokenizerBoundary::ParserOnlyDebt {
+            reason: "modulo is declared in external dag_operators but excluded from \
+                     v3_supported_dag_operators until v3 parses it end-to-end",
+        },
         other => panic!(
             "shared syntax operator `{other}` must be classified as tokenizer punctuation or \
-             removed until v3 supports it end-to-end"
+             explicit parser-only debt"
         ),
     }
 }
