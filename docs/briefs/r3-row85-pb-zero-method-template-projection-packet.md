@@ -207,25 +207,90 @@ remain Substrate-owned and out of scope.
 
 ## 6. Gap-5 worker shape (sequenced strictly after Gap 4 merges)
 
+### 6.0 Post-#1598 readiness delta (2026-05-04)
+
+PR #1598 (`a04ab525c`) landed Gap 4 as a **bounded `Map<String, String>`
+build-step adapter** for `MethodEmitTemplate::Single` rows only —
+**not** a typed `MethodTemplateContract` projection. The producer
+(`src/v3/compiler/src/pb_method_template_projection_dag_emit.rs`) emits
+an ephemeral `generated.method_template_projection` module with
+per-target `data <target>_method_template_emit: Map<String, String>`
+declarations; v2 consumes it via the source-root mechanism from PR #1575
+(see `src/v2/tests/src/pb_method_template_projection_consumability.rs`).
+The decision artifact (`docs/decisions/r3-row85-method-template-read-surface.md`)
+is committed.
+
+What that means for §6 below:
+
+- **Gap-4 acceptance, retroactive read.** A1 (no `v3.std.*` import) and
+  A2 (no second map authority) are satisfied by the producer's typed-
+  rows-only source-of-text discipline. A3 (no copied template text in
+  v2) holds: the generated `.dag` is ephemeral, never tracked. A7 (no
+  row population) holds. **A4 (five-field preservation) is intentionally
+  not satisfied** — the merged adapter preserves only `emit_template`
+  (Single arm) and per-target identity; `dag_method`/`MethodRef`,
+  `runtime_template`, `wraps_result`, and `placeholder_convention` are
+  **not** carried through the Map shape. This is the `MethodEmitTemplate::Single`
+  scope clamp that #1598 explicitly named. **A4 in its original form is
+  parked on Gap 5b.**
+- **P3 is not satisfied by #1598.** P3 below requires a *typed*
+  `MethodTemplateContract` projection at the four `LanguageSpec`
+  assignment sites; the merged adapter is `Map<String, String>`. P3 is
+  reframed (see 6.1) and the Gap-5 work splits.
+
 ### 6.1 Preconditions (all must hold before dispatch)
 
-P1. §4 decision-routing artifact merged.
-P2. Gap-4 projection PR merged with all A1–A7 satisfied.
-P3. The v2 emit pipeline can already obtain a typed
-`MethodTemplateContract` via the projection at all four assignment
-sites (`src/v2/languages.dag:544, 688, 832, 979`).
+P1. §4 decision-routing artifact merged. **Satisfied** by
+`docs/decisions/r3-row85-method-template-read-surface.md`.
 
-### 6.2 Landing surface
+P2. Gap-4 projection PR merged with the **scope-clamped** subset of
+A1–A7 (A1, A2, A3, A7 satisfied; A4 explicitly partial — Single-arm
+`emit_template` only — and parked on Gap 5b; A5 / A6 status carried
+forward unchanged). **Satisfied for the Single-row Map adapter** by
+PR #1598.
 
-Structural rewrite of `src/v2/languages.dag:390-400`'s
-`LanguageSpec.method_templates: Map<String, String>?` to a typed
-`MethodTemplateContract`-projection field. Specific shape (whether the
-field carries a target-keyed row table, a per-target lookup function,
-or replaces `method_templates` entirely with the projection handle) is
-authored by the Gap-5 worker against the §4-named carrier, not chosen
-in this packet.
+P3. **Split into P3a + P3b** as of #1598:
 
-### 6.3 Acceptance criteria (Gap 5)
+  - **P3a** (Map-shape Single-row consumability): v2 can import the
+    generated `Map<String, String>` per target via the ephemeral
+    source-root mechanism. **Satisfied** by PR #1575 + PR #1598.
+  - **P3b** (typed `MethodTemplateContract` projection at the four
+    `LanguageSpec` assignment sites — i.e. `src/v2/languages.dag:544,
+    688, 832, 979` reading a row carrying all five fields):
+    **NOT satisfied.** Remains gating for any structural `LanguageSpec`
+    rewrite. Substrate/Director must approve a typed read shape for
+    higher-order rows + non-`emit_template` fields before this
+    precondition can flip.
+
+### 6.2 Landing surface — split into 5a (enabled) and 5b (parked)
+
+**Gap 5a — Single-row leaf-emit migration (enabled by #1598; R3
+Grounding owns dispatch, not this packet).** The legacy `dsl/extdeps/
+languages/{rust,python,go}/emit.dag::*_method_templates` map declarations
+can be replaced by re-exports of the generated
+`generated.method_template_projection.<target>_method_template_emit`
+maps, leaving the existing `LanguageSpec.method_templates: Map<String,
+String>?` field shape and assignments untouched. No `src/v2/languages.dag`
+edit; no second authority introduced; legacy `rust_simple_method_specs`
+and `rust_method_wraps_result` and the higher-order rows stay on the
+existing path until 5b. This packet does **not** dispatch 5a — it is
+R3-Grounding-owned per ledger row 85; this section only records that
+#1598 unblocks it.
+
+**Gap 5b — typed `MethodTemplateContract` projection + structural
+`LanguageSpec` rewrite (parked).** Structural rewrite of
+`src/v2/languages.dag:390-400`'s `LanguageSpec.method_templates:
+Map<String, String>?` to a typed `MethodTemplateContract`-projection
+field carrying all five A4 fields, plus higher-order
+`MethodEmitTemplate` arms. Specific shape (target-keyed row table vs
+per-target lookup function vs full replacement) authored by the Gap-5b
+worker against the §4-named carrier extended for typed reads. This
+remains parked on a Substrate/Director decision: today no typed
+read-shape contract exists for non-Single rows or for the four
+`MethodTemplateContract` fields the current adapter drops. STOP+PING
+S2 (new-carrier or snapshot-schema decision) applies.
+
+### 6.3 Acceptance criteria (Gap 5b only — 5a is out of this packet's scope)
 
 B1. **No `Map<String, String>` template field on `LanguageSpec`.** Field
 either deleted or replaced with a typed projection. State-space audit
@@ -241,7 +306,7 @@ B3. **Stage0 regen clean.** Generated mirrors at
 
 B4. **Row-parity gaps preserved as ledger-tracked debt, not silently
 deleted.** `string_contains` (Python/Go) and Go `chars` remain
-substrate-owned; Gap 5 does not delete legacy `*_method_templates`
+substrate-owned; Gap 5b does not delete legacy `*_method_templates`
 maps yet — that is a later authority-deletion PR per audit §"Closing
 PR Shapes" row 6.
 
@@ -249,13 +314,29 @@ B5. **Per-PR debt receipt.** PR description explicitly cites
 `ROADMAP.md:512` and `docs/debt/r3-debt-paydown-ledger-2026-05-02.md:85`
 and reports the new ratchet state (e.g., consumer count remaining).
 
-### 6.4 Non-goals (Gap 5)
+B6. **Higher-order + non-Single arms covered.** The typed projection
+preserves all `MethodEmitTemplate` arms, not only `Single`. Higher-order
+rows that #1598 deliberately omitted from the Map adapter route through
+the typed read.
+
+B7. **A4 five-field preservation reinstated.** The typed read carries
+`dag_method`/`MethodRef`, `runtime_template`, `emit_template` (all arms),
+`wraps_result`, and `placeholder_convention`. Verified by parity claim
+against the row authority.
+
+### 6.4 Non-goals (Gap 5b)
 
 - No deletion of `dsl/extdeps/languages/{rust,python,go}/emit.dag`
-  legacy declarations.
+  legacy declarations (5a may convert them to re-exports of the
+  generated map; full deletion is a later authority-deletion PR).
 - No leaf `05_emit*.dag` migration (separate PR per audit §"Closing
   PR Shapes").
 - No retirement of the source-level audit ratchet.
+- No `src/v2/languages.dag` edit until P3b flips (typed-read carrier
+  approved by Substrate/Director). The merged Map-shape adapter does
+  **not** unblock a `LanguageSpec` rewrite — flipping field shape today
+  would either drop fields the Map cannot carry or reintroduce a
+  parallel typed authority alongside the Map adapter.
 
 ## 7. STOP+PING conditions (apply to both Gap-4 and Gap-5 workers)
 
@@ -313,23 +394,39 @@ any later authority-deletion PR on this row) must include:
 ## 9. Sequencing summary
 
 ```
-[Substrate/Director §4 decision-routing PR]
+[Substrate/Director §4 decision-routing PR]   ← LANDED
+        │  (docs/decisions/r3-row85-method-template-read-surface.md)
+        ▼
+[PB-Zero Gap-4 build-step producer]   ← LANDED scope-clamped (PR #1598)
+        │   Map<String, String> Single-row adapter only;
+        │   A1+A2+A3+A7 satisfied; A4 partial (parked on 5b);
+        │   producer = src/v3/compiler/src/pb_method_template_projection_dag_emit.rs;
+        │   v2 ratchet = src/v2/tests/src/pb_method_template_projection_consumability.rs.
+        ▼
+[Gap 5a — Grounding leaf re-export migration]   (R3 Grounding-owned;
+        │   not dispatched by this packet)
+        │   Flip dsl/extdeps/languages/{rust,python,go}/emit.dag::*_method_templates
+        │   to re-export generated.method_template_projection.<target>_method_template_emit;
+        │   no src/v2/languages.dag edit; LanguageSpec field shape unchanged.
+        ▼
+[Substrate/Director typed-read carrier decision]   ← P3b GATE (parked)
+        │   Approve typed MethodTemplateContract read shape covering
+        │   higher-order rows + non-Single arms + five-field preservation.
+        ▼
+[Gap 5b — typed LanguageSpec rewrite PR]   ← acceptance B1–B7
         │
         ▼
-[PB-Zero Gap-4 projection PR]   ← acceptance A1–A7
+[Grounding leaf-emit migration PRs in src/v2/05_emit*.dag]   (out of scope)
         │
         ▼
-[Grounding/PB Gap-5 LanguageSpec rewrite PR]   ← acceptance B1–B5
-        │
-        ▼
-[Grounding leaf-emit migration PRs]   (out of this packet's scope)
-        │
-        ▼
-[Authority-deletion PR — dsl/extdeps/.../emit.dag]   (out of this packet's scope)
+[Authority-deletion PR — dsl/extdeps/.../emit.dag]   (out of scope)
 ```
 
 ## 10. References
 
+- `docs/decisions/r3-row85-method-template-read-surface.md` (§4 decision artifact, landed)
+- `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs` (Gap-4 producer, PR #1598)
+- `src/v2/tests/src/pb_method_template_projection_consumability.rs` (v2 consumer ratchet)
 - `docs/briefs/method-template-consumer-migration-audit.md`
 - `docs/audit/pb-zero-v2-method-template-row-authority-consumer-gap.md`
 - `docs/audit/pb-zero-v2-canonical-read-surface-options-stop-matrix.md`
