@@ -150,8 +150,11 @@ const TARGETS: &[MethodTemplateTarget] = &[
 /// Caller is responsible for `out_dir` being ephemeral (temp dir / `OUT_DIR`)
 /// and for cleaning it up.
 ///
-/// Returns the absolute path written on success. On any structural mismatch
-/// in the typed projection chain, returns a typed
+/// Returns the path written on success — specifically
+/// `out_dir.join(GENERATED_PROJECTION_RELATIVE_PATH)`. The returned path
+/// is **absolute iff `out_dir` is absolute**; callers passing a relative
+/// `out_dir` get a relative result back. On any structural mismatch in
+/// the typed projection chain, returns a typed
 /// [`MethodTemplateProjectionDagEmitError`] without writing a partial file.
 pub fn write_method_template_projection_dag(
     dag: &Dag,
