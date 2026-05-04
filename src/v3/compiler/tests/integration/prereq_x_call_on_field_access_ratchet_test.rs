@@ -133,13 +133,19 @@ fn invoke(w: Wrapper, x: Int) -> Int = w.f(x)
 /// check (INVARIANTS P4 hole). This test pins the gate firing.
 #[test]
 fn x1a_mutual_recursion_via_data_binding_engages_descent_gate() {
+    // Note: `data fns` must precede `fn f`/`fn g` so its
+    // `ValueBody::Structural` is populated by the time the function
+    // bodies are lowered and recursion analysis runs. The pre-pass
+    // collects all top-level decls into `symbols` regardless of
+    // order, but `value_body` is only populated when each `Data`
+    // item is lowered in source order.
     let src = r#"
 type Fns { a: fn(Int) -> Int, b: fn(Int) -> Int }
 
+data fns: Fns = { a: f, b: g }
+
 fn f(x: Int) -> Int = fns.b(x)
 fn g(x: Int) -> Int = fns.a(x)
-
-data fns: Fns = { a: f, b: g }
 "#;
     let dag = cached_compile_any(src, "x1a_mutual_via_data.v3");
     // Both `f` and `g` are mutually recursive via the `fns` data

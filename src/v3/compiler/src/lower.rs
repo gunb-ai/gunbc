@@ -6155,7 +6155,16 @@ fn resolve_path_to_function_decl(
     symbols: &HashMap<String, DeclarationId>,
 ) -> Option<DeclarationId> {
     let head = segments.first()?;
-    let head_decl = *symbols.get(head)?;
+    // Look up the head in the caller-supplied `symbols` map first
+    // (lowerer / is_recursive / descent_provable have the full
+    // top-level symbol table), then fall back to
+    // `Dag::declaration_by_name` so callers with narrower maps
+    // (e.g. `compute_mutually_recursive`'s `function_symbols`-only
+    // map) can still resolve `data`-binding heads.
+    let head_decl = match symbols.get(head).copied() {
+        Some(id) => id,
+        None => dag.declaration_by_name(head)?.id,
+    };
     let value_body = dag.declaration(head_decl).value_body.as_ref()?;
     resolve_field_value_reference(value_body, &segments[1..])
 }
