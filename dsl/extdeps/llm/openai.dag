@@ -128,10 +128,11 @@ type OpenAiChatCompletion200UrlCitation {
   url: String
 }
 
-type OpenAiChatCompletion200Annotation {
-  type: String
-  url_citation: OpenAiChatCompletion200UrlCitation?
-}
+// 🟢 TERMINAL response annotation coproduct for Chat Completions. The current
+// provider wire exposes `type = "url_citation"` with required citation
+// coordinates under `url_citation`.
+type OpenAiChatCompletion200Annotation
+  = UrlCitation { url_citation: OpenAiChatCompletion200UrlCitation }
 
 type OpenAiChatCompletion200Message {
   role: String

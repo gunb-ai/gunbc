@@ -6820,10 +6820,9 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
     }
 
     #[derive(serde::Deserialize)]
-    struct Annotation {
-        #[serde(rename = "type")]
-        annotation_type: String,
-        url_citation: Option<UrlCitation>,
+    #[serde(tag = "type", rename_all = "snake_case")]
+    enum Annotation {
+        UrlCitation { url_citation: UrlCitation },
     }
 
     #[derive(serde::Deserialize)]
@@ -6933,18 +6932,15 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
         body.choices[0].message.refusal.as_deref(),
         Some("safety refusal")
     );
-    let annotation = body.choices[0].message.annotations.as_ref().unwrap()[0]
-        .url_citation
-        .as_ref()
-        .unwrap();
-    assert_eq!(annotation.start_index, 0);
-    assert_eq!(annotation.end_index, 12);
-    assert_eq!(annotation.title, "reference");
-    assert_eq!(annotation.url, "https://example.com/ref");
-    assert_eq!(
-        body.choices[0].message.annotations.as_ref().unwrap()[0].annotation_type,
-        "url_citation"
-    );
+    let annotation = &body.choices[0].message.annotations.as_ref().unwrap()[0];
+    match annotation {
+        Annotation::UrlCitation { url_citation } => {
+            assert_eq!(url_citation.start_index, 0);
+            assert_eq!(url_citation.end_index, 12);
+            assert_eq!(url_citation.title, "reference");
+            assert_eq!(url_citation.url, "https://example.com/ref");
+        }
+    }
     let content_logprob = &body.choices[0]
         .logprobs
         .as_ref()
