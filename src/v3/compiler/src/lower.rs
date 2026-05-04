@@ -4310,8 +4310,23 @@ fn map_value_type_with_subst(
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             map_value_type_with_subst(dag, *next, subst, depth + 1)
         }
-        _ => map_value_type(dag, expected_type)
-            .map(|value| resolve_decl_with_subst_lower(dag, value, subst, 0).unwrap_or(value)),
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if dag
+            .declaration_by_name("Map")
+            .is_some_and(|decl| decl.id == *template)
+            && arguments.len() == 2 =>
+        {
+            let string_id = dag.declaration_by_name("String")?.id;
+            let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
+                .unwrap_or(arguments[0].value);
+            walks_to(dag, key, string_id).then(|| {
+                resolve_decl_with_subst_lower(dag, arguments[1].value, subst, 0)
+                    .unwrap_or(arguments[1].value)
+            })
+        }
+        _ => None,
     }
 }
 
@@ -4356,7 +4371,22 @@ fn map_key_type_is_not_string_with_subst(
         | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
             map_key_type_is_not_string_with_subst(dag, *next, subst, depth + 1)
         }
-        _ => map_key_type_is_not_string(dag, expected_type),
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if dag
+            .declaration_by_name("Map")
+            .is_some_and(|decl| decl.id == *template)
+            && arguments.len() == 2 =>
+        {
+            let Some(string_id) = dag.declaration_by_name("String").map(|decl| decl.id) else {
+                return false;
+            };
+            let key = resolve_decl_with_subst_lower(dag, arguments[0].value, subst, 0)
+                .unwrap_or(arguments[0].value);
+            !walks_to(dag, key, string_id)
+        }
+        _ => false,
     }
 }
 
@@ -8206,6 +8236,76 @@ mod tests {
             &HashSet::new(),
         )
         .expect("Map<String, C> value should lower under C := Int");
+        let crate::dag::FieldValue::Map(map) = lowered else {
+            panic!("expected structural map field, got {lowered:?}");
+        };
+        assert_eq!(
+            map.entries(),
+            &[(
+                "one".to_string(),
+                crate::dag::FieldValue::Literal(LiteralBits::Int(1))
+            )]
+        );
+
+        let k_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("K".to_string())),
+        );
+        let v_param = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Atom(AtomPayload::TypeParam("V".to_string())),
+        );
+        let map_k_v = push_anonymous_test_declaration(
+            &mut dag,
+            TypeConnective::Instantiation {
+                template: map_id,
+                arguments: vec![
+                    TemplateArgument {
+                        parameter: map_key_param,
+                        value: k_param,
+                    },
+                    TemplateArgument {
+                        parameter: map_value_param,
+                        value: v_param,
+                    },
+                ],
+            },
+        );
+        let mut key_value_subst = LowerSubstStack::default();
+        key_value_subst.push(vec![
+            TemplateArgument {
+                parameter: k_param,
+                value: string_id,
+            },
+            TemplateArgument {
+                parameter: v_param,
+                value: int_id,
+            },
+        ]);
+        let lowered = lower_structural_field_value(
+            "aggregate_int",
+            "table",
+            &SurfaceExpr::Map {
+                entries: vec![crate::parse_surface::SurfaceMapEntry {
+                    key: "one".to_string(),
+                    key_span: span.clone(),
+                    value: SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(1),
+                        span: span.clone(),
+                    },
+                    span: span.clone(),
+                }],
+                span: span.clone(),
+            },
+            map_k_v,
+            &key_value_subst,
+            &HashMap::new(),
+            &mut dag,
+            None,
+            &span,
+            &HashSet::new(),
+        )
+        .expect("Map<K, V> value should lower under K := String, V := Int");
         let crate::dag::FieldValue::Map(map) = lowered else {
             panic!("expected structural map field, got {lowered:?}");
         };
