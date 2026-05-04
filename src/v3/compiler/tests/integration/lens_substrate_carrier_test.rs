@@ -126,15 +126,14 @@ fn diagnostic_kind_widened_to_any_diagnostic_kind() {
 #[test]
 fn compiler_diagnostic_kind_matches_rust_layer1_authority() {
     let dag = generated_full_bootstrap_dag();
-    let substrate: HashSet<String> = disj_variant_labels(&dag, "CompilerDiagnosticKind")
-        .into_iter()
-        .collect();
-    let rust: HashSet<&str> = LAYER1_DIAGNOSTIC_KIND_LABELS.iter().copied().collect();
-    let actual: HashSet<&str> = substrate.iter().map(String::as_str).collect();
+    let substrate = disj_variant_labels(&dag, "CompilerDiagnosticKind");
+    let expected: Vec<&str> = LAYER1_DIAGNOSTIC_KIND_LABELS.to_vec();
+    let actual: Vec<&str> = substrate.iter().map(String::as_str).collect();
     assert_eq!(
-        actual, rust,
-        "CompilerDiagnosticKind must match `LAYER1_DIAGNOSTIC_KIND_LABELS` / `Diagnostic` in \
-         diagnostics.rs; lens-instance kinds use Layer-2 LensInstanceKindWitness (Q6.5 anti-bridge)"
+        actual, expected,
+        "CompilerDiagnosticKind must match `LAYER1_DIAGNOSTIC_KIND_LABELS` in **declaration order** \
+         (same order as `Diagnostic` in diagnostics.rs); a HashSet-only check would miss order \
+         drift; lens-instance kinds use Layer-2 LensInstanceKindWitness (Q6.5 anti-bridge)"
     );
 }
 
