@@ -88,7 +88,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Hand-Rust acceptance growth | 2026-04-30 | R3 Verification + Substrate | Open | `.dag` TestClaim capability for reflected-Dag structural assertions. |
 | `Json` + `Bytes` opaque kernel decomposition | 2026-05-01 | R3 Substrate | Open / disposition pending | Decide after T-Numeric-Construction whether this becomes an R3 lane. |
 | SymbolicCost semiring annihilation violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix normalization; add semiring law witnesses. |
-| SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Open | Fix ordering/top semantics or stop claiming `BoundedLattice`. |
+| SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Retired | `src/v3/std/induction.dag` + `dsl/std/induction.dag` stop claiming `BoundedLattice`; helpers are documented as fail-closed merge helpers. |
 | Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Open | Replace `expect` with typed emit errors or typed `BindNodeId` witness. |
 | `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Open | Remove unsupported rows or add full token/parse/operator chain. |
 | `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Open | Target templates reference algebra method contracts / declaration refs. |
