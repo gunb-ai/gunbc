@@ -136,6 +136,8 @@ type AnthropicChatMessage
 
 // Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
 // Tool-use / image assistant rows remain outside this carrier.
+// 🟢 TERMINAL response citation coproduct. Each citation variant carries only
+// the documented coordinates for that wire tag.
 type AnthropicMessages200Citation
   = CharLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_char_index: Int, end_char_index: Int }
   | PageLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_page_number: Int, end_page_number: Int }
