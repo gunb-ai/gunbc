@@ -6,27 +6,45 @@
 
 module extdeps.github.auth
 
-import gunbc.auth.credentials { gcp_secret_credential }
-import std.resources { Network }
-import std.types { NonEmptyStr, Secret }
+import extdeps.github.github { GitHubAuthToken, GitHubScope, ScopeGist, ScopeRepo }
+import std.credentials { CredentialSource, EnvVar, env_credential }
+import std.types { NonEmptyStr, Timestamp }
 
-// Secret Manager materializes secret bytes only — no GitHub-issued scope or
-// expiry metadata on the wire (P3: do not fabricate empty scopes / absent
-// expiry as if observed). Acquisition-path carrier lives in auth, not the
-// GitHub core provider model.
-type GitHubSecretManagerPat {
-  token: Secret
+// The default PAT path cannot introspect GitHub-issued token claims. Keep the
+// locally declared policy explicit so callers can distinguish configured
+// assumptions from provider-verified token metadata when that surface lands.
+type GitHubTokenMetadataAuthority
+  = DeclaredGitHubTokenMetadata { scopes: List<GitHubScope>, expires_at: Timestamp? }
+
+type GitHubAuthSource {
+  credential_source: CredentialSource
+  token_metadata: GitHubTokenMetadataAuthority
 }
 
-func github_token(
-  project_id: NonEmptyStr = "gunbai-secrets",
-  secret_name: NonEmptyStr = "github-token"
-) -> GitHubSecretManagerPat
-  uses net: Network
+data default_github_auth_source: GitHubAuthSource = {
+  credential_source: EnvVar { name: "GITHUB_TOKEN" },
+  token_metadata: DeclaredGitHubTokenMetadata {
+    scopes: [ScopeRepo, ScopeGist],
+    expires_at: None
+  }
+}
+
+data structural_coverage_gap_github_token_metadata_verification: List<String> = [
+  "closure:github_token_metadata_verification|GitHubAuthToken|declared_metadata:scopes|declared_metadata:expires_at|trigger:GitHub token introspection or installation-token issuance surface"
+]
+
+func github_token() -> GitHubAuthToken
 {
-  cred = gcp_secret_credential(
-    project_id: project_id,
-    secret_name: secret_name
-  )
-  return { token: cred.token }
+  cred = match default_github_auth_source.credential_source {
+    EnvVar { name } => env_credential(env_var: name as NonEmptyStr)
+  }
+  return {
+    token: cred.token,
+    scopes: match default_github_auth_source.token_metadata {
+      DeclaredGitHubTokenMetadata { scopes, expires_at } => scopes
+    },
+    expires_at: match default_github_auth_source.token_metadata {
+      DeclaredGitHubTokenMetadata { scopes, expires_at } => expires_at
+    }
+  }
 }
