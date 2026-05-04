@@ -2616,11 +2616,11 @@ impl<'a> TestRunner<'a> {
         match value {
             FieldValue::Reference(id) => Ok(*id),
             FieldValue::Record(fields) if fields.is_empty() => Err(format!(
-                "LensOutputEquals `{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
+                "`{field_label}`: DeclarationRef is the empty record literal {{}} — use an identifier \
                  so lowering emits FieldValue::Reference(DeclarationId), not an empty record",
             )),
             other => Err(format!(
-                "LensOutputEquals `{field_label}`: expected FieldValue::Reference(DeclarationId) \
+                "`{field_label}`: expected FieldValue::Reference(DeclarationId) \
                  for a DeclarationRef edge, got {other:?}"
             )),
         }
