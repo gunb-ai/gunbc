@@ -6,6 +6,7 @@ pub use crate::extdeps_languages_rust_emit::{
     rust_container_templates, rust_enum_derives, rust_enum_derives_copy, rust_higher_order_methods,
     rust_method_wraps_result, rust_struct_derives, rust_struct_derives_copy, HigherOrderMethodSpec,
 };
+pub use crate::generated_method_template_projection::rust_method_template_emit;
 pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::is_container_type;
@@ -9391,23 +9392,44 @@ pub fn emit_typed_method_call(
                                                                     shared_types.clone(),
                                                                     emit_info.clone(),
                                                                 );
-                                                            let spec =
-                                                                language_spec(RenderTarget::Rust);
-                                                            match spec.method_templates.clone() {
-    Some(templates) => match v2_rt::map_get(&templates, method_name.clone()) {
-    Some(tmpl) => {
-                                                    let bindings = v2_rt::rc_map_insert(seed_bindings("recv".to_string(), recv_str), "arg".to_string(), first_arg_str);
-let raw = apply_named_template(tmpl.clone(), &bindings);
-if rust_runtime_bridge_wraps_collection_result_in_rc(&method_name) {
+                                                            match v2_rt::map_get(
+                                                                &rust_method_template_emit(),
+                                                                method_name.clone(),
+                                                            ) {
+                                                                Some(tmpl) => {
+                                                                    let bindings =
+                                                                        v2_rt::rc_map_insert(
+                                                                            seed_bindings(
+                                                                                "recv".to_string(),
+                                                                                recv_str,
+                                                                            ),
+                                                                            "arg".to_string(),
+                                                                            first_arg_str,
+                                                                        );
+                                                                    let raw = apply_named_template(
+                                                                        tmpl.clone(),
+                                                                        &bindings,
+                                                                    );
+                                                                    if rust_runtime_bridge_wraps_collection_result_in_rc(&method_name) {
                                                         v2_rt::concat(v2_rt::concat("Rc::new(".to_string(), raw), ")".to_string())
                                                     } else {
                                                         raw
                                                     }
-},
-    None => emit_rust_generic_method_call(method_name.clone(), receiver.clone(), args.clone(), result_type, &registry, &scope, depth.clone(), &shared_types, &emit_info),
-},
-    None => emit_rust_generic_method_call(method_name.clone(), receiver.clone(), args.clone(), result_type, &registry, &scope, depth.clone(), &shared_types, &emit_info),
-}
+                                                                }
+                                                                None => {
+                                                                    emit_rust_generic_method_call(
+                                                                        method_name.clone(),
+                                                                        receiver.clone(),
+                                                                        args.clone(),
+                                                                        result_type,
+                                                                        &registry,
+                                                                        &scope,
+                                                                        depth.clone(),
+                                                                        &shared_types,
+                                                                        &emit_info,
+                                                                    )
+                                                                }
+                                                            }
                                                         }
                                                     }
                                                 }

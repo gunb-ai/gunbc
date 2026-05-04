@@ -27,12 +27,18 @@ cargo build -p v2-compiler --release
 STAGE0_CMD="cargo run -p v2-compiler --release --"
 
 OUTPUT_DIR="${OUTPUT_ONLY:-$ROOT/.regen-output}"
+GENERATED_SOURCE_ROOT="$ROOT/.regen-generated-source-root"
 rm -rf "$OUTPUT_DIR"
+rm -rf "$GENERATED_SOURCE_ROOT"
+
+echo "=== Generating method-template projection source root ==="
+cargo run -p v3-compiler --bin emit_method_template_projection -- "$GENERATED_SOURCE_ROOT"
 
 echo "=== Compiling .dag source with v2 compiler (FF-9: import-driven resolution) ==="
 $STAGE0_CMD compile \
     --source-root "$ROOT/src/v2" \
     --source-root "$ROOT/dsl" \
+    --source-root "$GENERATED_SOURCE_ROOT" \
     --output-dir "$OUTPUT_DIR"
 
 # lib.rs, main.rs, and compiler_tests.rs are now fully emitted by the
@@ -68,6 +74,7 @@ rm -rf "$PASS2_DIR"
 $STAGE0_CMD compile \
     --source-root "$ROOT/src/v2" \
     --source-root "$ROOT/dsl" \
+    --source-root "$GENERATED_SOURCE_ROOT" \
     --output-dir "$PASS2_DIR"
 
 if ! diff -r "$PASS2_DIR" "$OUTPUT_DIR" > /dev/null 2>&1; then
@@ -91,6 +98,7 @@ fi
 
 rm -rf "$PASS2_DIR"
 rm -rf "$OUTPUT_DIR"
+rm -rf "$GENERATED_SOURCE_ROOT"
 
 # Apply workspace fmt so CI fmt-check doesn't see drift. The v2
 # compiler's emitter doesn't produce rustfmt-canonical output;
