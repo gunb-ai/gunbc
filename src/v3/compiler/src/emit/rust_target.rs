@@ -48,8 +48,7 @@ use std::collections::{HashMap, HashSet};
 use super::{
     algebra_field_for_operator_shared,
     collection_ops_method_contract::{
-        method_template_contract_decl_emit_template,
-        method_template_contract_list_emit_template_for_method, MethodTemplateContractEmitTemplate,
+        method_template_contract_decl_emit_template, MethodTemplateContractEmitTemplate,
     },
     dag_needs_div_error_prelude, div_prelude_reserved_name_collision, parse_pattern_strategy,
     primitive_type_id_for_port_shared, walk_to_disj, EmitMode, PatternStrategyBinding,
@@ -1574,58 +1573,49 @@ fn parse_collection_ops(
     })?;
     let fold = require_single_template(fold_template, fold_contract)?;
 
-    let filter = require_higher_order_inline_template(
-        method_template_contract_list_emit_template_for_method(
-            dag,
-            "rust_method_template_contracts",
-            "filter_contract",
-            filter_method_decl.id,
-        )
-        .map_err(|detail| EmitError::MalformedTargetSyntax {
-            declaration,
-            detail,
-        })?,
-        declaration,
-    )?;
-    let flat_map = require_higher_order_inline_template(
-        method_template_contract_list_emit_template_for_method(
-            dag,
-            "rust_method_template_contracts",
-            "flat_map_contract",
-            flat_map_method_decl.id,
-        )
-        .map_err(|detail| EmitError::MalformedTargetSyntax {
-            declaration,
-            detail,
-        })?,
-        declaration,
-    )?;
-    let any = require_higher_order_inline_template(
-        method_template_contract_list_emit_template_for_method(
-            dag,
-            "rust_method_template_contracts",
-            "any_contract",
-            any_method_decl.id,
-        )
-        .map_err(|detail| EmitError::MalformedTargetSyntax {
-            declaration,
-            detail,
-        })?,
-        declaration,
-    )?;
-    let all = require_higher_order_inline_template(
-        method_template_contract_list_emit_template_for_method(
-            dag,
-            "rust_method_template_contracts",
-            "all_contract",
-            all_method_decl.id,
-        )
-        .map_err(|detail| EmitError::MalformedTargetSyntax {
-            declaration,
-            detail,
-        })?,
-        declaration,
-    )?;
+    let filter_contract = require_field_decl_ref(fields, "filter_contract", declaration)?;
+    let filter_template = method_template_contract_decl_emit_template(
+        dag,
+        filter_contract,
+        "filter_contract",
+        filter_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: filter_contract,
+        detail,
+    })?;
+    let filter = require_higher_order_inline_template(filter_template, filter_contract)?;
+
+    let flat_map_contract = require_field_decl_ref(fields, "flat_map_contract", declaration)?;
+    let flat_map_template = method_template_contract_decl_emit_template(
+        dag,
+        flat_map_contract,
+        "flat_map_contract",
+        flat_map_method_decl.id,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: flat_map_contract,
+        detail,
+    })?;
+    let flat_map = require_higher_order_inline_template(flat_map_template, flat_map_contract)?;
+
+    let any_contract = require_field_decl_ref(fields, "any_contract", declaration)?;
+    let any_template =
+        method_template_contract_decl_emit_template(dag, any_contract, "any_contract", any_method_decl.id)
+            .map_err(|detail| EmitError::MalformedTargetSyntax {
+                declaration: any_contract,
+                detail,
+            })?;
+    let any = require_higher_order_inline_template(any_template, any_contract)?;
+
+    let all_contract = require_field_decl_ref(fields, "all_contract", declaration)?;
+    let all_template =
+        method_template_contract_decl_emit_template(dag, all_contract, "all_contract", all_method_decl.id)
+            .map_err(|detail| EmitError::MalformedTargetSyntax {
+                declaration: all_contract,
+                detail,
+            })?;
+    let all = require_higher_order_inline_template(all_template, all_contract)?;
 
     Ok(CollectionOpsBinding {
         concat,

@@ -68,6 +68,12 @@ import v3.std.emit_model {
   MethodTemplateContract, SingleTemplate, NamedArg
 }
 import std.methods { concat_method, fold_method, is_empty_method, length_method }
+import v3.std.rust_method_template_contracts {
+  rust_filter_method_template_contract,
+  rust_flat_map_method_template_contract,
+  rust_any_method_template_contract,
+  rust_all_method_template_contract
+}
 import v3.std.substrate {
   SubstrateAccessorRealization, SubstrateAccessorBinding,
   port, node, resolve_producer, lane2_workflow_at, declaration_by_id
@@ -1399,6 +1405,10 @@ data rust_collection_ops: CollectionOps = {
   length_contract: rust_language_spec_free_monoid_length_contract
   is_empty_contract: rust_language_spec_free_monoid_emptiness_contract
   fold_contract: rust_language_spec_free_monoid_fold_contract
+  filter_contract: rust_filter_method_template_contract
+  flat_map_contract: rust_flat_map_method_template_contract
+  any_contract: rust_any_method_template_contract
+  all_contract: rust_all_method_template_contract
   map: "({recv}).iter().map({body}).collect::<Vec<_>>()"
   filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }"
   contains: "({recv}).contains({item})"

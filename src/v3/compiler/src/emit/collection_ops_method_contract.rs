@@ -46,36 +46,6 @@ pub(crate) fn method_template_contract_decl_emit_template(
     method_template_contract_fields_emit_template(dag, fields)
 }
 
-pub(crate) fn method_template_contract_list_emit_template_for_method(
-    dag: &Dag,
-    list_decl_name: &'static str,
-    collection_ops_field: &'static str,
-    expected_method_decl: DeclarationId,
-) -> Result<MethodTemplateContractEmitTemplate, &'static str> {
-    let decl = dag
-        .declaration_by_name(list_decl_name)
-        .ok_or("MethodTemplateContract list declaration missing from dag")?;
-    let Some(ValueBody::List(entries)) = decl.value_body.as_ref() else {
-        return Err("MethodTemplateContract list declaration must carry a list value body");
-    };
-
-    for entry in entries {
-        let FieldValue::Record(fields) = entry else {
-            return Err("MethodTemplateContract list entries must be structural records");
-        };
-        if method_template_contract_fields_dag_method(fields)? == expected_method_decl {
-            require_method_template_contract_fields_dag_method(
-                fields,
-                collection_ops_field,
-                expected_method_decl,
-            )?;
-            return method_template_contract_fields_emit_template(dag, fields);
-        }
-    }
-
-    Err("MethodTemplateContract list missing expected dag_method row")
-}
-
 fn method_template_contract_fields(
     dag: &Dag,
     contract_decl: DeclarationId,
