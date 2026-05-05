@@ -143,10 +143,15 @@ silent invention of new `VariantEncoding` shapes).
 
    Then `AnthropicToolResultContent.ToolResultBlocks` switches
    from `blocks: List<ContentBlock>` to `blocks:
-   List<AnthropicToolResultBlock>`. Cross-provider variants
-   reach through the `AnthropicSharedBlock` delegate; the
-   shared primitive stays uncontaminated. Worker re-verifies
-   at dispatch that `ContentBlock` is in fact cross-provider
+   List<AnthropicToolResultBlock>` under either Shape. Under
+   **Shape (A)** the shared primitive stays uncontaminated
+   because text/image variants are mirrored inline as
+   `AnthropicTextBlock` / `AnthropicImageBlock` payload-
+   reusing variants. Under **Shape (B)** cross-provider
+   variants reach through the `AnthropicSharedBlock` delegate
+   (only valid when a transparent-delegation encoding is
+   ratified). Worker re-verifies at dispatch that
+   `ContentBlock` is in fact cross-provider
    (the wait-window grep confirmed `dsl/extdeps/llm/llm.dag:41`
    is the home and `src/v3/std/anthropic_schema.dag:59` is a
    separate Anthropic-internal `ContentBlock`-named type — if
