@@ -205,6 +205,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 **Free consequences (fall out when Tiers 1-2 close):**
 - Automatic parallelism from dependency graph.
 - Automatic memoization from purity + cost.
+- Incremental cross-run execution from purity + determinism + content-hash caching.
 - Space bound proofs from CX.
 - Cross-language optimization from shared cost algebra.
 
@@ -220,7 +221,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 - See [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Two shapes of omni-emission" for the full Shape A vs Shape B treatment, including the per-target cost structure and the load-bearing reason the distinction must not be blurred.
 
 **Meta-process modeling:**
-- Bootstrap, CI, dev process modeled as .dag workflows.
+- Bootstrap, CI, build orchestration, dev process modeled as .dag workflows.
 - `dag run` is the primary execution path.
 - Adding a CI gate, a Node field, or a target language requires editing one .dag file.
 

@@ -402,6 +402,40 @@ memoized by the emitter. The compiler already knows:
 Once these facts flow through bindings, the emitter can insert
 memoization for expensive pure functions automatically.
 
+### Incremental cross-run execution
+
+The same purity + bounded execution + determinism + dependency-
+graph commitments that enable within-run memoization (above) also
+enable **cross-run** caching. A pure subexpression with hashable
+inputs has a content-addressable result; across runs, the
+compiler/runner can skip re-executing any subgraph whose inputs
+hash to the same value as a prior run.
+
+What the compiler/runner already knows:
+- Each Node's structural identity (content hash from declaration)
+- Each binding's transitive dependencies (Stream A provenance)
+- Each operation's purity and CX (bounded execution → bounded
+  cache size)
+
+Two consequences fall out:
+
+- **Incremental execution** — when source changes between runs,
+  only the dependent subtrees re-execute. The dependency graph
+  already exists (per §"Automatic parallelism"); cross-run
+  change-propagation is the same graph walked across two
+  run-states.
+
+- **Content-hash caching** — deterministic execution +
+  content-addressable inputs means a pure expression's result
+  caches by `hash(structural_form, input_hashes)`. Cache lookup
+  is structural; cache invalidation is precise (same input hash
+  ⇒ same result), not heuristic ("anything that depends on this
+  file").
+
+Both are consequences of the existing dependency-graph + purity +
+determinism substrate. Cross-run scope is the only thing that
+changes from §"Automatic memoization".
+
 ### Algebraic simplification (idempotency, cancellation, redundancy)
 
 The compiler knows the algebraic laws on operations. From those
