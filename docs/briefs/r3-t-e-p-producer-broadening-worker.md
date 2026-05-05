@@ -60,7 +60,7 @@ Worker should align to the three named gates structurally.
    corresponding `SubValueRelation` variants. Reference variants
    live at `dag.rs:1275-1294` (full enum).
 3. Where a call-site class needs a new `CallPattern` variant beyond
-   today's nine (`dag.rs:1195-1225`), the addition follows
+   today's eight (`dag.rs:1195-1225`), the addition follows
    substrate-fact-introduction procedure (`INVARIANTS.md#p1-modeling-faithfulness`
    procedure) — a P1 receipt in the PR body, not silent variant growth.
 4. Worker keeps `TransformNode` unwidened. The producer is a
@@ -70,18 +70,45 @@ Worker should align to the three named gates structurally.
 
 ### Phase 2 — `CallPattern` lookup authority (gate `e_p_call_pattern_lookup_authoritative`)
 
-1. The lowering function `lower_call_pattern` at `dag.rs:1318` is
-   the routing authority from `CallPattern` to `LoweringTarget`.
-   Confirm consumers (cost/complexity lens, induction.dag witness
-   construction) reach call-pattern facts through this routing,
-   not by re-scanning the Dag.
-2. If any consumer re-scans (string-match on operator names,
-   arithmetic-shape detection in lens code, etc.), migrate to the
-   side-table lookup. Per `feedback_parallel_representation_debt`,
-   parallel call-pattern derivation paths are debt.
-3. Cementing test: per-call-pattern v2-oracle equivalence on the
-   verification corpus programs (every `ExprCall` site produces
-   the same `CallPattern` classification under v2 and v3).
+1. **Authoritative lens-facing surface.** The L-7 single-authority
+   substrate query for the cost + complexity lenses is
+   `per_call_pattern_at(d: Dag, call_site: NodeId) -> CallPattern?`,
+   exposed from `std.computation` per
+   `docs/design-cost-lens-sizevar-dimension-wiring.md` §3.2 + §8.4
+   and `docs/design-complexity-lens-behavioral-completeness.md`
+   §278 (Director-ratified — single-authority per `INVARIANTS.md`
+   P2 / L-7). The query wraps the side-table
+   `v3_compiler::dag::per_call_descent_evidence` and returns
+   `Option<CallPattern>` (`None` for non-recursive call sites,
+   `Some(pattern)` for recursive ones). The internal lowering
+   helper `lower_call_pattern` at `dag.rs:1318` routes from
+   `CallPattern` to `LoweringTarget` for compiler-internal use,
+   but it is **not** the lens-facing query surface — the lens
+   path is `per_call_pattern_at` per the design docs.
+2. **Land the typed query surface** if it doesn't already exist
+   on `std.computation`. Worker greps at dispatch — if landed,
+   use it; if not landed, this Phase covers landing it
+   (gated on Phase 1 broadening). Co-owned with the cost-lens
+   producer-consumption gate
+   (`per_call_pattern_query_surface_landed` per
+   `design-cost-lens-sizevar-dimension-wiring.md` §493 step 3).
+3. **Confirm consumers route through `per_call_pattern_at`.**
+   Cost lens (`src/v3/lenses/cost.dag`) and complexity lens
+   (`src/v3/lenses/complexity.dag`) reach call-pattern facts
+   through `per_call_pattern_at`, NOT by re-scanning the Dag,
+   NOT through `lower_call_pattern` (which is compiler-internal).
+   `induction.dag` witness construction and any other consumers
+   route through the same query.
+4. **Migrate any parallel paths.** If any consumer re-scans
+   (string-match on operator names, arithmetic-shape detection
+   in lens code, etc.) or reads `per_call_descent_evidence`
+   storage directly, migrate to `per_call_pattern_at`. Per
+   `feedback_parallel_representation_debt`, parallel
+   call-pattern derivation paths are debt.
+5. **Cementing test.** Per-call-pattern v2-oracle equivalence on
+   the verification corpus programs (every `ExprCall` site
+   produces the same `CallPattern` classification under v2 and
+   v3 via `per_call_pattern_at`).
 
 ### Phase 3 — `SubValueRelation` consumer wiring (gate `e_p_sub_value_relation_per_call_landed`)
 
@@ -130,10 +157,14 @@ Worker should align to the three named gates structurally.
 ## STOP-AND-ESCALATE
 
 - **A new `CallPattern` variant requires modeling discipline review.**
-  Adding a variant beyond the current nine is a substrate-fact
+  Adding a variant beyond the current eight is a substrate-fact
   introduction; STOP and follow `INVARIANTS.md` P1 procedure
   (DAG-ancestor / coproduct-vs-coordinate / primitive-vs-lens-extensible).
-  Do not silently grow the enum.
+  The new variant ALSO inherits the existing `CallPattern` 🟡
+  SCAFFOLD classification at `dag.rs:1187` per Practice 4 (Step 4),
+  with the same dissolution trigger as `SizeBound`. Do not silently
+  grow the enum past current count without P1 receipt AND
+  Practice-4 classification confirmation in the PR body.
 - **A consumer's existing call-pattern derivation cannot migrate
   cleanly to side-table lookup** (e.g., the consumer needs a
   call-pattern fact for a site the producer cannot yet classify):
@@ -153,7 +184,7 @@ Worker should align to the three named gates structurally.
 ## Authority audit receipt
 
 1. **Substrate exists?** Partial. `per_call_descent_evidence` lives
-   at `dag.rs:1384`; `CallPattern` (9 variants, 🟡 SCAFFOLD) at
+   at `dag.rs:1384`; `CallPattern` (8 variants, 🟡 SCAFFOLD) at
    `:1195`; `SubValueRelation` (variants 🟡 SCAFFOLD) at `:1275`;
    `lower_call_pattern` at `:1318`. This lane broadens producer
    coverage and wires consumers; carrier types are already landed.
