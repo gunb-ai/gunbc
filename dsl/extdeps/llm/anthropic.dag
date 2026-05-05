@@ -162,7 +162,7 @@ type AnthropicMessages200ContentBlock
   = MessagesTextBlock { text: String, citations: List<AnthropicMessages200Citation>? }
   | MessagesThinkingBlock { thinking: String, signature: String }
   | MessagesRedactedThinkingBlock { data: String }
-  | MessagesToolUseBlock { id: String, name: String, input: Json, caller: Json? }
+  | MessagesToolUseBlock { id: String, name: String, input: Json, caller: Json }
   | MessagesServerToolUseBlock { id: String, name: AnthropicServerToolName, input: Json }
   | MessagesWebSearchToolResultBlock { tool_use_id: String, content: Json }
 
