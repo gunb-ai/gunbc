@@ -17,11 +17,11 @@ This pass classifies 74 ROADMAP-tracked debt rows (69 baseline + 5 added 2026-05
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 46 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 44 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
 | Partially closed | 9 | Has a landed partial receipt but still names remaining work. |
 | Partial (fold) | 1 | Special-case partial closure (e.g., one variant landed, others pending). |
-| Retired / stale receipt row | 17 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 19 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -36,8 +36,8 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `anthropic_tool_result_full_content_surface` | 2026-04-21 | Grounding services | Open | Tool-result content modeled as nested/image-capable surface. |
 | REST request wire serde alignment | 2026-04-21 | Grounding services | Partial | Anthropic request coproduct wire authority is now source-level via `CoproductWireContract` rows for message/content payload enums; v2 Rust emit consumes coproduct-local contracts before module fallback/default and ratchets role/type serde. Remaining: Grounding Anthropic request-wire migration can resume after this lands and consume the substrate rows end-to-end. |
 | `repeat_string` constant-fold receipt | 2026-04 | PB / evaluator | Partial | Interim bridge retired; remaining target is in-runner / modeled std body evaluation. |
-| REST_OPS `CreateComment` test-table drift | 2026-04 | Grounding GitHub extdeps | Open | Test table consumes extdep operation facts; delete parallel path table. |
-| `__BUG_NO_PROFILE_...` sentinel | 2026-04 | PB / fail-closed | Open | Return `Option` / typed failure instead of fabricated string. |
+| REST_OPS `CreateComment` test-table drift | 2026-04 | Grounding GitHub extdeps | Retired | Dissolved: extdep authority via `all_parsed_extdep_rest_ops()` consumed at `src/v2/tests/src/effects.rs:255`; ratchet at `effects.rs:524 create_comment_rest_path_matches_github_issues_comments_api` enforces `/issues/{issue_number}` path. ROADMAP P0 row removed. |
+| `__BUG_NO_PROFILE_...` sentinel | 2026-04 | PB / fail-closed | Retired | Dissolved: `container_param_name_required` removed; `container_param_name` returns `String?` at `dsl/std/types.dag:103`; callers `match` the Option; sentinel literal absent from src/+dsl/; ratchet at `src/v2/tests/src/bug_sentinel_ratchet.rs`. ROADMAP P0 row removed. |
 | `http_path.dag` `None => ""` | 2026-04 | Grounding / fail-closed | Open | Parser returns `Option` / `Result`. |
 | `effects.dag` reparses typed transport from strings | 2026-04 | Grounding / effects | Open | `derive_op_effect` consumes typed transport declaration. |
 | Forgeable `ResourceHandle` | 2026-04 | Substrate resources | Open | Opaque/private constructor or witness-carrier handle. |
