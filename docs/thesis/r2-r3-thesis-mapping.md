@@ -109,7 +109,7 @@ Per THESIS §"Free consequences (fall out when Tiers 1-2 close)":
 |---|---|---|---|---|
 | **Automatic parallelism from dependency graph** | R3 | T-Free-Consequences-Demonstration / `auto_parallelism_*` + `auto_loop_parallelism_*` gates | `docs/design-free-consequences.md` + 6 parallelism TestClaims; `Lens<Bind-Independence>` / `Lens<Iteration-Independence>` + `Lens<Effect-Commutativity>` + `Lens<Cost>` | 🟡 R3 |
 | **Automatic memoization from purity + cost** | R3 | T-Free-Consequences-Demonstration / `auto_memoization_*` gates | `docs/design-free-consequences.md` + 2 memoization TestClaims; `Lens<Purity>` + `Lens<Cost>` | 🟡 R3 |
-| **Incremental cross-run execution from purity + bounded execution + dependency graph** | post-R3 (indirect) | No dedicated R3 gate; falls out from existing Tier 1 + Tier 2 commitments | THESIS:208 + what-else-falls-out.md §"Incremental cross-run execution"; demonstration optional post-R3 | ⏳ post-R3 (indirect) |
+| **Incremental cross-run execution from purity + bounded execution + dependency graph** | post-R3 (indirect) | No dedicated R3 gate; falls out from existing Tier 1 + Tier 2 commitments | THESIS:208 + what-else-falls-out.md §"Incremental cross-run execution"; **post-R3 tracked, not a live capability until consumer artifact lands** — one `.dag` TestClaim or runner path or interpreter cache path proving changed inputs ⇒ re-executed and unchanged inputs ⇒ cache hit | ⏳ post-R3 (indirect) |
 | **Space bound proofs from CX** | R1 | T-LaneE complexity-lens gates | E-family carrier port | 🟡 R1 closure |
 | **Cross-language optimization from shared cost algebra** | R3 | T-Free-Consequences-Demonstration / `cross_target_optimization_*` gates | `docs/design-free-consequences.md` + 2 cross-target optimization TestClaims; `Lens<Cost>` + `LanguageSpec` | 🟡 R3 |
 
@@ -155,6 +155,16 @@ Per THESIS §"Enumerable impossible-bug classes":
 | **R2+ class: unenumerated effects** | R2 | T-ImpossibleBugs Class 3 | PR #971 | ✅ landed in R2 |
 | **R2+ class: unhandled diagnostic paths** | R2 | T-ImpossibleBugs Class 2 | PR #969 iterating CI | 🟡 in flight |
 
+## Disposition table — Meta-process modeling
+
+Per THESIS §"Meta-process modeling":
+
+| Claim | Disposition | Lane / gate | Evidence | Status |
+|---|---|---|---|---|
+| **Build orchestration modeled as .dag workflows** | R3 | T-Workflow-As-Data (R3 Lane #17) | `docs/r3-structure.md` §T-Workflow-As-Data; THESIS:224 added "build orchestration" via PR #1738 | ⏳ R3 dispatch |
+
+**Note:** Bootstrap / CI / dev process modeling (other items in the THESIS Meta-process bullet at line 224) are tracked via T-PB program / extdeps emission / ROADMAP entries respectively; not expanded into separate rows here pending future scope extension. Build orchestration is broken out because PR #1738's SHIP_WITH_DEBT meta-review (gpt-5-5-pro 2026-05-05) flagged it as needing accounting parity to a named consumer (T-Workflow-As-Data lane #17 is that consumer).
+
 ## Disposition table — Modeling discipline
 
 Per THESIS §"Modeling discipline":
@@ -196,9 +206,9 @@ Compromises being made by the R2 + R3 split:
 
 ### Indirect / implicit claims (no dedicated lane)
 
-| Item | Why |
-|---|---|
-| Free consequences (auto-parallelism, auto-memoization, cross-language optimization) | These *fall out* from Tier 1 + Tier 2 closure; R3 L4-L7 harness exercises whether they actually do, but they're not separately deliverable |
+*No items currently — see notes below.*
+
+**Note on free consequences:** the prior "Free consequences (auto-parallelism, auto-memoization, cross-language optimization) — no dedicated lane" framing was retracted via PR #1738 follow-up: those three free consequences DO have dedicated R3 lanes per the §"Disposition table — Free consequences" above (T-Free-Consequences-Demonstration / `auto_parallelism_*` + `auto_memoization_*` + `cross_target_optimization_*` gates) following the 2026-04-30 R3 expansion (operationalized as Lane 3 demonstration deliverables — see note at line 116 above). Single-authority resolved by deleting the conflicting row — the disposition table is the single source. Same drift pattern as the 2026-04-28 concept-unifications retraction below.
 
 **Note on concept unifications:** every concept unification listed in THESIS §"Concept unifications" *does* now have a dedicated lane — see the §"Disposition table — Concept unifications" above. ("Coercion cost = complexity" → T-CostLens-Composition; "Coercion = emission" → T-Ground-Dissolve + T-Verification-L4-L7-Direct; "Target language spec = transport spec = interpreter runtime" → T-Verification-L5-Corpus; "Idempotency + cancellation + redundancy = algebraic simplification" → T-ImpossibleBugs Class 3.) The prior "no dedicated lane" framing for concept unifications was retracted 2026-04-28 per codex BLOCKING finding on `c98981634`: it split the release-control fact, since the disposition table assigned dedicated lanes while this summary said "no dedicated lane". Single-authority resolved by deleting the row — the disposition table is the single source.
 
