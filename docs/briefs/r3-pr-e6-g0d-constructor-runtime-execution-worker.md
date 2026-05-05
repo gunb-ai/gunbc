@@ -49,32 +49,32 @@ Two lowered constructor families reach `TransformTarget::Callable(target)`:
      `Conj`, orders inputs by the declaration's `children` labels, lowers each
      field expression against its field type, then calls
      `lower_constructor_invocation(dag, target_decl, inputs, span)` at
-     `src/v3/compiler/src/lower.rs:7214-7306`.
+     `src/v3/compiler/src/lower.rs:6442-6534`.
    - `lower_constructor_invocation` emits
      `Behavior::Transform(TransformNode { target:
      TransformTarget::Callable(target), inputs, ... })` at
-     `src/v3/compiler/src/lower.rs:7103-7118`.
+     `src/v3/compiler/src/lower.rs:6331-6347`.
    - The `target_decl` here is the record / Conj declaration, not an Arrow.
 
 2. **Variant constructors.**
    - Nullary variants can enter through `SurfaceExpr::Var` when the expected
      type is a sum: `resolve_expected_variant_constructor(...)` followed by
      `lower_constructor_invocation(..., Vec::new(), ...)` at
-     `src/v3/compiler/src/lower.rs:6574-6580`.
+     `src/v3/compiler/src/lower.rs:5846-5852`.
    - Named variant-record constructors enter through
      `lower_variant_record_expr`: the lowerer resolves the variant declaration,
      reads payload field labels/types via
      `variant_payload_fields_for_lowering`, orders payload inputs by those
      declared labels, and calls `lower_constructor_invocation(dag,
      variant_decl, inputs, ...)` at
-     `src/v3/compiler/src/lower.rs:7309-7404`.
+     `src/v3/compiler/src/lower.rs:6537-6614`.
    - `variant_payload_fields_for_lowering` gets the payload fields by walking
      the variant declaration to a `Conj` and preserving child labels at
-     `src/v3/compiler/src/lower.rs:6325-6347`.
+     `src/v3/compiler/src/lower.rs:5761-5779`.
    - Variant membership is not inferred from "walks to `Conj`" alone. The
      lowerer resolves constructor identity through
      `resolve_expected_variant_constructor`, which checks the parent
-     `TypeConnective::Disj { variants }` list (`src/v3/compiler/src/lower.rs:7493+`).
+     `TypeConnective::Disj { variants }` list (`src/v3/compiler/src/lower.rs:6703+`).
      For generic sums, that resolver may materialize an
      `Instantiation { template: variant_decl, arguments }`; E6-G0d must
      preserve that instantiation instead of checking only the outer
