@@ -189,14 +189,14 @@ jobs:
       # miss, first compile + link on ubuntu-latest) can spend minutes — keep
       # headroom beyond a tight 120s; per-test discipline lives in
       # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
-      - name: v3 tests (Stage 2d integration module, 300s cold-compile-safe budget)
+      - name: v3 tests (Stage 2d integration module, 420s cold-compile-safe budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler --test integration lane2_stage_2d_symbolic_cost_test::
           elapsed=$(( $(date +%s) - start ))
           echo "v3 Stage 2d (lane2d) wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 300 ]; then
-            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 300s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
+          if [ "$elapsed" -gt 420 ]; then
+            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 420s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
             exit 1
           fi
 
@@ -238,12 +238,12 @@ jobs:
       # `src/v3/compiler/tests/HANDOFF_PHASE0.md` (TESTING.md § test layers,
       # `feedback_test_timeout_2s`).
       #
-      # **`if: always()`** — the ratchet report is still useful on red runs
-      # (full-suite failure, 2400s transitional-budget overflow). The log is captured via
-      # `tee` before the enforcement check, so partial timing data survives
-      # failure and the ratchet can still emit actionable slow-test output.
+      # Run only when the full-suite step actually executed (success or failure).
+      # If an earlier step (e.g. lane2d budget) aborts the job, `v3_full_suite` is
+      # skipped — do not parse a stale `/tmp/v3-test-timings.log` from a prior
+      # step or runner reuse (`if: always()` alone is insufficient).
       - name: v3 tests (per-test 2s ratchet)
-        if: always()
+        if: always() && (steps.v3_full_suite.outcome == 'success' || steps.v3_full_suite.outcome == 'failure')
         run: |
           if [ ! -s /tmp/v3-test-timings.log ]; then
             echo "::notice::no timing log captured or log is empty (full-suite step did not reach cargo test, or tee wrote nothing) — skipping per-test ratchet"
