@@ -320,7 +320,11 @@ jobs:
   self_host_ratchet:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    # Cold ubuntu-latest can spend ~20–23m on the first `--release` v3-compiler
+    # compile inside `determinism_test`, then `self_host_fixed_point` touches the
+    # same crate graph again — 30m wall leaves no headroom (job cancellation mid-
+    # compile). Align headroom with the `v3` job budget.
+    timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:
