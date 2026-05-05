@@ -119,6 +119,8 @@ Audit conclusions: **no missing authority, no contradictions, no carrier/schema 
 
 ## Delta — 2026-05-05 refresh vs current `origin/main`
 
+Repro pin: `origin/main @ 530c76ea76ce0163f5f11f9c525333a59940c2ee`.
+
 Refresh command surface:
 
 - `rg -n "regen_lens" .github/workflows scripts docs src/v3/compiler/tests/integration src/v3/compiler/Cargo.toml src/v3/compiler/build.rs dsl/std/runtime/bin_shims/README.md src/v3/std/bin_shim.dag src/v3/compiler/src/emit_rust_bin_shim.rs src/v3/compiler/src/process_exit.rs`
