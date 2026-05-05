@@ -11,15 +11,15 @@
 // What we actually depend on from rustup:
 //   - cargo binary, installed by default with the stable toolchain
 //   - rustc, installed by default
-//   - Pinned toolchain "1.93.0" in CI (.github/workflows/ci.yml)
+//   - Pinned toolchain "1.93.0" in repo-root rust-toolchain.toml (CI reads it)
 //
 // What we do NOT currently depend on:
 //   - Custom components (clippy ships with stable, rustfmt ships with stable)
 //   - Cross-compilation targets (gunbc only builds for the host)
 //   - Multiple toolchains (no toolchain switching)
 //
-// The CI workflow uses dtolnay/rust-toolchain@v1 to provision
-// rustup. Local dev uses whatever rustup ships as stable.
+// CI uses actions-rust-lang/setup-rust-toolchain (see dsl/extdeps/github/actions.dag).
+// Local dev follows rust-toolchain.toml via rustup.
 //
 // Future:
 //   When we model toolchain switching, channels, components, or
