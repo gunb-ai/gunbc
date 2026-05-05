@@ -77,4 +77,6 @@ sg2_parse_authority_test::parse_surface_dag_compiles_cleanly_for_regen_parse  # 
 sg2c1_parse_tables_authority_test::parse_tables_generated_module_matches_checked_in_snapshot  # SG-2c-1 grammar-tables prototype snapshot: in-process authority compile (parse_tables.dag + tokenize.dag) + rustfmt stdout; same paydown class as SG-1 tokenize / SG-2 parse snapshot gates.
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
 
+t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible  # T-Demo integration: `compile_to_dag` on the full fixture plus two canonical `TestRunner::run_suite` passes; ~2.0–2.6s wall on cold ubuntu-latest under default libtest parallelism (PR #1792 CI). Paydown: shared `OnceLock` fixture `Dag` across `t_demo_fixture_test` cases (TESTING.md § test layers / shared-setup), not TM-0.
+
 thesis_validation_test::kf_1_structural_list_operation_ordering_holds  # KF-1 thesis validation remains compile-heavy on CI runners; TESTING.md test-shape paydown owns future decomposition, not TM-0.
