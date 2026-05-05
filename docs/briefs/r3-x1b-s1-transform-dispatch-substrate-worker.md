@@ -162,9 +162,11 @@ Per `x1b-evaluator-impact-audit.md` §5 STOP conditions:
 
 1. **Substrate exists?** No — `TransformDispatch` is the new
    carrier this slice introduces; today's `TransformNode` carries
-   `target: TransformTarget` (`src/v3/compiler/src/dag.rs:1695-1712`)
-   + `inputs: Vec<PortId>`. No existing carrier dissolves the HO
-   field-call gap.
+   `target: TransformTarget` + `inputs: Vec<PortId>`. Live anchors
+   at the time of this brief authoring (re-verify at dispatch):
+   `pub enum TransformTarget` at `src/v3/compiler/src/dag.rs:1874`;
+   `pub struct TransformNode` at `:1900`. No existing carrier
+   dissolves the HO field-call gap.
 2. **Existing brief?** This brief is the X1.b S1 worker dispatch.
    Authority docs: design-prereq-x-ho-field-call.md (§Prereq-X1 /
    §L1.b) is the design authority; x1b-evaluator-impact-audit.md
@@ -175,10 +177,15 @@ Per `x1b-evaluator-impact-audit.md` §5 STOP conditions:
    `resolve_arrow_port`, builders, and `input_ports()` listed
    here. The audit's S1 spec at §4 matches the design-doc
    recommendation 1:1.
-4. **Citations live?** `src/v3/compiler/src/dag.rs:1695-1712`
-   (`TransformTarget` enum + `TransformNode` struct) verified at
-   HEAD via design-doc cite (worker re-verifies at S1 start since
-   line numbers may drift).
+4. **Citations live?** `src/v3/compiler/src/dag.rs:1874`
+   (`pub enum TransformTarget`) and `:1900` (`pub struct
+   TransformNode`) verified at HEAD by direct grep on this brief's
+   authoring tree (post-cursor-review fix; the pre-fix range
+   `:1695-1712` was wrong — that's the `ordinal_param_label` /
+   `BindNode` side-table region). Worker re-verifies at S1 start
+   since line numbers will continue to drift; cite by symbol
+   (`pub enum TransformTarget` / `pub struct TransformNode`)
+   alongside the line number to make drift recoverable.
 5. **Carrier dissolves the bridge?** Yes — `TransformDispatch`
    collapses `target` and `inputs` into a single typed sum;
    `input_ports()` is the single dependency-walk authority,
