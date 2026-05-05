@@ -19,6 +19,12 @@ still hold. Canonical narrative + landings:
 [`r3-pr-e6-lens-fold-readiness-audit.md`](./r3-pr-e6-lens-fold-readiness-audit.md)
 §Refresh and §What G0a/G0b/G0c have unblocked.
 
+**Landings (not forward dependencies):** §Refresh records **E6-G0b**
+(static X1.a parse + lower, PR **#1699**) and **E6-G0c** (`FieldProject`
+/ `Callable` execution, PR **#1715**) as already on `main`. The bullets
+below are **regression STOPs** if those slices slip — they do **not**
+mean G0b/G0c are still unmerged prerequisites blocking this packet.
+
 - **E6-G0c — body `FieldProject` + `Callable`:** Execution must remain
   in `src/v3/compiler/src/lib.rs` **`eval_transform_node`**
   (`Behavior::Transform`, `Value` carrier) at the cited line spans — not
