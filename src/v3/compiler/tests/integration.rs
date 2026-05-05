@@ -248,26 +248,30 @@ mod t_demo_fixture_test {
         );
     }
 
-    #[test]
-    fn t_demo_canonical_suites_are_runner_visible() {
-        let dag = shared_t_demo_fixture_dag();
+    fn assert_t_demo_canonical_suite_passes(dag: &Dag, suite_name: &str) {
+        let results = TestRunner::new(dag).run_suite(suite_name);
+        assert!(
+            !results.is_empty(),
+            "T-Demo suite `{suite_name}` should contain Day-1 Compiles claims"
+        );
+        assert!(
+            results
+                .iter()
+                .all(|result| result.result == ClaimResult::Pass),
+            "T-Demo suite `{suite_name}` should pass Day-1 Compiles claims, got {results:?}"
+        );
+    }
 
-        for suite_name in [
-            "fixture_compiler_nerd_canonical",
-            "fixture_integration_canonical",
-        ] {
-            let results = TestRunner::new(dag).run_suite(suite_name);
-            assert!(
-                !results.is_empty(),
-                "T-Demo suite `{suite_name}` should contain Day-1 Compiles claims"
-            );
-            assert!(
-                results
-                    .iter()
-                    .all(|result| result.result == ClaimResult::Pass),
-                "T-Demo suite `{suite_name}` should pass Day-1 Compiles claims, got {results:?}"
-            );
-        }
+    #[test]
+    fn t_demo_fixture_compiler_nerd_canonical_suite_is_runner_visible() {
+        let dag = shared_t_demo_fixture_dag();
+        assert_t_demo_canonical_suite_passes(dag, "fixture_compiler_nerd_canonical");
+    }
+
+    #[test]
+    fn t_demo_fixture_integration_canonical_suite_is_runner_visible() {
+        let dag = shared_t_demo_fixture_dag();
+        assert_t_demo_canonical_suite_passes(dag, "fixture_integration_canonical");
     }
 
     /// ROADMAP T-Demo / PR #764: `FailsWithDiagnostic.detail_contains` must pin the **sum
