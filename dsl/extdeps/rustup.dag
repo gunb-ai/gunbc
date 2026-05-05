@@ -16,7 +16,8 @@
 //     duplicate `components:` in `.github/workflows/ci.yml`)
 //
 // What we do NOT currently depend on:
-//   - Custom components (clippy ships with stable, rustfmt ships with stable)
+//   - Rustup components beyond those listed in rust-toolchain.toml (today
+//     clippy + rustfmt; no llvm-tools-preview, rust-src, miri, etc.)
 //   - Cross-compilation targets (gunbc only builds for the host)
 //   - Multiple toolchains (no toolchain switching)
 //
