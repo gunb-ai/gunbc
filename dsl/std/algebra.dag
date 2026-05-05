@@ -489,7 +489,9 @@ type Ordering = Less | Equal | Greater
 // concat, etc.) on kernel types during build_type_env.
 //
 // Canonical source: adding algebraic enrichment for a new kernel type
-// requires one line in kernel_algebra_profile below.
+// requires one line in kernel_algebra_profile below. v3 compiler accessors
+// consume this lowered map directly; v2 parity tests remain only as transition
+// ratchets until PB retires the old stage0 comparison.
 // =========================================================================
 
 type AlgebraProfile
