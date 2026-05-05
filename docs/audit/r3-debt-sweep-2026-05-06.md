@@ -81,7 +81,7 @@ Smaller scope bridges: F10 install_hint, ad-hoc fold sentinels, etc.
 ## §2 Hidden debt audit
 
 Items NOT currently in ROADMAP that should be tracked. Sources:
-- SG-0 census per-entry justification (136 hand-authored Rust entries; per-entry: is it bridge or intentional permanent? if bridge, dissolution trigger?)
+- SG-0 census per-entry justification (live count via `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` arrays in `src/v3/compiler/tests/integration/sg0_census_test.rs`; per-entry: is it bridge or pre-existing STRUCTURAL apparatus? if bridge, dissolution trigger?)
 - Worker-inbox findings not yet escalated (Mgr canvas surfaces from per-Mgr inbox histories)
 - Recent analyses items not yet rowed (cross-reference gpt-5-5-pro Exploratory main@41019a8 + Reflective main@2b7b21b + earlier paired analyses 2026-04-25 / 2026-04-30 / 2026-05-01)
 
@@ -140,9 +140,9 @@ Going-forward discipline encoded as PR-authoring contract. Folds in Director's p
 
 **Every PR adding hand-Rust must same-PR answer (in PR description or commit message):**
 
-(a) **Bridge class** — A-G per §1 framework above. If the hand-Rust isn't bridge (intentional permanent — e.g., compiler scaffold that's load-bearing forever), state "non-bridge: [reason]".
+(a) **Bridge class** — A-G per §1 framework above. SG-0 zero-floor discipline: hand-authored v3 Rust must dissolve same-PR, cite a named structural trigger (with R3-close eligibility GREEN/YELLOW per §3), or carry explicit Director RED allocation. There is no permitted "intentional permanent" exception in the going-forward contract — pre-existing STRUCTURAL infrastructure (the SG-0 measurement apparatus itself; see §3.A grandfathering pending Director ratification of the new STRUCTURAL status) is the only category exempt, and new STRUCTURAL additions require explicit Director allocation citing the SG-0 program shape.
 
-(b) **Substrate-gap-class blocking dissolution** (if any) — name the gap that prevents same-PR dissolution. If no gap, state "no blocker; intentional permanent" (and §a should match).
+(b) **Substrate-gap-class blocking dissolution** (if any) — name the gap that prevents same-PR dissolution. If no gap, the contract's options collapse to "dissolve same-PR" or "explicit Director RED allocation"; "intentional permanent" without Director allocation is not allowed.
 
 (c) **Same-PR dissolution OR named-trigger-with-R3-close-eligibility** — if dissolution doesn't land same-PR, name the trigger + R3-close eligibility (GREEN/YELLOW/RED per §3 rubric). RED requires Director-level allocation.
 
@@ -162,9 +162,9 @@ Going-forward discipline encoded as PR-authoring contract. Folds in Director's p
 
 - **v3 compiler**: ~69 `.rs` files in `src/v3/compiler/src/`
 - **v3 std**: ~35 `.dag` files in `src/v3/std/`
-- **SG-0 census**: 136 hand-authored Rust entries (per `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS`)
+- **SG-0 census**: live entries via `EXPECTED_HAND_AUTHORED_NON_TEST` + `EXPECTED_HAND_AUTHORED_TEST` + `EXPECTED_HAND_AUTHORED_FRAGMENTS` arrays in `src/v3/compiler/tests/integration/sg0_census_test.rs` (the SG-0 partition authority; do not snapshot the count here — derive at audit time from the live arrays per `feedback_corrections_must_grep_verify_source`)
 - **R2/R3-era PR history**: ~500+ PRs (R2 close at #1275 → current HEAD ~#1803). Method: per-Mgr-lane parallel canvas (each Mgr surveys merged PRs in their lane subset for debt-introduction patterns + dissolution status). Pattern-audit, not per-PR-deep-audit.
-- **ROADMAP**: 97 open tracked items + DB-1 through DB-20 + W-C1 + 11 scheduled deletions + Tracked debts 2026-04 + 2026-05 sub-sections + Course Corrections #1-#4 (ROADMAP:575-583)
+- **ROADMAP**: open tracked items + DB-1 through DB-20 + W-C1 + scheduled deletions + Tracked debts 2026-04 + 2026-05 sub-sections + Course Corrections #1-#4 (ROADMAP §"Reflective course corrections" section anchor; per `feedback_section_anchors_over_line_numbers` — do not cite line numbers since ROADMAP edits drift them)
 - **Recent analyses**: gpt-5-5-pro Exploratory main@41019a8 (F1-F11) + Reflective main@2b7b21b (Risks 1-5) + earlier paired analyses 2026-04-25 / 2026-04-30 / 2026-05-01
 
 ---
