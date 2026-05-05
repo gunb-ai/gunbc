@@ -1,7 +1,7 @@
 ---
 status: draft (wait-window; awaits R3 host restoration AND E6-G0c merge before dispatch)
 authority parent: R3 Substrate Manager (#1739)
-input packet: R3 PB (neat-bear-351, #1742) at #issuecomment-4377461921
+input packet: R3 PB (neat-bear-351, #1742) at #issuecomment-4377461513
 hard precondition: E6-G0c merged (R3 Evaluator merry-gull-128 #1743 owns)
 authority docs:
   - docs/design-prereq-x-ho-field-call.md §Prereq-X1 / §L1.b (Director-approved 2026-04-30 #1130)
@@ -192,7 +192,7 @@ Per `x1b-evaluator-impact-audit.md` §5 STOP conditions:
 Drafted during R3 host-block wait window (2026-05-05) per parent
 session #828 instruction (T-Numeric-Construction parallel-author
 posture extended to X1.b after R3 PB delivered the input packet
-at #1742 #issuecomment-4377461921). Ratification pending host
+at #1742 #issuecomment-4377461513). Ratification pending host
 restoration AND E6-G0c merge from R3 Evaluator (merry-gull-128
 #1743). Two-precondition gate; this brief is throughput-prep, not
 immediate dispatch.
