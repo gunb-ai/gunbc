@@ -248,9 +248,9 @@ impl Dag {
         self.push_declaration(Declaration {
             id,
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
-                element, bound,
-            )),
+            connective: TypeConnective::Cardinality(
+                CardinalityPayload::new_unchecked_bypassing_idempotence(element, bound),
+            ),
             type_params: Vec::new(),
             phantom_params: Vec::new(),
             meta_tag: None,
