@@ -11,16 +11,16 @@
 // What we actually depend on from rustup:
 //   - cargo binary, installed by default with the stable toolchain
 //   - rustc, installed by default
-//   - Pinned toolchain "1.93.0" in CI (.github/workflows/ci.yml)
+//   - Pinned channel "1.93.0" in repo-root rust-toolchain.toml; CI jobs also pass
+//     `toolchain:` into setup-rust-toolchain (see .github/workflows/ci.yml) today
 //
 // What we do NOT currently depend on:
-//   - Custom components (clippy ships with stable, rustfmt ships with stable)
+//   - Extra rustup components beyond rust-toolchain.toml (rustfmt + clippy today)
 //   - Cross-compilation targets (gunbc only builds for the host)
 //   - Multiple toolchains (no toolchain switching)
 //
-// The CI workflow uses actions-rust-lang/setup-rust-toolchain@v1.16.0
-// (same ref as dsl/extdeps/github/actions.dag `setup_rust_action`).
-// Local dev follows rust-toolchain.toml (channel 1.93.0).
+// CI uses actions-rust-lang/setup-rust-toolchain (see extdeps/github/actions.dag
+// `setup_rust_action`). Local dev follows rust-toolchain.toml via rustup.
 //
 // Future:
 //   When we model toolchain switching, channels, components, or
@@ -45,7 +45,7 @@ data rustup_install_url: NonEmptyStr = "https://rustup.rs"
 // Default channel we expect when "rustup default" is queried.
 data default_channel: RustChannel = Stable
 
-// The pinned rustc channel used in CI and in rust-toolchain.toml.
+// The pinned toolchain channel string (must match rust-toolchain.toml `[toolchain].channel`).
 data ci_pinned_toolchain: NonEmptyStr = "1.93.0"
 
 // Rustup docs URL for reference.
