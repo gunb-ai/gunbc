@@ -74,48 +74,81 @@ mirror `rustc_lexer::Cursor::single_quoted_string` semantics, NOT
 a naive byte heuristic.
 
 **Worker pre-flight obligation (Path B):** read
-`rustc_lexer/src/lib.rs` `single_quoted_string` (or the live
-equivalent in the rustc tree at the worker's pin) and reproduce
+`rustc_lexer/src/lib.rs` `Cursor::lifetime_or_char` (the actual
+disambiguator entry point — NOT `single_quoted_string`, which is
+the body-consumer that runs after disambiguation) and reproduce
 its disambiguation logic faithfully. Cite the upstream source
 SHA in the PR body. Naive lookback heuristics (e.g., "previous
 byte is not identifier-continuation") are explicitly rejected
 per the BLOCKING finding on the prior brief revision — they
 misclassify `&'a T` and `'label: loop` as char openers.
 
+`lifetime_or_char` decides between lifetime and char-literal by
+peeking the next two characters (after the opening `'`):
+- if char1 is a non-identifier-start byte, OR
+- if char1 is an identifier byte AND char2 is `'` (closing quote)
+  with char1 being a single-character literal,
+- OR if the body matches `\<escape>'` (escape pattern + closing
+  quote within bounded window),
+then it's a char literal; otherwise lifetime.
+
+Path B's byte-oriented scan reproduces these branches exactly,
+not a quote-search approximation.
+
 Sketch of the lexer-faithful rule:
 
 1. Add a fifth state `Char` to `IntegrationRsScan` in
    `src/v3/compiler/tests/integration/common/mod.rs:138-200`.
-2. Wire the `Code` → `Char` transition via **bounded forward
-   lookahead**, NOT previous-byte lookback. A previous-byte rule
-   misclassifies `&'a T` (byte before `'` is `&`, not an identifier
-   byte) and `'label: loop { ... }` (byte before `'` is whitespace
-   or `{`) as char-literal openers — both are lifetimes / labels.
-   Concretely: when the scanner sees `'` in `Code`, peek forward
-   up to 16 bytes (the longest valid char-literal body
-   `'\u{10FFFF}'` is ~10 bytes between quotes; 16 is the
-   defensive ceiling) for a closing `'`, honoring `\` as an
-   escape (the byte after `\` is consumed as part of the escape
-   without acting as a closing quote).
-   - **Closing `'` found within the window** → enter `Char`
-     (consume from the opening `'` through the closing `'`
-     inclusive); resume `Code`.
-   - **No closing `'` within the window** → the opening `'` was
-     a lifetime / label start, not a char-literal opener; stay
-     in `Code`, advance past the `'` only, and let the
-     identifier-continuation bytes after it be scanned in `Code`
-     normally.
-   This is fail-closed by construction: lifetimes / labels do not
-   carry closing `'`, so they never enter `Char`; char literals
-   always carry closing `'` within the bounded window, so they
-   always enter `Char`. No false-`Char` on lifetime / label syntax.
-3. The bounded-lookahead recognizer in step 2 already handles
-   `\`-escape skipping inside the `Char` body. The scanner enters
-   `Char` only after the closing `'` is confirmed reachable, so
-   the body is consumed in a single pass without state drift.
-   Numeric / hex / unicode escapes inside the body do not require
-   byte-level decoding — only escape-skip is required for
-   closing-quote correctness.
+2. Wire the `Code` → `Char` transition via **branch-based
+   disambiguation mirroring `Cursor::lifetime_or_char`**, NOT
+   bounded-quote-search. A quote-search rule (peek N bytes for
+   a closing `'`) silently misclassifies adjacent lifetimes:
+   in `<'a, 'b>` the second `'b` quote sits inside any
+   reasonable lookahead window from the first `'`, so a
+   quote-search rule classifies `a, '` as a `Char` body and
+   silently violates P3 fail-closed. The same trap fires for
+   `for<'a, 'b>`, `&'a 'b ()`, and label-then-char shapes when
+   the second token's `'` falls inside the window. The rule
+   below avoids the trap by branching on the FIRST byte after
+   `'`, never on a far-away closing quote.
+   - **Sees `'` at position p in `Code`.** Peek `char1` = byte
+     at p+1.
+   - **Branch 1: `char1` is `\` (escape).** Consume the escape
+     sequence per rustc rules (`\<single>` or `\x..` /
+     `\u{...}`), then assert the following byte is `'`. If yes
+     → enter `Char` and emit the closed range `[p, close]`;
+     if no → malformed input (in `tests/integration.rs` this
+     is a syntax error and the scan can panic per existing
+     `IntegrationRsScan` discipline).
+   - **Branch 2: `char1` is an identifier-start byte
+     (`[A-Za-z_]`).** Peek `char2` = byte at p+2.
+       - If `char2 == '` → char literal (`'a'` shape). Enter
+         `Char` for the closed range `[p, p+2]`.
+       - **Otherwise → lifetime / label.** Stay in `Code`,
+         advance past `'` only. The identifier-continue bytes
+         after `'` resume normal `Code` scanning. Critically,
+         this branch fires regardless of what later bytes look
+         like — `'a, 'b>` correctly stays in `Code` because
+         `char2 = ','`, not `'`. The second `'b` is processed
+         independently when the scanner reaches it.
+   - **Branch 3: `char1` is any other byte (non-`\`,
+     non-identifier-start) — e.g., space, digit, punctuation,
+     non-ASCII.** Treat as a single-byte char-literal body:
+     assert byte at p+2 is `'`; if yes → `Char` for `[p, p+2]`;
+     if no → malformed (panic / surface).
+   The three branches together reproduce `lifetime_or_char`'s
+   decision exactly. **No window scan, no closing-quote search.**
+   Lifetimes followed by other lifetimes within any distance
+   stay in `Code` because Branch 2's `char2 != '` test fires
+   immediately, before the second `'` is ever inspected.
+3. Within the closed `Char` range determined by step 2, no
+   further escape-skipping is needed — the range was already
+   chosen with escapes consumed. The body is structurally
+   bounded: at most 1 byte (Branch 2/3 simple-char) or the
+   `\<escape>` length (Branch 1). Numeric / hex / unicode
+   escapes inside the `\<escape>` form do not require byte-
+   level decoding for the scanner — only the escape-skip in
+   Branch 1 is required for closing-quote correctness.
 4. Update the `Code`-state raw / byte-string opener probe so it does
    not fire when the apparent opener is inside `Char`. (With state
    #5 in place, this is automatic — the probe lives in `Code` only.)
@@ -152,9 +185,15 @@ must satisfy:
   char-literal bodies (the original workaround-attractor pattern);
   (b) `&'a T` lifetime in reference position stays code (Path A:
   not classified as literal-skip; Path B: stays in `Code`);
-  (c) `'label: loop { ... }` label form stays code (same).
-  All green. The lifetime + label tests are the BLOCKING-finding
-  regression cases — not optional.
+  (c) `'label: loop { ... }` label form stays code (same);
+  (d) **adjacent lifetimes** `for<'a, 'b>` and `Fn() -> &'a 'b ()`
+  stay code — multiple consecutive `'<ident>` tokens never enter
+  `Char`; (e) **adjacent label-then-char** `'l: loop { let c = 'x';
+  break 'l; }` correctly disambiguates the inner `'x'` as `Char`
+  while the outer `'l` lifetimes stay `Code`. Tests (a)-(e) are
+  the BLOCKING-finding regression cases — not optional. Path A
+  inherits rustc's disambiguation by construction; Path B's
+  byte-oriented scan must pass tests (a)-(e) explicitly.
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green.
 - `cargo clippy --all-targets -- -D warnings` clean.

@@ -38,12 +38,31 @@ request-side tool_result coverage on the same Anthropic Messages
 module surface (Director's "LLM-coherence" rationale at
 ratification time).
 
-## Slice
+## Slice — per-token enumeration of the live closure row
+
+The closure row at `anthropic.dag:188` carries 7 discrete tokens
+(re-verified at HEAD as of brief authoring; worker re-verifies at
+dispatch since the row may narrow further before S1 starts). Each
+token is a discrete acceptance item; the slice closes the row
+either by retiring all 7 or by explicitly narrowing the remaining
+residual to a named subset:
+
+| Token in closure                            | Sub-slice item        | Closure shape                                              |
+|---|---|---|
+| `json_pending:container`                    | (1) typed container    | `AnthropicMessages200Body.container: Json?` → typed coproduct OR explicit "stays opaque per API spec" residual |
+| `AnthropicMessages200TextBlock` (carrier)   | (2) carrier rename     | rename to `AnthropicMessages200ContentBlock` (or equivalent) reflecting it is now a coproduct, not a text-only single-variant |
+| `variant_pending:thinking`                  | (3) `Thinking` variant | typed payload per Anthropic API: `{ thinking: String, signature: String }` (worker re-verifies at API spec) |
+| `variant_pending:tool_use`                  | (4) `ToolUse` variant  | typed payload per API: `{ id: String, name: String, input: Json }` (worker re-verifies) |
+| `variant_pending:redacted_thinking`         | (5) `RedactedThinking` variant | typed payload per API: `{ data: String }` (worker re-verifies) |
+| `variant_pending:web_search`                | (6) `WebSearch` variant | payload per API (worker re-reads the spec; closure tag does not enumerate fields) |
+| `variant_pending:server_tool_use`           | (7) `ServerToolUse` variant | payload per API (same — worker re-reads spec) |
+
+### Slice steps
 
 1. **Content-block coproduct sub-slice.** Replace
-   `AnthropicMessages200TextBlock` (or the carrier of which it
-   is a singleton variant) with a coproduct expressing the five
-   missing variants:
+   `AnthropicMessages200TextBlock` (today's singleton-variant
+   carrier) with a coproduct expressing all five missing
+   variants from items (3)-(7) of the table above:
 
    ```dag
    type AnthropicMessages200ContentBlock
@@ -85,11 +104,63 @@ ratification time).
    shape; new ratchets follow that lockdown form for the
    response side.
 
-5. **Closure-tag retirement.** The closure tag at `:188`
-   retires (full closure) or narrows (if `container` legitimately
-   stays `Json?` per sub-slice 2 STOP). On full closure, the row
-   deletes; on narrow, the closure tag rewrites to name only the
-   remaining gap-carried variants/fields.
+5. **Reachable-carrier audit (mandatory pre-retirement).**
+   Before retiring the closure tag, enumerate every carrier
+   reachable from `AnthropicMessages200Body`. The wait-window
+   scan identifies these (worker re-verifies at dispatch):
+   `AnthropicMessages200TextBlock` (current singleton — to be
+   widened per slice step 1); `AnthropicMessages200Citation`
+   (`anthropic.dag:141`, consumed via
+   `AnthropicMessages200TextBlock.citations`);
+   `AnthropicMessages200Usage` (`:154`, consumed via
+   `AnthropicMessages200Body.usage`);
+   `AnthropicStopReason` (`:168`, TERMINAL).
+
+   For each reachable carrier, audit whether any of these
+   conditions hold; if any does, the **carrier is residue**
+   that the closure tag at `:188` does not currently
+   enumerate but which the slice's response-fidelity
+   obligation reaches:
+   - **Untyped string-or-json placeholder** for an enum-like
+     wire field (e.g., `AnthropicMessages200Usage.service_tier:
+     String?` at `:159` — Anthropic Messages API documents
+     `service_tier` as an enum-like field, so `String?` may
+     be untyped placeholder rather than honest residual).
+   - **Optional Json field** that the API spec encodes with
+     a typed shape.
+   - **An additive variant set whose closure isn't tracked
+     anywhere** (e.g., `AnthropicMessages200Citation` variant
+     completeness).
+
+   Each such finding either lands in the slice (extending the
+   carrier with the typed shape / new variants) OR earns a
+   new explicit closure-tag entry (e.g., `data
+   structural_coverage_gap_anthropic_messages_200_usage_service_tier`)
+   that gets its own residue tracking. The worker MUST NOT
+   retire the parent closure tag at `:188` without resolving
+   every reachable-carrier residual either by inclusion or by
+   explicit re-tracking.
+
+6. **Closure-tag retirement / explicit narrowing.** The
+   closure tag at `:188` retires when **all 7 items in the
+   per-token table close AND every reachable-carrier residual
+   from step 5 is either modeled or explicitly re-tracked.**
+   If any single item legitimately cannot close (e.g.,
+   `container` stays `Json?` per sub-slice 2 STOP; a
+   `variant_pending` shape the API spec doesn't yet name
+   stably; a reachable-carrier residual whose closure shape
+   needs separate Director sign-off), the closure tag does
+   NOT retire — instead, it **narrows** by rewriting the
+   closure string to enumerate only the remaining residual
+   tokens with explicit per-residual rationale
+   (`json_pending:container|reason:API spec leaves this field
+   opaque to clients`, etc.). Per
+   `feedback_corrections_must_grep_verify_source` the worker
+   never silently leaves an old token in the closure; each
+   remaining token earns explicit per-token rationale, and
+   any newly-discovered reachable-carrier residual gets its
+   own tracking row rather than being swept under the parent
+   closure's retirement.
 
 ## Acceptance
 
@@ -116,6 +187,14 @@ ratification time).
   live API reference; if the closure-tag's five named missing
   variants are not the full set on the wire today, surface — the
   row needs re-scoping, not silent expansion.
+- **Reachable-carrier residual cannot be resolved in this slice's
+  scope.** If step 5's audit surfaces a residual whose dissolution
+  shape is genuinely larger than this slice (e.g., the typed
+  `service_tier` coproduct's variant set requires Anthropic API
+  reference work the slice can't absorb cleanly), STOP — split
+  the residual to a new closure-tag entry with explicit re-tracking,
+  surface the split to R3 Substrate Manager, and narrow the parent
+  closure rather than retire it.
 - **`container` field is opaque by API design.** If the Anthropic
   spec confirms `container` carries client-opaque data, narrow the
   closure tag rather than fabricating a typed surface.
