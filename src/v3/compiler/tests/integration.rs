@@ -205,6 +205,7 @@ mod t_demo_fixture_test {
 
     use std::fs;
     use std::path::PathBuf;
+    use std::sync::OnceLock;
 
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Dag;
@@ -227,10 +228,15 @@ mod t_demo_fixture_test {
         crate::common::cached_compile_to_dag(source, FIXTURE)
     }
 
+    static T_DEMO_FIXTURE_DAG: OnceLock<Dag> = OnceLock::new();
+
+    fn cached_t_demo_fixture_dag() -> &'static Dag {
+        T_DEMO_FIXTURE_DAG.get_or_init(|| compile_fixture(&fixture_source()))
+    }
+
     #[test]
     fn t_demo_fixture_skeleton_compiles() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
+        let dag = cached_t_demo_fixture_dag();
 
         assert!(
             dag.diagnostics().is_empty(),
@@ -241,14 +247,13 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_canonical_suites_are_runner_visible() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
+        let dag = cached_t_demo_fixture_dag();
 
         for suite_name in [
             "fixture_compiler_nerd_canonical",
             "fixture_integration_canonical",
         ] {
-            let results = TestRunner::new(&dag).run_suite(suite_name);
+            let results = TestRunner::new(dag).run_suite(suite_name);
             assert!(
                 !results.is_empty(),
                 "T-Demo suite `{suite_name}` should contain Day-1 Compiles claims"
@@ -283,9 +288,8 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_impossible_bug_suite_r1_passes() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag).run_suite("impossible_bug_class_suite_r1");
+        let dag = cached_t_demo_fixture_dag();
+        let results = TestRunner::new(dag).run_suite("impossible_bug_class_suite_r1");
         assert_eq!(results.len(), 2);
         assert!(
             results
@@ -301,9 +305,8 @@ mod t_demo_fixture_test {
     /// surface is user-extensible (THESIS §"User-defined dimensions").
     #[test]
     fn t_demo_user_authored_lens_rejects_violating_program_passes() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag)
+        let dag = cached_t_demo_fixture_dag();
+        let results = TestRunner::new(dag)
             .run_suite("demo_user_authored_lens_rejects_violating_program_suite");
         assert_eq!(results.len(), 1);
         assert!(
@@ -328,9 +331,8 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_structural_cost_obligation_suite_observes_cost_bound_fail() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag).run_suite("t_demo_structural_cost_obligation_suite");
+        let dag = cached_t_demo_fixture_dag();
+        let results = TestRunner::new(dag).run_suite("t_demo_structural_cost_obligation_suite");
         assert_eq!(results.len(), 1);
         let ClaimResult::Fail(msg) = &results[0].result else {
             panic!(
