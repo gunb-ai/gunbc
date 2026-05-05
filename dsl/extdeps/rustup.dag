@@ -11,8 +11,9 @@
 // What we actually depend on from rustup:
 //   - cargo binary, installed by default with the stable toolchain
 //   - rustc, installed by default
-//   - Pinned toolchain channel in repo-root rust-toolchain.toml (read by CI
-//     `actions-rust-lang/setup-rust-toolchain` after checkout)
+//   - Pinned toolchain channel + components in repo-root rust-toolchain.toml
+//     (read by CI `actions-rust-lang/setup-rust-toolchain` after checkout; no
+//     duplicate `components:` in `.github/workflows/ci.yml`)
 //
 // What we do NOT currently depend on:
 //   - Custom components (clippy ships with stable, rustfmt ships with stable)

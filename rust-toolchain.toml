@@ -1,6 +1,7 @@
-# Canonical Rust channel + components for local rustup and GitHub Actions
-# (`actions-rust-lang/setup-rust-toolchain` reads this file after checkout).
-# Dependency notes: `dsl/extdeps/rustup.dag` (no second pin constant — this file is sole authority).
+# Canonical Rust toolchain (channel + components) for local rustup and for
+# `actions-rust-lang/setup-rust-toolchain` after checkout. CI must not pass a
+# parallel `components:` override — this file is the sole authority (P2).
+# DSL notes: `dsl/extdeps/rustup.dag` (no second semver pin constant).
 [toolchain]
 channel = "1.93.0"
 components = ["clippy", "rustfmt"]
