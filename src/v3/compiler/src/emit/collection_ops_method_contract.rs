@@ -102,6 +102,7 @@ fn require_method_template_contract_fields_dag_method(
             "flat_map_contract" => "CollectionOps.flat_map_contract must target flat_map_method",
             "any_contract" => "CollectionOps.any_contract must target any_method",
             "all_contract" => "CollectionOps.all_contract must target all_method",
+            "map_contract" => "CollectionOps.map_contract must target map_method",
             "is_empty_contract" => {
                 "CollectionOps.is_empty_contract must target is_empty_method (FreeMonoid<T>.is_empty -> Bool)"
             }

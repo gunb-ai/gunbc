@@ -41,7 +41,7 @@ const METHOD_REF_FIELDS: &[&str] = &["decl"];
 /// **not** list elements — `verify_stratum_a_lockstep_all_targets` closes that
 /// receipt separately (`verify_language_spec_collection_ops_contract_wiring`).
 pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
-    &[(RUST_LIST, 13), (PYTHON_LIST, 17), (GO_LIST, 13)];
+    &[(RUST_LIST, 13), (PYTHON_LIST, 16), (GO_LIST, 12)];
 
 /// (`CollectionOps` decl, field name, named `MethodTemplateContract` decl, expected registry method name).
 const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str)] = &[
@@ -70,6 +70,12 @@ const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str
         "fold",
     ),
     (
+        "rust_collection_ops",
+        "map_contract",
+        "rust_language_spec_map_contract",
+        "map",
+    ),
+    (
         "python_collections",
         "concat_contract",
         "python_language_spec_free_monoid_concat_contract",
@@ -94,6 +100,12 @@ const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str
         "fold",
     ),
     (
+        "python_collections",
+        "map_contract",
+        "python_language_spec_map_contract",
+        "map",
+    ),
+    (
         "go_collection_ops",
         "concat_contract",
         "go_language_spec_free_monoid_concat_contract",
@@ -116,6 +128,12 @@ const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str
         "fold_contract",
         "go_language_spec_free_monoid_fold_contract",
         "fold",
+    ),
+    (
+        "go_collection_ops",
+        "map_contract",
+        "go_language_spec_map_contract",
+        "map",
     ),
 ];
 
@@ -521,18 +539,42 @@ impl RowFingerprint {
 }
 
 fn row_record<'a>(
+    dag: &'a Dag,
     row: &'a FieldValue,
     list_name: &str,
     row_index: usize,
 ) -> Result<&'a [(String, FieldValue)], GroundingTestsDiagnostic> {
-    let FieldValue::Record(fields) = row else {
-        return Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+    match row {
+        FieldValue::Record(fields) => Ok(fields.as_slice()),
+        FieldValue::Reference(id) => {
+            let decl = dag.declaration(*id);
+            let body = decl.value_body.as_ref().ok_or_else(|| {
+                GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name: list_name.to_string(),
+                    row_index,
+                    detail: format!(
+                        "referenced MethodTemplateContract `{}` has no value body",
+                        decl.name.as_deref().unwrap_or("?")
+                    ),
+                }
+            })?;
+            match body {
+                ValueBody::Structural { fields } => Ok(fields.as_slice()),
+                other => Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
+                    list_name: list_name.to_string(),
+                    row_index,
+                    detail: format!(
+                        "list `{list_name}` row {row_index}: MethodTemplateContract reference must be Structural, got {other:?}"
+                    ),
+                }),
+            }
+        }
+        other => Err(GroundingTestsDiagnostic::StratumARegistryResolutionFailed {
             list_name: list_name.to_string(),
             row_index,
-            detail: format!("row is not a record: {row:?}"),
-        });
-    };
-    Ok(fields.as_slice())
+            detail: format!("row is not a record or declaration ref: {other:?}"),
+        }),
+    }
 }
 
 /// Label-set outcome for a closed record row (duplicate labels vs allowed set mismatch vs OK).
@@ -671,7 +713,7 @@ fn row_fingerprint(
     row_index: usize,
     row: &FieldValue,
 ) -> Result<RowFingerprint, GroundingTestsDiagnostic> {
-    let fields = row_record(row, list_name, row_index)?;
+    let fields = row_record(dag, row, list_name, row_index)?;
     enforce_closed_record_schema(
         fields,
         list_name,

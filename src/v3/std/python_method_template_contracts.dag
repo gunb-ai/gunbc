@@ -22,11 +22,14 @@
 //     use the emit template for both row sides — v2's actual behavior
 //     is "python_method_templates for both consumption sites" since
 //     `collection_method_translations` doesn't declare them.
-//     `concat` / `fold` are **not** listed here — LanguageSpec
-//     `CollectionOps.{concat,fold}_contract` carries named
-//     `MethodTemplateContract` rows (`python_language_spec_free_monoid_*`)
-//     so we do not duplicate `dag_method: concat_method` / `fold_method`
-//     inside this list (P2 single authority; mirrors Rust + fold).
+//     `concat` / `fold` / `map` — LanguageSpec `CollectionOps.{concat,fold,map}_contract`
+//     carries named `MethodTemplateContract` rows (`python_language_spec_*`). **Fold + map**
+//     follow the same pattern as **fold**: these carriers are **not** listed below — the legacy
+//     `python_method_templates` projection expects `{arg}` / `NamedArg` rows for list-backed
+//     methods; `map_contract` uses `{body}` / `{item}` (CollectionOps algebra shape). Duplicating
+//     the named carrier into this list would feed the wrong placeholder contract into the legacy
+//     adapter (see collectionops-algebra-reframe.md). `filter` / `flat_map` / `any` / `all` remain
+//     inline or named `*_method_template_contract` rows using `{arg}` consistently.
 
 module v3.std.python_method_template_contracts
 
@@ -103,6 +106,16 @@ data python_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   dag_method: { decl: fold_method },
   runtime_template: "__v3_fold({recv}, {init}, {body})",
   emit_template: SingleTemplate { template: "__v3_fold({recv}, {init}, {body})" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
+// LanguageSpec `CollectionOps.map_contract` — comprehension shape `{body}` / `{item}` / `{recv}`.
+// **Sole** `map_method` authority for `CollectionOps.map_contract` (not listed below — same as fold).
+data python_language_spec_map_contract: MethodTemplateContract = {
+  dag_method: { decl: map_method },
+  runtime_template: "[{body} for {item} in {recv}]",
+  emit_template: SingleTemplate { template: "[{body} for {item} in {recv}]" },
   wraps_result: false,
   placeholder_convention: NamedArg
 }
@@ -186,13 +199,6 @@ data python_method_template_contracts: List<MethodTemplateContract> = [
     dag_method: { decl: chars_method },
     runtime_template: "[ord(c) for c in {recv}]",
     emit_template: SingleTemplate { template: "[ord(c) for c in {recv}]" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
-  {
-    dag_method: { decl: map_method },
-    runtime_template: "[{arg}(x) for x in {recv}]",
-    emit_template: SingleTemplate { template: "[{arg}(x) for x in {recv}]" },
     wraps_result: false,
     placeholder_convention: NamedArg
   },

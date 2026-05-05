@@ -2394,6 +2394,8 @@ pub(crate) struct EmitAnchorCache {
     pub any_method: Option<DeclarationId>,
     /// `std.list.all_method` method declaration.
     pub all_method: Option<DeclarationId>,
+    /// `std.list.map_method` method declaration.
+    pub map_method: Option<DeclarationId>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -3276,6 +3278,11 @@ impl Dag {
         self.emit_anchors.all_method
     }
 
+    /// `map_method` method declaration.
+    pub(crate) fn map_method_decl(&self) -> Option<DeclarationId> {
+        self.emit_anchors.map_method
+    }
+
     /// Typed accessor for the cached `PatternBindingRule` variant
     /// handles resolved from `src/v3/std/clean_emission.dag` at
     /// bootstrap end. Consumed by per-target emitters when
@@ -3981,6 +3988,7 @@ impl Dag {
             self.declaration_by_name("flat_map_method").map(|d| d.id);
         self.emit_anchors.any_method = self.declaration_by_name("any_method").map(|d| d.id);
         self.emit_anchors.all_method = self.declaration_by_name("all_method").map(|d| d.id);
+        self.emit_anchors.map_method = self.declaration_by_name("map_method").map(|d| d.id);
 
         // `PatternBindingRule` variant resolution. Walks the
         // `std/clean_emission.dag` declaration's `Disj` variants
