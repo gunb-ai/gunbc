@@ -8,6 +8,8 @@
 
 `origin/main` HEAD at audit-authoring time: same lineage as the S-1 input packet (PR #1462 merged). S-1 PM-authored worker brief still missing under `docs/briefs/` (only `pb-substrate-pilot-v2-arithmeticop.md`, `r3-pb-tv2-g1-readiness-receipt.md`, `r3-pb-tv2-s1-input-packet.md`, and this audit).
 
+> **Line-anchor freshness pointer (added 2026-05-05).** Per-row `:NNN` line cites in §A.1–§A.4 below are author-time anchors against the audit's original HEAD. For drift offsets vs current `origin/main` HEAD `530c76ea7`, see §Delta (2026-05-05+) at the bottom of this file (substrate decls drifted +1 line; B.2 oracle drifted +~217). Section/symbol anchors are the load-bearing identity per `feedback_section_anchors_over_line_numbers`.
+
 ## Population A — internal `src/v2/tests/src/` named tests (4 spot-checked per dispatch)
 
 **Audit framing:** these tests live INSIDE `src/v2/tests` and fall with G-2 (workspace-member removal of `src/v2/tests`) per audit §1 / matrix §2.1. They count against G-2, not G-1. The dispatch question is: when G-2 deletes the crate, are the *semantic properties* these tests guarantee already covered on the v3 side, or does G-2 need a coverage migration first?
