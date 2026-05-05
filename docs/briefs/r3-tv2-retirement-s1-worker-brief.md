@@ -13,7 +13,7 @@ S-1 unblocks the **G-1 implementation chain** for T-V2-Retirement:
 - **G-1**: deletion of Cargo.lock v2 dev-deps. Cascade-gated on §3.1 + §3.2 dispositions completing (one of which needs Substrate-side authority migration; the other needs PM choice between replace vs delete).
 - **G-2 prereq stack**: S-1 + S-2 + S-3 + S-4 + G-1. S-1 brief enumerates the entire chain (per Decision 6 below) so workers don't reconstruct it from the audit.
 
-The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port four internal v2-test property receipts to live v3 surfaces. S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
+The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port the **four audited Pop A coverage items** (per `docs/briefs/r3-pb-tv2-population-coverage-audit.md` §"Population A") onto live v3 `dsl/std/induction.dag` + `dsl/std/termination.dag` surfaces. S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
 
 ## Consumes (authoritative inputs)
 
@@ -100,25 +100,30 @@ PB Mgr's recommended narrowest first dispatch under S-1 is **Pop A v3 property-t
 
 ### Dispatch 1 — Pop A v3 property-test migration (S-1-only; immediately dispatchable)
 
-**Scope**: port four internal v2-test property receipts onto live v3 surfaces:
-1. `prop_run_steps_termination` / `prop_run_steps_foo` (run-step termination property)
-2. Peano materialization cap (Peano arithmetic materialization upper bound)
-3. `behavior_round_trip` / `behavior_round_trip_bar` (behavior round-trip property)
+**Scope**: port the **four audited Pop A coverage items** per `docs/briefs/r3-pb-tv2-population-coverage-audit.md` §"Population A" (authoritative source) onto live v3 surfaces:
+
+1. **A.1 — `derive_bound` / `master_theorem` fail-closed boundary coverage** (from v2 `std_induction`; v3 substrate at `src/v3/std/induction.dag:897` + `:823`). v3-side property test asserts fail-closed semantics: 0 branches → `ErrorBound`; negative branches → `ErrorBound`; invalid work exponents; `master_theorem` boundary cases.
+
+2. **A.2 — `int_pow_bounded` / `ceil_log` boundary coverage** (from v2 `std_induction`; v3 substrate at `src/v3/std/induction.dag:767` + `:802` + `:808`). v3-side property test re-asserts: negative-exp → `None`; non-negative matches `pow`; overflow at `2^63` → `None`; degenerate-base cap (`0`/`1`/`-1`) doesn't deep-recurse; `ceil_log` semantics.
+
+3. **A.3 — `peano_literal_materialization_cap` + `positive_descent_amount_from_positive_int` + `proportional_divisor_from_int_at_least_two` cap coverage** (from v2 `std_induction` + `std_termination`; v3 substrate at `src/v3/std/termination.dag:140` (cap=256) + `:146` + `:162`). v3-side property test asserts oversize `Int` inputs → `None`; cap of 256 is single-source v3 declaration. **Bonus**: v3 test cites `peano_literal_materialization_cap()` directly so the cap value is grep-clean across the codebase (replaces magic 256 in v2 test bodies).
+
+4. **A.4 — `meet_sub_value` / `join_sub_value` `ShrinkFactor`-preservation coverage** (from v2 `std_induction`; v3 substrate at `src/v3/std/induction.dag:281` + `:329`). v3-side property test ports meet/join cases against v3 `SubValueRelation` / `InductiveField` / `RecursionShape` constructors; `ShrinkFactor`-preservation invariant is identical between versions; near-mechanical port.
 
 **Why this dispatch is narrowest**:
 - S-1-only (does NOT need R2-Evaluator/PB-Runtime/Substrate authority migration)
 - Prevents G-2 from silently dropping the property ratchets
 - Prerequisite-shaped (preserves test surface for later cleanup) rather than deletion-shaped (which would break G-1)
 - Single-author work (no cross-program coordination per dispatch)
+- Substrate is **LIVE on v3 side for all 4 items** (verified per `r3-pb-tv2-population-coverage-audit.md` §"Population A summary" — no R2-Evaluator / PB-Runtime / Substrate-authority dependency)
 
 **Live v3 surfaces** the migration targets:
-- Run-step termination: live v3 termination semantics in `dsl/std/termination.dag` + v3 Evaluator
-- Peano materialization cap: live v3 numeric carrier work per T-Numeric-Construction lane
-- Behavior round-trip: v3 substrate behaviors (Value / Transform / Branch / Loop / Bind) + serialization
+- `dsl/std/induction.dag` (A.1, A.2, A.4)
+- `dsl/std/termination.dag` (A.3 cap + A.1 master_theorem-recurrence indirectly via `recurrence` form)
 
-**Recommended worker assignment**: silent-boar or witty-tern (per PB Mgr's at-the-time read at `docs/briefs/r3-pb-tv2-g1-readiness-receipt.md` + read-back at [#1134 comment-4375362161](https://github.com/gunb-ai/gunbc/issues/1134#issuecomment-4375362161)). PB Manager picks specific worker per their cadence + readiness.
+**Recommended worker assignment**: silent-boar or witty-tern (per PB Mgr's read-back at [#1134 comment-4375362161](https://github.com/gunb-ai/gunbc/issues/1134#issuecomment-4375362161)). PB Manager picks specific worker per their cadence + readiness.
 
-**Closure**: dispatch produces one PR migrating the four property receipts to v3 surfaces; PB Manager confirms the property ratchets are preserved on v3 side; PR merges; ratchet status tracked in PB Manager's inventory.
+**Closure**: dispatch produces one PR (or 4 sub-PRs per coverage item) migrating the four audited Pop A coverage items to v3 surfaces; PB Manager confirms property ratchets preserved on v3 side; PR(s) merge; ratchet status tracked in PB Manager's inventory.
 
 ### Dispatch 2 — B.1 (peano_arith consumer) — gated on Decision 1 prerequisite
 
