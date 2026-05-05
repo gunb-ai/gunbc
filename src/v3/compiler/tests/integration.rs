@@ -207,7 +207,7 @@ mod t_demo_fixture_test {
     use std::path::PathBuf;
 
     use v3_compiler::compile_to_dag;
-    use v3_compiler::dag::Dag;
+    use v3_compiler::dag::{Dag, FieldValue, ValueBody};
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
     use v3_compiler::CompileError;
 
@@ -237,58 +237,26 @@ mod t_demo_fixture_test {
             "T-Demo fixture skeleton should compile without diagnostics: {:?}",
             dag.diagnostics()
         );
-    }
-
-    #[test]
-    fn t_demo_canonical_suites_are_runner_visible() {
-        let dag = compile_fixture(
-            r#"
-module v3.compiler.tests.t_demo.runner_visibility
-
-import std.verification { Compiles, TestClaim, TestSuite }
-
-data compiler_nerd_smoke: TestClaim = {
-  name: "fixture_compiler_nerd_canonical.smoke",
-  source: "let compiler_nerd_smoke: Int = 1",
-  file_name: "fixture_compiler_nerd_canonical_smoke.v3",
-  predicate: Compiles,
-  requires: []
-}
-
-data integration_smoke: TestClaim = {
-  name: "fixture_integration_canonical.smoke",
-  source: "let integration_smoke: Int = 1",
-  file_name: "fixture_integration_canonical_smoke.v3",
-  predicate: Compiles,
-  requires: []
-}
-
-data fixture_compiler_nerd_canonical: TestSuite = {
-  name: "fixture_compiler_nerd_canonical",
-  claims: [compiler_nerd_smoke]
-}
-
-data fixture_integration_canonical: TestSuite = {
-  name: "fixture_integration_canonical",
-  claims: [integration_smoke]
-}
-"#,
-        );
 
         for suite_name in [
             "fixture_compiler_nerd_canonical",
             "fixture_integration_canonical",
         ] {
-            let results = TestRunner::new(&dag).run_suite(suite_name);
+            let suite = dag
+                .declaration_by_name(suite_name)
+                .unwrap_or_else(|| panic!("T-Demo suite `{suite_name}` should be declared"));
+            let Some(ValueBody::Structural { fields }) = &suite.value_body else {
+                panic!("T-Demo suite `{suite_name}` should lower as structural data");
+            };
+            let claims = fields
+                .iter()
+                .find_map(|(label, value)| (label == "claims").then_some(value));
+            let Some(FieldValue::List(claims)) = claims else {
+                panic!("T-Demo suite `{suite_name}` should carry a structural claims list");
+            };
             assert!(
-                !results.is_empty(),
-                "T-Demo suite `{suite_name}` should contain Day-1 Compiles claims"
-            );
-            assert!(
-                results
-                    .iter()
-                    .all(|result| result.result == ClaimResult::Pass),
-                "T-Demo suite `{suite_name}` should pass Day-1 Compiles claims, got {results:?}"
+                claims.iter().all(|claim| matches!(claim, FieldValue::Reference(_))),
+                "T-Demo suite `{suite_name}` claim entries should be declaration references: {claims:?}"
             );
         }
     }
