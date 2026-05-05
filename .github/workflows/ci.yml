@@ -317,7 +317,11 @@ jobs:
   self_host_ratchet:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    # Release `determinism_test` + `self_host_fixed_point` can each compile a large
+    # `v3-compiler` graph; cache keys differ from the `v3` job so cold restores may
+    # not reuse `target/`. Keep headroom above the prior 30m cap (observed cancel
+    # mid-`self_host_fixed_point` compile on PR #1790).
+    timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:
