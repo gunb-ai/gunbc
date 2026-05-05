@@ -39,41 +39,62 @@ sentence; neither is a STOP-fallback to the other.
 
 ### Path A — structural Rust reader (preferred when feasible)
 
-Replace the byte-oriented scanner with a structural Rust source
-reader that operates at the **token or typed-AST level** — never
-at the source-text-span level (which is what `IntegrationRsScan`
-does today and what the row's dissolution sentence names as the
-attractor to remove). Two sub-options, both structural:
+**Structural binding fact preserved.** The current
+`integration_rs_active_line_contains` is a generic substring
+helper, but its load-bearing consumer is
+`integration_rs_cementing_path_attr_binds_mod_stem` at
+`src/v3/compiler/tests/integration/common/mod.rs:301` — the
+structural fact being verified is "`#[path = "integration/cementing/<stem>.rs"]`
+attribute is immediately followed by `mod <stem>;` declaration."
+Path A's typed extractor MUST preserve this binding fact, not
+merely report code-token visibility. Concretely: the
+replacement must produce typed `(path_attr_literal, mod_ident)`
+pairs (or equivalent typed binding-fact representation) so
+`integration_rs_cementing_path_attr_binds_mod_stem` can be
+re-implemented as a typed predicate over the binding pairs,
+not a substring search through filtered tokens. Replace the
+byte-oriented scanner with a structural Rust source reader
+that operates at the **token or typed-AST level** — never at
+the source-text-span level (which is what `IntegrationRsScan`
+does today and what the row's dissolution sentence names as
+the attractor to remove). Two sub-options, both structural
+and both producing the typed binding pairs:
 
-- **`rustc_lexer` (token-level filter):** tokenize
-  `tests/integration.rs` once; the resulting token stream has
-  per-token `TokenKind` discriminators. Walk the stream and
-  filter to tokens whose kind is in the **Code-token set**
-  (`Ident` / `OpenBrace` / `CloseBrace` / `Pound` / `Semi` /
-  whitespace / etc.) — skip every token whose kind is in the
-  **Skip set** (`LineComment` / `BlockComment` / `Literal {
-  kind: Str | RawStr | Byte | ByteStr | RawByteStr | Char |
-  ByteChar }`). `integration_rs_active_line_contains` becomes
-  "does any Code-set token's text equal the needle on the
-  same line as the matched-attribute token?" — a filter over
-  typed token kinds, NOT a source-text-span scan.
-  Lifetime-vs-char disambiguation is rustc-faithful by
-  construction.
+- **`rustc_lexer` (token-level structural extractor):**
+  tokenize `tests/integration.rs` once; the resulting token
+  stream has per-token `TokenKind` discriminators. Walk the
+  stream with a small state machine that recognizes the
+  `#[path = "<lit>"]` ... `mod <ident> ;` pattern in
+  Code-set tokens (`Pound` / `OpenBracket` / `Ident("path")` /
+  `Eq` / `Literal { kind: Str }` / `CloseBracket` / `Ident("mod")` /
+  `Ident(<stem>)` / `Semi`), skipping `LineComment` /
+  `BlockComment` / non-string `Literal` tokens. The state
+  machine emits the same typed binding pairs `(path_attr_literal,
+  mod_ident)` as the `syn` path. `integration_rs_cementing_path_attr_binds_mod_stem`
+  is reimplemented as a typed predicate over the binding-pair
+  list. Lifetime-vs-char disambiguation is rustc-faithful by
+  construction (the crate IS rustc's authority).
 
 - **`syn` typed-AST visitor:** parse the file once via
   `syn::parse_file`; walk the AST with a `syn::visit::Visit`
-  implementation. The visitor extracts **typed facts** from
-  the AST nodes — e.g., `syn::Item::Mod`'s `ident` for `mod
-  foo;` declarations, `syn::Attribute::path`'s `Ident`s for
-  `#[path]` attributes — and produces a `Vec<TypedFact>` (or
-  similar) of structured matches. `integration_rs_active_line_contains`
-  becomes a check against those typed facts, NOT a substring
-  scan of source spans. The visitor MUST NOT call
+  implementation. For each `syn::ItemMod`, the visitor
+  inspects the preceding `#[path = "..."]` attribute (if any)
+  and emits a typed binding pair `(path_attr_literal: LitStr,
+  mod_ident: Ident)` capturing the structural fact
+  "`#[path = LIT]` binds to `mod IDENT`". `integration_rs_cementing_path_attr_binds_mod_stem`
+  reduces to a typed predicate "is there a binding pair whose
+  `path_attr_literal` matches the expected
+  `integration/cementing/<stem>.rs` shape AND whose `mod_ident`
+  matches `<stem>`?" The visitor MUST NOT call
   `.span().source_text()` or any equivalent source-span-fetch
   API; if it does, the implementation has slipped back into
   the very pattern this slice retires. **Acceptance for the
-  syn path includes a grep that no source-span-fetch is called
-  in the visitor.**
+  syn path includes (a) a grep that no source-span-fetch is
+  called in the visitor, AND (b) a regression test asserting
+  `integration_rs_cementing_path_attr_binds_mod_stem` returns
+  `true` for the live binding pairs in `tests/integration.rs`
+  and `false` when either the attribute or the mod decl is
+  commented out / mismatched.**
 
 Worker pre-flight verifies which dependency is easier to add to
 the workspace; if `rustc_lexer` is not already transitively
