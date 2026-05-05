@@ -4,6 +4,8 @@
 
 **Methodology:** for each Director-authored dispatch brief, audit cross-references (cited authorities, file paths, lane names, gate names, comment IDs, design-doc references) against current main (HEAD post-PR #1738 merge at `316e7698`). Status per cross-reference: ✅ verified / 🟡 partial / 🔴 stale. Remediation per finding: none / fix-in-place / re-route / surface-to-Brian.
 
+**Note on citation style:** prefer section/symbol anchors over line numbers for cross-references. Line numbers drift as files evolve (the `r2-r3-thesis-mapping.md:116` → `:117` shift in PR #1738 caught by gpt-5-5-pro is exactly this pattern). Section references (e.g., `r3-structure.md §"Lane structure"`) survive line-number shifts and stay verifiable. Two T-Numeric-Construction / T-CostLens-Composition citations in the R3 Substrate audit table below were originally line-numbered and drifted during sweep authoring; corrected to section references at sha `<post-fix>` per codex BLOCKING at sha `35742088`.
+
 **Output routing:** PM authors; Director receives + routes per-Mgr remediation findings to affected Mgrs. PM does not directly modify Mgr briefs or send to Mgr inboxes — dispatch authority is Director's.
 
 **Net read:** sweep is mostly verified-clean. Director's `#issuecomment-4377496289` self-correction acknowledged the systemic catalog-attribution drift; subsequent dispatch briefs already remediated. Most remaining items are minor (naming drift on file references, R2-vs-R3-prefix clarifications, attribution reframes already done by Director). No stale lane definitions, no fictional gate names, no fabricated authorities surface in the sweep.
@@ -19,8 +21,8 @@
 | Citation in brief | Status at HEAD | Remediation |
 |---|---|---|
 | "PM's orphaned-work catalog, 2026-05-04" | 🟡 wrong attribution (Director authored at #828 reform message; PM coordinated routing) | Already-acknowledged at #issuecomment-4377496289 |
-| T-Numeric-Construction (cascade-gated on T-V2-Retirement) | ✅ `docs/r3-structure.md:25` lane definition + `r3-structure.md:200` Substrate continuation | none |
-| T-CostLens-Composition | ✅ `docs/r3-structure.md:33` lane definition + `r3-structure.md:200` Substrate continuation | none |
+| T-Numeric-Construction (cascade-gated on T-V2-Retirement) | ✅ `docs/r3-structure.md` §"R3 has 18 lanes" introductory list (lane #6) + §"Lane structure" table row + §"R2 managers continue post-R2-close" Substrate continuation | none |
+| T-CostLens-Composition | ✅ `docs/r3-structure.md` §"R3 has 18 lanes" introductory list (lane #10) + §"Acceptance" subsection + §"R2 managers continue post-R2-close" Substrate continuation | none |
 | T-E-P-Producer-Broadening "post-Decision 2 follow-on" | 🟡 "Decision 2" framing was unverified Director-side; only `docs/briefs/r3-tv2-retirement-s1-worker-brief.md:46` Decision 2 (kernel_algebra_profile) exists, unrelated to T-E-P | Already-remediated at #issuecomment-4377501646 (Director relayed corrected scope to quick-crab-830) |
 | T-Lens-Behavioral-Parity (4 sub-slices) | ✅ `docs/r3-structure.md:38, :157` lane definition (Lane #14) | none |
 | T-Workflow-As-Data design-doc receipt — `docs/design-timing-lens.md` | ✅ file is dispatch target (to be authored), not a citation of existing file | none |
