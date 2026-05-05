@@ -135,7 +135,7 @@ Per `t-ground-languagespec.md:73` (sibling brief, scope item B): T-Ground-Langua
 
 **This lane's responsibility is limited to:**
 - Authoring the structural Rust primitive rows (§A-§E above) **without** `RealizationCost` fields. T-Ground-LanguageSpec adds those fields downstream when PR-I lands.
-- If a Rust primitive row's shape forces a coordinate that `RealizationCost` cannot represent, escalate to manager `#1745` per STOP condition #7.
+- If a Rust primitive row's shape forces a coordinate that `RealizationCost` cannot represent, escalate to manager `#1745` (cross-lane signal — T-Ground-LanguageSpec owns `RealizationCost` shape per `t-ground-languagespec.md:73`; this lane only flags). No T-Ground-Rust-internal STOP condition for this case (deferred to T-Ground-LanguageSpec scope per the §F authority split).
 - No Phase B / Phase 4 backfill on this lane. The earlier brief revision had a misallocated "Phase 4: RealizationCost backfill" entry — removed in this commit.
 
 ### G. Higher-order MethodTemplateContract rows (Phase 1.5 — separately gated)
