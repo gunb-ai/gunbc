@@ -222,9 +222,7 @@ fn invoke(x: Int) -> Int = wrap.f(x)
 "#;
     let dag = cached_compile_to_dag(src, "x1a_eval.v3");
     let invoke_decl = dag
-        .declarations()
-        .iter()
-        .find(|d| d.name.as_deref() == Some("invoke"))
+        .declaration_by_name("invoke")
         .expect("`invoke` declaration");
     let TypeConnective::Arrow { body, .. } = &invoke_decl.connective else {
         panic!(
