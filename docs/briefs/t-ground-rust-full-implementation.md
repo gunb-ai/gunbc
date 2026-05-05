@@ -18,7 +18,7 @@
 
 ## Framing question this lane answers
 
-Does Rust's full target-primitive surface (Rust Reference §Types + std-library carriers) declare structurally in `.dag` against `BoundDeclaration` + `ReferenceModel<T>` + `RealizationCost` with each primitive citing its own authority — so that the inhabitance walk `src/v3/grounding_engine/src/lib.rs:59` can validate every Rust primitive without falling back to `dsl/extdeps/languages/rust/types.dag` table lookup?
+Does Rust's full target-primitive surface (Rust Reference §Types + std-library carriers) declare structurally in `.dag` against `BoundDeclaration` + `ReferenceModel<T>` (per-primitive `RealizationCost` is **NOT** in this lane's scope — see §F; owned by T-Ground-LanguageSpec) with each primitive citing its own authority — so that the inhabitance walk `src/v3/grounding_engine/src/lib.rs:59` can validate every Rust primitive without falling back to `dsl/extdeps/languages/rust/types.dag` table lookup?
 
 A "yes" populates the substrate that Coercion-Fold reads, retires the table-driven scaffolding under T-Ground-Dissolve, and produces the structural acceptance gate `rust_target_primitives_declared_structurally` (per `r2-grounding-manager.md:124`).
 
@@ -114,11 +114,14 @@ Per Q2 lock (`design-emission-model.md:1100`) and `r2-grounding-manager.md:90`: 
 
 The `ReferenceModel<T>` shared-parent declaration itself lives in `dsl/std/` (substrate-owned per Q2 lock; PR-F lands it). This lane consumes; if PR-F's landed shape doesn't accommodate Rust's coverage as enumerated, STOP and escalate.
 
-### F. Q3 `RealizationCost` per-primitive population
+### F. Q3 `RealizationCost` per-primitive population — OUT OF SCOPE (owned by T-Ground-LanguageSpec)
 
-Per Q3 lock (`design-emission-model.md:1143`) — gated on **PR-I** which is downstream of PR-F. Each Rust primitive row attaches `RealizationCost { storage: Cost<Bits>, access: Map<AlgebraOp, Cost<CPUCycles>> }`. Sparse fail-closed (`design-emission-model.md:1206`) — missing op = `Witness.Violates`; no silent zero-cost.
+Per `t-ground-languagespec.md:73` (sibling brief, scope item B): T-Ground-LanguageSpec lane owns per-primitive `RealizationCost` population for **all three targets** (Rust + Python + Go) — that lane consumes the per-target primitive sets the present lane (T-Ground-Rust) lands and attaches the cost coordinates. Authoring `RealizationCost` rows from this T-Ground-Rust brief would create a second lane authority for the same substrate fact (P2 violation: facts flow forward, single authority per substrate fact).
 
-**This may slice separately from A/B/C/D/E** if PR-I lands later than PR-F. Manager guidance (sibling brief precedent: `t-ground-languagespec.md` Phase 1 / Phase 2 split): land A-E as Phase 1 once PR-F merges; land F as Phase 2 once PR-I merges. Bundle into one PR if both gates have cleared at dispatch time.
+**This lane's responsibility is limited to:**
+- Authoring the structural Rust primitive rows (§A-§E above) **without** `RealizationCost` fields. T-Ground-LanguageSpec adds those fields downstream when PR-I lands.
+- If a Rust primitive row's shape forces a coordinate that `RealizationCost` cannot represent, escalate to manager `#1745` per STOP condition #7.
+- No Phase B / Phase 4 backfill on this lane. The earlier brief revision had a misallocated "Phase 4: RealizationCost backfill" entry — removed in this commit.
 
 ### G. Higher-order MethodTemplateContract rows (Phase 1.5 — separately gated)
 
@@ -157,7 +160,7 @@ Per `INVARIANTS.md` §P1 (lines 94-129), worker MUST cite receipts in the PR bod
 |---|---|---|
 | **PR-PreF** (Substrate; `Interval<D>` consolidation) | LANDED — `src/v3/std/substrate.dag:123` | Q1 instance available |
 | **PR-F** (Q1 `BoundDeclaration` consumer + Q2 Rust `ReferenceModel<T>` axes) | **PRIMARY GATE — not landed** (`grep ReferenceModel dsl/std/*.dag dsl/extdeps/languages/rust/*.dag` empty at audit 2026-05-05) | Required for D + E |
-| **PR-I** (Q3 `RealizationCost` + Q4 universal four-property gate) | not landed | Required for F (may slice as Phase 2) |
+| **PR-I** (Q3 `RealizationCost` + Q4 universal four-property gate) | not landed | NOT a hard gate for this lane — T-Ground-LanguageSpec consumes PR-I and attaches `RealizationCost` to Rust primitive rows downstream (§F). Q4 four-property gate is consumed by §A-§E inhabitance receipts. |
 | **Substrate `HigherOrderMethodSpec` shape decision** (cross-manager #1130 to jolly-ram-908) | in flight | Required only if a primitive declaration needs higher-order rows; otherwise out of scope (G) |
 | **T-Ground-Lifetime-Analyzer R2 scope** | LANDED (#1206 / #1218 / #1220) | Lifetime axis available as substrate consumer |
 | **#1129 / #1156 / #1162 (Tier 1 locks)** | LIVE on main | Consumed (Q1 / reflection-completeness / Q6.5) |
@@ -180,7 +183,7 @@ Per `INVARIANTS.md` §P1 (lines 94-129), worker MUST cite receipts in the PR bod
 - C — `RustPrimitive` variant extension + walker arms + pilot-mirror lockstep: M.
 - D — Q1 `BoundDeclaration` consumer wiring (integer family + `PlatformDependent`): S.
 - E — Q2 `ReferenceModel<T>` Rust axis population: M.
-- F — Q3 `RealizationCost` per-primitive population: M (likely separate phase).
+- F — Out of scope (owned by T-Ground-LanguageSpec). No sizing contribution.
 - G — Higher-order rows: out of scope this lane (Phase 1.5).
 - H — P1 receipts: included in each PR body.
 
@@ -188,7 +191,7 @@ Per `INVARIANTS.md` §P1 (lines 94-129), worker MUST cite receipts in the PR bod
 - **Phase 1 (gated on PR-F):** smallest-meaningful-slice — `u128` + `isize` + `usize` + `f32` + `f64` + accompanying `RustPrimitive` shape extension (new `FloatPrimitive` variant) + walker arms + pilot-mirror update. Validates PR-F's Q1 + Q2 locks end-to-end on a non-pilot primitive set; first exercise of `PlatformDependent`. Per the manager's 2026-05-05 correction, `i128` is NOT in this slice (already landed).
 - **Phase 2 (within Phase 1 PR or follow-up; manager call):** textual + never + tuple + array + slice.
 - **Phase 3:** struct/enum/union/function/closure + trait object + `impl Trait`.
-- **Phase 4 (gated on PR-I):** `RealizationCost` backfill on all rows landed in Phases 1-3 + std-library carriers from B that need cost coordinates.
+- ~~Phase 4 (RealizationCost backfill)~~ — REMOVED. T-Ground-LanguageSpec owns per-primitive `RealizationCost` population for all targets (`t-ground-languagespec.md:73`); this lane's primitive rows ship without `RealizationCost` fields.
 - **Phase 5:** std-library carriers (B) — scheduled after Phase 1's shape is proven; some carriers (`Box` / `Rc` / `Arc`) may move earlier if they're trivially in `ReferenceModel<T>` axis space.
 
 If Phase 1's `FloatPrimitive` variant or `PlatformDependent` consumer surfaces an unanticipated substrate gap, escalate to manager before splitting further.
@@ -208,7 +211,7 @@ Acceptance lifted to a `.dag` `TestClaim` (gate: `rust_target_primitives_declare
 5. **Variant-partition discipline** — `RustPrimitive`'s variants partition (every Rust value inhabits exactly one variant); the test enumerates a representative value per Rust primitive and asserts a unique walker arm matches.
 6. **Float algebra discipline** — `f32`/`f64` rows inhabit `ApproximateField<F>` (`src/v3/std/approximate_field.dag:75`) and do NOT claim `OrderedRing` / `Semiring` inhabitance (IEEE-754 fails ring axioms). The test asserts (a) the row's parent is `ApproximateField<F>` not an integer algebra, AND (b) `f32` and `f64` differ on the `(precision, special_values, subnormal_policy)` coordinate values per IEEE-754 §3 binary32 / binary64.
 7. **Mirror-consistency probe (held)** — `validate_first_rust_pilot_row_matches_mirror` continues to fire on intentional drift between `Dag::rust_pilot_primitives()` and the Rust mirror until T-Ground-LanguageSpec retires the mirror (Reflective Pattern E retirement). This lane keeps the probe green during variant expansion.
-8. **(Phase 4 only) `RealizationCost` sparseness fail-closed** — missing `AlgebraOp` in the `access` map for any Rust primitive produces `Witness.Violates`, not silent zero-cost.
+8. ~~`RealizationCost` sparseness~~ — moved to T-Ground-LanguageSpec test plan; not a T-Ground-Rust acceptance check.
 
 ---
 
