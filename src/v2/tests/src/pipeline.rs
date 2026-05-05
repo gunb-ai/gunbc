@@ -7552,7 +7552,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         },
         Thinking {
             thinking: String,
-            signature: Option<String>,
+            signature: String,
         },
         RedactedThinking {
             data: String,
@@ -7819,7 +7819,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             signature,
         } => {
             assert_eq!(thinking, "Let me analyze this.");
-            assert_eq!(signature.as_deref(), Some("sig_123"));
+            assert_eq!(signature, "sig_123");
         }
         _ => panic!("expected thinking block"),
     }
