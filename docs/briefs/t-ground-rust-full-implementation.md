@@ -4,7 +4,7 @@
 
 **Lane:** T-Ground-Rust (XL) — item 2 of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (line 28 + lane row line 63).
 
-**Manager:** R3 Grounding Manager ([`r2-grounding-manager.md`](r2-grounding-manager.md); lane authority continuous through R2→R3 topology shift).
+**Manager:** R2 Grounding Manager ([`r2-grounding-manager.md`](r2-grounding-manager.md)) — T-Ground sub-program lives under R2 Grounding per the live authority docs.
 
 **Lineage / authorities consumed (no re-litigation):**
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Q1 `BoundDeclaration` (lines 994-1067), Q2 `ReferenceModel<T>` (lines 1068-1117), Q3 `RealizationCost` (lines 1143-1208), Q4 universal four-property gate (line 1234), cadence table (lines 1271-1282).
