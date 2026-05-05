@@ -264,10 +264,8 @@ fn integration_rs_code_substring_positions(integration_rs: &str, needle: &str) -
                 }
                 if bytes.get(i) == Some(&b'\'') {
                     i += 1;
-                    state = IntegrationRsScan::Code;
-                } else {
-                    state = IntegrationRsScan::Code;
                 }
+                state = IntegrationRsScan::Code;
             }
             IntegrationRsScan::CharLiteral => {
                 if bytes.get(i) == Some(&b'\\') {
@@ -286,10 +284,8 @@ fn integration_rs_code_substring_positions(integration_rs: &str, needle: &str) -
                 }
                 if bytes.get(i) == Some(&b'\'') {
                     i += 1;
-                    state = IntegrationRsScan::Code;
-                } else {
-                    state = IntegrationRsScan::Code;
                 }
+                state = IntegrationRsScan::Code;
             }
         }
     }
