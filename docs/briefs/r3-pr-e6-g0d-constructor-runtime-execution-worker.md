@@ -106,21 +106,21 @@ Expected outputs:
   from the already-evaluated transform operands, preserving the existing
   evaluator's operand evaluation order and arity discipline.
 - **Variant constructor target with record payload:** return
-  `Value::VariantValue { tag: variant_decl, payload:
+  `Value::VariantValue { tag: tag_decl, payload:
   Box::new(Value::RecordValue(fields)) }` only after proving the target's
   base variant is listed in a parent `TypeConnective::Disj { variants }`.
   If the lowered `callee_decl` is an `Instantiation { template, arguments }`,
-  peel to `template` for `Disj.variants` membership, but preserve the
-  instantiated `callee_decl` and `arguments` as the runtime constructor
-  authority. Use those arguments when walking the payload to a `Conj` so field
-  labels/types are the specialized constructor payload, not the generic
-  template by accident. Field values come from operands.
+  peel to `template` for both `Disj.variants` membership and `tag_decl`.
+  Preserve the instantiated `callee_decl` and `arguments` only as the payload
+  construction authority. Use those arguments when walking the payload to a
+  `Conj` so field labels/types are the specialized constructor payload, not the
+  generic template by accident. Field values come from operands.
 - **Nullary variant constructor target:** return
-  `Value::VariantValue { tag: variant_decl, payload:
+  `Value::VariantValue { tag: tag_decl, payload:
   Box::new(Value::RecordValue(Vec::new())) }`, again only after proving the
   base variant is a member of a parent `Disj.variants` list. Generic nullary
-  variants still preserve the lowered instantiated target for downstream
-  branch/tag matching.
+  variants use the template variant as `tag_decl`; the lowered instantiated
+  target is retained only for substitution-sensitive payload/shape walking.
 
 No new `Value` inhabitants are authorized by this slice. The evaluator must
 not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
@@ -137,7 +137,10 @@ not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
   target that merely walks to `Conj` is not enough to classify a constructor as
   a variant. For instantiated generic variants, membership is proven by the
   instantiation template's presence in `Disj.variants`, while the instantiated
-  target and its `TemplateArgument`s remain the value-construction authority.
+  target and its `TemplateArgument`s remain the payload-construction authority.
+  Runtime tag identity must be the same declaration id that branch
+  `ResolvedVariant` arms compare against; for instantiated generic variants,
+  that is the template variant id, not the anonymous instantiation id.
 - **Evaluator authority is runtime interpretation only.** Given a lowered
   constructor `Callable` target and already-evaluated operands, the evaluator
   may construct `Value::RecordValue` or `Value::VariantValue` using facts read
@@ -161,15 +164,17 @@ Recommended flow:
      - bare variant target: membership candidate is `callee_decl`;
      - instantiated variant target:
        `TypeConnective::Instantiation { template, arguments }` means the
-       membership candidate is `template`, and the evaluator must retain
-       `callee_decl` plus `arguments` for specialized payload walking and tag
-       comparison.
+       membership candidate and runtime tag id are `template`; the evaluator
+       must retain `callee_decl` plus `arguments` for specialized payload
+       walking only.
      The `variants` list is the sole authority for variant membership in this
      slice.
    - If the normalized membership candidate is a `Disj.variants` member, build
-     `VariantValue { tag: callee_decl, payload }`. A payload that walks to
-     `Conj` under the retained substitution arguments becomes
-     `RecordValue(fields)`; a nullary variant uses `RecordValue(Vec::new())`.
+     `VariantValue { tag: membership_candidate, payload }`. This keeps runtime
+     tag identity aligned with `BranchPattern::ResolvedVariant` exact matching.
+     A payload that walks to `Conj` under the retained substitution arguments
+     becomes `RecordValue(fields)`; a nullary variant uses
+     `RecordValue(Vec::new())`.
    - If no parent `Disj` membership is found, then a
      `TypeConnective::Conj { children }` target is a record constructor and
      builds `RecordValue(fields)`.
@@ -187,6 +192,10 @@ Generic constructor ratchet: include at least one `Int?` / `Some<Int>`-style
 case whose lowered constructor target is an `Instantiation`; the test should
 fail if the evaluator checks the instantiated declaration directly against
 `Disj.variants` or drops the substitution while building the payload.
+Also include a normalization receipt that constructs an instantiated generic
+variant and immediately matches on it; the test should fail if
+`Value::VariantValue.tag` is the anonymous instantiation instead of the
+template variant id used by `BranchPattern::ResolvedVariant`.
 
 ## Executable Ratchets
 
