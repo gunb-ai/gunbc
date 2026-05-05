@@ -48,7 +48,11 @@ These three are **structurally distinct**, NOT three rows under one `FunctionKin
 - **Reference.** `&T` (shared, immutable, lifetime-bounded), `&mut T` (exclusive, mutable, lifetime-bounded). Both inhabit `ReferenceModel<T>` with axes (`mutability`, `lifetime`) populated; ownership axis is `Borrowed`. Lifetime is **structural, not annotation-driven** per T-Ground-Lifetime-Analyzer authority (LANDED #1206 / #1218 / #1220) — this lane consumes the lifetime axis as substrate, does NOT re-author it.
 - **Raw pointer.** `*const T`, `*mut T`. `ReferenceModel<T>` axes (`mutability`, `representation`); ownership axis is `Raw`; no lifetime. The unsafe/safe distinction is carried by `representation`, not a separate `safety` axis (Q2 lock declares the four-axis set `{lifetime, mutability, ownership, representation}` — workers MUST NOT introduce a parallel `safety` coordinate).
 - **Trait object.** `dyn Trait` — dynamically-sized, vtable-bearing. Authority: Rust Reference §Trait object types.
-- **`impl Trait`.** Existential-position type; the row carries an opaqueness axis. Authority: Rust Reference §Impl Trait.
+- **`impl Trait` — split into two rows per position** (Rust Reference §Impl Trait distinguishes them as separate spec facts):
+  - **Argument-position `impl Trait`** — anonymous type parameter; caller chooses the concrete type; structurally equivalent to introducing a fresh universal type parameter `<T: Trait>` at the call site. Carries the trait-bound set as a structural fact; no opacity (the caller knows the concrete type). Authority: Rust Reference §Impl Trait → Anonymous type parameters.
+  - **Return-position `impl Trait`** — abstract/opaque return type; *callee* chooses the concrete type and the caller sees only the trait-bound interface. Carries trait-bound set + opacity (the concrete type is intentionally hidden); existential, not universal. Authority: Rust Reference §Impl Trait → Abstract return types.
+
+Collapsing these into one row drops the universal-vs-existential distinction (caller-chooses vs callee-chooses) — a P1/M3 spec-fidelity violation per the reviewer pointer. §C below carries two sibling `RustPrimitive` variants.
 
 Each primitive row cites its **authority URL** (Rust Reference section or std-doc URL) in a comment adjacent to the row per the brief-authoring-checklist convention.
 
@@ -83,7 +87,11 @@ The current `RustPrimitive` partition (`primitives.dag:180`) is `IntegerPrimitiv
 
 These are **three sibling variants**, not one variant with a `kind: FunctionKind` enum — see §A item/pointer/closure justification.
 - `ReferencePrimitive { model: ReferenceModel<T>, .. }` — references / raw pointers / `Box` / `Rc` / `Arc` (B's pointer-family carriers re-home here per A's `ReferenceModel<T>` axis).
-- `TraitObjectPrimitive { .. }`, `ImplTraitPrimitive { .. }`.
+- `TraitObjectPrimitive { trait_bounds: TraitBoundSet, .. }`.
+- `ImplTraitArgPrimitive { trait_bounds: TraitBoundSet, .. }` — argument-position `impl Trait` (anonymous type parameter, caller-chooses; universal).
+- `ImplTraitReturnPrimitive { trait_bounds: TraitBoundSet, .. }` — return-position `impl Trait` (abstract return type, callee-chooses; existential/opaque).
+
+These are sibling variants per the §A position-split; do NOT collapse into one `ImplTraitPrimitive { kind: Position }` (that would re-introduce the parallel-authority shape the position-split specifically dissolves).
 - `ContainerPrimitive { algebra: ContainerAlgebra, .. }` — `Vec` / `String` / `HashMap` / `BTreeMap` / `HashSet` / `BTreeSet` / `Option` / `Result` (B's non-pointer carriers).
 
 Walker arms in `src/v3/grounding_engine/src/lib.rs:59` (`validate_loaded_rust_primitive_type_structure`) extend with a match arm per new `RustPrimitive` variant. Each arm returns `StructureMismatch` on shape violation (per the existing pattern); no new error variants introduced (typed `EmissionDiagnostic` is T-Ground-Diagnostic scope).
