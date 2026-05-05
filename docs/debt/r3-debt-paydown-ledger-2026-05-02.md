@@ -17,12 +17,11 @@ This pass classifies 74 ROADMAP-tracked debt rows (69 baseline + 5 added 2026-05
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 50 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
-| Open / fix-forward regression | 1 | Regression to fix forward via a named split path or revert. |
+| Open implementation / retirement work | 46 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
 | Partially closed | 9 | Has a landed partial receipt but still names remaining work. |
 | Partial (fold) | 1 | Special-case partial closure (e.g., one variant landed, others pending). |
-| Retired / stale receipt row | 12 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 17 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -51,7 +50,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `declaration_by_name(...)` emit pattern | 2026-04 | Substrate / emit | Open | Typed substrate access with cached declaration ids. |
 | `pipeline_authority.rs` dual-authoring drift | 2026-04 / 2026-04-30 | Substrate / PB | Open | Generate one surface from the other or mark `fn compile` non-authoritative until structural lowering. |
 | LLM service flattening | 2026-04 | Grounding services | Open | Service operations consume typed carriers and return typed outputs. |
-| GitHub auth model bypass | 2026-04 | Grounding GitHub extdeps | Closed 2026-05-04 | `github_token()` now returns full `GitHubAuthToken`; hardcoded GCP Secret Manager policy removed in favor of typed `GitHubAuthSource { credential_source, token_metadata }` using `CredentialSource::EnvVar` + `env_credential`, with declared metadata verification tracked separately. |
+| GitHub auth model bypass | 2026-04 | Grounding GitHub extdeps | Retired | PR #1700 (`7b415f1eb`) closes ROADMAP:376: `github_token()` now returns full `GitHubAuthToken`; hardcoded GCP Secret Manager policy removed in favor of typed `GitHubAuthSource { credential_source, token_metadata }` using `CredentialSource::EnvVar` + `env_credential`, with declared metadata verification tracked separately. |
 | `errors.dag` dead generic layer | 2026-04 | Grounding / std errors | Open | Wire generic layer or delete it. |
 | Fixed-width types not structurally fixed | 2026-04 | T-Numeric-Construction | Open | Alias / field refinement or cardinality carrier. |
 | Surface int literals host-narrowed too early | 2026-04-24 | T-Numeric-Construction | Open | Concept-layer unbounded magnitude; target narrowing at reconciliation. |
@@ -99,11 +98,11 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | Typed-carrier-landed + Rust-mirror-remains pattern | 2026-05-01 | R3 PB debt discipline | Open | Pair mirror introductions with isomorphism/generation or deletion. |
 | BridgeLedgerZero known-open reporting | 2026-05-01 | R3 Verification | Retired | PR #1571 (`c3138a946`) lands the decreasing-open-count ratchet (`test(v3): add BridgeLedger open-count ratchet`); known-open count can no longer silently grow. Closes Bundle 4a. |
 | Bare RHS alias table / numeric drift | 2026-05-01 | R3 Substrate | Open | Dissolve `PRELUDE_BARE_RHS_ALIAS_IDENTS`; add alias regression coverage. |
-| F2 — `Result` / `DivError` partly `span.file`-keyed | 2026-05-04 | R3 Substrate | Open | Replace remaining file-identity dispatch with structural carrier reads (active P3/M8 violation). Routed to silent-deer-861. |
-| F5 — `service` syntax authority vs parser hard-error | 2026-05-04 | R3 Substrate | Open | Reconcile `dsl/extdeps/languages/dag/syntax.dag` authority vs parser hard-error path; one declares the other. Routed to stern-bee-22. |
-| F11 — Diagnostic taxonomy mirror drift (7-vs-10) | 2026-05-04 | R3 Substrate | Open | Generated isomorphism / shape-report gate over the 7-variant Rust mirror vs the 10-variant `.dag` source. Routed to keen-swift-519. |
+| F2 — `Result` / `DivError` partly `span.file`-keyed | 2026-05-04 | R3 Substrate | Retired | PR #1662 (`9dce0689a`, `fix(v3): make Result and DivError recognition structural`) replaces the file-identity dispatch with structural carrier reads. |
+| F5 — `service` syntax authority vs parser hard-error | 2026-05-04 | R3 Substrate | Retired | PR #1664 (`b8c9821a0`, `F5: deactivate v3 service parser authority`) deactivates the v3 service parser authority so `dsl/extdeps/languages/dag/syntax.dag` is the single declarer. |
+| F11 — Diagnostic taxonomy mirror drift (7-vs-10) | 2026-05-04 | R3 Substrate | Retired | PR #1661 (`4b156d839`, `keen-swift-519`) lands the diagnostic taxonomy mirror reconciliation; per-PR receipt covers the 7-vs-10 drift. |
 | F12 — `ExecuteCommand` / `ForAllTargets` duplicate command record | 2026-05-04 | R3 Verification | Open | Single typed command-record carrier; consumer reads dissolve duplicate. Queued post-Row-4 + heuristic-cost audit. |
-| R1 — `??` / `%` syntax authority deletion regression | 2026-05-04 | R3 Substrate (worker TBD) | Open / fix-forward regression | P1/M3 regression on the prior #1552 deletion: split path ratified — `dsl/extdeps/languages/dag/syntax.dag` retained as broader authority + new `v3_supported_dag_operators` subset. Dissolution trigger: split landed AND v3-supported subset consumed by parse tables. |
+| R1 — `??` / `%` syntax authority deletion regression | 2026-05-04 | R3 Substrate | Retired | PR #1663 (`362755a7a`, `R1 split DAG operator authority from v3 projection`) lands the split path: `dsl/extdeps/languages/dag/syntax.dag` retained as broader authority + new `v3_supported_dag_operators` subset; v3-supported subset consumed by parse tables. Dissolution trigger met. |
 
 ## De Facto Closed Or Cleanup-Only Rows
 
