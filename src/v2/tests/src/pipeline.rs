@@ -7561,12 +7561,13 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             id: String,
             name: String,
             input: Value,
-            caller: Value,
+            caller: Option<Value>,
         },
         ServerToolUse {
             id: String,
             name: AnthropicServerToolName,
             input: Value,
+            caller: Option<Value>,
         },
         WebSearchToolResult {
             tool_use_id: String,
@@ -7696,8 +7697,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
                 "type": "tool_use",
                 "id": "toolu_01",
                 "name": "get_weather",
-                "input": { "location": "SF" },
-                "caller": { "type": "direct" }
+                "input": { "location": "SF" }
             },
             {
                 "type": "server_tool_use",
@@ -7849,15 +7849,21 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             assert_eq!(id, "toolu_01");
             assert_eq!(name, "get_weather");
             assert_eq!(input["location"], "SF");
-            assert_eq!(caller["type"], "direct");
+            assert!(caller.is_none());
         }
         _ => panic!("expected tool_use block"),
     }
     match &body.content[4] {
-        ContentBlock::ServerToolUse { id, name, input } => {
+        ContentBlock::ServerToolUse {
+            id,
+            name,
+            input,
+            caller,
+        } => {
             assert_eq!(id, "srvtoolu_01");
             assert!(matches!(name, AnthropicServerToolName::WebSearch));
             assert_eq!(input["query"], "Claude Shannon birth date");
+            assert!(caller.is_none());
         }
         _ => panic!("expected server_tool_use block"),
     }
@@ -7904,12 +7910,13 @@ data response: AnthropicMessages200Body = {
       id: "toolu_01",
       name: "get_weather",
       input: { "location": "SF" },
-      caller: { type: "direct" }
+      caller: none
     },
     MessagesServerToolUseBlock {
       id: "srvtoolu_01",
       name: WebSearch,
-      input: { "query": "Claude Shannon birth date" }
+      input: { "query": "Claude Shannon birth date" },
+      caller: none
     },
     MessagesWebSearchToolResultBlock {
       tool_use_id: "srvtoolu_01",
