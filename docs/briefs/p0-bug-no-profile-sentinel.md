@@ -1,5 +1,7 @@
 # P0-C — Remove `__BUG_NO_PROFILE_…` fabrication sentinel `(S-M)`
 
+> **RETIRED** (2026-05-05). Dissolution landed prior to this brief's framing being audited. `container_param_name_required` no longer exists in `dsl/std/types.dag`; only `container_param_name` returning `String?` remains at `dsl/std/types.dag:103-109`. All callers `match` the Option. The `__BUG_NO_PROFILE_` sentinel literal is absent from the entire `src/` and `dsl/` tree. Ratchet test exists at `src/v2/tests/src/bug_sentinel_ratchet.rs` (passes). Brief content below preserved for historical context.
+
 ## Context
 
 Exploratory analysis found a fail-open fabrication pattern in `dsl/std/types.dag:115-119`:
