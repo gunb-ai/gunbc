@@ -320,7 +320,10 @@ jobs:
   self_host_ratchet:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    # Two sequential `--release` surfaces (`determinism_test` then
+    # `self_host_fixed_point`); cold cache + linking can exceed 30m on
+    # shared runners without starving the informational emit.rs step.
+    timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:
