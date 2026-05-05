@@ -220,13 +220,17 @@ jobs:
       # Wall-clock gate on lane2 Stage 2d symbolic-cost tests only (ζ / #537).
       # Post-#546 these live in the consolidated `integration` test binary; the
       # `lane2_stage_2d_symbolic_cost_test::` filter keeps the ratchet narrow.
-      # The timer wraps the full `cargo test` process, so **cold** runs (cache
-      # miss, first compile + link on ubuntu-latest) can spend minutes — keep
-      # headroom beyond a tight 120s; per-test discipline lives in
+      # The timer wraps the full `cargo test` process. Prebuild the integration
+      # harness (`--no-run`) so this gate measures lane2d work — not a cold link
+      # of the whole `integration` binary (observed ~322s over a 300s budget on
+      # ubuntu-latest; PR #1794). **Cold** runs (cache miss) can still spend minutes;
+      # keep headroom beyond a tight 120s; per-test discipline lives in
       # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
-      # Tracked headroom: ratchet this ceiling back toward 300s once cold
-      # lane2d CI runs regularly complete under 300s after fixture compile
-      # amortization lands for the remaining Stage 2d cases.
+      # Tracked headroom: ratchet this ceiling back toward 300s once cold lane2d
+      # CI runs regularly complete under 300s after fixture compile amortization.
+      - name: Prebuild v3 integration test binary (lane2d wall-clock denominator)
+        run: cargo test -p v3-compiler --test integration --no-run
+
       - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
         run: |
           start=$(date +%s)
