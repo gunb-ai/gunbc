@@ -38,10 +38,19 @@ missed these. Row remains REAL, not partially-dissolved.
 3. Confirm `parse_segment_tokens`'s return type is the coproduct (it
    already is — see the `MalformedPathSegment` early returns at `:91`
    / `:103`). No signature change required.
-4. Update / add the smallest cementing test: a programmatic feed of a
-   single-segment input that drives one `None` arm, asserting the
-   typed `MalformedPathSegment` propagates rather than producing
-   `[LiteralToken { text: "" }]`.
+4. Update / add the smallest cementing test exercising the
+   **reachable** `MalformedPathSegment` propagation path that the
+   inner `None` arms guard against: a single-segment input whose
+   shape (e.g., `{a}b{c}` — multiple opening braces, or `{ab` —
+   missing closing brace) drives the upstream `count(...) != 2`
+   guards' typed early-returns. Assert the propagation reaches
+   `parse_path_template`'s typed `MalformedPathTemplate` /
+   `PathTemplateParseResult` boundary, not `[LiteralToken { text: "" }]`.
+   The inner-arm replacements at step 2 are structural-unreachability
+   declarations, not runtime fallbacks; under §1's guard-invariant
+   confirmation no input can drive them, so the test exists to
+   pin the **reachable** guard discipline rather than the unreachable
+   replacement arm.
 
 ## Acceptance
 

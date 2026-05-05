@@ -29,25 +29,93 @@ Dissolution alternatives named by the row: widen the scanner to
 model Rust char literals, **or** replace the scan with a structural
 reader that does not need to exclude char-literal syntax.
 
-## Slice (extension path)
+## Slice — two co-equal paths; worker picks at pre-flight
 
-This brief picks the **scanner-extension** path because it is the
-smaller scope; if the worker's pre-flight reveals scanner widening
-is harder than a small structural reader (e.g., `syn`-based parse
-of `tests/integration.rs`), STOP and surface for re-scoping.
+The worker picks **one** of the two paths below at pre-flight,
+based on which is more honest given the live state of
+`tests/integration.rs` and workspace dependency surface. Both paths
+are spec-backed and explicitly named in the row's dissolution
+sentence; neither is a STOP-fallback to the other.
+
+### Path A — structural Rust reader (preferred when feasible)
+
+Replace the byte-oriented scanner with a structural Rust source
+reader that already encodes Rust's lexical grammar:
+
+- **`rustc_lexer`** (rustc's own lexer crate; thin, no syntax-tree
+  construction): tokenize `tests/integration.rs` and walk the
+  token stream skipping `LineComment` / `BlockComment` /
+  `Literal { kind: Str | RawStr | Byte | ByteStr | RawByteStr |
+  Char | ByteChar }` tokens. `integration_rs_active_line_contains`
+  becomes a token-stream filter rather than a hand-coded state
+  machine. Lifetime-vs-char disambiguation is rustc-faithful by
+  construction (the crate IS rustc's authority).
+- **`syn::parse_file`** (heavier; full AST): parse the file and
+  walk only `Item` / `ImplItem` text spans for the needle. AST
+  walk is structurally exact; cost is the AST allocation per scan.
+
+Worker pre-flight verifies which dependency is easier to add to
+the workspace; if `rustc_lexer` is not already transitively
+available and adding it requires a vendored fork, prefer `syn`
+(more likely already in the workspace via proc-macro deps).
+
+Path A acceptance: `IntegrationRsScan` deleted entirely;
+`integration_rs_active_line_contains` reimplemented as a
+token-stream / AST-span filter. Doc comment block at `:320-326`
+deleted (no longer applicable). Workaround attractor (the
+constraint itself) is gone, not just narrowed.
+
+### Path B — scanner extension with rustc-lexer-faithful rule
+
+If Path A is blocked (workspace dependency policy, rustc_lexer
+not available, syn too heavyweight for a test harness), extend
+the existing byte-oriented scanner. The disambiguation rule MUST
+mirror `rustc_lexer::Cursor::single_quoted_string` semantics, NOT
+a naive byte heuristic.
+
+**Worker pre-flight obligation (Path B):** read
+`rustc_lexer/src/lib.rs` `single_quoted_string` (or the live
+equivalent in the rustc tree at the worker's pin) and reproduce
+its disambiguation logic faithfully. Cite the upstream source
+SHA in the PR body. Naive lookback heuristics (e.g., "previous
+byte is not identifier-continuation") are explicitly rejected
+per the BLOCKING finding on the prior brief revision — they
+misclassify `&'a T` and `'label: loop` as char openers.
+
+Sketch of the lexer-faithful rule:
 
 1. Add a fifth state `Char` to `IntegrationRsScan` in
    `src/v3/compiler/tests/integration/common/mod.rs:138-200`.
-2. Wire the `Code` → `Char` transition on a `'` byte that is not
-   immediately preceded by an identifier-continuation byte (lifetime
-   syntax `'a` is not a char literal). Concretely: a `'` is char-
-   literal opener iff the previous scanned byte is not in
-   `[A-Za-z0-9_]`. (This same check is what `rustc`'s lexer uses to
-   disambiguate; the byte-oriented scan can apply it directly.)
-3. While in `Char`, consume bytes to the closing `'`, honoring `\`
-   as an escape (skip the next byte). Numeric / hex / unicode escapes
-   inside the `\…` form do not need byte-level decoding — only
-   escape-skip is required for closing-quote correctness.
+2. Wire the `Code` → `Char` transition via **bounded forward
+   lookahead**, NOT previous-byte lookback. A previous-byte rule
+   misclassifies `&'a T` (byte before `'` is `&`, not an identifier
+   byte) and `'label: loop { ... }` (byte before `'` is whitespace
+   or `{`) as char-literal openers — both are lifetimes / labels.
+   Concretely: when the scanner sees `'` in `Code`, peek forward
+   up to 16 bytes (the longest valid char-literal body
+   `'\u{10FFFF}'` is ~10 bytes between quotes; 16 is the
+   defensive ceiling) for a closing `'`, honoring `\` as an
+   escape (the byte after `\` is consumed as part of the escape
+   without acting as a closing quote).
+   - **Closing `'` found within the window** → enter `Char`
+     (consume from the opening `'` through the closing `'`
+     inclusive); resume `Code`.
+   - **No closing `'` within the window** → the opening `'` was
+     a lifetime / label start, not a char-literal opener; stay
+     in `Code`, advance past the `'` only, and let the
+     identifier-continuation bytes after it be scanned in `Code`
+     normally.
+   This is fail-closed by construction: lifetimes / labels do not
+   carry closing `'`, so they never enter `Char`; char literals
+   always carry closing `'` within the bounded window, so they
+   always enter `Char`. No false-`Char` on lifetime / label syntax.
+3. The bounded-lookahead recognizer in step 2 already handles
+   `\`-escape skipping inside the `Char` body. The scanner enters
+   `Char` only after the closing `'` is confirmed reachable, so
+   the body is consumed in a single pass without state drift.
+   Numeric / hex / unicode escapes inside the body do not require
+   byte-level decoding — only escape-skip is required for
+   closing-quote correctness.
 4. Update the `Code`-state raw / byte-string opener probe so it does
    not fire when the apparent opener is inside `Char`. (With state
    #5 in place, this is automatic — the probe lives in `Code` only.)
@@ -66,10 +134,27 @@ of `tests/integration.rs`), STOP and surface for re-scoping.
 
 ## Acceptance
 
-- Scanner extends to five states; char-literal recognition matches
-  rustc's lifetime-vs-char disambiguation rule.
-- Doc comment at `:320-326` reflects the post-extension behavior.
-- Unit test for `b'\\'` / `b'"'` inputs lands and is green.
+Path A or Path B, whichever the worker selects at pre-flight,
+must satisfy:
+
+- **Path A:** `IntegrationRsScan` deleted;
+  `integration_rs_active_line_contains` reimplemented as a
+  token-stream / AST-span filter. Doc comment at `:320-326`
+  removed (no longer applicable). PR body cites the upstream
+  crate (`rustc_lexer` SHA or `syn` version) used.
+- **Path B:** Scanner extends to five states; disambiguation rule
+  cites `rustc_lexer::Cursor::single_quoted_string` (or live
+  equivalent) at the worker's pinned upstream SHA in the PR
+  body. No false-`Char` classification on lifetime / label
+  inputs. Doc comment at `:320-326` reflects the post-extension
+  behavior.
+- **Both paths** — unit tests land covering: (a) `b'\\'` / `b'"'`
+  char-literal bodies (the original workaround-attractor pattern);
+  (b) `&'a T` lifetime in reference position stays code (Path A:
+  not classified as literal-skip; Path B: stays in `Code`);
+  (c) `'label: loop { ... }` label form stays code (same).
+  All green. The lifetime + label tests are the BLOCKING-finding
+  regression cases — not optional.
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green.
 - `cargo clippy --all-targets -- -D warnings` clean.
@@ -80,11 +165,23 @@ of `tests/integration.rs`), STOP and surface for re-scoping.
 
 ## STOP-AND-ESCALATE
 
-- If pre-flight reveals the lifetime-vs-char disambiguation needs
-  more context than a single previous-byte lookback (e.g., the
-  scanner sees a `'` after whitespace following an identifier),
-  STOP and surface — the structural-reader alternative may be
-  cheaper than a correct byte-level disambiguator.
+- If a real-world `tests/integration.rs`-shaped fragment in the
+  worker's pre-flight contains a char-literal body legitimately
+  longer than the 16-byte lookahead window, STOP and surface —
+  either widen the window with explicit upper-bound justification
+  or escalate to the structural-reader alternative the row's
+  dissolution sentence names.
+- If a closing `'` lookahead can be ambiguous against an unrelated
+  later `'` in pathological code (e.g., a lifetime followed soon
+  after by a char literal on the same line), STOP and verify
+  against an actual fragment from the integration scan path. The
+  bounded-lookahead rule is fail-closed for the lifetime case (no
+  closing `'` ⇒ stay `Code`), but a worker who finds an
+  adversarial counter-example must surface rather than band-aid.
+- Add a unit test that exercises both `&'a T` (lifetime in
+  reference type) and `'label: loop { break 'label; }` (label
+  scope) and asserts both stay in `Code` (no false-`Char`); these
+  are the BLOCKING-finding regression tests, not optional.
 - If extending the scanner triggers cascading test failures
   elsewhere that consume `integration_rs_active_line_contains` with
   expectations baked against the four-state behavior, STOP — that's
