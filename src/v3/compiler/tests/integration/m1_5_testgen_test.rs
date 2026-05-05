@@ -460,27 +460,12 @@ fn diagnostic_detail_filter(dag: &Dag, value: &FieldValue) -> Option<String> {
 }
 
 fn match_detail(kind_label: &str, detail_contains: &Option<String>, diag: &Diagnostic) -> bool {
-    if diagnostic_kind(diag) != kind_label {
+    if diag.layer1_kind_label() != kind_label {
         return false;
     }
     match detail_contains {
         Some(text) => diagnostic_detail(diag).contains(text),
         None => true,
-    }
-}
-
-fn diagnostic_kind(diag: &Diagnostic) -> &'static str {
-    match diag {
-        Diagnostic::TokenizerError { .. } => "TokenizerError",
-        Diagnostic::ParseError { .. } => "ParseError",
-        Diagnostic::TypeMismatch { .. } => "TypeMismatch",
-        Diagnostic::UnitMismatch { .. } => "UnitMismatch",
-        Diagnostic::ArityMismatch { .. } => "ArityMismatch",
-        Diagnostic::ResolveError { .. } => "ResolveError",
-        Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
-        Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
-        Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
-        Diagnostic::NominalOpacityViolation { .. } => "NominalOpacityViolation",
     }
 }
 

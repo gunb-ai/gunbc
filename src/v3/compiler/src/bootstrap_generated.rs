@@ -8,7 +8,7 @@ pub(crate) fn bootstrapped_fixture_dag() -> Dag {
         ports: bootstrapped_fixture_dag_ports(),
         diagnostics: bootstrapped_fixture_dag_diagnostics(),
         next_node_id: 315,
-        next_declaration_id: 2352,
+        next_declaration_id: 2358,
         next_port_id: 420,
         primitives: PrimitiveCache::default(),
         substrate_markers: SubstrateMarkers::default(),
@@ -24,7 +24,7 @@ pub(crate) fn bootstrapped_fixture_dag() -> Dag {
         emit_model_variants: EmitModelVariants::default(),
         clusters: bootstrapped_fixture_dag_clusters(),
         optional_match_disjs: bootstrapped_fixture_dag_optional_match_disjs(),
-        declaration_append_begin_after_bootstrap: 2352,
+        declaration_append_begin_after_bootstrap: 2358,
     }
 }
 
@@ -4127,7 +4127,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
     {
-        let mut declarations = Vec::with_capacity(2352);
+        let mut declarations = Vec::with_capacity(2358);
         declarations.push(Declaration {
             id: DeclarationId(0),
             name: Some("Classical".to_string()),
@@ -23405,20 +23405,32 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                         ty: DeclarationId(1954),
                     },
                     Field {
-                        label: "UnitMismatch".to_string(),
+                        label: "ArityMismatch".to_string(),
                         ty: DeclarationId(1955),
                     },
                     Field {
-                        label: "ArityMismatch".to_string(),
+                        label: "ResolveError".to_string(),
                         ty: DeclarationId(1956),
                     },
                     Field {
-                        label: "ResolveError".to_string(),
+                        label: "UnitMismatch".to_string(),
                         ty: DeclarationId(1957),
                     },
                     Field {
-                        label: "NominalOpacityViolation".to_string(),
+                        label: "BranchConditionNotBool".to_string(),
                         ty: DeclarationId(1958),
+                    },
+                    Field {
+                        label: "MagnitudeOutOfRange".to_string(),
+                        ty: DeclarationId(1959),
+                    },
+                    Field {
+                        label: "MalformedIntegerRangeFact".to_string(),
+                        ty: DeclarationId(1960),
+                    },
+                    Field {
+                        label: "NominalOpacityViolation".to_string(),
+                        ty: DeclarationId(1961),
                     },
                 ],
             },
@@ -23430,7 +23442,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 990, 1148),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 990, 1229),
         });
         declarations.push(Declaration {
             id: DeclarationId(874),
@@ -23459,7 +23471,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1354, 1607),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1435, 1688),
         });
         declarations.push(Declaration {
             id: DeclarationId(875),
@@ -23484,7 +23496,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 2387, 2450),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 2468, 2531),
         });
         declarations.push(Declaration {
             id: DeclarationId(876),
@@ -23503,7 +23515,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 4652, 4712),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 4733, 4793),
         });
         declarations.push(Declaration {
             id: DeclarationId(877),
@@ -23512,11 +23524,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "CompilerKind".to_string(),
-                        ty: DeclarationId(1959),
+                        ty: DeclarationId(1962),
                     },
                     Field {
                         label: "LensInstanceKind".to_string(),
-                        ty: DeclarationId(1960),
+                        ty: DeclarationId(1963),
                     },
                 ],
             },
@@ -23528,7 +23540,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5321, 5430),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5402, 5511),
         });
         declarations.push(Declaration {
             id: DeclarationId(878),
@@ -23549,7 +23561,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "fixes".to_string(),
-                        ty: DeclarationId(1961),
+                        ty: DeclarationId(1964),
                     },
                 ],
             },
@@ -23561,7 +23573,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5799, 5907),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5880, 5988),
         });
         declarations.push(Declaration {
             id: DeclarationId(879),
@@ -23570,31 +23582,31 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "UnderRefined".to_string(),
-                        ty: DeclarationId(1962),
-                    },
-                    Field {
-                        label: "NoInhabitant".to_string(),
-                        ty: DeclarationId(1963),
-                    },
-                    Field {
-                        label: "ContradictoryUse".to_string(),
                         ty: DeclarationId(1965),
                     },
                     Field {
-                        label: "OutOfR2Scope".to_string(),
+                        label: "NoInhabitant".to_string(),
                         ty: DeclarationId(1966),
                     },
                     Field {
-                        label: "LifetimeProgramExtractionPending".to_string(),
-                        ty: DeclarationId(1967),
-                    },
-                    Field {
-                        label: "FoldNotImplemented".to_string(),
+                        label: "ContradictoryUse".to_string(),
                         ty: DeclarationId(1968),
                     },
                     Field {
-                        label: "MissingEmissionPath".to_string(),
+                        label: "OutOfR2Scope".to_string(),
                         ty: DeclarationId(1969),
+                    },
+                    Field {
+                        label: "LifetimeProgramExtractionPending".to_string(),
+                        ty: DeclarationId(1970),
+                    },
+                    Field {
+                        label: "FoldNotImplemented".to_string(),
+                        ty: DeclarationId(1971),
+                    },
+                    Field {
+                        label: "MissingEmissionPath".to_string(),
+                        ty: DeclarationId(1972),
                     },
                 ],
             },
@@ -23606,7 +23618,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 8541, 11258),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 8622, 11339),
         });
         declarations.push(Declaration {
             id: DeclarationId(880),
@@ -23615,11 +23627,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Inhabits".to_string(),
-                        ty: DeclarationId(1984),
+                        ty: DeclarationId(1987),
                     },
                     Field {
                         label: "Violates".to_string(),
-                        ty: DeclarationId(1985),
+                        ty: DeclarationId(1988),
                     },
                 ],
             },
@@ -23654,11 +23666,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "NoDiagnostic".to_string(),
-                        ty: DeclarationId(1986),
+                        ty: DeclarationId(1989),
                     },
                     Field {
                         label: "SomeDiagnostic".to_string(),
-                        ty: DeclarationId(1987),
+                        ty: DeclarationId(1990),
                     },
                 ],
             },
@@ -23679,11 +23691,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "DimensionOk".to_string(),
-                        ty: DeclarationId(1990),
+                        ty: DeclarationId(1993),
                     },
                     Field {
                         label: "DimensionFail".to_string(),
-                        ty: DeclarationId(1994),
+                        ty: DeclarationId(1997),
                     },
                 ],
             },
@@ -23722,15 +23734,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "witness_of".to_string(),
-                        ty: DeclarationId(1996),
+                        ty: DeclarationId(1999),
                     },
                     Field {
                         label: "compose".to_string(),
-                        ty: DeclarationId(1997),
+                        ty: DeclarationId(2000),
                     },
                     Field {
                         label: "break_diagnostic".to_string(),
-                        ty: DeclarationId(1998),
+                        ty: DeclarationId(2001),
                     },
                 ],
             },
@@ -23770,7 +23782,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             type_params: vec![DeclarationId(888), DeclarationId(889)],
             phantom_params: vec![PhantomParameter {
                 parameter: DeclarationId(888),
-                algebra: DeclarationId(1999),
+                algebra: DeclarationId(2002),
             }],
             meta_tag: None,
             specialization_parent: None,
@@ -23911,11 +23923,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("add_dimension".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![
-                    DeclarationId(1970),
-                    DeclarationId(1971),
-                    DeclarationId(1972),
+                    DeclarationId(1973),
+                    DeclarationId(1974),
+                    DeclarationId(1975),
                 ],
-                output: DeclarationId(1973),
+                output: DeclarationId(1976),
                 body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/dimensions.dag", 4966, 4988)),
             },
             type_params: vec![DeclarationId(898), DeclarationId(899)],
@@ -23961,11 +23973,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("sub_dimension".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![
-                    DeclarationId(1974),
-                    DeclarationId(1975),
-                    DeclarationId(1976),
+                    DeclarationId(1977),
+                    DeclarationId(1978),
+                    DeclarationId(1979),
                 ],
-                output: DeclarationId(1977),
+                output: DeclarationId(1980),
                 body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/dimensions.dag", 5162, 5184)),
             },
             type_params: vec![DeclarationId(901), DeclarationId(902)],
@@ -24010,8 +24022,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             id: DeclarationId(903),
             name: Some("mul_dimension_scalar".to_string()),
             connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(1978), DeclarationId(1979), DeclarationId(905)],
-                output: DeclarationId(1980),
+                inputs: vec![DeclarationId(1981), DeclarationId(1982), DeclarationId(905)],
+                output: DeclarationId(1983),
                 body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/dimensions.dag", 5350, 5379)),
             },
             type_params: vec![DeclarationId(904), DeclarationId(905)],
@@ -24056,8 +24068,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             id: DeclarationId(906),
             name: Some("div_dimension_scalar".to_string()),
             connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(1981), DeclarationId(1982), DeclarationId(908)],
-                output: DeclarationId(1983),
+                inputs: vec![DeclarationId(1984), DeclarationId(1985), DeclarationId(908)],
+                output: DeclarationId(1986),
                 body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/dimensions.dag", 5545, 5574)),
             },
             type_params: vec![DeclarationId(907), DeclarationId(908)],
@@ -24121,7 +24133,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "fields".to_string(),
-                        ty: DeclarationId(2000),
+                        ty: DeclarationId(2003),
                     },
                     Field {
                         label: "cost".to_string(),
@@ -24183,11 +24195,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "BoundUnspecified".to_string(),
-                        ty: DeclarationId(2001),
+                        ty: DeclarationId(2004),
                     },
                     Field {
                         label: "StaticBoundFact".to_string(),
-                        ty: DeclarationId(2002),
+                        ty: DeclarationId(2005),
                     },
                 ],
             },
@@ -24237,11 +24249,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "DirectField".to_string(),
-                        ty: DeclarationId(2003),
+                        ty: DeclarationId(2006),
                     },
                     Field {
                         label: "AccessorMethod".to_string(),
-                        ty: DeclarationId(2004),
+                        ty: DeclarationId(2007),
                     },
                 ],
             },
@@ -24344,7 +24356,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "parameters".to_string(),
-                        ty: DeclarationId(2005),
+                        ty: DeclarationId(2008),
                     },
                     Field {
                         label: "cost".to_string(),
@@ -24394,11 +24406,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Borrowed".to_string(),
-                        ty: DeclarationId(2006),
+                        ty: DeclarationId(2009),
                     },
                     Field {
                         label: "Consumed".to_string(),
-                        ty: DeclarationId(2007),
+                        ty: DeclarationId(2010),
                     },
                 ],
             },
@@ -24419,11 +24431,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Owned".to_string(),
-                        ty: DeclarationId(2008),
+                        ty: DeclarationId(2011),
                     },
                     Field {
                         label: "Borrowed".to_string(),
-                        ty: DeclarationId(2009),
+                        ty: DeclarationId(2012),
                     },
                 ],
             },
@@ -24444,11 +24456,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "SelfContained".to_string(),
-                        ty: DeclarationId(2010),
+                        ty: DeclarationId(2013),
                     },
                     Field {
                         label: "Caller".to_string(),
-                        ty: DeclarationId(2011),
+                        ty: DeclarationId(2014),
                     },
                 ],
             },
@@ -24469,15 +24481,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Growable".to_string(),
-                        ty: DeclarationId(2012),
+                        ty: DeclarationId(2015),
                     },
                     Field {
                         label: "Fixed".to_string(),
-                        ty: DeclarationId(2013),
+                        ty: DeclarationId(2016),
                     },
                     Field {
                         label: "NotApplicable".to_string(),
-                        ty: DeclarationId(2014),
+                        ty: DeclarationId(2017),
                     },
                 ],
             },
@@ -24497,7 +24509,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Disj {
                 variants: vec![Field {
                     label: "Utf8FreeMonoidChar".to_string(),
-                    ty: DeclarationId(2015),
+                    ty: DeclarationId(2018),
                 }],
             },
             type_params: vec![],
@@ -24595,43 +24607,43 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "ListEmpty".to_string(),
-                        ty: DeclarationId(2016),
-                    },
-                    Field {
-                        label: "ListSingleton".to_string(),
-                        ty: DeclarationId(2017),
-                    },
-                    Field {
-                        label: "ListCons".to_string(),
-                        ty: DeclarationId(2018),
-                    },
-                    Field {
-                        label: "ListConcat".to_string(),
                         ty: DeclarationId(2019),
                     },
                     Field {
-                        label: "ListLength".to_string(),
+                        label: "ListSingleton".to_string(),
                         ty: DeclarationId(2020),
                     },
                     Field {
-                        label: "ListIsEmpty".to_string(),
+                        label: "ListCons".to_string(),
                         ty: DeclarationId(2021),
                     },
                     Field {
-                        label: "ListFold".to_string(),
+                        label: "ListConcat".to_string(),
                         ty: DeclarationId(2022),
                     },
                     Field {
-                        label: "ListMap".to_string(),
+                        label: "ListLength".to_string(),
                         ty: DeclarationId(2023),
                     },
                     Field {
-                        label: "ListFilter".to_string(),
+                        label: "ListIsEmpty".to_string(),
                         ty: DeclarationId(2024),
                     },
                     Field {
-                        label: "ListContains".to_string(),
+                        label: "ListFold".to_string(),
                         ty: DeclarationId(2025),
+                    },
+                    Field {
+                        label: "ListMap".to_string(),
+                        ty: DeclarationId(2026),
+                    },
+                    Field {
+                        label: "ListFilter".to_string(),
+                        ty: DeclarationId(2027),
+                    },
+                    Field {
+                        label: "ListContains".to_string(),
+                        ty: DeclarationId(2028),
                     },
                 ],
             },
@@ -24713,11 +24725,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "PlaceholderPatternStrategy".to_string(),
-                        ty: DeclarationId(2026),
+                        ty: DeclarationId(2029),
                     },
                     Field {
                         label: "VectorList".to_string(),
-                        ty: DeclarationId(2027),
+                        ty: DeclarationId(2030),
                     },
                 ],
             },
@@ -25196,11 +25208,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Borrow".to_string(),
-                        ty: DeclarationId(2028),
+                        ty: DeclarationId(2031),
                     },
                     Field {
                         label: "PassByValue".to_string(),
-                        ty: DeclarationId(2029),
+                        ty: DeclarationId(2032),
                     },
                 ],
             },
@@ -25221,11 +25233,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "CopyOrClone".to_string(),
-                        ty: DeclarationId(2030),
+                        ty: DeclarationId(2033),
                     },
                     Field {
                         label: "PassByValue".to_string(),
-                        ty: DeclarationId(2031),
+                        ty: DeclarationId(2034),
                     },
                 ],
             },
@@ -25311,11 +25323,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "IndexedArgs".to_string(),
-                        ty: DeclarationId(2032),
+                        ty: DeclarationId(2035),
                     },
                     Field {
                         label: "NamedArg".to_string(),
-                        ty: DeclarationId(2033),
+                        ty: DeclarationId(2036),
                     },
                 ],
             },
@@ -25336,11 +25348,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "SingleTemplate".to_string(),
-                        ty: DeclarationId(2034),
+                        ty: DeclarationId(2037),
                     },
                     Field {
                         label: "HigherOrderTemplates".to_string(),
-                        ty: DeclarationId(2035),
+                        ty: DeclarationId(2038),
                     },
                 ],
             },
@@ -25542,7 +25554,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "append({left}, {right}...)".to_string(),
                             ))],
@@ -25555,7 +25567,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25593,7 +25605,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "int64(len({recv}))".to_string(),
                             ))],
@@ -25606,7 +25618,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25644,7 +25656,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "len({recv}) == 0".to_string(),
                             ))],
@@ -25657,7 +25669,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25697,7 +25709,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "/* fold({recv}, {init}, {body}) */".to_string(),
                             ))],
@@ -25710,7 +25722,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25750,7 +25762,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "v2rt.Filter({recv}, {arg})".to_string(),
                             ))],
@@ -25763,7 +25775,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25803,7 +25815,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "v2rt.Any({recv}, {arg})".to_string(),
                             ))],
@@ -25816,7 +25828,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25856,7 +25868,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "v2rt.All({recv}, {arg})".to_string(),
                             ))],
@@ -25869,7 +25881,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25909,7 +25921,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "v2rt.FlatMap({recv}, {arg})".to_string(),
                             ))],
@@ -25922,7 +25934,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25944,7 +25956,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(2036)),
+            meta_tag: Some(DeclarationId(2039)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
@@ -25963,7 +25975,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "len({recv})".to_string(),
                             ))],
@@ -25976,7 +25988,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -25998,7 +26010,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "strings.Join({recv}, {arg})".to_string(),
                             ))],
@@ -26011,7 +26023,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26033,7 +26045,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "strings.Split({recv}, {arg})".to_string(),
                             ))],
@@ -26046,7 +26058,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26068,7 +26080,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "v2rt.Map({recv}, {arg})".to_string(),
                             ))],
@@ -26081,7 +26093,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26105,7 +26117,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv}[{arg}:]".to_string(),
                             ))],
@@ -26118,7 +26130,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26138,7 +26150,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv}[:{arg}]".to_string(),
                             ))],
@@ -26151,7 +26163,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26173,7 +26185,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "v2rt.SortBy({recv}, {arg})".to_string(),
                             ))],
@@ -26186,7 +26198,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26208,7 +26220,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "append({recv}, {arg})".to_string(),
                             ))],
@@ -26221,7 +26233,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26243,7 +26255,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "strings.Contains({recv}, {arg})".to_string(),
                             ))],
@@ -26256,7 +26268,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -26273,23 +26285,23 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "DirectRecursion".to_string(),
-                        ty: DeclarationId(2046),
-                    },
-                    Field {
-                        label: "ListRecursion".to_string(),
-                        ty: DeclarationId(2047),
-                    },
-                    Field {
-                        label: "OptionalRecursion".to_string(),
-                        ty: DeclarationId(2048),
-                    },
-                    Field {
-                        label: "SetRecursion".to_string(),
                         ty: DeclarationId(2049),
                     },
                     Field {
-                        label: "MapValueRecursion".to_string(),
+                        label: "ListRecursion".to_string(),
                         ty: DeclarationId(2050),
+                    },
+                    Field {
+                        label: "OptionalRecursion".to_string(),
+                        ty: DeclarationId(2051),
+                    },
+                    Field {
+                        label: "SetRecursion".to_string(),
+                        ty: DeclarationId(2052),
+                    },
+                    Field {
+                        label: "MapValueRecursion".to_string(),
+                        ty: DeclarationId(2053),
                     },
                 ],
             },
@@ -26401,23 +26413,23 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "StrictSubValue".to_string(),
-                        ty: DeclarationId(2051),
-                    },
-                    Field {
-                        label: "IteratedSubValue".to_string(),
-                        ty: DeclarationId(2052),
-                    },
-                    Field {
-                        label: "ArithmeticDescent".to_string(),
-                        ty: DeclarationId(2053),
-                    },
-                    Field {
-                        label: "PreservedValue".to_string(),
                         ty: DeclarationId(2054),
                     },
                     Field {
-                        label: "SubValueUnknown".to_string(),
+                        label: "IteratedSubValue".to_string(),
                         ty: DeclarationId(2055),
+                    },
+                    Field {
+                        label: "ArithmeticDescent".to_string(),
+                        ty: DeclarationId(2056),
+                    },
+                    Field {
+                        label: "PreservedValue".to_string(),
+                        ty: DeclarationId(2057),
+                    },
+                    Field {
+                        label: "SubValueUnknown".to_string(),
+                        ty: DeclarationId(2058),
                     },
                 ],
             },
@@ -26568,7 +26580,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("sub_value_to_call_pattern".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(965)],
-                output: DeclarationId(2037),
+                output: DeclarationId(2040),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     20518,
@@ -26590,7 +26602,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("sub_value_to_lowering_target".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(965)],
-                output: DeclarationId(2038),
+                output: DeclarationId(2041),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     21906,
@@ -26614,19 +26626,19 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "IntegerExpZero".to_string(),
-                        ty: DeclarationId(2056),
+                        ty: DeclarationId(2059),
                     },
                     Field {
                         label: "IntegerExpPos".to_string(),
-                        ty: DeclarationId(2057),
+                        ty: DeclarationId(2060),
                     },
                     Field {
                         label: "FractionExp".to_string(),
-                        ty: DeclarationId(2058),
+                        ty: DeclarationId(2061),
                     },
                     Field {
                         label: "LogBasedExp".to_string(),
-                        ty: DeclarationId(2059),
+                        ty: DeclarationId(2062),
                     },
                 ],
             },
@@ -26669,11 +26681,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "PolyCost".to_string(),
-                        ty: DeclarationId(2060),
+                        ty: DeclarationId(2063),
                     },
                     Field {
                         label: "LogCost".to_string(),
-                        ty: DeclarationId(2061),
+                        ty: DeclarationId(2064),
                     },
                 ],
             },
@@ -26694,31 +26706,31 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "ConstantBound".to_string(),
-                        ty: DeclarationId(2062),
-                    },
-                    Field {
-                        label: "AtomicBound".to_string(),
-                        ty: DeclarationId(2063),
-                    },
-                    Field {
-                        label: "ProductBound".to_string(),
                         ty: DeclarationId(2065),
                     },
                     Field {
-                        label: "SumOfProductsBound".to_string(),
+                        label: "AtomicBound".to_string(),
+                        ty: DeclarationId(2066),
+                    },
+                    Field {
+                        label: "ProductBound".to_string(),
                         ty: DeclarationId(2068),
                     },
                     Field {
-                        label: "SumBound".to_string(),
-                        ty: DeclarationId(2070),
-                    },
-                    Field {
-                        label: "ForeverBound".to_string(),
+                        label: "SumOfProductsBound".to_string(),
                         ty: DeclarationId(2071),
                     },
                     Field {
+                        label: "SumBound".to_string(),
+                        ty: DeclarationId(2073),
+                    },
+                    Field {
+                        label: "ForeverBound".to_string(),
+                        ty: DeclarationId(2074),
+                    },
+                    Field {
                         label: "ErrorBound".to_string(),
-                        ty: DeclarationId(2072),
+                        ty: DeclarationId(2075),
                     },
                 ],
             },
@@ -26736,7 +26748,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             id: DeclarationId(978),
             name: Some("sum_bound".to_string()),
             connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(2039)],
+                inputs: vec![DeclarationId(2042)],
                 output: DeclarationId(977),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
@@ -27012,7 +27024,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("int_add_checked".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81), DeclarationId(81)],
-                output: DeclarationId(2040),
+                output: DeclarationId(2043),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     31955,
@@ -27034,7 +27046,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("int_mul_checked".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81), DeclarationId(81)],
-                output: DeclarationId(2041),
+                output: DeclarationId(2044),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     32251,
@@ -27056,7 +27068,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("bounded_int_pow_exponent".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81)],
-                output: DeclarationId(2042),
+                output: DeclarationId(2045),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     33500,
@@ -27078,7 +27090,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("int_pow_bounded".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81), DeclarationId(81)],
-                output: DeclarationId(2043),
+                output: DeclarationId(2046),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     33975,
@@ -27100,7 +27112,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("ceil_log".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81), DeclarationId(81)],
-                output: DeclarationId(2044),
+                output: DeclarationId(2047),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     35238,
@@ -27127,7 +27139,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     DeclarationId(81),
                     DeclarationId(81),
                 ],
-                output: DeclarationId(2045),
+                output: DeclarationId(2048),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/induction.dag",
                     35510,
@@ -27535,7 +27547,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(2073)),
+            meta_tag: Some(DeclarationId(2076)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
@@ -27561,7 +27573,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(2074)),
+            meta_tag: Some(DeclarationId(2077)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
@@ -27586,23 +27598,23 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "read".to_string(),
-                        ty: DeclarationId(2076),
-                    },
-                    Field {
-                        label: "sequential".to_string(),
-                        ty: DeclarationId(2077),
-                    },
-                    Field {
-                        label: "branch".to_string(),
-                        ty: DeclarationId(2078),
-                    },
-                    Field {
-                        label: "iterate".to_string(),
                         ty: DeclarationId(2079),
                     },
                     Field {
-                        label: "validate".to_string(),
+                        label: "sequential".to_string(),
                         ty: DeclarationId(2080),
+                    },
+                    Field {
+                        label: "branch".to_string(),
+                        ty: DeclarationId(2081),
+                    },
+                    Field {
+                        label: "iterate".to_string(),
+                        ty: DeclarationId(2082),
+                    },
+                    Field {
+                        label: "validate".to_string(),
+                        ty: DeclarationId(2083),
                     },
                 ],
             },
@@ -27637,11 +27649,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Miss".to_string(),
-                        ty: DeclarationId(2083),
+                        ty: DeclarationId(2086),
                     },
                     Field {
                         label: "Hit".to_string(),
-                        ty: DeclarationId(2084),
+                        ty: DeclarationId(2087),
                     },
                 ],
             },
@@ -27674,7 +27686,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("miss_int_lookup".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![],
-                output: DeclarationId(2081),
+                output: DeclarationId(2084),
                 body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/lookup.dag", 4589, 4599)),
             },
             type_params: vec![],
@@ -27692,7 +27704,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("hit_int_lookup".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81)],
-                output: DeclarationId(2082),
+                output: DeclarationId(2085),
                 body: ArrowBody::Unparsed(SourceSpan::new("src/v3/std/lookup.dag", 4642, 4654)),
             },
             type_params: vec![],
@@ -27730,7 +27742,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "items".to_string(),
-                    ty: DeclarationId(2085),
+                    ty: DeclarationId(2088),
                 }],
             },
             type_params: vec![],
@@ -27758,7 +27770,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "refinement".to_string(),
-                        ty: DeclarationId(2086),
+                        ty: DeclarationId(2089),
                     },
                 ],
             },
@@ -27833,11 +27845,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Positional".to_string(),
-                        ty: DeclarationId(2088),
+                        ty: DeclarationId(2091),
                     },
                     Field {
                         label: "Record".to_string(),
-                        ty: DeclarationId(2090),
+                        ty: DeclarationId(2093),
                     },
                 ],
             },
@@ -27858,19 +27870,19 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Named".to_string(),
-                        ty: DeclarationId(2091),
-                    },
-                    Field {
-                        label: "Parameterized".to_string(),
-                        ty: DeclarationId(2093),
-                    },
-                    Field {
-                        label: "Optional".to_string(),
                         ty: DeclarationId(2094),
                     },
                     Field {
-                        label: "Arrow".to_string(),
+                        label: "Parameterized".to_string(),
                         ty: DeclarationId(2096),
+                    },
+                    Field {
+                        label: "Optional".to_string(),
+                        ty: DeclarationId(2097),
+                    },
+                    Field {
+                        label: "Arrow".to_string(),
+                        ty: DeclarationId(2099),
                     },
                 ],
             },
@@ -28011,15 +28023,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "BareVariant".to_string(),
-                        ty: DeclarationId(2097),
+                        ty: DeclarationId(2100),
                     },
                     Field {
                         label: "VariantWith".to_string(),
-                        ty: DeclarationId(2098),
+                        ty: DeclarationId(2101),
                     },
                     Field {
                         label: "VariantFields".to_string(),
-                        ty: DeclarationId(2100),
+                        ty: DeclarationId(2103),
                     },
                 ],
             },
@@ -28040,15 +28052,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Int".to_string(),
-                        ty: DeclarationId(2101),
+                        ty: DeclarationId(2104),
                     },
                     Field {
                         label: "Bool".to_string(),
-                        ty: DeclarationId(2102),
+                        ty: DeclarationId(2105),
                     },
                     Field {
                         label: "String".to_string(),
-                        ty: DeclarationId(2103),
+                        ty: DeclarationId(2106),
                     },
                 ],
             },
@@ -28069,55 +28081,55 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Literal".to_string(),
-                        ty: DeclarationId(2104),
+                        ty: DeclarationId(2107),
                     },
                     Field {
                         label: "Var".to_string(),
-                        ty: DeclarationId(2105),
-                    },
-                    Field {
-                        label: "Path".to_string(),
                         ty: DeclarationId(2108),
                     },
                     Field {
+                        label: "Path".to_string(),
+                        ty: DeclarationId(2111),
+                    },
+                    Field {
                         label: "Call".to_string(),
-                        ty: DeclarationId(2110),
+                        ty: DeclarationId(2113),
                     },
                     Field {
                         label: "PathCall".to_string(),
-                        ty: DeclarationId(2114),
+                        ty: DeclarationId(2117),
                     },
                     Field {
                         label: "VariantRecord".to_string(),
-                        ty: DeclarationId(2116),
+                        ty: DeclarationId(2119),
                     },
                     Field {
                         label: "Operator".to_string(),
-                        ty: DeclarationId(2118),
-                    },
-                    Field {
-                        label: "Lambda".to_string(),
-                        ty: DeclarationId(2120),
-                    },
-                    Field {
-                        label: "If".to_string(),
                         ty: DeclarationId(2121),
                     },
                     Field {
-                        label: "Match".to_string(),
+                        label: "Lambda".to_string(),
                         ty: DeclarationId(2123),
                     },
                     Field {
+                        label: "If".to_string(),
+                        ty: DeclarationId(2124),
+                    },
+                    Field {
+                        label: "Match".to_string(),
+                        ty: DeclarationId(2126),
+                    },
+                    Field {
                         label: "Record".to_string(),
-                        ty: DeclarationId(2125),
+                        ty: DeclarationId(2128),
                     },
                     Field {
                         label: "List".to_string(),
-                        ty: DeclarationId(2127),
+                        ty: DeclarationId(2130),
                     },
                     Field {
                         label: "Map".to_string(),
-                        ty: DeclarationId(2129),
+                        ty: DeclarationId(2132),
                     },
                 ],
             },
@@ -28138,43 +28150,43 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Let".to_string(),
-                        ty: DeclarationId(2131),
-                    },
-                    Field {
-                        label: "Fn".to_string(),
                         ty: DeclarationId(2134),
                     },
                     Field {
-                        label: "FnExternalBody".to_string(),
+                        label: "Fn".to_string(),
                         ty: DeclarationId(2137),
                     },
                     Field {
+                        label: "FnExternalBody".to_string(),
+                        ty: DeclarationId(2140),
+                    },
+                    Field {
                         label: "Data".to_string(),
-                        ty: DeclarationId(2139),
+                        ty: DeclarationId(2142),
                     },
                     Field {
                         label: "Module".to_string(),
-                        ty: DeclarationId(2141),
-                    },
-                    Field {
-                        label: "Import".to_string(),
                         ty: DeclarationId(2144),
                     },
                     Field {
-                        label: "TypeAtom".to_string(),
-                        ty: DeclarationId(2146),
+                        label: "Import".to_string(),
+                        ty: DeclarationId(2147),
                     },
                     Field {
-                        label: "TypeRecord".to_string(),
+                        label: "TypeAtom".to_string(),
                         ty: DeclarationId(2149),
                     },
                     Field {
+                        label: "TypeRecord".to_string(),
+                        ty: DeclarationId(2152),
+                    },
+                    Field {
                         label: "TypeSum".to_string(),
-                        ty: DeclarationId(2153),
+                        ty: DeclarationId(2156),
                     },
                     Field {
                         label: "TypeAlias".to_string(),
-                        ty: DeclarationId(2156),
+                        ty: DeclarationId(2159),
                     },
                 ],
             },
@@ -28216,7 +28228,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "[*{left}, *{right}]".to_string(),
                             ))],
@@ -28229,7 +28241,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28271,7 +28283,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "len({recv})".to_string(),
                             ))],
@@ -28284,7 +28296,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28326,7 +28338,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "(len({recv}) == 0)".to_string(),
                             ))],
@@ -28339,7 +28351,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28383,7 +28395,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "__v3_fold({recv}, {init}, {body})".to_string(),
                             ))],
@@ -28396,7 +28408,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28440,7 +28452,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "[x for x in {recv} if {arg}(x)]".to_string(),
                             ))],
@@ -28453,7 +28465,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28497,7 +28509,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "any({arg}(x) for x in {recv})".to_string(),
                             ))],
@@ -28510,7 +28522,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28554,7 +28566,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "all({arg}(x) for x in {recv})".to_string(),
                             ))],
@@ -28567,7 +28579,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28611,7 +28623,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "[y for x in {recv} for y in {arg}(x)]".to_string(),
                             ))],
@@ -28624,7 +28636,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28650,7 +28662,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(2157)),
+            meta_tag: Some(DeclarationId(2160)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
@@ -28669,7 +28681,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "len({recv})".to_string(),
                             ))],
@@ -28682,7 +28694,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28702,7 +28714,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{arg}.join({recv})".to_string(),
                             ))],
@@ -28715,7 +28727,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28735,7 +28747,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv}.split({arg})".to_string(),
                             ))],
@@ -28748,7 +28760,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28770,7 +28782,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv}[-1] if {recv} else None".to_string(),
                             ))],
@@ -28783,7 +28795,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28805,7 +28817,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv}[0] if {recv} else None".to_string(),
                             ))],
@@ -28818,7 +28830,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28840,7 +28852,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "list(enumerate({recv}))".to_string(),
                             ))],
@@ -28853,7 +28865,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28875,7 +28887,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "[ord(c) for c in {recv}]".to_string(),
                             ))],
@@ -28888,7 +28900,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28910,7 +28922,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "[{arg}(x) for x in {recv}]".to_string(),
                             ))],
@@ -28923,7 +28935,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28947,7 +28959,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv}[{arg}:]".to_string(),
                             ))],
@@ -28960,7 +28972,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -28980,7 +28992,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv}[:{arg}]".to_string(),
                             ))],
@@ -28993,7 +29005,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -29015,7 +29027,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "sorted({recv}, key={arg})".to_string(),
                             ))],
@@ -29028,7 +29040,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -29048,7 +29060,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{recv} + [{arg}]".to_string(),
                             ))],
@@ -29061,7 +29073,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -29081,7 +29093,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{arg} in {recv}".to_string(),
                             ))],
@@ -29094,7 +29106,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -29192,23 +29204,23 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "LiteralValue".to_string(),
-                        ty: DeclarationId(2158),
-                    },
-                    Field {
-                        label: "RecordValue".to_string(),
-                        ty: DeclarationId(2160),
-                    },
-                    Field {
-                        label: "VariantValue".to_string(),
                         ty: DeclarationId(2161),
                     },
                     Field {
+                        label: "RecordValue".to_string(),
+                        ty: DeclarationId(2163),
+                    },
+                    Field {
+                        label: "VariantValue".to_string(),
+                        ty: DeclarationId(2164),
+                    },
+                    Field {
                         label: "NodeRef".to_string(),
-                        ty: DeclarationId(2162),
+                        ty: DeclarationId(2165),
                     },
                     Field {
                         label: "CardinalityValue".to_string(),
-                        ty: DeclarationId(2163),
+                        ty: DeclarationId(2166),
                     },
                 ],
             },
@@ -29261,7 +29273,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "bindings".to_string(),
-                    ty: DeclarationId(2164),
+                    ty: DeclarationId(2167),
                 }],
             },
             type_params: vec![],
@@ -29280,7 +29292,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "frames".to_string(),
-                    ty: DeclarationId(2165),
+                    ty: DeclarationId(2168),
                 }],
             },
             type_params: vec![],
@@ -29318,7 +29330,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Disj {
                 variants: vec![Field {
                     label: "ApplicativeOrder".to_string(),
-                    ty: DeclarationId(2166),
+                    ty: DeclarationId(2169),
                 }],
             },
             type_params: vec![],
@@ -29337,7 +29349,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Disj {
                 variants: vec![Field {
                     label: "LeftFirst".to_string(),
-                    ty: DeclarationId(2167),
+                    ty: DeclarationId(2170),
                 }],
             },
             type_params: vec![],
@@ -29383,11 +29395,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             nominal_opacity: None,
             span: SourceSpan::new("src/v3/std/runtime.dag", 6042, 6153),
         });
-        declarations.push(Declaration { id: DeclarationId(1057), name: Some("rust_filter_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(230)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2035), payload: vec![FieldValue::Literal(LiteralBits::String("{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.filter({arg}).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 3551, 4204) });
-        declarations.push(Declaration { id: DeclarationId(1058), name: Some("rust_any_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(216)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2035), payload: vec![FieldValue::Literal(LiteralBits::String("{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.any({arg})".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 4206, 4701) });
-        declarations.push(Declaration { id: DeclarationId(1059), name: Some("rust_all_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(215)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2035), payload: vec![FieldValue::Literal(LiteralBits::String("{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.all({arg})".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 4703, 5192) });
-        declarations.push(Declaration { id: DeclarationId(1060), name: Some("rust_flat_map_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(232)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2035), payload: vec![FieldValue::Literal(LiteralBits::String("{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.flat_map({arg}).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 5194, 5725) });
-        declarations.push(Declaration { id: DeclarationId(1061), name: Some("rust_method_template_contracts".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(607), arguments: vec![TemplateArgument { parameter: DeclarationId(608), value: DeclarationId(947) }] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(2168)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::List(vec![FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(225)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.len()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("({recv}.len() as i64)".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(238)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.join(&{arg})".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.join(&{arg})".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(262)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(240)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.last().cloned()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.last().cloned()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(231)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.first().cloned()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.first().cloned()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(229)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(219)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Reference(DeclarationId(1057)), FieldValue::Reference(DeclarationId(1058)), FieldValue::Reference(DeclarationId(1059)), FieldValue::Reference(DeclarationId(1060)), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(260)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(266)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2034), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2033), payload: vec![] })])])), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 5728, 8449) });
+        declarations.push(Declaration { id: DeclarationId(1057), name: Some("rust_filter_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(230)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2038), payload: vec![FieldValue::Literal(LiteralBits::String("{ let __filter_source = {iter}; let mut __result = Vec::new(); for {param} in __filter_source.iter() { if {body} { __result.push((*{param}).clone()); } } __result }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.filter({arg}).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 3551, 4204) });
+        declarations.push(Declaration { id: DeclarationId(1058), name: Some("rust_any_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(216)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2038), payload: vec![FieldValue::Literal(LiteralBits::String("{ let mut __found = false; for {param} in {iter} { if {body} { __found = true; break; } } __found }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.any({arg})".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 4206, 4701) });
+        declarations.push(Declaration { id: DeclarationId(1059), name: Some("rust_all_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(215)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2038), payload: vec![FieldValue::Literal(LiteralBits::String("{ let mut __all = true; for {param} in {iter} { if !({body}) { __all = false; break; } } __all }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.all({arg})".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 4703, 5192) });
+        declarations.push(Declaration { id: DeclarationId(1060), name: Some("rust_flat_map_method_template_contract".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(947), arguments: vec![] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(947)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::Structural { fields: vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(232)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2038), payload: vec![FieldValue::Literal(LiteralBits::String("{ let mut __result = Vec::new(); for {param} in {iter} { __result.extend({inner_iter}); } __result }".to_string())), FieldValue::Literal(LiteralBits::String("{iter}.flat_map({arg}).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })] }), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 5194, 5725) });
+        declarations.push(Declaration { id: DeclarationId(1061), name: Some("rust_method_template_contracts".to_string()), connective: TypeConnective::Instantiation { template: DeclarationId(607), arguments: vec![TemplateArgument { parameter: DeclarationId(608), value: DeclarationId(947) }] }, type_params: vec![], phantom_params: Vec::new(), meta_tag: Some(DeclarationId(2171)), specialization_parent: None, inhabits: None, value_body: Some(ValueBody::List(vec![FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(225)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.len()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("({recv}.len() as i64)".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(238)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.join(&{arg})".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.join(&{arg})".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(262)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.split(&{arg}).map(|s| s.to_string()).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(240)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.last().cloned()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.last().cloned()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(231)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.first().cloned()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.first().cloned()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(false))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(229)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.iter().enumerate().map(|(i, v)| (i, v.clone())).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().enumerate().map(|(i, v)| (i as i64, v)).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(219)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.chars().map(|c| c as i64).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Reference(DeclarationId(1057)), FieldValue::Reference(DeclarationId(1058)), FieldValue::Reference(DeclarationId(1059)), FieldValue::Reference(DeclarationId(1060)), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(260)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().skip({arg} as usize).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })]), FieldValue::Record(vec![("dag_method".to_string(), FieldValue::Record(vec![("decl".to_string(), FieldValue::Reference(DeclarationId(266)))])), ("runtime_template".to_string(), FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()".to_string()))), ("emit_template".to_string(), FieldValue::Variant { constructor: DeclarationId(2037), payload: vec![FieldValue::Literal(LiteralBits::String("{recv}.iter().cloned().take({arg} as usize).collect::<Vec<_>>()".to_string()))] }), ("wraps_result".to_string(), FieldValue::Literal(LiteralBits::Bool(true))), ("placeholder_convention".to_string(), FieldValue::Variant { constructor: DeclarationId(2036), payload: vec![] })])])), refinement: None, nominal_opacity: None, span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 5728, 8449) });
         declarations.push(Declaration {
             id: DeclarationId(1062),
             name: Some("InputField".to_string()),
@@ -29457,7 +29469,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "inputs".to_string(),
-                        ty: DeclarationId(2169),
+                        ty: DeclarationId(2172),
                     },
                     Field {
                         label: "endpoint".to_string(),
@@ -29482,15 +29494,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Strict".to_string(),
-                        ty: DeclarationId(2177),
+                        ty: DeclarationId(2180),
                     },
                     Field {
                         label: "NonIncreasing".to_string(),
-                        ty: DeclarationId(2178),
+                        ty: DeclarationId(2181),
                     },
                     Field {
                         label: "DescentUnknown".to_string(),
-                        ty: DeclarationId(2179),
+                        ty: DeclarationId(2182),
                     },
                 ],
             },
@@ -29588,8 +29600,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             id: DeclarationId(1071),
             name: Some("optional_evidence_meet".to_string()),
             connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(2170), DeclarationId(2171)],
-                output: DeclarationId(2172),
+                inputs: vec![DeclarationId(2173), DeclarationId(2174)],
+                output: DeclarationId(2175),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/termination.dag",
                     2388,
@@ -29610,8 +29622,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             id: DeclarationId(1072),
             name: Some("map_evidence_merge_at".to_string()),
             connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(2173), DeclarationId(197), DeclarationId(1066)],
-                output: DeclarationId(2174),
+                inputs: vec![DeclarationId(2176), DeclarationId(197), DeclarationId(1066)],
+                output: DeclarationId(2177),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/termination.dag",
                     2733,
@@ -29635,23 +29647,23 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "TreeSize".to_string(),
-                        ty: DeclarationId(2180),
-                    },
-                    Field {
-                        label: "ListLength".to_string(),
-                        ty: DeclarationId(2181),
-                    },
-                    Field {
-                        label: "ArithmeticValue".to_string(),
-                        ty: DeclarationId(2182),
-                    },
-                    Field {
-                        label: "TokenPosition".to_string(),
                         ty: DeclarationId(2183),
                     },
                     Field {
-                        label: "SetCardinality".to_string(),
+                        label: "ListLength".to_string(),
                         ty: DeclarationId(2184),
+                    },
+                    Field {
+                        label: "ArithmeticValue".to_string(),
+                        ty: DeclarationId(2185),
+                    },
+                    Field {
+                        label: "TokenPosition".to_string(),
+                        ty: DeclarationId(2186),
+                    },
+                    Field {
+                        label: "SetCardinality".to_string(),
+                        ty: DeclarationId(2187),
                     },
                 ],
             },
@@ -29672,11 +29684,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "OneStep".to_string(),
-                        ty: DeclarationId(2185),
+                        ty: DeclarationId(2188),
                     },
                     Field {
                         label: "AdditionalStep".to_string(),
-                        ty: DeclarationId(2186),
+                        ty: DeclarationId(2189),
                     },
                 ],
             },
@@ -29697,11 +29709,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "DivideByTwo".to_string(),
-                        ty: DeclarationId(2187),
+                        ty: DeclarationId(2190),
                     },
                     Field {
                         label: "StrictlyLarger".to_string(),
-                        ty: DeclarationId(2188),
+                        ty: DeclarationId(2191),
                     },
                 ],
             },
@@ -29764,7 +29776,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("positive_descent_amount_from_positive_int".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81)],
-                output: DeclarationId(2175),
+                output: DeclarationId(2178),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/termination.dag",
                     5902,
@@ -29786,7 +29798,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("proportional_divisor_from_int_at_least_two".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(81)],
-                output: DeclarationId(2176),
+                output: DeclarationId(2179),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/termination.dag",
                     6342,
@@ -29810,31 +29822,31 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "ChildAccessor".to_string(),
-                        ty: DeclarationId(2189),
-                    },
-                    Field {
-                        label: "ListShrink".to_string(),
-                        ty: DeclarationId(2190),
-                    },
-                    Field {
-                        label: "ArithmeticSubtractDescent".to_string(),
-                        ty: DeclarationId(2191),
-                    },
-                    Field {
-                        label: "ArithmeticDivideDescent".to_string(),
                         ty: DeclarationId(2192),
                     },
                     Field {
-                        label: "ParserAdvance".to_string(),
+                        label: "ListShrink".to_string(),
                         ty: DeclarationId(2193),
                     },
                     Field {
-                        label: "SetRemoval".to_string(),
+                        label: "ArithmeticSubtractDescent".to_string(),
                         ty: DeclarationId(2194),
                     },
                     Field {
-                        label: "FoldIteration".to_string(),
+                        label: "ArithmeticDivideDescent".to_string(),
                         ty: DeclarationId(2195),
+                    },
+                    Field {
+                        label: "ParserAdvance".to_string(),
+                        ty: DeclarationId(2196),
+                    },
+                    Field {
+                        label: "SetRemoval".to_string(),
+                        ty: DeclarationId(2197),
+                    },
+                    Field {
+                        label: "FoldIteration".to_string(),
+                        ty: DeclarationId(2198),
                     },
                 ],
             },
@@ -29854,7 +29866,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "dimensions".to_string(),
-                    ty: DeclarationId(2196),
+                    ty: DeclarationId(2199),
                 }],
             },
             type_params: vec![],
@@ -29882,7 +29894,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "evidence".to_string(),
-                        ty: DeclarationId(2197),
+                        ty: DeclarationId(2200),
                     },
                 ],
             },
@@ -29903,183 +29915,183 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "KwLet".to_string(),
-                        ty: DeclarationId(2198),
-                    },
-                    Field {
-                        label: "KwIf".to_string(),
-                        ty: DeclarationId(2199),
-                    },
-                    Field {
-                        label: "KwThen".to_string(),
-                        ty: DeclarationId(2200),
-                    },
-                    Field {
-                        label: "KwElse".to_string(),
                         ty: DeclarationId(2201),
                     },
                     Field {
-                        label: "KwFn".to_string(),
+                        label: "KwIf".to_string(),
                         ty: DeclarationId(2202),
                     },
                     Field {
-                        label: "KwType".to_string(),
+                        label: "KwThen".to_string(),
                         ty: DeclarationId(2203),
                     },
                     Field {
-                        label: "KwModule".to_string(),
+                        label: "KwElse".to_string(),
                         ty: DeclarationId(2204),
                     },
                     Field {
-                        label: "KwImport".to_string(),
+                        label: "KwFn".to_string(),
                         ty: DeclarationId(2205),
                     },
                     Field {
-                        label: "KwMatch".to_string(),
+                        label: "KwType".to_string(),
                         ty: DeclarationId(2206),
                     },
                     Field {
-                        label: "KwData".to_string(),
+                        label: "KwModule".to_string(),
                         ty: DeclarationId(2207),
                     },
                     Field {
-                        label: "KwWhere".to_string(),
+                        label: "KwImport".to_string(),
                         ty: DeclarationId(2208),
                     },
                     Field {
-                        label: "KwTrue".to_string(),
+                        label: "KwMatch".to_string(),
                         ty: DeclarationId(2209),
                     },
                     Field {
-                        label: "KwFalse".to_string(),
+                        label: "KwData".to_string(),
                         ty: DeclarationId(2210),
                     },
                     Field {
-                        label: "Ident".to_string(),
+                        label: "KwWhere".to_string(),
                         ty: DeclarationId(2211),
                     },
                     Field {
-                        label: "IntLit".to_string(),
+                        label: "KwTrue".to_string(),
                         ty: DeclarationId(2212),
                     },
                     Field {
-                        label: "StringLit".to_string(),
+                        label: "KwFalse".to_string(),
                         ty: DeclarationId(2213),
                     },
                     Field {
-                        label: "Eq".to_string(),
+                        label: "Ident".to_string(),
                         ty: DeclarationId(2214),
                     },
                     Field {
-                        label: "EqEq".to_string(),
+                        label: "IntLit".to_string(),
                         ty: DeclarationId(2215),
                     },
                     Field {
-                        label: "NotEq".to_string(),
+                        label: "StringLit".to_string(),
                         ty: DeclarationId(2216),
                     },
                     Field {
-                        label: "Lt".to_string(),
+                        label: "Eq".to_string(),
                         ty: DeclarationId(2217),
                     },
                     Field {
-                        label: "Le".to_string(),
+                        label: "EqEq".to_string(),
                         ty: DeclarationId(2218),
                     },
                     Field {
-                        label: "Gt".to_string(),
+                        label: "NotEq".to_string(),
                         ty: DeclarationId(2219),
                     },
                     Field {
-                        label: "Ge".to_string(),
+                        label: "Lt".to_string(),
                         ty: DeclarationId(2220),
                     },
                     Field {
-                        label: "Plus".to_string(),
+                        label: "Le".to_string(),
                         ty: DeclarationId(2221),
                     },
                     Field {
-                        label: "Minus".to_string(),
+                        label: "Gt".to_string(),
                         ty: DeclarationId(2222),
                     },
                     Field {
-                        label: "Star".to_string(),
+                        label: "Ge".to_string(),
                         ty: DeclarationId(2223),
                     },
                     Field {
-                        label: "Slash".to_string(),
+                        label: "Plus".to_string(),
                         ty: DeclarationId(2224),
                     },
                     Field {
-                        label: "AmpAmp".to_string(),
+                        label: "Minus".to_string(),
                         ty: DeclarationId(2225),
                     },
                     Field {
-                        label: "PipePipe".to_string(),
+                        label: "Star".to_string(),
                         ty: DeclarationId(2226),
                     },
                     Field {
-                        label: "Colon".to_string(),
+                        label: "Slash".to_string(),
                         ty: DeclarationId(2227),
                     },
                     Field {
-                        label: "Arrow".to_string(),
+                        label: "AmpAmp".to_string(),
                         ty: DeclarationId(2228),
                     },
                     Field {
-                        label: "FatArrow".to_string(),
+                        label: "PipePipe".to_string(),
                         ty: DeclarationId(2229),
                     },
                     Field {
-                        label: "PipeArrow".to_string(),
+                        label: "Colon".to_string(),
                         ty: DeclarationId(2230),
                     },
                     Field {
-                        label: "Dot".to_string(),
+                        label: "Arrow".to_string(),
                         ty: DeclarationId(2231),
                     },
                     Field {
-                        label: "LParen".to_string(),
+                        label: "FatArrow".to_string(),
                         ty: DeclarationId(2232),
                     },
                     Field {
-                        label: "RParen".to_string(),
+                        label: "PipeArrow".to_string(),
                         ty: DeclarationId(2233),
                     },
                     Field {
-                        label: "LBrace".to_string(),
+                        label: "Dot".to_string(),
                         ty: DeclarationId(2234),
                     },
                     Field {
-                        label: "RBrace".to_string(),
+                        label: "LParen".to_string(),
                         ty: DeclarationId(2235),
                     },
                     Field {
-                        label: "LBracket".to_string(),
+                        label: "RParen".to_string(),
                         ty: DeclarationId(2236),
                     },
                     Field {
-                        label: "RBracket".to_string(),
+                        label: "LBrace".to_string(),
                         ty: DeclarationId(2237),
                     },
                     Field {
-                        label: "Comma".to_string(),
+                        label: "RBrace".to_string(),
                         ty: DeclarationId(2238),
                     },
                     Field {
-                        label: "Semicolon".to_string(),
+                        label: "LBracket".to_string(),
                         ty: DeclarationId(2239),
                     },
                     Field {
-                        label: "Pipe".to_string(),
+                        label: "RBracket".to_string(),
                         ty: DeclarationId(2240),
                     },
                     Field {
-                        label: "Question".to_string(),
+                        label: "Comma".to_string(),
                         ty: DeclarationId(2241),
                     },
                     Field {
-                        label: "Eof".to_string(),
+                        label: "Semicolon".to_string(),
                         ty: DeclarationId(2242),
+                    },
+                    Field {
+                        label: "Pipe".to_string(),
+                        ty: DeclarationId(2243),
+                    },
+                    Field {
+                        label: "Question".to_string(),
+                        ty: DeclarationId(2244),
+                    },
+                    Field {
+                        label: "Eof".to_string(),
+                        ty: DeclarationId(2245),
                     },
                 ],
             },
@@ -30125,55 +30137,55 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "KwLet".to_string(),
-                        ty: DeclarationId(2243),
-                    },
-                    Field {
-                        label: "KwIf".to_string(),
-                        ty: DeclarationId(2244),
-                    },
-                    Field {
-                        label: "KwThen".to_string(),
-                        ty: DeclarationId(2245),
-                    },
-                    Field {
-                        label: "KwElse".to_string(),
                         ty: DeclarationId(2246),
                     },
                     Field {
-                        label: "KwFn".to_string(),
+                        label: "KwIf".to_string(),
                         ty: DeclarationId(2247),
                     },
                     Field {
-                        label: "KwType".to_string(),
+                        label: "KwThen".to_string(),
                         ty: DeclarationId(2248),
                     },
                     Field {
-                        label: "KwModule".to_string(),
+                        label: "KwElse".to_string(),
                         ty: DeclarationId(2249),
                     },
                     Field {
-                        label: "KwImport".to_string(),
+                        label: "KwFn".to_string(),
                         ty: DeclarationId(2250),
                     },
                     Field {
-                        label: "KwMatch".to_string(),
+                        label: "KwType".to_string(),
                         ty: DeclarationId(2251),
                     },
                     Field {
-                        label: "KwData".to_string(),
+                        label: "KwModule".to_string(),
                         ty: DeclarationId(2252),
                     },
                     Field {
-                        label: "KwWhere".to_string(),
+                        label: "KwImport".to_string(),
                         ty: DeclarationId(2253),
                     },
                     Field {
-                        label: "KwTrue".to_string(),
+                        label: "KwMatch".to_string(),
                         ty: DeclarationId(2254),
                     },
                     Field {
-                        label: "KwFalse".to_string(),
+                        label: "KwData".to_string(),
                         ty: DeclarationId(2255),
+                    },
+                    Field {
+                        label: "KwWhere".to_string(),
+                        ty: DeclarationId(2256),
+                    },
+                    Field {
+                        label: "KwTrue".to_string(),
+                        ty: DeclarationId(2257),
+                    },
+                    Field {
+                        label: "KwFalse".to_string(),
+                        ty: DeclarationId(2258),
                     },
                 ],
             },
@@ -30194,115 +30206,115 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Eq".to_string(),
-                        ty: DeclarationId(2256),
-                    },
-                    Field {
-                        label: "EqEq".to_string(),
-                        ty: DeclarationId(2257),
-                    },
-                    Field {
-                        label: "NotEq".to_string(),
-                        ty: DeclarationId(2258),
-                    },
-                    Field {
-                        label: "Lt".to_string(),
                         ty: DeclarationId(2259),
                     },
                     Field {
-                        label: "Le".to_string(),
+                        label: "EqEq".to_string(),
                         ty: DeclarationId(2260),
                     },
                     Field {
-                        label: "Gt".to_string(),
+                        label: "NotEq".to_string(),
                         ty: DeclarationId(2261),
                     },
                     Field {
-                        label: "Ge".to_string(),
+                        label: "Lt".to_string(),
                         ty: DeclarationId(2262),
                     },
                     Field {
-                        label: "Plus".to_string(),
+                        label: "Le".to_string(),
                         ty: DeclarationId(2263),
                     },
                     Field {
-                        label: "Minus".to_string(),
+                        label: "Gt".to_string(),
                         ty: DeclarationId(2264),
                     },
                     Field {
-                        label: "Star".to_string(),
+                        label: "Ge".to_string(),
                         ty: DeclarationId(2265),
                     },
                     Field {
-                        label: "Slash".to_string(),
+                        label: "Plus".to_string(),
                         ty: DeclarationId(2266),
                     },
                     Field {
-                        label: "AmpAmp".to_string(),
+                        label: "Minus".to_string(),
                         ty: DeclarationId(2267),
                     },
                     Field {
-                        label: "PipePipe".to_string(),
+                        label: "Star".to_string(),
                         ty: DeclarationId(2268),
                     },
                     Field {
-                        label: "Colon".to_string(),
+                        label: "Slash".to_string(),
                         ty: DeclarationId(2269),
                     },
                     Field {
-                        label: "Arrow".to_string(),
+                        label: "AmpAmp".to_string(),
                         ty: DeclarationId(2270),
                     },
                     Field {
-                        label: "FatArrow".to_string(),
+                        label: "PipePipe".to_string(),
                         ty: DeclarationId(2271),
                     },
                     Field {
-                        label: "PipeArrow".to_string(),
+                        label: "Colon".to_string(),
                         ty: DeclarationId(2272),
                     },
                     Field {
-                        label: "Dot".to_string(),
+                        label: "Arrow".to_string(),
                         ty: DeclarationId(2273),
                     },
                     Field {
-                        label: "LParen".to_string(),
+                        label: "FatArrow".to_string(),
                         ty: DeclarationId(2274),
                     },
                     Field {
-                        label: "RParen".to_string(),
+                        label: "PipeArrow".to_string(),
                         ty: DeclarationId(2275),
                     },
                     Field {
-                        label: "LBrace".to_string(),
+                        label: "Dot".to_string(),
                         ty: DeclarationId(2276),
                     },
                     Field {
-                        label: "RBrace".to_string(),
+                        label: "LParen".to_string(),
                         ty: DeclarationId(2277),
                     },
                     Field {
-                        label: "LBracket".to_string(),
+                        label: "RParen".to_string(),
                         ty: DeclarationId(2278),
                     },
                     Field {
-                        label: "RBracket".to_string(),
+                        label: "LBrace".to_string(),
                         ty: DeclarationId(2279),
                     },
                     Field {
-                        label: "Comma".to_string(),
+                        label: "RBrace".to_string(),
                         ty: DeclarationId(2280),
                     },
                     Field {
-                        label: "Semicolon".to_string(),
+                        label: "LBracket".to_string(),
                         ty: DeclarationId(2281),
                     },
                     Field {
-                        label: "Pipe".to_string(),
+                        label: "RBracket".to_string(),
                         ty: DeclarationId(2282),
                     },
                     Field {
-                        label: "Question".to_string(),
+                        label: "Comma".to_string(),
                         ty: DeclarationId(2283),
+                    },
+                    Field {
+                        label: "Semicolon".to_string(),
+                        ty: DeclarationId(2284),
+                    },
+                    Field {
+                        label: "Pipe".to_string(),
+                        ty: DeclarationId(2285),
+                    },
+                    Field {
+                        label: "Question".to_string(),
+                        ty: DeclarationId(2286),
                     },
                 ],
             },
@@ -30517,31 +30529,43 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "TokenizerError".to_string(),
-                        ty: DeclarationId(2287),
-                    },
-                    Field {
-                        label: "ParseError".to_string(),
-                        ty: DeclarationId(2288),
-                    },
-                    Field {
-                        label: "TypeMismatch".to_string(),
-                        ty: DeclarationId(2289),
-                    },
-                    Field {
-                        label: "UnitMismatch".to_string(),
                         ty: DeclarationId(2290),
                     },
                     Field {
-                        label: "ArityMismatch".to_string(),
+                        label: "ParseError".to_string(),
                         ty: DeclarationId(2291),
                     },
                     Field {
-                        label: "ResolveError".to_string(),
+                        label: "TypeMismatch".to_string(),
                         ty: DeclarationId(2292),
                     },
                     Field {
-                        label: "NominalOpacityViolation".to_string(),
+                        label: "ArityMismatch".to_string(),
                         ty: DeclarationId(2293),
+                    },
+                    Field {
+                        label: "ResolveError".to_string(),
+                        ty: DeclarationId(2294),
+                    },
+                    Field {
+                        label: "UnitMismatch".to_string(),
+                        ty: DeclarationId(2295),
+                    },
+                    Field {
+                        label: "BranchConditionNotBool".to_string(),
+                        ty: DeclarationId(2296),
+                    },
+                    Field {
+                        label: "MagnitudeOutOfRange".to_string(),
+                        ty: DeclarationId(2297),
+                    },
+                    Field {
+                        label: "MalformedIntegerRangeFact".to_string(),
+                        ty: DeclarationId(2298),
+                    },
+                    Field {
+                        label: "NominalOpacityViolation".to_string(),
+                        ty: DeclarationId(2299),
                     },
                 ],
             },
@@ -30553,7 +30577,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2456, 2606),
+            span: SourceSpan::new("src/v3/std/verification.dag", 2456, 2687),
         });
         declarations.push(Declaration {
             id: DeclarationId(1099),
@@ -30562,11 +30586,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "AnyDetail".to_string(),
-                        ty: DeclarationId(2294),
+                        ty: DeclarationId(2300),
                     },
                     Field {
                         label: "Contains".to_string(),
-                        ty: DeclarationId(2295),
+                        ty: DeclarationId(2301),
                     },
                 ],
             },
@@ -30578,7 +30602,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2975, 3042),
+            span: SourceSpan::new("src/v3/std/verification.dag", 3056, 3123),
         });
         declarations.push(Declaration {
             id: DeclarationId(1100),
@@ -30603,7 +30627,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 3186, 3284),
+            span: SourceSpan::new("src/v3/std/verification.dag", 3267, 3365),
         });
         declarations.push(Declaration {
             id: DeclarationId(1101),
@@ -30612,11 +30636,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Resolved".to_string(),
-                        ty: DeclarationId(2296),
+                        ty: DeclarationId(2302),
                     },
                     Field {
                         label: "Unresolved".to_string(),
-                        ty: DeclarationId(2297),
+                        ty: DeclarationId(2303),
                     },
                 ],
             },
@@ -30628,7 +30652,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 3671, 3724),
+            span: SourceSpan::new("src/v3/std/verification.dag", 3752, 3805),
         });
         declarations.push(Declaration {
             id: DeclarationId(1102),
@@ -30637,15 +30661,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Associativity".to_string(),
-                        ty: DeclarationId(2298),
+                        ty: DeclarationId(2304),
                     },
                     Field {
                         label: "Commutativity".to_string(),
-                        ty: DeclarationId(2299),
+                        ty: DeclarationId(2305),
                     },
                     Field {
                         label: "Identity".to_string(),
-                        ty: DeclarationId(2300),
+                        ty: DeclarationId(2306),
                     },
                 ],
             },
@@ -30657,7 +30681,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4513, 4583),
+            span: SourceSpan::new("src/v3/std/verification.dag", 4594, 4664),
         });
         declarations.push(Declaration {
             id: DeclarationId(1103),
@@ -30666,95 +30690,95 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "Compiles".to_string(),
-                        ty: DeclarationId(2301),
-                    },
-                    Field {
-                        label: "FailsWithDiagnostic".to_string(),
-                        ty: DeclarationId(2302),
-                    },
-                    Field {
-                        label: "OutputEquals".to_string(),
-                        ty: DeclarationId(2303),
-                    },
-                    Field {
-                        label: "PortHasState".to_string(),
-                        ty: DeclarationId(2304),
-                    },
-                    Field {
-                        label: "DeclarationHasRefinement".to_string(),
-                        ty: DeclarationId(2305),
-                    },
-                    Field {
-                        label: "CostBounded".to_string(),
-                        ty: DeclarationId(2306),
-                    },
-                    Field {
-                        label: "BehavioralObservation".to_string(),
                         ty: DeclarationId(2307),
                     },
                     Field {
-                        label: "MockBackedInvariant".to_string(),
+                        label: "FailsWithDiagnostic".to_string(),
                         ty: DeclarationId(2308),
                     },
                     Field {
-                        label: "ExecuteCommand".to_string(),
+                        label: "OutputEquals".to_string(),
+                        ty: DeclarationId(2309),
+                    },
+                    Field {
+                        label: "PortHasState".to_string(),
                         ty: DeclarationId(2310),
                     },
                     Field {
-                        label: "ForAllTargets".to_string(),
+                        label: "DeclarationHasRefinement".to_string(),
+                        ty: DeclarationId(2311),
+                    },
+                    Field {
+                        label: "CostBounded".to_string(),
                         ty: DeclarationId(2312),
                     },
                     Field {
-                        label: "LensOutputEquals".to_string(),
+                        label: "BehavioralObservation".to_string(),
                         ty: DeclarationId(2313),
                     },
                     Field {
-                        label: "DifferentialEquals".to_string(),
+                        label: "MockBackedInvariant".to_string(),
                         ty: DeclarationId(2314),
                     },
                     Field {
-                        label: "SymbolicCostExprEquals".to_string(),
-                        ty: DeclarationId(2315),
-                    },
-                    Field {
-                        label: "BinaryDimensionReportEquals".to_string(),
+                        label: "ExecuteCommand".to_string(),
                         ty: DeclarationId(2316),
                     },
                     Field {
-                        label: "AlgebraicLaw".to_string(),
-                        ty: DeclarationId(2317),
-                    },
-                    Field {
-                        label: "CensusBoundCheck".to_string(),
+                        label: "ForAllTargets".to_string(),
                         ty: DeclarationId(2318),
                     },
                     Field {
-                        label: "CensusSubsetCount".to_string(),
+                        label: "LensOutputEquals".to_string(),
                         ty: DeclarationId(2319),
                     },
                     Field {
-                        label: "FixedPointConverges".to_string(),
+                        label: "DifferentialEquals".to_string(),
                         ty: DeclarationId(2320),
                     },
                     Field {
-                        label: "RatchetZero".to_string(),
+                        label: "SymbolicCostExprEquals".to_string(),
                         ty: DeclarationId(2321),
                     },
                     Field {
-                        label: "GeneratedFromDag".to_string(),
+                        label: "BinaryDimensionReportEquals".to_string(),
+                        ty: DeclarationId(2322),
+                    },
+                    Field {
+                        label: "AlgebraicLaw".to_string(),
                         ty: DeclarationId(2323),
                     },
                     Field {
-                        label: "ReleaseDeferredClaim".to_string(),
+                        label: "CensusBoundCheck".to_string(),
                         ty: DeclarationId(2324),
                     },
                     Field {
-                        label: "SubstrateResearchDeferredClaim".to_string(),
+                        label: "CensusSubsetCount".to_string(),
                         ty: DeclarationId(2325),
                     },
                     Field {
-                        label: "BridgeLedgerZero".to_string(),
+                        label: "FixedPointConverges".to_string(),
                         ty: DeclarationId(2326),
+                    },
+                    Field {
+                        label: "RatchetZero".to_string(),
+                        ty: DeclarationId(2327),
+                    },
+                    Field {
+                        label: "GeneratedFromDag".to_string(),
+                        ty: DeclarationId(2329),
+                    },
+                    Field {
+                        label: "ReleaseDeferredClaim".to_string(),
+                        ty: DeclarationId(2330),
+                    },
+                    Field {
+                        label: "SubstrateResearchDeferredClaim".to_string(),
+                        ty: DeclarationId(2331),
+                    },
+                    Field {
+                        label: "BridgeLedgerZero".to_string(),
+                        ty: DeclarationId(2332),
                     },
                 ],
             },
@@ -30766,7 +30790,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4585, 14920),
+            span: SourceSpan::new("src/v3/std/verification.dag", 4666, 15001),
         });
         declarations.push(Declaration {
             id: DeclarationId(1104),
@@ -30780,7 +30804,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 15028, 15048),
+            span: SourceSpan::new("src/v3/std/verification.dag", 15109, 15129),
         });
         declarations.push(Declaration {
             id: DeclarationId(1105),
@@ -30799,7 +30823,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 15191, 15246),
+            span: SourceSpan::new("src/v3/std/verification.dag", 15272, 15327),
         });
         declarations.push(Declaration {
             id: DeclarationId(1106),
@@ -30824,7 +30848,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "requires".to_string(),
-                        ty: DeclarationId(2327),
+                        ty: DeclarationId(2333),
                     },
                 ],
             },
@@ -30836,7 +30860,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 15856, 15989),
+            span: SourceSpan::new("src/v3/std/verification.dag", 15937, 16070),
         });
         declarations.push(Declaration {
             id: DeclarationId(1107),
@@ -30849,7 +30873,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "claims".to_string(),
-                        ty: DeclarationId(2328),
+                        ty: DeclarationId(2334),
                     },
                 ],
             },
@@ -30861,7 +30885,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 15991, 16050),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16072, 16131),
         });
         declarations.push(Declaration {
             id: DeclarationId(1108),
@@ -30874,7 +30898,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "resources".to_string(),
-                        ty: DeclarationId(2329),
+                        ty: DeclarationId(2335),
                     },
                 ],
             },
@@ -30886,18 +30910,18 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16248, 16329),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16329, 16410),
         });
         declarations.push(Declaration {
             id: DeclarationId(1109),
             name: Some("claim_obligation_resources".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1106)],
-                output: DeclarationId(2284),
+                output: DeclarationId(2287),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-                    16771,
-                    16787,
+                    16852,
+                    16868,
                 )),
             },
             type_params: vec![],
@@ -30908,7 +30932,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16700, 16787),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16781, 16868),
         });
         declarations.push(Declaration {
             id: DeclarationId(1110),
@@ -30918,8 +30942,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1108),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-                    16845,
-                    16930,
+                    16926,
+                    17011,
                 )),
             },
             type_params: vec![],
@@ -30930,18 +30954,18 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16789, 16930),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16870, 17011),
         });
         declarations.push(Declaration {
             id: DeclarationId(1111),
             name: Some("materialize_test_obligations".to_string()),
             connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(2285)],
-                output: DeclarationId(2286),
+                inputs: vec![DeclarationId(2288)],
+                output: DeclarationId(2289),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/verification.dag",
-                    17013,
-                    17052,
+                    17094,
+                    17133,
                 )),
             },
             type_params: vec![],
@@ -30952,14 +30976,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16932, 17052),
+            span: SourceSpan::new("src/v3/std/verification.dag", 17013, 17133),
         });
         declarations.push(Declaration {
             id: DeclarationId(1112),
             name: Some("behavior_spine".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(748)],
-                output: DeclarationId(2330),
+                output: DeclarationId(2336),
                 body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(280))),
             },
             type_params: vec![],
@@ -31260,7 +31284,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2002),
+                            constructor: DeclarationId(2005),
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1635),
                                 payload: vec![
@@ -31556,7 +31580,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "declaration".to_string(),
                                     ))],
@@ -31654,7 +31678,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -31673,7 +31697,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "state".to_string(),
                                         ))],
@@ -31694,7 +31718,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "produced_by".to_string(),
                                         ))],
@@ -31755,7 +31779,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "file".to_string(),
                                         ))],
@@ -31774,7 +31798,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "byte_start".to_string(),
                                         ))],
@@ -31793,7 +31817,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "byte_end".to_string(),
                                         ))],
@@ -32084,7 +32108,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "label".to_string(),
                                         ))],
@@ -32103,7 +32127,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -32166,7 +32190,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "parameter".to_string(),
                                         ))],
@@ -32185,7 +32209,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -32248,7 +32272,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "parameter".to_string(),
                                         ))],
@@ -32267,7 +32291,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "algebra".to_string(),
                                         ))],
@@ -32329,7 +32353,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "permitted_accessors".to_string(),
                                     ))],
@@ -32389,7 +32413,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "label".to_string(),
                                         ))],
@@ -32408,7 +32432,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -32469,7 +32493,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "first".to_string(),
                                         ))],
@@ -32488,7 +32512,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "rest".to_string(),
                                         ))],
@@ -32549,7 +32573,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "first".to_string(),
                                         ))],
@@ -32568,7 +32592,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "second".to_string(),
                                         ))],
@@ -32587,7 +32611,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "rest".to_string(),
                                         ))],
@@ -32648,7 +32672,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "member_of".to_string(),
                                         ))],
@@ -32667,7 +32691,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "slot_of".to_string(),
                                         ))],
@@ -32727,7 +32751,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2004),
+                                    constructor: DeclarationId(2007),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "node_id".to_string(),
                                     ))],
@@ -32786,7 +32810,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "param".to_string(),
                                     ))],
@@ -32845,7 +32869,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "transform".to_string(),
                                     ))],
@@ -32905,7 +32929,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "members".to_string(),
                                         ))],
@@ -32926,7 +32950,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "intra_cluster_calls".to_string(),
                                         ))],
@@ -33139,7 +33163,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -33158,7 +33182,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -33179,7 +33203,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "connective".to_string(),
                                         ))],
@@ -33200,7 +33224,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "type_params".to_string(),
                                         ))],
@@ -33221,7 +33245,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "phantom_params".to_string(),
                                         ))],
@@ -33242,7 +33266,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "meta_tag".to_string(),
                                         ))],
@@ -33263,7 +33287,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "inhabits".to_string(),
                                         ))],
@@ -33284,7 +33308,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value_body".to_string(),
                                         ))],
@@ -33305,7 +33329,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "nominal_opacity".to_string(),
                                         ))],
@@ -33324,7 +33348,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -33615,7 +33639,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "binding_name".to_string(),
                                         ))],
@@ -33636,7 +33660,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "payload_port".to_string(),
                                         ))],
@@ -33697,7 +33721,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "body".to_string(),
                                         ))],
@@ -33718,7 +33742,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -33737,7 +33761,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "pattern".to_string(),
                                         ))],
@@ -33756,7 +33780,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "binding".to_string(),
                                         ))],
@@ -33855,7 +33879,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -33874,7 +33898,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "payload".to_string(),
                                         ))],
@@ -33895,7 +33919,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -33914,7 +33938,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -33975,7 +33999,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -33994,7 +34018,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "target".to_string(),
                                         ))],
@@ -34013,7 +34037,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "inputs".to_string(),
                                         ))],
@@ -34034,7 +34058,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -34053,7 +34077,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -34114,7 +34138,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -34133,7 +34157,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "input".to_string(),
                                         ))],
@@ -34152,7 +34176,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "paths".to_string(),
                                         ))],
@@ -34173,7 +34197,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -34192,7 +34216,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -34213,7 +34237,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "emit_participation".to_string(),
                                         ))],
@@ -34274,7 +34298,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -34293,7 +34317,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "source".to_string(),
                                         ))],
@@ -34312,7 +34336,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "init".to_string(),
                                         ))],
@@ -34331,7 +34355,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "body".to_string(),
                                         ))],
@@ -34350,7 +34374,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "bound".to_string(),
                                         ))],
@@ -34371,7 +34395,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -34390,7 +34414,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -34451,7 +34475,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -34470,7 +34494,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -34491,7 +34515,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -34510,7 +34534,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "params".to_string(),
                                         ))],
@@ -34529,7 +34553,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -34550,7 +34574,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "emit_participation".to_string(),
                                         ))],
@@ -34651,7 +34675,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "declarations".to_string(),
                                         ))],
@@ -34670,7 +34694,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "nodes".to_string(),
                                         ))],
@@ -34689,7 +34713,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ports".to_string(),
                                         ))],
@@ -34710,7 +34734,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "clusters".to_string(),
                                         ))],
@@ -34770,7 +34794,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "items".to_string(),
                                     ))],
@@ -34868,7 +34892,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -34887,7 +34911,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -34908,7 +34932,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "refinement".to_string(),
                                         ))],
@@ -34969,7 +34993,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -34988,7 +35012,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -35049,7 +35073,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -35068,7 +35092,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "payload".to_string(),
                                         ))],
@@ -35087,7 +35111,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -35224,7 +35248,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -35243,7 +35267,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -35262,7 +35286,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -35323,7 +35347,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "key".to_string(),
                                         ))],
@@ -35344,7 +35368,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "key_span".to_string(),
                                         ))],
@@ -35363,7 +35387,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -35382,7 +35406,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -35443,7 +35467,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "pattern".to_string(),
                                         ))],
@@ -35462,7 +35486,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "body".to_string(),
                                         ))],
@@ -35481,7 +35505,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -35542,7 +35566,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -35561,7 +35585,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "binding".to_string(),
                                         ))],
@@ -35580,7 +35604,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -36458,7 +36482,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2016),
+                            constructor: DeclarationId(2019),
                             payload: vec![],
                         },
                     ),
@@ -36495,7 +36519,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2017),
+                            constructor: DeclarationId(2020),
                             payload: vec![],
                         },
                     ),
@@ -36506,7 +36530,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2007),
+                                    constructor: DeclarationId(2010),
                                     payload: vec![],
                                 },
                             ),
@@ -36544,7 +36568,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2018),
+                            constructor: DeclarationId(2021),
                             payload: vec![],
                         },
                     ),
@@ -36556,7 +36580,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -36566,7 +36590,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -36605,7 +36629,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2019),
+                            constructor: DeclarationId(2022),
                             payload: vec![],
                         },
                     ),
@@ -36617,7 +36641,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -36627,7 +36651,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -36666,7 +36690,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2020),
+                            constructor: DeclarationId(2023),
                             payload: vec![],
                         },
                     ),
@@ -36677,7 +36701,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2006),
+                                    constructor: DeclarationId(2009),
                                     payload: vec![],
                                 },
                             ),
@@ -36816,7 +36840,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2021),
+                            constructor: DeclarationId(2024),
                             payload: vec![],
                         },
                     ),
@@ -36827,7 +36851,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2006),
+                                    constructor: DeclarationId(2009),
                                     payload: vec![],
                                 },
                             ),
@@ -36865,7 +36889,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2022),
+                            constructor: DeclarationId(2025),
                             payload: vec![],
                         },
                     ),
@@ -36877,7 +36901,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -36887,7 +36911,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -36897,7 +36921,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -36936,7 +36960,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2023),
+                            constructor: DeclarationId(2026),
                             payload: vec![],
                         },
                     ),
@@ -36948,7 +36972,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -36958,7 +36982,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -36997,7 +37021,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2024),
+                            constructor: DeclarationId(2027),
                             payload: vec![],
                         },
                     ),
@@ -37009,7 +37033,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -37019,7 +37043,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -37058,7 +37082,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2025),
+                            constructor: DeclarationId(2028),
                             payload: vec![],
                         },
                     ),
@@ -37070,7 +37094,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -37080,7 +37104,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -37119,7 +37143,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2027),
+                            constructor: DeclarationId(2030),
                             payload: vec![],
                         },
                     ),
@@ -38579,7 +38603,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2002),
+                            constructor: DeclarationId(2005),
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1635),
                                 payload: vec![
@@ -38636,7 +38660,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2002),
+                            constructor: DeclarationId(2005),
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1636),
                                 payload: vec![],
@@ -39301,7 +39325,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "items".to_string(),
                                     ))],
@@ -39399,7 +39423,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -39418,7 +39442,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -39439,7 +39463,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "refinement".to_string(),
                                         ))],
@@ -39500,7 +39524,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -39519,7 +39543,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -39580,7 +39604,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -39599,7 +39623,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "payload".to_string(),
                                         ))],
@@ -39618,7 +39642,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -39755,7 +39779,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -39774,7 +39798,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -39793,7 +39817,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -39854,7 +39878,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "key".to_string(),
                                         ))],
@@ -39875,7 +39899,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "key_span".to_string(),
                                         ))],
@@ -39894,7 +39918,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -39913,7 +39937,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -39974,7 +39998,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "pattern".to_string(),
                                         ))],
@@ -39993,7 +40017,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "body".to_string(),
                                         ))],
@@ -40012,7 +40036,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -40073,7 +40097,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -40092,7 +40116,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "binding".to_string(),
                                         ))],
@@ -40111,7 +40135,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -40782,7 +40806,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2016),
+                            constructor: DeclarationId(2019),
                             payload: vec![],
                         },
                     ),
@@ -40819,7 +40843,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2017),
+                            constructor: DeclarationId(2020),
                             payload: vec![],
                         },
                     ),
@@ -40830,7 +40854,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2007),
+                                    constructor: DeclarationId(2010),
                                     payload: vec![],
                                 },
                             ),
@@ -40868,7 +40892,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2018),
+                            constructor: DeclarationId(2021),
                             payload: vec![],
                         },
                     ),
@@ -40880,7 +40904,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -40890,7 +40914,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -40929,7 +40953,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2019),
+                            constructor: DeclarationId(2022),
                             payload: vec![],
                         },
                     ),
@@ -40941,7 +40965,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -40951,7 +40975,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -40990,7 +41014,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2020),
+                            constructor: DeclarationId(2023),
                             payload: vec![],
                         },
                     ),
@@ -41001,7 +41025,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2006),
+                                    constructor: DeclarationId(2009),
                                     payload: vec![],
                                 },
                             ),
@@ -41039,7 +41063,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2021),
+                            constructor: DeclarationId(2024),
                             payload: vec![],
                         },
                     ),
@@ -41050,7 +41074,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2006),
+                                    constructor: DeclarationId(2009),
                                     payload: vec![],
                                 },
                             ),
@@ -41088,7 +41112,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2022),
+                            constructor: DeclarationId(2025),
                             payload: vec![],
                         },
                     ),
@@ -41100,7 +41124,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41110,7 +41134,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -41120,7 +41144,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41159,7 +41183,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2023),
+                            constructor: DeclarationId(2026),
                             payload: vec![],
                         },
                     ),
@@ -41171,7 +41195,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41181,7 +41205,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41220,7 +41244,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2024),
+                            constructor: DeclarationId(2027),
                             payload: vec![],
                         },
                     ),
@@ -41232,7 +41256,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41242,7 +41266,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41281,7 +41305,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2025),
+                            constructor: DeclarationId(2028),
                             payload: vec![],
                         },
                     ),
@@ -41293,7 +41317,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41303,7 +41327,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -41446,7 +41470,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2027),
+                            constructor: DeclarationId(2030),
                             payload: vec![],
                         },
                     ),
@@ -41959,7 +41983,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2002),
+                            constructor: DeclarationId(2005),
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1635),
                                 payload: vec![
@@ -42016,7 +42040,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2002),
+                            constructor: DeclarationId(2005),
                             payload: vec![FieldValue::Variant {
                                 constructor: DeclarationId(1635),
                                 payload: vec![
@@ -42073,7 +42097,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2001),
+                            constructor: DeclarationId(2004),
                             payload: vec![],
                         },
                     ),
@@ -42116,7 +42140,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2001),
+                            constructor: DeclarationId(2004),
                             payload: vec![],
                         },
                     ),
@@ -42159,7 +42183,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "bound".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2001),
+                            constructor: DeclarationId(2004),
                             payload: vec![],
                         },
                     ),
@@ -42441,7 +42465,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "declaration".to_string(),
                                     ))],
@@ -42539,7 +42563,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -42558,7 +42582,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "state_value".to_string(),
                                         ))],
@@ -42579,7 +42603,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "produced_by".to_string(),
                                         ))],
@@ -42640,7 +42664,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "file".to_string(),
                                         ))],
@@ -42659,7 +42683,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "byte_start".to_string(),
                                         ))],
@@ -42678,7 +42702,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "byte_end".to_string(),
                                         ))],
@@ -42969,7 +42993,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "label".to_string(),
                                         ))],
@@ -42988,7 +43012,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -43051,7 +43075,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "parameter".to_string(),
                                         ))],
@@ -43070,7 +43094,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -43133,7 +43157,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "parameter".to_string(),
                                         ))],
@@ -43152,7 +43176,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "algebra".to_string(),
                                         ))],
@@ -43214,7 +43238,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "permitted_accessors".to_string(),
                                     ))],
@@ -43276,7 +43300,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "0".to_string(),
                                         ))],
@@ -43295,7 +43319,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "1".to_string(),
                                         ))],
@@ -43356,7 +43380,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "first".to_string(),
                                         ))],
@@ -43375,7 +43399,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "rest".to_string(),
                                         ))],
@@ -43436,7 +43460,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "first".to_string(),
                                         ))],
@@ -43455,7 +43479,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "second".to_string(),
                                         ))],
@@ -43474,7 +43498,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "rest".to_string(),
                                         ))],
@@ -43534,7 +43558,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2004),
+                                    constructor: DeclarationId(2007),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "index_of".to_string(),
                                     ))],
@@ -43594,7 +43618,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "member_of".to_string(),
                                         ))],
@@ -43613,7 +43637,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "slot_of".to_string(),
                                         ))],
@@ -43673,7 +43697,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2004),
+                                    constructor: DeclarationId(2007),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "node_id".to_string(),
                                     ))],
@@ -43732,7 +43756,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "param".to_string(),
                                     ))],
@@ -43791,7 +43815,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "transform".to_string(),
                                     ))],
@@ -43851,7 +43875,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "members".to_string(),
                                         ))],
@@ -43872,7 +43896,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "intra_cluster_calls".to_string(),
                                         ))],
@@ -44085,7 +44109,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -44104,7 +44128,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -44125,7 +44149,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "connective".to_string(),
                                         ))],
@@ -44146,7 +44170,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "type_params".to_string(),
                                         ))],
@@ -44167,7 +44191,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "phantom_params".to_string(),
                                         ))],
@@ -44188,7 +44212,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "meta_tag".to_string(),
                                         ))],
@@ -44209,7 +44233,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "inhabits".to_string(),
                                         ))],
@@ -44230,7 +44254,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value_body".to_string(),
                                         ))],
@@ -44251,7 +44275,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "nominal_opacity".to_string(),
                                         ))],
@@ -44270,7 +44294,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -44561,7 +44585,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "binding_name".to_string(),
                                         ))],
@@ -44582,7 +44606,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "payload_port".to_string(),
                                         ))],
@@ -44643,7 +44667,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "body".to_string(),
                                         ))],
@@ -44664,7 +44688,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -44683,7 +44707,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "pattern".to_string(),
                                         ))],
@@ -44702,7 +44726,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "binding".to_string(),
                                         ))],
@@ -44801,7 +44825,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -44820,7 +44844,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "data".to_string(),
                                         ))],
@@ -44841,7 +44865,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -44860,7 +44884,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -44881,7 +44905,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "lane2_workflow".to_string(),
                                         ))],
@@ -44942,7 +44966,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -44961,7 +44985,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "target".to_string(),
                                         ))],
@@ -44980,7 +45004,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "inputs".to_string(),
                                         ))],
@@ -45001,7 +45025,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -45020,7 +45044,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -45081,7 +45105,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -45100,7 +45124,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "input".to_string(),
                                         ))],
@@ -45119,7 +45143,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "paths".to_string(),
                                         ))],
@@ -45140,7 +45164,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -45159,7 +45183,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -45180,7 +45204,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "emit_participation".to_string(),
                                         ))],
@@ -45241,7 +45265,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -45260,7 +45284,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "source".to_string(),
                                         ))],
@@ -45279,7 +45303,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "init".to_string(),
                                         ))],
@@ -45298,7 +45322,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "body".to_string(),
                                         ))],
@@ -45317,7 +45341,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "bound".to_string(),
                                         ))],
@@ -45338,7 +45362,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -45357,7 +45381,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -45418,7 +45442,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "id".to_string(),
                                         ))],
@@ -45437,7 +45461,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -45458,7 +45482,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "result_port".to_string(),
                                         ))],
@@ -45477,7 +45501,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "params".to_string(),
                                         ))],
@@ -45496,7 +45520,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -45517,7 +45541,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "lane2_workflow".to_string(),
                                         ))],
@@ -45538,7 +45562,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "emit_participation".to_string(),
                                         ))],
@@ -45639,7 +45663,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "declarations".to_string(),
                                         ))],
@@ -45658,7 +45682,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "nodes".to_string(),
                                         ))],
@@ -45677,7 +45701,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ports".to_string(),
                                         ))],
@@ -45698,7 +45722,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2004),
+                                        constructor: DeclarationId(2007),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "clusters".to_string(),
                                         ))],
@@ -45760,7 +45784,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "access".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2003),
+                                    constructor: DeclarationId(2006),
                                     payload: vec![FieldValue::Literal(LiteralBits::String(
                                         "items".to_string(),
                                     ))],
@@ -45862,7 +45886,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -45881,7 +45905,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -45902,7 +45926,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "refinement".to_string(),
                                         ))],
@@ -45965,7 +45989,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -45984,7 +46008,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "ty".to_string(),
                                         ))],
@@ -46047,7 +46071,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -46066,7 +46090,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "payload".to_string(),
                                         ))],
@@ -46085,7 +46109,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -46228,7 +46252,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -46247,7 +46271,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -46266,7 +46290,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -46329,7 +46353,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "key".to_string(),
                                         ))],
@@ -46350,7 +46374,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "key_span".to_string(),
                                         ))],
@@ -46369,7 +46393,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "value".to_string(),
                                         ))],
@@ -46388,7 +46412,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -46451,7 +46475,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "pattern".to_string(),
                                         ))],
@@ -46470,7 +46494,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "body".to_string(),
                                         ))],
@@ -46489,7 +46513,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -46552,7 +46576,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "name".to_string(),
                                         ))],
@@ -46571,7 +46595,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "binding".to_string(),
                                         ))],
@@ -46590,7 +46614,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "access".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2003),
+                                        constructor: DeclarationId(2006),
                                         payload: vec![FieldValue::Literal(LiteralBits::String(
                                             "span".to_string(),
                                         ))],
@@ -47509,7 +47533,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2016),
+                            constructor: DeclarationId(2019),
                             payload: vec![],
                         },
                     ),
@@ -47546,7 +47570,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2017),
+                            constructor: DeclarationId(2020),
                             payload: vec![],
                         },
                     ),
@@ -47557,7 +47581,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2007),
+                                    constructor: DeclarationId(2010),
                                     payload: vec![],
                                 },
                             ),
@@ -47595,7 +47619,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2018),
+                            constructor: DeclarationId(2021),
                             payload: vec![],
                         },
                     ),
@@ -47607,7 +47631,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -47617,7 +47641,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -47656,7 +47680,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2019),
+                            constructor: DeclarationId(2022),
                             payload: vec![],
                         },
                     ),
@@ -47668,7 +47692,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -47678,7 +47702,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -47717,7 +47741,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2020),
+                            constructor: DeclarationId(2023),
                             payload: vec![],
                         },
                     ),
@@ -47728,7 +47752,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2006),
+                                    constructor: DeclarationId(2009),
                                     payload: vec![],
                                 },
                             ),
@@ -47902,7 +47926,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2021),
+                            constructor: DeclarationId(2024),
                             payload: vec![],
                         },
                     ),
@@ -47913,7 +47937,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "disposition".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(2006),
+                                    constructor: DeclarationId(2009),
                                     payload: vec![],
                                 },
                             ),
@@ -47951,7 +47975,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2022),
+                            constructor: DeclarationId(2025),
                             payload: vec![],
                         },
                     ),
@@ -47963,7 +47987,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -47973,7 +47997,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2007),
+                                        constructor: DeclarationId(2010),
                                         payload: vec![],
                                     },
                                 ),
@@ -47983,7 +48007,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -48022,7 +48046,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2023),
+                            constructor: DeclarationId(2026),
                             payload: vec![],
                         },
                     ),
@@ -48034,7 +48058,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -48044,7 +48068,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -48083,7 +48107,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2024),
+                            constructor: DeclarationId(2027),
                             payload: vec![],
                         },
                     ),
@@ -48095,7 +48119,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -48105,7 +48129,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -48144,7 +48168,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2025),
+                            constructor: DeclarationId(2028),
                             payload: vec![],
                         },
                     ),
@@ -48156,7 +48180,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -48166,7 +48190,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 (
                                     "disposition".to_string(),
                                     FieldValue::Variant {
-                                        constructor: DeclarationId(2006),
+                                        constructor: DeclarationId(2009),
                                         payload: vec![],
                                     },
                                 ),
@@ -48205,7 +48229,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "strategy".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2027),
+                            constructor: DeclarationId(2030),
                             payload: vec![],
                         },
                     ),
@@ -48646,7 +48670,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "{ let mut __left = {left}; __left.extend({right}); __left }"
                                     .to_string(),
@@ -48660,7 +48684,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -48700,7 +48724,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "({recv}).len() as i64".to_string(),
                             ))],
@@ -48713,7 +48737,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -48751,7 +48775,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "({recv}).is_empty()".to_string(),
                             ))],
@@ -48764,7 +48788,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -48804,7 +48828,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "emit_template".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2034),
+                            constructor: DeclarationId(2037),
                             payload: vec![FieldValue::Literal(LiteralBits::String(
                                 "({recv}).iter().fold({init}, {body})".to_string(),
                             ))],
@@ -48817,7 +48841,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "placeholder_convention".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2033),
+                            constructor: DeclarationId(2036),
                             payload: vec![],
                         },
                     ),
@@ -48889,14 +48913,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "read".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2028),
+                            constructor: DeclarationId(2031),
                             payload: vec![],
                         },
                     ),
                     (
                         "construct".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2030),
+                            constructor: DeclarationId(2033),
                             payload: vec![],
                         },
                     ),
@@ -49547,15 +49571,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "SnapshotSurface".to_string(),
-                        ty: DeclarationId(2331),
+                        ty: DeclarationId(2337),
                     },
                     Field {
                         label: "SnapshotDag".to_string(),
-                        ty: DeclarationId(2332),
+                        ty: DeclarationId(2338),
                     },
                     Field {
                         label: "SnapshotText".to_string(),
-                        ty: DeclarationId(2333),
+                        ty: DeclarationId(2339),
                     },
                 ],
             },
@@ -49771,7 +49795,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "snapshot".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2331),
+                            constructor: DeclarationId(2337),
                             payload: vec![],
                         },
                     ),
@@ -49806,7 +49830,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "snapshot".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2332),
+                            constructor: DeclarationId(2338),
                             payload: vec![],
                         },
                     ),
@@ -49841,7 +49865,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "snapshot".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2332),
+                            constructor: DeclarationId(2338),
                             payload: vec![],
                         },
                     ),
@@ -49876,7 +49900,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "snapshot".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2332),
+                            constructor: DeclarationId(2338),
                             payload: vec![],
                         },
                     ),
@@ -49911,7 +49935,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "snapshot".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2332),
+                            constructor: DeclarationId(2338),
                             payload: vec![],
                         },
                     ),
@@ -49946,7 +49970,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     (
                         "snapshot".to_string(),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2333),
+                            constructor: DeclarationId(2339),
                             payload: vec![],
                         },
                     ),
@@ -50096,7 +50120,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             name: Some("from_symbol".to_string()),
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(197)],
-                output: DeclarationId(2334),
+                output: DeclarationId(2340),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/compiler/operators.dag",
                     156,
@@ -50512,11 +50536,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "OrderedRingAlgebra".to_string(),
-                        ty: DeclarationId(2335),
+                        ty: DeclarationId(2341),
                     },
                     Field {
                         label: "SemiringAlgebra".to_string(),
-                        ty: DeclarationId(2336),
+                        ty: DeclarationId(2342),
                     },
                 ],
             },
@@ -50537,11 +50561,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "BooleanAlgebraAlgebra".to_string(),
-                        ty: DeclarationId(2337),
+                        ty: DeclarationId(2343),
                     },
                     Field {
                         label: "TerminalAlgebra".to_string(),
-                        ty: DeclarationId(2338),
+                        ty: DeclarationId(2344),
                     },
                 ],
             },
@@ -50562,31 +50586,31 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "BitCarrier".to_string(),
-                        ty: DeclarationId(2339),
+                        ty: DeclarationId(2345),
                     },
                     Field {
                         label: "ByteCarrier".to_string(),
-                        ty: DeclarationId(2340),
+                        ty: DeclarationId(2346),
                     },
                     Field {
                         label: "Word16Carrier".to_string(),
-                        ty: DeclarationId(2341),
+                        ty: DeclarationId(2347),
                     },
                     Field {
                         label: "Word32Carrier".to_string(),
-                        ty: DeclarationId(2342),
+                        ty: DeclarationId(2348),
                     },
                     Field {
                         label: "Word64Carrier".to_string(),
-                        ty: DeclarationId(2343),
+                        ty: DeclarationId(2349),
                     },
                     Field {
                         label: "Word128Carrier".to_string(),
-                        ty: DeclarationId(2344),
+                        ty: DeclarationId(2350),
                     },
                     Field {
                         label: "TerminalCarrier".to_string(),
-                        ty: DeclarationId(2345),
+                        ty: DeclarationId(2351),
                     },
                 ],
             },
@@ -50607,15 +50631,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "TwoComplementWrap".to_string(),
-                        ty: DeclarationId(2346),
+                        ty: DeclarationId(2352),
                     },
                     Field {
                         label: "Saturating".to_string(),
-                        ty: DeclarationId(2347),
+                        ty: DeclarationId(2353),
                     },
                     Field {
                         label: "Trap".to_string(),
-                        ty: DeclarationId(2348),
+                        ty: DeclarationId(2354),
                     },
                 ],
             },
@@ -50636,11 +50660,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 variants: vec![
                     Field {
                         label: "IntegerPrimitive".to_string(),
-                        ty: DeclarationId(2349),
+                        ty: DeclarationId(2355),
                     },
                     Field {
                         label: "NonIntegerPrimitive".to_string(),
-                        ty: DeclarationId(2350),
+                        ty: DeclarationId(2356),
                     },
                 ],
             },
@@ -50666,83 +50690,83 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             },
             type_params: vec![],
             phantom_params: Vec::new(),
-            meta_tag: Some(DeclarationId(2351)),
+            meta_tag: Some(DeclarationId(2357)),
             specialization_parent: None,
             inhabits: None,
             value_body: Some(ValueBody::List(vec![
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("i8".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2335),
+                            constructor: DeclarationId(2341),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2340),
+                            constructor: DeclarationId(2346),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("-128".to_string())),
                         FieldValue::Literal(LiteralBits::String("127".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("i16".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2335),
+                            constructor: DeclarationId(2341),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2341),
+                            constructor: DeclarationId(2347),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("-32768".to_string())),
                         FieldValue::Literal(LiteralBits::String("32767".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("i32".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2335),
+                            constructor: DeclarationId(2341),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2342),
+                            constructor: DeclarationId(2348),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("-2147483648".to_string())),
                         FieldValue::Literal(LiteralBits::String("2147483647".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("i64".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2335),
+                            constructor: DeclarationId(2341),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2343),
+                            constructor: DeclarationId(2349),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String(
@@ -50751,21 +50775,21 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                         FieldValue::Literal(LiteralBits::String("9223372036854775807".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("i128".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2335),
+                            constructor: DeclarationId(2341),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2344),
+                            constructor: DeclarationId(2350),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String(
@@ -50776,84 +50800,84 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                         )),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("u8".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2336),
+                            constructor: DeclarationId(2342),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2340),
+                            constructor: DeclarationId(2346),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
                         FieldValue::Literal(LiteralBits::String("255".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("u16".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2336),
+                            constructor: DeclarationId(2342),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2341),
+                            constructor: DeclarationId(2347),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
                         FieldValue::Literal(LiteralBits::String("65535".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("u32".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2336),
+                            constructor: DeclarationId(2342),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2342),
+                            constructor: DeclarationId(2348),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
                         FieldValue::Literal(LiteralBits::String("4294967295".to_string())),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2349),
+                    constructor: DeclarationId(2355),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("u64".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2336),
+                            constructor: DeclarationId(2342),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2343),
+                            constructor: DeclarationId(2349),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::String("0".to_string())),
@@ -50862,36 +50886,36 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                         )),
                         FieldValue::Literal(LiteralBits::Bool(true)),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2346),
+                            constructor: DeclarationId(2352),
                             payload: vec![],
                         },
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2350),
+                    constructor: DeclarationId(2356),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("bool".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2337),
+                            constructor: DeclarationId(2343),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2339),
+                            constructor: DeclarationId(2345),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::Bool(true)),
                     ],
                 },
                 FieldValue::Variant {
-                    constructor: DeclarationId(2350),
+                    constructor: DeclarationId(2356),
                     payload: vec![
                         FieldValue::Literal(LiteralBits::String("()".to_string())),
                         FieldValue::Variant {
-                            constructor: DeclarationId(2338),
+                            constructor: DeclarationId(2344),
                             payload: vec![],
                         },
                         FieldValue::Variant {
-                            constructor: DeclarationId(2345),
+                            constructor: DeclarationId(2351),
                             payload: vec![],
                         },
                         FieldValue::Literal(LiteralBits::Bool(true)),
@@ -59033,7 +59057,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1073, 1085),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1073, 1086),
         });
         declarations.push(Declaration {
             id: DeclarationId(1956),
@@ -59047,7 +59071,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1090, 1103),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1091, 1103),
         });
         declarations.push(Declaration {
             id: DeclarationId(1957),
@@ -59075,10 +59099,52 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1125, 1148),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1125, 1147),
         });
         declarations.push(Declaration {
             id: DeclarationId(1959),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1152, 1171),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(1960),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1176, 1201),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(1961),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 1206, 1229),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(1962),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -59094,10 +59160,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5348, 5384),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5429, 5465),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1960),
+            id: DeclarationId(1963),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -59113,10 +59179,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5389, 5430),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5470, 5511),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1961),
+            id: DeclarationId(1964),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -59133,10 +59199,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5889, 5905),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 5970, 5986),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1962),
+            id: DeclarationId(1965),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -59152,10 +59218,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9017, 9058),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9098, 9139),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1963),
+            id: DeclarationId(1966),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -59166,10 +59232,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9355, 9367),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9436, 9448),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1964),
+            id: DeclarationId(1967),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -59186,10 +59252,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9637, 9649),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9718, 9730),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1965),
+            id: DeclarationId(1968),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -59199,7 +59265,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "sites".to_string(),
-                        ty: DeclarationId(1964),
+                        ty: DeclarationId(1967),
                     },
                 ],
             },
@@ -59211,10 +59277,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9594, 9651),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9675, 9732),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1966),
+            id: DeclarationId(1969),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -59230,10 +59296,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 9961, 9995),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 10042, 10076),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1967),
+            id: DeclarationId(1970),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -59249,10 +59315,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 10398, 10449),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 10479, 10530),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1968),
+            id: DeclarationId(1971),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -59263,10 +59329,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 10792, 10810),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 10873, 10891),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1969),
+            id: DeclarationId(1972),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -59292,10 +59358,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/diagnostics.dag", 11160, 11258),
+            span: SourceSpan::new("src/v3/std/diagnostics.dag", 11241, 11339),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1970),
+            id: DeclarationId(1973),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(37),
@@ -59315,7 +59381,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 4846, 4866),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1971),
+            id: DeclarationId(1974),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59341,7 +59407,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 4876, 4900),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1972),
+            id: DeclarationId(1975),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59367,7 +59433,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 4911, 4935),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1973),
+            id: DeclarationId(1976),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59393,7 +59459,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 4941, 4965),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1974),
+            id: DeclarationId(1977),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(37),
@@ -59413,7 +59479,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5042, 5062),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1975),
+            id: DeclarationId(1978),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59439,7 +59505,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5072, 5096),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1976),
+            id: DeclarationId(1979),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59465,7 +59531,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5107, 5131),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1977),
+            id: DeclarationId(1980),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59491,7 +59557,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5137, 5161),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1978),
+            id: DeclarationId(1981),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(37),
@@ -59511,7 +59577,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5245, 5265),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1979),
+            id: DeclarationId(1982),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59537,7 +59603,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5276, 5300),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1980),
+            id: DeclarationId(1983),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59563,7 +59629,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5325, 5349),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1981),
+            id: DeclarationId(1984),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(37),
@@ -59583,7 +59649,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5440, 5460),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1982),
+            id: DeclarationId(1985),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59609,7 +59675,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5471, 5495),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1983),
+            id: DeclarationId(1986),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(887),
@@ -59635,7 +59701,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 5520, 5544),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1984),
+            id: DeclarationId(1987),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -59654,7 +59720,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 1634, 1651),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1985),
+            id: DeclarationId(1988),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -59679,7 +59745,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 1656, 1697),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1986),
+            id: DeclarationId(1989),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -59693,7 +59759,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 1879, 1891),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1987),
+            id: DeclarationId(1990),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -59712,7 +59778,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 1896, 1932),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1988),
+            id: DeclarationId(1991),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(880),
@@ -59732,13 +59798,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 2414, 2430),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1989),
+            id: DeclarationId(1992),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
                 arguments: vec![TemplateArgument {
                     parameter: DeclarationId(608),
-                    value: DeclarationId(1988),
+                    value: DeclarationId(1991),
                 }],
             },
             type_params: vec![],
@@ -59752,7 +59818,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 2409, 2431),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1990),
+            id: DeclarationId(1993),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -59766,7 +59832,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "witnesses".to_string(),
-                        ty: DeclarationId(1989),
+                        ty: DeclarationId(1992),
                     },
                 ],
             },
@@ -59781,7 +59847,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 2325, 2437),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1991),
+            id: DeclarationId(1994),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -59801,7 +59867,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 2505, 2521),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1992),
+            id: DeclarationId(1995),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(880),
@@ -59821,13 +59887,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 2544, 2560),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1993),
+            id: DeclarationId(1996),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
                 arguments: vec![TemplateArgument {
                     parameter: DeclarationId(608),
-                    value: DeclarationId(1992),
+                    value: DeclarationId(1995),
                 }],
             },
             type_params: vec![],
@@ -59841,7 +59907,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 2539, 2561),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1994),
+            id: DeclarationId(1997),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -59851,11 +59917,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "violations".to_string(),
-                        ty: DeclarationId(1991),
+                        ty: DeclarationId(1994),
                     },
                     Field {
                         label: "witnesses".to_string(),
-                        ty: DeclarationId(1993),
+                        ty: DeclarationId(1996),
                     },
                 ],
             },
@@ -59870,7 +59936,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 2442, 2567),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1995),
+            id: DeclarationId(1998),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(880),
@@ -59890,11 +59956,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 3902, 3918),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1996),
+            id: DeclarationId(1999),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(748), DeclarationId(747)],
-                output: DeclarationId(1995),
+                output: DeclarationId(1998),
                 body: ArrowBody::NoBody,
             },
             type_params: vec![],
@@ -59908,7 +59974,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 3881, 3918),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1997),
+            id: DeclarationId(2000),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(19),
@@ -59928,7 +59994,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 3930, 3945),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1998),
+            id: DeclarationId(2001),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(747), DeclarationId(886)],
@@ -59946,7 +60012,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 3966, 4009),
         });
         declarations.push(Declaration {
-            id: DeclarationId(1999),
+            id: DeclarationId(2002),
             name: Some("DimensionUnitAbelianGroup".to_string()),
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(25),
@@ -59966,7 +60032,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/dimensions.dag", 4652, 4702),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2000),
+            id: DeclarationId(2003),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -59986,7 +60052,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 855, 873),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2001),
+            id: DeclarationId(2004),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60000,7 +60066,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 4188, 4204),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2002),
+            id: DeclarationId(2005),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -60019,7 +60085,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 4209, 4237),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2003),
+            id: DeclarationId(2006),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -60038,7 +60104,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 4727, 4746),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2004),
+            id: DeclarationId(2007),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -60057,7 +60123,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 4751, 4773),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2005),
+            id: DeclarationId(2008),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -60077,7 +60143,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 5142, 5165),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2006),
+            id: DeclarationId(2009),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60091,7 +60157,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 6162, 6170),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2007),
+            id: DeclarationId(2010),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60105,7 +60171,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 6175, 6183),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2008),
+            id: DeclarationId(2011),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60119,7 +60185,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 6624, 6629),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2009),
+            id: DeclarationId(2012),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60133,7 +60199,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 6634, 6642),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2010),
+            id: DeclarationId(2013),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60147,7 +60213,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 6978, 6991),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2011),
+            id: DeclarationId(2014),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60161,7 +60227,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 6996, 7002),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2012),
+            id: DeclarationId(2015),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60175,7 +60241,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 7260, 7268),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2013),
+            id: DeclarationId(2016),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60189,7 +60255,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 7273, 7278),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2014),
+            id: DeclarationId(2017),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60203,7 +60269,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 7283, 7296),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2015),
+            id: DeclarationId(2018),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60217,7 +60283,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 7633, 7651),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2016),
+            id: DeclarationId(2019),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60231,7 +60297,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9026, 9035),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2017),
+            id: DeclarationId(2020),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60245,7 +60311,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9040, 9053),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2018),
+            id: DeclarationId(2021),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60259,7 +60325,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9058, 9066),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2019),
+            id: DeclarationId(2022),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60273,7 +60339,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9071, 9081),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2020),
+            id: DeclarationId(2023),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60287,7 +60353,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9086, 9096),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2021),
+            id: DeclarationId(2024),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60301,7 +60367,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9101, 9112),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2022),
+            id: DeclarationId(2025),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60315,7 +60381,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9117, 9125),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2023),
+            id: DeclarationId(2026),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60329,7 +60395,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9130, 9137),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2024),
+            id: DeclarationId(2027),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60343,7 +60409,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9142, 9152),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2025),
+            id: DeclarationId(2028),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60357,7 +60423,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 9157, 9169),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2026),
+            id: DeclarationId(2029),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60371,7 +60437,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 11862, 11888),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2027),
+            id: DeclarationId(2030),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60385,7 +60451,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 11893, 11903),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2028),
+            id: DeclarationId(2031),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60399,7 +60465,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 16651, 16657),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2029),
+            id: DeclarationId(2032),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60413,7 +60479,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 16662, 16673),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2030),
+            id: DeclarationId(2033),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60427,7 +60493,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 16993, 17004),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2031),
+            id: DeclarationId(2034),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60441,7 +60507,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 17009, 17020),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2032),
+            id: DeclarationId(2035),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60455,7 +60521,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 18953, 18964),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2033),
+            id: DeclarationId(2036),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60469,7 +60535,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 18969, 18977),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2034),
+            id: DeclarationId(2037),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -60488,7 +60554,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 20140, 20175),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2035),
+            id: DeclarationId(2038),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -60513,7 +60579,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/emit_model.dag", 20180, 20268),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2036),
+            id: DeclarationId(2039),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -60533,7 +60599,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 6039, 6067),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2037),
+            id: DeclarationId(2040),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(848),
@@ -60550,7 +60616,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 20505, 20517),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2038),
+            id: DeclarationId(2041),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(851),
@@ -60567,7 +60633,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 21890, 21905),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2039),
+            id: DeclarationId(2042),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -60587,7 +60653,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 27797, 27812),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2040),
+            id: DeclarationId(2043),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(81),
@@ -60604,7 +60670,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 31950, 31954),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2041),
+            id: DeclarationId(2044),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(81),
@@ -60621,7 +60687,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 32246, 32250),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2042),
+            id: DeclarationId(2045),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(81),
@@ -60638,7 +60704,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 33495, 33499),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2043),
+            id: DeclarationId(2046),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(81),
@@ -60655,7 +60721,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 33970, 33974),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2044),
+            id: DeclarationId(2047),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(81),
@@ -60672,7 +60738,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 35233, 35237),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2045),
+            id: DeclarationId(2048),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(81),
@@ -60689,7 +60755,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 35505, 35509),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2046),
+            id: DeclarationId(2049),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60703,7 +60769,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 5562, 5577),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2047),
+            id: DeclarationId(2050),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60717,7 +60783,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 5617, 5630),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2048),
+            id: DeclarationId(2051),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60731,7 +60797,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 5678, 5695),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2049),
+            id: DeclarationId(2052),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60745,7 +60811,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 5734, 5746),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2050),
+            id: DeclarationId(2053),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60759,7 +60825,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 5794, 5811),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2051),
+            id: DeclarationId(2054),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -60784,7 +60850,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 9904, 9966),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2052),
+            id: DeclarationId(2055),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -60803,7 +60869,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 9971, 10013),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2053),
+            id: DeclarationId(2056),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -60828,7 +60894,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 10018, 10075),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2054),
+            id: DeclarationId(2057),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60842,7 +60908,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 10080, 10094),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2055),
+            id: DeclarationId(2058),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60856,7 +60922,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 10099, 10114),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2056),
+            id: DeclarationId(2059),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60870,7 +60936,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 24082, 24096),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2057),
+            id: DeclarationId(2060),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -60889,7 +60955,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 24101, 24148),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2058),
+            id: DeclarationId(2061),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -60914,7 +60980,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 24153, 24230),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2059),
+            id: DeclarationId(2062),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -60939,7 +61005,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 24235, 24309),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2060),
+            id: DeclarationId(2063),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -60964,7 +61030,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 24929, 24985),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2061),
+            id: DeclarationId(2064),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -60983,7 +61049,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 25001, 25026),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2062),
+            id: DeclarationId(2065),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -60997,7 +61063,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 26675, 26688),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2063),
+            id: DeclarationId(2066),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -61016,7 +61082,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 26732, 26764),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2064),
+            id: DeclarationId(2067),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61036,12 +61102,12 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 26827, 26843),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2065),
+            id: DeclarationId(2068),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "factors".to_string(),
-                    ty: DeclarationId(2064),
+                    ty: DeclarationId(2067),
                 }],
             },
             type_params: vec![],
@@ -61055,7 +61121,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 26803, 26845),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2066),
+            id: DeclarationId(2069),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61075,13 +61141,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 26907, 26923),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2067),
+            id: DeclarationId(2070),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
                 arguments: vec![TemplateArgument {
                     parameter: DeclarationId(608),
-                    value: DeclarationId(2066),
+                    value: DeclarationId(2069),
                 }],
             },
             type_params: vec![],
@@ -61095,12 +61161,12 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 26902, 26924),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2068),
+            id: DeclarationId(2071),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "terms".to_string(),
-                    ty: DeclarationId(2067),
+                    ty: DeclarationId(2070),
                 }],
             },
             type_params: vec![],
@@ -61114,7 +61180,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 26874, 26926),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2069),
+            id: DeclarationId(2072),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61134,12 +61200,12 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 27224, 27239),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2070),
+            id: DeclarationId(2073),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "terms".to_string(),
-                    ty: DeclarationId(2069),
+                    ty: DeclarationId(2072),
                 }],
             },
             type_params: vec![],
@@ -61153,7 +61219,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 27206, 27241),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2071),
+            id: DeclarationId(2074),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -61167,7 +61233,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 27324, 27336),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2072),
+            id: DeclarationId(2075),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -61181,7 +61247,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/induction.dag", 27406, 27416),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2073),
+            id: DeclarationId(2076),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61201,7 +61267,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/integer_diagnostic_order.dag", 1234, 1254),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2074),
+            id: DeclarationId(2077),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61221,7 +61287,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/integer_diagnostic_order.dag", 1414, 1434),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2075),
+            id: DeclarationId(2078),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(880),
@@ -61241,11 +61307,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lens.dag", 4180, 4190),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2076),
+            id: DeclarationId(2079),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(748), DeclarationId(747)],
-                output: DeclarationId(2075),
+                output: DeclarationId(2078),
                 body: ArrowBody::NoBody,
             },
             type_params: vec![],
@@ -61259,7 +61325,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lens.dag", 4159, 4190),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2077),
+            id: DeclarationId(2080),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(19),
@@ -61279,7 +61345,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lens.dag", 4205, 4214),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2078),
+            id: DeclarationId(2081),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1016), DeclarationId(1016)],
@@ -61297,7 +61363,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lens.dag", 4225, 4238),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2079),
+            id: DeclarationId(2082),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(1016), DeclarationId(738)],
@@ -61315,7 +61381,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lens.dag", 4250, 4271),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2080),
+            id: DeclarationId(2083),
             name: None,
             connective: TypeConnective::Arrow {
                 inputs: vec![DeclarationId(748), DeclarationId(1016)],
@@ -61333,7 +61399,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lens.dag", 4284, 4316),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2081),
+            id: DeclarationId(2084),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(1017),
@@ -61353,7 +61419,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lookup.dag", 4577, 4588),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2082),
+            id: DeclarationId(2085),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(1017),
@@ -61373,7 +61439,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lookup.dag", 4630, 4641),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2083),
+            id: DeclarationId(2086),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -61387,7 +61453,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lookup.dag", 4532, 4536),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2084),
+            id: DeclarationId(2087),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -61406,7 +61472,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/lookup.dag", 4541, 4551),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2085),
+            id: DeclarationId(2088),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61426,7 +61492,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 1179, 1196),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2086),
+            id: DeclarationId(2089),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1034),
@@ -61443,7 +61509,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 1267, 1279),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2087),
+            id: DeclarationId(2090),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61463,12 +61529,12 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 1747, 1764),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2088),
+            id: DeclarationId(2091),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
-                    ty: DeclarationId(2087),
+                    ty: DeclarationId(2090),
                 }],
             },
             type_params: vec![],
@@ -61482,7 +61548,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 1736, 1765),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2089),
+            id: DeclarationId(2092),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61502,12 +61568,12 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 1777, 1795),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2090),
+            id: DeclarationId(2093),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
-                    ty: DeclarationId(2089),
+                    ty: DeclarationId(2092),
                 }],
             },
             type_params: vec![],
@@ -61521,7 +61587,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 1770, 1796),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2091),
+            id: DeclarationId(2094),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61546,7 +61612,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 2073, 2113),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2092),
+            id: DeclarationId(2095),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61566,7 +61632,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 2165, 2182),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2093),
+            id: DeclarationId(2096),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61576,7 +61642,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "args".to_string(),
-                        ty: DeclarationId(2092),
+                        ty: DeclarationId(2095),
                     },
                     Field {
                         label: "span".to_string(),
@@ -61595,7 +61661,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 2118, 2211),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2094),
+            id: DeclarationId(2097),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61620,7 +61686,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 2216, 2280),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2095),
+            id: DeclarationId(2098),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61640,13 +61706,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 2307, 2324),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2096),
+            id: DeclarationId(2099),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "inputs".to_string(),
-                        ty: DeclarationId(2095),
+                        ty: DeclarationId(2098),
                     },
                     Field {
                         label: "output".to_string(),
@@ -61669,7 +61735,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 2285, 2379),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2097),
+            id: DeclarationId(2100),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61694,7 +61760,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 3749, 3795),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2098),
+            id: DeclarationId(2101),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61723,7 +61789,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 3800, 3883),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2099),
+            id: DeclarationId(2102),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61743,7 +61809,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 3937, 3962),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2100),
+            id: DeclarationId(2103),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61753,7 +61819,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "fields".to_string(),
-                        ty: DeclarationId(2099),
+                        ty: DeclarationId(2102),
                     },
                     Field {
                         label: "span".to_string(),
@@ -61772,7 +61838,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 3888, 3991),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2101),
+            id: DeclarationId(2104),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -61791,7 +61857,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4578, 4586),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2102),
+            id: DeclarationId(2105),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -61810,7 +61876,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4591, 4601),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2103),
+            id: DeclarationId(2106),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -61829,7 +61895,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4606, 4620),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2104),
+            id: DeclarationId(2107),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61854,7 +61920,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4734, 4785),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2105),
+            id: DeclarationId(2108),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61879,7 +61945,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4790, 4828),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2106),
+            id: DeclarationId(2109),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61899,7 +61965,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4856, 4868),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2107),
+            id: DeclarationId(2110),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61919,17 +61985,17 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4890, 4906),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2108),
+            id: DeclarationId(2111),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "segments".to_string(),
-                        ty: DeclarationId(2106),
+                        ty: DeclarationId(2109),
                     },
                     Field {
                         label: "segment_spans".to_string(),
-                        ty: DeclarationId(2107),
+                        ty: DeclarationId(2110),
                     },
                     Field {
                         label: "span".to_string(),
@@ -61948,7 +62014,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4833, 4935),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2109),
+            id: DeclarationId(2112),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -61968,7 +62034,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4980, 4997),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2110),
+            id: DeclarationId(2113),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -61978,7 +62044,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "args".to_string(),
-                        ty: DeclarationId(2109),
+                        ty: DeclarationId(2112),
                     },
                     Field {
                         label: "span".to_string(),
@@ -61997,7 +62063,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 4940, 5026),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2111),
+            id: DeclarationId(2114),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62017,7 +62083,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5597, 5609),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2112),
+            id: DeclarationId(2115),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62037,7 +62103,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5631, 5647),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2113),
+            id: DeclarationId(2116),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62057,21 +62123,21 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5660, 5677),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2114),
+            id: DeclarationId(2117),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "segments".to_string(),
-                        ty: DeclarationId(2111),
+                        ty: DeclarationId(2114),
                     },
                     Field {
                         label: "segment_spans".to_string(),
-                        ty: DeclarationId(2112),
+                        ty: DeclarationId(2115),
                     },
                     Field {
                         label: "args".to_string(),
-                        ty: DeclarationId(2113),
+                        ty: DeclarationId(2116),
                     },
                     Field {
                         label: "span".to_string(),
@@ -62090,7 +62156,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5570, 5706),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2115),
+            id: DeclarationId(2118),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62110,7 +62176,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5762, 5786),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2116),
+            id: DeclarationId(2119),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62120,7 +62186,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "fields".to_string(),
-                        ty: DeclarationId(2115),
+                        ty: DeclarationId(2118),
                     },
                     Field {
                         label: "span".to_string(),
@@ -62139,7 +62205,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5711, 5815),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2117),
+            id: DeclarationId(2120),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62159,7 +62225,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5866, 5883),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2118),
+            id: DeclarationId(2121),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62169,7 +62235,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "args".to_string(),
-                        ty: DeclarationId(2117),
+                        ty: DeclarationId(2120),
                     },
                     Field {
                         label: "span".to_string(),
@@ -62188,7 +62254,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5820, 5912),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2119),
+            id: DeclarationId(2122),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62208,13 +62274,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5940, 5952),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2120),
+            id: DeclarationId(2123),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "params".to_string(),
-                        ty: DeclarationId(2119),
+                        ty: DeclarationId(2122),
                     },
                     Field {
                         label: "body".to_string(),
@@ -62237,7 +62303,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 5917, 6005),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2121),
+            id: DeclarationId(2124),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62270,7 +62336,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 6010, 6129),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2122),
+            id: DeclarationId(2125),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62290,7 +62356,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 6183, 6204),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2123),
+            id: DeclarationId(2126),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62300,7 +62366,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "arms".to_string(),
-                        ty: DeclarationId(2122),
+                        ty: DeclarationId(2125),
                     },
                     Field {
                         label: "span".to_string(),
@@ -62319,7 +62385,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 6134, 6233),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2124),
+            id: DeclarationId(2127),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62339,13 +62405,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 6261, 6285),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2125),
+            id: DeclarationId(2128),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "fields".to_string(),
-                        ty: DeclarationId(2124),
+                        ty: DeclarationId(2127),
                     },
                     Field {
                         label: "span".to_string(),
@@ -62364,7 +62430,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 6238, 6314),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2126),
+            id: DeclarationId(2129),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62384,13 +62450,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 6342, 6359),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2127),
+            id: DeclarationId(2130),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "elements".to_string(),
-                        ty: DeclarationId(2126),
+                        ty: DeclarationId(2129),
                     },
                     Field {
                         label: "span".to_string(),
@@ -62409,7 +62475,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 6319, 6388),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2128),
+            id: DeclarationId(2131),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62429,13 +62495,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 8482, 8503),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2129),
+            id: DeclarationId(2132),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "entries".to_string(),
-                        ty: DeclarationId(2128),
+                        ty: DeclarationId(2131),
                     },
                     Field {
                         label: "span".to_string(),
@@ -62454,7 +62520,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 8461, 8532),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2130),
+            id: DeclarationId(2133),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1027),
@@ -62471,7 +62537,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9463, 9475),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2131),
+            id: DeclarationId(2134),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62481,7 +62547,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "type_ann".to_string(),
-                        ty: DeclarationId(2130),
+                        ty: DeclarationId(2133),
                     },
                     Field {
                         label: "expr".to_string(),
@@ -62500,7 +62566,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9422, 9505),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2132),
+            id: DeclarationId(2135),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62520,7 +62586,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9553, 9565),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2133),
+            id: DeclarationId(2136),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62540,7 +62606,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9580, 9598),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2134),
+            id: DeclarationId(2137),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62550,11 +62616,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "type_params".to_string(),
-                        ty: DeclarationId(2132),
+                        ty: DeclarationId(2135),
                     },
                     Field {
                         label: "params".to_string(),
-                        ty: DeclarationId(2133),
+                        ty: DeclarationId(2136),
                     },
                     Field {
                         label: "return_type".to_string(),
@@ -62581,7 +62647,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9510, 9682),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2135),
+            id: DeclarationId(2138),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62601,7 +62667,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9742, 9754),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2136),
+            id: DeclarationId(2139),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62621,7 +62687,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9769, 9787),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2137),
+            id: DeclarationId(2140),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62631,11 +62697,11 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "type_params".to_string(),
-                        ty: DeclarationId(2135),
+                        ty: DeclarationId(2138),
                     },
                     Field {
                         label: "params".to_string(),
-                        ty: DeclarationId(2136),
+                        ty: DeclarationId(2139),
                     },
                     Field {
                         label: "return_type".to_string(),
@@ -62662,7 +62728,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9687, 9875),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2138),
+            id: DeclarationId(2141),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1034),
@@ -62679,7 +62745,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9940, 9952),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2139),
+            id: DeclarationId(2142),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -62693,7 +62759,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "body".to_string(),
-                        ty: DeclarationId(2138),
+                        ty: DeclarationId(2141),
                     },
                     Field {
                         label: "body_span".to_string(),
@@ -62716,7 +62782,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 9880, 10009),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2140),
+            id: DeclarationId(2143),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62736,81 +62802,12 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 10029, 10041),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2141),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![
-                    Field {
-                        label: "path".to_string(),
-                        ty: DeclarationId(2140),
-                    },
-                    Field {
-                        label: "span".to_string(),
-                        ty: DeclarationId(132),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10014, 10061),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2142),
-            name: None,
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(607),
-                arguments: vec![TemplateArgument {
-                    parameter: DeclarationId(608),
-                    value: DeclarationId(197),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10087, 10099),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2143),
-            name: None,
-            connective: TypeConnective::Instantiation {
-                template: DeclarationId(607),
-                arguments: vec![TemplateArgument {
-                    parameter: DeclarationId(608),
-                    value: DeclarationId(197),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10113, 10125),
-        });
-        declarations.push(Declaration {
             id: DeclarationId(2144),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
                     Field {
                         label: "path".to_string(),
-                        ty: DeclarationId(2142),
-                    },
-                    Field {
-                        label: "names".to_string(),
                         ty: DeclarationId(2143),
                     },
                     Field {
@@ -62827,7 +62824,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10066, 10154),
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10014, 10061),
         });
         declarations.push(Declaration {
             id: DeclarationId(2145),
@@ -62847,39 +62844,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10208, 10220),
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10087, 10099),
         });
         declarations.push(Declaration {
             id: DeclarationId(2146),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![
-                    Field {
-                        label: "name".to_string(),
-                        ty: DeclarationId(197),
-                    },
-                    Field {
-                        label: "type_params".to_string(),
-                        ty: DeclarationId(2145),
-                    },
-                    Field {
-                        label: "span".to_string(),
-                        ty: DeclarationId(132),
-                    },
-                ],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10159, 10249),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2147),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62896,7 +62864,36 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10305, 10317),
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10113, 10125),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2147),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![
+                    Field {
+                        label: "path".to_string(),
+                        ty: DeclarationId(2145),
+                    },
+                    Field {
+                        label: "names".to_string(),
+                        ty: DeclarationId(2146),
+                    },
+                    Field {
+                        label: "span".to_string(),
+                        ty: DeclarationId(132),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10066, 10154),
         });
         declarations.push(Declaration {
             id: DeclarationId(2148),
@@ -62905,7 +62902,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 template: DeclarationId(607),
                 arguments: vec![TemplateArgument {
                     parameter: DeclarationId(608),
-                    value: DeclarationId(1024),
+                    value: DeclarationId(197),
                 }],
             },
             type_params: vec![],
@@ -62916,7 +62913,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10332, 10350),
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10208, 10220),
         });
         declarations.push(Declaration {
             id: DeclarationId(2149),
@@ -62929,10 +62926,6 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "type_params".to_string(),
-                        ty: DeclarationId(2147),
-                    },
-                    Field {
-                        label: "fields".to_string(),
                         ty: DeclarationId(2148),
                     },
                     Field {
@@ -62949,7 +62942,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10254, 10379),
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10159, 10249),
         });
         declarations.push(Declaration {
             id: DeclarationId(2150),
@@ -62969,10 +62962,83 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10432, 10444),
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10305, 10317),
         });
         declarations.push(Declaration {
             id: DeclarationId(2151),
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: DeclarationId(607),
+                arguments: vec![TemplateArgument {
+                    parameter: DeclarationId(608),
+                    value: DeclarationId(1024),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10332, 10350),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2152),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![
+                    Field {
+                        label: "name".to_string(),
+                        ty: DeclarationId(197),
+                    },
+                    Field {
+                        label: "type_params".to_string(),
+                        ty: DeclarationId(2150),
+                    },
+                    Field {
+                        label: "fields".to_string(),
+                        ty: DeclarationId(2151),
+                    },
+                    Field {
+                        label: "span".to_string(),
+                        ty: DeclarationId(132),
+                    },
+                ],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10254, 10379),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2153),
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: DeclarationId(607),
+                arguments: vec![TemplateArgument {
+                    parameter: DeclarationId(608),
+                    value: DeclarationId(197),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/parse_surface.dag", 10432, 10444),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2154),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -62992,7 +63058,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 10461, 10481),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2152),
+            id: DeclarationId(2155),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1027),
@@ -63009,7 +63075,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 10498, 10510),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2153),
+            id: DeclarationId(2156),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -63019,15 +63085,15 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "type_params".to_string(),
-                        ty: DeclarationId(2150),
+                        ty: DeclarationId(2153),
                     },
                     Field {
                         label: "variants".to_string(),
-                        ty: DeclarationId(2151),
+                        ty: DeclarationId(2154),
                     },
                     Field {
                         label: "inhabits".to_string(),
-                        ty: DeclarationId(2152),
+                        ty: DeclarationId(2155),
                     },
                     Field {
                         label: "span".to_string(),
@@ -63046,7 +63112,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 10384, 10539),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2154),
+            id: DeclarationId(2157),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -63066,7 +63132,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 10594, 10606),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2155),
+            id: DeclarationId(2158),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1034),
@@ -63083,7 +63149,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 10678, 10690),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2156),
+            id: DeclarationId(2159),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -63093,7 +63159,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "type_params".to_string(),
-                        ty: DeclarationId(2154),
+                        ty: DeclarationId(2157),
                     },
                     Field {
                         label: "nominal_opaque".to_string(),
@@ -63105,7 +63171,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "refinement".to_string(),
-                        ty: DeclarationId(2155),
+                        ty: DeclarationId(2158),
                     },
                     Field {
                         label: "span".to_string(),
@@ -63124,7 +63190,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/parse_surface.dag", 10544, 10719),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2157),
+            id: DeclarationId(2160),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -63148,7 +63214,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             ),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2158),
+            id: DeclarationId(2161),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63167,7 +63233,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 2132, 2157),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2159),
+            id: DeclarationId(2162),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -63187,12 +63253,12 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 2174, 2190),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2160),
+            id: DeclarationId(2163),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
                     label: "_0".to_string(),
-                    ty: DeclarationId(2159),
+                    ty: DeclarationId(2162),
                 }],
             },
             type_params: vec![],
@@ -63206,7 +63272,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 2162, 2191),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2161),
+            id: DeclarationId(2164),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -63231,7 +63297,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 2196, 2247),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2162),
+            id: DeclarationId(2165),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63250,7 +63316,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 2252, 2267),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2163),
+            id: DeclarationId(2166),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63269,7 +63335,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 2272, 2299),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2164),
+            id: DeclarationId(2167),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(108),
@@ -63295,7 +63361,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 3931, 3949),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2165),
+            id: DeclarationId(2168),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -63315,7 +63381,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 4537, 4552),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2166),
+            id: DeclarationId(2169),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63334,7 +63400,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 5405, 5459),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2167),
+            id: DeclarationId(2170),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63348,7 +63414,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/runtime.dag", 5724, 5733),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2168),
+            id: DeclarationId(2171),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -63368,7 +63434,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/rust_method_template_contracts.dag", 5765, 5793),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2169),
+            id: DeclarationId(2172),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(108),
@@ -63394,7 +63460,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/services.dag", 6838, 6861),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2170),
+            id: DeclarationId(2173),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1066),
@@ -63411,7 +63477,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 2329, 2345),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2171),
+            id: DeclarationId(2174),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1066),
@@ -63428,7 +63494,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 2350, 2366),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2172),
+            id: DeclarationId(2175),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1066),
@@ -63445,7 +63511,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 2371, 2387),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2173),
+            id: DeclarationId(2176),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(108),
@@ -63471,7 +63537,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 2632, 2660),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2174),
+            id: DeclarationId(2177),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(108),
@@ -63497,7 +63563,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 2704, 2732),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2175),
+            id: DeclarationId(2178),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1074),
@@ -63514,7 +63580,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 5879, 5901),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2176),
+            id: DeclarationId(2179),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(1075),
@@ -63531,7 +63597,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 6321, 6341),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2177),
+            id: DeclarationId(2180),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63545,7 +63611,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 667, 673),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2178),
+            id: DeclarationId(2181),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63559,7 +63625,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 678, 691),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2179),
+            id: DeclarationId(2182),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63571,63 +63637,6 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             refinement: None,
             nominal_opacity: None,
             span: SourceSpan::new("src/v3/std/termination.dag", 696, 710),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2180),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "param".to_string(),
-                    ty: DeclarationId(197),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 3232, 3258),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2181),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "param".to_string(),
-                    ty: DeclarationId(197),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 3263, 3291),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2182),
-            name: None,
-            connective: TypeConnective::Conj {
-                children: vec![Field {
-                    label: "param".to_string(),
-                    ty: DeclarationId(197),
-                }],
-            },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 3296, 3329),
         });
         declarations.push(Declaration {
             id: DeclarationId(2183),
@@ -63646,7 +63655,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 3334, 3365),
+            span: SourceSpan::new("src/v3/std/termination.dag", 3232, 3258),
         });
         declarations.push(Declaration {
             id: DeclarationId(2184),
@@ -63665,10 +63674,67 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/termination.dag", 3370, 3402),
+            span: SourceSpan::new("src/v3/std/termination.dag", 3263, 3291),
         });
         declarations.push(Declaration {
             id: DeclarationId(2185),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "param".to_string(),
+                    ty: DeclarationId(197),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/termination.dag", 3296, 3329),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2186),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "param".to_string(),
+                    ty: DeclarationId(197),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/termination.dag", 3334, 3365),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2187),
+            name: None,
+            connective: TypeConnective::Conj {
+                children: vec![Field {
+                    label: "param".to_string(),
+                    ty: DeclarationId(197),
+                }],
+            },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/termination.dag", 3370, 3402),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2188),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63682,7 +63748,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 4409, 4416),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2186),
+            id: DeclarationId(2189),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63701,7 +63767,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 4421, 4471),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2187),
+            id: DeclarationId(2190),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63715,7 +63781,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 4966, 4977),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2188),
+            id: DeclarationId(2191),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63734,7 +63800,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 4982, 5027),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2189),
+            id: DeclarationId(2192),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63753,7 +63819,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7131, 7165),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2190),
+            id: DeclarationId(2193),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63772,7 +63838,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7170, 7214),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2191),
+            id: DeclarationId(2194),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63791,7 +63857,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7219, 7277),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2192),
+            id: DeclarationId(2195),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63810,7 +63876,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7282, 7338),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2193),
+            id: DeclarationId(2196),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63829,7 +63895,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7343, 7376),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2194),
+            id: DeclarationId(2197),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -63848,7 +63914,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7381, 7411),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2195),
+            id: DeclarationId(2198),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63862,7 +63928,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7416, 7429),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2196),
+            id: DeclarationId(2199),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -63882,7 +63948,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7469, 7491),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2197),
+            id: DeclarationId(2200),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -63902,7 +63968,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/termination.dag", 7701, 7722),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2198),
+            id: DeclarationId(2201),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63916,7 +63982,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 646, 651),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2199),
+            id: DeclarationId(2202),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63930,7 +63996,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 656, 660),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2200),
+            id: DeclarationId(2203),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63944,7 +64010,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 665, 671),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2201),
+            id: DeclarationId(2204),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63958,7 +64024,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 676, 682),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2202),
+            id: DeclarationId(2205),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63972,7 +64038,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 687, 691),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2203),
+            id: DeclarationId(2206),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -63986,7 +64052,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 696, 702),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2204),
+            id: DeclarationId(2207),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64000,7 +64066,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 707, 715),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2205),
+            id: DeclarationId(2208),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64014,7 +64080,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 720, 728),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2206),
+            id: DeclarationId(2209),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64028,7 +64094,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 733, 740),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2207),
+            id: DeclarationId(2210),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64042,7 +64108,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 745, 751),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2208),
+            id: DeclarationId(2211),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64056,7 +64122,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 756, 763),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2209),
+            id: DeclarationId(2212),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64070,7 +64136,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 768, 774),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2210),
+            id: DeclarationId(2213),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64084,7 +64150,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 779, 786),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2211),
+            id: DeclarationId(2214),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -64103,7 +64169,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 791, 804),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2212),
+            id: DeclarationId(2215),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -64122,7 +64188,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 809, 820),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2213),
+            id: DeclarationId(2216),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -64141,7 +64207,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 825, 842),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2214),
+            id: DeclarationId(2217),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64155,7 +64221,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 847, 849),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2215),
+            id: DeclarationId(2218),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64169,7 +64235,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 854, 858),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2216),
+            id: DeclarationId(2219),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64183,7 +64249,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 863, 868),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2217),
+            id: DeclarationId(2220),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64197,7 +64263,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 873, 875),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2218),
+            id: DeclarationId(2221),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64211,7 +64277,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 880, 882),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2219),
+            id: DeclarationId(2222),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64225,7 +64291,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 887, 889),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2220),
+            id: DeclarationId(2223),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64239,7 +64305,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 894, 896),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2221),
+            id: DeclarationId(2224),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64253,7 +64319,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 901, 905),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2222),
+            id: DeclarationId(2225),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64267,7 +64333,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 910, 915),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2223),
+            id: DeclarationId(2226),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64281,7 +64347,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 920, 924),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2224),
+            id: DeclarationId(2227),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64295,7 +64361,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 929, 934),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2225),
+            id: DeclarationId(2228),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64309,7 +64375,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 939, 945),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2226),
+            id: DeclarationId(2229),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64323,7 +64389,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 950, 958),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2227),
+            id: DeclarationId(2230),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64337,7 +64403,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 963, 968),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2228),
+            id: DeclarationId(2231),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64351,7 +64417,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 973, 978),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2229),
+            id: DeclarationId(2232),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64365,7 +64431,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 983, 991),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2230),
+            id: DeclarationId(2233),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64379,7 +64445,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 996, 1005),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2231),
+            id: DeclarationId(2234),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64393,7 +64459,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1010, 1013),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2232),
+            id: DeclarationId(2235),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64407,7 +64473,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1018, 1024),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2233),
+            id: DeclarationId(2236),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64421,7 +64487,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1029, 1035),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2234),
+            id: DeclarationId(2237),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64435,7 +64501,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1040, 1046),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2235),
+            id: DeclarationId(2238),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64449,7 +64515,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1051, 1057),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2236),
+            id: DeclarationId(2239),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64463,7 +64529,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1062, 1070),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2237),
+            id: DeclarationId(2240),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64477,7 +64543,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1075, 1083),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2238),
+            id: DeclarationId(2241),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64491,7 +64557,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1088, 1093),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2239),
+            id: DeclarationId(2242),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64505,7 +64571,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1098, 1107),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2240),
+            id: DeclarationId(2243),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64519,7 +64585,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1112, 1116),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2241),
+            id: DeclarationId(2244),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64533,7 +64599,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1121, 1129),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2242),
+            id: DeclarationId(2245),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64547,7 +64613,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1134, 1137),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2243),
+            id: DeclarationId(2246),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64561,7 +64627,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1708, 1713),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2244),
+            id: DeclarationId(2247),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64575,7 +64641,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1718, 1722),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2245),
+            id: DeclarationId(2248),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64589,7 +64655,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1727, 1733),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2246),
+            id: DeclarationId(2249),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64603,7 +64669,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1738, 1744),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2247),
+            id: DeclarationId(2250),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64617,7 +64683,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1749, 1753),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2248),
+            id: DeclarationId(2251),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64631,7 +64697,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1758, 1764),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2249),
+            id: DeclarationId(2252),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64645,7 +64711,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1769, 1777),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2250),
+            id: DeclarationId(2253),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64659,7 +64725,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1782, 1790),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2251),
+            id: DeclarationId(2254),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64673,7 +64739,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1795, 1802),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2252),
+            id: DeclarationId(2255),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64687,7 +64753,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1807, 1813),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2253),
+            id: DeclarationId(2256),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64701,7 +64767,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1818, 1825),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2254),
+            id: DeclarationId(2257),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64715,7 +64781,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1830, 1836),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2255),
+            id: DeclarationId(2258),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64729,7 +64795,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 1841, 1848),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2256),
+            id: DeclarationId(2259),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64743,7 +64809,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2288, 2290),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2257),
+            id: DeclarationId(2260),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64757,7 +64823,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2295, 2299),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2258),
+            id: DeclarationId(2261),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64771,7 +64837,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2304, 2309),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2259),
+            id: DeclarationId(2262),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64785,7 +64851,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2314, 2316),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2260),
+            id: DeclarationId(2263),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64799,7 +64865,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2321, 2323),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2261),
+            id: DeclarationId(2264),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64813,7 +64879,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2328, 2330),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2262),
+            id: DeclarationId(2265),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64827,7 +64893,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2335, 2337),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2263),
+            id: DeclarationId(2266),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64841,7 +64907,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2342, 2346),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2264),
+            id: DeclarationId(2267),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64855,7 +64921,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2351, 2356),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2265),
+            id: DeclarationId(2268),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64869,7 +64935,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2361, 2365),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2266),
+            id: DeclarationId(2269),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64883,7 +64949,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2370, 2375),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2267),
+            id: DeclarationId(2270),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64897,7 +64963,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2380, 2386),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2268),
+            id: DeclarationId(2271),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64911,7 +64977,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2391, 2399),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2269),
+            id: DeclarationId(2272),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64925,7 +64991,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2404, 2409),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2270),
+            id: DeclarationId(2273),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64939,7 +65005,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2414, 2419),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2271),
+            id: DeclarationId(2274),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64953,7 +65019,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2424, 2432),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2272),
+            id: DeclarationId(2275),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64967,7 +65033,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2437, 2446),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2273),
+            id: DeclarationId(2276),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64981,7 +65047,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2451, 2454),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2274),
+            id: DeclarationId(2277),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -64995,7 +65061,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2459, 2465),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2275),
+            id: DeclarationId(2278),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65009,7 +65075,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2470, 2476),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2276),
+            id: DeclarationId(2279),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65023,7 +65089,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2481, 2487),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2277),
+            id: DeclarationId(2280),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65037,7 +65103,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2492, 2498),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2278),
+            id: DeclarationId(2281),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65051,7 +65117,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2503, 2511),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2279),
+            id: DeclarationId(2282),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65065,7 +65131,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2516, 2524),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2280),
+            id: DeclarationId(2283),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65079,7 +65145,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2529, 2534),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2281),
+            id: DeclarationId(2284),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65093,7 +65159,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2539, 2548),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2282),
+            id: DeclarationId(2285),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65107,7 +65173,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2553, 2557),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2283),
+            id: DeclarationId(2286),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -65121,7 +65187,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/tokenize.dag", 2562, 2570),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2284),
+            id: DeclarationId(2287),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -65138,10 +65204,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16747, 16770),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16828, 16851),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2285),
+            id: DeclarationId(2288),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -65158,10 +65224,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16972, 16987),
+            span: SourceSpan::new("src/v3/std/verification.dag", 17053, 17068),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2286),
+            id: DeclarationId(2289),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -65178,49 +65244,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16992, 17012),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2287),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2480, 2494),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2288),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2499, 2509),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2289),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2514, 2526),
+            span: SourceSpan::new("src/v3/std/verification.dag", 17073, 17093),
         });
         declarations.push(Declaration {
             id: DeclarationId(2290),
@@ -65234,7 +65258,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2531, 2543),
+            span: SourceSpan::new("src/v3/std/verification.dag", 2480, 2494),
         });
         declarations.push(Declaration {
             id: DeclarationId(2291),
@@ -65248,7 +65272,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2548, 2561),
+            span: SourceSpan::new("src/v3/std/verification.dag", 2499, 2509),
         });
         declarations.push(Declaration {
             id: DeclarationId(2292),
@@ -65262,7 +65286,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2566, 2578),
+            span: SourceSpan::new("src/v3/std/verification.dag", 2514, 2526),
         });
         declarations.push(Declaration {
             id: DeclarationId(2293),
@@ -65276,7 +65300,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 2583, 2606),
+            span: SourceSpan::new("src/v3/std/verification.dag", 2531, 2544),
         });
         declarations.push(Declaration {
             id: DeclarationId(2294),
@@ -65290,10 +65314,94 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 3012, 3021),
+            span: SourceSpan::new("src/v3/std/verification.dag", 2549, 2561),
         });
         declarations.push(Declaration {
             id: DeclarationId(2295),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 2566, 2578),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2296),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 2583, 2605),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2297),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 2610, 2629),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2298),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 2634, 2659),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2299),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 2664, 2687),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2300),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 3093, 3102),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2301),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65309,94 +65417,94 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 3026, 3042),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2296),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 3701, 3709),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2297),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 3714, 3724),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2298),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4539, 4552),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2299),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4557, 4570),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2300),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4575, 4583),
-        });
-        declarations.push(Declaration {
-            id: DeclarationId(2301),
-            name: None,
-            connective: TypeConnective::Conj { children: vec![] },
-            type_params: vec![],
-            phantom_params: Vec::new(),
-            meta_tag: None,
-            specialization_parent: None,
-            inhabits: None,
-            value_body: None,
-            refinement: None,
-            nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4608, 4616),
+            span: SourceSpan::new("src/v3/std/verification.dag", 3107, 3123),
         });
         declarations.push(Declaration {
             id: DeclarationId(2302),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 3782, 3790),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2303),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 3795, 3805),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2304),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 4620, 4633),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2305),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 4638, 4651),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2306),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 4656, 4664),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2307),
+            name: None,
+            connective: TypeConnective::Conj { children: vec![] },
+            type_params: vec![],
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span: SourceSpan::new("src/v3/std/verification.dag", 4689, 4697),
+        });
+        declarations.push(Declaration {
+            id: DeclarationId(2308),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65412,10 +65520,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4621, 4661),
+            span: SourceSpan::new("src/v3/std/verification.dag", 4702, 4742),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2303),
+            id: DeclarationId(2309),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65431,10 +65539,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4666, 4699),
+            span: SourceSpan::new("src/v3/std/verification.dag", 4747, 4780),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2304),
+            id: DeclarationId(2310),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65456,10 +65564,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4704, 4782),
+            span: SourceSpan::new("src/v3/std/verification.dag", 4785, 4863),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2305),
+            id: DeclarationId(2311),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65475,10 +65583,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 4948, 5011),
+            span: SourceSpan::new("src/v3/std/verification.dag", 5029, 5092),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2306),
+            id: DeclarationId(2312),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65504,10 +65612,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 5016, 5107),
+            span: SourceSpan::new("src/v3/std/verification.dag", 5097, 5188),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2307),
+            id: DeclarationId(2313),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65533,10 +65641,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 5112, 5244),
+            span: SourceSpan::new("src/v3/std/verification.dag", 5193, 5325),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2308),
+            id: DeclarationId(2314),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65558,10 +65666,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 5459, 5548),
+            span: SourceSpan::new("src/v3/std/verification.dag", 5540, 5629),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2309),
+            id: DeclarationId(2315),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -65578,10 +65686,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 6348, 6360),
+            span: SourceSpan::new("src/v3/std/verification.dag", 6429, 6441),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2310),
+            id: DeclarationId(2316),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65591,7 +65699,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "args".to_string(),
-                        ty: DeclarationId(2309),
+                        ty: DeclarationId(2315),
                     },
                     Field {
                         label: "expect_exit_code".to_string(),
@@ -65607,10 +65715,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 6297, 6394),
+            span: SourceSpan::new("src/v3/std/verification.dag", 6378, 6475),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2311),
+            id: DeclarationId(2317),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -65627,10 +65735,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 7094, 7106),
+            span: SourceSpan::new("src/v3/std/verification.dag", 7175, 7187),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2312),
+            id: DeclarationId(2318),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65640,7 +65748,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "args".to_string(),
-                        ty: DeclarationId(2311),
+                        ty: DeclarationId(2317),
                     },
                     Field {
                         label: "expect_exit_code".to_string(),
@@ -65656,10 +65764,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 7044, 7140),
+            span: SourceSpan::new("src/v3/std/verification.dag", 7125, 7221),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2313),
+            id: DeclarationId(2319),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65685,10 +65793,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 7438, 7560),
+            span: SourceSpan::new("src/v3/std/verification.dag", 7519, 7641),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2314),
+            id: DeclarationId(2320),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65714,10 +65822,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 7822, 7947),
+            span: SourceSpan::new("src/v3/std/verification.dag", 7903, 8028),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2315),
+            id: DeclarationId(2321),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -65733,10 +65841,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 10000, 10061),
+            span: SourceSpan::new("src/v3/std/verification.dag", 10081, 10142),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2316),
+            id: DeclarationId(2322),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65758,10 +65866,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 10628, 10740),
+            span: SourceSpan::new("src/v3/std/verification.dag", 10709, 10821),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2317),
+            id: DeclarationId(2323),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65783,10 +65891,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 11336, 11415),
+            span: SourceSpan::new("src/v3/std/verification.dag", 11417, 11496),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2318),
+            id: DeclarationId(2324),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65812,10 +65920,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 11635, 11748),
+            span: SourceSpan::new("src/v3/std/verification.dag", 11716, 11829),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2319),
+            id: DeclarationId(2325),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65841,10 +65949,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 11753, 11889),
+            span: SourceSpan::new("src/v3/std/verification.dag", 11834, 11970),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2320),
+            id: DeclarationId(2326),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65866,10 +65974,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 11894, 11976),
+            span: SourceSpan::new("src/v3/std/verification.dag", 11975, 12057),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2321),
+            id: DeclarationId(2327),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65891,10 +65999,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 11981, 12067),
+            span: SourceSpan::new("src/v3/std/verification.dag", 12062, 12148),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2322),
+            id: DeclarationId(2328),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -65911,10 +66019,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 12146, 12156),
+            span: SourceSpan::new("src/v3/std/verification.dag", 12227, 12237),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2323),
+            id: DeclarationId(2329),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65924,7 +66032,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                     },
                     Field {
                         label: "generated_paths".to_string(),
-                        ty: DeclarationId(2322),
+                        ty: DeclarationId(2328),
                     },
                 ],
             },
@@ -65936,10 +66044,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 12072, 12162),
+            span: SourceSpan::new("src/v3/std/verification.dag", 12153, 12243),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2324),
+            id: DeclarationId(2330),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65965,10 +66073,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 13104, 13238),
+            span: SourceSpan::new("src/v3/std/verification.dag", 13185, 13319),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2325),
+            id: DeclarationId(2331),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -65994,10 +66102,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 13877, 14021),
+            span: SourceSpan::new("src/v3/std/verification.dag", 13958, 14102),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2326),
+            id: DeclarationId(2332),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![Field {
@@ -66013,10 +66121,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 14866, 14920),
+            span: SourceSpan::new("src/v3/std/verification.dag", 14947, 15001),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2327),
+            id: DeclarationId(2333),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -66033,10 +66141,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 15964, 15987),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16045, 16068),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2328),
+            id: DeclarationId(2334),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -66053,10 +66161,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16033, 16048),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16114, 16129),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2329),
+            id: DeclarationId(2335),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -66073,10 +66181,10 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/verification.dag", 16304, 16327),
+            span: SourceSpan::new("src/v3/std/verification.dag", 16385, 16408),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2330),
+            id: DeclarationId(2336),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -66096,7 +66204,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/std/workflows.dag", 992, 1006),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2331),
+            id: DeclarationId(2337),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66110,7 +66218,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/compiler/pipeline.dag", 532, 547),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2332),
+            id: DeclarationId(2338),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66124,7 +66232,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/compiler/pipeline.dag", 550, 561),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2333),
+            id: DeclarationId(2339),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66138,7 +66246,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/compiler/pipeline.dag", 564, 576),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2334),
+            id: DeclarationId(2340),
             name: None,
             connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
                 DeclarationId(726),
@@ -66155,7 +66263,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("src/v3/compiler/operators.dag", 142, 155),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2335),
+            id: DeclarationId(2341),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66169,7 +66277,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 5552, 5570),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2336),
+            id: DeclarationId(2342),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66183,7 +66291,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 5575, 5590),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2337),
+            id: DeclarationId(2343),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66197,7 +66305,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 5619, 5640),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2338),
+            id: DeclarationId(2344),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66211,7 +66319,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 5645, 5660),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2339),
+            id: DeclarationId(2345),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66225,7 +66333,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7257, 7267),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2340),
+            id: DeclarationId(2346),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66239,7 +66347,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7272, 7283),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2341),
+            id: DeclarationId(2347),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66253,7 +66361,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7288, 7301),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2342),
+            id: DeclarationId(2348),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66267,7 +66375,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7306, 7319),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2343),
+            id: DeclarationId(2349),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66281,7 +66389,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7324, 7337),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2344),
+            id: DeclarationId(2350),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66295,7 +66403,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7342, 7356),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2345),
+            id: DeclarationId(2351),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66309,7 +66417,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 7361, 7376),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2346),
+            id: DeclarationId(2352),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66323,7 +66431,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8118, 8135),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2347),
+            id: DeclarationId(2353),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66337,7 +66445,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8140, 8150),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2348),
+            id: DeclarationId(2354),
             name: None,
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
@@ -66351,7 +66459,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8155, 8159),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2349),
+            id: DeclarationId(2355),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -66396,7 +66504,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 8937, 9509),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2350),
+            id: DeclarationId(2356),
             name: None,
             connective: TypeConnective::Conj {
                 children: vec![
@@ -66429,7 +66537,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             span: SourceSpan::new("dsl/extdeps/languages/rust/primitives.dag", 9514, 9696),
         });
         declarations.push(Declaration {
-            id: DeclarationId(2351),
+            id: DeclarationId(2357),
             name: None,
             connective: TypeConnective::Instantiation {
                 template: DeclarationId(607),
@@ -69491,7 +69599,7 @@ fn bootstrapped_fixture_dag_ports() -> HashMap<PortId, Port> {
             PortId(379),
             Port {
                 id: PortId(379),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(2330))),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(2336))),
                 produced_by: Some(NodeId(279)),
             },
         );
