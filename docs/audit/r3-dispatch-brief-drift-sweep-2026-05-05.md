@@ -116,7 +116,7 @@
 | F2/F5/F11/R1 closure-flip wave landed pre-archive | ✅ verified at `docs/debt/r3-debt-paydown-ledger-2026-05-02.md:6, :16` | none |
 | Open ledger rows beyond F2/F5/F11/R1 | ✅ ledger at `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` exists; current debt-paydown survey is the actual task | none |
 | #1566 R3 Debt Paydown rollup PR (DRAFT/DIRTY) inherited from prior topology | ✅ verified `gh pr view 1566` returns OPEN/DRAFT state; "R3 Debt Paydown" title | none |
-| Bridge retirements coordination with R3 PB | ✅ bridge distribution map at `docs/r3-structure.md:152` (3 PB-owned + 3 Substrate-owned + 1 Verification-owned ledger) | none |
+| Bridge retirements coordination with R3 PB | ✅ bridge distribution map at `docs/r3-structure.md` §"Lane structure" T-Bridge-Retirement row (2 Substrate-owned bridges + 3 PB-owned bridges + 1 Verification-owned ledger gate; this PR fixes prior source-doc drift where "Net" claim overcounted Substrate by 1 + conflated ledger-gate with bridge-count) | none |
 
 **Already-remediated in flight:** none specific to this brief.
 
