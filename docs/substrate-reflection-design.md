@@ -1897,20 +1897,20 @@ This becomes a follow-up PR with a clean scope.
 still-valuable future lenses; both land as `.dag` programs after
 reflection. Neither is in this PR.
 
-**`INVARIANTS.md §"Layer opacity"`:** the long-term target
+**`INVARIANTS.md#p2-boundary-discipline (Layer Opacity)`:** the long-term target
 (§"Rust type-level enforcement") still applies. Reflection is the
 next step toward it, not the endpoint. Layer opacity's ultimate
 form is a `DisplayName` type that makes the violation impossible
 at the Rust level; this PR makes lens-based enforcement
 structurally cheaper, which buys time for the type-level work.
 
-**`INVARIANTS.md §"Scaffold boundaries"`:** the Rust lenses are
+**`INVARIANTS.md#p5-progress-is-dissolution (Scaffold Boundaries)`:** the Rust lenses are
 tracked scaffolds from this PR's perspective. The tracked
 `kernel_lens_set` count starts at 3 (the remaining Rust lenses
 after `lens_unused_parameters` migrates) and must monotonically
 decrease. Each Rust-lens deletion is a ratchet tick.
 
-**`INVARIANTS.md §"Semantic authority after lowering"`:** this
+**`INVARIANTS.md#p2-boundary-discipline (Semantic Authority After Lowering)`:** this
 PR extends the invariant's reach. Lenses currently read substrate
 state through Rust field access; after reflection, they read
 through query primitives that go through the same authority path
@@ -2621,7 +2621,7 @@ deferred with a note.
 | Canonical target test requirement | §5 — tests preserved |
 | Checkpoint dissolution default | (general project doctrine — not specific to this PR) |
 | Compositional layering (thesis-level) | §7.1 — self-inspection is a new subsection |
-| Rename test as regression check | (covered by existing `INVARIANTS.md §"Layer opacity"`) |
+| Rename test as regression check | (covered by existing `INVARIANTS.md#p2-boundary-discipline (Layer Opacity)`) |
 
 If a recent thread is missing from this table and it belongs
 in-scope, flag it and this section updates.
