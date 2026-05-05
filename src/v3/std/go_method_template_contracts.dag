@@ -32,8 +32,10 @@
 //     use the emit template for both row sides for the symmetric
 //     reason.
 //     `concat` / `fold` / `map` — LanguageSpec `CollectionOps.{concat,fold,map}_contract`
-//     carries named carriers (`go_language_spec_*`); the list references the same
-//     `map_method` declaration where needed for projection (P2 single authority).
+//     carries named carriers (`go_language_spec_*`). **Map** is **not** in the list below (same
+//     pattern as **fold**): `map_contract` is the CollectionOps stub; a list row would be
+//     `v2rt.Map` + `{arg}` (legacy adapter) — incompatible with the stub’s `{body}` contract in
+//     one carrier without a structural split.
 
 module v3.std.go_method_template_contracts
 
@@ -108,7 +110,7 @@ data go_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
 }
 
 // LanguageSpec `CollectionOps.map_contract` — stub literal (runtime/emit TBD for full map projection).
-// Also the **sole** `map_method` row authority: listed below by reference (no parallel inline row).
+// **Sole** `map_method` authority for `map_contract` (not listed below — same as fold).
 data go_language_spec_map_contract: MethodTemplateContract = {
   dag_method: { decl: map_method },
   runtime_template: "/* map({recv}, {body}) */",
@@ -171,7 +173,6 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
     wraps_result: false,
     placeholder_convention: NamedArg
   },
-  go_language_spec_map_contract,
   go_filter_method_template_contract,
   go_any_method_template_contract,
   go_all_method_template_contract,

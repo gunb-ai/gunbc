@@ -41,7 +41,7 @@ const METHOD_REF_FIELDS: &[&str] = &["decl"];
 /// **not** list elements — `verify_stratum_a_lockstep_all_targets` closes that
 /// receipt separately (`verify_language_spec_collection_ops_contract_wiring`).
 pub const EXPECTED_STRATUM_A_ROW_COUNTS: &[(&str, usize)] =
-    &[(RUST_LIST, 13), (PYTHON_LIST, 17), (GO_LIST, 13)];
+    &[(RUST_LIST, 13), (PYTHON_LIST, 16), (GO_LIST, 12)];
 
 /// (`CollectionOps` decl, field name, named `MethodTemplateContract` decl, expected registry method name).
 const LANGUAGE_SPEC_COLLECTION_OPS_CONTRACT_WITNESSES: &[(&str, &str, &str, &str)] = &[

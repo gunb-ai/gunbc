@@ -25575,7 +25575,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3043, 3345),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3213, 3515),
         });
         declarations.push(Declaration {
             id: DeclarationId(952),
@@ -25626,7 +25626,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3347, 3633),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3517, 3803),
         });
         declarations.push(Declaration {
             id: DeclarationId(953),
@@ -25677,7 +25677,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3725, 4012),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 3895, 4182),
         });
         declarations.push(Declaration {
             id: DeclarationId(954),
@@ -25730,7 +25730,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 4447, 4761),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 4617, 4931),
         });
         declarations.push(Declaration {
             id: DeclarationId(955),
@@ -25783,7 +25783,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 4970, 5252),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 5130, 5412),
         });
         declarations.push(Declaration {
             id: DeclarationId(956),
@@ -25836,7 +25836,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 5254, 5546),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 5414, 5706),
         });
         declarations.push(Declaration {
             id: DeclarationId(957),
@@ -25889,7 +25889,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 5548, 5828),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 5708, 5988),
         });
         declarations.push(Declaration {
             id: DeclarationId(958),
@@ -25942,7 +25942,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 5830, 6110),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 5990, 6270),
         });
         declarations.push(Declaration {
             id: DeclarationId(959),
@@ -25995,7 +25995,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             }),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 6112, 6410),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 6272, 6570),
         });
         declarations.push(Declaration {
             id: DeclarationId(960),
@@ -26116,7 +26116,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                     ),
                 ]),
-                FieldValue::Reference(DeclarationId(955)),
                 FieldValue::Reference(DeclarationId(956)),
                 FieldValue::Reference(DeclarationId(957)),
                 FieldValue::Reference(DeclarationId(958)),
@@ -26295,7 +26294,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             ])),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 6412, 8527),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 6572, 8654),
         });
         declarations.push(Declaration {
             id: DeclarationId(961),
@@ -27787,8 +27786,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                3010,
-                3302,
+                3320,
+                3612,
             ),
         });
         declarations.push(Declaration {
@@ -27842,8 +27841,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                3304,
-                3580,
+                3614,
+                3890,
             ),
         });
         declarations.push(Declaration {
@@ -27897,8 +27896,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                3687,
-                3982,
+                3997,
+                4292,
             ),
         });
         declarations.push(Declaration {
@@ -27954,8 +27953,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                4355,
-                4671,
+                4665,
+                4981,
             ),
         });
         declarations.push(Declaration {
@@ -28011,8 +28010,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                4875,
-                5169,
+                5189,
+                5483,
             ),
         });
         declarations.push(Declaration {
@@ -28068,8 +28067,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                5171,
-                5477,
+                5485,
+                5791,
             ),
         });
         declarations.push(Declaration {
@@ -28125,8 +28124,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                5479,
-                5775,
+                5793,
+                6089,
             ),
         });
         declarations.push(Declaration {
@@ -28182,8 +28181,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                5777,
-                6073,
+                6091,
+                6387,
             ),
         });
         declarations.push(Declaration {
@@ -28239,8 +28238,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                6075,
-                6397,
+                6389,
+                6711,
             ),
         });
         declarations.push(Declaration {
@@ -28498,7 +28497,6 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
                         },
                     ),
                 ]),
-                FieldValue::Reference(DeclarationId(1026)),
                 FieldValue::Reference(DeclarationId(1027)),
                 FieldValue::Reference(DeclarationId(1028)),
                 FieldValue::Reference(DeclarationId(1029)),
@@ -28675,8 +28673,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                6399,
-                9429,
+                6713,
+                9706,
             ),
         });
         declarations.push(Declaration {
@@ -58106,7 +58104,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 6447, 6475),
+            span: SourceSpan::new("src/v3/std/go_method_template_contracts.dag", 6607, 6635),
         });
         declarations.push(Declaration {
             id: DeclarationId(2028),
@@ -59001,8 +58999,8 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             nominal_opacity: None,
             span: SourceSpan::new(
                 "src/v3/std/python_method_template_contracts.dag",
-                6438,
-                6466,
+                6752,
+                6780,
             ),
         });
         declarations.push(Declaration {
