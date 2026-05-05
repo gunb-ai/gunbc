@@ -97,9 +97,10 @@ self_host:
   needs: [ci, v3]   # runs after basic build + v3 tests pass
   steps:
     - uses: actions/checkout@v4
-    - uses: dtolnay/rust-toolchain@stable
+    - uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
       with:
-        toolchain: "1.93.0"
+        cache: false
+        rustflags: ""
     - name: Cache Cargo (self_host)
       uses: actions/cache@v4
       with:

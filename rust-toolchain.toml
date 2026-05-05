@@ -1,4 +1,5 @@
-# Rustup install authority for this repo. Keep [toolchain].channel aligned with
+# Rustup install authority for this repo. Hand-maintained (no regen step
+# overwrites this file). Keep [toolchain].channel aligned with
 # dsl/extdeps/rustup.dag `ci_pinned_toolchain`.
 [toolchain]
 channel = "1.93.0"

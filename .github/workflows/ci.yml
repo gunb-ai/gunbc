@@ -29,6 +29,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
+# Rust: each `setup-rust-toolchain` step omits `toolchain:` so the action reads
+# `rust-toolchain.toml` at the repo root after `actions/checkout`. No job uses a
+# non-default `working-directory` for Rust setup; if one did, you would need an
+# explicit `toolchain:` input or a copy of the file inside that directory.
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
