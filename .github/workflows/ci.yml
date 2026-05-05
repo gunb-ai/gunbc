@@ -191,15 +191,17 @@ jobs:
       # The timer wraps the full `cargo test` process, so **cold** runs (cache
       # miss, first compile + link on ubuntu-latest) can spend minutes — keep
       # headroom beyond a tight 120s; per-test discipline lives in
-      # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
-      - name: v3 tests (Stage 2d integration module, 300s cold-compile-safe budget)
+      # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS). Cold-cache runs have
+      # observed ~313s wall for this filter alone (compile-heavy v2 in the
+      # integration binary graph); budget stays coarse vs. per-test ratchet below.
+      - name: v3 tests (Stage 2d integration module, 420s cold-compile-safe budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler --test integration lane2_stage_2d_symbolic_cost_test::
           elapsed=$(( $(date +%s) - start ))
           echo "v3 Stage 2d (lane2d) wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 300 ]; then
-            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 300s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
+          if [ "$elapsed" -gt 420 ]; then
+            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 420s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
             exit 1
           fi
 
