@@ -1,6 +1,6 @@
-# Rustup install authority for this repo. Hand-maintained (no regen step
-# overwrites this file). Keep [toolchain].channel aligned with
-# dsl/extdeps/rustup.dag `ci_pinned_toolchain`.
+# Sole in-repo rustup channel authority (CI + local). Hand-maintained (no
+# regen step overwrites this file). `dsl/extdeps/rustup.dag` documents rustup
+# installer behavior only — it must not introduce a second pinned channel literal.
 [toolchain]
 channel = "1.93.0"
 components = ["clippy", "rustfmt"]

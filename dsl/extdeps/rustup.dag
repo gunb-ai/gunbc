@@ -11,7 +11,8 @@
 // What we actually depend on from rustup:
 //   - cargo binary, installed by default with the stable toolchain
 //   - rustc, installed by default
-//   - Pinned toolchain channel in rust-toolchain.toml (must match ci_pinned_toolchain below)
+//   - Pinned toolchain channel: **single authority** is `rust-toolchain.toml`
+//     `[toolchain].channel` only (this stub does not duplicate that string).
 //
 // What we do NOT currently depend on:
 //   - Extra rustup components beyond rust-toolchain.toml (rustfmt + clippy today)
@@ -44,9 +45,6 @@ data rustup_install_url: NonEmptyStr = "https://rustup.rs"
 
 // Default channel we expect when "rustup default" is queried.
 data default_channel: RustChannel = Stable
-
-// Pinned channel string — must match rust-toolchain.toml [toolchain].channel (CI + local).
-data ci_pinned_toolchain: NonEmptyStr = "1.93.0"
 
 // Rustup docs URL for reference.
 data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"

@@ -124,6 +124,11 @@ jobs:
         # silently neutering the consumer.
         run: bash scripts/test-check-manager-brief-authority.sh
 
+      - name: Rust toolchain single-authority check (P2)
+        # Pinned channel must not be duplicated in dsl/extdeps/rustup.dag;
+        # authority is rust-toolchain.toml only (PR #1794).
+        run: bash scripts/check-rust-toolchain-single-authority.sh
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
