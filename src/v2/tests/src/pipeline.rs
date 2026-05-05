@@ -5782,6 +5782,144 @@ fn github_create_review_200_body_round_trip_representative_wire() {
     assert!(body.body.contains("suggested inline change"));
 }
 
+#[test]
+fn github_oidc_get_token_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/cloud/gcp/sts.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read gcp sts.dag");
+    let result = compile_dag_named("dsl/extdeps/cloud/gcp/sts.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_cloud_gcp_sts.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<GitHubOidcToken200Body> = response.json().await?"),
+        "expected GitHub OIDC GetToken 200 response to deserialize through typed body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).value.clone()"),
+        "expected GitHub OIDC GetToken subject_token to project from typed body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/value\")"),
+        "GitHub OIDC GetToken typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
+#[test]
+fn github_oidc_get_token_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct GitHubOidcToken200Body {
+        value: String,
+        count: i64,
+    }
+
+    let body: GitHubOidcToken200Body = serde_json::from_value(serde_json::json!({
+        "value": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.mock-oidc-token",
+        "count": 1
+    }))
+    .expect("representative GitHub OIDC token response should fit typed body");
+
+    assert!(body.value.starts_with("eyJ"));
+    assert_eq!(body.count, 1);
+}
+
+#[test]
+fn gcp_iam_generate_access_token_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/cloud/gcp/iam.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read gcp iam.dag");
+    let result = compile_dag_named("dsl/extdeps/cloud/gcp/iam.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_cloud_gcp_iam.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<GcpGenerateAccessToken200Body> = response.json().await?"),
+        "expected IAM GenerateAccessToken 200 response to deserialize through typed body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).access_token.clone()")
+            && content.contains("(__rest_wire).expire_time.clone()"),
+        "expected IAM GenerateAccessToken outputs to project from typed body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/accessToken\")")
+            && !content.contains("json_body.pointer(\"/expireTime\")"),
+        "IAM GenerateAccessToken typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
+#[test]
+fn gcp_iam_generate_access_token_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct GcpGenerateAccessToken200Body {
+        #[serde(rename = "accessToken")]
+        access_token: String,
+        #[serde(rename = "expireTime")]
+        expire_time: String,
+    }
+
+    let body: GcpGenerateAccessToken200Body = serde_json::from_value(serde_json::json!({
+        "accessToken": "ya29.c.MockImpersonatedAccessToken",
+        "expireTime": "2026-01-01T01:00:00Z"
+    }))
+    .expect("representative IAM generateAccessToken response should fit typed body");
+
+    assert!(body.access_token.starts_with("ya29."));
+    assert_eq!(body.expire_time, "2026-01-01T01:00:00Z");
+}
+
+#[test]
+fn google_oauth_refresh_uses_typed_200_body_projection() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/cloud/gcp/gcp.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read gcp.dag");
+    let result = compile_dag_named("dsl/extdeps/cloud/gcp/gcp.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_cloud_gcp_gcp.rs");
+
+    assert!(
+        content.contains("let __rest_wire: Rc<GoogleOAuth2Refresh200Body> = response.json().await?"),
+        "expected Google OAuth Refresh 200 response to deserialize through typed body, got:\n{content}"
+    );
+    assert!(
+        content.contains("(__rest_wire).access_token.clone()")
+            && content.contains("(__rest_wire).expires_in.clone()"),
+        "expected Google OAuth Refresh outputs to project from typed body, got:\n{content}"
+    );
+    assert!(
+        !content.contains("json_body.pointer(\"/access_token\")")
+            && !content.contains("json_body.pointer(\"/expires_in\")"),
+        "Google OAuth Refresh typed 200 body must not use JSON pointer extraction, got:\n{content}"
+    );
+}
+
+#[test]
+fn google_oauth_refresh_200_body_round_trip_representative_wire() {
+    #[derive(serde::Deserialize)]
+    struct GoogleOAuth2Refresh200Body {
+        access_token: String,
+        expires_in: i64,
+        token_type: String,
+        scope: Option<String>,
+    }
+
+    let body: GoogleOAuth2Refresh200Body = serde_json::from_value(serde_json::json!({
+        "access_token": "ya29.a0.MockAccessToken",
+        "expires_in": 3600,
+        "token_type": "Bearer",
+        "scope": "https://www.googleapis.com/auth/cloud-platform"
+    }))
+    .expect("representative Google OAuth refresh response should fit typed body");
+
+    assert!(body.access_token.starts_with("ya29."));
+    assert_eq!(body.expires_in, 3600);
+    assert_eq!(body.token_type, "Bearer");
+    assert_eq!(
+        body.scope.as_deref(),
+        Some("https://www.googleapis.com/auth/cloud-platform")
+    );
+}
+
 // ── RE-2: review.dag compiles to Rust ───────────────────────────────────
 // Diagnostic-driven: compile review.dag + imports, write to disk, cargo check.
 // This is the acceptance gate for RE-2.

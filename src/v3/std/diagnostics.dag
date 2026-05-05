@@ -22,9 +22,12 @@ type CompilerDiagnosticKind
   = TokenizerError
   | ParseError
   | TypeMismatch
-  | UnitMismatch
   | ArityMismatch
   | ResolveError
+  | UnitMismatch
+  | BranchConditionNotBool
+  | MagnitudeOutOfRange
+  | MalformedIntegerRangeFact
   | NominalOpacityViolation
 
 // 🟢 TERMINAL for DB-1's source-level correction carrier. Corrections
