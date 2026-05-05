@@ -51,10 +51,15 @@ for this slice (per readiness audit §Live Surfaces / §Non-Goals).
 |------|----------|
 | `Lens<C>` six-field carrier | `src/v3/std/lens.dag` (`type Lens<C> { ... }`) |
 | `Witness<C>`, `OptionalDiagnostic`, `DimensionReport<C>` | `src/v3/std/dimensions.dag` |
-| Runtime `FieldProject` on records | `src/v3/compiler/src/lib.rs` (`TransformTarget::FieldProject`, ~`556-578`) |
-| Runtime `Callable` (Arrow `UserDefined`, pushed frame) | same file (`TransformTarget::Callable`, ~`579-613`) |
-| Cardinality loops live; `Descent` fail-closed | `eval_loop` + `LoopBound::Descent` branch (~`352-373`), tests ~`1817+` |
+| Runtime `FieldProject` on records | `src/v3/compiler/src/lib.rs` `556-578` (`TransformTarget::FieldProject`) |
+| Runtime `Callable` (Arrow `UserDefined`, pushed frame) | same file `579-613` (`TransformTarget::Callable`) |
+| Cardinality loops live; `Descent` fail-closed | same file `356-386` (`eval_loop`; `LoopBound::Descent` at `367-373`) |
+| Regression: descent bound fails closed | same file `1817-1868` (`eval_loop_descent_bound_fails_closed`) |
 | X1.a lowering semantics (static reference → `Callable`) | `docs/design-prereq-x-ho-field-call.md` §L1.a |
+
+`lib.rs` line numbers are a **snapshot** for navigation; they drift on
+edits. Re-resolve symbols in-tree before implementing (same bar as
+“verify before coding”).
 
 ## Acceptance gates (implementation slice)
 
