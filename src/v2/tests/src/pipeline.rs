@@ -7580,7 +7580,6 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         WebSearch,
         WebFetch,
         CodeExecution,
-        ToolSearch,
     }
 
     #[derive(serde::Deserialize)]
