@@ -210,12 +210,14 @@ jobs:
       # `RUSTC_BOOTSTRAP=1` prefix is the documented narrow unlock for libtest flags
       # and does not enable unstable language features.
       - name: v3 tests (full suite, 2400s transitional budget)
+        id: v3_full_suite
         env:
           # Keep libtest lines plain for `scripts/check-test-timeout.sh` (Phase-0
           # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
           # inject ANSI into cargo's stream.
           CARGO_TERM_COLOR: never
         run: |
+          rm -f /tmp/v3-test-timings.log
           start=$(date +%s)
           RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
           status=${PIPESTATUS[0]}
@@ -317,9 +319,7 @@ jobs:
   self_host_ratchet:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    # Cold cache + two release builds (`determinism_test` then `self_host_fixed_point`)
-    # can exceed 30m on ubuntu-latest; align headroom with the `v3` job.
-    timeout-minutes: 60
+    timeout-minutes: 30
     needs: [v3]
     continue-on-error: true
     steps:
