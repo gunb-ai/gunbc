@@ -290,9 +290,8 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_impossible_bug_suite_r1_passes() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag).run_suite("impossible_bug_class_suite_r1");
+        let dag = shared_t_demo_fixture_dag();
+        let results = TestRunner::new(dag).run_suite("impossible_bug_class_suite_r1");
         assert_eq!(results.len(), 2);
         assert!(
             results
@@ -308,9 +307,8 @@ mod t_demo_fixture_test {
     /// surface is user-extensible (THESIS §"User-defined dimensions").
     #[test]
     fn t_demo_user_authored_lens_rejects_violating_program_passes() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
-        let results = TestRunner::new(&dag)
+        let dag = shared_t_demo_fixture_dag();
+        let results = TestRunner::new(dag)
             .run_suite("demo_user_authored_lens_rejects_violating_program_suite");
         assert_eq!(results.len(), 1);
         assert!(
