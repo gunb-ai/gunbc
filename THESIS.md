@@ -205,7 +205,7 @@ Every claim the thesis makes, in one place. The ROADMAP tracks progress toward e
 **Free consequences (fall out when Tiers 1-2 close):**
 - Automatic parallelism from dependency graph.
 - Automatic memoization from purity + cost.
-- Incremental cross-run execution from purity + determinism + content-hash caching.
+- Incremental cross-run execution from purity + bounded execution + dependency graph.
 - Space bound proofs from CX.
 - Cross-language optimization from shared cost algebra.
 

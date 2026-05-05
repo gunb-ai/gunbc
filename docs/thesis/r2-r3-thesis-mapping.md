@@ -109,7 +109,7 @@ Per THESIS §"Free consequences (fall out when Tiers 1-2 close)":
 |---|---|---|---|---|
 | **Automatic parallelism from dependency graph** | R3 | T-Free-Consequences-Demonstration / `auto_parallelism_*` + `auto_loop_parallelism_*` gates | `docs/design-free-consequences.md` + 6 parallelism TestClaims; `Lens<Bind-Independence>` / `Lens<Iteration-Independence>` + `Lens<Effect-Commutativity>` + `Lens<Cost>` | 🟡 R3 |
 | **Automatic memoization from purity + cost** | R3 | T-Free-Consequences-Demonstration / `auto_memoization_*` gates | `docs/design-free-consequences.md` + 2 memoization TestClaims; `Lens<Purity>` + `Lens<Cost>` | 🟡 R3 |
-| **Incremental cross-run execution from purity + determinism + content-hash caching** | post-R3 (indirect) | No dedicated R3 gate; falls out from existing purity + determinism + content-addressable IR commitments | THESIS:208 + what-else-falls-out.md §"Incremental cross-run execution"; demonstration optional post-R3 | ⏳ post-R3 (indirect) |
+| **Incremental cross-run execution from purity + bounded execution + dependency graph** | post-R3 (indirect) | No dedicated R3 gate; falls out from existing Tier 1 + Tier 2 commitments | THESIS:208 + what-else-falls-out.md §"Incremental cross-run execution"; demonstration optional post-R3 | ⏳ post-R3 (indirect) |
 | **Space bound proofs from CX** | R1 | T-LaneE complexity-lens gates | E-family carrier port | 🟡 R1 closure |
 | **Cross-language optimization from shared cost algebra** | R3 | T-Free-Consequences-Demonstration / `cross_target_optimization_*` gates | `docs/design-free-consequences.md` + 2 cross-target optimization TestClaims; `Lens<Cost>` + `LanguageSpec` | 🟡 R3 |
 
