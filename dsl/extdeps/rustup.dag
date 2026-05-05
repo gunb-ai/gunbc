@@ -45,10 +45,14 @@ data rustup_install_url: NonEmptyStr = "https://rustup.rs"
 // Default channel we expect when "rustup default" is queried.
 data default_channel: RustChannel = Stable
 
-// Pinned channel + components for this repo live only in repo-root
-// `rust-toolchain.toml` (CI `setup-rust-toolchain` and local rustup both read
-// that file). Do not add a second string literal here — workflow-as-data
-// consumers should project from that file if they need a typed pin.
+// Pinned **channel** string for this repo lives only in repo-root
+// `rust-toolchain.toml` `[toolchain].channel` (CI `setup-rust-toolchain` and
+// local rustup read that file after checkout). `[toolchain].components` is
+// also declared there, but `.github/workflows/ci.yml` may still pass
+// per-job `components:` inputs; the action unions them — not a second channel
+// authority. Do not add a second channel literal here; collapsing components
+// to a single workflow projection is workflow-as-data / ROADMAP
+// `rust_toolchain_toml_codegen_from_rustup_dag` follow-on.
 
 // Rustup docs URL for reference.
 data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"
