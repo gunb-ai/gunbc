@@ -17,6 +17,7 @@ use v3_compiler::CompileError;
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
 const L4_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag";
+const L4_SUITE: &str = "r3_verification_l4_emit_eval_skeleton_suite";
 const L4_CLAIM: &str = "r3_verification_l4_emit_eval_match_skeleton";
 const L4_FALSE_CLAIM: &str = "r3_verification_l4_emit_eval_false_branch";
 const L4_NESTED_CLAIM: &str = "r3_verification_l4_emit_eval_nested_branch";
@@ -132,6 +133,33 @@ fn r3_verification_l4_emit_eval_nested_branch_passes_w1_emit_vs_eval() {
         "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (nested branch Int 7); got {:?}",
         evaluation.result
     );
+}
+
+/// Suite-wide shape: exactly three named W1 claims, each passing (complements per-claim
+/// `run_claim` tests without pinning suite result order).
+#[test]
+fn r3_verification_l4_emit_eval_skeleton_suite_lists_three_named_claims() {
+    run_on_larger_stack(|| {
+        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
+        let results = TestRunner::new(dag).run_suite(L4_SUITE);
+        assert_eq!(
+            results.len(),
+            3,
+            "`{L4_SUITE}` should wire exactly three W1 row claims"
+        );
+        for name in [L4_CLAIM, L4_FALSE_CLAIM, L4_NESTED_CLAIM] {
+            assert!(
+                results.iter().any(|r| r.claim_name == name),
+                "missing `{name}` in suite results: {results:?}"
+            );
+        }
+        assert!(
+            results
+                .iter()
+                .all(|r| matches!(r.result, ClaimResult::Pass)),
+            "every wired L4 W1 claim in `{L4_SUITE}` should Pass; got {results:?}"
+        );
+    });
 }
 
 #[test]
