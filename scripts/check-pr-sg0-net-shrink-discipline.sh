@@ -49,6 +49,11 @@ self_test() {
   run_case "(a) pairing" $'SG-0 hand-path delta: +3\nSG-0 pairing: (a) removed foo.rs bar.rs' pass
   run_case "(c) pairing" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: TM-0 lane' pass
   run_case "missing delta line" $'Summary only\nSG-0 pairing: (a) x' fail
+  run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
+  run_case "bare (b) without URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)' fail
+  run_case "(a) without path evidence" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) deferred only' fail
+  run_case "(c) without dispatch" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) later' fail
+  run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
 
   if [ "$failed" -ne 0 ]; then
     exit 1
@@ -74,25 +79,45 @@ if [ "${1:-}" = --check-body-only ]; then
   fi
 
   need_pairing=0
-  case "$token" in
-    +0 | 0 | -*) need_pairing=0 ;;
-    +*)
-      rest=${token#+}
-      if [[ "$rest" =~ ^[1-9][0-9]*$ ]]; then
-        need_pairing=1
-      else
-        echo "::error::Unrecognized SG-0 hand-path delta token: $token (use signed integers: 0, +0, -N, +N)"
-        exit 1
-      fi
-      ;;
-    *)
-      echo "::error::SG-0 hand-path delta must be signed for nonzero values (got: $token). Use +N / -N / 0 / +0."
-      exit 1
-      ;;
-  esac
+  if [[ "$token" =~ ^\+0$ ]] || [[ "$token" == "0" ]]; then
+    need_pairing=0
+  elif [[ "$token" =~ ^-([1-9][0-9]*)$ ]]; then
+    need_pairing=0
+  elif [[ "$token" =~ ^\+([1-9][0-9]*)$ ]]; then
+    need_pairing=1
+  else
+    echo "::error::Unrecognized SG-0 hand-path delta token: $token (use signed integers: 0, +0, -N, +N)"
+    exit 1
+  fi
 
   if [ "$need_pairing" -eq 1 ]; then
-    if ! printf '%s\n' "$body" | grep -qE 'SG-0 pairing: \(a\)|SG-0 pairing: \(b\)|SG-0 pairing: \(c\)'; then
+    pairing_block=$(printf '%s\n' "$body" | awk '
+      index($0, "SG-0 pairing:") > 0 {
+        print
+        if (getline > 0) print
+        exit
+      }
+    ')
+    if [ -z "$pairing_block" ]; then
+      echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a \`SG-0 pairing:\` line"
+      exit 1
+    fi
+    if printf '%s\n' "$pairing_block" | grep -qE 'SG-0 pairing:[[:space:]]*\(a\)'; then
+      if ! printf '%s\n' "$pairing_block" | grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)'; then
+        echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
+        exit 1
+      fi
+    elif printf '%s\n' "$pairing_block" | grep -qE 'SG-0 pairing:[[:space:]]*\(b\)'; then
+      if ! printf '%s\n' "$pairing_block" | grep -qE 'https://|http://'; then
+        echo "::error::SG-0 pairing (b) must cite a Director-budget URL (http(s):// on the pairing line or the line immediately after)"
+        exit 1
+      fi
+    elif printf '%s\n' "$pairing_block" | grep -qE 'SG-0 pairing:[[:space:]]*\(c\)'; then
+      if ! printf '%s\n' "$pairing_block" | grep -qiE '\(c\).*dispatch'; then
+        echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
+        exit 1
+      fi
+    else
       echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks \`SG-0 pairing: (a)\`, \`(b)\`, or \`(c)\`"
       exit 1
     fi
