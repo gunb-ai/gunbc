@@ -191,3 +191,75 @@ fn invoke(w: Wrapper, x: Int) -> Int = { let g = w.f; g(x) }
         err.message()
     );
 }
+
+/// Post-G0c executable ratchet: the X1.a static field-call lowered in
+/// PR #1699 actually executes through the public evaluator boundary
+/// after PR #1715 landed `TransformTarget::Callable` execution. Ties
+/// the parse → lower → execute pipeline together so any future
+/// regression in any of the three layers fails this single ratchet.
+///
+/// Compiles `data wrap: Wrapper = { f: double }; fn invoke(x: Int) ->
+/// Int = wrap.f(x)`, finds `invoke` honestly through
+/// `Dag::declaration_by_name` + `TypeConnective::Arrow.body`,
+/// pre-binds the parameter port to `Int(21)` in the caller frame, and
+/// evaluates the bind through `v3_compiler::evaluator::evaluate_body`.
+/// Asserts `Value::LiteralValue(Int(42))`.
+#[test]
+fn x1a_static_data_field_call_executes_through_public_evaluator() {
+    use v3_compiler::dag::{ArrowBody, LiteralBits, TypeConnective};
+    use v3_compiler::evaluator::{
+        evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
+    };
+
+    let src = r#"
+type Wrapper { f: fn(Int) -> Int }
+
+fn double(n: Int) -> Int = n + n
+
+data wrap: Wrapper = { f: double }
+
+fn invoke(x: Int) -> Int = wrap.f(x)
+"#;
+    let dag = cached_compile_to_dag(src, "x1a_eval.v3");
+    let invoke_decl = dag
+        .declarations()
+        .iter()
+        .find(|d| d.name.as_deref() == Some("invoke"))
+        .expect("`invoke` declaration");
+    let TypeConnective::Arrow { body, .. } = &invoke_decl.connective else {
+        panic!(
+            "`invoke` should have Arrow connective; got {:?}",
+            invoke_decl.connective
+        );
+    };
+    let ArrowBody::UserDefined(bind_id) = body else {
+        panic!("`invoke` should have UserDefined body; got {body:?}");
+    };
+    let bind_node_id = bind_id.node_id();
+    let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+        panic!("BindNodeId must point at a Bind node");
+    };
+    assert_eq!(
+        bind.params.len(),
+        1,
+        "`invoke` should have exactly one parameter port"
+    );
+    let x_port = bind.params[0];
+
+    let caller_frame =
+        EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(21)))])
+            .expect("caller frame");
+    let mut state = EvalStateStack::with_root_frame(caller_frame);
+    let strategy = EvalStrategy::ApplicativeOrder {
+        input_order: InputEvaluationOrder::LeftFirst,
+    };
+
+    let value = evaluate_body(&dag, bind_node_id, &mut state, strategy)
+        .expect("X1.a static field-call should execute through the public evaluator");
+
+    assert_eq!(
+        value,
+        Value::LiteralValue(LiteralBits::Int(42)),
+        "wrap.f(21) should resolve to double(21) = 42 via TransformTarget::Callable execution"
+    );
+}
