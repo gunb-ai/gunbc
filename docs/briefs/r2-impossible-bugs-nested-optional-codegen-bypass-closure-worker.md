@@ -68,8 +68,12 @@ already-landed substrate-constructor invariant.
 3. **Update regen emission** in `regen_bootstrap_emit.rs` so generated
    bootstrap cardinality construction either:
    - routes through `alloc_cardinality_decl`, or
-   - emits a generated-local normalizing constructor whose behavior is
-     identical to `cardinality_idempotent_target`.
+   - emits a generated-local normalizing constructor that delegates to, or
+     is mechanically generated from, the canonical
+     `cardinality_idempotent_target` / `alloc_cardinality_decl` authority.
+     Do not hand-maintain a second idempotence rule; if a generated-local
+     helper is unavoidable, the PR must name its dissolution path back to
+     the canonical constructor authority.
 4. **Regenerate or mechanically update generated files** consistently for
    all affected generated surfaces, not just `bootstrap_std_generated.rs`.
    At minimum audit and account for:
@@ -92,7 +96,9 @@ already-landed substrate-constructor invariant.
   `alloc_cardinality_decl`.
 - [ ] `CardinalityPayload::new_unchecked` is no longer a broad bypass
   aperture, or every remaining caller is generated/bootstrap-only and
-  paired with normalization evidence.
+  paired with normalization evidence that is delegated to, mechanically
+  generated from, or explicitly dissolves back into the canonical
+  constructor authority.
 - [ ] `regen_bootstrap_emit.rs` no longer emits raw unchecked cardinality
   construction as the final authority for generated cardinality nodes.
 - [ ] All affected generated files are regenerated or mechanically kept
