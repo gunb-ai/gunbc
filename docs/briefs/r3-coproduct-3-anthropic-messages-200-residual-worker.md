@@ -60,19 +60,19 @@ explicitly narrows the closure tag with per-residual rationale
 new `structural_coverage_gap_*` rows if the dissolution shape
 warrants separate tracking.
 
-| # | Source                                     | Sub-slice item                                  | Closure shape                                              |
+| # | Live carrier state at HEAD                                                                                                              | Action                                                                                                       | Closure shape                                                                                                                                                                                |
 |---|---|---|---|
-| 1 | closure-tag (live `:189`)                  | typed container                                  | `AnthropicMessages200Body.container: Json?` → typed coproduct OR explicit "stays opaque per API spec" residual |
-| 2 | closure-tag (live `:189`)                  | carrier rename                                   | `AnthropicMessages200TextBlock` rename to `AnthropicMessages200ContentBlock` (or equivalent) reflecting it is now a coproduct, not a text-only single-variant |
-| 3 | closure-tag (live `:189`)                  | `Thinking` variant                               | typed payload per Anthropic API: `{ thinking: String, signature: String }` (worker re-verifies) |
-| 4 | closure-tag (live `:189`)                  | `ToolUse` variant                                | typed payload per API: `{ id: String, name: String, input: Json }` (worker re-verifies) |
-| 5 | closure-tag (live `:189`)                  | `RedactedThinking` variant                       | typed payload per API: `{ data: String }` (worker re-verifies) |
-| 6 | closure-tag (live `:189`)                  | `WebSearch` variant                              | payload per API (worker re-reads spec) |
-| 7 | closure-tag (live `:189`)                  | `ServerToolUse` variant                          | payload per API (worker re-reads spec) |
-| 8 | reachable carrier (`anthropic.dag:141`)    | `AnthropicMessages200Citation` completeness      | audit variant set against API spec; if incomplete, extend OR re-track in a new closure row |
-| 9 | reachable carrier (`anthropic.dag:159`)    | `AnthropicMessages200Usage.service_tier`         | `String?` placeholder → typed coproduct (e.g., `Standard | Priority | Batch` per API spec) OR explicit "stays opaque" residual; honest vs aspirational shape per API |
-| 10| reachable carrier (`anthropic.dag:157-158`)| `AnthropicMessages200Usage.cache_*` fields       | `cache_creation_input_tokens` / `cache_read_input_tokens` are typed `Int?` today; audit completeness vs API and confirm honest vs additive-fields-pending |
-| 11| reachable surface (general)                | other reachable carrier from `AnthropicMessages200Body` | enumerate at dispatch: any field that is `Json?` / `String?` for an enum-like API field, or any nested type whose variant set has not been audited against the API |
+| 1 | **field exists**: `AnthropicMessages200Body.container: Json?` at `anthropic.dag:185`                                                    | **modify field type**                                                                                        | `Json?` → typed coproduct OR explicit "stays opaque per API spec" residual                                                                                                                    |
+| 2 | **type exists as record**: `AnthropicMessages200TextBlock` at `:148-152` (`{ type: String, text: String, citations: ... }`)              | **rename + reshape from record to coproduct**                                                                | Rename to `AnthropicMessages200ContentBlock` (or equivalent) and reshape from a single-variant record to a typed sum spanning the variants below. Existing `text` / `citations` payload becomes the `Text` variant of the new sum. |
+| 3 | **variant does NOT exist** in any modeled type today; closure tag names it as gap-pending                                                | **add new variant** to the renamed sum from item (2)                                                         | `Thinking` variant: typed payload per Anthropic API: `{ thinking: String, signature: String }` (worker re-verifies)                                                                            |
+| 4 | **variant does NOT exist**; closure tag names it                                                                                         | **add new variant**                                                                                          | `ToolUse` variant: typed payload per API: `{ id: String, name: String, input: Json }` (worker re-verifies)                                                                                     |
+| 5 | **variant does NOT exist**; closure tag names it                                                                                         | **add new variant**                                                                                          | `RedactedThinking` variant: typed payload per API: `{ data: String }` (worker re-verifies)                                                                                                     |
+| 6 | **variant does NOT exist**; closure tag names it                                                                                         | **add new variant**                                                                                          | `WebSearch` variant: payload per API (worker re-reads spec)                                                                                                                                    |
+| 7 | **variant does NOT exist**; closure tag names it                                                                                         | **add new variant**                                                                                          | `ServerToolUse` variant: payload per API (worker re-reads spec)                                                                                                                                |
+| 8 | **type exists**: `AnthropicMessages200Citation` at `:141`; consumed via the `Text` variant's `citations` field (post-rename)             | **audit variant set; possibly extend or re-track**                                                            | If the existing variant set is incomplete vs API spec, extend OR re-track in a new closure row                                                                                                  |
+| 9 | **field exists**: `AnthropicMessages200Usage.service_tier: String?` at `:159`                                                            | **modify field type** OR **explicit re-track**                                                                | `String?` placeholder → typed coproduct (e.g., `Standard \| Priority \| Batch` per API spec) OR explicit "stays opaque" residual; honest vs aspirational shape per API                          |
+| 10| **fields exist**: `AnthropicMessages200Usage.cache_creation_input_tokens: Int?` + `cache_read_input_tokens: Int?` at `:157-158`         | **audit completeness; no immediate change unless API mismatch**                                              | Confirm honest vs additive-fields-pending against API; flag if shape diverges                                                                                                                  |
+| 11| **dispatch-time enumeration**: any other reachable carrier from `AnthropicMessages200Body` not covered by items 1-10                     | **enumerate, then add field/variant OR re-track**                                                            | Any field that is `Json?` / `String?` for an enum-like API field, or any nested type whose variant set has not been audited against the API                                                    |
 
 Items (1)-(7) are taken **verbatim** from the live closure-tag
 string at `anthropic.dag:189`; items (8)-(11) are the
@@ -188,6 +188,16 @@ codex BLOCKING (sha 84aebd90) finding 2.
 
 - `AnthropicMessages200ContentBlock` (or equivalent renaming)
   expresses all five missing variants with typed payloads.
+- **Practice 4 classification receipts on the live declarations
+  (mandatory).** Per `docs/modeling-discipline.md` Practice 4
+  Step 4, the renamed `AnthropicMessages200ContentBlock` sum
+  carries an inline 🟢/🟡/🔴 doc comment with named dissolution
+  trigger. The new `service_tier` typed coproduct (if added per
+  item (9)) carries a mark. Existing sums whose variant set
+  changes (e.g., `AnthropicMessages200Citation` per item (8))
+  have their existing marks updated. Marks must be present on
+  the `.dag` source in `anthropic.dag` itself, not only in the
+  brief or PR body.
 - `AnthropicMessages200Body.container` is typed (or the closure
   tag narrows with explicit "stays opaque per API spec" residual).
 - Wire-contract row authored; receipt row added at

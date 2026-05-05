@@ -195,6 +195,17 @@ silent invention of new `VariantEncoding` shapes).
   by a `CoproductWireContract` row (or equivalent
   substrate-fact-introduction-ratified shape) covering the
   scalar-vs-array dispatch.
+- **Practice 4 classification receipts on the live declarations
+  (mandatory).** Per `docs/modeling-discipline.md` Practice 4
+  Step 4, the new `AnthropicToolResultBlock` sum carries an
+  inline 🟢/🟡/🔴 doc comment with named dissolution trigger
+  (🟡 SCAFFOLD if more block kinds are gap-carried beyond the
+  three Anthropic-only variants; 🟢 TERMINAL if the variant set
+  is closed against current API spec). The existing
+  `AnthropicToolResultContent` sum's mark is updated if its
+  variant set changes. Marks must be present on the `.dag`
+  source in `anthropic.dag` itself, not only in the brief or
+  PR body.
 - New `AnthropicToolResultBlock` carrier exists in
   `dsl/extdeps/llm/anthropic.dag` (NOT in shared `llm.dag`).
   Variant set depends on the Shape selected at pre-flight:

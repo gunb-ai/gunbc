@@ -120,8 +120,21 @@ on the Anthropic side live at `dsl/extdeps/llm/anthropic.dag:20-30`.
 ## Acceptance
 
 - `OpenAiChatMessage` expresses all three missing variants with
-  typed fields.
+  typed fields (variant-determined role per the load-bearing
+  invariant; no `role` field on payloads).
 - `OpenAiChatMessageRole` includes `Tool` and `Function`.
+- **Practice 4 classification receipts on the live declarations
+  (mandatory).** Per `docs/modeling-discipline.md` Practice 4
+  Step 4, every new sum-typed declaration carries an inline
+  🟢/🟡/🔴 doc comment. For this slice: `OpenAiChatMessage`
+  (the widened coproduct) and the new `OpenAiChatMessageContent`
+  / `OpenAiChatMessagePart` sums all carry classification marks
+  with named dissolution triggers where 🟡 (e.g., gap-carried
+  additive parts like audio / file → tracking gate to update on
+  next API spec extension). The widened `OpenAiChatMessageRole`
+  also gains a Practice 4 mark if its variant set isn't already
+  TERMINAL. Marks must be present on the `.dag` source in
+  `openai.dag` itself, not only in the brief or PR body.
 - `openai_chat_message_wire_contract` exists and emits expected
   serde attributes for the new variants.
 - Wire ratchets land covering all variants; existing
