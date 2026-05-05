@@ -42,7 +42,7 @@ Author per-primitive structural rows in `dsl/extdeps/languages/rust/primitives.d
 - **Struct / enum / union — base shapes.** Per `r2-grounding-manager.md:265` ("Struct / enum / union primitives"). These are *constructor schemas*, not concrete primitives; the row declares the structural shape (named-field record / tagged sum / untagged union with safety-required-by-construction).
 - **Function item / function pointer / closure.** `fn(...) -> ...` (function item, zero-sized), `fn(...) -> ...` (function pointer, pointer-sized), closure (anonymous, captures-bearing). Three structurally distinct rows; the closure row carries a captures axis.
 - **Reference.** `&T` (shared, immutable, lifetime-bounded), `&mut T` (exclusive, mutable, lifetime-bounded). Both inhabit `ReferenceModel<T>` with axes (`mutability`, `lifetime`) populated; ownership axis is `Borrowed`. Lifetime is **structural, not annotation-driven** per T-Ground-Lifetime-Analyzer authority (LANDED #1206 / #1218 / #1220) — this lane consumes the lifetime axis as substrate, does NOT re-author it.
-- **Raw pointer.** `*const T`, `*mut T`. `ReferenceModel<T>` axes (`mutability`, `safety`); ownership axis is `Raw`; no lifetime.
+- **Raw pointer.** `*const T`, `*mut T`. `ReferenceModel<T>` axes (`mutability`, `representation`); ownership axis is `Raw`; no lifetime. The unsafe/safe distinction is carried by `representation`, not a separate `safety` axis (Q2 lock declares the four-axis set `{lifetime, mutability, ownership, representation}` — workers MUST NOT introduce a parallel `safety` coordinate).
 - **Trait object.** `dyn Trait` — dynamically-sized, vtable-bearing. Authority: Rust Reference §Trait object types.
 - **`impl Trait`.** Existential-position type; the row carries an opaqueness axis. Authority: Rust Reference §Impl Trait.
 
@@ -54,7 +54,7 @@ Authority: <https://doc.rust-lang.org/std/> per type. Coverage required:
 
 - **`String`** — owned, growable, UTF-8 char sequence. Inhabits `FreeMonoid<Char>` (per `design-emission-model.md:534`); the algebra choice IS the encoding distinction (`FreeMonoid<Byte>` would be raw bytes — `Vec<u8>` territory, not a `String` candidate). Refinement axes: ownership = `Owned`; growability = `Growable`; lifetime = `self`. **No `encoding` axis** — that would duplicate the algebra-carried fact.
 - **`Vec<T>`** — owned, growable, contiguous heap buffer. Cardinality: `Interval<Cardinal>::Unbounded`. Ownership: `Owned`; growability: `Growable`.
-- **`Box<T>`** — single-owner heap pointer. `ReferenceModel<T>` ownership axis: `Owned`; no lifetime; safety: `Safe`.
+- **`Box<T>`** — single-owner heap pointer. `ReferenceModel<T>` ownership axis: `Owned`; no lifetime; representation: `Safe` (the safe/unsafe distinction lives on the `representation` axis per the Q2 four-axis lock).
 - **`Rc<T>`** — shared-ownership reference-counted pointer (single-threaded). `ReferenceModel<T>` ownership: `SharedRefCounted { thread_safe: false }`.
 - **`Arc<T>`** — shared-ownership atomic-reference-counted pointer (thread-safe). `ReferenceModel<T>` ownership: `SharedRefCounted { thread_safe: true }`.
 - **`HashMap<K, V>`** — hash-table-backed associative array. Inhabits `PartialFunction<K, V>` (`dsl/std/algebra.dag:428`); ordering axis: `None`.
@@ -98,7 +98,7 @@ Per Q2 lock (`design-emission-model.md:1100`) and `r2-grounding-manager.md:90`: 
 
 - `&T`: `{ ownership: Borrowed, mutability: Immutable, lifetime: Bound }`.
 - `&mut T`: `{ ownership: Borrowed, mutability: Mutable, lifetime: Bound }`.
-- `*const T`, `*mut T`: `{ ownership: Raw, mutability: { Immutable | Mutable }, lifetime: None, safety: Unsafe }`.
+- `*const T`, `*mut T`: `{ ownership: Raw, mutability: { Immutable | Mutable }, lifetime: None, representation: Unsafe }` — the safety distinction is carried by the `representation` axis (raw pointers' `Unsafe` representation vs references' `Safe`); no separate `safety` axis is introduced.
 - `Box<T>`: `{ ownership: Owned, mutability: { Immutable | Mutable } via container, lifetime: None }`.
 - `Rc<T>`: `{ ownership: SharedRefCounted { thread_safe: false }, lifetime: None }`.
 - `Arc<T>`: `{ ownership: SharedRefCounted { thread_safe: true }, lifetime: None }`.
@@ -121,7 +121,7 @@ Per `INVARIANTS.md` §P1 (lines 94-129), worker MUST cite receipts in the PR bod
 
 - **Step 1 (DAG-ancestor):** which existing parent does the new fact attach to? (Worked example: `FloatPrimitive` — does `NonIntegerPrimitive` already host floats? Pilot's `NonIntegerAlgebra` was Bool/Unit-only, so NO; `FloatPrimitive` is a sibling new variant, not a refinement of an existing one.)
 - **Step 2 (Coproduct-vs-coordinate):** for each new sum (e.g., `CompoundKind`, `FunctionKind`, `ContainerAlgebra`), do all variants ever co-inhabit (→ record) or alternate (→ sum)?
-- **Step 3 (Primitive-vs-lens-extensible):** for new leaves (e.g., `Encoding`, `SizedKind`), are they substrate primitives or lens-extensible labels?
+- **Step 3 (Primitive-vs-lens-extensible):** for new leaves (e.g., `SizedKind`, `CompoundKind`, `FunctionKind`), are they substrate primitives or lens-extensible labels? **`Encoding` is NOT a permissible leaf** under this lane — encoding is carried by algebra choice (`FreeMonoid<Char>` vs `FreeMonoid<Byte>`) per the locked decision at §A textual / §B `String` rows above; introducing an `Encoding` leaf would re-open the parallel-authority shape that lock closes.
 
 ---
 
