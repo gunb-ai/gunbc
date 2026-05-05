@@ -7561,7 +7561,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             id: String,
             name: String,
             input: Value,
-            caller: Option<Value>,
+            caller: Value,
         },
         ServerToolUse {
             id: String,
@@ -7849,7 +7849,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             assert_eq!(id, "toolu_01");
             assert_eq!(name, "get_weather");
             assert_eq!(input["location"], "SF");
-            assert_eq!(caller.as_ref().unwrap()["type"], "direct");
+            assert_eq!(caller["type"], "direct");
         }
         _ => panic!("expected tool_use block"),
     }
