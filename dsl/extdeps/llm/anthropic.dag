@@ -171,7 +171,7 @@ type AnthropicMessages200ContentBlock
 // trigger: retire or extend this row when Anthropic publishes additional
 // `server_tool_use.name` values; per-tool input payload typing remains tracked
 // by `server_tool_input_payloads_unmodeled`.
-type AnthropicServerToolName = WebSearch | WebFetch | CodeExecution | BashCodeExecution | TextEditorCodeExecution | ToolSearchToolRegex | ToolSearchToolBm25
+type AnthropicServerToolName = WebSearch | WebFetch | CodeExecution | BashCodeExecution | TextEditorCodeExecution | ToolSearchToolRegex | ToolSearchToolBm25 | Advisor
 
 type AnthropicMessages200Usage {
   input_tokens: Int
@@ -209,7 +209,7 @@ data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
   "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesToolUseBlock|residue:client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema|trigger:tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema",
   "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesServerToolUseBlock|residue:server_tool_input_and_optional_caller_payloads_unmodeled|trigger:fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName",
   "closure:anthropic_messages_200_residual|AnthropicServerToolName|external_spec_watch:server_tool_use_name_set|trigger:Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally",
+  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:advisor_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally",
   "closure:anthropic_messages_200_residual|llm.Anthropic.Messages.output.content|blocked:variant_aware_typed_rest_response_projection|path:content/0/text|requires_arm:AnthropicMessages200ContentBlock.MessagesTextBlock|trigger:structural projection metadata carrier lands"
 ]
 
