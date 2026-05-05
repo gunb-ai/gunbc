@@ -78,3 +78,5 @@ sg2c1_parse_tables_authority_test::parse_tables_generated_module_matches_checked
 sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift  # SG-6 regen CLI smoke intentionally shells out to regen path; CLI smoke cost is tracked in SG-6, not TM-0.
 
 thesis_validation_test::kf_1_structural_list_operation_ordering_holds  # KF-1 thesis validation remains compile-heavy on CI runners; TESTING.md test-shape paydown owns future decomposition, not TM-0.
+
+t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible  # ROADMAP `### Lane acceptance` T-Demo (`fixture_compiler_nerd_canonical` / `fixture_integration_canonical`): `TestRunner` runs Day-1 `Compiles` claims over `t_demo_fixtures.dag` (compile fixture + two suites); ~2.8s wall on cold ubuntu-latest (PR #1790 CI ratchet). Paydown: `OnceLock` fixture `Dag` across `t_demo_fixture_test` + re-measure; or split suite coverage if redundant.
