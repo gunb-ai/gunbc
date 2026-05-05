@@ -17,7 +17,6 @@ use v3_compiler::CompileError;
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
 const L4_FIXTURE_PATH: &str =
     "src/v3/compiler/tests/fixtures/r3_verification_l4_emit_eval_match.dag";
-const L4_SUITE: &str = "r3_verification_l4_emit_eval_skeleton_suite";
 const L4_CLAIM: &str = "r3_verification_l4_emit_eval_match_skeleton";
 const L4_FALSE_CLAIM: &str = "r3_verification_l4_emit_eval_false_branch";
 const L4_NESTED_CLAIM: &str = "r3_verification_l4_emit_eval_nested_branch";
@@ -47,9 +46,6 @@ const L5_CLAIM: &str = "r3_verification_l5_cross_target_skeleton";
 const L5_AUTHORITY_PROGRAM: &str = include_str!("../fixtures/r3_l5_corpus/add_then_branch_seed.v3");
 
 static L4_DAG: OnceLock<Dag> = OnceLock::new();
-/// `TestRunner::run_suite(L4_SUITE)` is compile-heavy; three `#[test]`s assert disjoint rows.
-/// Run the suite once and share results so the 2s per-test ratchet sees one suite wall-clock.
-static L4_SUITE_RESULTS: OnceLock<Vec<ClaimEvaluation>> = OnceLock::new();
 static L4_MIXED_DAG: OnceLock<Dag> = OnceLock::new();
 static L7_DAG: OnceLock<Dag> = OnceLock::new();
 static L5_DAG: OnceLock<Dag> = OnceLock::new();
@@ -76,12 +72,19 @@ fn cached_compile(
     })
 }
 
-fn l4_emit_eval_skeleton_suite_results() -> &'static [ClaimEvaluation] {
-    L4_SUITE_RESULTS.get_or_init(|| {
-        run_on_larger_stack(|| {
-            let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
-            TestRunner::new(dag).run_suite(L4_SUITE)
-        })
+/// Runs one named `TestClaim` from the L4 fixture on a larger stack. The compiled `Dag` is
+/// amortized via [`L4_DAG`]; each `#[test]` calls `run_claim` independently (no shared
+/// `ClaimEvaluation` vector — see TESTING.md `OnceLock` carve-out / api-review on PR #1802).
+fn l4_run_named_claim(claim_name: &'static str) -> ClaimEvaluation {
+    run_on_larger_stack(move || {
+        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
+        let claim_decl = dag
+            .declaration_by_name(claim_name)
+            .unwrap_or_else(|| panic!("missing `{claim_name}` in {L4_FIXTURE_PATH}"));
+        let claim = TestClaimValue::from_declaration(claim_decl).unwrap_or_else(|reason| {
+            panic!("`{claim_name}` should lower to a structural TestClaim: {reason}");
+        });
+        TestRunner::new(dag).run_claim(&claim)
     })
 }
 
@@ -99,37 +102,34 @@ where
 
 #[test]
 fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
-    let results = l4_emit_eval_skeleton_suite_results();
-    assert_eq!(results.len(), 3);
-    assert_eq!(results[0].claim_name, L4_CLAIM);
+    let evaluation = l4_run_named_claim(L4_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_CLAIM);
     assert!(
-        matches!(results[0].result, ClaimResult::Pass),
+        matches!(evaluation.result, ClaimResult::Pass),
         "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
-        results[0].result
+        evaluation.result
     );
 }
 
 #[test]
 fn r3_verification_l4_emit_eval_false_branch_passes_w1_emit_vs_eval() {
-    let results = l4_emit_eval_skeleton_suite_results();
-    assert_eq!(results.len(), 3);
-    assert_eq!(results[1].claim_name, L4_FALSE_CLAIM);
+    let evaluation = l4_run_named_claim(L4_FALSE_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_FALSE_CLAIM);
     assert!(
-        matches!(results[1].result, ClaimResult::Pass),
+        matches!(evaluation.result, ClaimResult::Pass),
         "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (false branch signed Int -4); got {:?}",
-        results[1].result
+        evaluation.result
     );
 }
 
 #[test]
 fn r3_verification_l4_emit_eval_nested_branch_passes_w1_emit_vs_eval() {
-    let results = l4_emit_eval_skeleton_suite_results();
-    assert_eq!(results.len(), 3);
-    assert_eq!(results[2].claim_name, L4_NESTED_CLAIM);
+    let evaluation = l4_run_named_claim(L4_NESTED_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_NESTED_CLAIM);
     assert!(
-        matches!(results[2].result, ClaimResult::Pass),
+        matches!(evaluation.result, ClaimResult::Pass),
         "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (nested branch Int 7); got {:?}",
-        results[2].result
+        evaluation.result
     );
 }
 
