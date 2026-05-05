@@ -219,5 +219,5 @@ These do not need new top-level INVARIANTS.md P-rules; `INVARIANTS.md#p2-boundar
 - Cross-manager signal example (Category 3 on PR #847): B7 priority-hint relay.
 - Standing duties (Category 4) inline in `r2-release-manager.md` Owned deliverables section.
 - Manager structure authority: [`docs/r2-structure.md` §"Manager structure"](../r2-structure.md).
-- Discipline framework: [`INVARIANTS.md#p5-progress-is-dissolution` "Dispatch-Discipline Mechanisms"](../../INVARIANTS.md).
+- Discipline framework: [`INVARIANTS.md#p5-progress-is-dissolution` "Dispatch-Discipline Mechanisms"](../../INVARIANTS.md#p5-progress-is-dissolution).
 - Escalation discipline: [`docs/escalation-paths.md`](../escalation-paths.md).
