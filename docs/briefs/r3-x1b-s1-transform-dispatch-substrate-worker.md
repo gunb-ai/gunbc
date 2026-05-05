@@ -77,6 +77,43 @@ substitute for the audit.
 1. Introduce `TransformDispatch` on `TransformNode` with variants
    `Callable | FieldProject | FieldCall | Operator | Indirect`.
    Module-private payload fields; public accessors only.
+
+   **Practice 4 dissolution-ledger marks (mandatory on the live
+   declaration).** Per `docs/modeling-discipline.md` Practice 4
+   (Step 4 of the type-introduction checklist), each variant of
+   the new `TransformDispatch` enum MUST carry its 🟢/🟡/🔴 mark
+   as a doc comment on the variant itself, copying the per-variant
+   ledger from `design-prereq-x-ho-field-call.md` §Prereq-X1
+   (verified live at HEAD `:440-488`). Worker transcribes verbatim:
+
+   - 🟡 `Operator { op: OperatorCall }` — future-dissolve.
+     Tracking gate: `std/{int,bool,float}/` declares operator-
+     algebra witness functions + parser desugars operator tokens
+     to `Call(FunctionRef)` at parse time, collapsing `Operator`
+     into the unified `Call { callee: CalleeRef = Decl(...) }`
+     shape.
+   - 🟢 `FieldProject` — keep. Pure value-access fact preserved
+     from current `TransformTarget::FieldProject`; no dispatch.
+     Distinct state family from `FieldCall`.
+   - 🟡 `Callable` — future-dissolve. Tracking gate: emitter
+     splits callee-rendering from dispatch match
+     (`lens_*_emitter_split` shape). Future: `Call { callee:
+     CalleeRef, args }` with `CalleeRef = Decl(DeclarationId) |
+     Field { ... } | Port(ArrowPortRef)`.
+   - 🟡 `FieldCall` — future-dissolve. Same tracking gate as
+     `Callable`. Future shape: `Call { callee: CalleeRef::Field
+     { label, child, carrier }, args }`.
+   - 🟡 `Indirect` — future-dissolve. Same tracking gate as
+     `Callable`. Future shape: `Call { callee: CalleeRef::Port(
+     ArrowPortRef), args }`.
+
+   **No 🔴 (dissolve-now) variants** — the design's no-malformed-
+   state invariants (Facts Flow Forward, illegal-states-
+   unrepresentable, args-bound-to-target) all hold under the 🟡
+   set above; verbatim from the design-doc ledger entry at
+   `:484-488`. The PR body MUST also carry the dissolution-ledger
+   summary per the audit's PR-body discipline; the per-variant
+   doc comments are the in-source receipt that satisfies Practice 4.
 2. Add `ArrowPortRef(PortId)` (private constructor) and
    `Dag::resolve_arrow_port(p: PortId) -> Result<ArrowPortRef,
    NonArrowPortError>`.
@@ -141,6 +178,18 @@ fail-closed arms for `FieldCall` and `Indirect`.
 
 - Atomic commit: `TransformDispatch` introduced, `target` + `inputs`
   retired, all consumers updated, generated files regenerated.
+- **Practice 4 classification receipts on the live declarations
+  (mandatory; both Rust and `.dag` sides).** Each variant of the
+  Rust `TransformDispatch` enum at `src/v3/compiler/src/dag.rs`
+  carries an inline 🟢/🟡/🔴 doc comment matching the design
+  ledger at `design-prereq-x-ho-field-call.md:440-488` (verbatim:
+  🟡 `Operator`, 🟢 `FieldProject`, 🟡 `Callable`, 🟡 `FieldCall`,
+  🟡 `Indirect`; no 🔴). The reflected `dsl/std/` mirror sum
+  variants carry the same marks (kept in sync per slice §1's
+  Migrate-reflection-sum step). The marks must be present on
+  the source in both files, not only in the design doc, brief,
+  or PR body — per `docs/modeling-discipline.md` Practice 4
+  Step 4 the in-source receipt is the load-bearing artifact.
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green; strict-compile diagnostic
   ratchet (`v2_strict_compile_diagnostic_count -- --ignored`)

@@ -131,8 +131,20 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
 - `src/v3/std/cross_target_coverage.dag` lands with the five
   types + the empty `data` declaration + the mandatory
   option-(c) header note.
+- **Practice 4 classification receipts on the live declaration
+  (mandatory).** Each new sum-typed declaration carries an
+  inline 🟢/🟡/🔴 doc comment per `docs/modeling-discipline.md`
+  Practice 4 Step 4: `ShapeATarget` → 🟢 TERMINAL;
+  `FormAxis` → 🟡 SCAFFOLD with named dissolution trigger
+  (option (c) substrate-`Disj`-mirroring generator);
+  `BehaviorAxis` → 🟡 SCAFFOLD with same dissolution trigger.
+  The marks must be present on the `.dag` source in
+  `cross_target_coverage.dag` itself, not only in the brief or
+  PR body. The ratchet test (next bullet) verifies the marks
+  are present.
 - Ratchet test exists and passes (vacuous parity at this slice;
-  carrier-shape gates structurally enforced).
+  carrier-shape gates structurally enforced; **classification
+  marks present on each new sum-typed declaration**).
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green; strict-compile
   diagnostic ratchet at 0.
