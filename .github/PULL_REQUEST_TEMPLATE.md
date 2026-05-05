@@ -77,6 +77,32 @@ PR #810 §0); not as a one-off. Cite the program brief.
 
 - **Exactly one disposition** (delete path **or** census shrink with N→M **or** lane + cited ROADMAP row/link): ___
 
+## SG-0 net-shrink discipline (required when `sg0_census_test.rs` changes)
+
+<!--
+CI: `scripts/check-pr-sg0-net-shrink-discipline.sh` (`.github/workflows/ci.yml` `ci` job).
+
+When this PR edits `src/v3/compiler/tests/integration/sg0_census_test.rs`, the
+GitHub PR **description** must include a line starting exactly with
+`SG-0 hand-path delta:` followed by a signed net path delta for this PR's
+census edits (`0`, `+0`, `-3`, `+1`, …).
+
+If the delta is a **strict net add** (`+1`, `+2`, … — not `+0`), the
+description must also include a line containing `SG-0 pairing: (a)` **or**
+`(b)` **or** `(c)` with the rationale on that line or immediately after.
+Pairing classes: **(a)** same-PR retirements (removed paths named), **(b)**
+Director-budget citation (URL), **(c)** structural deferral + named follow-up
+dispatch.
+
+**Delete this entire section** if `sg0_census_test.rs` is untouched.
+
+Authority: ROADMAP.md bullet *SG-0 PR-window net-shrink discipline*.
+-->
+
+- **Paste into PR description — `SG-0 hand-path delta:`** ___
+
+- **Paste into PR description — `SG-0 pairing:`** ___ (`n/a` unless delta is strict `+N`, `N>0`)
+
 ## Per-PR debt-paydown receipt (required for all PRs)
 
 <!--
