@@ -23,7 +23,7 @@ E6-G0c made `TransformTarget::Callable(decl)` executable only when `decl`
 resolves to an Arrow with a `UserDefined` body. The current evaluator branch
 fails closed on every non-Arrow callable target:
 
-- `src/v3/compiler/src/lib.rs:579-585` reads
+- `src/v3/compiler/src/lib.rs:579-584` reads
   `dag.declaration(callee_decl).connective`, accepts only
   `TypeConnective::Arrow { body, .. }`, and otherwise returns
   `BadTransformOperands { reason: "Callable target declaration is not an Arrow type" }`.
@@ -49,32 +49,32 @@ Two lowered constructor families reach `TransformTarget::Callable(target)`:
      `Conj`, orders inputs by the declaration's `children` labels, lowers each
      field expression against its field type, then calls
      `lower_constructor_invocation(dag, target_decl, inputs, span)` at
-     `src/v3/compiler/src/lower.rs:6442-6534`.
+     `src/v3/compiler/src/lower.rs:7214-7306`.
    - `lower_constructor_invocation` emits
      `Behavior::Transform(TransformNode { target:
      TransformTarget::Callable(target), inputs, ... })` at
-     `src/v3/compiler/src/lower.rs:6331-6347`.
+     `src/v3/compiler/src/lower.rs:7103-7117`.
    - The `target_decl` here is the record / Conj declaration, not an Arrow.
 
 2. **Variant constructors.**
    - Nullary variants can enter through `SurfaceExpr::Var` when the expected
      type is a sum: `resolve_expected_variant_constructor(...)` followed by
      `lower_constructor_invocation(..., Vec::new(), ...)` at
-     `src/v3/compiler/src/lower.rs:5846-5852`.
+     `src/v3/compiler/src/lower.rs:6574-6579`.
    - Named variant-record constructors enter through
      `lower_variant_record_expr`: the lowerer resolves the variant declaration,
      reads payload field labels/types via
      `variant_payload_fields_for_lowering`, orders payload inputs by those
      declared labels, and calls `lower_constructor_invocation(dag,
      variant_decl, inputs, ...)` at
-     `src/v3/compiler/src/lower.rs:6537-6614`.
+     `src/v3/compiler/src/lower.rs:7309-7404`.
    - `variant_payload_fields_for_lowering` gets the payload fields by walking
      the variant declaration to a `Conj` and preserving child labels at
-     `src/v3/compiler/src/lower.rs:5761-5779`.
+     `src/v3/compiler/src/lower.rs:6325-6347`.
    - Variant membership is not inferred from "walks to `Conj`" alone. The
      lowerer resolves constructor identity through
      `resolve_expected_variant_constructor`, which checks the parent
-     `TypeConnective::Disj { variants }` list (`src/v3/compiler/src/lower.rs:6703+`).
+     `TypeConnective::Disj { variants }` list (`src/v3/compiler/src/lower.rs:7493+`).
      For generic sums, that resolver may materialize an
      `Instantiation { template: variant_decl, arguments }`; E6-G0d must
      preserve that instantiation instead of checking only the outer
@@ -87,7 +87,7 @@ accepted by the lowerer, evaluate it into the existing runtime `Value` carrier.
 
 ## Runtime Output Contract
 
-Use only the live evaluator carriers in `src/v3/compiler/src/lib.rs:71-87`:
+Use only the live evaluator carriers in `src/v3/compiler/src/lib.rs:72-87`:
 
 ```rust
 Value::RecordValue(Vec<NamedField>)
