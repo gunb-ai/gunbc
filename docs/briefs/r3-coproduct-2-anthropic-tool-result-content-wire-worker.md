@@ -94,17 +94,52 @@ Adjacent `CoproductWireContract` pattern: `anthropic.dag:20-30`
    carrier** that wraps shared `ContentBlock` for the cross-
    provider variants and adds the Anthropic-only variants:
 
-   ```dag
-   // Anthropic-specific tool-result block; layered atop shared
-   // ContentBlock for cross-provider variants (text/image) and
-   // adds Anthropic-only nested block kinds. Lives in
-   // dsl/extdeps/llm/anthropic.dag, NOT dsl/extdeps/llm/llm.dag.
-   type AnthropicToolResultBlock
-     = AnthropicSharedBlock { block: ContentBlock }   // delegates to shared primitive
-     | AnthropicDocumentBlock { ... }                 // Anthropic-only
-     | AnthropicSearchResultBlock { ... }             // Anthropic-only
-     | AnthropicToolReferenceBlock { ... }            // Anthropic-only
-   ```
+There are two structural shapes here, both honoring the layering
+boundary; the worker picks at pre-flight based on which has a
+ratified wire-contract path:
+
+**Shape (A): Direct text/image variants reusing shared payload
+facts (preferred when the shared `ContentBlock` payload types are
+exposed for re-use).** The Anthropic-specific carrier mirrors
+shared `ContentBlock`'s variant payloads inline rather than wrapping
+the shared sum. On the wire, every variant is a flat tagged-object
+with `type` discriminator — no wrapper layer to make transparent.
+
+```dag
+type AnthropicToolResultBlock
+  = AnthropicTextBlock { text: String }
+  | AnthropicImageBlock { source: ImageSource }   // ImageSource imported from shared
+  | AnthropicDocumentBlock { ... }                 // Anthropic-only
+  | AnthropicSearchResultBlock { ... }             // Anthropic-only
+  | AnthropicToolReferenceBlock { ... }            // Anthropic-only
+```
+
+**Shape (B): Wrapper-with-transparent-delegation (only valid if
+`std.serialization::CoproductWireContract` ratifies a transparent
+delegation encoding for the wrapper variant).** The wrapper variant
+is `#[serde(transparent)]`-equivalent on the wire — it disappears
+in serialization, exposing the inner `ContentBlock`'s tagged-object
+shape directly:
+
+```dag
+type AnthropicToolResultBlock
+  = AnthropicSharedBlock { block: ContentBlock }   // wire-transparent delegate
+  | AnthropicDocumentBlock { ... }
+  | AnthropicSearchResultBlock { ... }
+  | AnthropicToolReferenceBlock { ... }
+```
+
+Shape (B) requires authoring a wire-contract row that names the
+transparent-delegation encoding (e.g., a new `VariantEncoding`
+shape `TransparentDelegate`). If `std.serialization` does NOT
+already ratify such an encoding, this is a P1 substrate-fact-
+introduction event and routes through procedure (same STOP as
+sub-slice 1's wire-shape sub-slice).
+
+**Worker pre-flight obligation:** grep `std/serialization.dag` for
+any existing transparent-delegation encoding. If found, Shape (B)
+is viable; if not, **Shape (A) is mandatory** for this slice (no
+silent invention of new `VariantEncoding` shapes).
 
    Then `AnthropicToolResultContent.ToolResultBlocks` switches
    from `blocks: List<ContentBlock>` to `blocks:

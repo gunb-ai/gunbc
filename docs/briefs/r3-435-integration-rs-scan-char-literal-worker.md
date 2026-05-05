@@ -176,11 +176,14 @@ must satisfy:
   removed (no longer applicable). PR body cites the upstream
   crate (`rustc_lexer` SHA or `syn` version) used.
 - **Path B:** Scanner extends to five states; disambiguation rule
-  cites `rustc_lexer::Cursor::single_quoted_string` (or live
-  equivalent) at the worker's pinned upstream SHA in the PR
-  body. No false-`Char` classification on lifetime / label
-  inputs. Doc comment at `:320-326` reflects the post-extension
-  behavior.
+  cites `rustc_lexer::Cursor::lifetime_or_char` (the actual
+  disambiguator entry point) at the worker's pinned upstream SHA
+  in the PR body, and reproduces its three-branch logic exactly
+  (escape branch / identifier-start `char2 == '` branch /
+  non-identifier-start single-byte branch). No false-`Char`
+  classification on lifetime / label inputs. No window-scan / no
+  closing-quote-search heuristics. Doc comment at `:320-326`
+  reflects the post-extension behavior.
 - **Both paths** — unit tests land covering: (a) `b'\\'` / `b'"'`
   char-literal bodies (the original workaround-attractor pattern);
   (b) `&'a T` lifetime in reference position stays code (Path A:
@@ -204,19 +207,19 @@ must satisfy:
 
 ## STOP-AND-ESCALATE
 
-- If a real-world `tests/integration.rs`-shaped fragment in the
-  worker's pre-flight contains a char-literal body legitimately
-  longer than the 16-byte lookahead window, STOP and surface —
-  either widen the window with explicit upper-bound justification
-  or escalate to the structural-reader alternative the row's
-  dissolution sentence names.
-- If a closing `'` lookahead can be ambiguous against an unrelated
-  later `'` in pathological code (e.g., a lifetime followed soon
-  after by a char literal on the same line), STOP and verify
-  against an actual fragment from the integration scan path. The
-  bounded-lookahead rule is fail-closed for the lifetime case (no
-  closing `'` ⇒ stay `Code`), but a worker who finds an
-  adversarial counter-example must surface rather than band-aid.
+- **Path B's `lifetime_or_char` reproduction diverges from rustc.**
+  If the worker's branch-by-branch reproduction does not match
+  `rustc_lexer::Cursor::lifetime_or_char`'s observable behavior on
+  the test corpus (a)-(e), STOP — Path B is not lexer-faithful and
+  must be either corrected or escalated to Path A. No
+  window-scan / closing-quote-search fallback is authorized.
+- **A real `tests/integration.rs` fragment exhibits a char-literal
+  shape outside `lifetime_or_char`'s decision domain** (e.g., a
+  Rust feature-gate addition that creates a new lexical category
+  rustc itself doesn't yet ratify in stable). STOP and surface —
+  Path A's structural-reader path inherits any rustc lexer update
+  by construction, while Path B requires manual chase. A divergent
+  fragment is a Path-A-or-escalate signal, not a band-aid.
 - Add a unit test that exercises both `&'a T` (lifetime in
   reference type) and `'label: loop { break 'label; }` (label
   scope) and asserts both stay in `Code` (no false-`Char`); these

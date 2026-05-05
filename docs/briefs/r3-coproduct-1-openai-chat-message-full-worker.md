@@ -47,7 +47,16 @@ on the Anthropic side live at `dsl/extdeps/llm/anthropic.dag:20-30`.
    `System | Developer | User | Assistant`; the full coproduct
    adds the two missing wire roles.
 2. Widen `OpenAiChatMessage` to a coproduct that expresses the
-   three missing variants:
+   three missing variants. **Critical layering rule:** the role
+   discriminator is **variant-determined** — it must NOT live as
+   a free `role: OpenAiChatMessageRole` field on each variant
+   (which would make `OpenAiChatMessageTool { role: User, ... }`
+   structurally representable, an illegal-state-by-construction
+   violation per `feedback_state_space_vs_behavioral_invariants`).
+   Either drop the `role` field from the variant payloads
+   entirely (variant identity ⇒ role) and project it via an
+   accessor function, OR carry per-variant singleton role tags
+   keyed by the variant tag itself.
 
    ```dag
    type OpenAiChatMessageContent
@@ -60,17 +69,36 @@ on the Anthropic side live at `dsl/extdeps/llm/anthropic.dag:20-30`.
      // additive parts (audio, file, ...) gap-carried separately if not
      // observed in current wire surface
 
+   // Variant identity determines role; role NOT carried as field.
+   // Wire serializer emits the role discriminator from variant tag
+   // via `CoproductWireContract` / role accessor.
    type OpenAiChatMessage
-     = OpenAiChatMessageUser { role: OpenAiChatMessageRole, content: OpenAiChatMessageContent }
-     | OpenAiChatMessageAssistant { role: OpenAiChatMessageRole, content: OpenAiChatMessageContent, tool_calls: List<OpenAiChatMessageToolCall>? }
-     | OpenAiChatMessageTool { role: OpenAiChatMessageRole, content: OpenAiChatMessageContent, tool_call_id: String }
-     | OpenAiChatMessageFunction { role: OpenAiChatMessageRole, content: OpenAiChatMessageContent, name: String }
+     = OpenAiChatMessageSystem { content: OpenAiChatMessageContent }
+     | OpenAiChatMessageDeveloper { content: OpenAiChatMessageContent }
+     | OpenAiChatMessageUser { content: OpenAiChatMessageContent }
+     | OpenAiChatMessageAssistant { content: OpenAiChatMessageContent, tool_calls: List<OpenAiChatMessageToolCall>? }
+     | OpenAiChatMessageTool { content: OpenAiChatMessageContent, tool_call_id: String }
+     | OpenAiChatMessageFunction { content: OpenAiChatMessageContent, name: String }
+
+   // Role projection (variant tag ⇒ role) — accessor, not field.
+   fn role_of(message: OpenAiChatMessage) -> OpenAiChatMessageRole {
+     match message {
+       OpenAiChatMessageSystem { .. } => OpenAiChatMessageRole.System,
+       OpenAiChatMessageDeveloper { .. } => OpenAiChatMessageRole.Developer,
+       OpenAiChatMessageUser { .. } => OpenAiChatMessageRole.User,
+       OpenAiChatMessageAssistant { .. } => OpenAiChatMessageRole.Assistant,
+       OpenAiChatMessageTool { .. } => OpenAiChatMessageRole.Tool,
+       OpenAiChatMessageFunction { .. } => OpenAiChatMessageRole.Function,
+     }
+   }
    ```
 
    Concrete variant shapes are sketches; worker grounds against
    the OpenAI Chat Completions API reference at brief authoring
    time and preserves whatever discriminator structure rustc /
-   serde can ratify at the wire layer.
+   serde can ratify at the wire layer. The variant-determined-role
+   rule is **not** negotiable — it's the load-bearing invariant
+   per the codex BLOCKING finding.
 3. Author `openai_chat_message_wire_contract: CoproductWireContract`
    in the same file, mirroring the Anthropic pattern at
    `anthropic.dag:20-23` (internally-tagged-object on `role`,

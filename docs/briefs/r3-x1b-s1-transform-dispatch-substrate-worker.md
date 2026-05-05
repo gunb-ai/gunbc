@@ -35,10 +35,44 @@ mechanical consumer updates. S2 (lowerer produces `Indirect`),
 S3 (evaluator semantics for `Indirect` / `FieldCall`), and S4
 (emitter follow-up) are downstream slices in different ownership.
 
+## Audit authority — confirmed live at HEAD
+
+The load-bearing audit `docs/briefs/x1b-evaluator-impact-audit.md`
+is in tree at HEAD (verified by wait-window scan). Worker MUST
+read the audit's §1, §3, §4, §5 in full before authoring code;
+key facts inlined below for self-containedness, but the audit
+itself remains the authoritative source — if the inline summary
+diverges from the audit at dispatch time, the audit wins:
+
+- **§1 Evaluator consumer catalog (inlined summary):** three
+  classes of consumers reading `TransformTarget` / `TransformNode.inputs`
+  directly — E1 host-Rust evaluator (`src/v3/compiler/src/lib.rs::eval_transform_node`);
+  E2 lens-apply evaluator (`src/v3/compiler/src/lens_apply.rs`
+  including `eval_transform` / `reflect_transform_target` /
+  eligibility check); E3 adjacent evaluators that walk
+  `inputs` only (`dimension.rs`). Worker re-greps these
+  paths at dispatch.
+- **§3 Substrate-adjacent consumer catalog (inlined
+  summary):** `src/v3/compiler/src/dag.rs` (carrier home),
+  `dag/builder.rs`, `lower.rs`, `infer.rs`, `emit.rs`,
+  `emit/rust_target.rs`, `emit/python_target.rs`,
+  `regen_bootstrap_emit.rs`, generated `lens_*_generated.rs` /
+  `bootstrap_generated*.rs`. All mechanical updates per slice
+  step 6 below.
+- **§5 STOP conditions (inlined verbatim):** (a) substrate
+  redesign in flight invalidating §X1.b shape (e.g.,
+  CalleeRef-collapse re-scope); (b) regen / strict-compile
+  ratchet red at S1 start; (c) reflection mid-migration drift
+  between `dsl/std/` reflection sum and Rust `TransformDispatch`;
+  (d) `Vec<PortId>` cannot retire atomically (some consumer's
+  rewrite needs a bridge); (e) G0c not merged.
+
 ## Slice
 
-Per `x1b-evaluator-impact-audit.md` §4 Slice S1; not duplicated here.
-Worker MUST read that section before authoring code. Summary:
+Per audit §4 Slice S1, with steps below mirroring the audit's
+ordering. Worker reads the audit's §4 in full before authoring;
+the inline summary here serves as a dispatch packet, not a
+substitute for the audit.
 
 1. Introduce `TransformDispatch` on `TransformNode` with variants
    `Callable | FieldProject | FieldCall | Operator | Indirect`.
