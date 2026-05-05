@@ -45,8 +45,5 @@ data rustup_install_url: NonEmptyStr = "https://rustup.rs"
 // Default channel we expect when "rustup default" is queried.
 data default_channel: RustChannel = Stable
 
-// The pinned toolchain channel string (must match rust-toolchain.toml `[toolchain].channel`).
-data ci_pinned_toolchain: NonEmptyStr = "1.93.0"
-
 // Rustup docs URL for reference.
 data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"

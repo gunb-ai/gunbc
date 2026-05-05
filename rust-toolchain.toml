@@ -1,5 +1,6 @@
-# Channel pin for local rustup and GitHub Actions (setup-rust-toolchain reads
-# this file). Keep in sync with `dsl/extdeps/rustup.dag` `ci_pinned_toolchain`.
+# Canonical Rust channel + components for local rustup and GitHub Actions
+# (`actions-rust-lang/setup-rust-toolchain` reads this file after checkout).
+# Dependency notes: `dsl/extdeps/rustup.dag` (no second pin constant — this file is sole authority).
 [toolchain]
 channel = "1.93.0"
 components = ["clippy", "rustfmt"]
