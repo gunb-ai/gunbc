@@ -234,8 +234,10 @@ mod t_demo_fixture_test {
         T_DEMO_FIXTURE_DAG.get_or_init(|| compile_fixture(&fixture_source()))
     }
 
-    /// Lexicographic name sorts before `impossible_bug_*` in this module so libtest warms
-    /// [`T_DEMO_FIXTURE_DAG`] before suite-heavy tests (2s per-test ratchet on cold CI).
+    /// `a_…` sorts first among `t_demo_fixture_test::*` names so **serial** libtest runs (e.g.
+    /// `--test-threads=1`) tend to hit [`T_DEMO_FIXTURE_DAG`] before other module tests that use
+    /// it. With default parallelism, **order is not guaranteed**; correctness still comes from
+    /// `OnceLock` init being race-safe, this is only a best-effort compile warm for CI ratchets.
     #[test]
     fn a_t_demo_fixture_skeleton_warms_dag_cache() {
         let dag = cached_t_demo_fixture_dag();

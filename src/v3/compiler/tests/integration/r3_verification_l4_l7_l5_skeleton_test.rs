@@ -74,7 +74,8 @@ fn cached_compile(
 
 /// Runs one named `TestClaim` from the L4 fixture on a larger stack. The compiled `Dag` is
 /// amortized via [`L4_DAG`]; each `#[test]` calls `run_claim` independently (no shared
-/// `ClaimEvaluation` vector — see TESTING.md `OnceLock` carve-out / api-review on PR #1802).
+/// `ClaimEvaluation` vector — see TESTING.md, “Don’t use cross-test shared state” / `OnceLock`
+/// amortization carve-out).
 fn l4_run_named_claim(claim_name: &'static str) -> ClaimEvaluation {
     run_on_larger_stack(move || {
         let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
