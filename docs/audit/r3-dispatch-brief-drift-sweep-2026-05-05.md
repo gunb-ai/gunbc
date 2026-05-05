@@ -151,7 +151,7 @@
 
 ## Net findings + recommendations
 
-**Verified-clean count:** 51 cross-references audited across 6 briefs; 41 ✅ verified; 10 🟡 partial (most already-remediated by Director's real-time self-corrections + the #issuecomment-4377496289 attribution acknowledgment).
+**Verified-clean count:** 40 cross-references audited across 6 briefs; 29 ✅ verified; 11 🟡 partial (most already-remediated by Director's real-time self-corrections + the #issuecomment-4377496289 attribution acknowledgment). Of the 11 🟡 instances, 6 are the same "PM's orphaned-work catalog" attribution-drift pattern recurring across all 6 briefs (collapses to 1 unique pattern); the remaining 5 are distinct partials per the per-Mgr tables above.
 
 **Outstanding remediation queue** (low-priority, surface-to-Mgr at Director discretion):
 
