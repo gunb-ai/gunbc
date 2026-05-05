@@ -10,8 +10,8 @@
 
 | Metric | Value |
 |--------|------:|
-| Active exemptions (non-comment lines) | **39** |
-| `TEST_TIMEOUT_MAX_EXEMPTIONS` default in `scripts/check-test-timeout.sh` | **39** (must match; same PR rule for floor changes) |
+| Active exemptions (non-comment lines) | **40** |
+| `TEST_TIMEOUT_MAX_EXEMPTIONS` default in `scripts/check-test-timeout.sh` | **40** (must match; same PR rule for floor changes) |
 | Stale exemptions removed in **this** PR | **0** — no row deleted without a fresh `cargo test … -- -Z unstable-options --report-time` observation proving **≤ 2000 ms** for that test under the ratchet’s parsing rules |
 | Per-exempt duration budgets enforced in CI | **Not landed** — still deferred to Phase 2 in the architecture brief (would require parser/script extension; do not invent budgets) |
 
@@ -24,7 +24,9 @@
 
 ## Delta vs 2026-04-24 audit
 
-The April audit recorded **43** active exemptions and a floor of **43**. The tree under audit now has **39** exemptions and default floor **39**. **Arithmetic is intentional:** five tokens listed below were **removed** from the exemption list on `main` between 2026-04-24 and this snapshot, and **one** new token was **added** (`r1c_e_emit_gates_dag_test::…`). Net change: **5 − 1 = −4** rows (43 → 39); that net is already reflected in `check-test-timeout.sh` before this document landed.
+The April audit recorded **43** active exemptions and a floor of **43**. The tree under audit on **2026-05-02** had **39** exemptions and default floor **39**. **Arithmetic is intentional:** five tokens listed below were **removed** from the exemption list on `main` between 2026-04-24 and this snapshot, and **one** new token was **added** (`r1c_e_emit_gates_dag_test::…`). Net change: **5 − 1 = −4** rows (43 → 39); that net is already reflected in `check-test-timeout.sh` before this document landed.
+
+**Amendment (2026-05-05, PR #1797):** live `scripts/slow-test-exemptions.txt` and `check-test-timeout.sh` default floor are **40** (+1 row: `t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible`; per-test 2s ratchet on cold `ubuntu-latest`). Summary table and exemption table below include that row; this paragraph preserves the historical 43→39 delta narrative for the May 2 snapshot only.
 
 **Rows present in 2026-04-24 audit but absent now** (retired from the exemption list elsewhere; this audit does not re-claim credit):
 
@@ -54,7 +56,7 @@ The April audit recorded **43** active exemptions and a floor of **43**. The tre
 
 | Category | Count | Notes |
 |----------|------:|-------|
-| **P** | 31 | Includes M0/M1/M2/PB/R1C-E/P0/SG/KF-1/bootstrap paydown classes. |
+| **P** | 32 | Includes M0/M1/M2/PB/R1C-E/P0/SG/KF-1/T-Demo/bootstrap paydown classes. |
 | **S** | 8 | `db8_rust_emit_avoids_time_paths_and_float_hooks_on_program_matrix` + six `emit_matrix_*_is_deterministic` + `four_fixture_disk_sources_emit_deterministically`. |
 
 ## STOP+PING check (`ci-ratchet-architecture-audit.md`)
@@ -62,7 +64,7 @@ The April audit recorded **43** active exemptions and a floor of **43**. The tre
 - **“Most exemptions structurally necessary”:** **No.** Eight lines are the DB-8 determinism matrix + four-fixture **disk** determinism row; the remainder are **P** (compile/snapshot/rustc-harness/M0/M1/M2/PB/SG/KF-1 paydown classes). This does **not** indicate the 2s budget is wrong for the whole architecture; it indicates concentrated compile-oracle debt plus one very hot P0 oracle row (`p0_std_render…`, comment still cites ~29.7 s historical observation).
 - **Parser / script invasiveness:** **No change** to exemption line format or `check-test-timeout.sh` parsing in this PR.
 
-## Exemption table (39 tests; compact ranges)
+## Exemption table (40 tests; compact ranges)
 
 | # | Exemption(s) | Cat | Paydown / routing |
 |---|----------------|-----|-------------------|
@@ -89,13 +91,14 @@ The April audit recorded **43** active exemptions and a floor of **43**. The tre
 | 37 | `sg2c1_parse_tables_authority_test::parse_tables_generated_module_matches_checked_in_snapshot` | P | SG-2c-1 parse-tables snapshot. |
 | 38 | `sg6_hand_authored_census_test::sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift` | P | SG-6 CLI subprocess smoke. |
 | 39 | `thesis_validation_test::kf_1_structural_list_operation_ordering_holds` | P | KF-1 thesis validation decomposition (TESTING.md). |
+| 40 | `t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible` | P | T-Demo dual `run_suite` over shared fixture matrix; ratchet unblock PR #1797; shared `Dag` / runner paydown (TESTING.md). |
 
-The compact table’s ranges expand to **39** test tokens — the same count as non-comment lines in `scripts/slow-test-exemptions.txt` and the `TEST_TIMEOUT_MAX_EXEMPTIONS` default.
+The compact table’s ranges expand to **40** test tokens — the same count as non-comment lines in `scripts/slow-test-exemptions.txt` and the `TEST_TIMEOUT_MAX_EXEMPTIONS` default.
 
 ## R3 per-PR debt receipt (this PR)
 
 - **Disposition:** **Debt found + routed** (bounded **scope / routing** audit — not a completed Phase 1 per-test timing audit).
-- **Debt addressed (partial):** ROADMAP bullet *CI ratchet architecture — PARTIAL* — fresh audit artifact documents the current **39**-exemption floor and routes remaining work (measured timing pass, optional per-exempt budgets).
+- **Debt addressed (partial):** ROADMAP bullet *CI ratchet architecture — PARTIAL* — fresh audit artifact documents the current **40**-exemption floor and routes remaining work (measured timing pass, optional per-exempt budgets).
 - **Debt found (routed):** No exemptions proven stale under the 2s authority in this pass; mechanical re-timing from CI or warmed local `cargo test` logs remains the next executable slice.
 - **Dissolved debt rows:** None — no line removed from `scripts/slow-test-exemptions.txt` without a ≤2000 ms proof.
-- **Documentation:** Stale ROADMAP counts **43**/**43** → **39**/**39** aligned with `check-test-timeout.sh` (same PR as this audit).
+- **Documentation:** Stale ROADMAP counts **43**/**43** → **39**/**39** aligned with `check-test-timeout.sh` at the 2026-05-02 snapshot; **live 40**/**40** after PR #1797 (2026-05-05) adds `t_demo_fixture_test::t_demo_canonical_suites_are_runner_visible` and bumps the script default in the same change-set as that row.
