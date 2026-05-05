@@ -153,27 +153,46 @@ PB Mgr's recommended narrowest first dispatch under S-1 is **Pop A v3 property-t
 
 ## G-2 prerequisite chain (full retirement of `src/v2/`)
 
-Per audit §1, G-2 prereq stack is `S-1 + S-2 + S-3 + S-4 + G-1`. This brief covers S-1; the rest enumerated for worker dispatch surface:
+Per `docs/audit/t-v2-retirement-audit.md` §1 STOP-condition table, G-2 prereq stack is `S-1 + S-2 + S-3 + S-4 + G-1`. This brief covers S-1; the rest enumerated per audit S-N definitions:
 
-### S-2 — substrate-fact-introduction for `kernel_algebra_profile`
+### S-2 — T-FixedPoint closed (audit §1 row "S-2")
 
-Per Decision 2 routing, Substrate Manager owns this. v3-side single-authority `kernel_algebra_profile` lands at `dsl/std/algebra.dag` (or successor as v3 substrate inhabitance consolidates). Substrate-introduction procedure per [`INVARIANTS.md`](../../INVARIANTS.md) §P1.
+Per audit: *"T-FixedPoint closed"* (gate per `r3-structure.md` Lane 5: `pb_self_compile_fixed_point` — `compiler.dag` compiles to bit-identical stage0 Rust).
 
-### S-3 — `verification.dag` convergence design call
+S-2 + S-3 closure is what allows S-4 (PB-Runtime trampoline) to be the live bootstrap — without S-2+S-3, removing `src/v2/stage0` from the workspace breaks the build chain even if PB-Runtime is technically present (audit §1).
 
-Per Decision 5 routing, Substrate Manager owns the design call (or Director arb if Substrate cannot scope). Convergence determines whether v3's `TestPredicate` / `TestSuite` model fully replaces v2's `AssertKind` / `TestClaim` / `TestCase`, or whether some v2 surface continues under a renamed module path.
+PB Manager-owned (T-FixedPoint lane). R3 in flight.
 
-### S-4 — PB-Runtime trampoline live as bootstrap path
+### S-3 — T-LensProducer-Retirement closed (audit §1 row "S-3")
 
-Per `docs/design-pure-bootstrap-zero.md` §"First-time bootstrap" — PB-Runtime trampoline replaces v2-as-bootstrap-path. PB Manager-owned execution.
+Per audit: *"T-LensProducer-Retirement closed (all 3 sub-gates: `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs`)"*.
+
+PB Manager-owned (T-LensProducer-Retirement lane; sub-gates per `r2-pure-bootstrap-manager.md` row T-LensProducer-Retirement + `design-pb-runtime-interpreter.md` §5.1). R3 in flight.
+
+### S-4 — PB-Runtime trampoline live as bootstrap path (audit §1 row "S-4")
+
+Per audit: *"PB-Runtime trampoline lands such that bootstrap no longer routes through `src/v2/stage0`"*. Gate per `design-pb-runtime-interpreter.md` §3.
+
+PB Manager-owned. NOT MET; PB-Runtime interpreter-as-data is the gate.
 
 ### G-1 — Cargo.lock v2 dev-deps deletion (covered above; Dispatch 4)
 
+G-1's STOP condition per audit §"G-1 STOP condition" is **S-1 only** (PM worker brief — landed via PR #1711). G-1's *implementation* additionally requires §3.1 + §3.2 dispositions (Dispatches 2-3 above; Decisions 1+2 of this brief).
+
 ### G-2 — `src/v2/` workspace member removal + directory deletion
 
-Final deletion. Cascade-gated on S-1 + S-2 + S-3 + S-4 + G-1 all closing. PB Manager-owned execution.
+Final deletion. Cascade-gated on **S-1 + S-2 + S-3 + S-4 + G-1** all closing per audit §"G-2 STOP condition for G-2 work". PB Manager-owned execution.
 
 Per `docs/audit/t-v2-g2-deletion-plan-and-guardrails.md` for full deletion plan + guardrails.
+
+### Note on Decision 2 + Decision 5 routings
+
+Decisions 2 + 5 (per §"PM decisions" above) are routings within G-1 / G-2 implementation work — **not** equivalent to the S-N gates:
+
+- **Decision 2** (`kernel_algebra_profile` v3-side authority migration) is the §3.2 prerequisite for G-1 (one of the two v2-oracle test consumer dissolutions; lets PB retire the parity test). Substrate-side authority migration; routed to Substrate Manager (jolly-ram-908 #1130). NOT in the S-N chain.
+- **Decision 5** (`verification.dag` convergence) is a G-2 prerequisite (independent of S-1 + S-2 + S-3 + S-4) per audit §"verification.dag convergence" position. Substrate Manager design call; routed in parallel. NOT in the S-N chain.
+
+S-N labels match audit definitions (T-FixedPoint / T-LensProducer-Retirement / PB-Runtime trampoline). Decision 2 + Decision 5 are routing decisions within audit §3 surfaces, not the S-N stack.
 
 ## Cross-program coordination (PM relays in parallel with this brief)
 
