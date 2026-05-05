@@ -373,7 +373,7 @@ type CollectionOps {
   flat_map_contract: DeclarationRef
   any_contract: DeclarationRef
   all_contract: DeclarationRef
-  map: String
+  map_contract: DeclarationRef
   // Legacy literal fields remain for targets/render paths not yet migrated to
   // `MethodTemplateContract` references. Rust filter now consumes
   // `filter_contract`'s `HigherOrderTemplates.inline_template`.

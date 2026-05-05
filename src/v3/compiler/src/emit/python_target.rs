@@ -431,11 +431,27 @@ impl PythonIndexes {
                 })?;
                 method_contract_single_emit_template_string(dag, fold_contract)?
             },
-            map: require_field_string(
-                structural_fields_for_decl(dag, collections)?,
-                "map",
-                collections,
-            )?,
+            map: {
+                let cfields = structural_fields_for_decl(dag, collections)?;
+                let map_method_decl =
+                    dag.map_method_decl()
+                        .ok_or(EmitPythonError::MalformedSpec {
+                            declaration: collections,
+                            detail: "internal: map_method missing from std.methods registry",
+                        })?;
+                let map_contract = require_field_decl_ref(cfields, "map_contract", collections)?;
+                require_method_template_contract_dag_method(
+                    dag,
+                    map_contract,
+                    "map_contract",
+                    map_method_decl,
+                )
+                .map_err(|detail| EmitPythonError::MalformedSpec {
+                    declaration: map_contract,
+                    detail,
+                })?;
+                method_contract_single_emit_template_string(dag, map_contract)?
+            },
             filter: require_field_string(
                 structural_fields_for_decl(dag, collections)?,
                 "filter",
