@@ -444,7 +444,7 @@ invariant and the lens mechanism.
 
 ### IL-1: Layer opacity lens
 
-**Invariant ref:** INVARIANTS.md#p2-boundary-discipline (Layer Opacity).
+**Invariant ref:** INVARIANTS.md §"Layer opacity".
 **Testable form:** no below-boundary string literal in consumer
 code. Rename a std/ identifier → no compile behavior change.
 **Status:** PARTIALLY TESTABLE.
@@ -455,7 +455,7 @@ code. Rename a std/ identifier → no compile behavior change.
 
 ### IL-2: Single authority lens
 
-**Invariant ref:** INVARIANTS.md#p2-boundary-discipline (No Duplicate Representations).
+**Invariant ref:** INVARIANTS.md §"No duplicate representations".
 **Testable form:** for each fact, exactly one declaration is
 authority. No `fn(A) -> B` where A and B are structurally
 equivalent (parallel representation).
@@ -465,7 +465,8 @@ equivalent (parallel representation).
 
 ### IL-3: Structural dispatch lens
 
-**Invariant ref:** INVARIANTS.md#p3-fail-closed (No Case Enumeration For Open Sets).
+**Invariant ref:** INVARIANTS.md §"No case enumeration for open
+sets".
 **Testable form:** no string-keyed match arm where a structural
 walk through declarations would suffice.
 **Status:** DEFERRED.
@@ -474,7 +475,8 @@ walk through declarations would suffice.
 
 ### IL-4: Cost coverage lens
 
-**Invariant ref:** INVARIANTS.md#p4-decidability (Cost Algebra Is Upstream Of Language Primitives).
+**Invariant ref:** INVARIANTS.md §"Cost algebra upstream of
+primitives".
 **Testable form:** every primitive declaration has a corresponding
 `CostExpr` in the algebra. `∀ primitive p, ∃ cost_class(p)`.
 **Status:** DEFERRED.
@@ -483,7 +485,7 @@ walk through declarations would suffice.
 
 ### IL-5: Facts flow forward lens
 
-**Invariant ref:** INVARIANTS.md#p2-boundary-discipline (Facts Flow Forward).
+**Invariant ref:** INVARIANTS.md §"Facts Flow Forward".
 **Testable form:** no per-field re-derivation across stages. Every
 field consumed at stage K traces to a producer at stage N ≤ K.
 **Status:** DEFERRED.
@@ -492,7 +494,7 @@ field consumed at stage K traces to a producer at stage N ≤ K.
 
 ### IL-6: No fabrication lens
 
-**Invariant ref:** INVARIANTS.md#p3-fail-closed (No Fallbacks That Fabricate).
+**Invariant ref:** INVARIANTS.md §"No fallbacks that fabricate".
 **Testable form:** no catch-and-default pattern without an
 explicit error variant in the return type.
 **Status:** DEFERRED.
