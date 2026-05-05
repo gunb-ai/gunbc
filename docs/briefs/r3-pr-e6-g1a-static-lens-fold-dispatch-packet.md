@@ -6,11 +6,31 @@ implement a fold, parser/lowerer changes, runtime carriers,
 `fold_lens<C>(lens: Lens<C>, ...)`.
 
 **Parent authorities:**
-[`r3-pr-e6-lens-fold-readiness-audit.md`](r3-pr-e6-lens-fold-readiness-audit.md)
+[`r3-pr-e6-lens-fold-readiness-audit.md`](./r3-pr-e6-lens-fold-readiness-audit.md)
 §Conservative E6-G1 recommendation,
 [`design-prereq-x-ho-field-call.md`](../design-prereq-x-ho-field-call.md)
 §X1.a vs §X1.b,
-[`x1b-evaluator-impact-audit.md`](x1b-evaluator-impact-audit.md).
+[`x1b-evaluator-impact-audit.md`](./x1b-evaluator-impact-audit.md).
+
+## Prerequisites (receipt or STOP)
+
+This packet dispatches **G1.a** only while the earlier E6 gates below
+still hold. Canonical narrative + landings:
+[`r3-pr-e6-lens-fold-readiness-audit.md`](./r3-pr-e6-lens-fold-readiness-audit.md)
+§Refresh and §What G0a/G0b/G0c have unblocked.
+
+- **E6-G0c — body `FieldProject` + `Callable`:** Execution must remain
+  in `src/v3/compiler/src/lib.rs` **`eval_transform_node`**
+  (`Behavior::Transform`, `Value` carrier) at the cited line spans — not
+  only under `lens_apply.rs`. If those match arms are removed, stubbed,
+  or globally `UnsupportedTransformTarget`, **STOP** (G0c regression).
+- **E6-G0b — Prereq-X1.a static field-call lowering:** Static lens
+  function-field sites must still lower to `TransformTarget::Callable` per
+  [`design-prereq-x-ho-field-call.md`](../design-prereq-x-ho-field-call.md)
+  §L1.a. If static calls regress to a blocked HO form, **STOP** (G0b).
+
+Implementers re-verify the `lib.rs` symbols at slice time; line numbers in
+this file are a navigation snapshot only.
 
 ## Slice boundary (G1.a vs G1.b)
 
@@ -36,7 +56,8 @@ fn fold_lens<C>(lens: Lens<C>, d: Dag) -> DimensionReport<C> = ...
 
 where `lens` is a **parameter**. That requires **Prereq-X1.b**
 (runtime-sourced callee dispatch / `Indirect` chain per
-`x1b-evaluator-impact-audit.md`). **Do not** implement or prototype
+[`x1b-evaluator-impact-audit.md`](./x1b-evaluator-impact-audit.md)).
+**Do not** implement or prototype
 `fold_lens<C>` until X1.b lands; **do not** fake it with host-Rust
 field dispatch.
 
@@ -93,6 +114,10 @@ edits. Re-resolve symbols in-tree before implementing (same bar as
 
 ## STOP conditions (fail closed; do not bypass)
 
+- **G0c / G0b regression:** Body `eval_transform_node` loses executable
+  `FieldProject` / `Callable` for the shapes this slice needs, or static
+  lens field-call lowering no longer reaches `Callable` — **STOP** (see
+  Prerequisites).
 - **Missing static lens value:** No live `data ... : Lens<C>` instance
   with the needed function bodies — stop and land authoring prerequisites
   (readiness audit still notes deferred instances in
