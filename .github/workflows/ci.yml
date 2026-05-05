@@ -317,7 +317,9 @@ jobs:
   self_host_ratchet:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    # Cold cache + two release builds (`determinism_test` then `self_host_fixed_point`)
+    # can exceed 30m on ubuntu-latest; align headroom with the `v3` job.
+    timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:
