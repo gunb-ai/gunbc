@@ -117,9 +117,9 @@ PB Mgr's recommended narrowest first dispatch under S-1 is **Pop A v3 property-t
 - Single-author work (no cross-program coordination per dispatch)
 - Substrate is **LIVE on v3 side for all 4 items** (verified per `r3-pb-tv2-population-coverage-audit.md` §"Population A summary" — no R2-Evaluator / PB-Runtime / Substrate-authority dependency)
 
-**Live v3 surfaces** the migration targets (per audit substrate-line citations):
-- `dsl/std/induction.dag` — A.1 (`derive_bound`:897, `master_theorem`:823), A.2 (`int_pow_bounded`:767, `ceil_log`:802, `ceil_log_iter`:808), A.4 (`meet_sub_value`:281, `join_sub_value`:329)
-- `dsl/std/termination.dag` — A.3 (`peano_literal_materialization_cap`:140, `positive_descent_amount_from_positive_int`:146, `proportional_divisor_from_int_at_least_two`:162)
+**Live v3 surfaces** the migration targets (per audit substrate-line citations; `src/v3/std/...` is the audit-canonical v3-staged authority root):
+- `src/v3/std/induction.dag` — A.1 (`derive_bound`:897, `master_theorem`:823), A.2 (`int_pow_bounded`:767, `ceil_log`:802, `ceil_log_iter`:808), A.4 (`meet_sub_value`:281, `join_sub_value`:329)
+- `src/v3/std/termination.dag` — A.3 (`peano_literal_materialization_cap`:140, `positive_descent_amount_from_positive_int`:146, `proportional_divisor_from_int_at_least_two`:162)
 
 **Recommended worker assignment**: silent-boar or witty-tern (per PB Mgr's read-back at [#1134 comment-4375362161](https://github.com/gunb-ai/gunbc/issues/1134#issuecomment-4375362161)). PB Manager picks specific worker per their cadence + readiness.
 
