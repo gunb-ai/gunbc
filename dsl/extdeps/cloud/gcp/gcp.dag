@@ -132,6 +132,13 @@ service gcloud.Auth {
   }
 }
 
+type GoogleOAuth2Refresh200Body {
+  access_token: Secret
+  expires_in: Int
+  token_type: String
+  scope: String?
+}
+
 service oauth2.Google {
   config { endpoint: "https://oauth2.googleapis.com" }
 
@@ -150,7 +157,7 @@ service oauth2.Google {
     idempotent
     transport rest { method: POST, path: "/token" }
     response {
-      200 => Json
+      200 => GoogleOAuth2Refresh200Body
       400 => GcpErrorShape
       401 => GcpErrorShape
       5xx => GcpErrorShape

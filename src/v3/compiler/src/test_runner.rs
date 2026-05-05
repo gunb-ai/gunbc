@@ -3905,26 +3905,11 @@ fn find_bind<'a>(
     })
 }
 
-fn diagnostic_kind(diagnostic: &Diagnostic) -> &'static str {
-    match diagnostic {
-        Diagnostic::TokenizerError { .. } => "TokenizerError",
-        Diagnostic::ParseError { .. } => "ParseError",
-        Diagnostic::TypeMismatch { .. } => "TypeMismatch",
-        Diagnostic::UnitMismatch { .. } => "UnitMismatch",
-        Diagnostic::ArityMismatch { .. } => "ArityMismatch",
-        Diagnostic::ResolveError { .. } => "ResolveError",
-        Diagnostic::BranchConditionNotBool { .. } => "BranchConditionNotBool",
-        Diagnostic::MagnitudeOutOfRange { .. } => "MagnitudeOutOfRange",
-        Diagnostic::MalformedIntegerRangeFact { .. } => "MalformedIntegerRangeFact",
-        Diagnostic::NominalOpacityViolation { .. } => "NominalOpacityViolation",
-    }
-}
-
 fn diagnostic_matches_reference(
     diagnostic: &Diagnostic,
     reference: &(String, DiagnosticDetailFilter),
 ) -> bool {
-    diagnostic_kind(diagnostic) == reference.0
+    diagnostic.layer1_kind_label() == reference.0
         && match &reference.1 {
             DiagnosticDetailFilter::Any => true,
             DiagnosticDetailFilter::Contains(text) => diagnostic.message().contains(text),

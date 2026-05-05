@@ -43,6 +43,11 @@ type StsTokenResponse {
   expires_in: Int
 }
 
+type GitHubOidcToken200Body {
+  value: Secret
+  count: Int
+}
+
 // -- Constants -----------------------------------------------------
 
 data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
@@ -115,7 +120,7 @@ service github.OIDC {
     readonly
     transport rest { method: GET, path: "/\{audience\}" }
     response {
-      200 => Json
+      200 => GitHubOidcToken200Body
       401 => GitHubErrorShape
       403 => GitHubErrorShape
       5xx => GitHubErrorShape
