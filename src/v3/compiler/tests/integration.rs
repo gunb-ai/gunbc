@@ -208,7 +208,7 @@ mod t_demo_fixture_test {
 
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::{Dag, FieldValue, ValueBody};
-    use v3_compiler::test_runner::{ClaimResult, TestRunner};
+    use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
     use v3_compiler::CompileError;
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
@@ -239,8 +239,10 @@ mod t_demo_fixture_test {
         );
 
         // This compile-smoke test pins the real T-Demo fixture's lowered
-        // suite shape without re-running every suite claim. Runner execution
-        // for T-Demo claims is covered by the focused suite tests below.
+        // suite shape and runs one real claim from each canonical suite.
+        // Running every canonical-suite claim here duplicates focused
+        // runner tests below and exceeds the 2s per-test ratchet on CI.
+        let runner = TestRunner::new(&dag);
         for suite_name in [
             "fixture_compiler_nerd_canonical",
             "fixture_integration_canonical",
@@ -264,6 +266,19 @@ mod t_demo_fixture_test {
             assert!(
                 claims.iter().all(|claim| matches!(claim, FieldValue::Reference(_))),
                 "T-Demo suite `{suite_name}` claim entries should be declaration references: {claims:?}"
+            );
+            let FieldValue::Reference(first_claim) = &claims[0] else {
+                unreachable!("all claim entries were verified as declaration references");
+            };
+            let claim = TestClaimValue::from_declaration(dag.declaration(*first_claim))
+                .unwrap_or_else(|reason| {
+                    panic!("T-Demo suite `{suite_name}` first claim should parse: {reason}")
+                });
+            let result = runner.run_claim(&claim);
+            assert_eq!(
+                result.result,
+                ClaimResult::Pass,
+                "T-Demo suite `{suite_name}` first claim should pass through TestRunner"
             );
         }
     }
