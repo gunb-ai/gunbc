@@ -1,26 +1,46 @@
 # R3 PR-E E6 Lens Fold Readiness Audit
 
-**Status:** E6 implementation blocker after E1-E5 + Bind callable entry.
-This is a docs-only receipt; it does not implement the generic lens fold,
-`DimensionReport` construction, runner behavior, substrate carriers,
-strategy/value widening, or a replacement lens interpreter.
+**Status:** E6 implementation blocker after E1-E5 + Bind callable entry +
+G0a/G0b/G0c. This is a docs-only receipt; it does not implement the
+generic lens fold, `DimensionReport` construction, runner behavior,
+substrate carriers, strategy/value widening, or a replacement lens
+interpreter.
 
 **Parent authorities:** [`r3-evaluator-dispatch.md`](r3-evaluator-dispatch.md)
 E6, [`r2-pr-e-lens-application-over-reflected-program-dag.md`](r2-pr-e-lens-application-over-reflected-program-dag.md),
 [`r2-pr-c-reflection-dissolution-gates.md`](r2-pr-c-reflection-dissolution-gates.md),
-[`../design-lens-framework.md`](../design-lens-framework.md), and
-[`r3-pr-e5-loop-readiness-audit.md`](r3-pr-e5-loop-readiness-audit.md).
+[`../design-lens-framework.md`](../design-lens-framework.md),
+[`r3-pr-e5-loop-readiness-audit.md`](r3-pr-e5-loop-readiness-audit.md),
+[`r3-pr-e6-g0-first-gate-narrowing.md`](r3-pr-e6-g0-first-gate-narrowing.md),
+[`r3-pr-e6-g0b-x1a-static-field-call-worker.md`](r3-pr-e6-g0b-x1a-static-field-call-worker.md),
+[`x1b-evaluator-impact-audit.md`](x1b-evaluator-impact-audit.md), and
+[`../design-prereq-x-ho-field-call.md`](../design-prereq-x-ho-field-call.md).
 
-## Dispatch Outcome
+## Refresh — what changed since the original audit
 
-The 2026-05-02 E6 implementation dispatch was rechecked against current
-`main` after E5 cardinality Loop execution and Bind callable entry landed.
-The result is still STOP+PING for implementation: the body evaluator can now
-execute the five L1 `Behavior` variants as program bodies, but it still cannot
-faithfully execute `Lens<C>` function-valued fields or lift their outputs into
-the existing `Witness<C>`, `OptionalDiagnostic`, and `DimensionReport<C>`
-carriers without adding a second lens interpreter or new runtime carrier
-authority.
+This audit was written before the E6-G0 first-gate slices landed. The
+relevant landings on `origin/main`:
+
+- **E6-G0a — generic Conj field substitution** (PR #1640).
+- **E6-G0b — Prereq-X1.a static call-on-field-access (parse + lower)**
+  (PR #1699). Static `data v: WrapFn = { f: double }; v.f(x)` parses
+  and lowers; `TransformTarget::Callable` is reused.
+- **X1.b evaluator-side impact audit** (PR #1712). Docs-only, atomic
+  S1 substrate migration is mandatory; STOP conditions and slice
+  split documented.
+- **E6-G0c — host evaluator `FieldProject` and `Callable` execution**
+  (PR #1715). `eval_transform_node` now executes
+  `TransformTarget::FieldProject` (record-carrier projection by
+  label) and `TransformTarget::Callable` (Arrow `UserDefined` body
+  via push-frame + `eval_callable_body_in_pushed_frame`). Both arms
+  return typed `EvalError` on shape mismatch, no fallback to host
+  Rust.
+- **E1–E5 + `Bind` body coverage** is in `src/v3/compiler/src/lib.rs`
+  on `origin/main`: `Behavior::Value`, `Transform`, `Branch`, `Loop`
+  (Cardinality), and `Bind` all execute through the shared body
+  evaluator with payload-frame discipline. Runtime `Value` carries
+  `LiteralValue`, `RecordValue(Vec<NamedField>)`, `VariantValue`,
+  `NodeRef`, and `CardinalityValue`.
 
 ## Live Surfaces
 
@@ -37,8 +57,8 @@ type Lens<C> {
 }
 ```
 
-`src/v3/std/dimensions.dag` declares the result carriers E6 must consume
-verbatim:
+`src/v3/std/dimensions.dag` declares the result carriers E6 must
+consume verbatim:
 
 ```text
 Witness<C> = Inhabits(C) | Violates { reason: String, at: Behavior }
@@ -48,151 +68,260 @@ DimensionReport<C>
   | DimensionFail { dimension_name, violations, witnesses }
 ```
 
-The landed Rust compatibility seam remains
-`fold_lens_over_reflected_program` in `src/v3/compiler/src/lens_apply.rs`.
-It reflects program nodes selected by `source_file`, prepends that reflected
-carrier to caller inputs, and delegates to `apply_lens_declaration`. It
-returns `FieldValue`, not `DimensionReport<C>`. That seam is reflect -> apply
-compatibility; it is not the generic `fold_lens<C>: Lens<C> -> Dag ->
-DimensionReport<C>` promised by the lens framework.
+The Rust compatibility seam `fold_lens_over_reflected_program` in
+`src/v3/compiler/src/lens_apply.rs:337` remains. It still reflects
+program nodes selected by `source_file`, prepends that reflected
+carrier to caller inputs, and delegates to `apply_lens_declaration`,
+returning `FieldValue`. **No dissolution path has landed.** It is
+preserved as a compatibility seam pending generic
+`fold_lens<C>: Lens<C> -> Dag -> DimensionReport<C>`.
 
-The body evaluator in `src/v3/compiler/src/lib.rs` now has the shared E1-E5
-program-body spine:
+## What G0a/G0b/G0c have unblocked (static top-level `data` lens path)
 
-- `Behavior::Value` evaluates to runtime `Value::LiteralValue`.
-- `Behavior::Transform` executes the current eager arithmetic/comparison
-  subset and fails closed for unsupported targets.
-- `Behavior::Branch` executes resolved variant arms with payload-frame
-  discipline.
-- `Behavior::Loop` executes `LoopBound::Cardinality`; `LoopBound::Descent`
-  remains `LoopBoundDescentResidual`.
-- `Behavior::Bind` executes bounded callable/body entry by copying declared
-  params into a fresh frame and restoring stack depth on success/error.
+Capabilities now executable through the shared body evaluator:
 
-This is enough to execute ordinary program bodies in the landed E-slices. It is
-not yet enough to execute a `Lens<C>` instance as data.
+1. **Static field projection on record carriers.**
+   `TransformTarget::FieldProject { field_label, .. }` evaluates by
+   matching the operand `Value::RecordValue(fields)` and returning
+   the named field's value (`lib.rs:556-578`).
+2. **Static callable dispatch.** `TransformTarget::Callable(decl)`
+   evaluates by resolving the Arrow `UserDefined` body's `Bind`,
+   binding params from operands in a fresh pushed frame, evaluating
+   the body, and popping deterministically (`lib.rs:579-617`). Arity
+   mismatch and non-`UserDefined` Arrow bodies fail closed.
+3. **Static field-call surface end-to-end.** Combined with G0b, a
+   program of the form `data v: WrapFn = { f: double }; fn r(x: Int)
+   -> Int = v.f(x)` parses, lowers (`Callable` path; no runtime-port
+   callee involved), and evaluates through G0c.
+4. **Generic Conj field substitution.** G0a's substitution surface
+   means a `Lens<Int>` parametric instantiation that resolves to a
+   concrete Conj at lowering time can have its field types
+   substituted structurally rather than through a hand-coded shim.
 
-## Intended E6 Fold Shape
-
-The first executable E6 implementation should consume the existing substrate
-carriers rather than adding a parallel report or lens type:
+What this means for E6: a **static top-level `data` lens instance**
+of the shape
 
 ```text
-fn fold_lens<C>(
-    dag: &Dag,
-    lens: Lens<C>,
-    strategy: &EvalStrategy,
-) -> Result<DimensionReport<C>, EvalError>
+data complexity_lens: Lens<Int> = {
+  name: "complexity",
+  read: complexity_read,           // fn ref to a top-level decl
+  sequential: complexity_monoid,
+  branch: complexity_branch,
+  iterate: complexity_iterate,
+  validate: complexity_validate,
+}
 ```
 
-Algorithmic obligations:
+is now executable through the body evaluator without an X1.b
+runtime-callee dispatch step, *if and only if* every lens-field call
+site is statically resolvable: the lens binding itself is a top-level
+`data`, and each field projection (`complexity_lens.read`,
+`complexity_lens.sequential.op`, etc.) lowers to
+`TransformTarget::FieldProject` over a record carrier whose field
+values are `FieldValue::Reference(decl_id)` — which then resolve
+to `TransformTarget::Callable(decl_id)` rather than an
+`Indirect`-style runtime-port callee.
 
-1. Select the program behavior set through structural `Dag` authority, not
-   emitted bytes or runner-only observation.
-2. For each `Behavior`, execute `Lens.read(dag, behavior)` through the shared
-   body-evaluator authority. `Inhabits(c)` contributes carrier evidence;
-   `Violates {..}` records a witness failure and prevents a fabricated
-   `composed` value.
-3. Compose successful carrier values with the lens-declared operations:
-   `Lens.sequential.identity` for empty/unit sequential structure,
-   `Lens.sequential.op` for Bind sequencing, `Lens.branch` for exclusive
-   branch arms, and `Lens.iterate` for loops. `sequential` is a `Monoid<C>`
-   carrier, not a direct Rust callback.
-4. Execute `Lens.validate(dag, composed)` after successful composition.
-   `SomeDiagnostic` yields `DimensionFail`; `NoDiagnostic` yields
-   `DimensionOk`.
-5. Return the existing `DimensionReport<C>` shape verbatim.
+A first-slice **static-lens-scoped fold** can now be written against
+this surface without bypassing the declared carriers.
 
-## Current Blockers
+## What still blocks generic parametric `fold_lens<C>`
 
-E6 still cannot honestly implement the full `fold_lens` /
-`DimensionReport<C>` path on current `main`.
+Verified against `origin/main`:
 
-- **No live `Lens<C>` data instances to consume.** The substrate carrier exists,
-  but representative lens instances such as `data cost_lens: Lens<SymbolicCost>`
-  and `data complexity_lens: Lens<...>` are explicitly deferred in
-  `src/v3/lenses/cost.dag` and `src/v3/lenses/complexity.dag`. The blockers are
-  class-5 structural data bodies, function-valued field references, and the
-  `Witness<C>` / `OptionalDiagnostic` constructors needed by `read` and
-  `validate`. A Rust-side registry would be a parallel lens authority.
-- **Callable field execution is not live in the body evaluator.** `Bind`
-  callable entry is live, but `TransformTarget::Callable(_)` still fails
-  closed as `UnsupportedTransformTarget { kind: "Callable" }` in
-  `evaluator::eval_transform_node`. `Lens.read`, `Lens.branch`,
-  `Lens.iterate`, `Lens.validate`, and `Lens.sequential.op` are function-valued
-  fields; E6 cannot call them through `eval_node` / `eval_port` yet.
-- **Record/function-field projection is not live in the body evaluator.**
-  `Lens<C>.sequential` must project `Monoid<C>.identity` and `Monoid<C>.op`,
-  and the fold must project `Lens<C>` fields. `TransformTarget::FieldProject`
-  still fails closed in the evaluator. Projecting those fields in host Rust
-  would bypass the declared carrier.
-- **Runtime values cannot yet represent the fold inputs and outputs.** The
-  runtime `Value` mirror has the five PR-A.1 inhabitants, but there is no
-  evaluator-owned lifting for substrate-shaped `Dag`, `Behavior`,
-  `Witness<C>`, `OptionalDiagnostic`, `Diagnostic`, or
-  `DimensionReport<C>` values. Adding ad hoc Rust mirrors for these in E6 would
-  create a second report/witness authority.
-- **Descent remains a named residual.** Cardinality loops execute, but
-  `LoopBound::Descent` is still fail-closed. A first generic fold must either
-  declare a cardinality-only program scope or wait for descent evidence
-  execution; it must not silently treat descent as zero, one, or unknown.
-- **Program scope is not settled for the generic fold.** The compatibility seam
-  filters by `SourceSpan.file`. Generic `fold_lens<C>: Lens<C> -> Dag ->
-  DimensionReport<C>` needs a structural program-scope decision or an explicit
-  whole-Dag first slice. File-path filtering must not become the generic fold's
-  authority by accident.
+- **Runtime-sourced callee dispatch (Prereq-X1.b).** The body of
+  `fn fold_lens<C>(lens: Lens<C>, d: Dag) -> DimensionReport<C> = …`
+  contains call sites of the form `lens.read(...)`,
+  `lens.sequential.op(...)`, `lens.branch(...)`, `lens.iterate(...)`,
+  `lens.validate(...)` where `lens` is a **function parameter**, not
+  a top-level binding. Per `design-prereq-x-ho-field-call.md` §X1.b
+  and `x1b-evaluator-impact-audit.md`, this requires the
+  `TransformDispatch::Indirect(IndirectDispatch { callee:
+  ArrowPortRef, args })` substrate carrier collapse, which has not
+  landed. Until that lands and an evaluator slice (the audit's S3)
+  implements `Indirect` evaluation, every parametric-`Lens<C>` call
+  site fails closed at the lowering or evaluator boundary.
+- **Structural program-scope authority.** The compatibility seam
+  filters by `SourceSpan.file`. A generic
+  `fold_lens<C>: Lens<C> -> Dag -> DimensionReport<C>` needs either
+  a structural program-scope decision (the `Dag` argument carries
+  the scope, with no `source_file` filter) or an explicit whole-Dag
+  first slice. File-path filtering must not become the generic
+  fold's authority by accident.
+- **Typed `DimensionReport<C>` construction rules.** A first
+  generic fold must lift `Witness<C>` outcomes into `DimensionOk` or
+  `DimensionFail` verbatim. There is no evaluator-owned constructor
+  for `DimensionReport<C>` yet; `apply_lens_declaration` returns
+  `FieldValue`. The fold body must construct `DimensionReport<C>`
+  through the declared substrate variants
+  (`DimensionOk { dimension_name, composed, witnesses }` /
+  `DimensionFail { dimension_name, violations, witnesses }`)
+  through the body evaluator, not through a host-Rust struct. That
+  requires the lens-instance program to declare and lower the
+  variant-construction syntax for these substrate types — verifiable
+  but unimplemented in any landed lens program.
+- **Descent residual.** `LoopBound::Descent` remains fail-closed in
+  the body evaluator. A first generic fold must either declare a
+  cardinality-only program scope or wait for descent termination
+  evidence; it must not silently treat descent as zero, one, or
+  unknown.
+- **Live `Lens<C>` data instances.** Representative lens instances
+  (`data cost_lens: Lens<SymbolicCost>`,
+  `data complexity_lens: Lens<...>`) remain explicitly deferred in
+  `src/v3/lenses/cost.dag` and `src/v3/lenses/complexity.dag`.
+  Authoring them requires class-5 structural data bodies and the
+  `Witness<C>` / `OptionalDiagnostic` constructor surface.
+- **Runtime values for substrate-shaped fold inputs and outputs.**
+  The runtime `Value` mirror has five inhabitants
+  (`LiteralValue`, `RecordValue`, `VariantValue`, `NodeRef`,
+  `CardinalityValue`); there is no evaluator-owned lifting for
+  substrate-shaped `Dag`, `Behavior`, `Witness<C>`,
+  `OptionalDiagnostic`, `Diagnostic`, or `DimensionReport<C>`
+  values. `RecordValue` plus `VariantValue` covers a lot — the
+  question is which substrate types lower to which `Value` variants
+  and whether any new mirror is required. Adding ad hoc Rust
+  mirrors in E6 would create a second report/witness authority.
 
-These blockers mean a code slice today would either duplicate
-`lens_apply.rs`'s `FieldValue` interpreter, bypass PB-Runtime body semantics,
-or return something weaker than `DimensionReport<C>`. This receipt records the
-gap instead of landing misleading partial behavior.
+## Old blocker language to retire or narrow
 
-## Resume Gate
+The previous audit's "Current Blockers" section claimed the
+following; each is now incorrect against `origin/main`:
 
-E6 implementation may resume when all of the following are true:
+- ❌ **"Callable field execution is not live in the body evaluator …
+  `TransformTarget::Callable(_)` still fails closed."** Retire.
+  G0c implemented it (`lib.rs:579-617`).
+- ❌ **"Record/function-field projection is not live in the body
+  evaluator … `TransformTarget::FieldProject` still fails closed."**
+  Retire. G0c implemented it (`lib.rs:556-578`). Field projection
+  on record carriers is structural; non-record carriers fail
+  closed with a typed reason, which is the intended boundary, not
+  a gap.
+- ⚠️ **"E6 cannot call lens fields through `eval_node` / `eval_port`
+  yet."** Narrow: this is true only for the **runtime-sourced
+  callee** case (Prereq-X1.b). Static lens-instance call paths are
+  now evaluable.
+- ⚠️ **"`Lens<C>.sequential` must project `Monoid<C>.identity` /
+  `Monoid<C>.op` … projecting those fields in host Rust would
+  bypass the declared carrier."** Narrow: projection is now
+  structural through `FieldProject`. The bypass risk shifts from
+  "no projection at all" to "projecting the *function-valued*
+  field then needing to call it" — which collapses to the
+  Callable / runtime-callee distinction above.
 
-- at least one representative `Lens<C>` instance is live as substrate data, or
-  an explicitly approved typed lens-instance handle exists, with function
-  fields sourced from the declared carrier rather than a Rust registry;
-- `TransformTarget::Callable` and required field projection execute through the
-  shared evaluator boundary, so `Lens.read`, `Lens.sequential.op`,
-  `Lens.branch`, `Lens.iterate`, and `Lens.validate` do not need a second
+The remaining blockers in the previous audit
+("No live `Lens<C>` data instances", "Descent remains a named
+residual", "Program scope is not settled", "Runtime values cannot
+yet represent the fold inputs and outputs") all still hold and are
+preserved verbatim above.
+
+## Immediate next executable receipt
+
+The post-G0c static X1.a evaluator ratchet — closing the
+G0b parser/lowerer surface with a body-evaluator round-trip
+acceptance for `T1.1` (`data v: WrapFn = { f: double }; fn r(x: Int)
+-> Int = v.f(x)` evaluates to `double(x)` via `eval_node`) — is
+**assigned to `fierce-bear`** per the dispatch routing for E6-G0c.
+This audit deliberately does not duplicate that work; it does not
+author a worker brief or implementation slice for the static X1.a
+evaluator ratchet.
+
+## Conservative E6-G1 next-step recommendation
+
+E6-G1 has two viable shapes. The recommendation is the **static-lens
+first-slice** path, with parametric `fold_lens<C>` deferred to
+post-X1.b.
+
+### Recommended: G1.a — static-lens-scoped first fold
+
+Author a single non-parametric fold against a top-level
+`data complexity_lens: Lens<Int>` instance (or the smallest live
+instance available; if none yet, this is in turn gated on landing
+one in `src/v3/lenses/complexity.dag`). Scope:
+
+- Lens binding is a **top-level `data`**, not a parameter.
+- All field calls are statically resolvable
+  (`TransformTarget::FieldProject` then
+  `TransformTarget::Callable`); no runtime-port callee.
+- Loop scope is **cardinality-only**; descent is excluded with a
+  fail-closed test asserting `LoopBound::Descent` is rejected.
+- Whole-Dag traversal; no `source_file` filter. The compatibility
+  seam `fold_lens_over_reflected_program` is preserved unchanged
+  as a parallel surface.
+- Returns `DimensionReport<Int>` constructed verbatim through the
+  declared substrate variants.
+
+This is a deliberately scoped compromise: it does **not** validate
+the full `fold_lens<C>: Lens<C> -> Dag -> DimensionReport<C>`
+generic surface. It validates only that the static path is
+end-to-end executable through G0a/G0b/G0c. **The audit explicitly
+does not authorize claiming generic `fold_lens<C>` is
+implementation-ready until X1.b's S1 substrate slice + S3
+evaluator slice land.** A first slice that hard-codes lens fields in
+host Rust to bypass X1.b is rejected.
+
+### Deferred: G1.b — generic parametric `fold_lens<C>`
+
+Blocked on the X1.b chain (per `x1b-evaluator-impact-audit.md`):
+S1 substrate carrier collapse → S2 lowerer runtime-callee production
+→ S3 evaluator `Indirect` evaluation. G1.b also blocked on
+`DimensionReport<C>` construction conventions (above) and a
+structural program-scope decision. Resume gating is the X1.b S3
+slice merge plus a typed `DimensionReport<C>` construction receipt.
+
+## Resume Gate (refreshed)
+
+E6 implementation may resume per the recommended slice when:
+
+- at least one representative `Lens<C>` instance is live as
+  substrate data, with function fields sourced from the declared
+  carrier rather than a Rust registry;
+- the static-lens path uses G0c's `FieldProject` / `Callable`
+  evaluation through the shared body evaluator, no second
   interpreter;
-- report lifting consumes the existing `Witness<C>`, `OptionalDiagnostic`, and
-  `DimensionReport<C>` carriers verbatim, including fail-closed
-  `DimensionFail` construction when any witness violates or validation returns
-  a diagnostic;
-- the implementation names its structural program-scope authority, or
-  explicitly scopes the first fold to whole-Dag traversal;
-- descent handling is either executable through termination evidence or
-  explicitly excluded by the first implementation scope with tests proving
-  `LoopBound::Descent` fails closed.
+- report lifting consumes the existing `Witness<C>`,
+  `OptionalDiagnostic`, and `DimensionReport<C>` carriers verbatim,
+  including fail-closed `DimensionFail` construction when any
+  witness violates or validation returns a diagnostic;
+- the implementation names its structural program-scope authority
+  or explicitly scopes the first fold to whole-Dag traversal;
+- descent handling is either executable through termination evidence
+  or explicitly excluded by the first implementation scope with
+  tests proving `LoopBound::Descent` fails closed;
+- `fold_lens_over_reflected_program` remains a compatibility seam
+  with no claimed dissolution path until generic `fold_lens<C>`
+  lands; do **not** narrow it speculatively.
 
-Required implementation tests:
-
-- a live lens instance produces `DimensionOk` through the generic fold, not
-  through `apply_lens_declaration` reflection plumbing;
-- a validation lens produces `DimensionFail` with typed diagnostics and no
-  fabricated `composed` value;
-- empty/unit sequential structure consumes `Lens.sequential.identity`;
-- Bind sequencing composes through `Lens.sequential.op`;
-- branch and loop composition use the declared `Lens<C>.branch` and
-  `Lens<C>.iterate` fields;
-- callable/field-projection gaps fail closed if the fold is invoked before
-  those evaluator capabilities are live;
-- `fold_lens_over_reflected_program` remains either a compatibility seam or is
-  narrowed with a named dissolution trigger once the generic fold path lands.
+For the parametric form (G1.b), additionally:
+- X1.b S1 substrate slice merged (atomic
+  `TransformDispatch` collapse per `x1b-evaluator-impact-audit.md`);
+- X1.b S3 evaluator slice merged
+  (`TransformDispatch::Indirect` evaluation in
+  `eval_transform_node` and `lens_apply.rs:eval_transform`).
 
 ## Non-Goals
 
-This readiness receipt does not authorize:
+This refreshed readiness receipt does not authorize:
 
 - a second `LensReport` / `DimensionReport` shape;
-- new observable `Value` variants;
-- a Rust lens registry that substitutes for declared `Lens<C>` data;
-- per-lens Rust callbacks for `read`, `branch`, `iterate`, `validate`, or
-  sequential composition;
-- strategy carrier widening, `NormalOrder`, `RightFirst`, or `EvalThunk`;
-- substrate edits to `Lens<C>`, `Witness<C>`, `OptionalDiagnostic`, or
-  `DimensionReport<C>`;
-- runner, `test_runner.rs`, or `BinaryDimensionReportEquals` changes.
+- new observable `Value` variants beyond
+  `LiteralValue`/`RecordValue`/`VariantValue`/`NodeRef`/
+  `CardinalityValue`;
+- a Rust lens registry that substitutes for declared `Lens<C>`
+  data;
+- per-lens Rust callbacks for `read`, `branch`, `iterate`,
+  `validate`, or sequential composition;
+- strategy carrier widening, `NormalOrder`, `RightFirst`, or
+  `EvalThunk`;
+- substrate edits to `Lens<C>`, `Witness<C>`, `OptionalDiagnostic`,
+  or `DimensionReport<C>`;
+- runner, `test_runner.rs`, or `BinaryDimensionReportEquals`
+  changes;
+- any implementation slice that hard-codes lens fields in host
+  Rust to bypass Prereq-X1.b runtime-callee dispatch;
+- duplication of the post-G0c static X1.a evaluator ratchet
+  assigned to `fierce-bear`;
+- narrowing or retiring `fold_lens_over_reflected_program`
+  speculatively.
+
+— refreshed 2026-05-05 by sunny-hawk-622 (R3 Evaluator) at the
+request of snappy-moth-795. Docs-only.
