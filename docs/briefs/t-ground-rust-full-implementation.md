@@ -152,7 +152,7 @@ Per `INVARIANTS.md` §P1 (lines 94-129), worker MUST cite receipts in the PR bod
 | **Substrate `HigherOrderMethodSpec` shape decision** (cross-manager #1130 to jolly-ram-908) | in flight | Required only if a primitive declaration needs higher-order rows; otherwise out of scope (G) |
 | **T-Ground-Lifetime-Analyzer R2 scope** | LANDED (#1206 / #1218 / #1220) | Lifetime axis available as substrate consumer |
 | **#1129 / #1156 / #1162 (Tier 1 locks)** | LIVE on main | Consumed (Q1 / reflection-completeness / Q6.5) |
-| **Host worktree git plumbing** | **BROKEN** at brief-author host worktree (`fatal: not a git repository`; missing `.git/worktrees/<session>` admin dir on parent repo); fix is host-side, outside this lane | Required before any code edits |
+| **Repository / git prerequisites** | implementation starts when repo/git prerequisites are satisfied (a clean working tree on the dispatching worker's environment) | Required before any code edits |
 
 **Cross-program signals:**
 - **Substrate Manager — ValueBody-list/sum + std.unicode bootstrap:** NOT a hard gate for this lane (Coercion-Fold consumes it). T-Ground-Rust can land structural rows without it.
@@ -213,7 +213,7 @@ Worker stops + escalates if any of the following occur. Do NOT paper over.
 6. **`grounding-pilot-receipt.md`'s variant-aware partition lock breaks** under variant expansion (e.g., a Rust primitive doesn't fit any sibling variant cleanly). Re-opening that lock is a Director-routed scope change, not a worker call.
 7. **Float algebra modeling discovers an algebra hierarchy gap** in `dsl/std/algebra.dag` (e.g., no existing carrier matches IEEE-754's structure). Signals a substrate-shape escalation; Q4 four-property gate may dictate the resolution.
 8. **Apparent-multi-inhabitance** (e.g., `String` vs `Box<str>` vs `&str` vs `Cow<str>`) requires axis disposition that conflicts with T-Ground-LanguageSpec's apparent-multi-inhabitance audit (scope item F in `t-ground-languagespec.md`). Coordinate via manager; do NOT pre-empt that lane.
-9. **Host worktree git plumbing remains broken** at dispatch time. Implementation cannot start.
+9. **Repo / git prerequisites unsatisfied** at dispatch time (no clean working tree on the dispatching worker's environment). Implementation cannot start.
 
 ---
 
