@@ -7561,16 +7561,26 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             id: String,
             name: String,
             input: Value,
+            caller: Option<Value>,
         },
         ServerToolUse {
             id: String,
-            name: String,
+            name: AnthropicServerToolName,
             input: Value,
         },
         WebSearchToolResult {
             tool_use_id: String,
             content: Value,
         },
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    enum AnthropicServerToolName {
+        WebSearch,
+        WebFetch,
+        CodeExecution,
+        ToolSearch,
     }
 
     #[derive(serde::Deserialize)]
@@ -7687,7 +7697,8 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
                 "type": "tool_use",
                 "id": "toolu_01",
                 "name": "get_weather",
-                "input": { "location": "SF" }
+                "input": { "location": "SF" },
+                "caller": { "type": "direct" }
             },
             {
                 "type": "server_tool_use",
@@ -7830,17 +7841,23 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         _ => panic!("expected redacted_thinking block"),
     }
     match &body.content[3] {
-        ContentBlock::ToolUse { id, name, input } => {
+        ContentBlock::ToolUse {
+            id,
+            name,
+            input,
+            caller,
+        } => {
             assert_eq!(id, "toolu_01");
             assert_eq!(name, "get_weather");
             assert_eq!(input["location"], "SF");
+            assert_eq!(caller.as_ref().unwrap()["type"], "direct");
         }
         _ => panic!("expected tool_use block"),
     }
     match &body.content[4] {
         ContentBlock::ServerToolUse { id, name, input } => {
             assert_eq!(id, "srvtoolu_01");
-            assert_eq!(name, "web_search");
+            assert!(matches!(name, AnthropicServerToolName::WebSearch));
             assert_eq!(input["query"], "Claude Shannon birth date");
         }
         _ => panic!("expected server_tool_use block"),
@@ -7887,11 +7904,12 @@ data response: AnthropicMessages200Body = {
     MessagesToolUseBlock {
       id: "toolu_01",
       name: "get_weather",
-      input: { "location": "SF" }
+      input: { "location": "SF" },
+      caller: { type: "direct" }
     },
     MessagesServerToolUseBlock {
       id: "srvtoolu_01",
-      name: "web_search",
+      name: WebSearch,
       input: { "query": "Claude Shannon birth date" }
     },
     MessagesWebSearchToolResultBlock {
@@ -7927,31 +7945,21 @@ data response: AnthropicMessages200Body = {
 }
 
 #[test]
-fn anthropic_messages_200_content_blocks_reject_legacy_raw_text_record() {
-    let source = r#"module anthropic_messages_200_content_blocks_negative_test
+fn anthropic_messages_200_content_blocks_retire_legacy_text_block_type() {
+    let ws = crate::helpers::workspace_root();
+    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
+    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    assert_no_diagnostics(&result);
+    let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
 
-import extdeps.llm.anthropic
-
-data content: List<AnthropicMessages200ContentBlock> = [
-  { type: "text", text: "legacy raw text block" }
-]
-"#;
-    let result = compile_dag_named(
-        "anthropic_messages_200_content_blocks_negative_test.dag",
-        source,
-        RenderTarget::Rust,
-    );
-    let has_type_mismatch = result.diagnostics.iter().any(|diag| {
-        matches!(
-            &*diag.diagnostic,
-            CompilerDiagnostic::TypeMismatch { expected, .. }
-                if expected == "Coproduct(AnthropicMessages200ContentBlock)"
-        )
-    });
     assert!(
-        has_type_mismatch,
-        "legacy raw text block should produce a typed diagnostic, got:\n{}",
-        diagnostic_messages(&result).join("\n")
+        content.contains("pub enum AnthropicMessages200ContentBlock"),
+        "expected response content-block coproduct in emitted Anthropic schema, got:\n{content}"
+    );
+    assert!(
+        !content.contains("pub struct AnthropicMessages200TextBlock"),
+        "legacy narrow text-block record must be retired from emitted Anthropic schema, got:\n{content}"
     );
 }
 
