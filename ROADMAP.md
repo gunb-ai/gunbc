@@ -369,9 +369,7 @@ Per-row tagging is a scheduled follow-up sweep — **trigger:** post-merge of th
 
 ### P0 — real bugs (silent wrong execution)
 
-- **render.dag repeat_string ignores `n`**: `repeat_string` folds over singleton `[0]` so any `n > 0` returns one copy of `s`. Propagates to `indent_text`. Dissolution: fold over a length-`n` list or use a `repeat` combinator. Owner: immediate dispatch.
-- **REST_OPS test table drift — `CreateComment` path wrong**: test authority at `src/v2/tests/src/effects.rs:149-218` lists `POST /repos/{...}/pulls/{pull_number}/comments`; extdep authority at `dsl/extdeps/github/pulls.dag:179-195` says `/repos/{...}/issues/{issue_number}/comments`. Dissolution: test table consumes extdep operation facts directly; delete the parallel table. Owner: immediate dispatch.
-- **`__BUG_NO_PROFILE_…` fabrication sentinel in `dsl/std/types.dag:115-119`**: `container_param_name_required` returns `concat("__BUG_NO_PROFILE_", kind_name)` on miss; duplicated as fallback in `src/v2/tests/src/compiler-tests.rs:2350-2354`. Violates M5 and C-8 fail-closed. Dissolution: function returns `Option`, caller handles. Owner: immediate dispatch.
+(P0 rows previously listed here for `render.dag repeat_string ignores n`, `REST_OPS test table drift — CreateComment path wrong`, and `__BUG_NO_PROFILE_… fabrication sentinel` are dissolved as of this commit. Dissolution receipts: `repeat_string` now uses recursive `repeat_string_loop` with arithmetic descent at `dsl/std/render.dag:178-189` ratcheted by `src/v2/tests/src/render_repeat_test.rs::repeat_string_and_indent_text_semantics_via_interpreter`; REST_OPS `CreateComment` consumed via `all_parsed_extdep_rest_ops()` ratcheted by `src/v2/tests/src/effects.rs:524 create_comment_rest_path_matches_github_issues_comments_api`; `__BUG_NO_PROFILE_` sentinel removed — `container_param_name` now returns `String?` at `dsl/std/types.dag:103` ratcheted by `src/v2/tests/src/bug_sentinel_ratchet.rs`.)
 
 ### P1 — fabrication / fail-open boundaries
 
