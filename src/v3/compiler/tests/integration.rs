@@ -206,6 +206,7 @@ mod t_demo_fixture_test {
     use std::fs;
     use std::path::PathBuf;
 
+    use crate::common::cached_compile_to_dag;
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Dag;
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -224,7 +225,7 @@ mod t_demo_fixture_test {
     }
 
     fn compile_fixture(source: &str) -> Dag {
-        crate::common::cached_compile_to_dag(source, FIXTURE)
+        cached_compile_to_dag(source, FIXTURE)
     }
 
     #[test]
