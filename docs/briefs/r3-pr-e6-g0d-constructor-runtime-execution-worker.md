@@ -49,7 +49,7 @@ Two lowered constructor families reach `TransformTarget::Callable(target)`:
      `Conj`, orders inputs by the declaration's `children` labels, lowers each
      field expression against its field type, then calls
      `lower_constructor_invocation(dag, target_decl, inputs, span)` at
-     `src/v3/compiler/src/lower.rs:7245-7306`.
+     `src/v3/compiler/src/lower.rs:7214-7306`.
    - `lower_constructor_invocation` emits
      `Behavior::Transform(TransformNode { target:
      TransformTarget::Callable(target), inputs, ... })` at
@@ -67,10 +67,14 @@ Two lowered constructor families reach `TransformTarget::Callable(target)`:
      `variant_payload_fields_for_lowering`, orders payload inputs by those
      declared labels, and calls `lower_constructor_invocation(dag,
      variant_decl, inputs, ...)` at
-     `src/v3/compiler/src/lower.rs:7317-7404`.
+     `src/v3/compiler/src/lower.rs:7309-7404`.
    - `variant_payload_fields_for_lowering` gets the payload fields by walking
      the variant declaration to a `Conj` and preserving child labels at
-     `src/v3/compiler/src/lower.rs:6328-6347`.
+     `src/v3/compiler/src/lower.rs:6325-6347`.
+   - Variant membership is not inferred from "walks to `Conj`" alone. The
+     lowerer resolves constructor identity through
+     `resolve_expected_variant_constructor`, which checks the parent
+     `TypeConnective::Disj { variants }` list (`src/v3/compiler/src/lower.rs:7493+`).
    - The `target` here is the variant constructor declaration, not an Arrow.
 
 This confirms the next Evaluator slice is not "broaden Callable" in general.
@@ -99,11 +103,15 @@ Expected outputs:
   evaluator's operand evaluation order and arity discipline.
 - **Variant constructor target with record payload:** return
   `Value::VariantValue { tag: variant_decl, payload:
-  Box::new(Value::RecordValue(fields)) }`, with payload field labels from the
-  variant declaration's payload `Conj` children and values from operands.
+  Box::new(Value::RecordValue(fields)) }` only after proving `variant_decl`
+  is listed in a parent `TypeConnective::Disj { variants }`. Use that
+  `Disj.variants` membership as the authority for variant identity / tag
+  identity. Only then walk the variant payload to a `Conj` to get payload field
+  labels; field values come from operands.
 - **Nullary variant constructor target:** return
   `Value::VariantValue { tag: variant_decl, payload:
-  Box::new(Value::RecordValue(Vec::new())) }`.
+  Box::new(Value::RecordValue(Vec::new())) }`, again only after proving
+  `variant_decl` is a member of a parent `Disj.variants` list.
 
 No new `Value` inhabitants are authorized by this slice. The evaluator must
 not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
@@ -115,7 +123,10 @@ not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
   connective shapes, variant membership, payload field labels, record field
   labels, generic substitution, and constructor identity belong to the
   substrate/lowerer authority that already produced the lowered
-  `TransformTarget::Callable(target)` node.
+  `TransformTarget::Callable(target)` node. For variants, the parent
+  `TypeConnective::Disj { variants }` list is the membership and tag-identity
+  authority; a target that merely walks to `Conj` is not enough to classify a
+  constructor as a variant.
 - **Evaluator authority is runtime interpretation only.** Given a lowered
   constructor `Callable` target and already-evaluated operands, the evaluator
   may construct `Value::RecordValue` or `Value::VariantValue` using facts read
@@ -133,11 +144,16 @@ Recommended flow:
 1. Keep the current Arrow/UserDefined path unchanged.
 2. Before returning `"Callable target declaration is not an Arrow type"`,
    recognize constructor target shapes:
-   - `TypeConnective::Conj { children }` => build `RecordValue`.
-   - Variant declaration whose payload walks to `Conj` => build
-     `VariantValue` with `RecordValue` payload.
-   - Nullary variant declaration => build `VariantValue` with empty
-     `RecordValue` payload.
+   - First ask whether `callee_decl` is a member of some parent
+     `TypeConnective::Disj { variants }`. The `variants` list is the sole
+     authority for variant membership / tag identity in this slice.
+   - If `callee_decl` is a `Disj.variants` member, build
+     `VariantValue { tag: callee_decl, payload }`. A payload that walks to
+     `Conj` becomes `RecordValue(fields)`; a nullary variant uses
+     `RecordValue(Vec::new())`.
+   - If no parent `Disj` membership is found, then a
+     `TypeConnective::Conj { children }` target is a record constructor and
+     builds `RecordValue(fields)`.
 3. For every constructor path, compare `operands.len()` to the declared field
    count and return `TransformArityMismatch` on mismatch.
 4. If declaration walking cannot identify a constructor shape, preserve the
