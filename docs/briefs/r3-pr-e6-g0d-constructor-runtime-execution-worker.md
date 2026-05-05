@@ -60,7 +60,7 @@ Two lowered constructor families reach `TransformTarget::Callable(target)`:
    - Nullary variants can enter through `SurfaceExpr::Var` when the expected
      type is a sum: `resolve_expected_variant_constructor(...)` followed by
      `lower_constructor_invocation(..., Vec::new(), ...)` in
-     `src/v3/compiler/src/lower.rs` `lower_expr_inner`.
+     `src/v3/compiler/src/lower.rs` `lower_expr`.
    - Named variant-record constructors enter through
      `lower_variant_record_expr`: the lowerer resolves the variant declaration,
      reads payload field labels/types via
