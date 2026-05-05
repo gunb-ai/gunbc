@@ -1619,12 +1619,31 @@ fn parse_collection_ops(
     })?;
     require_higher_order_inline_template(all_template, all_contract)?;
 
+    let map_method_decl =
+        dag.map_method_decl()
+            .ok_or(EmitError::MalformedTargetSyntax {
+                declaration,
+                detail: "internal: map_method missing from std.methods registry",
+            })?;
+    let map_contract = require_field_decl_ref(fields, "map_contract", declaration)?;
+    let map_template = method_template_contract_decl_emit_template(
+        dag,
+        map_contract,
+        "map_contract",
+        map_method_decl,
+    )
+    .map_err(|detail| EmitError::MalformedTargetSyntax {
+        declaration: map_contract,
+        detail,
+    })?;
+    let map = require_single_template(map_template, map_contract)?;
+
     Ok(CollectionOpsBinding {
         concat,
         length,
         is_empty,
         fold,
-        map: syntax_field_string(fields, "map", declaration)?,
+        map,
         filter,
         contains: syntax_field_string(fields, "contains", declaration)?,
         empty_list: syntax_field_string(fields, "empty_list", declaration)?,

@@ -107,6 +107,16 @@ data python_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   placeholder_convention: NamedArg
 }
 
+// LanguageSpec `CollectionOps.map_contract` — comprehension shape `{body}` / `{item}` / `{recv}`
+// (distinct from the list-row `map_method` template `[{arg}(x) for x in {recv}]`).
+data python_language_spec_map_contract: MethodTemplateContract = {
+  dag_method: { decl: map_method },
+  runtime_template: "[{body} for {item} in {recv}]",
+  emit_template: SingleTemplate { template: "[{body} for {item} in {recv}]" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data python_filter_method_template_contract: MethodTemplateContract = {
   dag_method: { decl: filter_method },
   runtime_template: "[x for x in {recv} if {arg}(x)]",

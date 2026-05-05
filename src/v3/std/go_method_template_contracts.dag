@@ -109,6 +109,15 @@ data go_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   placeholder_convention: NamedArg
 }
 
+// LanguageSpec `CollectionOps.map_contract` — matches stub literal previously on `go_collection_ops.map`.
+data go_language_spec_map_contract: MethodTemplateContract = {
+  dag_method: { decl: map_method },
+  runtime_template: "/* map({recv}, {body}) */",
+  emit_template: SingleTemplate { template: "/* map({recv}, {body}) */" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data go_filter_method_template_contract: MethodTemplateContract = {
   dag_method: { decl: filter_method },
   runtime_template: "v2rt.Filter({recv}, {arg})",

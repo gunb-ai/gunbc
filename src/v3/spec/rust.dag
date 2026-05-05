@@ -67,7 +67,7 @@ import v3.std.emit_model {
   TargetIntegerTypeInhabitance, TargetIntegerInhabitanceBound,
   MethodTemplateContract, SingleTemplate, NamedArg
 }
-import std.methods { concat_method, fold_method, is_empty_method, length_method }
+import std.methods { concat_method, fold_method, is_empty_method, length_method, map_method }
 import v3.std.rust_method_template_contracts {
   rust_filter_method_template_contract,
   rust_flat_map_method_template_contract,
@@ -1400,6 +1400,14 @@ data rust_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   placeholder_convention: NamedArg
 }
 
+data rust_language_spec_map_contract: MethodTemplateContract = {
+  dag_method: { decl: map_method },
+  runtime_template: "({recv}).iter().map({body}).collect::<Vec<_>>()",
+  emit_template: SingleTemplate { template: "({recv}).iter().map({body}).collect::<Vec<_>>()" },
+  wraps_result: false,
+  placeholder_convention: NamedArg
+}
+
 data rust_collection_ops: CollectionOps = {
   concat_contract: rust_language_spec_free_monoid_concat_contract
   length_contract: rust_language_spec_free_monoid_length_contract
@@ -1409,7 +1417,7 @@ data rust_collection_ops: CollectionOps = {
   flat_map_contract: rust_flat_map_method_template_contract
   any_contract: rust_any_method_template_contract
   all_contract: rust_all_method_template_contract
-  map: "({recv}).iter().map({body}).collect::<Vec<_>>()"
+  map_contract: rust_language_spec_map_contract
   filter: "{ let mut __out = Vec::new(); for {item} in ({recv}).iter() { if {predicate} { __out.push({item_push}); } } __out }"
   contains: "({recv}).contains({item})"
   empty_list: "Vec::new()"
