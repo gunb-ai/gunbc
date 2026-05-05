@@ -76,6 +76,9 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Rust toolchain pin alignment (rust-toolchain.toml vs rustup.dag)
+        run: bash scripts/check-rust-toolchain-pin-alignment.sh
+
       - name: Fabrication sentinel ratchet (P0-C)
         run: bash scripts/check-fabrication-sentinels.sh
 
