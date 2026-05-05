@@ -45,14 +45,22 @@ field dispatch.
 **compatibility seam**, not the specification or implementation authority
 for this slice (per readiness audit §Live Surfaces / §Non-Goals).
 
+**Body evaluator vs lens seam:** The `FieldProject` / `Callable` receipts
+below are **`eval_transform_node` on `Behavior::Transform` in
+`src/v3/compiler/src/lib.rs`** (runtime `Value` carrier). That path is
+where E6-G0c executes static field-call lowers. `lens_apply.rs` hosts a
+separate `eval_transform` over `FieldValue` for the reflection
+compatibility surface; it is **not** the authority cited in the table,
+and must not be read as negating the `lib.rs` transform arms.
+
 ## Required source refs (verify before coding)
 
 | Fact | Location |
 |------|----------|
 | `Lens<C>` six-field carrier | `src/v3/std/lens.dag` (`type Lens<C> { ... }`) |
 | `Witness<C>`, `OptionalDiagnostic`, `DimensionReport<C>` | `src/v3/std/dimensions.dag` |
-| Runtime `FieldProject` on records | `src/v3/compiler/src/lib.rs` `556-578` (`TransformTarget::FieldProject`) |
-| Runtime `Callable` (Arrow `UserDefined`, pushed frame) | same file `579-613` (`TransformTarget::Callable`) |
+| Runtime `FieldProject` on records | `src/v3/compiler/src/lib.rs` `556-578` (`eval_transform_node`, `TransformTarget::FieldProject`) |
+| Runtime `Callable` (Arrow `UserDefined`, pushed frame) | same file `579-613` (`eval_transform_node`, `TransformTarget::Callable`) |
 | Cardinality loops live; `Descent` fail-closed | same file `356-386` (`eval_loop`; `LoopBound::Descent` at `367-373`) |
 | Regression: descent bound fails closed | same file `1817-1868` (`eval_loop_descent_bound_fails_closed`) |
 | X1.a lowering semantics (static reference → `Callable`) | `docs/design-prereq-x-ho-field-call.md` §L1.a |
