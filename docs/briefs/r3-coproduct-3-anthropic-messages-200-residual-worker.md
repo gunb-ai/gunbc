@@ -40,12 +40,27 @@ ratification time).
 
 ## Slice — per-token enumeration of the live closure row
 
+**Important**: this 7-token table enumerates **only the
+`structural_coverage_gap_anthropic_messages_200_residual` closure
+tag's named tokens at `anthropic.dag:188`**. It does **not**
+enumerate the broader response-fidelity reachable-carrier surface
+(`AnthropicMessages200Citation` variant completeness;
+`AnthropicMessages200Usage.service_tier: String?` /
+`cache_creation_input_tokens` / `cache_read_input_tokens` typed
+shape; etc.). Those reachable residuals are tracked by the
+**Reachable-carrier audit** at §5 below and MUST be resolved
+(by inclusion or by explicit re-tracking) before the parent
+closure tag at `:188` retires. This table covers what's named
+**in** the closure tag; §5 covers what's **reachable from** the
+response-fidelity surface but not yet named.
+
 The closure row at `anthropic.dag:188` carries 7 discrete tokens
 (re-verified at HEAD as of brief authoring; worker re-verifies at
 dispatch since the row may narrow further before S1 starts). Each
 token is a discrete acceptance item; the slice closes the row
-either by retiring all 7 or by explicitly narrowing the remaining
-residual to a named subset:
+either by retiring all 7 (AND completing §5's reachable-carrier
+audit) or by explicitly narrowing the remaining residual to a
+named subset:
 
 | Token in closure                            | Sub-slice item        | Closure shape                                              |
 |---|---|---|

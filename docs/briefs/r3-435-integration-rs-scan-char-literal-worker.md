@@ -73,15 +73,32 @@ the existing byte-oriented scanner. The disambiguation rule MUST
 mirror `rustc_lexer::Cursor::single_quoted_string` semantics, NOT
 a naive byte heuristic.
 
-**Worker pre-flight obligation (Path B):** read
-`rustc_lexer/src/lib.rs` `Cursor::lifetime_or_char` (the actual
-disambiguator entry point — NOT `single_quoted_string`, which is
-the body-consumer that runs after disambiguation) and reproduce
-its disambiguation logic faithfully. Cite the upstream source
-SHA in the PR body. Naive lookback heuristics (e.g., "previous
-byte is not identifier-continuation") are explicitly rejected
-per the BLOCKING finding on the prior brief revision — they
-misclassify `&'a T` and `'label: loop` as char openers.
+**Worker pre-flight obligations (Path B):**
+
+1. **Read `rustc_lexer/src/lib.rs` `Cursor::lifetime_or_char`**
+   (the actual disambiguator entry point — NOT
+   `single_quoted_string`, which is the body-consumer that
+   runs after disambiguation) and reproduce its disambiguation
+   logic faithfully. Cite the upstream source SHA in the PR
+   body. Naive lookback heuristics (e.g., "previous byte is
+   not identifier-continuation") are explicitly rejected per
+   the BLOCKING finding on the prior brief revision — they
+   misclassify `&'a T` and `'label: loop` as char openers.
+
+2. **Non-ASCII pre-flight scan.** Before Path B can be
+   selected, scan `tests/integration.rs` and every file in
+   the integration scan path for non-ASCII bytes (high bit
+   set). If any non-ASCII byte appears in a position that
+   could be inside an identifier, lifetime, or char-literal
+   body — i.e., outside `String` / comment regions — Path B's
+   byte-oriented branch logic is **out of domain** and Path A
+   is mandatory. Path B's byte-keyed disambiguation is not
+   UTF-8-aware; rustc allows Unicode-identifier lifetimes
+   (`'αβ`) and Unicode-codepoint char literals (`'α'`), and
+   silent byte-level handling reintroduces the P3 fail-closed
+   hazard. Pre-flight must record the result in the PR body
+   ("non-ASCII pre-flight scan: <count> non-ASCII bytes
+   found in scan path; Path B selected / Path A required").
 
 `lifetime_or_char` decides between lifetime and char-literal by
 peeking the next two characters (after the opening `'`):
@@ -131,11 +148,32 @@ Sketch of the lexer-faithful rule:
          like — `'a, 'b>` correctly stays in `Code` because
          `char2 = ','`, not `'`. The second `'b` is processed
          independently when the scanner reaches it.
-   - **Branch 3: `char1` is any other byte (non-`\`,
-     non-identifier-start) — e.g., space, digit, punctuation,
-     non-ASCII.** Treat as a single-byte char-literal body:
-     assert byte at p+2 is `'`; if yes → `Char` for `[p, p+2]`;
-     if no → malformed (panic / surface).
+   - **Branch 3: `char1` is any other ASCII byte (non-`\`,
+     non-identifier-start) — e.g., space, digit, punctuation.**
+     Treat as a single-byte char-literal body: assert byte at
+     p+2 is `'`; if yes → `Char` for `[p, p+2]`; if no →
+     malformed (panic / surface).
+   - **Branch 4: `char1` is non-ASCII (high bit set, i.e.,
+     start of a UTF-8 multi-byte codepoint).** Path B's byte-
+     oriented scan is **NOT lexer-faithful for Unicode**:
+     rustc allows Unicode-identifier lifetimes (`'αβ`) AND
+     Unicode-codepoint char literals (`'α'`), and Branch 3's
+     byte-counting consumed-bytes-then-look-for-`'` rule is
+     wrong for both — it treats the first UTF-8 byte as a
+     single-byte body, then checks the second UTF-8 byte
+     (which is part of the same codepoint) for a closing `'`
+     and fails. Path B must NOT silently take this branch;
+     instead, it MUST surface the non-ASCII byte as an
+     **out-of-domain signal** and either (a) escalate to
+     Path A for the file, or (b) the worker decodes the UTF-8
+     codepoint and dispatches into Branch 1/2/3 keyed on
+     codepoint properties (Unicode-identifier-start, etc.).
+     Option (b) is a substantial extension to byte-oriented
+     scanning and turns Path B into a partial Unicode lexer;
+     prefer (a) when the integration scan path actually
+     contains non-ASCII identifiers (which is uncommon in
+     `tests/integration.rs` today, but **Path B must verify
+     this at pre-flight rather than assume it**).
    The three branches together reproduce `lifetime_or_char`'s
    decision exactly. **No window scan, no closing-quote search.**
    Lifetimes followed by other lifetimes within any distance
@@ -194,9 +232,25 @@ must satisfy:
   `Char`; (e) **adjacent label-then-char** `'l: loop { let c = 'x';
   break 'l; }` correctly disambiguates the inner `'x'` as `Char`
   while the outer `'l` lifetimes stay `Code`. Tests (a)-(e) are
-  the BLOCKING-finding regression cases — not optional. Path A
-  inherits rustc's disambiguation by construction; Path B's
-  byte-oriented scan must pass tests (a)-(e) explicitly.
+  the BLOCKING-finding regression cases — not optional.
+- **Unicode regression cases** — (f) Unicode char literal `'α'`
+  (4 bytes: `'` + 2-byte UTF-8 `α` + `'`) recognized as `Char`;
+  Path A inherits this from rustc by construction; Path B's
+  pre-flight obligation (2) MUST escalate to Path A on detection
+  of the non-ASCII byte. (g) Unicode lifetime `'αβ` (mid-fragment,
+  e.g., `&'αβ T` where `αβ` is a Unicode XID-continue identifier)
+  stays in `Code`; same — Path A handles it, Path B must escalate.
+  (h) **Path B pre-flight escalation receipt** — the pre-flight
+  scan correctly reports the non-ASCII count and selects Path A
+  for any fragment containing tests (f)/(g) shapes. Test (h) is
+  the lockdown for the BLOCKING finding on Branch 4 / non-ASCII
+  out-of-domain.
+
+  Path A inherits rustc's disambiguation by construction
+  (including Unicode); Path B's byte-oriented scan must pass
+  tests (a)-(e) explicitly **on ASCII-only fragments**, and must
+  pass (f)/(g)/(h) by escalating to Path A — Path B never directly
+  handles Unicode in this slice.
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green.
 - `cargo clippy --all-targets -- -D warnings` clean.
@@ -213,6 +267,14 @@ must satisfy:
   the test corpus (a)-(e), STOP — Path B is not lexer-faithful and
   must be either corrected or escalated to Path A. No
   window-scan / closing-quote-search fallback is authorized.
+- **Non-ASCII byte appears in scan path.** If pre-flight obligation
+  (2) finds any non-ASCII byte outside `String`/comment regions
+  in the integration scan path, Path B is **out of domain** —
+  byte-oriented scan cannot honestly dispatch on Unicode codepoints
+  (multi-byte UTF-8 sequences would be miscounted as single-byte
+  char-literal bodies, reintroducing the P3 fail-closed hazard).
+  Path A is mandatory in that case; do not silently extend Branch 3
+  to non-ASCII bytes.
 - **A real `tests/integration.rs` fragment exhibits a char-literal
   shape outside `lifetime_or_char`'s decision domain** (e.g., a
   Rust feature-gate addition that creates a new lexical category

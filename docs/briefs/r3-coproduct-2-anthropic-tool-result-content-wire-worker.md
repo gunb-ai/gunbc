@@ -157,13 +157,23 @@ silent invention of new `VariantEncoding` shapes).
 3. **Wire ratchets.** Wire-emission tests on the v2 Rust
    emitter for `AnthropicToolResultContent` covering both
    scalar-text and block-array shapes; per-variant emission
-   tests for the four `AnthropicToolResultBlock` variants
-   (`AnthropicSharedBlock` delegate + `AnthropicDocumentBlock`
-   + `AnthropicSearchResultBlock` + `AnthropicToolReferenceBlock`).
+   tests for every variant of `AnthropicToolResultBlock` as
+   defined by the picked Shape:
+   - **Shape (A) variants:** `AnthropicTextBlock` +
+     `AnthropicImageBlock` + `AnthropicDocumentBlock` +
+     `AnthropicSearchResultBlock` + `AnthropicToolReferenceBlock`.
+     Each emits as a flat tagged-object on the wire.
+   - **Shape (B) variants:** `AnthropicSharedBlock` (transparent
+     delegate to shared `ContentBlock`) + `AnthropicDocumentBlock`
+     + `AnthropicSearchResultBlock` + `AnthropicToolReferenceBlock`.
+     The transparent-delegate variant tests must verify the
+     wire serialization makes `AnthropicSharedBlock` invisible
+     (i.e., the wrapped `ContentBlock`'s tagged-object shape
+     reaches the wire without nesting).
    Shared `dsl/extdeps/llm/llm.dag::ContentBlock` is **not**
-   re-tested here — it stays unchanged. Existing pattern lives
-   in `src/v2/tests/src/pipeline.rs` (re-verify surface at
-   dispatch).
+   re-tested here under either shape — it stays unchanged.
+   Existing pattern lives in `src/v2/tests/src/pipeline.rs`
+   (re-verify surface at dispatch).
 
 4. **Closure-tag retirement.** Both
    `structural_coverage_gap_anthropic_tool_result_content_wire_shape`
@@ -180,13 +190,28 @@ silent invention of new `VariantEncoding` shapes).
   by a `CoproductWireContract` row (or equivalent
   substrate-fact-introduction-ratified shape) covering the
   scalar-vs-array dispatch.
-- New `AnthropicToolResultBlock` carrier includes
-  `AnthropicSharedBlock` (delegating to shared `ContentBlock`)
-  + `AnthropicDocumentBlock` + `AnthropicSearchResultBlock` +
-  `AnthropicToolReferenceBlock` with typed payloads. Shared
-  `dsl/extdeps/llm/llm.dag` `ContentBlock` is **untouched**.
-  `AnthropicToolResultContent.ToolResultBlocks.blocks` switches
-  from `List<ContentBlock>` to `List<AnthropicToolResultBlock>`.
+- New `AnthropicToolResultBlock` carrier exists in
+  `dsl/extdeps/llm/anthropic.dag` (NOT in shared `llm.dag`).
+  Variant set depends on the Shape selected at pre-flight:
+  - **Shape (A) (mandatory if no transparent-delegation
+    encoding exists in `std/serialization.dag`):** five
+    direct variants — `AnthropicTextBlock`, `AnthropicImageBlock`,
+    `AnthropicDocumentBlock`, `AnthropicSearchResultBlock`,
+    `AnthropicToolReferenceBlock`. No `AnthropicSharedBlock`
+    wrapper. Each variant flat-tagged-object on the wire.
+  - **Shape (B) (only valid when `std/serialization.dag` ratifies
+    a transparent-delegation `VariantEncoding`):** four variants
+    — `AnthropicSharedBlock` (transparent delegate to shared
+    `ContentBlock`) + `AnthropicDocumentBlock` +
+    `AnthropicSearchResultBlock` + `AnthropicToolReferenceBlock`.
+    The wrapper variant must serialize transparently — wire
+    output for an Anthropic text block emits
+    `{"type":"text","text":"..."}` with NO `AnthropicSharedBlock`
+    nesting layer.
+  Shared `dsl/extdeps/llm/llm.dag` `ContentBlock` is **untouched**
+  under either shape. `AnthropicToolResultContent.ToolResultBlocks.blocks`
+  switches from `List<ContentBlock>` to
+  `List<AnthropicToolResultBlock>`.
 - Wire ratchets cover both shapes + the three new variants.
 - Both closure tags at `:67` and `:204` retire.
 - `rest_request_wire_serde_alignment_receipt` at `:194-198` gains
