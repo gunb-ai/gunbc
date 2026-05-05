@@ -224,7 +224,7 @@ mod t_demo_fixture_test {
     }
 
     fn compile_fixture(source: &str) -> Dag {
-        compile_to_dag(source, FIXTURE).expect("T-Demo fixture skeleton compiles")
+        crate::common::cached_compile_to_dag(source, FIXTURE)
     }
 
     #[test]
