@@ -81,7 +81,7 @@ PR #810 §0); not as a one-off. Cite the program brief.
 
 <!--
 Per docs/briefs/r3-debt-paydown-program-coordination.md (#1518) and
-INVARIANTS.md#p5-progress-is-dissolution(c).
+INVARIANTS.md#p5-progress-is-dissolution (Dispatch-Discipline Mechanisms — velocity tripwire).
 
 Fill this section with a single-checkable receipt for tracked ROADMAP debt
 rows touched by this PR. This is separate from the hand-Rust dissolution
