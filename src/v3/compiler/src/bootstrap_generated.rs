@@ -40,7 +40,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(1)],
             output: PortId(2),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15560, 15565),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15580, 15585),
         }));
         nodes.push(Behavior::Transform(TransformNode {
             id: NodeId(1),
@@ -50,7 +50,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
             },
             inputs: vec![PortId(3)],
             output: PortId(4),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15598, 15605),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15618, 15625),
         }));
         nodes.push(Behavior::Branch(BranchNode {
             id: NodeId(2),
@@ -61,7 +61,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
                     output: PortId(2),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Cardinality".to_string(),
-                        span: SourceSpan::new("src/v3/std/substrate.dag", 15528, 15548),
+                        span: SourceSpan::new("src/v3/std/substrate.dag", 15548, 15568),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -73,7 +73,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
                     output: PortId(4),
                     pattern: BranchPattern::UnresolvedVariant {
                         name: "Descent".to_string(),
-                        span: SourceSpan::new("src/v3/std/substrate.dag", 15570, 15586),
+                        span: SourceSpan::new("src/v3/std/substrate.dag", 15590, 15606),
                     },
                     binding: Some(PayloadBinding {
                         binding_name: "payload".to_string(),
@@ -82,7 +82,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
                 },
             ],
             output: PortId(5),
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15510, 15609),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15530, 15629),
             emit_participation: Some(BranchEmitParticipation::UserMatch),
         }));
         nodes.push(Behavior::Bind(BindNode {
@@ -90,7 +90,7 @@ fn bootstrapped_fixture_dag_nodes() -> Vec<Behavior> {
             name: "loop_bound_measure".to_string(),
             value: PortId(5),
             params: vec![PortId(0)],
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15510, 15609),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15530, 15629),
             lane2_workflow: None,
             emit_participation: Some(BindEmitParticipation::UserCallable),
         }));
@@ -18644,7 +18644,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3594, 5275),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3614, 5295),
         });
         declarations.push(Declaration {
             id: DeclarationId(706),
@@ -18669,7 +18669,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5277, 5350),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5297, 5370),
         });
         declarations.push(Declaration {
             id: DeclarationId(707),
@@ -18694,7 +18694,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5641, 5726),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5661, 5746),
         });
         declarations.push(Declaration {
             id: DeclarationId(708),
@@ -18708,7 +18708,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5641, 5726),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5661, 5746),
         });
         declarations.push(Declaration {
             id: DeclarationId(709),
@@ -18728,7 +18728,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5876, 5908),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5896, 5928),
         });
         declarations.push(Declaration {
             id: DeclarationId(710),
@@ -18753,7 +18753,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6264, 6338),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6284, 6358),
         });
         declarations.push(Declaration {
             id: DeclarationId(711),
@@ -18782,7 +18782,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6563, 6627),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6583, 6647),
         });
         declarations.push(Declaration {
             id: DeclarationId(712),
@@ -18807,7 +18807,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6629, 6683),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6649, 6703),
         });
         declarations.push(Declaration {
             id: DeclarationId(713),
@@ -18832,7 +18832,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6685, 6760),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6705, 6780),
         });
         declarations.push(Declaration {
             id: DeclarationId(714),
@@ -18857,7 +18857,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6762, 6817),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6782, 6837),
         });
         declarations.push(Declaration {
             id: DeclarationId(715),
@@ -18898,7 +18898,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7034, 7270),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7054, 7290),
         });
         declarations.push(Declaration {
             id: DeclarationId(716),
@@ -18927,7 +18927,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7410, 7546),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7430, 7566),
         });
         declarations.push(Declaration {
             id: DeclarationId(717),
@@ -18946,7 +18946,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8450, 8484),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 8470, 8504),
         });
         declarations.push(Declaration {
             id: DeclarationId(718),
@@ -18983,7 +18983,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8781, 8910),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 8801, 8930),
         });
         declarations.push(Declaration {
             id: DeclarationId(719),
@@ -19024,7 +19024,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9115, 9515),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9135, 9535),
         });
         declarations.push(Declaration {
             id: DeclarationId(720),
@@ -19081,7 +19081,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9517, 9811),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9537, 9831),
         });
         declarations.push(Declaration {
             id: DeclarationId(721),
@@ -19106,7 +19106,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10284, 10361),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10304, 10381),
         });
         declarations.push(Declaration {
             id: DeclarationId(722),
@@ -19125,7 +19125,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10868, 10934),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10888, 10954),
         });
         declarations.push(Declaration {
             id: DeclarationId(723),
@@ -19158,7 +19158,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11191, 11240),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11211, 11260),
         });
         declarations.push(Declaration {
             id: DeclarationId(724),
@@ -19199,7 +19199,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11342, 11401),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11362, 11421),
         });
         declarations.push(Declaration {
             id: DeclarationId(725),
@@ -19224,7 +19224,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11635, 11664),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11655, 11684),
         });
         declarations.push(Declaration {
             id: DeclarationId(726),
@@ -19253,7 +19253,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11878, 11976),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11898, 11996),
         });
         declarations.push(Declaration {
             id: DeclarationId(727),
@@ -19282,7 +19282,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12138, 12298),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12158, 12318),
         });
         declarations.push(Declaration {
             id: DeclarationId(728),
@@ -19307,7 +19307,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12400, 12510),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12420, 12530),
         });
         declarations.push(Declaration {
             id: DeclarationId(729),
@@ -19332,7 +19332,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12512, 12581),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12532, 12601),
         });
         declarations.push(Declaration {
             id: DeclarationId(730),
@@ -19365,7 +19365,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12583, 12691),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12603, 12711),
         });
         declarations.push(Declaration {
             id: DeclarationId(731),
@@ -19390,7 +19390,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13290, 13336),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13310, 13356),
         });
         declarations.push(Declaration {
             id: DeclarationId(732),
@@ -19409,7 +19409,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 13848, 13884),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 13868, 13904),
         });
         declarations.push(Declaration {
             id: DeclarationId(733),
@@ -19428,7 +19428,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14501, 14542),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14521, 14562),
         });
         declarations.push(Declaration {
             id: DeclarationId(734),
@@ -19442,7 +19442,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14501, 14542),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14521, 14562),
         });
         declarations.push(Declaration {
             id: DeclarationId(735),
@@ -19461,7 +19461,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14544, 14584),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14564, 14604),
         });
         declarations.push(Declaration {
             id: DeclarationId(736),
@@ -19480,7 +19480,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14586, 14637),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14606, 14657),
         });
         declarations.push(Declaration {
             id: DeclarationId(737),
@@ -19505,7 +19505,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14639, 14752),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14659, 14772),
         });
         declarations.push(Declaration {
             id: DeclarationId(738),
@@ -19530,7 +19530,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15354, 15454),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15374, 15474),
         });
         declarations.push(Declaration {
             id: DeclarationId(739),
@@ -19548,7 +19548,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15456, 15609),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15476, 15629),
         });
         declarations.push(Declaration {
             id: DeclarationId(740),
@@ -19585,7 +19585,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15611, 15740),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15631, 15760),
         });
         declarations.push(Declaration {
             id: DeclarationId(741),
@@ -19622,7 +19622,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15742, 15867),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15762, 15887),
         });
         declarations.push(Declaration {
             id: DeclarationId(742),
@@ -19641,7 +19641,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16032, 16074),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16052, 16094),
         });
         declarations.push(Declaration {
             id: DeclarationId(743),
@@ -19682,7 +19682,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16076, 16238),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16096, 16258),
         });
         declarations.push(Declaration {
             id: DeclarationId(744),
@@ -19727,7 +19727,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16240, 16377),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16260, 16397),
         });
         declarations.push(Declaration {
             id: DeclarationId(745),
@@ -19746,7 +19746,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16619, 16662),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16639, 16682),
         });
         declarations.push(Declaration {
             id: DeclarationId(746),
@@ -19791,7 +19791,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16664, 16852),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16684, 16872),
         });
         declarations.push(Declaration {
             id: DeclarationId(747),
@@ -19828,7 +19828,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16924, 17048),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16944, 17068),
         });
         declarations.push(Declaration {
             id: DeclarationId(748),
@@ -19861,7 +19861,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17050, 17169),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17070, 17189),
         });
         declarations.push(Declaration {
             id: DeclarationId(749),
@@ -19880,7 +19880,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 18521, 18576),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 18541, 18596),
         });
         declarations.push(Declaration {
             id: DeclarationId(750),
@@ -19909,7 +19909,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19343, 19460),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19363, 19480),
         });
         declarations.push(Declaration {
             id: DeclarationId(751),
@@ -19919,8 +19919,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1614),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    19502,
-                    19517,
+                    19522,
+                    19537,
                 )),
             },
             type_params: vec![],
@@ -19931,7 +19931,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19462, 19517),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19482, 19537),
         });
         declarations.push(Declaration {
             id: DeclarationId(752),
@@ -19941,8 +19941,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1615),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    19560,
-                    19575,
+                    19580,
+                    19595,
                 )),
             },
             type_params: vec![],
@@ -19953,7 +19953,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19519, 19575),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19539, 19595),
         });
         declarations.push(Declaration {
             id: DeclarationId(753),
@@ -19963,8 +19963,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1616),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    19635,
-                    19662,
+                    19655,
+                    19682,
                 )),
             },
             type_params: vec![],
@@ -19975,7 +19975,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19577, 19662),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19597, 19682),
         });
         declarations.push(Declaration {
             id: DeclarationId(754),
@@ -19985,8 +19985,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1617),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    20024,
-                    20052,
+                    20044,
+                    20072,
                 )),
             },
             type_params: vec![],
@@ -19997,7 +19997,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19960, 20052),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19980, 20072),
         });
         declarations.push(Declaration {
             id: DeclarationId(755),
@@ -20007,8 +20007,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1618),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    20348,
-                    20383,
+                    20368,
+                    20403,
                 )),
             },
             type_params: vec![],
@@ -20019,7 +20019,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 20288, 20383),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 20308, 20403),
         });
         declarations.push(Declaration {
             id: DeclarationId(756),
@@ -20048,7 +20048,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22351, 22461),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22371, 22481),
         });
         declarations.push(Declaration {
             id: DeclarationId(757),
@@ -20058,8 +20058,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(756),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    23967,
-                    23996,
+                    23987,
+                    24016,
                 )),
             },
             type_params: vec![],
@@ -20070,7 +20070,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 23921, 23996),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 23941, 24016),
         });
         declarations.push(Declaration {
             id: DeclarationId(758),
@@ -20080,8 +20080,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1619),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    24353,
-                    24363,
+                    24373,
+                    24383,
                 )),
             },
             type_params: vec![],
@@ -20092,7 +20092,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 24296, 24363),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 24316, 24383),
         });
         declarations.push(Declaration {
             id: DeclarationId(759),
@@ -20102,8 +20102,8 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                 output: DeclarationId(1620),
                 body: ArrowBody::Unparsed(SourceSpan::new(
                     "src/v3/std/substrate.dag",
-                    24438,
-                    24451,
+                    24458,
+                    24471,
                 )),
             },
             type_params: vec![],
@@ -20114,7 +20114,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 24365, 24451),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 24385, 24471),
         });
         declarations.push(Declaration {
             id: DeclarationId(760),
@@ -52932,7 +52932,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19493, 19501),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19513, 19521),
         });
         declarations.push(Declaration {
             id: DeclarationId(1615),
@@ -52949,7 +52949,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19550, 19559),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19570, 19579),
         });
         declarations.push(Declaration {
             id: DeclarationId(1616),
@@ -52966,7 +52966,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 19625, 19634),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 19645, 19654),
         });
         declarations.push(Declaration {
             id: DeclarationId(1617),
@@ -52983,7 +52983,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 20011, 20023),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 20031, 20043),
         });
         declarations.push(Declaration {
             id: DeclarationId(1618),
@@ -53000,7 +53000,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 20332, 20347),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 20352, 20367),
         });
         declarations.push(Declaration {
             id: DeclarationId(1619),
@@ -53020,7 +53020,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 24331, 24352),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 24351, 24372),
         });
         declarations.push(Declaration {
             id: DeclarationId(1620),
@@ -53040,7 +53040,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 24416, 24437),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 24436, 24457),
         });
         declarations.push(Declaration {
             id: DeclarationId(1621),
@@ -53270,7 +53270,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3625, 3632),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3645, 3652),
         });
         declarations.push(Declaration {
             id: DeclarationId(1634),
@@ -53289,7 +53289,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 3637, 3687),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 3657, 3707),
         });
         declarations.push(Declaration {
             id: DeclarationId(1635),
@@ -53308,7 +53308,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5251, 5275),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5271, 5295),
         });
         declarations.push(Declaration {
             id: DeclarationId(1636),
@@ -53322,7 +53322,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5300, 5309),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5320, 5329),
         });
         declarations.push(Declaration {
             id: DeclarationId(1637),
@@ -53341,7 +53341,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5314, 5350),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5334, 5370),
         });
         declarations.push(Declaration {
             id: DeclarationId(1638),
@@ -53366,7 +53366,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5662, 5712),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5682, 5732),
         });
         declarations.push(Declaration {
             id: DeclarationId(1639),
@@ -53380,7 +53380,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 5717, 5726),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 5737, 5746),
         });
         declarations.push(Declaration {
             id: DeclarationId(1640),
@@ -53400,7 +53400,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6302, 6315),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6322, 6335),
         });
         declarations.push(Declaration {
             id: DeclarationId(1641),
@@ -53419,7 +53419,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6290, 6316),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6310, 6336),
         });
         declarations.push(Declaration {
             id: DeclarationId(1642),
@@ -53433,7 +53433,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6321, 6338),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6341, 6358),
         });
         declarations.push(Declaration {
             id: DeclarationId(1643),
@@ -53452,7 +53452,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6589, 6599),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6609, 6619),
         });
         declarations.push(Declaration {
             id: DeclarationId(1644),
@@ -53466,7 +53466,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6604, 6613),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6624, 6633),
         });
         declarations.push(Declaration {
             id: DeclarationId(1645),
@@ -53480,7 +53480,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 6618, 6627),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 6638, 6647),
         });
         declarations.push(Declaration {
             id: DeclarationId(1646),
@@ -53499,7 +53499,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7054, 7074),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7074, 7094),
         });
         declarations.push(Declaration {
             id: DeclarationId(1647),
@@ -53518,7 +53518,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7079, 7103),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7099, 7123),
         });
         declarations.push(Declaration {
             id: DeclarationId(1648),
@@ -53538,7 +53538,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7115, 7131),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7135, 7151),
         });
         declarations.push(Declaration {
             id: DeclarationId(1649),
@@ -53557,7 +53557,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7108, 7132),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7128, 7152),
         });
         declarations.push(Declaration {
             id: DeclarationId(1650),
@@ -53577,7 +53577,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7142, 7158),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7162, 7178),
         });
         declarations.push(Declaration {
             id: DeclarationId(1651),
@@ -53596,7 +53596,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7137, 7159),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7157, 7179),
         });
         declarations.push(Declaration {
             id: DeclarationId(1652),
@@ -53616,7 +53616,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7168, 7184),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7188, 7204),
         });
         declarations.push(Declaration {
             id: DeclarationId(1653),
@@ -53635,7 +53635,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7164, 7185),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7184, 7205),
         });
         declarations.push(Declaration {
             id: DeclarationId(1654),
@@ -53655,7 +53655,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7248, 7264),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7268, 7284),
         });
         declarations.push(Declaration {
             id: DeclarationId(1655),
@@ -53680,7 +53680,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7190, 7270),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7210, 7290),
         });
         declarations.push(Declaration {
             id: DeclarationId(1656),
@@ -53699,7 +53699,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7429, 7458),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7449, 7478),
         });
         declarations.push(Declaration {
             id: DeclarationId(1657),
@@ -53719,7 +53719,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7493, 7509),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7513, 7529),
         });
         declarations.push(Declaration {
             id: DeclarationId(1658),
@@ -53738,7 +53738,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7463, 7511),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7483, 7531),
         });
         declarations.push(Declaration {
             id: DeclarationId(1659),
@@ -53758,7 +53758,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7529, 7545),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7549, 7565),
         });
         declarations.push(Declaration {
             id: DeclarationId(1660),
@@ -53777,7 +53777,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 7516, 7546),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 7536, 7566),
         });
         declarations.push(Declaration {
             id: DeclarationId(1661),
@@ -53796,7 +53796,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8800, 8823),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 8820, 8843),
         });
         declarations.push(Declaration {
             id: DeclarationId(1662),
@@ -53815,7 +53815,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8828, 8862),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 8848, 8882),
         });
         declarations.push(Declaration {
             id: DeclarationId(1663),
@@ -53829,7 +53829,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8867, 8874),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 8887, 8894),
         });
         declarations.push(Declaration {
             id: DeclarationId(1664),
@@ -53843,7 +53843,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8879, 8885),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 8899, 8905),
         });
         declarations.push(Declaration {
             id: DeclarationId(1665),
@@ -53862,7 +53862,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 8890, 8910),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 8910, 8930),
         });
         declarations.push(Declaration {
             id: DeclarationId(1666),
@@ -53881,7 +53881,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9139, 9156),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9159, 9176),
         });
         declarations.push(Declaration {
             id: DeclarationId(1667),
@@ -53901,7 +53901,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9178, 9193),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9198, 9213),
         });
         declarations.push(Declaration {
             id: DeclarationId(1668),
@@ -53920,7 +53920,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9161, 9195),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9181, 9215),
         });
         declarations.push(Declaration {
             id: DeclarationId(1669),
@@ -53940,7 +53940,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9217, 9232),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9237, 9252),
         });
         declarations.push(Declaration {
             id: DeclarationId(1670),
@@ -53959,7 +53959,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9200, 9234),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9220, 9254),
         });
         declarations.push(Declaration {
             id: DeclarationId(1671),
@@ -53979,7 +53979,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9261, 9280),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9281, 9300),
         });
         declarations.push(Declaration {
             id: DeclarationId(1672),
@@ -54008,7 +54008,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9239, 9336),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9259, 9356),
         });
         declarations.push(Declaration {
             id: DeclarationId(1673),
@@ -54033,7 +54033,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9341, 9419),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9361, 9439),
         });
         declarations.push(Declaration {
             id: DeclarationId(1674),
@@ -54053,7 +54053,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9487, 9509),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9507, 9529),
         });
         declarations.push(Declaration {
             id: DeclarationId(1675),
@@ -54078,7 +54078,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9424, 9515),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9444, 9535),
         });
         declarations.push(Declaration {
             id: DeclarationId(1676),
@@ -54095,7 +54095,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9564, 9571),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9584, 9591),
         });
         declarations.push(Declaration {
             id: DeclarationId(1677),
@@ -54115,7 +54115,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9616, 9635),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9636, 9655),
         });
         declarations.push(Declaration {
             id: DeclarationId(1678),
@@ -54135,7 +54135,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9654, 9676),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9674, 9696),
         });
         declarations.push(Declaration {
             id: DeclarationId(1679),
@@ -54152,7 +54152,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9689, 9703),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9709, 9723),
         });
         declarations.push(Declaration {
             id: DeclarationId(1680),
@@ -54169,7 +54169,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9716, 9730),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9736, 9750),
         });
         declarations.push(Declaration {
             id: DeclarationId(1681),
@@ -54186,7 +54186,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9745, 9755),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9765, 9775),
         });
         declarations.push(Declaration {
             id: DeclarationId(1682),
@@ -54203,7 +54203,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 9775, 9790),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 9795, 9810),
         });
         declarations.push(Declaration {
             id: DeclarationId(1683),
@@ -54223,7 +54223,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 10913, 10932),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 10933, 10952),
         });
         declarations.push(Declaration {
             id: DeclarationId(1684),
@@ -54237,7 +54237,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11213, 11216),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11233, 11236),
         });
         declarations.push(Declaration {
             id: DeclarationId(1685),
@@ -54251,7 +54251,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11221, 11224),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11241, 11244),
         });
         declarations.push(Declaration {
             id: DeclarationId(1686),
@@ -54265,7 +54265,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11229, 11232),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11249, 11252),
         });
         declarations.push(Declaration {
             id: DeclarationId(1687),
@@ -54279,7 +54279,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11237, 11240),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11257, 11260),
         });
         declarations.push(Declaration {
             id: DeclarationId(1688),
@@ -54293,7 +54293,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11364, 11366),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11384, 11386),
         });
         declarations.push(Declaration {
             id: DeclarationId(1689),
@@ -54307,7 +54307,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11371, 11373),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11391, 11393),
         });
         declarations.push(Declaration {
             id: DeclarationId(1690),
@@ -54321,7 +54321,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11378, 11380),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11398, 11400),
         });
         declarations.push(Declaration {
             id: DeclarationId(1691),
@@ -54335,7 +54335,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11385, 11387),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11405, 11407),
         });
         declarations.push(Declaration {
             id: DeclarationId(1692),
@@ -54349,7 +54349,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11392, 11394),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11412, 11414),
         });
         declarations.push(Declaration {
             id: DeclarationId(1693),
@@ -54363,7 +54363,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11399, 11401),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11419, 11421),
         });
         declarations.push(Declaration {
             id: DeclarationId(1694),
@@ -54377,7 +54377,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11654, 11657),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11674, 11677),
         });
         declarations.push(Declaration {
             id: DeclarationId(1695),
@@ -54391,7 +54391,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11662, 11664),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11682, 11684),
         });
         declarations.push(Declaration {
             id: DeclarationId(1696),
@@ -54410,7 +54410,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11900, 11924),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11920, 11944),
         });
         declarations.push(Declaration {
             id: DeclarationId(1697),
@@ -54429,7 +54429,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11929, 11953),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11949, 11973),
         });
         declarations.push(Declaration {
             id: DeclarationId(1698),
@@ -54448,7 +54448,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 11958, 11976),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 11978, 11996),
         });
         declarations.push(Declaration {
             id: DeclarationId(1699),
@@ -54467,7 +54467,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12163, 12186),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12183, 12206),
         });
         declarations.push(Declaration {
             id: DeclarationId(1700),
@@ -54484,7 +54484,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12251, 12265),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12271, 12285),
         });
         declarations.push(Declaration {
             id: DeclarationId(1701),
@@ -54509,7 +54509,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12191, 12271),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12211, 12291),
         });
         declarations.push(Declaration {
             id: DeclarationId(1702),
@@ -54528,7 +54528,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12276, 12298),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12296, 12318),
         });
         declarations.push(Declaration {
             id: DeclarationId(1703),
@@ -54553,7 +54553,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12423, 12475),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12443, 12495),
         });
         declarations.push(Declaration {
             id: DeclarationId(1704),
@@ -54572,7 +54572,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12480, 12510),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12500, 12530),
         });
         declarations.push(Declaration {
             id: DeclarationId(1705),
@@ -54589,7 +54589,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 12674, 12689),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 12694, 12709),
         });
         declarations.push(Declaration {
             id: DeclarationId(1706),
@@ -54609,7 +54609,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14665, 14696),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14685, 14716),
         });
         declarations.push(Declaration {
             id: DeclarationId(1707),
@@ -54629,7 +54629,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 14720, 14750),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 14740, 14770),
         });
         declarations.push(Declaration {
             id: DeclarationId(1708),
@@ -54648,7 +54648,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15373, 15402),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15393, 15422),
         });
         declarations.push(Declaration {
             id: DeclarationId(1709),
@@ -54673,7 +54673,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15407, 15454),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15427, 15474),
         });
         declarations.push(Declaration {
             id: DeclarationId(1710),
@@ -54690,7 +54690,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15723, 15738),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15743, 15758),
         });
         declarations.push(Declaration {
             id: DeclarationId(1711),
@@ -54710,7 +54710,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 15812, 15824),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 15832, 15844),
         });
         declarations.push(Declaration {
             id: DeclarationId(1712),
@@ -54724,7 +54724,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16065, 16074),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16085, 16094),
         });
         declarations.push(Declaration {
             id: DeclarationId(1713),
@@ -54744,7 +54744,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16132, 16148),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16152, 16168),
         });
         declarations.push(Declaration {
             id: DeclarationId(1714),
@@ -54761,7 +54761,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16212, 16236),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16232, 16256),
         });
         declarations.push(Declaration {
             id: DeclarationId(1715),
@@ -54775,7 +54775,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16650, 16662),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16670, 16682),
         });
         declarations.push(Declaration {
             id: DeclarationId(1716),
@@ -54795,7 +54795,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16740, 16752),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16760, 16772),
         });
         declarations.push(Declaration {
             id: DeclarationId(1717),
@@ -54812,7 +54812,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16790, 16805),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16810, 16825),
         });
         declarations.push(Declaration {
             id: DeclarationId(1718),
@@ -54829,7 +54829,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16828, 16850),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16848, 16870),
         });
         declarations.push(Declaration {
             id: DeclarationId(1719),
@@ -54848,7 +54848,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16942, 16958),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16962, 16978),
         });
         declarations.push(Declaration {
             id: DeclarationId(1720),
@@ -54867,7 +54867,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16963, 16987),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 16983, 17007),
         });
         declarations.push(Declaration {
             id: DeclarationId(1721),
@@ -54886,7 +54886,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 16992, 17010),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17012, 17030),
         });
         declarations.push(Declaration {
             id: DeclarationId(1722),
@@ -54905,7 +54905,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17015, 17029),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17035, 17049),
         });
         declarations.push(Declaration {
             id: DeclarationId(1723),
@@ -54924,7 +54924,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17034, 17048),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17054, 17068),
         });
         declarations.push(Declaration {
             id: DeclarationId(1724),
@@ -54944,7 +54944,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17077, 17094),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17097, 17114),
         });
         declarations.push(Declaration {
             id: DeclarationId(1725),
@@ -54964,7 +54964,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17104, 17118),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17124, 17138),
         });
         declarations.push(Declaration {
             id: DeclarationId(1726),
@@ -54984,7 +54984,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17128, 17141),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17148, 17161),
         });
         declarations.push(Declaration {
             id: DeclarationId(1727),
@@ -55004,7 +55004,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 17154, 17167),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 17174, 17187),
         });
         declarations.push(Declaration {
             id: DeclarationId(1728),
@@ -55023,7 +55023,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22373, 22391),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22393, 22411),
         });
         declarations.push(Declaration {
             id: DeclarationId(1729),
@@ -55037,7 +55037,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22396, 22402),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22416, 22422),
         });
         declarations.push(Declaration {
             id: DeclarationId(1730),
@@ -55057,7 +55057,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22435, 22459),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22455, 22479),
         });
         declarations.push(Declaration {
             id: DeclarationId(1731),
@@ -55076,7 +55076,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/substrate.dag", 22407, 22461),
+            span: SourceSpan::new("src/v3/std/substrate.dag", 22427, 22481),
         });
         declarations.push(Declaration {
             id: DeclarationId(1732),
