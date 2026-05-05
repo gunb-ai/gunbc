@@ -37,7 +37,7 @@ Author per-primitive structural rows in `dsl/extdeps/languages/rust/primitives.d
 - **Textual.** `char` (32-bit Unicode scalar value) and `str` (UTF-8 byte sequence, dynamically sized). The `str` row carries an encoding axis (UTF-8) per Q2 `ReferenceModel<T>` axis discipline; dynamically-sized status is a structural axis, not a separate primitive.
 - **Never.** `!` — uninhabited. Algebra inhabitance is universal-bottom (the empty type inhabits every algebra trivially via vacuous quantification). Authority: Rust Reference §Never type.
 - **Tuple.** Variadic structural product. Each tuple arity is not a separate primitive; the row declares the tuple constructor with arity as a refinement axis. Unit `()` is the 0-arity tuple — already in pilot.
-- **Array.** `[T; N]` — fixed-cardinality structural product. Cardinality is `Interval<Cardinal>::ExactInterval { lo: N, hi: N }` per the Q5 collapse note (`design-emission-model.md:1267`).
+- **Array.** `[T; N]` — fixed-cardinality structural product. Cardinality is `Interval<Cardinal>::BoundedInterval { lower: N, width: IntervalWidth::ZeroWidth }` per the Q5 collapse note (`design-emission-model.md:1267`) consumed against HEAD's `Interval<D>` shape (`src/v3/std/substrate.dag:123`).
 - **Slice.** `[T]` — dynamically-sized structural product. Cardinality `Interval<Cardinal>::Unbounded`. Authority axis: dynamically-sized.
 - **Struct / enum / union — base shapes.** Per `r2-grounding-manager.md:265` ("Struct / enum / union primitives"). These are *constructor schemas*, not concrete primitives; the row declares the structural shape (named-field record / tagged sum / untagged union with safety-required-by-construction).
 - **Function item / function pointer / closure.** `fn(...) -> ...` (function item, zero-sized), `fn(...) -> ...` (function pointer, pointer-sized), closure (anonymous, captures-bearing). Three structurally distinct rows; the closure row carries a captures axis.
@@ -84,10 +84,10 @@ The `src/v3/grounding_pilot/src/lib.rs:106` mirror updates in lockstep until T-G
 
 ### D. Q1 `BoundDeclaration` consumer wiring
 
-Each integer primitive row consumes `BoundDeclaration` (`src/v3/std/substrate.dag:136`) per Q1 lock (`design-emission-model.md:994`). Asymmetric match rule (Q1 lock per `r2-grounding-manager.md:56`): target's `Unbounded` universally accepts; target's `ExactInterval(lo, hi)` requires exact range match.
+Each integer primitive row consumes `BoundDeclaration` (`src/v3/std/substrate.dag:136`) per Q1 lock (`design-emission-model.md:994`). HEAD's substrate shape (`src/v3/std/substrate.dag:123-138`) is `Interval<D> = BoundedInterval { lower: D, width: IntervalWidth } | Unbounded` and `BoundDeclaration = StaticBound(Interval<Int>) | PlatformDependent`. Asymmetric match rule (Q1 lock per `r2-grounding-manager.md:56`) phrased against the landed shape: target's `Unbounded` universally accepts; target's `StaticBound(BoundedInterval { lower, width })` requires structural equality on the `(lower, width)` payload (`PlatformDependent` remains a distinct outer variant — it never collapses into `StaticBound`).
 
-- `i8`–`i128` rows: `StaticBound(Interval<Int>::ExactInterval { lo: -2^(N-1), hi: 2^(N-1) - 1 })`.
-- `u8`–`u128` rows: `StaticBound(Interval<Int>::ExactInterval { lo: 0, hi: 2^N - 1 })`.
+- `i8`–`i128` rows: `StaticBound(BoundedInterval { lower: -2^(N-1), width: PositiveWidth(2^N - 1) })`.
+- `u8`–`u128` rows: `StaticBound(BoundedInterval { lower: 0, width: PositiveWidth(2^N - 1) })`.
 - `isize` / `usize` rows: `PlatformDependent`. **First non-pilot exercise of the `PlatformDependent` path.**
 
 If walking PR-F's locked `BoundDeclaration` consumer surface surfaces a structural mismatch with the Rust integer family's actual ranges (e.g., the `Interval<Int>` carrier can't express `2^127 - 1` as a literal because `Int` lowering hasn't settled), STOP and escalate — that is a substrate-shape escalation to Substrate Manager via the manager (`#1745`), not a paper-over.
@@ -152,7 +152,7 @@ Per `INVARIANTS.md` §P1 (lines 94-129), worker MUST cite receipts in the PR bod
 | **Substrate `HigherOrderMethodSpec` shape decision** (cross-manager #1130 to jolly-ram-908) | in flight | Required only if a primitive declaration needs higher-order rows; otherwise out of scope (G) |
 | **T-Ground-Lifetime-Analyzer R2 scope** | LANDED (#1206 / #1218 / #1220) | Lifetime axis available as substrate consumer |
 | **#1129 / #1156 / #1162 (Tier 1 locks)** | LIVE on main | Consumed (Q1 / reflection-completeness / Q6.5) |
-| **Host worktree git plumbing** | **BROKEN** at `/home/briansrls/.worktrees/proud-lark-674` (`fatal: not a git repository`); fix is host-side, outside this lane | Required before any code edits |
+| **Host worktree git plumbing** | **BROKEN** at brief-author host worktree (`fatal: not a git repository`; missing `.git/worktrees/<session>` admin dir on parent repo); fix is host-side, outside this lane | Required before any code edits |
 
 **Cross-program signals:**
 - **Substrate Manager — ValueBody-list/sum + std.unicode bootstrap:** NOT a hard gate for this lane (Coercion-Fold consumes it). T-Ground-Rust can land structural rows without it.
