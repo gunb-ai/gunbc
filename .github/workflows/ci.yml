@@ -79,6 +79,9 @@ jobs:
       - name: Fabrication sentinel ratchet (P0-C)
         run: bash scripts/check-fabrication-sentinels.sh
 
+      - name: Rust toolchain pin parity (rust-toolchain.toml vs rustup.dag)
+        run: bash scripts/check-rust-toolchain-pin-parity.sh
+
       - name: Release-doc authority check (P2 single-authority discipline)
         # Forbidden-string consumer for release-control docs. Authority:
         # docs/r2-structure.md §"Release-doc authority discipline".

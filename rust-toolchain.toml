@@ -1,6 +1,10 @@
 # Channel pin for local rustup and GitHub Actions: `actions-rust-lang/setup-rust-toolchain`
 # reads this file when workflow steps omit an explicit `toolchain:` input.
-# Keep `channel` aligned with `ci_pinned_toolchain` in `dsl/extdeps/rustup.dag`.
+# Hand-maintained: no codegen/regen in-tree writes this file today. (The prior
+# main-branch banner cited `dsl/config/toolchain.dag`, which is not present in
+# the repo — only this TOML and `dsl/extdeps/rustup.dag` carry the pin.)
+# Keep `channel` aligned with `data ci_pinned_toolchain` in `dsl/extdeps/rustup.dag`;
+# CI enforces parity via `scripts/check-rust-toolchain-pin-parity.sh`.
 [toolchain]
 channel = "1.93.0"
 components = ["clippy", "rustfmt"]
