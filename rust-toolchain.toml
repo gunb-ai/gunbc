@@ -5,6 +5,10 @@
 # the repo — only this TOML and `dsl/extdeps/rustup.dag` carry the pin.)
 # Keep `channel` aligned with `data ci_pinned_toolchain` in `dsl/extdeps/rustup.dag`;
 # CI enforces parity via `scripts/check-rust-toolchain-pin-parity.sh`.
+#
+# Future: when toolchain/channel/components are codegen-owned from the DSL (see
+# the `Future:` block in `dsl/extdeps/rustup.dag`), emit this TOML from that
+# model and delete the shell parity ratchet — the bridge exists only until then.
 [toolchain]
 channel = "1.93.0"
 components = ["clippy", "rustfmt"]

@@ -25,6 +25,8 @@
 //   When we model toolchain switching, channels, components, or
 //   cross-targets, this file gets full coverage. For now it's the
 //   dependency declaration.
+//   Emitting repo-root rust-toolchain.toml from that model dissolves the
+//   TOML↔dag shell parity ratchet (see rust-toolchain.toml header comments).
 
 module extdeps.rustup
 

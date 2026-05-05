@@ -12,7 +12,8 @@ cd "$ROOT"
 
 channel=""
 while IFS= read -r line || [[ -n "$line" ]]; do
-  if [[ "$line" =~ ^channel[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
+  # Tolerate leading whitespace so formatting tweaks don't break the ratchet.
+  if [[ "$line" =~ ^[[:space:]]*channel[[:space:]]*=[[:space:]]*\"([^\"]+)\" ]]; then
     channel="${BASH_REMATCH[1]}"
     break
   fi
@@ -20,7 +21,7 @@ done <rust-toolchain.toml
 
 dag_pin=""
 while IFS= read -r line || [[ -n "$line" ]]; do
-  if [[ "$line" =~ ^data[[:space:]]+ci_pinned_toolchain:.*=[[:space:]]*\"([^\"]+)\" ]]; then
+  if [[ "$line" =~ ^[[:space:]]*data[[:space:]]+ci_pinned_toolchain:.*=[[:space:]]*\"([^\"]+)\" ]]; then
     dag_pin="${BASH_REMATCH[1]}"
     break
   fi
