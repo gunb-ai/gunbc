@@ -7550,6 +7550,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
 
     #[derive(serde::Deserialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
+    #[allow(clippy::enum_variant_names)] // Variant names mirror Anthropic `type` tags (`*_location`).
     enum Citation {
         CharLocation {
             cited_text: String,

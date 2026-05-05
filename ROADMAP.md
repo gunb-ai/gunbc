@@ -501,6 +501,10 @@ Three distinct reflective/exploratory analyses ran against `main@7f74f09` and `m
 
 **Sequencing:** this queue is an owner-scoped B4 sub-brief slice; each item follows `B4.1` (`DeclarationRef`) then the relevant carrier-landing rows in B4 order, and records closure only when the previous row proves its successor consumer is structurally routed. This is not a new program, just a single sequence inside the existing B4 identity-carrier lane. Surfaced by 5c bridge sweep request. P2 Boundary Discipline + P5 Progress Is Dissolution. Owner: unassigned; M scope.
 
+### Post-merge debt (2026-05-05 R3 Substrate Mgr review — CI toolchain)
+
+- **Rust CI channel pin parallel authority (`rust-toolchain.toml` channel vs `dsl/extdeps/rustup.dag::ci_pinned_toolchain`)**: `rust-toolchain.toml` is the rustup / `actions-rust-lang/setup-rust-toolchain` runtime pin; the extdep stub still carries a duplicate string for workflow-as-data and docs. **Dissolution:** generate one surface from the other (codegen from `rustup.dag`, or emit the extdep row from the TOML) and add a mechanical equality ratchet so the pin cannot drift. Owner: R3 Substrate / T-Receipts; S–M scope.
+
 ### Post-merge debt (2026-04-30 analyses)
 
 Surfaced by paired Exploratory Analysis (gpt-5-5-pro main@991114f) + Reflective Analysis (gpt-5-5-pro main@f8fefd8 / gpt-5-5-thinking main@ad016c5) post-R2-close cadence. R2 declared closed-with-residuals at 16:34Z (#1275); these are R3-cont surface items, not R2 deferrals.
