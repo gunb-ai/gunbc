@@ -40,19 +40,40 @@ sentence; neither is a STOP-fallback to the other.
 ### Path A — structural Rust reader (preferred when feasible)
 
 Replace the byte-oriented scanner with a structural Rust source
-reader that already encodes Rust's lexical grammar:
+reader that operates at the **token or typed-AST level** — never
+at the source-text-span level (which is what `IntegrationRsScan`
+does today and what the row's dissolution sentence names as the
+attractor to remove). Two sub-options, both structural:
 
-- **`rustc_lexer`** (rustc's own lexer crate; thin, no syntax-tree
-  construction): tokenize `tests/integration.rs` and walk the
-  token stream skipping `LineComment` / `BlockComment` /
-  `Literal { kind: Str | RawStr | Byte | ByteStr | RawByteStr |
-  Char | ByteChar }` tokens. `integration_rs_active_line_contains`
-  becomes a token-stream filter rather than a hand-coded state
-  machine. Lifetime-vs-char disambiguation is rustc-faithful by
-  construction (the crate IS rustc's authority).
-- **`syn::parse_file`** (heavier; full AST): parse the file and
-  walk only `Item` / `ImplItem` text spans for the needle. AST
-  walk is structurally exact; cost is the AST allocation per scan.
+- **`rustc_lexer` (token-level filter):** tokenize
+  `tests/integration.rs` once; the resulting token stream has
+  per-token `TokenKind` discriminators. Walk the stream and
+  filter to tokens whose kind is in the **Code-token set**
+  (`Ident` / `OpenBrace` / `CloseBrace` / `Pound` / `Semi` /
+  whitespace / etc.) — skip every token whose kind is in the
+  **Skip set** (`LineComment` / `BlockComment` / `Literal {
+  kind: Str | RawStr | Byte | ByteStr | RawByteStr | Char |
+  ByteChar }`). `integration_rs_active_line_contains` becomes
+  "does any Code-set token's text equal the needle on the
+  same line as the matched-attribute token?" — a filter over
+  typed token kinds, NOT a source-text-span scan.
+  Lifetime-vs-char disambiguation is rustc-faithful by
+  construction.
+
+- **`syn` typed-AST visitor:** parse the file once via
+  `syn::parse_file`; walk the AST with a `syn::visit::Visit`
+  implementation. The visitor extracts **typed facts** from
+  the AST nodes — e.g., `syn::Item::Mod`'s `ident` for `mod
+  foo;` declarations, `syn::Attribute::path`'s `Ident`s for
+  `#[path]` attributes — and produces a `Vec<TypedFact>` (or
+  similar) of structured matches. `integration_rs_active_line_contains`
+  becomes a check against those typed facts, NOT a substring
+  scan of source spans. The visitor MUST NOT call
+  `.span().source_text()` or any equivalent source-span-fetch
+  API; if it does, the implementation has slipped back into
+  the very pattern this slice retires. **Acceptance for the
+  syn path includes a grep that no source-span-fetch is called
+  in the visitor.**
 
 Worker pre-flight verifies which dependency is easier to add to
 the workspace; if `rustc_lexer` is not already transitively
@@ -61,9 +82,10 @@ available and adding it requires a vendored fork, prefer `syn`
 
 Path A acceptance: `IntegrationRsScan` deleted entirely;
 `integration_rs_active_line_contains` reimplemented as a
-token-stream / AST-span filter. Doc comment block at `:320-326`
-deleted (no longer applicable). Workaround attractor (the
-constraint itself) is gone, not just narrowed.
+typed-token or typed-AST filter (NOT a source-span scan). Doc
+comment block at `:320-326` deleted (no longer applicable).
+Workaround attractor (source-span scanning over Rust syntax) is
+gone, not just narrowed.
 
 ### Path B — scanner extension with rustc-lexer-faithful rule
 

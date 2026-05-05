@@ -38,39 +38,46 @@ request-side tool_result coverage on the same Anthropic Messages
 module surface (Director's "LLM-coherence" rationale at
 ratification time).
 
-## Slice — per-token enumeration of the live closure row
+## Slice — response-fidelity items, first-class enumeration
 
-**Important**: this 7-token table enumerates **only the
-`structural_coverage_gap_anthropic_messages_200_residual` closure
-tag's named tokens at `anthropic.dag:188`**. It does **not**
-enumerate the broader response-fidelity reachable-carrier surface
-(`AnthropicMessages200Citation` variant completeness;
-`AnthropicMessages200Usage.service_tier: String?` /
-`cache_creation_input_tokens` / `cache_read_input_tokens` typed
-shape; etc.). Those reachable residuals are tracked by the
-**Reachable-carrier audit** at §5 below and MUST be resolved
-(by inclusion or by explicit re-tracking) before the parent
-closure tag at `:188` retires. This table covers what's named
-**in** the closure tag; §5 covers what's **reachable from** the
-response-fidelity surface but not yet named.
+**Authoritative scope**: every item below is a first-class
+acceptance item of this slice. Items (1)-(7) are tokens that
+appear literally in
+`structural_coverage_gap_anthropic_messages_200_residual`'s
+closure tag at `anthropic.dag:188-189` (live HEAD verbatim;
+re-verified at brief authoring). Items (8)-(11) are
+reachable-carrier residuals on the response-fidelity surface
+that the closure tag does NOT name today — but which the slice
+treats as first-class items per the codex BLOCKING (sha
+84aebd90) routing the slice scope at the response-fidelity
+surface, not at the closure-tag surface alone. Worker re-
+verifies all items at dispatch (the closure row may narrow,
+or new reachable-carrier residuals may surface).
 
-The closure row at `anthropic.dag:188` carries 7 discrete tokens
-(re-verified at HEAD as of brief authoring; worker re-verifies at
-dispatch since the row may narrow further before S1 starts). Each
-token is a discrete acceptance item; the slice closes the row
-either by retiring all 7 (AND completing §5's reachable-carrier
-audit) or by explicitly narrowing the remaining residual to a
-named subset:
+The slice closes the row when **all 11 items** close, or
+explicitly narrows the closure tag with per-residual rationale
+(see §6). Reachable-carrier residuals may also earn their own
+new `structural_coverage_gap_*` rows if the dissolution shape
+warrants separate tracking.
 
-| Token in closure                            | Sub-slice item        | Closure shape                                              |
-|---|---|---|
-| `json_pending:container`                    | (1) typed container    | `AnthropicMessages200Body.container: Json?` → typed coproduct OR explicit "stays opaque per API spec" residual |
-| `AnthropicMessages200TextBlock` (carrier)   | (2) carrier rename     | rename to `AnthropicMessages200ContentBlock` (or equivalent) reflecting it is now a coproduct, not a text-only single-variant |
-| `variant_pending:thinking`                  | (3) `Thinking` variant | typed payload per Anthropic API: `{ thinking: String, signature: String }` (worker re-verifies at API spec) |
-| `variant_pending:tool_use`                  | (4) `ToolUse` variant  | typed payload per API: `{ id: String, name: String, input: Json }` (worker re-verifies) |
-| `variant_pending:redacted_thinking`         | (5) `RedactedThinking` variant | typed payload per API: `{ data: String }` (worker re-verifies) |
-| `variant_pending:web_search`                | (6) `WebSearch` variant | payload per API (worker re-reads the spec; closure tag does not enumerate fields) |
-| `variant_pending:server_tool_use`           | (7) `ServerToolUse` variant | payload per API (same — worker re-reads spec) |
+| # | Source                                     | Sub-slice item                                  | Closure shape                                              |
+|---|---|---|---|
+| 1 | closure-tag (live `:189`)                  | typed container                                  | `AnthropicMessages200Body.container: Json?` → typed coproduct OR explicit "stays opaque per API spec" residual |
+| 2 | closure-tag (live `:189`)                  | carrier rename                                   | `AnthropicMessages200TextBlock` rename to `AnthropicMessages200ContentBlock` (or equivalent) reflecting it is now a coproduct, not a text-only single-variant |
+| 3 | closure-tag (live `:189`)                  | `Thinking` variant                               | typed payload per Anthropic API: `{ thinking: String, signature: String }` (worker re-verifies) |
+| 4 | closure-tag (live `:189`)                  | `ToolUse` variant                                | typed payload per API: `{ id: String, name: String, input: Json }` (worker re-verifies) |
+| 5 | closure-tag (live `:189`)                  | `RedactedThinking` variant                       | typed payload per API: `{ data: String }` (worker re-verifies) |
+| 6 | closure-tag (live `:189`)                  | `WebSearch` variant                              | payload per API (worker re-reads spec) |
+| 7 | closure-tag (live `:189`)                  | `ServerToolUse` variant                          | payload per API (worker re-reads spec) |
+| 8 | reachable carrier (`anthropic.dag:141`)    | `AnthropicMessages200Citation` completeness      | audit variant set against API spec; if incomplete, extend OR re-track in a new closure row |
+| 9 | reachable carrier (`anthropic.dag:159`)    | `AnthropicMessages200Usage.service_tier`         | `String?` placeholder → typed coproduct (e.g., `Standard | Priority | Batch` per API spec) OR explicit "stays opaque" residual; honest vs aspirational shape per API |
+| 10| reachable carrier (`anthropic.dag:157-158`)| `AnthropicMessages200Usage.cache_*` fields       | `cache_creation_input_tokens` / `cache_read_input_tokens` are typed `Int?` today; audit completeness vs API and confirm honest vs additive-fields-pending |
+| 11| reachable surface (general)                | other reachable carrier from `AnthropicMessages200Body` | enumerate at dispatch: any field that is `Json?` / `String?` for an enum-like API field, or any nested type whose variant set has not been audited against the API |
+
+Items (1)-(7) are taken **verbatim** from the live closure-tag
+string at `anthropic.dag:189`; items (8)-(11) are the
+reachable-carrier audit elevated to first-class scope per the
+codex BLOCKING (sha 84aebd90) finding 2.
 
 ### Slice steps
 
