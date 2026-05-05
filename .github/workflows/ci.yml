@@ -362,8 +362,8 @@ jobs:
     # merge-blocking before Lane 1e graduation.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Same sizing rationale as `v3` above: DB-8 release builds run on
-    # ubicloud-standard-8. Use a 60m wall-clock cap so cold-cache / full release
-    # `cargo` work is unlikely to hit mid-compile cancellation (ratchet remains non-blocking).
+    # `ubicloud-standard-8` (#1814). **60m** wall so cold-cache / full release `cargo`
+    # work is unlikely to hit mid-compile cancellation (#1794); ratchet remains non-blocking.
     runs-on: ubicloud-standard-8
     timeout-minutes: 60
     needs: [v3]
