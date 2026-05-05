@@ -78,7 +78,7 @@ Examples 1-7 from `design-emission-model.md` (lines 415-792) are lifted as the s
 
 ### F. P1 substrate-fact-introduction receipts
 
-Worker MUST run the 3-step procedure (`INVARIANTS.md:94-129`) for any new substrate type / variant / field introduced under this lane:
+Worker MUST run the 3-step procedure ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)) for any new substrate type / variant / field introduced under this lane:
 
 - **Step 1 (DAG-ancestor):** the per-axis `Witness<C>` and `TestClaim` carriers — does an ancestor exist in `dsl/std/` or `src/v3/std/`? (`Witness<C>` is from `src/v3/std/dimensions.dag`; `TestClaim` is from `src/v3/std/test_claims.dag` if present, else escalate.)
 - **Step 2 (Coproduct-vs-coordinate):** the test outcome shape — `TestClaim::Pass | Fail(Diagnostic)` is a proper alternative; per-axis verdicts on a single (program, target) inhabitance are coordinates of a record.

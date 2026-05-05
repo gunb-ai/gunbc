@@ -112,7 +112,7 @@ Every detectable under-determination / contradiction lands as a structured diagn
 
 ### G. Substrate-fact-introduction P1 procedure (per `INVARIANTS.md` §P1)
 
-Worker MUST run the 3-step procedure (`INVARIANTS.md:94-129`) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
+Worker MUST run the 3-step procedure ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
 - **Step 1 (DAG-ancestor):** `LifetimeFacts` and its component types (`Ownership`, `LifetimeScope`, `Growability`, `Encoding`) — does an ancestor structural-fact carrier already exist (e.g., is `Ownership` definable as inhabitance of some existing `Lattice<T>` or algebra in `dsl/std/`)? Where to attach the fact: on `Binding` directly, on `Declaration`, or as a side-table? Default: structural attachment, cite receipt.
 - **Step 2 (Coproduct-vs-coordinate):** `LifetimeFacts` is a record (4 axes co-inhabit per binding); each axis (`Ownership` / `LifetimeScope` / etc.) is a sum (alternatives, not coordinates). Cite the worked-example substrate at `design-emission-model.md:534-546` as receipt.
 - **Step 3 (Primitive-vs-lens-extensible):** `Encoding` may be lens-extensible (per LanguageSpec axis vocabulary, which can grow as new targets land); `Ownership` / `LifetimeScope` / `Growability` are substrate primitives (every Shape-A target has these — they're computational primitives, not target-specific labels).

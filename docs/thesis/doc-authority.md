@@ -122,7 +122,7 @@ renumber. Cross-reference drift is a violation of this rule `[live]`.
 ## Relationship to INVARIANTS
 
 This contract is a thesis-doc-specific enforcement shape of two
-existing invariants `[live]` (see `INVARIANTS.md:23` P1 Modeling
+existing invariants `[live]` (see [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) P1 Modeling
 Faithfulness + `:96` P2 Boundary Discipline):
 
 - **P1 Modeling Faithfulness** — "Documentation Describes Live

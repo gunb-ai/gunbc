@@ -54,7 +54,7 @@ Author the `LanguageSpec` schema as `.dag` substrate. Per Modeling problem 6 (`d
 
 **Parallel-authority dissolution:** `dsl/std/languages.dag:438`'s `LanguageSpec` declaration + its `rust_spec` / `go_spec` / `python_spec` data items (lines 1244 / 1268 / 1292) converge with `src/v3/std/emit_model.dag:303` under one authority. If the two shapes have already drifted, this lane resolves the drift explicitly (no silent reconciliation) and lands the dissolution receipt in the PR body. If the shapes are reconcilable, T-Ground-Dissolve retires the duplicate; if they are not (i.e., `dsl/std/languages.dag` carries a structural fact `emit_model.dag` cannot absorb), escalate to manager (#1133) — that is itself a substrate-modeling call.
 
-**P1 procedure receipts** (`INVARIANTS.md:94-129`): worker MUST cite which steps resolved each *new* field added to the existing type, in the PR body. Step 1 (DAG-ancestor) for the type itself is landed by this brief — the parent is `emit_model.dag`'s existing `LanguageSpec`.
+**P1 procedure receipts** ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)): worker MUST cite which steps resolved each *new* field added to the existing type, in the PR body. Step 1 (DAG-ancestor) for the type itself is landed by this brief — the parent is `emit_model.dag`'s existing `LanguageSpec`.
 
 ### B. Per-primitive `RealizationCost` (Q3 lock — `design-emission-model.md:1143-1208`)
 
@@ -130,7 +130,7 @@ This is the load-bearing consequence of Q4's universal four-property gate (Faith
 
 ### G. Substrate-fact-introduction P1 procedure (per `INVARIANTS.md` §P1)
 
-Worker MUST run the 3-step procedure (`INVARIANTS.md:94-129`) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
+Worker MUST run the 3-step procedure ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
 - **Step 1 (DAG-ancestor):** which existing parent does the new fact attach to? (Worked example: `LanguageSpec` itself — does an ancestor target-spec carrier exist already?)
 - **Step 2 (Coproduct-vs-coordinate):** for each new sum, do all variants ever co-inhabit (→ record) or alternate (→ sum)? (`RealizationCost` is correctly a record — Q3 lock receipt; `BoundDeclaration` is correctly a sum — Q1 lock receipt.)
 - **Step 3 (Primitive-vs-lens-extensible):** for new leaves introduced under *this* lane's scope (e.g., `PlaceholderConvention` instances populated against the Substrate-owned `MethodTemplateContract` type), are they substrate primitives or lens-extensible labels? (Type-shape Step 1+2 receipts for `MethodTemplateContract` itself land on Substrate's PR per E above.)
