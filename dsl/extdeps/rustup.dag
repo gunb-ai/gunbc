@@ -18,8 +18,9 @@
 //   - Cross-compilation targets (gunbc only builds for the host)
 //   - Multiple toolchains (no toolchain switching)
 //
-// The CI workflow uses dtolnay/rust-toolchain@v1 to provision
-// rustup. Local dev uses whatever rustup ships as stable.
+// The CI workflow uses actions-rust-lang/setup-rust-toolchain@v1.16.0
+// (same ref as dsl/extdeps/github/actions.dag `setup_rust_action`).
+// Local dev follows rust-toolchain.toml (channel 1.93.0).
 //
 // Future:
 //   When we model toolchain switching, channels, components, or
@@ -44,8 +45,7 @@ data rustup_install_url: NonEmptyStr = "https://rustup.rs"
 // Default channel we expect when "rustup default" is queried.
 data default_channel: RustChannel = Stable
 
-// The pinned toolchain version used in CI. Local dev usually tracks
-// stable; CI pins for reproducibility.
+// The pinned rustc channel used in CI and in rust-toolchain.toml.
 data ci_pinned_toolchain: NonEmptyStr = "1.93.0"
 
 // Rustup docs URL for reference.
