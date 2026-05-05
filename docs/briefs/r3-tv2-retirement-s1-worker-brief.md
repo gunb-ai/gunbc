@@ -13,7 +13,7 @@ S-1 unblocks the **G-1 implementation chain** for T-V2-Retirement:
 - **G-1**: deletion of Cargo.lock v2 dev-deps. Cascade-gated on §3.1 + §3.2 dispositions completing (one of which needs Substrate-side authority migration; the other needs PM choice between replace vs delete).
 - **G-2 prereq stack**: S-1 + S-2 + S-3 + S-4 + G-1. S-1 brief enumerates the entire chain (per Decision 6 below) so workers don't reconstruct it from the audit.
 
-The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port the **four audited Pop A coverage items** (per `docs/briefs/r3-pb-tv2-population-coverage-audit.md` §"Population A") onto live v3 `dsl/std/induction.dag` + `dsl/std/termination.dag` surfaces. S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
+The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port the **four audited Pop A coverage items** (per `docs/briefs/r3-pb-tv2-population-coverage-audit.md` §"Population A") onto live v3 `src/v3/std/induction.dag` + `src/v3/std/termination.dag` surfaces (audit-canonical root; v3-staged authority that v3 compiler reads). S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
 
 ## Consumes (authoritative inputs)
 
