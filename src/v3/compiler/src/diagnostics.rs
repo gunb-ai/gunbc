@@ -220,7 +220,60 @@ pub enum Diagnostic {
     },
 }
 
+/// Layer-1 compiler diagnostic kind labels in **declaration order** of [`Diagnostic`].
+///
+/// This is the **only** source of label strings for [`Diagnostic::layer1_kind_label`], which
+/// indexes this slice using an exhaustive per-variant index match (no wildcard). Crate tests assert
+/// the declaration-order fixture matches those indices; integration tests ratchet
+/// `CompilerDiagnosticKind` / `std.verification.DiagnosticKind` in the bootstrap DAG against this
+/// slice. When adding a [`Diagnostic`] variant, extend this list, add an index arm next to
+/// `layer1_kind_label`, and update the `.dag` closed sums — lens-instance kinds stay on the
+/// Layer-2 path (Q6.5), not here.
+pub const LAYER1_DIAGNOSTIC_KIND_LABELS: &[&str] = &[
+    "TokenizerError",
+    "ParseError",
+    "TypeMismatch",
+    "ArityMismatch",
+    "ResolveError",
+    "UnitMismatch",
+    "BranchConditionNotBool",
+    "MagnitudeOutOfRange",
+    "MalformedIntegerRangeFact",
+    "NominalOpacityViolation",
+];
+
 impl Diagnostic {
+    /// Zero-based declaration index for Layer-1 kind strings (same order as [`Diagnostic`] and
+    /// [`LAYER1_DIAGNOSTIC_KIND_LABELS`]).
+    ///
+    /// This match is **exhaustive with no wildcard**: adding a [`Diagnostic`] variant is a compile
+    /// error until a new arm is authored here **and** [`LAYER1_DIAGNOSTIC_KIND_LABELS`] is extended
+    /// by one entry. [`Diagnostic::layer1_kind_label`] reads only from that slice, so the label
+    /// strings have a single authority.
+    fn layer1_declaration_index(&self) -> usize {
+        match self {
+            Diagnostic::TokenizerError { .. } => 0,
+            Diagnostic::ParseError { .. } => 1,
+            Diagnostic::TypeMismatch { .. } => 2,
+            Diagnostic::ArityMismatch { .. } => 3,
+            Diagnostic::ResolveError { .. } => 4,
+            Diagnostic::UnitMismatch { .. } => 5,
+            Diagnostic::BranchConditionNotBool { .. } => 6,
+            Diagnostic::MagnitudeOutOfRange { .. } => 7,
+            Diagnostic::MalformedIntegerRangeFact { .. } => 8,
+            Diagnostic::NominalOpacityViolation { .. } => 9,
+        }
+    }
+
+    /// Stable Layer-1 kind name for substrate mirrors and test predicates (Q6.5).
+    ///
+    /// Labels come only from [`LAYER1_DIAGNOSTIC_KIND_LABELS`]; an exhaustive per-variant index
+    /// match selects the row so new enum variants cannot compile without extending the const slice
+    /// and substrate closed sums.
+    pub fn layer1_kind_label(&self) -> &'static str {
+        LAYER1_DIAGNOSTIC_KIND_LABELS[self.layer1_declaration_index()]
+    }
+
     pub fn span(&self) -> &SourceSpan {
         match self {
             Diagnostic::TokenizerError { span, .. }
@@ -816,6 +869,98 @@ impl DiagnosticTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::TypeShape;
+
+    fn layer1_diagnostic_examples_in_declaration_order() -> Vec<Diagnostic> {
+        let span = SourceSpan::new("layer1_kind_label_ratchets.v3", 0, 0);
+        let fixes = Vec::new();
+        let ty = TypeShape::new(DeclarationId::test_raw(0));
+        vec![
+            Diagnostic::TokenizerError {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ParseError {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::TypeMismatch {
+                expected: ty,
+                actual: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ArityMismatch {
+                function: String::new(),
+                expected: 0,
+                actual: 0,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::ResolveError {
+                name: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::UnitMismatch {
+                operator: String::new(),
+                parameter: String::new(),
+                expected: ty,
+                actual: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::BranchConditionNotBool {
+                port: PortId::test_raw(0),
+                actual_type: None,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::MagnitudeOutOfRange {
+                literal: String::new(),
+                target: String::new(),
+                range_min_inclusive: String::new(),
+                range_max_inclusive: String::new(),
+                expected: ty,
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::MalformedIntegerRangeFact {
+                message: String::new(),
+                span: span.clone(),
+                fixes: fixes.clone(),
+            },
+            Diagnostic::NominalOpacityViolation {
+                declaration: DeclarationId::test_raw(0),
+                accessor: None,
+                span,
+                fixes,
+            },
+        ]
+    }
+
+    #[test]
+    fn layer1_ordered_labels_match_layer1_kind_label() {
+        let examples = layer1_diagnostic_examples_in_declaration_order();
+        assert_eq!(
+            examples.len(),
+            LAYER1_DIAGNOSTIC_KIND_LABELS.len(),
+            "declaration-order fixture must list every Diagnostic variant exactly once"
+        );
+        let mut seen = std::collections::HashSet::new();
+        for (i, diag) in examples.iter().enumerate() {
+            let idx = diag.layer1_declaration_index();
+            assert_eq!(
+                idx, i,
+                "fixture must stay in declaration order and match layer1_declaration_index()"
+            );
+            let label = diag.layer1_kind_label();
+            assert_eq!(label, LAYER1_DIAGNOSTIC_KIND_LABELS[i]);
+            assert!(seen.insert(label), "duplicate layer1 label: {label}");
+        }
+    }
 
     #[test]
     fn apply_correction_replaces_the_requested_span() {

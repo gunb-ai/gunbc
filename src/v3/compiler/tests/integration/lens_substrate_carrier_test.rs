@@ -8,7 +8,8 @@
 //!   shape (`name`, `read`, `sequential: Monoid<C>`, `branch`, `iterate`,
 //!   `validate`).
 //! - `Diagnostic.kind` widens from `CompilerDiagnosticKind` to
-//!   `AnyDiagnosticKind`; the Layer-1 closed sum stays unchanged.
+//!   `AnyDiagnosticKind`; the Layer-1 closed sum tracks the compiler's
+//!   native `Diagnostic` taxonomy, ratcheted via `LAYER1_DIAGNOSTIC_KIND_LABELS`.
 //! - `LensInstanceKindWitness` is decl-only (no payload value field)
 //!   until refinement/dependent typing lands; this is the explicit
 //!   substrate gap receipt.
@@ -17,7 +18,7 @@ use std::collections::HashSet;
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{ArrowBody, Dag, DeclarationId, TypeConnective};
-use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::{generated_full_bootstrap_dag, LAYER1_DIAGNOSTIC_KIND_LABELS};
 
 fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
     let decl = dag
@@ -123,28 +124,28 @@ fn diagnostic_kind_widened_to_any_diagnostic_kind() {
 }
 
 #[test]
-fn compiler_diagnostic_kind_closed_sum_unchanged() {
+fn compiler_diagnostic_kind_matches_rust_layer1_authority() {
     let dag = generated_full_bootstrap_dag();
-    let variants: HashSet<String> = disj_variant_labels(&dag, "CompilerDiagnosticKind")
-        .into_iter()
-        .collect();
-    let expected: HashSet<&str> = [
-        "TokenizerError",
-        "ParseError",
-        "TypeMismatch",
-        "UnitMismatch",
-        "ArityMismatch",
-        "ResolveError",
-        "NominalOpacityViolation",
-    ]
-    .into_iter()
-    .collect();
-    let actual: HashSet<&str> = variants.iter().map(String::as_str).collect();
+    let substrate = disj_variant_labels(&dag, "CompilerDiagnosticKind");
+    let expected: Vec<&str> = LAYER1_DIAGNOSTIC_KIND_LABELS.to_vec();
+    let actual: Vec<&str> = substrate.iter().map(String::as_str).collect();
     assert_eq!(
         actual, expected,
-        "CompilerDiagnosticKind closed sum changed — Layer-1 must stay locked; \
-         lens-instance kinds enter via Layer-2 LensInstanceKindWitness, NOT \
-         by extending this sum (anti-bridge invariant per Q6.5)"
+        "CompilerDiagnosticKind must match `LAYER1_DIAGNOSTIC_KIND_LABELS` in **declaration order** \
+         (same order as `Diagnostic` in diagnostics.rs); a HashSet-only check would miss order \
+         drift; lens-instance kinds use Layer-2 LensInstanceKindWitness (Q6.5 anti-bridge)"
+    );
+}
+
+#[test]
+fn verification_diagnostic_kind_mirrors_compiler_diagnostic_kind() {
+    let dag = generated_full_bootstrap_dag();
+    let compiler = disj_variant_labels(&dag, "CompilerDiagnosticKind");
+    let verification = disj_variant_labels(&dag, "DiagnosticKind");
+    assert_eq!(
+        compiler, verification,
+        "std.verification.DiagnosticKind must mirror std.diagnostics.CompilerDiagnosticKind \
+         (variant labels and order)"
     );
 }
 
