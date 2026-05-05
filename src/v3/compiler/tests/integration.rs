@@ -241,8 +241,39 @@ mod t_demo_fixture_test {
 
     #[test]
     fn t_demo_canonical_suites_are_runner_visible() {
-        let source = fixture_source();
-        let dag = compile_fixture(&source);
+        let dag = compile_fixture(
+            r#"
+module v3.compiler.tests.t_demo.runner_visibility
+
+import std.verification { Compiles, TestClaim, TestSuite }
+
+data compiler_nerd_smoke: TestClaim = {
+  name: "fixture_compiler_nerd_canonical.smoke",
+  source: "let compiler_nerd_smoke: Int = 1",
+  file_name: "fixture_compiler_nerd_canonical_smoke.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data integration_smoke: TestClaim = {
+  name: "fixture_integration_canonical.smoke",
+  source: "let integration_smoke: Int = 1",
+  file_name: "fixture_integration_canonical_smoke.v3",
+  predicate: Compiles,
+  requires: []
+}
+
+data fixture_compiler_nerd_canonical: TestSuite = {
+  name: "fixture_compiler_nerd_canonical",
+  claims: [compiler_nerd_smoke]
+}
+
+data fixture_integration_canonical: TestSuite = {
+  name: "fixture_integration_canonical",
+  claims: [integration_smoke]
+}
+"#,
+        );
 
         for suite_name in [
             "fixture_compiler_nerd_canonical",
