@@ -17,11 +17,11 @@ This pass classifies 74 ROADMAP-tracked debt rows (69 baseline + 5 added 2026-05
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 46 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 44 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
 | Partially closed | 9 | Has a landed partial receipt but still names remaining work. |
 | Partial (fold) | 1 | Special-case partial closure (e.g., one variant landed, others pending). |
-| Retired / stale receipt row | 17 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 19 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
