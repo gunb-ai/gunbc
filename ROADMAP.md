@@ -314,6 +314,7 @@ The full deferral ledger moved to [docs/history/roadmap-active-deferrals.md](doc
 - `DB-18`: workflow-effect carrier and Rust reflection shipped; Go accessor proof remains a later slice. See [docs/db-history/db-18.md](docs/db-history/db-18.md).
 - `DB-19`: reserved; no in-tree design doc is allocated yet. See [docs/db-history/db-19.md](docs/db-history/db-19.md) if and when receipts exist.
 - `DB-20`: workflow `ParallelEffect` parallel-composition safety shipped; thesis-facing graph parallelism remains separate open work. See [docs/db-history/db-20.md](docs/db-history/db-20.md).
+- **T-Incremental-Cross-Run-Demo** (post-R3, deferred from PR #1738 SHIP_WITH_DEBT meta-review): demonstration of the "Incremental cross-run execution" free consequence per [`THESIS.md:208`](THESIS.md) + [`docs/thesis/what-else-falls-out.md`](docs/thesis/what-else-falls-out.md) §"Incremental cross-run execution"; not-live-until-consumer-artifact lands — one `.dag` TestClaim or runner path or interpreter cache path proving "changed inputs ⇒ re-executed and unchanged inputs ⇒ cache hit"; cross-references the post-R3 (indirect) row in [`docs/thesis/r2-r3-thesis-mapping.md`](docs/thesis/r2-r3-thesis-mapping.md) §"Disposition table — Free consequences"; landing date TBD post R3 close.
 
 ## Scheduled deletions — scaffolds with named dissolution triggers
 
