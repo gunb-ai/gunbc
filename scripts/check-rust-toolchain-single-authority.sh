@@ -2,8 +2,10 @@
 #
 # P2 single-authority: the pinned rustc channel string lives only in
 # `rust-toolchain.toml` `[toolchain].channel`. `dsl/extdeps/rustup.dag` must not
-# reintroduce that literal (any `data … = "<channel>"` or comment drift) nor the
-# retired `ci_pinned_toolchain` symbol — see PR #1794 / INVARIANTS P2.
+# reintroduce that value as a quoted literal, as a bare semver-like token (catches
+# unquoted comment drift such as `// pin 1.93.0`), nor via the retired
+# `ci_pinned_toolchain` symbol — see PR #1794 / INVARIANTS P2. Word channels (e.g.
+# `stable`) are only checked in quoted form to avoid unrelated prose false positives.
 #
 # Also fail if `.github/workflows/ci.yml` sets an explicit `toolchain:` input on
 # `actions-rust-lang/setup-rust-toolchain` (the action ignores rust-toolchain.toml
@@ -52,6 +54,16 @@ quoted_channel="\"${channel}\""
 if grep -Fq "$quoted_channel" "$rustup_dag"; then
   echo "::error::dsl/extdeps/rustup.dag contains the pinned channel literal ${quoted_channel} — duplicate authority (keep the channel only in rust-toolchain.toml)."
   exit 1
+fi
+
+# Semver-like channels: also reject the bare token so unquoted comment/data drift
+# cannot reintroduce the pin (e.g. `// use 1.93.0`). Skipped for word channels like
+# `stable` where this substring can appear in unrelated prose.
+if [[ "$channel" =~ ^[0-9]+\.[0-9]+ ]]; then
+  if grep -Fq "$channel" "$rustup_dag"; then
+    echo "::error::dsl/extdeps/rustup.dag contains bare channel token '${channel}' — duplicate authority (keep the channel only in rust-toolchain.toml)."
+    exit 1
+  fi
 fi
 
 if grep -Eq '^[[:space:]]*data[[:space:]]+ci_pinned_toolchain' "$rustup_dag"; then
