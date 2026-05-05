@@ -31,8 +31,10 @@ concurrency:
 
 # Rust: each `setup-rust-toolchain` step omits `toolchain:` so the action reads
 # `rust-toolchain.toml` at the repo root after `actions/checkout`. No job uses a
-# non-default `working-directory` for Rust setup; if one did, you would need an
-# explicit `toolchain:` input or a copy of the file inside that directory.
+# non-default `working-directory` for Rust setup; if one did, make `rust-toolchain.toml`
+# visible from that directory (e.g. copy it in) — do **not** add a workflow `toolchain:`
+# input: `scripts/check-rust-toolchain-single-authority.sh` rejects it, and the action
+# ignores the repo file when `toolchain` is set explicitly (upstream semantics).
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
