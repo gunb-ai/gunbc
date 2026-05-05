@@ -12,6 +12,8 @@
 
 **Audit framing:** these tests live INSIDE `src/v2/tests` and fall with G-2 (workspace-member removal of `src/v2/tests`) per audit §1 / matrix §2.1. They count against G-2, not G-1. The dispatch question is: when G-2 deletes the crate, are the *semantic properties* these tests guarantee already covered on the v3 side, or does G-2 need a coverage migration first?
 
+> **Single-authority pointer (P2 — added 2026-05-05).** The per-row "Disposition recommendation for S-1" cells in §A.1–§A.4 below carry the **substrate-presence** finding accurate at audit-authoring time. **For Pop A's gate set and dispatch readiness, the single canonical authority is the "Post-#1715 reclassification" subsection that follows §A.4 / §A summary** (constructor/value evaluator dependency post-PR #1715 / `52dcd5529`). The per-row cells remain useful for substrate-shape context but must not be read as standalone dispatch readiness; that is the reclassification subsection's job. Same pointer applies to the Pop A row in the §"Net dispatch order" lower in this audit.
+
 ### A.1 `src/v2/tests/src/derive_bound_fail_closed_test.rs`
 
 | Field | Value |
