@@ -12,6 +12,8 @@
 
 **Audit framing:** these tests live INSIDE `src/v2/tests` and fall with G-2 (workspace-member removal of `src/v2/tests`) per audit §1 / matrix §2.1. They count against G-2, not G-1. The dispatch question is: when G-2 deletes the crate, are the *semantic properties* these tests guarantee already covered on the v3 side, or does G-2 need a coverage migration first?
 
+> **Single-authority pointer (P2 — added 2026-05-05).** The per-row "Disposition recommendation for S-1" cells in §A.1–§A.4 below carry the **substrate-presence** finding accurate at audit-authoring time. **For Pop A's gate set and dispatch readiness, the single canonical authority is the "Post-#1715 reclassification" subsection that follows §A.4 / §A summary** (constructor/value evaluator dependency post-PR #1715 / `52dcd5529`). The per-row cells remain useful for substrate-shape context but must not be read as standalone dispatch readiness; that is the reclassification subsection's job. Same pointer applies to the Pop A row in the §"Net dispatch order" lower in this audit.
+
 ### A.1 `src/v2/tests/src/derive_bound_fail_closed_test.rs`
 
 | Field | Value |
@@ -54,7 +56,40 @@
 
 ### Population A summary
 
-All 4 named tests have **substrate live on v3 side** (every function has a parallel `src/v3/std/induction.dag` or `termination.dag` declaration), but **none have v3-side test coverage**. Migration is mechanical (port test bodies; v3 `Int`/`String`/struct constructor surfaces are equivalent). Recommended: a single v3-side property-test PR landing all 4 ports under (e.g.) `src/v3/compiler/tests/integration/v2_property_coverage_migration_test.rs` (or per-file split if the worker prefers); explicit S-1 routing per Decision 6 of the input packet (S-1 covers G-1 + G-2 prereq chain).
+All 4 named tests have **substrate live on v3 side** (every function has a parallel `src/v3/std/induction.dag` or `termination.dag` declaration), but **none have v3-side test coverage**. The migration shape was originally classified "mechanical port" on substrate-presence grounds; see the **Post-#1715 reclassification** below for the corrected disposition.
+
+### Post-#1715 reclassification — blocked on runtime constructor/value execution (2026-05-05)
+
+This audit's original "Substrate live; just needs test wiring" disposition for the four Pop A rows conflated two distinct readiness conditions:
+
+1. **Substrate-presence** — the `.dag` declarations exist (still true).
+2. **Executability** — the v3 evaluator can run the `.dag` functions on test inputs and compare results.
+
+Re-verified at `origin/main` HEAD `52dcd5529` (post-#1715 `b13378e60` + #1716):
+
+- **PR #1715 advanced executability** for one shape: `TransformTarget::Callable(callee_decl)` where `callee_decl` is an `Arrow` with a `UserDefined` body now evaluates the bind body in a fresh frame (`src/v3/compiler/src/lib.rs:579-617`). User-function calls land. **Direct calls to `derive_bound`, `master_theorem`, `int_pow_bounded`, `ceil_log[_iter]`, `peano_literal_materialization_cap`, `positive_descent_amount_from_positive_int`, `proportional_divisor_from_int_at_least_two`, `meet_sub_value`, `join_sub_value` are now in scope as Arrow-target callables.**
+
+- **Non-Arrow `Callable` targets still fail-closed** with `BadTransformOperands { reason: "Callable target declaration is not an Arrow type" }` (`src/v3/compiler/src/lib.rs:581-585`; ratcheted by unit test assertion at `:2035-2040`).
+
+- **Surface variant / record construction lowers to non-Arrow `Callable`.** `lower_constructor_invocation(dag, target, inputs, span)` at `src/v3/compiler/src/lower.rs:7103-7119` produces `TransformTarget::Callable(target)` where `target` is the variant constructor or record declaration id — not an Arrow. Every constructor expression in a `.dag` test body (`ErrorBound`, `Some { value: ... }`, `none`, `OneStep`, `ConstantShrink { steps: ... }`, `StrictSubValue { field: ..., factor: ... }`, etc.) goes through this path.
+
+Population A's value flow is dominated by these constructor values:
+
+- **A.1 derive_bound / master_theorem** — output is `CostBound` variants (`ErrorBound`, `cost_linear`, `ForeverBound`, `cost_polynomial { ... }`); input includes `ShrinkFactor` variants (`UnitShrink`, `ConstantShrink { steps: ... }`, `ProportionalShrink { divisor: ... }`).
+- **A.2 int_pow_bounded / ceil_log / ceil_log_iter** — output is `Int?` constructed via `Some { value: ... }` / `none`. Even the success path emits a non-Arrow `Callable` for the `Some` constructor.
+- **A.3 peano cap + descent / divisor** — output is `PositiveDescentAmount?` / `ProportionalDivisor?` (nested `Some`/`OneStep`/`AdditionalStep { previous: ... }` / `DivideByTwo`/etc.).
+- **A.4 meet_sub_value / join_sub_value** — both ends of the function (input args and return value) are `SubValueRelation` variants (`StrictSubValue { field, factor }`, `ArithmeticDescent { param, factor }`, `SubValueUnknown`); inputs nest `InductiveField` records and `ShrinkFactor` variants.
+
+Without runtime constructor/value execution for variants and records, every behavioral assertion needs a constructor result the evaluator cannot produce, so the property tests cannot run. Authoring decorative shape-only assertions on the lowered Dag would not catch the regressions the v2 tests catch (per dispatch's no-fake-tests clause).
+
+**Reclassified disposition for Pop A (all four rows):**
+
+> Substrate live; **requires v3 evaluator runtime constructor/value execution** (variant constructors + record constructors) before the behavioral property-test migration can land. PR #1715's `Callable` arm covers Arrow user-function calls only; the constructor-target arm remains parked.
+
+**Routing per current PB/Director coordination (inbox #1134):**
+
+- Pop A migration is held pending an evaluator slice that lands constructor/value execution for variants and records (or an explicit substrate decision that introduces a different executable path). PB does not author Rust mirrors as an interim surface — that would require a Substrate / Evaluator authority decision PB does not own and would violate the intended single-authority migration shape.
+- The audit's original A.1–A.4 row text remains accurate as substrate-presence; this section is the executability correction. The original "single v3-side property-test PR landing all 4 ports" recommendation above is **not actionable today** — defer until the constructor evaluator arm lands.
 
 ## Population B — substantive G-1 consumers outside `src/v2/` (2 test files)
 
@@ -94,7 +129,7 @@ Combining Pop A + Pop B per the matrix's prerequisite DAG + this audit:
 2. **Three lanes can dispatch in parallel once S-1 lands** (each retains its own lane-specific dependency chain — S-1 is the common gate, not the only gate per lane):
    - **B.1 disposition** per Decision 1 of S-1 input packet (#1462) — additionally gated on R2-Evaluator surface for the Replace path, or a Substrate structural-guarantee receipt for the Delete fallback. Lane-specific.
    - **B.2 disposition** per Decision 2 — additionally gated on Substrate-side `kernel_algebra_profile` authority migration landing first. Lane-specific.
-   - **Pop A v3-side property-test migration** — gated by **S-1 only**; substrate is live on v3 side for all 4 (verified per `src/v3/std/{induction,termination}.dag` line citations above); no R2-Evaluator / PB-Runtime / Substrate-authority dependency. Mechanical port.
+   - **Pop A v3-side property-test migration** — **superseded by the "Post-#1715 reclassification" subsection in §A** (2026-05-05). The original "S-1 only / no evaluator dependency / mechanical port" framing was correct on substrate-presence grounds but conflated substrate-presence with executability. After PR #1715 the disposition reads: gated on S-1 **and** on v3 evaluator runtime constructor/value execution for variants and records (Arrow user-function calls land per #1715; non-Arrow `Callable` constructor targets remain parked at `src/v3/compiler/src/lib.rs:581-585`). PB does not author Rust mirrors as an interim authority. The §A reclassification is the single authority for Pop A's gate set; this lane row defers to it.
 3. **§3.3 Cargo edges drop** atomically with B.1 + B.2 closure.
 4. **G-1 green** — `cargo test -p v3-compiler` passes without v2 crates.
 5. **Pop A migration green** — must precede G-2; without it, G-2 silently drops the property ratchets when `src/v2/tests` is removed. Independent of G-1 close ordering otherwise.
