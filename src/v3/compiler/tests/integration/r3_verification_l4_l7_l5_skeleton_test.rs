@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
-use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
+use v3_compiler::test_runner::{ClaimEvaluation, ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
@@ -47,6 +47,7 @@ const L5_CLAIM: &str = "r3_verification_l5_cross_target_skeleton";
 const L5_AUTHORITY_PROGRAM: &str = include_str!("../fixtures/r3_l5_corpus/add_then_branch_seed.v3");
 
 static L4_DAG: OnceLock<Dag> = OnceLock::new();
+static L4_SUITE_RESULTS: OnceLock<Vec<ClaimEvaluation>> = OnceLock::new();
 static L4_MIXED_DAG: OnceLock<Dag> = OnceLock::new();
 static L7_DAG: OnceLock<Dag> = OnceLock::new();
 static L5_DAG: OnceLock<Dag> = OnceLock::new();
@@ -73,6 +74,19 @@ fn cached_compile(
     })
 }
 
+/// `TestRunner::run_suite` for the L4 skeleton module is shared across the three
+/// W1 row tests so cold CI does not execute the full suite once per `#[test]`
+/// (libtest names order `false_branch` before `match_skeleton`, so the first test
+/// still pays the wall-clock ratchet — see `slow-test-exemptions.txt`).
+fn l4_emit_eval_skeleton_suite_results() -> &'static [ClaimEvaluation] {
+    L4_SUITE_RESULTS.get_or_init(|| {
+        run_on_larger_stack(|| {
+            let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
+            TestRunner::new(dag).run_suite(L4_SUITE)
+        })
+    })
+}
+
 fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
 where
     T: Send + 'static,
@@ -87,47 +101,38 @@ where
 
 #[test]
 fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
-    run_on_larger_stack(|| {
-        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
-        let results = TestRunner::new(dag).run_suite(L4_SUITE);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[0].claim_name, L4_CLAIM);
-        assert!(
-            matches!(results[0].result, ClaimResult::Pass),
-            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
-            results[0].result
-        );
-    });
+    let results = l4_emit_eval_skeleton_suite_results();
+    assert_eq!(results.len(), 3);
+    assert_eq!(results[0].claim_name, L4_CLAIM);
+    assert!(
+        matches!(results[0].result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
+        results[0].result
+    );
 }
 
 #[test]
 fn r3_verification_l4_emit_eval_false_branch_passes_w1_emit_vs_eval() {
-    run_on_larger_stack(|| {
-        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
-        let results = TestRunner::new(dag).run_suite(L4_SUITE);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[1].claim_name, L4_FALSE_CLAIM);
-        assert!(
-            matches!(results[1].result, ClaimResult::Pass),
-            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (false branch signed Int -4); got {:?}",
-            results[1].result
-        );
-    });
+    let results = l4_emit_eval_skeleton_suite_results();
+    assert_eq!(results.len(), 3);
+    assert_eq!(results[1].claim_name, L4_FALSE_CLAIM);
+    assert!(
+        matches!(results[1].result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (false branch signed Int -4); got {:?}",
+        results[1].result
+    );
 }
 
 #[test]
 fn r3_verification_l4_emit_eval_nested_branch_passes_w1_emit_vs_eval() {
-    run_on_larger_stack(|| {
-        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
-        let results = TestRunner::new(dag).run_suite(L4_SUITE);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[2].claim_name, L4_NESTED_CLAIM);
-        assert!(
-            matches!(results[2].result, ClaimResult::Pass),
-            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (nested branch Int 7); got {:?}",
-            results[2].result
-        );
-    });
+    let results = l4_emit_eval_skeleton_suite_results();
+    assert_eq!(results.len(), 3);
+    assert_eq!(results[2].claim_name, L4_NESTED_CLAIM);
+    assert!(
+        matches!(results[2].result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (nested branch Int 7); got {:?}",
+        results[2].result
+    );
 }
 
 #[test]
