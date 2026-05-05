@@ -199,6 +199,8 @@ type AnthropicMessages200Body {
 
 data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
   "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct",
+  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesToolUseBlock|residue:client_tool_name_and_input_remain_free_string_json|trigger:tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema",
+  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesServerToolUseBlock|residue:server_tool_name_enum_and_input_payloads_unmodeled|trigger:server_tool_use name is closed Anthropic server-tool enum and input is per-tool typed payload",
   "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally",
   "closure:anthropic_messages_200_residual|llm.Anthropic.Messages.output.content|blocked:variant_aware_typed_rest_response_projection|path:content/0/text|requires_arm:AnthropicMessages200ContentBlock.MessagesTextBlock|trigger:structural projection metadata carrier lands"
 ]
