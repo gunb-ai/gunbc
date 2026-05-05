@@ -75,6 +75,10 @@ Two lowered constructor families reach `TransformTarget::Callable(target)`:
      lowerer resolves constructor identity through
      `resolve_expected_variant_constructor`, which checks the parent
      `TypeConnective::Disj { variants }` list (`src/v3/compiler/src/lower.rs:7493+`).
+     For generic sums, that resolver may materialize an
+     `Instantiation { template: variant_decl, arguments }`; E6-G0d must
+     preserve that instantiation instead of checking only the outer
+     declaration id.
    - The `target` here is the variant constructor declaration, not an Arrow.
 
 This confirms the next Evaluator slice is not "broaden Callable" in general.
@@ -103,15 +107,20 @@ Expected outputs:
   evaluator's operand evaluation order and arity discipline.
 - **Variant constructor target with record payload:** return
   `Value::VariantValue { tag: variant_decl, payload:
-  Box::new(Value::RecordValue(fields)) }` only after proving `variant_decl`
-  is listed in a parent `TypeConnective::Disj { variants }`. Use that
-  `Disj.variants` membership as the authority for variant identity / tag
-  identity. Only then walk the variant payload to a `Conj` to get payload field
-  labels; field values come from operands.
+  Box::new(Value::RecordValue(fields)) }` only after proving the target's
+  base variant is listed in a parent `TypeConnective::Disj { variants }`.
+  If the lowered `callee_decl` is an `Instantiation { template, arguments }`,
+  peel to `template` for `Disj.variants` membership, but preserve the
+  instantiated `callee_decl` and `arguments` as the runtime constructor
+  authority. Use those arguments when walking the payload to a `Conj` so field
+  labels/types are the specialized constructor payload, not the generic
+  template by accident. Field values come from operands.
 - **Nullary variant constructor target:** return
   `Value::VariantValue { tag: variant_decl, payload:
-  Box::new(Value::RecordValue(Vec::new())) }`, again only after proving
-  `variant_decl` is a member of a parent `Disj.variants` list.
+  Box::new(Value::RecordValue(Vec::new())) }`, again only after proving the
+  base variant is a member of a parent `Disj.variants` list. Generic nullary
+  variants still preserve the lowered instantiated target for downstream
+  branch/tag matching.
 
 No new `Value` inhabitants are authorized by this slice. The evaluator must
 not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
@@ -124,9 +133,11 @@ not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
   labels, generic substitution, and constructor identity belong to the
   substrate/lowerer authority that already produced the lowered
   `TransformTarget::Callable(target)` node. For variants, the parent
-  `TypeConnective::Disj { variants }` list is the membership and tag-identity
-  authority; a target that merely walks to `Conj` is not enough to classify a
-  constructor as a variant.
+  `TypeConnective::Disj { variants }` list is the membership authority; a
+  target that merely walks to `Conj` is not enough to classify a constructor as
+  a variant. For instantiated generic variants, membership is proven by the
+  instantiation template's presence in `Disj.variants`, while the instantiated
+  target and its `TemplateArgument`s remain the value-construction authority.
 - **Evaluator authority is runtime interpretation only.** Given a lowered
   constructor `Callable` target and already-evaluated operands, the evaluator
   may construct `Value::RecordValue` or `Value::VariantValue` using facts read
@@ -145,12 +156,20 @@ Recommended flow:
 2. Before returning `"Callable target declaration is not an Arrow type"`,
    recognize constructor target shapes:
    - First ask whether `callee_decl` is a member of some parent
-     `TypeConnective::Disj { variants }`. The `variants` list is the sole
-     authority for variant membership / tag identity in this slice.
-   - If `callee_decl` is a `Disj.variants` member, build
+     `TypeConnective::Disj { variants }`, after normalizing constructor
+     targets as follows:
+     - bare variant target: membership candidate is `callee_decl`;
+     - instantiated variant target:
+       `TypeConnective::Instantiation { template, arguments }` means the
+       membership candidate is `template`, and the evaluator must retain
+       `callee_decl` plus `arguments` for specialized payload walking and tag
+       comparison.
+     The `variants` list is the sole authority for variant membership in this
+     slice.
+   - If the normalized membership candidate is a `Disj.variants` member, build
      `VariantValue { tag: callee_decl, payload }`. A payload that walks to
-     `Conj` becomes `RecordValue(fields)`; a nullary variant uses
-     `RecordValue(Vec::new())`.
+     `Conj` under the retained substitution arguments becomes
+     `RecordValue(fields)`; a nullary variant uses `RecordValue(Vec::new())`.
    - If no parent `Disj` membership is found, then a
      `TypeConnective::Conj { children }` target is a record constructor and
      builds `RecordValue(fields)`.
@@ -163,6 +182,11 @@ The implementation should reuse existing declaration-walking helpers where
 they are already public to the module. If the only way forward is to duplicate
 or recreate lowerer-only substitution/walking rules in a Rust-side registry,
 STOP rather than adding a second constructor authority.
+
+Generic constructor ratchet: include at least one `Int?` / `Some<Int>`-style
+case whose lowered constructor target is an `Instantiation`; the test should
+fail if the evaluator checks the instantiated declaration directly against
+`Disj.variants` or drops the substitution while building the payload.
 
 ## Executable Ratchets
 
