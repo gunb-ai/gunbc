@@ -152,7 +152,7 @@ Per `INVARIANTS.md` §P1 (lines 94-129), worker MUST cite receipts in the PR bod
 | **Substrate `HigherOrderMethodSpec` shape decision** (cross-manager #1130 to jolly-ram-908) | in flight | Required only if a primitive declaration needs higher-order rows; otherwise out of scope (G) |
 | **T-Ground-Lifetime-Analyzer R2 scope** | LANDED (#1206 / #1218 / #1220) | Lifetime axis available as substrate consumer |
 | **#1129 / #1156 / #1162 (Tier 1 locks)** | LIVE on main | Consumed (Q1 / reflection-completeness / Q6.5) |
-| **Host worktree git plumbing** | **BROKEN** at `/home/briansrls/.worktrees/proud-lark-674` (`fatal: not a git repository`); fix is host-side, outside this lane | Required before any code edits |
+| **Host worktree git plumbing** | **BROKEN** at brief-author host worktree (`fatal: not a git repository`; missing `.git/worktrees/<session>` admin dir on parent repo); fix is host-side, outside this lane | Required before any code edits |
 
 **Cross-program signals:**
 - **Substrate Manager — ValueBody-list/sum + std.unicode bootstrap:** NOT a hard gate for this lane (Coercion-Fold consumes it). T-Ground-Rust can land structural rows without it.
