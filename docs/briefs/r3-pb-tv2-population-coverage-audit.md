@@ -69,7 +69,7 @@ Re-verified at `origin/main` HEAD `52dcd5529` (post-#1715 `b13378e60` + #1716):
 
 - **PR #1715 advanced executability** for one shape: `TransformTarget::Callable(callee_decl)` where `callee_decl` is an `Arrow` with a `UserDefined` body now evaluates the bind body in a fresh frame (`src/v3/compiler/src/lib.rs:579-617`). User-function calls land. **Direct calls to `derive_bound`, `master_theorem`, `int_pow_bounded`, `ceil_log[_iter]`, `peano_literal_materialization_cap`, `positive_descent_amount_from_positive_int`, `proportional_divisor_from_int_at_least_two`, `meet_sub_value`, `join_sub_value` are now in scope as Arrow-target callables.**
 
-- **Non-Arrow `Callable` targets still fail-closed** with `BadTransformOperands { reason: "Callable target declaration is not an Arrow type" }` (`src/v3/compiler/src/lib.rs:581-585`; ratcheted by unit test at `:2042`).
+- **Non-Arrow `Callable` targets still fail-closed** with `BadTransformOperands { reason: "Callable target declaration is not an Arrow type" }` (`src/v3/compiler/src/lib.rs:581-585`; ratcheted by unit test assertion at `:2035-2040`).
 
 - **Surface variant / record construction lowers to non-Arrow `Callable`.** `lower_constructor_invocation(dag, target, inputs, span)` at `src/v3/compiler/src/lower.rs:7103-7119` produces `TransformTarget::Callable(target)` where `target` is the variant constructor or record declaration id — not an Arrow. Every constructor expression in a `.dag` test body (`ErrorBound`, `Some { value: ... }`, `none`, `OneStep`, `ConstantShrink { steps: ... }`, `StrictSubValue { field: ..., factor: ... }`, etc.) goes through this path.
 
