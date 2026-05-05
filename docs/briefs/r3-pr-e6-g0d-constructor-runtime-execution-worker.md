@@ -102,9 +102,13 @@ Expected outputs:
 - **Record constructor target:** return
   `Value::RecordValue(Vec<NamedField>)`, with one `NamedField { label, value }`
   per declared record field, in declaration order. Field labels come from the
-  target declaration's `TypeConnective::Conj { children }`. Field values come
-  from the already-evaluated transform operands, preserving the existing
-  evaluator's operand evaluation order and arity discipline.
+  target declaration's record payload after walking to `Conj`. If the lowered
+  record target is an `Instantiation { template, arguments }`, peel to
+  `template` to prove the base target is a `Conj`, but preserve the
+  instantiation arguments when resolving field types / payload shape so generic
+  record construction follows the same substitution facts the lowerer used.
+  Field values come from the already-evaluated transform operands, preserving
+  the existing evaluator's operand evaluation order and arity discipline.
 - **Variant constructor target with record payload:** return
   `Value::VariantValue { tag: tag_decl, payload:
   Box::new(Value::RecordValue(fields)) }` only after proving the target's
@@ -132,7 +136,10 @@ not introduce host-only mirrors for `Option`, `CostBound`, `ShrinkFactor`,
   connective shapes, variant membership, payload field labels, record field
   labels, generic substitution, and constructor identity belong to the
   substrate/lowerer authority that already produced the lowered
-  `TransformTarget::Callable(target)` node. For variants, the parent
+  `TransformTarget::Callable(target)` node. For generic record constructors,
+  an instantiated callable target must retain its `TemplateArgument`s while
+  walking to the base `Conj`; do not collapse to the template and lose
+  substitution. For variants, the parent
   `TypeConnective::Disj { variants }` list is the membership authority; a
   target that merely walks to `Conj` is not enough to classify a constructor as
   a variant. For instantiated generic variants, membership is proven by the
@@ -175,9 +182,16 @@ Recommended flow:
      A payload that walks to `Conj` under the retained substitution arguments
      becomes `RecordValue(fields)`; a nullary variant uses
      `RecordValue(Vec::new())`.
-   - If no parent `Disj` membership is found, then a
-     `TypeConnective::Conj { children }` target is a record constructor and
-     builds `RecordValue(fields)`.
+   - If no parent `Disj` membership is found, then normalize for the record
+     constructor path:
+     - bare record target: the candidate is `callee_decl`;
+     - instantiated record target:
+       `TypeConnective::Instantiation { template, arguments }` means the
+       candidate is `template`, and the evaluator must retain `arguments` for
+       substitution-aware field walking.
+     A candidate that resolves to `TypeConnective::Conj { children }` builds
+     `RecordValue(fields)` using labels from the substituted field walk, not a
+     raw template-only walk.
 3. For every constructor path, compare `operands.len()` to the declared field
    count and return `TransformArityMismatch` on mismatch.
 4. If declaration walking cannot identify a constructor shape, preserve the
@@ -196,6 +210,10 @@ Also include a normalization receipt that constructs an instantiated generic
 variant and immediately matches on it; the test should fail if
 `Value::VariantValue.tag` is the anonymous instantiation instead of the
 template variant id used by `BranchPattern::ResolvedVariant`.
+Generic record ratchet: include at least one generic record constructor whose
+lowered target is an `Instantiation`; the test should fail if the evaluator
+only recognizes bare `Conj` targets or drops the instantiation arguments while
+walking record fields.
 
 ## Executable Ratchets
 
