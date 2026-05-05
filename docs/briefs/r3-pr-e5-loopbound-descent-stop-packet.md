@@ -2,10 +2,10 @@
 
 **Status:** STOP for implementation. `git-metadata-unavailable`.
 
-This is a docs-only audit packet for R3 Evaluator E5. It packages the accepted
-`LoopBound::Descent` residual audit for Director/Substrate coordination. It does
-not implement descent execution, change parser/lowerer/runtime code, widen
-substrate carriers, add runner behavior, or alter evaluator strategy.
+This packet is the R3 Evaluator E5 audit deliverable. It packages the accepted
+`LoopBound::Descent` residual audit for Director/Substrate coordination. The
+packet does not implement descent execution, change parser/lowerer/runtime code,
+widen substrate carriers, add runner behavior, or alter evaluator strategy.
 
 ## Dispatch Boundary
 
@@ -146,4 +146,3 @@ Once that authority exists, E5 can replace the current
 `LoopBoundDescentResidual` branch in `eval_loop` with a narrow consumer of the
 proof query and focused tests proving certified descent executes while
 uncertified descent remains fail-closed.
-
