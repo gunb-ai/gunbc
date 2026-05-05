@@ -33,6 +33,37 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
 
 1. Author new file `src/v3/std/cross_target_coverage.dag` containing:
 
+   Each new coproduct / sum declaration MUST carry a 🟢/🟡/🔴
+   classification annotation per `docs/modeling-discipline.md`
+   Practice 4 (Step 4 of the type-introduction checklist;
+   `INVARIANTS.md#p1-modeling-faithfulness` worked example).
+   The classifications below are pre-determined; worker copies
+   them verbatim into the live source:
+
+   - `ShapeATarget` → **🟢 TERMINAL** — closed set of three target
+     languages (Rust / Python / Go). Adding a target is a
+     substrate-scope event (new emitter, new method-template
+     contracts), not a row-level addition; the 🟢 mark reflects
+     that any new variant requires a P1 substrate-fact-introduction
+     procedure on this declaration directly, not silent extension.
+   - `FormAxis` → **🟡 SCAFFOLD** — hand-declared mirror of
+     `v3_compiler::dag::TypeConnective`. Named dissolution trigger:
+     option (c) substrate-`Disj`-mirroring generator (per Director
+     ratification of §4.A at #issuecomment-4377533390). Generator
+     landing retires this hand-declared form.
+   - `BehaviorAxis` → **🟡 SCAFFOLD** — hand-declared mirror of
+     `v3_compiler::dag::Behavior`. Same dissolution trigger as
+     `FormAxis`.
+
+   `MethodTemplateContractKey`, `EmissionCell`, and
+   `EmissionPathProjection` are records (not coproducts) and do
+   not require 🟢/🟡/🔴 marks per Practice 4 — the marks attach
+   to sum-typed declarations whose variant set is the modeling
+   choice. Worker re-verifies this against
+   `docs/modeling-discipline.md` Practice 4 at dispatch time; if
+   the discipline has been extended to require marks on records
+   too, worker adds matching annotations.
+
    ```dag
    // Header note (mandatory): option (c) — generated mirror of
    // v3_compiler::dag::TypeConnective and v3_compiler::dag::Behavior
@@ -42,13 +73,23 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
    // until that generator lands. Per Director ratification of §4.A
    // at #issuecomment-4377533390.
 
+   /// 🟢 TERMINAL — closed set of v3 target languages. New target
+   /// addition routes through P1 substrate-fact-introduction
+   /// procedure on this declaration; row-level addition is not
+   /// authorized.
    type ShapeATarget = Rust | Python | Go
 
+   /// 🟡 SCAFFOLD — hand-declared mirror of
+   /// v3_compiler::dag::TypeConnective. Dissolution trigger:
+   /// substrate-Disj-mirroring generator (option (c)).
    type FormAxis = ...      // mirrors v3_compiler::dag::TypeConnective discriminants (worker
                             // re-reads the live enum at dispatch time and lists the variants
                             // 1:1; new connectives added here only via P1 procedure on the
                             // upstream Rust enum first)
 
+   /// 🟡 SCAFFOLD — hand-declared mirror of
+   /// v3_compiler::dag::Behavior. Dissolution trigger:
+   /// substrate-Disj-mirroring generator (option (c)).
    type BehaviorAxis = ...  // mirrors v3_compiler::dag::Behavior discriminants (same rule)
 
    type MethodTemplateContractKey {
