@@ -234,8 +234,10 @@ mod t_demo_fixture_test {
         T_DEMO_FIXTURE_DAG.get_or_init(|| compile_fixture(&fixture_source()))
     }
 
+    /// Lexicographic name sorts before `impossible_bug_*` in this module so libtest warms
+    /// [`T_DEMO_FIXTURE_DAG`] before suite-heavy tests (2s per-test ratchet on cold CI).
     #[test]
-    fn t_demo_fixture_skeleton_compiles() {
+    fn a_t_demo_fixture_skeleton_warms_dag_cache() {
         let dag = cached_t_demo_fixture_dag();
 
         assert!(
