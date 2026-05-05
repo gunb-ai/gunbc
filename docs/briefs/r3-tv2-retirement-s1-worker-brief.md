@@ -13,7 +13,7 @@ S-1 unblocks the **G-1 implementation chain** for T-V2-Retirement:
 - **G-1**: deletion of Cargo.lock v2 dev-deps. Cascade-gated on §3.1 + §3.2 dispositions completing (one of which needs Substrate-side authority migration; the other needs PM choice between replace vs delete).
 - **G-2 prereq stack**: S-1 + S-2 + S-3 + S-4 + G-1. S-1 brief enumerates the entire chain (per Decision 6 below) so workers don't reconstruct it from the audit.
 
-The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port four internal v2-test property receipts to live v3 surfaces. S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
+The narrowest immediately-dispatchable worker action under S-1 is **Pop A v3 property-test migration** (§"Worker dispatch sequence" below) — port the **four audited Pop A coverage items** (per `docs/briefs/r3-pb-tv2-population-coverage-audit.md` §"Population A") onto live v3 `src/v3/std/induction.dag` + `src/v3/std/termination.dag` surfaces (audit-canonical root; v3-staged authority that v3 compiler reads). S-1-only; no Evaluator/Substrate authority migration prerequisite; prevents G-2 from silently dropping the ratchets.
 
 ## Consumes (authoritative inputs)
 
@@ -100,25 +100,30 @@ PB Mgr's recommended narrowest first dispatch under S-1 is **Pop A v3 property-t
 
 ### Dispatch 1 — Pop A v3 property-test migration (S-1-only; immediately dispatchable)
 
-**Scope**: port four internal v2-test property receipts onto live v3 surfaces:
-1. `prop_run_steps_termination` / `prop_run_steps_foo` (run-step termination property)
-2. Peano materialization cap (Peano arithmetic materialization upper bound)
-3. `behavior_round_trip` / `behavior_round_trip_bar` (behavior round-trip property)
+**Scope**: port the **four audited Pop A coverage items** per `docs/briefs/r3-pb-tv2-population-coverage-audit.md` §"Population A" (authoritative source) onto live v3 surfaces:
+
+1. **A.1 — `derive_bound` / `master_theorem` fail-closed boundary coverage** (from v2 `std_induction`; v3 substrate at `src/v3/std/induction.dag:897` + `:823`). v3-side property test asserts fail-closed semantics: 0 branches → `ErrorBound`; negative branches → `ErrorBound`; invalid work exponents; `master_theorem` boundary cases.
+
+2. **A.2 — `int_pow_bounded` / `ceil_log` boundary coverage** (from v2 `std_induction`; v3 substrate at `src/v3/std/induction.dag:767` + `:802` + `:808`). v3-side property test re-asserts: negative-exp → `None`; non-negative matches `pow`; overflow at `2^63` → `None`; degenerate-base cap (`0`/`1`/`-1`) doesn't deep-recurse; `ceil_log` semantics.
+
+3. **A.3 — `peano_literal_materialization_cap` + `positive_descent_amount_from_positive_int` + `proportional_divisor_from_int_at_least_two` cap coverage** (from v2 `std_induction` + `std_termination`; v3 substrate at `src/v3/std/termination.dag:140` (cap=256) + `:146` + `:162`). v3-side property test asserts oversize `Int` inputs → `None`; cap of 256 is single-source v3 declaration. **Bonus**: v3 test cites `peano_literal_materialization_cap()` directly so the cap value is grep-clean across the codebase (replaces magic 256 in v2 test bodies).
+
+4. **A.4 — `meet_sub_value` / `join_sub_value` `ShrinkFactor`-preservation coverage** (from v2 `std_induction`; v3 substrate at `src/v3/std/induction.dag:281` + `:329`). v3-side property test ports meet/join cases against v3 `SubValueRelation` / `InductiveField` / `RecursionShape` constructors; `ShrinkFactor`-preservation invariant is identical between versions; near-mechanical port.
 
 **Why this dispatch is narrowest**:
 - S-1-only (does NOT need R2-Evaluator/PB-Runtime/Substrate authority migration)
 - Prevents G-2 from silently dropping the property ratchets
 - Prerequisite-shaped (preserves test surface for later cleanup) rather than deletion-shaped (which would break G-1)
 - Single-author work (no cross-program coordination per dispatch)
+- Substrate is **LIVE on v3 side for all 4 items** (verified per `r3-pb-tv2-population-coverage-audit.md` §"Population A summary" — no R2-Evaluator / PB-Runtime / Substrate-authority dependency)
 
-**Live v3 surfaces** the migration targets:
-- Run-step termination: live v3 termination semantics in `dsl/std/termination.dag` + v3 Evaluator
-- Peano materialization cap: live v3 numeric carrier work per T-Numeric-Construction lane
-- Behavior round-trip: v3 substrate behaviors (Value / Transform / Branch / Loop / Bind) + serialization
+**Live v3 surfaces** the migration targets (per audit substrate-line citations; `src/v3/std/...` is the audit-canonical v3-staged authority root):
+- `src/v3/std/induction.dag` — A.1 (`derive_bound`:897, `master_theorem`:823), A.2 (`int_pow_bounded`:767, `ceil_log`:802, `ceil_log_iter`:808), A.4 (`meet_sub_value`:281, `join_sub_value`:329)
+- `src/v3/std/termination.dag` — A.3 (`peano_literal_materialization_cap`:140, `positive_descent_amount_from_positive_int`:146, `proportional_divisor_from_int_at_least_two`:162)
 
-**Recommended worker assignment**: silent-boar or witty-tern (per PB Mgr's at-the-time read at `docs/briefs/r3-pb-tv2-g1-readiness-receipt.md` + read-back at [#1134 comment-4375362161](https://github.com/gunb-ai/gunbc/issues/1134#issuecomment-4375362161)). PB Manager picks specific worker per their cadence + readiness.
+**Recommended worker assignment**: silent-boar or witty-tern (per PB Mgr's read-back at [#1134 comment-4375362161](https://github.com/gunb-ai/gunbc/issues/1134#issuecomment-4375362161)). PB Manager picks specific worker per their cadence + readiness.
 
-**Closure**: dispatch produces one PR migrating the four property receipts to v3 surfaces; PB Manager confirms the property ratchets are preserved on v3 side; PR merges; ratchet status tracked in PB Manager's inventory.
+**Closure**: dispatch produces one PR (or 4 sub-PRs per coverage item) migrating the four audited Pop A coverage items to v3 surfaces; PB Manager confirms property ratchets preserved on v3 side; PR(s) merge; ratchet status tracked in PB Manager's inventory.
 
 ### Dispatch 2 — B.1 (peano_arith consumer) — gated on Decision 1 prerequisite
 
@@ -148,27 +153,46 @@ PB Mgr's recommended narrowest first dispatch under S-1 is **Pop A v3 property-t
 
 ## G-2 prerequisite chain (full retirement of `src/v2/`)
 
-Per audit §1, G-2 prereq stack is `S-1 + S-2 + S-3 + S-4 + G-1`. This brief covers S-1; the rest enumerated for worker dispatch surface:
+Per `docs/audit/t-v2-retirement-audit.md` §1 STOP-condition table, G-2 prereq stack is `S-1 + S-2 + S-3 + S-4 + G-1`. This brief covers S-1; the rest enumerated per audit S-N definitions:
 
-### S-2 — substrate-fact-introduction for `kernel_algebra_profile`
+### S-2 — T-FixedPoint closed (audit §1 row "S-2")
 
-Per Decision 2 routing, Substrate Manager owns this. v3-side single-authority `kernel_algebra_profile` lands at `dsl/std/algebra.dag` (or successor as v3 substrate inhabitance consolidates). Substrate-introduction procedure per [`INVARIANTS.md`](../../INVARIANTS.md) §P1.
+Per audit: *"T-FixedPoint closed"* (gate per `r3-structure.md` Lane 5: `pb_self_compile_fixed_point` — `compiler.dag` compiles to bit-identical stage0 Rust).
 
-### S-3 — `verification.dag` convergence design call
+S-2 + S-3 closure is what allows S-4 (PB-Runtime trampoline) to be the live bootstrap — without S-2+S-3, removing `src/v2/stage0` from the workspace breaks the build chain even if PB-Runtime is technically present (audit §1).
 
-Per Decision 5 routing, Substrate Manager owns the design call (or Director arb if Substrate cannot scope). Convergence determines whether v3's `TestPredicate` / `TestSuite` model fully replaces v2's `AssertKind` / `TestClaim` / `TestCase`, or whether some v2 surface continues under a renamed module path.
+PB Manager-owned (T-FixedPoint lane). R3 in flight.
 
-### S-4 — PB-Runtime trampoline live as bootstrap path
+### S-3 — T-LensProducer-Retirement closed (audit §1 row "S-3")
 
-Per `docs/design-pure-bootstrap-zero.md` §"First-time bootstrap" — PB-Runtime trampoline replaces v2-as-bootstrap-path. PB Manager-owned execution.
+Per audit: *"T-LensProducer-Retirement closed (all 3 sub-gates: `lens_apply.rs`, `lens_testgen.rs`, `regen_lens.rs`)"*.
+
+PB Manager-owned (T-LensProducer-Retirement lane; sub-gates per `r2-pure-bootstrap-manager.md` row T-LensProducer-Retirement + `design-pb-runtime-interpreter.md` §5.1). R3 in flight.
+
+### S-4 — PB-Runtime trampoline live as bootstrap path (audit §1 row "S-4")
+
+Per audit: *"PB-Runtime trampoline lands such that bootstrap no longer routes through `src/v2/stage0`"*. Gate per `design-pb-runtime-interpreter.md` §3.
+
+PB Manager-owned. NOT MET; PB-Runtime interpreter-as-data is the gate.
 
 ### G-1 — Cargo.lock v2 dev-deps deletion (covered above; Dispatch 4)
 
+G-1's STOP condition per audit §"G-1 STOP condition" is **S-1 only** (PM worker brief — landed via PR #1711). G-1's *implementation* additionally requires §3.1 + §3.2 dispositions (Dispatches 2-3 above; Decisions 1+2 of this brief).
+
 ### G-2 — `src/v2/` workspace member removal + directory deletion
 
-Final deletion. Cascade-gated on S-1 + S-2 + S-3 + S-4 + G-1 all closing. PB Manager-owned execution.
+Final deletion. Cascade-gated on **S-1 + S-2 + S-3 + S-4 + G-1** all closing per audit §"G-2 STOP condition for G-2 work". PB Manager-owned execution.
 
 Per `docs/audit/t-v2-g2-deletion-plan-and-guardrails.md` for full deletion plan + guardrails.
+
+### Note on Decision 2 + Decision 5 routings
+
+Decisions 2 + 5 (per §"PM decisions" above) are routings within G-1 / G-2 implementation work — **not** equivalent to the S-N gates:
+
+- **Decision 2** (`kernel_algebra_profile` v3-side authority migration) is the §3.2 prerequisite for G-1 (one of the two v2-oracle test consumer dissolutions; lets PB retire the parity test). Substrate-side authority migration; routed to Substrate Manager (jolly-ram-908 #1130). NOT in the S-N chain.
+- **Decision 5** (`verification.dag` convergence) is a G-2 prerequisite (independent of S-1 + S-2 + S-3 + S-4) per audit §"verification.dag convergence" position. Substrate Manager design call; routed in parallel. NOT in the S-N chain.
+
+S-N labels match audit definitions (T-FixedPoint / T-LensProducer-Retirement / PB-Runtime trampoline). Decision 2 + Decision 5 are routing decisions within audit §3 surfaces, not the S-N stack.
 
 ## Cross-program coordination (PM relays in parallel with this brief)
 

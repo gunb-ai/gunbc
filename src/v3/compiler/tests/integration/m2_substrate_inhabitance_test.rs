@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     algebra_profile_to_dimension, constant_bound_value, evidence_rank, is_constant_bound,
-    join_evidence, kernel_algebra_profile, lower_call_pattern, map_evidence_merge_at,
-    merge_evidence, optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64,
-    promote_to_strict, size_bound_param, sub_value_relation_to_call_pattern, tree_size_bound,
+    join_evidence, lower_call_pattern, map_evidence_merge_at, merge_evidence,
+    optional_evidence_meet, per_call_descent_evidence, positive_amount_from_i64, promote_to_strict,
+    size_bound_param, sub_value_relation_to_call_pattern, tree_size_bound,
     type_iteration_dimension, AlgebraProfile, ArrowBody, AtomPayload, CallPattern,
     CardinalityBound, DescentEvidence, FieldMap, FieldValue, Interval, IntervalWidth,
     IterationDimension, IterationPrimitive, LiteralBits, LoweringTarget, PositiveDescentAmount,
@@ -1220,18 +1220,82 @@ fn v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority() {
     }
 
     let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();
+    let dag = Dag::new();
     assert!(
         !v2_map.is_empty(),
         "v2 stage0 kernel_algebra_profile table must be non-empty (dsl/std/algebra.dag authority)"
     );
     for (type_name, v2_profile) in v2_map.iter() {
         assert_eq!(
-            kernel_algebra_profile(type_name),
+            dag.kernel_algebra_profile(type_name),
             Some(v2_profile_to_v3(*v2_profile)),
             "v3 `dag::kernel_algebra_profile` must match v2 stage0 row for `{type_name}` \
              (stage0 is regenerated from dsl/std/algebra.dag `data kernel_algebra_profile`)"
         );
     }
+}
+
+#[test]
+fn v3_kernel_algebra_profile_reads_lowered_dag_map_authority() {
+    let dag = Dag::new();
+    let decl = dag
+        .declaration_by_name("kernel_algebra_profile")
+        .expect("kernel_algebra_profile declaration exists");
+    let Some(ValueBody::Map(entries)) = &decl.value_body else {
+        panic!(
+            "kernel_algebra_profile should lower from dsl/std/algebra.dag to ValueBody::Map, got {:?}",
+            decl.value_body
+        );
+    };
+    assert_eq!(entries.entries().len(), 7);
+    assert_eq!(
+        dag.kernel_algebra_profile("Int"),
+        Some(AlgebraProfile::OrderedRingProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("Float"),
+        Some(AlgebraProfile::ApproximateFieldProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("Bool"),
+        Some(AlgebraProfile::BooleanAlgebraProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("String"),
+        Some(AlgebraProfile::FreeMonoidScalarProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("List"),
+        Some(AlgebraProfile::FreeMonoidCollectionProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("Set"),
+        Some(AlgebraProfile::BooleanAlgebraCollectionProfile)
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("Map"),
+        Some(AlgebraProfile::PartialFunctionProfile)
+    );
+    assert_eq!(dag.kernel_algebra_profile("UserType"), None);
+}
+
+#[test]
+fn v3_kernel_algebra_profile_accessor_prefers_local_map_data_over_rust_fallback() {
+    let source = "type AlgebraProfile\n  = OrderedRingProfile\n  | ApproximateFieldProfile\n  | BooleanAlgebraProfile\n  | BooleanAlgebraCollectionProfile\n  | FreeMonoidScalarProfile\n  | FreeMonoidCollectionProfile\n  | PartialFunctionProfile\n\n\
+data kernel_algebra_profile: Map<String, AlgebraProfile> = {\n  \"Int\": BooleanAlgebraProfile,\n  \"Custom\": PartialFunctionProfile\n}\n";
+    let dag = compile_to_dag(source, "local_kernel_profile_authority.v3")
+        .expect("local kernel_algebra_profile map should lower");
+
+    assert_eq!(
+        dag.kernel_algebra_profile("Int"),
+        Some(AlgebraProfile::BooleanAlgebraProfile),
+        "accessor must read the lowered map instead of a hard-coded Rust profile table"
+    );
+    assert_eq!(
+        dag.kernel_algebra_profile("Custom"),
+        Some(AlgebraProfile::PartialFunctionProfile)
+    );
+    assert_eq!(dag.kernel_algebra_profile("Float"), None);
 }
 
 #[test]

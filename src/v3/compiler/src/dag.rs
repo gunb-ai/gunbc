@@ -1747,12 +1747,11 @@ pub enum IterationDimension {
     ArithmeticRepeat,
 }
 
-/// 🟡 SCAFFOLD — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
+/// 🟢 TERMINAL — `AlgebraProfile` coproduct (`docs/modeling-discipline.md` §4).
 ///
-/// Closed seven-variant mirror of `dsl/std/algebra.dag` `kernel_algebra_profile` while the
-/// table is still `ArrowBody::Unparsed`. **Named trigger:** evaluated std bodies / read the
-/// table from `.dag` (see [`kernel_algebra_profile`] below). **Ledger:** P2 ratchet
-/// `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`.
+/// Closed seven-variant mirror of `dsl/std/algebra.dag` `AlgebraProfile`.
+/// The profile table itself is read from the lowered `kernel_algebra_profile`
+/// `ValueBody::Map`, not from a hand-maintained Rust lookup table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AlgebraProfile {
     OrderedRingProfile,
@@ -1788,27 +1787,14 @@ pub fn type_iteration_dimension(type_name: &str) -> Option<IterationDimension> {
 /// Kernel type name → iteration algebra profile (`Int`, `List`, …).
 ///
 /// Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`).
-/// `v2_compiler::std_algebra::kernel_algebra_profile` is regenerated from that
-/// block; this match is a transitional Rust mirror while bootstrap still carries
-/// the table as [`ArrowBody::Unparsed`].
+/// Runtime v3 reads the lowered [`ValueBody::Map`] from the bootstrapped DAG.
+/// `v2_compiler::std_algebra::kernel_algebra_profile` remains only as a
+/// transition ratchet until PB retires the v2 parity test.
 ///
 /// **P2 drift ratchet:** `m2_substrate_inhabitance_test::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`
-/// compares this map entry-for-entry to the stage0 table.
-///
-/// **Dissolution:** when `kernel_algebra_profile` lowers to evaluated `.dag` (same
-/// std-body staging trigger as the termination-lattice scaffold above), delete
-/// this mirror and read the evaluated map instead.
+/// compares this v3 substrate accessor entry-for-entry to the stage0 table.
 pub fn kernel_algebra_profile(type_name: &str) -> Option<AlgebraProfile> {
-    match type_name {
-        "Int" => Some(AlgebraProfile::OrderedRingProfile),
-        "Float" => Some(AlgebraProfile::ApproximateFieldProfile),
-        "Bool" => Some(AlgebraProfile::BooleanAlgebraProfile),
-        "String" => Some(AlgebraProfile::FreeMonoidScalarProfile),
-        "List" => Some(AlgebraProfile::FreeMonoidCollectionProfile),
-        "Set" => Some(AlgebraProfile::BooleanAlgebraCollectionProfile),
-        "Map" => Some(AlgebraProfile::PartialFunctionProfile),
-        _ => None,
-    }
+    BOOTSTRAPPED_DAG.kernel_algebra_profile(type_name)
 }
 #[derive(Debug, Clone)]
 pub struct ValueNode {
@@ -3598,6 +3584,58 @@ impl Dag {
     /// `Dag.diagnostics`.
     pub fn rust_pilot_primitives(&self) -> Option<&Declaration> {
         self.declaration_by_name("rust_pilot_primitives")
+    }
+
+    /// Typed accessor for `data kernel_algebra_profile` in
+    /// `dsl/std/algebra.dag`.
+    ///
+    /// This is the v3-side substrate authority for kernel algebra enrichment:
+    /// the map is lowered as [`ValueBody::Map`], keys are kernel type names,
+    /// and values are zero-payload `AlgebraProfile` variants. Returning `None`
+    /// means either the key is absent or the lowered declaration is malformed;
+    /// callers treat both as "no kernel algebra profile for this type".
+    pub fn kernel_algebra_profile(&self, type_name: &str) -> Option<AlgebraProfile> {
+        let decl = self.declaration_by_name("kernel_algebra_profile")?;
+        let ValueBody::Map(entries) = decl.value_body.as_ref()? else {
+            return None;
+        };
+        let (_, value) = entries.entries().iter().find(|(key, _)| key == type_name)?;
+        self.algebra_profile_from_field_value(value)
+    }
+
+    fn algebra_profile_from_field_value(&self, value: &FieldValue) -> Option<AlgebraProfile> {
+        let FieldValue::Variant {
+            constructor,
+            payload,
+        } = value
+        else {
+            return None;
+        };
+        if !payload.is_empty() {
+            return None;
+        }
+
+        let profile_decl = self.declaration_by_name("AlgebraProfile")?;
+        let TypeConnective::Disj { variants } = &profile_decl.connective else {
+            return None;
+        };
+        let label = variants
+            .iter()
+            .find(|variant| variant.ty == *constructor)?
+            .label
+            .as_str();
+        match label {
+            "OrderedRingProfile" => Some(AlgebraProfile::OrderedRingProfile),
+            "ApproximateFieldProfile" => Some(AlgebraProfile::ApproximateFieldProfile),
+            "BooleanAlgebraProfile" => Some(AlgebraProfile::BooleanAlgebraProfile),
+            "BooleanAlgebraCollectionProfile" => {
+                Some(AlgebraProfile::BooleanAlgebraCollectionProfile)
+            }
+            "FreeMonoidScalarProfile" => Some(AlgebraProfile::FreeMonoidScalarProfile),
+            "FreeMonoidCollectionProfile" => Some(AlgebraProfile::FreeMonoidCollectionProfile),
+            "PartialFunctionProfile" => Some(AlgebraProfile::PartialFunctionProfile),
+            _ => None,
+        }
     }
 
     /// Virtual paths from the B4.4 extdeps-bootstrap fixture carrier
