@@ -94,11 +94,12 @@ already-landed substrate-constructor invariant.
 - [ ] No production construction path can create nested
   `AtMostOne(AtMostOne(T))` without applying the same idempotence rule as
   `alloc_cardinality_decl`.
-- [ ] `CardinalityPayload::new_unchecked` is no longer a broad bypass
-  aperture, or every remaining caller is generated/bootstrap-only and
-  paired with normalization evidence that is delegated to, mechanically
-  generated from, or explicitly dissolves back into the canonical
-  constructor authority.
+- [ ] `CardinalityPayload::new_unchecked` is visibility-/callability-
+  narrowed so ordinary code cannot bypass `Dag::alloc_cardinality_decl`.
+  Any remaining generated/bootstrap-only escape hatch is intentionally
+  narrow and paired with normalization evidence that is delegated to,
+  mechanically generated from, or explicitly dissolves back into the
+  canonical constructor authority.
 - [ ] `regen_bootstrap_emit.rs` no longer emits raw unchecked cardinality
   construction as the final authority for generated cardinality nodes.
 - [ ] All affected generated files are regenerated or mechanically kept
