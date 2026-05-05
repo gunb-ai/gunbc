@@ -5492,9 +5492,26 @@ mod bool_logical_operator_arrow_tests {
         let secret = dag
             .declaration_by_name("Secret")
             .expect("bootstrap Secret declaration");
+        let redact = dag
+            .declaration_by_name("redact")
+            .expect("bootstrap Secret redact accessor")
+            .id;
+        let compare = dag
+            .declaration_by_name("compare_in_constant_time")
+            .expect("bootstrap Secret constant-time compare accessor")
+            .id;
         assert!(
             secret.nominal_opacity.is_some(),
             "Secret must consume the nominal-opacity carrier before Modeling dispatch"
+        );
+        assert_eq!(
+            secret
+                .nominal_opacity
+                .as_ref()
+                .expect("checked above")
+                .permitted_accessors,
+            vec![redact, compare],
+            "Secret opacity must be gated to redact and compare_in_constant_time"
         );
     }
 

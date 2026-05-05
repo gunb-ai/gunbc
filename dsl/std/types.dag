@@ -41,7 +41,7 @@ import std.algebra { BooleanAlgebra, FreeMonoid, PartialFunction, kernel_algebra
 //   Bool   = Dag{Identity}      [Bool]   = {true, false}
 //   Float  = Dag{Identity}      [Float]  = F64
 //   Bytes  = Dag{Identity}      [Bytes]  = {0..255}*
-//   Secret = Dag{Identity}      [Secret] = Sigma* (security-policy distinction)
+//   Secret<T> = Dag{Identity}   [Secret<T>] = [T] (nominal-opaque boundary)
 //   Unit   = Dag{Identity}      [Unit]   = {} (bottom, _|_)
 //   Json   = Dag{Identity}      [Json]   = [Bool] U [Int] U ... U {null} (top, T)
 //
@@ -176,7 +176,8 @@ type Bool = True | False
 type Unit
 
 // Json, Bytes: opaque kernel types.
-// Secret: kernel type aliased to String (type map handles target rendering).
+// Secret<T>: nominal-opaque wrapper. Gated accessors are declared below;
+// the lowerer wires their declaration ids into the NominalOpacity carrier.
 type Json
 type Bytes
 
@@ -234,8 +235,15 @@ type HttpStatus   = Int where range(min: 100, max: 599)
 type Email        = String where pattern("^[^@]+@[^@]+\\.[^@]+$")
 type Port         = Int where range(min: 1, max: 65535)
 type GistId       = String where format(uuid)
-type Secret       nominal_opaque = String
-type SecretValue  = Secret where non_empty
+type RedactedString = String
+type Secret<value> nominal_opaque = value
+type SecretValue  = Secret<String> where non_empty
+fn redact<value>(secret: Secret<value>) -> RedactedString {
+  host secret_redact
+}
+fn compare_in_constant_time<value>(left: Secret<value>, right: Secret<value>) -> Bool {
+  host secret_compare_in_constant_time
+}
 type Url          = String where pattern("^https?://")
 type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr     = String where non_empty
@@ -440,16 +448,16 @@ type AuthScheme
   | Basic { username: String }
   | ApiKey
 
-// [AccessToken] = [Secret] x [AuthScheme] x [String?]
-//               = [Secret] x [AuthScheme] x ([String] U {none})
+// [AccessToken] = [Secret<String>] x [AuthScheme] x [String?]
+//               = [Secret<String>] x [AuthScheme] x ([String] U {none})
 type AccessToken {
-  token: Secret
+  token: Secret<String>
   scheme: AuthScheme
   expires_at: Timestamp?       // Level 5: Optional -- [Timestamp] U {none}
 }
 
 type Credential {
-  token: Secret
+  token: Secret<String>
   scheme: AuthScheme
   header_name: String?
   source_id: String

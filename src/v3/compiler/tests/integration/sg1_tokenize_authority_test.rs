@@ -230,6 +230,76 @@ fn shared_syntax_keyword_map_is_structural_while_operator_bridge_remains_bounded
 }
 
 #[test]
+fn tokenizer_charclass_phase2_lowers_scanner_order_as_list_of_sum_constructors() {
+    let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
+        .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));
+    let char_class = dag
+        .declaration_by_name("CharClass")
+        .expect("tokenize.dag should import std.unicode::CharClass");
+    assert_eq!(
+        char_class.span.file, "dsl/std/unicode.dag",
+        "CharClass should come from the canonical std.unicode authority"
+    );
+    let TypeConnective::Disj { variants } = &char_class.connective else {
+        panic!("CharClass should lower as a Disj");
+    };
+
+    let scan_order = dag
+        .declaration_by_name("ascii_scan_order")
+        .expect("tokenize.dag should declare ascii_scan_order");
+    let Some(ValueBody::List(values)) = &scan_order.value_body else {
+        panic!("ascii_scan_order should lower structurally as ValueBody::List");
+    };
+    let labels: Vec<_> = values
+        .iter()
+        .map(|value| {
+            let FieldValue::Variant {
+                constructor,
+                payload,
+            } = value
+            else {
+                panic!("ascii_scan_order element should be a CharClass constructor, got {value:?}");
+            };
+            assert!(
+                payload.is_empty(),
+                "ascii_scan_order class constructors should be nullary"
+            );
+            variants
+                .iter()
+                .find(|variant| variant.ty == *constructor)
+                .map(|variant| variant.label.as_str())
+                .unwrap_or_else(|| {
+                    panic!(
+                        "ascii_scan_order constructor {constructor:?} is not a CharClass variant"
+                    )
+                })
+        })
+        .collect();
+
+    assert_eq!(
+        labels,
+        ["Whitespace", "Digit", "IdentStart", "IdentContinue"],
+        "scanner precedence should be a canonical List<CharClass>, not host strings"
+    );
+}
+
+#[test]
+fn tokenizer_charclass_phase2_rejects_host_string_spoofed_scanner_order() {
+    let source = r#"
+module test.tokenizer_charclass_spoof
+
+import v3.std.unicode { CharClass }
+
+data ascii_scan_order: List<CharClass> = ["Whitespace", "Digit", "IdentStart", "IdentContinue"]
+"#;
+    let result = compile_to_dag(source, "tokenizer_charclass_spoof.dag");
+    assert!(
+        result.is_err(),
+        "host string class names must not satisfy List<CharClass> scanner dispatch"
+    );
+}
+
+#[test]
 fn shared_operator_boundary_is_explicit_and_fail_closed() {
     let dag = compile_to_dag(TOKENIZE_DAG, "src/v3/compiler/tokenize.dag")
         .unwrap_or_else(|e| panic!("tokenize.dag should compile: {e:?}"));

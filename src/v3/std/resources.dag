@@ -7,7 +7,7 @@
 //
 // Model fidelity: `ResourceHandle` is a **mechanical** copy of
 // `dsl/std/resources.dag` lines 20–25 — same field **order** and labels
-// (`type` → `resource_id` → `key` → `cap: Secret`). Ratchet:
+// (`type` → `resource_id` → `key` → `cap: Secret<String>`). Ratchet:
 // `lane2_stage_2c_db15_test::resource_handle_matches_dsl_authority_including_cap`.
 
 module v3.std.resources
@@ -19,7 +19,7 @@ type ResourceHandle {
   type: String
   resource_id: String
   key: String
-  cap: Secret
+  cap: Secret<String>
 }
 
 type ResourceReference {

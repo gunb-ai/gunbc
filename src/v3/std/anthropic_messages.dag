@@ -81,7 +81,7 @@ import v3.std.anthropic_schema {
 // source becomes the only authority and this callable
 // declaration retires alongside the schema mirror it references.
 fn anthropic_messages(
-  api_key:     Secret,
+  api_key:     Secret<String>,
   model:       String,
   messages:    List<AnthropicChatMessage>,
   max_tokens:  Int,

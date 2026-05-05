@@ -111,7 +111,7 @@ type CastSyntax {
 
 // .dag-level cast validity — language-independent numeric rules.
 // Validated at infer time so emit can render unconditionally.
-// Alias casts (Secret→String, etc.) bypass this: they're identity at emit level.
+// Alias casts (legacy Secret→String, etc.) bypass this: they're identity at emit level.
 data dag_cast_rules: List<CastRule> = [
   { from_type: "Int",   to_type: "Int" },
   { from_type: "Int",   to_type: "Float" },

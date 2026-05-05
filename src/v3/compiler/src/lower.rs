@@ -330,6 +330,23 @@ pub(crate) fn lower_bodies_phase(
         );
     }
     finalize_mutual_clusters(dag, &mutual_recursion, &mutual_state);
+    wire_secret_nominal_accessors(dag, symbols);
+}
+
+fn wire_secret_nominal_accessors(dag: &mut Dag, symbols: &HashMap<String, DeclarationId>) {
+    let Some(secret) = symbols.get("Secret").copied() else {
+        return;
+    };
+    let Some(redact) = symbols.get("redact").copied() else {
+        return;
+    };
+    let Some(compare) = symbols.get("compare_in_constant_time").copied() else {
+        return;
+    };
+    let Some(opacity) = dag.declaration_mut(secret).nominal_opacity.as_mut() else {
+        return;
+    };
+    opacity.permitted_accessors = vec![redact, compare];
 }
 
 fn finalize_mutual_clusters(

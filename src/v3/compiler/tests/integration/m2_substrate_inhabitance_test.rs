@@ -2402,6 +2402,41 @@ fn lower_type_nominal_opaque_clause_sets_declaration_carrier() {
     );
 }
 
+#[test]
+fn lower_secret_nominal_opacity_records_gated_accessors() {
+    let source = r#"
+type RedactedString = String
+type Secret<value> nominal_opaque = value
+fn redact<value>(secret: Secret<value>) -> RedactedString {
+  host secret_redact
+}
+fn compare_in_constant_time<value>(left: Secret<value>, right: Secret<value>) -> Bool {
+  host secret_compare_in_constant_time
+}
+"#;
+    let dag = semantic_dag_for(source, "secret_nominal_accessors.v3");
+    let secret = dag
+        .declaration_by_name("Secret")
+        .expect("Secret declaration should lower");
+    let redact = dag
+        .declaration_by_name("redact")
+        .expect("redact accessor should lower")
+        .id;
+    let compare = dag
+        .declaration_by_name("compare_in_constant_time")
+        .expect("constant-time compare accessor should lower")
+        .id;
+    let opacity = secret
+        .nominal_opacity
+        .as_ref()
+        .expect("Secret must consume nominal opacity");
+    assert_eq!(
+        opacity.permitted_accessors,
+        vec![redact, compare],
+        "Secret nominal opacity must be gated to the authored accessor declarations"
+    );
+}
+
 /// `inhabits` is not in `dag_keyword_set` (shared syntax): it must tokenize as
 /// an ordinary identifier so it can spell a declared type name — distinct from
 /// the `type <Name> inhabits <Ty> = …` clause introducer.
