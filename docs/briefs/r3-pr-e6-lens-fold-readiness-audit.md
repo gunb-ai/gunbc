@@ -78,21 +78,35 @@ preserved as a compatibility seam pending generic
 
 ## What G0a/G0b/G0c have unblocked (static top-level `data` lens path)
 
-Capabilities now executable through the shared body evaluator:
+Capabilities now executable through the shared body evaluator.
+The two static paths are distinct — keep them separate:
 
-1. **Static field projection on record carriers.**
-   `TransformTarget::FieldProject { field_label, .. }` evaluates by
-   matching the operand `Value::RecordValue(fields)` and returning
-   the named field's value (`lib.rs:556-578`).
+1. **Runtime field projection on record carriers (non-function
+   fields).** `TransformTarget::FieldProject { field_label, .. }`
+   evaluates by matching the operand `Value::RecordValue(fields)`
+   and returning the named field's value (`lib.rs:556-578`). This
+   is for *value* (non-Arrow) field access at runtime, e.g.
+   reading a `name: String` or a numeric field from a record. It
+   is **not** the path used to invoke a function-typed field on a
+   static `data` binding.
 2. **Static callable dispatch.** `TransformTarget::Callable(decl)`
    evaluates by resolving the Arrow `UserDefined` body's `Bind`,
    binding params from operands in a fresh pushed frame, evaluating
    the body, and popping deterministically (`lib.rs:579-617`). Arity
    mismatch and non-`UserDefined` Arrow bodies fail closed.
-3. **Static field-call surface end-to-end.** Combined with G0b, a
-   program of the form `data v: WrapFn = { f: double }; fn r(x: Int)
-   -> Int = v.f(x)` parses, lowers (`Callable` path; no runtime-port
-   callee involved), and evaluates through G0c.
+3. **Static function-field call (X1.a) lowers directly to
+   `Callable`.** Per
+   `design-prereq-x-ho-field-call.md` §L1.a (and PR #1699), a
+   program of the form `data v: WrapFn = { f: double }; fn r(x:
+   Int) -> Int = v.f(x)` projects `v.f` to
+   `FieldValue::Reference(decl_id_of_double)` **at lowering time**
+   and emits `TransformTarget::Callable(decl_id_of_double)`
+   directly. There is no runtime `FieldProject` transform on this
+   path — the field projection is compile-time, the carrier
+   identity is preserved through the lowering boundary, and G0c's
+   `Callable` arm does the rest. Runtime `FieldProject` (item 1)
+   and static function-field call (item 3) are separate paths;
+   conflating them is the X1.a/X1.b authority split.
 4. **Generic Conj field substitution.** G0a's substitution surface
    means a `Lens<Int>` parametric instantiation that resolves to a
    concrete Conj at lowering time can have its field types
@@ -115,12 +129,15 @@ data complexity_lens: Lens<Int> = {
 is now executable through the body evaluator without an X1.b
 runtime-callee dispatch step, *if and only if* every lens-field call
 site is statically resolvable: the lens binding itself is a top-level
-`data`, and each field projection (`complexity_lens.read`,
-`complexity_lens.sequential.op`, etc.) lowers to
-`TransformTarget::FieldProject` over a record carrier whose field
-values are `FieldValue::Reference(decl_id)` — which then resolve
-to `TransformTarget::Callable(decl_id)` rather than an
-`Indirect`-style runtime-port callee.
+`data`, and each function-field call site (`complexity_lens.read`,
+`complexity_lens.sequential.op`, `complexity_lens.branch`, etc.)
+projects its field at lowering time to
+`FieldValue::Reference(decl_id)` and emits
+`TransformTarget::Callable(decl_id)` directly per X1.a §L1.a
+— with **no** runtime `FieldProject` transform on the function-call
+path and no `Indirect`-style runtime-port callee. Non-function
+field reads on the lens record (e.g. `complexity_lens.name`) use
+the runtime `FieldProject` path; function-field calls do not.
 
 A first-slice **static-lens-scoped fold** can now be written against
 this surface without bypassing the declared carriers.
@@ -202,11 +219,16 @@ following; each is now incorrect against `origin/main`:
   now evaluable.
 - ⚠️ **"`Lens<C>.sequential` must project `Monoid<C>.identity` /
   `Monoid<C>.op` … projecting those fields in host Rust would
-  bypass the declared carrier."** Narrow: projection is now
-  structural through `FieldProject`. The bypass risk shifts from
-  "no projection at all" to "projecting the *function-valued*
-  field then needing to call it" — which collapses to the
-  Callable / runtime-callee distinction above.
+  bypass the declared carrier."** Narrow: non-function nested
+  field reads (e.g. a hypothetical numeric `Monoid<C>.identity`
+  literal) project at runtime through `FieldProject` (item 1).
+  Function-valued nested fields (`Monoid<C>.op`, the `Lens<C>`
+  function fields themselves) do **not** route through runtime
+  `FieldProject`; on the static path they project at lowering
+  time and emit `Callable(decl_id)` directly per X1.a §L1.a.
+  On the parametric path they need X1.b runtime-callee dispatch.
+  Either way, host-Rust projection of the declared carrier is
+  not required.
 
 The remaining blockers in the previous audit
 ("No live `Lens<C>` data instances", "Descent remains a named
@@ -290,6 +312,17 @@ E6 implementation may resume per the recommended slice when:
 - `fold_lens_over_reflected_program` remains a compatibility seam
   with no claimed dissolution path until generic `fold_lens<C>`
   lands; do **not** narrow it speculatively.
+- substrate-shaped runtime values: any `Dag` / `Behavior` /
+  `Witness<C>` / `OptionalDiagnostic` / `Diagnostic` /
+  `DimensionReport<C>` value the fold reads or constructs is
+  represented through the existing five-inhabitant `Value` mirror
+  (`LiteralValue` / `RecordValue` / `VariantValue` / `NodeRef` /
+  `CardinalityValue`) without adding new mirror variants or
+  host-Rust struct authorities. If a substrate type cannot be
+  expressed through the existing mirror, the slice STOPs and
+  routes through P1 — it does not extend `Value` ad hoc. This is
+  the same prerequisite as the corresponding blocker; restated
+  here so G1 readers do not miss the construction question.
 
 For the parametric form (G1.b), additionally:
 - X1.b S1 substrate slice merged (atomic
