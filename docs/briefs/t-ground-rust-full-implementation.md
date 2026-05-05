@@ -59,7 +59,7 @@ Authority: <https://doc.rust-lang.org/std/> per type. Coverage required:
 - **`Arc<T>`** — shared-ownership atomic-reference-counted pointer (thread-safe). `ReferenceModel<T>` ownership: `SharedRefCounted { thread_safe: true }`.
 - **`HashMap<K, V>`** — hash-table-backed associative array. Inhabits `PartialFunction<K, V>` (`dsl/std/algebra.dag:428`); ordering axis: `None`.
 - **`BTreeMap<K, V>`** — B-tree-backed ordered associative array. Inhabits `PartialFunction<K, V>`; ordering axis: `Sorted` (consumes `K: Ord`).
-- **`HashSet<T>`**, **`BTreeSet<T>`** — set carriers; structurally a degenerate `PartialFunction<T, Unit>` or a sibling set carrier per the apparent-multi-inhabitance audit (LanguageSpec scope item F; this lane resolves the Rust slice).
+- **`HashSet<T>`**, **`BTreeSet<T>`** — inhabit the existing `Set<T> = BooleanAlgebra<T>` authority declared at `dsl/std/types.dag:212` (per M9 DFS — `Set` is already in `dsl/std/`). Refinement axes per the apparent-multi-inhabitance audit (LanguageSpec scope item F): `BTreeSet<T>` carries `ordering: Sorted` (consumes `T: Ord`); `HashSet<T>` carries `ordering: None`. **Do NOT route through `PartialFunction<T, Unit>`** — that would author a parallel-authority shape for a fact already covered by `Set<T> = BooleanAlgebra<T>` (P2 violation; M9: attach to the existing concept-DAG ancestor before inventing a sibling).
 - **`Option<T>`** — sum carrier `Some(T) | None`. Inhabits the optional-value algebra; sum-shape per Q1 receipt (Step 2 coproduct).
 - **`Result<T, E>`** — sum carrier `Ok(T) | Err(E)`. Same partition.
 
