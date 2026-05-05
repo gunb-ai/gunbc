@@ -744,7 +744,7 @@ pub(crate) fn type_connective_cardinality(
     if let Some(keep) = cardinality_idempotent_target(dag, element, bound) {
         return dag.declaration(keep).connective.clone();
     }
-    TypeConnective::Cardinality(CardinalityPayload::new_unchecked(element, bound))
+    TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(element, bound))
 }
 
 #[derive(Debug, Clone)]
@@ -5021,7 +5021,7 @@ mod tests {
         dag.push_declaration(Declaration {
             id: exact_two,
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 int_decl,
                 CardinalityBound::Exact(2),
             )),

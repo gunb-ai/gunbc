@@ -12346,7 +12346,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(350),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(48),
                 CardinalityBound::AtMostOne,
             )),
@@ -12381,7 +12381,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(352),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(48),
                 CardinalityBound::AtMostOne,
             )),
@@ -12971,7 +12971,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(384),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(51),
                 CardinalityBound::AtMostOne,
             )),
@@ -13032,7 +13032,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(387),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(51),
                 CardinalityBound::AtMostOne,
             )),
@@ -13810,7 +13810,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(432),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(56),
                 CardinalityBound::AtMostOne,
             )),
@@ -13827,7 +13827,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(433),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(57),
                 CardinalityBound::AtMostOne,
             )),
@@ -13844,7 +13844,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(434),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -13927,7 +13927,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(438),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -13964,7 +13964,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(440),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -13981,7 +13981,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(441),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -14334,7 +14334,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(464),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(149),
                 CardinalityBound::AtMostOne,
             )),
@@ -14982,7 +14982,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(507),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(158),
                 CardinalityBound::AtMostOne,
             )),
@@ -15275,7 +15275,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(527),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(133),
                 CardinalityBound::AtMostOne,
             )),
@@ -15292,7 +15292,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(528),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -15329,7 +15329,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(530),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -15386,7 +15386,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(533),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -15483,7 +15483,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(538),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -15500,7 +15500,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(539),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -15577,7 +15577,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(543),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(194),
                 CardinalityBound::AtMostOne,
             )),
@@ -15594,7 +15594,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(544),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(160),
                 CardinalityBound::AtMostOne,
             )),
@@ -15611,7 +15611,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(545),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(159),
                 CardinalityBound::AtMostOne,
             )),
@@ -15684,7 +15684,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(550),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -51707,7 +51707,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1549),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -51784,7 +51784,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1553),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1552),
                 CardinalityBound::AtMostOne,
             )),
@@ -51841,7 +51841,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1556),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1555),
                 CardinalityBound::AtMostOne,
             )),
@@ -51878,7 +51878,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1558),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(167),
                 CardinalityBound::AtMostOne,
             )),
@@ -51895,7 +51895,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1559),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -51912,7 +51912,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1560),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -52920,7 +52920,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1614),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(702),
                 CardinalityBound::AtMostOne,
             )),
@@ -52937,7 +52937,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1615),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(747),
                 CardinalityBound::AtMostOne,
             )),
@@ -52954,7 +52954,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1616),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(747),
                 CardinalityBound::AtMostOne,
             )),
@@ -52971,7 +52971,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1617),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(720),
                 CardinalityBound::AtMostOne,
             )),
@@ -52988,7 +52988,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1618),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(676),
                 CardinalityBound::AtMostOne,
             )),
@@ -53092,7 +53092,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1624),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(643),
                 CardinalityBound::AtMostOne,
             )),
@@ -54083,7 +54083,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1676),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -54140,7 +54140,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1679),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(645),
                 CardinalityBound::AtMostOne,
             )),
@@ -54157,7 +54157,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1680),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(645),
                 CardinalityBound::AtMostOne,
             )),
@@ -54174,7 +54174,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1681),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(716),
                 CardinalityBound::AtMostOne,
             )),
@@ -54191,7 +54191,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1682),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(722),
                 CardinalityBound::AtMostOne,
             )),
@@ -54472,7 +54472,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1700),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(645),
                 CardinalityBound::AtMostOne,
             )),
@@ -54577,7 +54577,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1705),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(729),
                 CardinalityBound::AtMostOne,
             )),
@@ -54678,7 +54678,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1710),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(676),
                 CardinalityBound::AtMostOne,
             )),
@@ -54749,7 +54749,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1714),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(742),
                 CardinalityBound::AtMostOne,
             )),
@@ -54800,7 +54800,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1717),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(676),
                 CardinalityBound::AtMostOne,
             )),
@@ -54817,7 +54817,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1718),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(745),
                 CardinalityBound::AtMostOne,
             )),
@@ -55659,7 +55659,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1763),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(761),
                 CardinalityBound::AtMostOne,
             )),
@@ -55676,7 +55676,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1764),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(762),
                 CardinalityBound::AtMostOne,
             )),
@@ -55693,7 +55693,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1765),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -56546,7 +56546,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1806),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(86),
                 CardinalityBound::AtMostOne,
             )),
@@ -56563,7 +56563,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1807),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -56837,7 +56837,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1821),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(808),
                 CardinalityBound::AtMostOne,
             )),
@@ -56854,7 +56854,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1822),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(99),
                 CardinalityBound::AtMostOne,
             )),
@@ -57046,7 +57046,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1833),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57063,7 +57063,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1834),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57121,7 +57121,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1836),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57138,7 +57138,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1837),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57196,7 +57196,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1839),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57213,7 +57213,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1840),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57271,7 +57271,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1842),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57321,7 +57321,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1844),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57399,7 +57399,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1847),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1846),
                 CardinalityBound::AtMostOne,
             )),
@@ -57416,7 +57416,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1848),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -57433,7 +57433,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1849),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -57450,7 +57450,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1850),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57487,7 +57487,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1852),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -57504,7 +57504,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1853),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(101),
                 CardinalityBound::AtMostOne,
             )),
@@ -58303,7 +58303,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1907),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(197),
                 CardinalityBound::AtMostOne,
             )),
@@ -58320,7 +58320,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1908),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -58337,7 +58337,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1909),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(857),
                 CardinalityBound::AtMostOne,
             )),
@@ -58354,7 +58354,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1910),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(857),
                 CardinalityBound::AtMostOne,
             )),
@@ -58772,7 +58772,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(1933),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(849),
                 CardinalityBound::AtMostOne,
             )),
@@ -60690,7 +60690,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2043),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(848),
                 CardinalityBound::AtMostOne,
             )),
@@ -60707,7 +60707,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2044),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(851),
                 CardinalityBound::AtMostOne,
             )),
@@ -60744,7 +60744,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2046),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -60761,7 +60761,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2047),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -60778,7 +60778,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2048),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -60795,7 +60795,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2049),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -60812,7 +60812,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2050),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -60829,7 +60829,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2051),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(81),
                 CardinalityBound::AtMostOne,
             )),
@@ -61583,7 +61583,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2092),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1035),
                 CardinalityBound::AtMostOne,
             )),
@@ -62611,7 +62611,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2136),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1028),
                 CardinalityBound::AtMostOne,
             )),
@@ -62819,7 +62819,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2144),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1035),
                 CardinalityBound::AtMostOne,
             )),
@@ -63149,7 +63149,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2158),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1028),
                 CardinalityBound::AtMostOne,
             )),
@@ -63223,7 +63223,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2161),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1035),
                 CardinalityBound::AtMostOne,
             )),
@@ -63551,7 +63551,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2176),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1068),
                 CardinalityBound::AtMostOne,
             )),
@@ -63568,7 +63568,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2177),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1068),
                 CardinalityBound::AtMostOne,
             )),
@@ -63585,7 +63585,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2178),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1068),
                 CardinalityBound::AtMostOne,
             )),
@@ -63654,7 +63654,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2181),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1076),
                 CardinalityBound::AtMostOne,
             )),
@@ -63671,7 +63671,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2182),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(1077),
                 CardinalityBound::AtMostOne,
             )),
@@ -66337,7 +66337,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
         declarations.push(Declaration {
             id: DeclarationId(2343),
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 DeclarationId(726),
                 CardinalityBound::AtMostOne,
             )),

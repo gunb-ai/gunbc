@@ -248,7 +248,7 @@ impl Dag {
         self.push_declaration(Declaration {
             id,
             name: None,
-            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            connective: TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 element, bound,
             )),
             type_params: Vec::new(),
@@ -992,7 +992,7 @@ mod tests {
         let list_template = push_test_declaration(
             &mut dag,
             Some("TestList"),
-            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 type_param,
                 CardinalityBound::Unbounded,
             )),
@@ -1354,7 +1354,7 @@ mod tests {
         let opt_int = push_test_declaration(
             &mut dag,
             None,
-            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 int_decl,
                 CardinalityBound::AtMostOne,
             )),
@@ -1363,7 +1363,7 @@ mod tests {
         let outer_stale = push_test_declaration(
             &mut dag,
             None,
-            TypeConnective::Cardinality(CardinalityPayload::new_unchecked(
+            TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence(
                 opt_int,
                 CardinalityBound::AtMostOne,
             )),
