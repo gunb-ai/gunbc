@@ -599,12 +599,8 @@ pub mod evaluator {
                         got: operands.len(),
                     });
                 }
-                let bindings: Vec<(PortId, Value)> = bind
-                    .params
-                    .iter()
-                    .copied()
-                    .zip(operands.into_iter())
-                    .collect();
+                let bindings: Vec<(PortId, Value)> =
+                    bind.params.iter().copied().zip(operands).collect();
                 state.push_frame(EvalFrame::empty());
                 let body_result =
                     eval_callable_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
