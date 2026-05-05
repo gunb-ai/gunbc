@@ -623,6 +623,10 @@ Five novel-finding rows surfaced by the 2026-05-04 Exploratory + Reflective inge
 
 R3 Debt-Paydown ledger receipts and routing detail at [docs/debt/r3-debt-paydown-ledger-2026-05-02.md](docs/debt/r3-debt-paydown-ledger-2026-05-02.md).
 
+### Post-merge debt (2026-05-05 R3 substrate — rust-toolchain channel authority)
+
+- **`rust_toolchain_toml_codegen_from_rustup_dag`**: repo-root `rust-toolchain.toml` (`[toolchain].channel` + components) and `dsl/extdeps/rustup.dag` `data ci_pinned_toolchain` are the same semantic pin in two hand-maintained places (comment cross-ref only). The toolchain hygiene PRs (#1789 / #1790 / #1791 / #1798 convergence) remove stale “generated” mislabeling and duplicated CI `toolchain:` keys — **honest** — but do not dissolve the underlying P2 parallel-representation risk (`feedback_parallel_representation_debt`). **Dissolution trigger:** one authority emits the other (preferred: codegen or regen step from `extdeps.rustup` / declared channel data into `rust-toolchain.toml`, with CI continuing to read the checked-in file after checkout). Owner: R3 Substrate (workflow-as-data / extdeps modeling adjacency) + whichever lane owns codegen hooks. Surfaced R3 Substrate Mgr review 2026-05-05 (quarter PR thread; canonical narrative on [PR #1789 review comment](https://github.com/gunb-ai/gunbc/pull/1789#issuecomment-4381694920)).
+
 ## What NOT to build yet
 
 - Any fourth per-language emit file before Stage 1e consolidation finishes.
