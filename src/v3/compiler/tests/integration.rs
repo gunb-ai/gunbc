@@ -207,8 +207,8 @@ mod t_demo_fixture_test {
     use std::path::PathBuf;
 
     use v3_compiler::compile_to_dag;
-    use v3_compiler::dag::{Dag, FieldValue, ValueBody};
-    use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
+    use v3_compiler::dag::Dag;
+    use v3_compiler::test_runner::{ClaimResult, TestRunner};
     use v3_compiler::CompileError;
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
@@ -237,48 +237,27 @@ mod t_demo_fixture_test {
             "T-Demo fixture skeleton should compile without diagnostics: {:?}",
             dag.diagnostics()
         );
+    }
 
-        // This compile-smoke test pins the real T-Demo fixture's lowered
-        // suite shape and runs one real claim from each canonical suite.
-        // Running every canonical-suite claim here duplicates focused
-        // runner tests below and exceeds the 2s per-test ratchet on CI.
-        let runner = TestRunner::new(&dag);
+    #[test]
+    fn t_demo_canonical_suites_are_runner_visible() {
+        let source = fixture_source();
+        let dag = compile_fixture(&source);
+
         for suite_name in [
             "fixture_compiler_nerd_canonical",
             "fixture_integration_canonical",
         ] {
-            let suite = dag
-                .declaration_by_name(suite_name)
-                .unwrap_or_else(|| panic!("T-Demo suite `{suite_name}` should be declared"));
-            let Some(ValueBody::Structural { fields }) = &suite.value_body else {
-                panic!("T-Demo suite `{suite_name}` should lower as structural data");
-            };
-            let claims = fields
-                .iter()
-                .find_map(|(label, value)| (label == "claims").then_some(value));
-            let Some(FieldValue::List(claims)) = claims else {
-                panic!("T-Demo suite `{suite_name}` should carry a structural claims list");
-            };
+            let results = TestRunner::new(&dag).run_suite(suite_name);
             assert!(
-                !claims.is_empty(),
-                "T-Demo suite `{suite_name}` should contain at least one claim"
+                !results.is_empty(),
+                "T-Demo suite `{suite_name}` should contain Day-1 Compiles claims"
             );
             assert!(
-                claims.iter().all(|claim| matches!(claim, FieldValue::Reference(_))),
-                "T-Demo suite `{suite_name}` claim entries should be declaration references: {claims:?}"
-            );
-            let FieldValue::Reference(first_claim) = &claims[0] else {
-                unreachable!("all claim entries were verified as declaration references");
-            };
-            let claim = TestClaimValue::from_declaration(dag.declaration(*first_claim))
-                .unwrap_or_else(|reason| {
-                    panic!("T-Demo suite `{suite_name}` first claim should parse: {reason}")
-                });
-            let result = runner.run_claim(&claim);
-            assert_eq!(
-                result.result,
-                ClaimResult::Pass,
-                "T-Demo suite `{suite_name}` first claim should pass through TestRunner"
+                results
+                    .iter()
+                    .all(|result| result.result == ClaimResult::Pass),
+                "T-Demo suite `{suite_name}` should pass Day-1 Compiles claims, got {results:?}"
             );
         }
     }
