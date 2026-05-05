@@ -24,10 +24,22 @@ still hold. Canonical narrative + landings:
   (`Behavior::Transform`, `Value` carrier) at the cited line spans — not
   only under `lens_apply.rs`. If those match arms are removed, stubbed,
   or globally `UnsupportedTransformTarget`, **STOP** (G0c regression).
-- **E6-G0b — Prereq-X1.a static field-call lowering:** Static lens
-  function-field sites must still lower to `TransformTarget::Callable` per
+- **E6-G0b — Prereq-X1.a static field-call lowering:** G1.a assumes the
+  **static `data`-head** call-on-field-access slice only (`data lens:
+  Lens<…> = …;` then `lens.read(…)` / `lens.sequential.op(…)` / …),
+  which lowers per
   [`design-prereq-x-ho-field-call.md`](../design-prereq-x-ho-field-call.md)
-  §L1.a. If static calls regress to a blocked HO form, **STOP** (G0b).
+  §L1.a to `TransformTarget::Callable` — **not** parameter-headed
+  `w.f(x)` (that is **Prereq-X1.b**, still fail-closed at lowering).
+  **Receipt (re-verify, do not confuse with X1.b):**
+  `prereq_x_call_on_field_access_ratchet_test::x1a_static_data_field_call_lowers_to_callable`
+  and
+  `::x1a_static_data_field_call_executes_through_public_evaluator` in
+  `src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs`.
+  Parameter-callee coverage is
+  `::x1b_parameter_field_call_blocked_at_lowering` (expected diagnostic).
+  If the X1.a positives regress or X1.b starts lowering without `Indirect`,
+  **STOP** (G0b / boundary creep).
 
 Implementers re-verify the `lib.rs` symbols at slice time; line numbers in
 this file are a navigation snapshot only.
@@ -41,9 +53,11 @@ data <name>: Lens<C> = { ... }
 ```
 
 whose **function-field** invocations (`lens.read`, `lens.sequential.op`,
-`lens.branch`, `lens.iterate`, `lens.validate`, etc.) are lowered per
-**Prereq-X1.a** to `TransformTarget::Callable(decl_id)` — static
-field-call resolution, **no** runtime-port callee. Non-function fields
+`lens.branch`, `lens.iterate`, `lens.validate`, etc.) use a **static
+`data` binding head** and therefore follow **Prereq-X1.a** (§L1.a) to
+`TransformTarget::Callable(decl_id)` — **not** the X1.b pattern where the
+receiver is a function parameter (**static resolution at lower time;
+no** runtime-port callee on this path). Non-function fields
 on the lens record (e.g. `name: String`) use runtime
 `TransformTarget::FieldProject` on `RecordValue` carriers; that path is
 orthogonal and already live.
@@ -84,6 +98,8 @@ and must not be read as negating the `lib.rs` transform arms.
 | Runtime `Callable` (Arrow `UserDefined`, pushed frame) | same file `579-613` (`eval_transform_node`, `TransformTarget::Callable`) |
 | Cardinality loops live; `Descent` fail-closed | same file `356-386` (`eval_loop`; `LoopBound::Descent` at `367-373`) |
 | Regression: descent bound fails closed | same file `1817-1868` (`eval_loop_descent_bound_fails_closed`) |
+| X1.a static field-call (data head) lowering + execute ratchets | `src/v3/compiler/tests/integration/prereq_x_call_on_field_access_ratchet_test.rs` (`x1a_static_data_field_call_lowers_to_callable`, `x1a_static_data_field_call_executes_through_public_evaluator`) |
+| X1.b parameter field-call still blocked at lowering | same file `x1b_parameter_field_call_blocked_at_lowering` |
 | X1.a lowering semantics (static reference → `Callable`) | `docs/design-prereq-x-ho-field-call.md` §L1.a |
 
 `lib.rs` line numbers are a **snapshot** for navigation; they drift on
