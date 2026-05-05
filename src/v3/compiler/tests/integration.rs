@@ -238,6 +238,9 @@ mod t_demo_fixture_test {
             dag.diagnostics()
         );
 
+        // This compile-smoke test pins the real T-Demo fixture's lowered
+        // suite shape without re-running every suite claim. Runner execution
+        // for T-Demo claims is covered by the focused suite tests below.
         for suite_name in [
             "fixture_compiler_nerd_canonical",
             "fixture_integration_canonical",
@@ -254,6 +257,10 @@ mod t_demo_fixture_test {
             let Some(FieldValue::List(claims)) = claims else {
                 panic!("T-Demo suite `{suite_name}` should carry a structural claims list");
             };
+            assert!(
+                !claims.is_empty(),
+                "T-Demo suite `{suite_name}` should contain at least one claim"
+            );
             assert!(
                 claims.iter().all(|claim| matches!(claim, FieldValue::Reference(_))),
                 "T-Demo suite `{suite_name}` claim entries should be declaration references: {claims:?}"
