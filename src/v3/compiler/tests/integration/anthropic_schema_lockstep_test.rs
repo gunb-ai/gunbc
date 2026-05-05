@@ -504,6 +504,24 @@ fn assert_llm_disj_lockstep(type_name: &str) {
     assert_disj_lockstep_against(type_name, variants);
 }
 
+fn assert_anthropic_disj_lockstep(type_name: &str) {
+    let mut variants = v2_disj_variants(type_name);
+    if type_name == "AnthropicMessages200ContentBlock" {
+        for (variant, payload) in &mut variants {
+            if variant == "MessagesRedactedThinkingBlock" {
+                if let Some(fields) = payload {
+                    for (label, _, _) in fields {
+                        if label == "data" {
+                            *label = "redacted_data".to_string();
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_disj_lockstep_against(type_name, variants);
+}
+
 fn assert_disj_lockstep_against(type_name: &str, v2_variants: Vec<(String, V2VariantPayload)>) {
     let dag = generated_full_bootstrap_dag();
     let v3_labels: BTreeSet<String> = disj_variant_labels(&dag, type_name).into_iter().collect();
@@ -624,8 +642,13 @@ fn anthropic_messages_200_citation_lockstep() {
 }
 
 #[test]
-fn anthropic_messages_200_text_block_lockstep() {
-    assert_record_lockstep("AnthropicMessages200TextBlock");
+fn anthropic_messages_200_content_block_lockstep() {
+    assert_anthropic_disj_lockstep("AnthropicMessages200ContentBlock");
+}
+
+#[test]
+fn anthropic_server_tool_name_lockstep() {
+    assert_disj_lockstep("AnthropicServerToolName");
 }
 
 #[test]
