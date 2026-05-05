@@ -31,11 +31,9 @@
 //     filter, any, all, flat_map, skip, take, sort_by, append)
 //     use the emit template for both row sides for the symmetric
 //     reason.
-//     `concat` / `fold` are **not** listed here — LanguageSpec
-//     `CollectionOps.{concat,fold}_contract` carries named
-//     `MethodTemplateContract` rows (`go_language_spec_free_monoid_*`) so we
-//     do not duplicate `dag_method: concat_method` / `fold_method` inside this
-//     list (P2 single authority; mirrors Python + fold).
+//     `concat` / `fold` / `map` — LanguageSpec `CollectionOps.{concat,fold,map}_contract`
+//     carries named carriers (`go_language_spec_*`); the list references the same
+//     `map_method` declaration where needed for projection (P2 single authority).
 
 module v3.std.go_method_template_contracts
 
@@ -109,7 +107,8 @@ data go_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   placeholder_convention: NamedArg
 }
 
-// LanguageSpec `CollectionOps.map_contract` — matches stub literal previously on `go_collection_ops.map`.
+// LanguageSpec `CollectionOps.map_contract` — stub literal (runtime/emit TBD for full map projection).
+// Also the **sole** `map_method` row authority: listed below by reference (no parallel inline row).
 data go_language_spec_map_contract: MethodTemplateContract = {
   dag_method: { decl: map_method },
   runtime_template: "/* map({recv}, {body}) */",
@@ -172,13 +171,7 @@ data go_method_template_contracts: List<MethodTemplateContract> = [
     wraps_result: false,
     placeholder_convention: NamedArg
   },
-  {
-    dag_method: { decl: map_method },
-    runtime_template: "v2rt.Map({recv}, {arg})",
-    emit_template: SingleTemplate { template: "v2rt.Map({recv}, {arg})" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
+  go_language_spec_map_contract,
   go_filter_method_template_contract,
   go_any_method_template_contract,
   go_all_method_template_contract,

@@ -22,11 +22,11 @@
 //     use the emit template for both row sides — v2's actual behavior
 //     is "python_method_templates for both consumption sites" since
 //     `collection_method_translations` doesn't declare them.
-//     `concat` / `fold` are **not** listed here — LanguageSpec
-//     `CollectionOps.{concat,fold}_contract` carries named
-//     `MethodTemplateContract` rows (`python_language_spec_free_monoid_*`)
-//     so we do not duplicate `dag_method: concat_method` / `fold_method`
-//     inside this list (P2 single authority; mirrors Rust + fold).
+//     `concat` / `fold` / `map` — LanguageSpec `CollectionOps.{concat,fold,map}_contract`
+//     carries named `MethodTemplateContract` rows (`python_language_spec_*`) so we do not
+//     duplicate those `dag_method` registry methods with a second inline row here
+//     (P2 single authority). The list **references** the same named carrier where the row
+//     must participate in Stratum A / method-template projection (same pattern as `filter`).
 
 module v3.std.python_method_template_contracts
 
@@ -107,8 +107,8 @@ data python_language_spec_free_monoid_fold_contract: MethodTemplateContract = {
   placeholder_convention: NamedArg
 }
 
-// LanguageSpec `CollectionOps.map_contract` — comprehension shape `{body}` / `{item}` / `{recv}`
-// (distinct from the list-row `map_method` template `[{arg}(x) for x in {recv}]`).
+// LanguageSpec `CollectionOps.map_contract` — comprehension shape `{body}` / `{item}` / `{recv}`.
+// Also the **sole** `map_method` row authority: listed below by reference (no parallel inline row).
 data python_language_spec_map_contract: MethodTemplateContract = {
   dag_method: { decl: map_method },
   runtime_template: "[{body} for {item} in {recv}]",
@@ -199,13 +199,7 @@ data python_method_template_contracts: List<MethodTemplateContract> = [
     wraps_result: false,
     placeholder_convention: NamedArg
   },
-  {
-    dag_method: { decl: map_method },
-    runtime_template: "[{arg}(x) for x in {recv}]",
-    emit_template: SingleTemplate { template: "[{arg}(x) for x in {recv}]" },
-    wraps_result: false,
-    placeholder_convention: NamedArg
-  },
+  python_language_spec_map_contract,
   python_filter_method_template_contract,
   python_any_method_template_contract,
   python_all_method_template_contract,
