@@ -38,7 +38,7 @@ A "no" — or any discovery that scope is mis-modeled / authorities have drifted
 
 ### A. Rust Reference §Types primitives — structural declarations against authority (a)
 
-Author per-primitive structural rows in `dsl/extdeps/languages/rust/primitives.dag` (extending the existing `RustPrimitive` type at line 180 + `rust_pilot_primitives` data at line 208). Authority: <https://doc.rust-lang.org/reference/types.html>. Coverage required:
+Author per-primitive structural rows in `dsl/extdeps/languages/rust/primitives.dag` (extending the existing `RustPrimitive` type at line 180 + `rust_pilot_primitives` data at line 208). Authority: <https://doc.rust-lang.org/1.86.0/reference/types.html> (pinned per §Lineage; every row in §A consumes the 1.86.0 reference base). Coverage required:
 
 - **Numeric — integer family.** Pilot already covers `i8`–`i64`, `u8`–`u64`, plus `i128` (LANDED — manager correction 2026-05-05; `i128` exists in `primitives.dag` and the pilot mirror at HEAD). Remaining: `u128`, `isize`, `usize`. The `isize`/`usize` rows consume Q1's `PlatformDependent` variant of `BoundDeclaration` (`src/v3/std/substrate.dag:136`); this is the first non-pilot exercise of `PlatformDependent` and validates PR-F's Q1 consumer end-to-end.
 - **Numeric — floating-point family.** `f32`, `f64`. **NOT DISPATCHABLE AT HEAD — STOP-AND-ESCALATE row.** No live float inhabitance exists at HEAD that the Rust f32/f64 rows can honestly consume:
@@ -79,7 +79,7 @@ Each primitive row cites its **authority URL** (Rust Reference section or std-do
 
 ### B. std-library carriers — structural declarations against authority (b)
 
-Authority: <https://doc.rust-lang.org/std/> per type. Coverage required:
+Authority: <https://doc.rust-lang.org/1.86.0/std/> per type (pinned per §Lineage; every row in §B consumes the 1.86.0 std base — e.g., `Vec<T, A>` → `https://doc.rust-lang.org/1.86.0/std/vec/struct.Vec.html`). Coverage required:
 
 - **`String`** — owned, growable, UTF-8 char sequence. Inhabits `FreeMonoid<Char>` (per `design-emission-model.md:534`); the algebra choice IS the encoding distinction (`FreeMonoid<Byte>` would be raw bytes — `Vec<u8>` territory, not a `String` candidate). Refinement axes: ownership = `Owned`; growability = `Growable`; lifetime = `self`. **No `encoding` axis** — that would duplicate the algebra-carried fact.
 **std-carrier full-signature discipline.** Per Rust std documentation, every collection carrier carries hidden generic parameters (allocator `A`, hasher `S`) that the brief MUST surface as structural axes. Dropping them loses extdeps-fidelity facts before grounding (P1 violation). Each row enumerates the full Rust signature, with hasher/allocator axes carried alongside K/V/T:
