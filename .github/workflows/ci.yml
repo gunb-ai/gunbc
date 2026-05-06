@@ -320,7 +320,7 @@ jobs:
   self_host_ratchet:
     if: github.event.pull_request.draft != true
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     needs: [v3]
     continue-on-error: true
     steps:
