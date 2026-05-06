@@ -9,7 +9,7 @@
 **Lineage / authorities consumed (no re-litigation):**
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 3 corrected (lines 116-150), worked Examples 3-4 (`String` → `Box<str>` / `&str` derivation; lines 523-635), R2-vs-R3 scope lock (line 635), lane row line 385.
 - THESIS: `THESIS.md:171` — engine-retraction; **no annotation surface** is the load-bearing constraint.
-- Substrate-fact-introduction procedure: [`INVARIANTS.md`](../../INVARIANTS.md) §P1 (line 86 onward).
+- Substrate-fact-introduction procedure: [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
 - Sibling lane: [`t-ground-languagespec.md`](t-ground-languagespec.md) — declares the ownership / growability / encoding / lifetime axes per primitive; this lane derives the program-side facts that match those axes.
 - Brief shape template: [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md), [`t-ground-languagespec.md`](t-ground-languagespec.md).
 
@@ -110,7 +110,7 @@ Per Modeling problem 4 corrected (`design-emission-model.md:152-162`): structura
 
 Every detectable under-determination / contradiction lands as a structured diagnostic (per [`feedback_fail_closed_discipline.md`] / C-8). No silent `None` defaults; no implicit "assume Owned" fallbacks. The analyzer's output domain is `Result<LifetimeFacts, EmissionDiagnostic>` per binding.
 
-### G. Substrate-fact-introduction P1 procedure (per `INVARIANTS.md` §P1)
+### G. Substrate-fact-introduction P1 procedure (per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness))
 
 Worker MUST run the 3-step procedure ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
 - **Step 1 (DAG-ancestor):** `LifetimeFacts` and its component types (`Ownership`, `LifetimeScope`, `Growability`, `Encoding`) — does an ancestor structural-fact carrier already exist (e.g., is `Ownership` definable as inhabitance of some existing `Lattice<T>` or algebra in `dsl/std/`)? Where to attach the fact: on `Binding` directly, on `Declaration`, or as a side-table? Default: structural attachment, cite receipt.
@@ -234,6 +234,6 @@ PR body covers: scope (R2 cases (a)/(b)/(c) only); analyzer crate location; algo
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 3 corrected + Examples 3-4 + R2-vs-R3 lock at line 635
 - Sibling lane (axis vocabulary): [`t-ground-languagespec.md`](t-ground-languagespec.md)
 - THESIS: `THESIS.md:171` (engine-retraction; no-annotation discipline)
-- Substrate-fact-introduction: [`INVARIANTS.md`](../../INVARIANTS.md) §P1
+- Substrate-fact-introduction: [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness)
 - Brief shape template: [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md), [`t-ground-languagespec.md`](t-ground-languagespec.md)
 - R3 successor lane: `T-LensProducer-Retirement` (per `design-emission-model.md:635`)

@@ -10,7 +10,7 @@
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 6 (line 192), §"Affected lanes" option (c) (lines 900-910), MethodContract consolidation (line 942), `BoundDeclaration` consumer note (line 1008), apparent-multi-inhabitance audit (line 895), Q3 `RealizationCost` lock (lines 1143-1208), lane row line 384.
 - Reflection completeness: [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) — LanguageSpec as a reflection consumer (no per-consumer projection; line 103).
 - THESIS: `THESIS.md:171` — "Coercion = emission. No separate coercion engine."
-- Substrate-fact-introduction procedure: [`INVARIANTS.md`](../../INVARIANTS.md) §P1 (line 86 onward).
+- Substrate-fact-introduction procedure: [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
 - Brief shape template: [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md).
 
 ---
@@ -128,7 +128,7 @@ Sub-tasks (per target):
 
 This is the load-bearing consequence of Q4's universal four-property gate (Faithful / Correct / Minimal / Performant; PR-I lock). Each candidate retained must pass all four; each candidate retracted must produce a structural reason citation.
 
-### G. Substrate-fact-introduction P1 procedure (per `INVARIANTS.md` §P1)
+### G. Substrate-fact-introduction P1 procedure (per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness))
 
 Worker MUST run the 3-step procedure ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
 - **Step 1 (DAG-ancestor):** which existing parent does the new fact attach to? (Worked example: `LanguageSpec` itself — does an ancestor target-spec carrier exist already?)
@@ -262,6 +262,6 @@ PR body covers: scope (A-G); per-target population status (Rust full / Python fu
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 6 + §"Affected lanes" + Q3 lock + line 942 method-contract consolidation (renamed `MethodTemplateContract` post-2026-04-29 Director routing; cited line still uses doc's original wording)
 - Reflection completeness: [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md)
 - THESIS: `THESIS.md:171` (engine-retraction)
-- Substrate-fact-introduction: [`INVARIANTS.md`](../../INVARIANTS.md) §P1
+- Substrate-fact-introduction: [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness)
 - Brief shape template: [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md)
 - Sibling lanes: [`t-ground-engine-substrate-audit.md`](t-ground-engine-substrate-audit.md), [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md) (both pre-cascade; post-cascade naming aligns with the 11-lane structure). These pre-cascade docs will be superseded by the post-cascade lane briefs (T-Ground-Coercion-Fold / -Lifetime-Analyzer / -Diagnostic / -CrossTarget-Meta) once authored; lineage stays visible until then.
