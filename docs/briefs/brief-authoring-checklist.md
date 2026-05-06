@@ -74,6 +74,26 @@ Before authoring any of the brief sections above, answer **all five** in writing
 **Examples from #836:**
 - B4.2 fold_step_formal: brief assumed bridge skips on step-formal binding. Worker pre-flight audit revealed bridge actually skips on accumulator/element type eligibility. Carrier addressed wrong question. Brief reframed.
 
+## Citation discipline — Practice 4 / modeling-discipline references
+
+**Cite the live rule, not a fabricated checklist step.** When a
+brief requires the worker to mark new coproduct / sum declarations
+with a 🟢/🟡/🔴 classification, cite **Practice 4 (coproduct
+dissolution)** and the **"What to check" rule at
+`docs/modeling-discipline.md:131`** (checkpoint comment naming
+classification, ledger entry if GREEN, named trigger if YELLOW).
+
+Do **not** cite "Step 4 of the type-introduction checklist" — there
+is no such checklist in `docs/modeling-discipline.md`. The doc lists
+4 dissolution patterns (set-membership / closed-set-tag / algebraic
+form / dimensional) and the checkpoint-comment rule is the
+"What to check" stanza at line 131, not a fifth step.
+
+**Failure mode**: codex review on PR #1782 (2026-05-06) flagged the
+stale wording across multiple briefs; corpus sweep landed at
+`2dc92f34f`. Future briefs that copy old templates should normalize
+the citation before landing.
+
 ## Audit receipt format
 
 The PR body that lands the brief must include a short audit receipt:
