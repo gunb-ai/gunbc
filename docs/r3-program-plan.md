@@ -66,7 +66,7 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 | Class | TestClaim gate | Representative gap-test | Lane(s) producing closure |
 |---|---|---|---|
-| 1 — parser/grammar surface | `substrate_gap_parser_grammar_closed` | v3 parser handles **generic refinement syntax `Type<N>` over any algebraic type T** — refinements are projections of abstract algebraic concepts onto concrete register/memory constraints, NOT Int-specific (per Brian directive 2026-05-06: *"we have to handle this generically for 'all' types, not just 'int' — though int is a good representation and good north star"*). Pass condition: parser + stage0 lowering accept the generic shape, demonstrated against `Int<N>` (north-star integer projection) + `Real<N>` (real-number projection — `ApproximateField<F>` per T-Numeric-Construction) + `Nat<N>` (natural-number projection) without v2-fallback; gate Pass = `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` evaluates programs using all 3 refinement shapes → 0 diagnostics + emitted artifact compiles. The generic-shape requirement prevents accidentally hard-coding `Int`-only handling. | T-V2-Retirement (parser path) + T-Numeric-Construction (refinement chain Int/Real/Nat) + Substrate continuation |
+| 1 — parser/grammar surface | `substrate_gap_parser_grammar_closed` | v3 substrate models concrete types as the **interaction of independent constraint models** — abstract algebra × machine constraints — with concrete types emerging as consequences (per Brian directive 2026-05-06: *"these concepts should be the interaction of several constraint models i.e. abstract algebra × machine constraints — i64 would naturally emerge as a consequence"*). Refinement syntax `Type<N>` expresses the interaction, NOT a primary entity. Pass condition: substrate declares abstract algebra (e.g., `Int = AbelianGroup<Nat>`) and machine constraints (e.g., `MachineWidth<bits>`) as independent models; concrete types emerge via interaction (e.g., `Int<64>` = `Int × MachineWidth<64>`; target-language `i64` is derived artifact, NOT primary substrate entity). v3 parser handles generic interaction syntax; demonstrated against ≥3 algebra×constraint pairs — `Int<64>` (integer × 64-bit register), `Real<64>` (real × 64-bit float), `Nat<8>` (natural × 8-bit register) — without v2-fallback; gate Pass = all 3 interaction-derived programs produce 0 diagnostics + emitted artifact compiles to expected target primitive (`i64`/`f64`/`u8`) where the target primitive is consequence-of-interaction, not declared. The interaction-modeling requirement prevents single-axis (algebra-only or width-only) hard-coding. | T-V2-Retirement (parser path) + T-Numeric-Construction (algebra side) + Substrate (machine-constraint side, may require new substrate carrier `MachineConstraint<C>`) + Substrate continuation |
 | 2 — function-valued data | `substrate_gap_function_valued_data_closed` | `Lens<C>` instance with function-typed payload executes through evaluator | T-Lens-Application-Surface + T-E-P-Producer-Broadening |
 | 3 — file-ingestion | `substrate_gap_file_ingestion_closed` | One `.dag` program ingests external file (e.g., timing observation set) without `include_str!` | T-Workflow-As-Data |
 | 4 — workflow/scheduling | `substrate_gap_workflow_scheduling_closed` | CI workflow modeled as `.dag` data executes through evaluator | T-Workflow-As-Data + T-Lens-Self-Application |
@@ -244,20 +244,32 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 ### §4.1 Class 1 — parser/grammar surface
 
-**What this class names**: bridges that exist because v3 parser cannot handle certain grammar surfaces — particularly **generic refinement syntax `Type<N>` over abstract algebraic types T**. Refinement is the structural projection of an algebraic concept (Int = AbelianGroup<Nat>, Real = ApproximateField<Rational>, etc.) onto concrete machine/register constraints (Int<32>, Real<64>, Nat<8>, etc.). v2 currently catches these; v3 cannot. Other parser-surface gaps (e.g., `where bits <= N` constraints, function-valued return types) fall under this class but are subordinate to the generic-refinement gap.
+**What this class names**: bridges that exist because v3 substrate doesn't yet model the **interaction of independent constraint models** — abstract algebra × machine constraints — from which concrete types emerge. v3 parser handles algebra-side refinements somewhat (per T-Numeric-Construction in flight) but doesn't model machine-constraint as an independent axis that **interacts** with algebra to produce concrete-type instances. Concrete types like `i64` should emerge as consequences of `Int × MachineWidth<64>`, not be declared as primary entities. v2 currently catches these via various ad-hoc paths; v3 needs the substrate-level interaction model.
 
-**Modeling discipline (Brian directive 2026-05-06 at gunbc#846)**: handle refinement syntax generically for **all** algebraic types, not just `Int`. *"We are usually modeling abstract algebra or other concepts, and its likely that any machine/computer oriented concepts are a projection of those onto specific constraints (i.e. memory registers) - my point is, we have to handle this generically for 'all' types, not just 'int' - though int is a good representation and good north star for others to take note of."*
+**Modeling discipline (Brian directives 2026-05-06 at gunbc#846)**:
 
-**Representative gap-test**: parser + stage0 emission accept the generic `Type<N>` shape, demonstrated against:
-- `Int<N>` — north-star integer projection (memory-register width refinement of `AbelianGroup<Nat>`)
-- `Real<N>` — real-number projection (precision refinement of `ApproximateField<Rational>` per T-Numeric-Construction reframe)
-- `Nat<N>` — natural-number projection (bit-width refinement of `Magnitude → Nat` semiring)
+> *"We are usually modeling abstract algebra or other concepts, and its likely that any machine/computer oriented concepts are a projection of those onto specific constraints (i.e. memory registers) - my point is, we have to handle this generically for 'all' types, not just 'int' - though int is a good representation and good north star for others to take note of."*
 
-Pass condition: all three shapes produce 0 diagnostics + emitted artifact compiles via `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` against the test corpus.
+> *"At some point we probably want these concepts to be the interaction of several constraint models i.e. abstract algebra × machine constraints — i64 would naturally emerge as a consequence."*
 
-**Closes via**: T-V2-Retirement parser path (post-T-FixedPoint) + Substrate parser continuation work (cited in `r3-structure.md` §"Lane structure" → T-Numeric-Construction row, T-V2-Retirement coordination dependency).
+**Modeling target**: independent constraint models (algebra + machine) with concrete types emerging from their interaction. Substrate carries `MachineConstraint<C>` as an independent axis; concrete-type-instances are products. Other parser-surface gaps (`where bits <= N`, function-valued return types) fall under this class but are subordinate to the interaction-modeling gap.
 
-**Owner Mgr**: PB Mgr (T-V2-Retirement scope) coordinating with Substrate Mgr (parser substrate carriers + T-Numeric-Construction refinement chain).
+**Representative gap-test**: substrate declares abstract algebra and machine constraints as independent models; concrete types emerge via interaction. Demonstrated against ≥3 algebra×constraint pairs:
+
+- **`Int<64>` = `Int × MachineWidth<64>`** — integer × 64-bit register interaction; emits to target `i64` as derived consequence (north-star)
+- **`Real<64>` = `Real × MachineWidth<64>`** — real × 64-bit float interaction; emits to target `f64`
+- **`Nat<8>` = `Nat × MachineWidth<8>`** — natural × 8-bit register interaction; emits to target `u8`
+
+Pass condition: 
+- (a) substrate declares `Int` / `Real` / `Nat` as algebra-side carriers (T-Numeric-Construction; partly landed)
+- (b) substrate declares `MachineConstraint<C>` (or analogous) as independent constraint axis (NEW substrate work; tracked in the closure-via column)
+- (c) parser handles generic interaction syntax; concrete-type literals like `42i64` resolve via `Int × MachineWidth<64>` lookup
+- (d) all 3 interaction-derived programs produce 0 diagnostics + emitted target primitives compile to `i64`/`f64`/`u8` respectively
+- (e) target primitives (`i64` / `f64` / `u8`) are NOT primary substrate entities — they're derived artifacts of the interaction lookup
+
+**Closes via**: T-V2-Retirement parser path (post-T-FixedPoint) + T-Numeric-Construction (algebra side; in flight) + **Substrate continuation work to add `MachineConstraint<C>` independent carrier** (NEW scope per Brian directive 2026-05-06; surfaces as Q-MachineConstraint-Carrier in §10.3).
+
+**Owner Mgr**: Substrate Mgr (machine-constraint carrier authoring + T-Numeric-Construction algebra side) coordinating with PB Mgr (T-V2-Retirement parser path).
 
 ### §4.2 Class 2 — function-valued data
 
@@ -626,6 +638,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 | Q-Anthropic-Variant-Aware | Variant-aware typed REST response projection carrier shape | Defer #1702 re-dispatch until Substrate authors variant-aware projection metadata carrier; #1702 branch preserved | RATIFIED-by-default |
 | Q-Emit-Shim-Handoff | Grounding direct execution vs PB/Substrate/v2-retirement consumption for `emit/rust_target.rs` family | Grounding consumes PB/v2-retirement milestones; no Grounding direct execution on these files | RATIFIED-by-default |
 | Q-Coercion-Fold-Scratch | Lane placement for `ScratchIntExamples` retirement | Grounding owns close after LanguageSpec projection executable | RATIFIED-by-default |
+| Q-MachineConstraint-Carrier | Substrate carrier for `MachineConstraint<C>` independent axis (per Brian directive 2026-05-06 — concrete types emerge from algebra × machine-constraint interaction; `i64` = `Int × MachineWidth<64>` consequence, NOT primary entity) | Substrate Mgr authors `MachineConstraint<C>` carrier + interaction lookup; folds into T-Numeric-Construction continuation (algebra side already in flight); surfaces as new Substrate sub-program. Required for Class 1 substrate-gap-class closure per §1.4. | OPEN — Substrate Mgr + Director scoping needed (NEW 2026-05-06 from Brian inline at PR #1808 line 69) |
 
 ---
 
