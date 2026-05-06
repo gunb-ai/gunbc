@@ -108,6 +108,7 @@ Three valid statuses per item. Each item in §1 has a defined status; the count 
 **Criteria:**
 - Item dissolves IF a **named structural prerequisite** lands in R3
 - Prerequisite is itself in R3 scope (GREEN or YELLOW with a clear chain back to GREEN)
+- **YELLOW chain rule** (per Director ratification 2026-05-06 at gunbc#828 #issuecomment-4384070969): YELLOW prerequisites must trace back to GREEN within a finite chain. Two YELLOW items listing each other (or a longer cycle) are NOT valid — cycle detection mandatory before flagging YELLOW.
 - Tracked with the prerequisite chain explicit; no "we'll figure it out" prerequisites
 - Source PR + owner Mgr identified
 
@@ -136,13 +137,17 @@ If inversion dissolves the case → status updates to GREEN/YELLOW. If inversion
 
 Going-forward discipline encoded as PR-authoring contract. Folds in Director's prior PR-template SG-0-delta extension routing to quiet-otter (R3 Debt-Paydown, gunbc#1744 #issuecomment-4383628247).
 
+### Application scope (Refinement A per Director ratification 2026-05-06 at gunbc#828 #issuecomment-4384070969)
+
+Contract applies to **PRs landing AFTER this framework merges** (not retroactively). Pre-existing SG-0 census entries are grandfathered; their bridge-class + dissolution trigger surfaces in §1 inventory but does NOT retroactively require (a)-(d) compliance below. Mgr canvases must NOT flag pre-existing entries as needing immediate dissolution-trigger receipt — only flag if the entry's existence is itself a discipline violation per the bridge-class framework.
+
 ### PR-authoring contract
 
 **Every PR adding hand-Rust must same-PR answer (in PR description or commit message):**
 
-(a) **Bridge class** — A-G per §1 framework above. SG-0 zero-floor discipline: hand-authored v3 Rust must dissolve same-PR, cite a named structural trigger (with R3-close eligibility GREEN/YELLOW per §3), or carry explicit Director RED allocation. There is no permitted "intentional permanent" exception in the going-forward contract — pre-existing STRUCTURAL infrastructure (the SG-0 measurement apparatus itself; see §3.A grandfathering pending Director ratification of the new STRUCTURAL status) is the only category exempt, and new STRUCTURAL additions require explicit Director allocation citing the SG-0 program shape.
+(a) **Bridge class** — A-G per §1 framework above. SG-0 zero-floor discipline: hand-authored v3 Rust must dissolve same-PR, cite a named structural trigger (with R3-close eligibility GREEN/YELLOW per §3), or carry explicit Director RED allocation. **Intentional-permanent hand-Rust additions** (e.g., new SG-0 STRUCTURAL infrastructure) **require explicit Director allocation citing the program shape** (Refinement B per Director ratification 2026-05-06 at gunbc#828 #issuecomment-4384070969); there is no implicit-pass — a Mgr cannot self-classify an addition as STRUCTURAL without Director ratification. Pre-existing STRUCTURAL infrastructure (the SG-0 measurement apparatus itself; per §3.A) is grandfathered pending Director ratification of the new STRUCTURAL status.
 
-(b) **Substrate-gap-class blocking dissolution** (if any) — name the gap that prevents same-PR dissolution. If no gap, the contract's options collapse to "dissolve same-PR" or "explicit Director RED allocation"; "intentional permanent" without Director allocation is not allowed.
+(b) **Substrate-gap-class blocking dissolution** (if any) — name the gap that prevents same-PR dissolution. If no gap, the contract's options collapse to "dissolve same-PR" or "explicit Director RED allocation"; intentional-permanent additions without Director allocation are NOT allowed.
 
 (c) **Same-PR dissolution OR named-trigger-with-R3-close-eligibility** — if dissolution doesn't land same-PR, name the trigger + R3-close eligibility (GREEN/YELLOW/RED per §3 rubric). RED requires Director-level allocation.
 
