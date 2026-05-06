@@ -5,7 +5,7 @@
 **Merge gates** (distinct from PR-open status — per openai-pro 2026-05-06 finding):
 - **PR open**: ✓ at sha `d1bfbbe22`
 - **Plan PR merge-eligible**: open RED escalations in §10.3 acknowledged + tracked (not necessarily resolved); PR can merge with RED items in flight provided they're explicitly tracked + assigned routing
-- **R3 close** (NOT plan PR merge): all 95 closure gates GREEN (with §10.3 Q-Lens-Behavioral-Parity-R3-Closeability **RATIFIED option (b) 2026-05-06**: T-LBP R3 scope = complexity + cost lenses only; parallelism + effect_enum carved to R4 per `docs/r4-carve-out-routing.md`) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt + other §10.3 RED items resolved per their owners
+- **R3 close** (NOT plan PR merge): all **R3-load-bearing** §1.8 closure gates GREEN (**95** gate IDs enumerated; **#81**/**#82**/**#95** are **CARVED to R4** per `docs/r4-carve-out-routing.md` C1/C2/C1 — not in the R3 conjunction) + §10.3 Q-Lens-Behavioral-Parity-R3-Closeability **option (b)** (T-LBP = complexity + cost in R3; parallelism + effect_enum R4) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt + other §10.3 RED items resolved per their owners
 
 **Purpose.** Forward-looking program plan for **R3 close with zero debt**. Per user directive 2026-05-05 (gunbc#846): *"clear dependency graph from here to R3 close"* + *"surface escalations now and solve them"*.
 
@@ -87,10 +87,12 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 **Per codex BLOCKING 2026-05-06 inline at line 79**: prior 70-count omitted the 5 NEW Pattern-A executable gates (`tc1_eta_equivalence_executable`, `tc2_church_rosser_executable`, `tc3_pattern_a_second_mover_executable`, `rust_dag_isomorphism_executable`, `symbolic_cost_expr_equals_executable`) declared in §1.1 but not yet in `r3-structure.md` §"Acceptance". This commit adds them to the canonical authority and bumps total from 70 → 75; single-authority restored (INVARIANTS P2/P5).
 
-R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
+R3 closes when **all non-carved §1.8 gates** pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
+
+**R4-carved §1.8 rows** (enumerated for traceability; **excluded** from R3 thesis-close conjunction — **INVARIANTS** §P2): **`#81`** `parallelism_lens_behaviorally_complete`, **`#82`** `effect_enumeration_lens_behaviorally_complete`, **`#95`** `opt_in_iteration_parallelism_via_lens_application_demonstrated` — per `docs/r4-carve-out-routing.md` C1/C2/C1 cascade + `docs/design-lens-application-surface.md` §7.
 
 **Two distinct Pass surfaces** (per Debt-Paydown Mgr poke-hole 2026-05-06 — clarification prevents conflating predicates):
-- **Lane `.dag` TestClaim gates (95 total)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
+- **Lane `.dag` TestClaim gates (95 enumerated; 92 load-bearing for R3 thesis close)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
 - **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
 
 Both must hold for R3 close. "95 gates green" alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
