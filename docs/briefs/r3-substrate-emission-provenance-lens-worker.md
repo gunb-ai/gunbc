@@ -1,17 +1,33 @@
 ---
-status: draft (worker brief; PM-authored under tactical authority per Director ratification 2026-05-06; dispatch-readiness assessed by Substrate Mgr)
+status: PROPOSAL (worker brief; PM-authored under tactical authority per Director ratification 2026-05-06; **NOT dispatch-ready** pending Substrate Mgr canvas on Lens<C> read-shape question raised by codex BLOCKING 2026-05-06; dispatch-readiness assessed by Substrate Mgr)
 authority parent: R3 Substrate Manager (#1739)
 ratification: Director ratified scope at gunbc#828 #issuecomment-4392256151 (zesty-bear-812 — "Lens<EmissionProvenance> as another Lens<C> instance per feedback_lenses_not_passes; Substrate authors instance carrier; Verification asserts gate"); Brian directive 2026-05-06 chat ("R3 has idle workers under several managers, so we should put them to work asap")
-roadmap row: docs/r3-program-plan.md §1.8 ledger row #89 (proposed: `emission_provenance_lens_landed`)
+roadmap row: **TBD — gate authority pending** per codex BLOCKING 2026-05-06; no #89 (already taken by `section_ref_substrate_landed` under T-Lens-Application-Surface). Candidate retargets per Substrate Mgr disposition: (a) new gate added to T-CostLens-Composition lane scope (analogous to existing #37-#40 cluster); (b) new gate added to T-Lens-Application-Surface lane scope; (c) deferred until per-Behavior framing ratified
 authority docs:
-  - src/v3/std/lens.dag — `Lens<C>` substrate carrier (Director-locked 6-field shape)
+  - src/v3/std/lens.dag — `Lens<C>` substrate carrier (Director-locked 6-field shape; **`read: fn(Dag, Behavior) -> Witness<C>`** — per-Behavior read; codex BLOCKING 2026-05-06 surfaced category mismatch with per-emitted-line goal)
   - src/v3/compiler/src/diagnostics_generated.rs:5 — `SourceSpan { file, byte_start, byte_end }` shape
   - src/v3/compiler/src/dag.rs:47-48 — "SourceSpan lives on every Behavior and every Declaration structurally"
   - docs/design-lens-framework.md — lens framework parent doc
   - docs/r3-design-schedule-2026-05-06.md — pre-authored brief queue discipline (Brian directive 2026-05-06)
 gates:
-  - emission_provenance_lens_landed (proposed §1.8 #89)
+  - TBD per Substrate Mgr canvas — not landed in §1.8 ledger
 ---
+
+## STATUS — PROPOSAL pending Substrate Mgr canvas (codex BLOCKING 2026-05-06)
+
+Codex BLOCKING review at sha `3c96212d` (PR #1902) surfaced 3 valid findings:
+
+1. **Optional+invariant origin → typed-sum origin** (applied below; structural fix per `feedback_state_space_vs_behavioral_invariants`)
+2. **Lens<C> reads (Dag, Behavior) → Witness<C>; emission provenance is per-line, not per-Behavior** (category mismatch — substantive Substrate Mgr canvas territory; brief stays PROPOSAL until ratified)
+3. **§1.8 #89 already taken by `section_ref_substrate_landed`** (gate authority retargeting required; PM grep-error)
+
+**The load-bearing finding is #2**: this brief framed emission-provenance as `Lens<EmissionProvenance>`, but the Lens<C> read shape is per-Behavior, not per-emitted-line. Two reframings possible:
+
+- **(a) Per-Behavior provenance** (Lens<C>-compatible): "for Behavior B, the emitted lines are [line-range / fold-rule] tuples." Lens<C> reads (Dag, Behavior) → Witness<List<EmissionAttribution>>. Narrower scope but structurally faithful. Doesn't directly give the slide visualization Brian wanted.
+- **(b) Per-emitted-line instrumentation** (NOT a lens): emission-fold instrumentation that runs DURING emission and records per-line origin. Different substrate shape entirely; matches Brian's slide visualization need; not a `Lens<C>` instance.
+- **(c) Withdraw brief**: pre-canvas the question via Substrate Mgr canvas first; re-author brief once shape ratified.
+
+PM read: recommend **(c)** — withdraw + canvas first. Brief was authored before this category mismatch was surfaced; substantive reshape needs Substrate Mgr substrate-state-grep + Director ratification on the right shape, not PM-tier pre-authoring.
 
 # R3 Substrate — `Lens<EmissionProvenance>` worker brief
 
@@ -52,23 +68,21 @@ Author `EmissionProvenance` carrier in `src/v3/std/` (alongside other
 `Lens<C>` instance C-types). Shape:
 
 ```dag
+// Typed origin sum — codex BLOCKING 2026-05-06 finding 1: provenance origin
+// must be a non-empty typed authority, NOT optional coordinates with a
+// runtime-asserted "at-least-one" invariant. Per
+// feedback_state_space_vs_behavioral_invariants: type enforcement > API enforcement.
+type EmissionOrigin =
+    SubstrateDeclMirror { span: SourceSpan }       // line directly mirrors a .dag Behavior / Declaration
+  | FoldRuleAutoEmit { rule_name: String }         // LangSpec auto-emitted (e.g., "rust.derive_for_disj")
+
 type EmissionProvenance {
-  emitted_line: Int       // line number in emitted target output
-  source_span: SourceSpan?    // populated when line directly mirrors a .dag Behavior / Declaration
-  fold_rule: String?          // populated when LangSpec auto-emitted (e.g., "rust.derive_for_disj")
+  emitted_line: Int     // line number in emitted target output
+  origin: EmissionOrigin   // REQUIRED, typed sum — fail-closed by construction
 }
 ```
 
-**Optional shape note (per claude review observation 2026-05-06)**:
-canonical Optional in `.dag` is `T?` suffix (e.g., `String?` at
-`src/v3/std/anthropic_schema.dag:115-119`). Named Optional carriers
-like `OptionalDiagnostic` exist at `src/v3/std/dimensions.dag:41`
-but generic Optional is the `T?` suffix form. Worker grep-verifies
-at dispatch + adjusts to project convention if it has shifted.
-
-**Hard scope bar (per `feedback_fail_closed_discipline` C-8)**: at least
-one of `source_span` / `fold_rule` MUST be present per emitted line.
-Both-absent is a Diagnostic, not a silent None.
+**Structural fail-closed (per codex BLOCKING finding 1 + `feedback_state_space_vs_behavioral_invariants`)**: the `Disj` carrier `EmissionOrigin` makes "at least one origin class is present" structurally true by construction; no runtime invariant required. Eliminates the structural-recovery pattern from the prior optional+invariant shape.
 
 ### Phase 2 — `Lens<EmissionProvenance>` instance authoring
 
