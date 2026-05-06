@@ -22,7 +22,7 @@ Director ratified Q-Unit-1..5 with one rename:
 | **Q-Unit-1** Carrier name | RATIFIED `Measure<Quantity, Scale>` **with rename**: Scale value `Unit` → `One` (avoids shadowing outer carrier) |
 | **Q-Unit-2** 2-axis Phase-1 | RATIFIED. Aspect axis defers to R4 (consumer-demand-driven). `Frequency`/`DataRate` may re-fold when Aspect lands; accept as future cleanup |
 | **Q-Unit-3** Duration/Seconds collapse | RATIFIED collapse: `Seconds = Duration ≡ Measure<Time, One>`. Scale-agnostic `Duration<S>` form deferred until ≥2 consumers ask |
-| **Q-Unit-4** Composition order | RATIFIED outer-Refined / inner-Unit (`Refined<Unit<...>, predicate>`) |
+| **Q-Unit-4** Composition order | **CONCEPTUAL MODEL: outer-Refined / inner-Measure**. Literal `Refined<Measure<...>, predicate>` form **DEFERRED to value-typed-integration follow-up** per Q-Refined-Phantom-Composition RATIFIED option (c) at gunbc#828 #issuecomment-4385687075 (2026-05-06). **Predicate authority — explicit**: in Phase-1 substrate, dimensional semantics ride on the `Quantity` tag at the Measure layer (no value structure to predicate over); when value-typed integration lands (post-T-Numeric-Construction Phase-3 + Grounding emission consumption), predicates re-attach at the **value-typed Int/UInt level via `where`-sugar** (e.g., `range(min: 0)` over Int per current `dsl/std/types.dag` precedent at `type Duration = Int where range(min: 0)`-style). The deferred form lands then with concrete value-typed bases. |
 | **Q-Unit-5** Practice 4 marks | RATIFIED. `Unit<Q, S>` 🟢 PRIMITIVE; `Quantity` / `Scale` 🟡 SCAFFOLD with "consumed by ≥1 emission rule" trigger |
 
 **Worker-facing impact**: shape below reflects ratified form. Scale enum's `Unit` value renamed to `One` throughout this canvas; subsequent worker brief authoring inherits the renamed shape.
@@ -215,8 +215,8 @@ Under ratified Unit/Quantity carrier:
 |---|---|---|
 | `Char` | `Refined<Int, valid_unicode_codepoint>` | 🟢 PRIMITIVE |
 | `EpochMs` | **deferred to Aspect-axis follow-up** | (deferred) |
-| `Duration` | `Refined<Measure<Time, One>, non_negative>` | 🟢 |
-| `Milliseconds` | `Refined<Measure<Time, Milli>, non_negative>` | 🟢 |
+| `Duration` | `Measure<Time, One>` (predicate deferred — Q-Refined-Phantom-Composition (c) RATIFIED; non-negative-magnitude semantics carried by `Quantity = Time` tag) | 🟢 |
+| `Milliseconds` | `Measure<Time, Milli>` (predicate deferred per (c) RATIFIED) | 🟢 |
 | `Seconds` | type alias for `Duration` (Q-Unit-3 = collapse) | 🟢 |
 | `RetryCount` | `Refined<NonNegativeInt, retry_semantics>` | 🟢 |
 | `HttpStatus` | `Refined<Int, range_100_599>` | 🟢 |
