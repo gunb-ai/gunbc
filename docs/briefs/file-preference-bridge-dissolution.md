@@ -24,7 +24,7 @@ It also catches multiple invariants at once: P1 Modeling Faithfulness (the prefe
 - `dsl/std/effects.dag` vs `src/v3/std/effects.dag` (diff the two module declarations)
 - `dsl/std/verification.dag` vs `src/v3/std/verification.dag` (same; v3 file's :8-15 comment is the dissolution receipt)
 - `src/v3/std/effects.dag:118-260` — the embedded http_path mirror
-- INVARIANTS.md §P2 Boundary Discipline (especially *Parallel authority* problem shape)
+- INVARIANTS.md#p2-boundary-discipline Boundary Discipline (especially *Parallel authority* problem shape)
 
 ## Work
 
