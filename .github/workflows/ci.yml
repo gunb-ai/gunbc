@@ -29,6 +29,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
+# Rust: each `setup-rust-toolchain` step omits `toolchain:` so the action reads
+# `rust-toolchain.toml` at the repo root after `actions/checkout`. No job uses a
+# non-default `working-directory` for Rust setup; if one did, make `rust-toolchain.toml`
+# visible from that directory (e.g. copy it in) — do **not** add a workflow `toolchain:`
+# input: `scripts/check-rust-toolchain-single-authority.sh` rejects `toolchain:` in the
+# same Actions step as `actions-rust-lang/setup-rust-toolchain` in any
+# `.github/workflows/*.{yml,yaml}`, and the action
+# ignores the repo file when `toolchain` is set explicitly (upstream semantics).
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
@@ -49,7 +57,6 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
-          toolchain: "1.93.0"
           components: rustfmt
           cache: false
           rustflags: ""
@@ -121,10 +128,14 @@ jobs:
         # silently neutering the consumer.
         run: bash scripts/test-check-manager-brief-authority.sh
 
+      - name: Rust toolchain single-authority check (P2)
+        # Pinned channel must not be duplicated in dsl/extdeps/rustup.dag;
+        # authority is rust-toolchain.toml only (PR #1794).
+        run: bash scripts/check-rust-toolchain-single-authority.sh
+
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
-          toolchain: "1.93.0"
           components: rustfmt
           cache: false
           rustflags: ""
@@ -171,7 +182,6 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
-          toolchain: "1.93.0"
           # Integration snapshot tests (`regen_parse` path, lane2d cost lens, …) shell out to `rustfmt`.
           components: rustfmt, clippy
           cache: false
@@ -214,13 +224,17 @@ jobs:
       # Wall-clock gate on lane2 Stage 2d symbolic-cost tests only (ζ / #537).
       # Post-#546 these live in the consolidated `integration` test binary; the
       # `lane2_stage_2d_symbolic_cost_test::` filter keeps the ratchet narrow.
-      # The timer wraps the full `cargo test` process, so **cold** runs (cache
-      # miss, first compile + link on ubuntu-latest) can spend minutes — keep
-      # headroom beyond a tight 120s; per-test discipline lives in
+      # The timer wraps the full `cargo test` process. Prebuild the integration
+      # harness (`--no-run`) so this gate measures lane2d work — not a cold link
+      # of the whole `integration` binary (observed ~322s over a 300s budget on
+      # ubuntu-latest; PR #1794). **Cold** runs (cache miss) can still spend minutes;
+      # keep headroom beyond a tight 120s; per-test discipline lives in
       # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
-      # Tracked headroom: ratchet this ceiling back toward 300s once cold
-      # lane2d CI runs regularly complete under 300s after fixture compile
-      # amortization lands for the remaining Stage 2d cases.
+      # Tracked headroom: ratchet this ceiling back toward 300s once cold lane2d
+      # CI runs regularly complete under 300s after fixture compile amortization.
+      - name: Prebuild v3 integration test binary (lane2d wall-clock denominator)
+        run: cargo test -p v3-compiler --test integration --no-run
+
       - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
         run: |
           start=$(date +%s)
@@ -351,9 +365,11 @@ jobs:
     # PR job still reports as a failed check, which makes this advisory ratchet
     # merge-blocking before Lane 1e graduation.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Same sizing rationale as `v3` above: DB-8 release builds run on
-    # ubicloud-standard-8. Use a 60m wall-clock cap so cold-cache / full release
-    # `cargo` work is unlikely to hit mid-compile cancellation (ratchet remains non-blocking).
+    # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
+    # `self_host_fixed_point` run on `ubicloud-standard-8` (#1814); small/default runners saw
+    # mid-compile shutdown on #1794. **60m** wall so cold-cache / full release `cargo` is unlikely
+    # to cancel mid-job; ratchet remains non-blocking. (Runner label is orthogonal to P2:
+    # `rust-toolchain.toml` + no workflow `toolchain:` input.)
     runs-on: ubicloud-standard-8
     timeout-minutes: 60
     needs: [v3]
@@ -367,7 +383,6 @@ jobs:
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
         with:
-          toolchain: "1.93.0"
           cache: false
           rustflags: ""
 
