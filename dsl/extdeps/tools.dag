@@ -89,10 +89,7 @@ fn one_hint(source: InstallSource) -> String {
 // their platform. Joined with " | " so the hint reads:
 //   "install rustup from https://rustup.rs | brew install rust | apt install cargo"
 fn install_hint(sources: List<InstallSource>) -> String {
-  sources |> fold(init: "", f: (acc, s) =>
-    if acc == "" { one_hint(source: s) }
-    else { concat(acc, " | ", one_hint(source: s)) }
-  )
+  sources |> map(s => one_hint(source: s)) |> join(separator: " | ")
 }
 
 // ── Resolution workflow ─────────────────────────────────────────────
