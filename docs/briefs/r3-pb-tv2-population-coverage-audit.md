@@ -8,6 +8,8 @@
 
 `origin/main` HEAD at audit-authoring time: same lineage as the S-1 input packet (PR #1462 merged). S-1 PM-authored worker brief still missing under `docs/briefs/` (only `pb-substrate-pilot-v2-arithmeticop.md`, `r3-pb-tv2-g1-readiness-receipt.md`, `r3-pb-tv2-s1-input-packet.md`, and this audit).
 
+> **Line-anchor freshness pointer (added 2026-05-05).** Per-row `:NNN` line cites in §A.1–§A.4 below are author-time anchors against the audit's original HEAD. For drift offsets vs current `origin/main` HEAD `530c76ea7`, see §Delta (2026-05-05+) at the bottom of this file (substrate decls drifted +1 line; B.2 oracle drifted +~217). Section/symbol anchors are the load-bearing identity per `feedback_section_anchors_over_line_numbers`.
+
 ## Population A — internal `src/v2/tests/src/` named tests (4 spot-checked per dispatch)
 
 **Audit framing:** these tests live INSIDE `src/v2/tests` and fall with G-2 (workspace-member removal of `src/v2/tests`) per audit §1 / matrix §2.1. They count against G-2, not G-1. The dispatch question is: when G-2 deletes the crate, are the *semantic properties* these tests guarantee already covered on the v3 side, or does G-2 need a coverage migration first?
@@ -165,3 +167,50 @@ A single new docs-only file (`docs/briefs/r3-pb-tv2-population-coverage-audit.md
 - Live v3 substrate authorities: `src/v3/std/induction.dag:281` (`meet_sub_value`), `:329` (`join_sub_value`), `:767` (`int_pow_bounded`), `:802` (`ceil_log`), `:823` (`master_theorem`), `:897` (`derive_bound`); `src/v3/std/termination.dag:140` (`peano_literal_materialization_cap`), `:146` (`positive_descent_amount_from_positive_int`), `:162` (`proportional_divisor_from_int_at_least_two`).
 - Live Pop A test sources (anchor for future v3-port worker): `src/v2/tests/src/derive_bound_fail_closed_test.rs`, `src/v2/tests/src/int_pow_bounded_test.rs`, `src/v2/tests/src/peano_materialization_cap_test.rs`, `src/v2/tests/src/sub_value_lattice_factor_test.rs`.
 - Live Pop B test sources: `src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs`, `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs:991`.
+
+## §Delta (2026-05-05+) — re-execution vs `origin/main` HEAD `530c76ea7`
+
+**Verdict:** **No material delta.** All audit findings (substrate-presence, missing v3-side coverage, post-#1715 reclassification, Pop B v2 dependencies, Cargo edges) reproduce against current `origin/main`. Only drift is minor line-number shift inside still-live declarations; no semantic change to the audit's dispatch implications.
+
+**Re-executed methodology** (commands replayed verbatim from §Population A row tables and §Post-#1715 reclassification):
+
+| Check | Audit text | Live state at `530c76ea7` | Drift |
+|---|---|---|---|
+| `meet_sub_value` / `join_sub_value` decl in `induction.dag` | `:281` / `:329` | `:282` / `:330` | +1 line each (cosmetic) |
+| `int_pow_bounded` / `ceil_log` / `ceil_log_iter` | `:767` / `:802` / `:808` | `:768` / `:803` / `:809` | +1 line each |
+| `master_theorem` / `derive_bound` | `:823` / `:897` | `:824` / `:898` | +1 line each |
+| `peano_literal_materialization_cap` / `positive_descent_amount_from_positive_int` / `proportional_divisor_from_int_at_least_two` in `termination.dag` | `:140` / `:146` / `:162` | `:140` / `:146` / `:162` | none |
+| `grep -rnE '\b(derive_bound\|master_theorem)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(int_pow_bounded\|ceil_log)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(peano_literal_materialization_cap\|positive_descent_amount_from_positive_int\|proportional_divisor_from_int_at_least_two)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(meet_sub_value\|join_sub_value)\b' src/v3/compiler/tests/` | zero | zero | none |
+| Non-Arrow `Callable` fail-closed in `src/v3/compiler/src/lib.rs` | `:581-585` `BadTransformOperands { reason: "Callable target declaration is not an Arrow type" }` | present at the analogous arm (block ~`:579-585`); fail-closed branch + Arrow-bind dispatch unchanged | line range shifted within same function |
+| `lower_constructor_invocation` produces `TransformTarget::Callable(target)` | `src/v3/compiler/src/lower.rs:7103-7119` | function present at `:7103+`; same `TransformTarget::Callable(target)` shape | none |
+| B.1 v2 imports in `p0_std_render_repeat_string_test.rs` | `use v2_compiler::v2_compiler_compile::…; use v2_compiler::v2_interpreter::…; use v2_compiler_tests::helpers::resolve_imports_transitively;` | identical (file head) | none |
+| B.2 v2 oracle line in `m2_substrate_inhabitance_test.rs` | `:1005` (`v2_compiler::std_algebra::kernel_algebra_profile()`) + `v2_profile_to_v3` shim `:991-1004` | `:1222` / `:1209-1219` (test fn at `:1208`) | +~217 lines (file grew); `v2_compiler::std_algebra::kernel_algebra_profile()` call + shim shape unchanged |
+| Cargo edges (`src/v3/compiler/Cargo.toml`) | `v2-compiler = { path = "../../v2/stage0" }` + `v2-compiler-tests = { path = "../../v2/tests" }` | present at `:37-38` | none |
+
+**Net dispatch order (§"Net dispatch order this audit implies"):** unchanged. Pop A still gated on S-1 + v3 evaluator runtime constructor/value execution (per §Post-#1715 reclassification); B.1 still gated on R2-Evaluator surface (or Substrate structural-guarantee receipt); B.2 still gated on Substrate `kernel_algebra_profile` authority migration; §3.3 Cargo edges still drop atomically with B.1 + B.2.
+
+**Single-authority pointer (P2 from §A) reaffirmed:** §"Post-#1715 reclassification" remains the canonical Pop A dispatch-readiness authority. Per-row §A.1–§A.4 cells continue to carry substrate-presence context only.
+
+**HEAD commit verified:** `530c76ea7 docs: E6-G1.a static lens fold dispatch packet (post-cleanup)`.
+
+### B.2 reclassification — substrate authority migration already landed (correction 2026-05-06)
+
+Per blocking review on PR #1805 (codex sha:`72667918`): the §Delta row for B.2 above incorrectly inferred from the surviving v2 oracle that Substrate authority migration is still pending. Re-grep at HEAD `530c76ea7` shows the migration **already landed**:
+
+- `src/v3/compiler/src/dag.rs:1789-1791` (doc comment on `pub fn kernel_algebra_profile`): *"Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`). `v2_compiler::std_algebra::kernel_algebra_profile` remains only as a [drift ratchet]"*.
+- `src/v3/compiler/src/dag.rs:3596-3605` — typed accessor `Dag::kernel_algebra_profile` reads the lowered `data kernel_algebra_profile` Map directly from `dsl/std/algebra.dag`.
+- `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs:1239` — `fn v3_kernel_algebra_profile_reads_lowered_dag_map_authority` ratchets v3 reading the lowered-Dag Map authority (P0 invariant).
+- The surviving `v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` test at `:1208` is the **drift ratchet** (test name + doc both label v3 as authority; v2 stage0 is the mirror, regenerated from `dsl/std/algebra.dag`). The original audit's framing that v2 stage0 is "the *authority* the v3 mirror is checked against" is reversed by the live state.
+
+**Reclassified disposition for B.2:**
+
+> Substrate `kernel_algebra_profile` authority migration **DONE** at HEAD `530c76ea7`. B.2's remaining R3 PB-lane work is **parity-test retirement + Cargo-edge drop**, not authority migration:
+> - retire `v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` (and its `v2_profile_to_v3` shim) once the cross-program decision allows; the test is structurally redundant given `v3_kernel_algebra_profile_reads_lowered_dag_map_authority` already ratchets the v3-side authority read.
+> - drop `v2-compiler` / `v2-compiler-tests` Cargo edges in `src/v3/compiler/Cargo.toml:37-38` once B.1 + B.2 parity-test retirement both close.
+
+**Net dispatch order correction:** the original §"Net dispatch order this audit implies" §3.2 sequencing assumed Substrate-Manager-routed authority migration is the prerequisite. With migration already landed, B.2 collapses to a PB-lane-internal mechanical retirement (atomic with Cargo-edge drop), no Substrate-Manager dispatch needed for B.2 disposition.
+
+**§A reclassification single-authority pointer reaffirmed for Pop A** — this B.2 correction does not affect Pop A's gate set (still §"Post-#1715 reclassification" — v3 evaluator runtime constructor/value execution). Authority changes here are B.2 (Pop B) only.
