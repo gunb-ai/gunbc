@@ -115,11 +115,13 @@ sg0_validate_pr_body_format() {
 # block counter matches `,` at EOL). `EXPECTED_HAND_AUTHORED_FRAGMENTS` today is
 # a one-line `&[...];` const (inline scan); a multi-line reformatted block would
 # fall through to the same `hand==1` arm as NON_TEST/TEST — extend explicitly if
-# both shapes must diverge.
+# both shapes must diverge. Counter **fail-closes** if any of the three `const`
+# blocks is missing, duplicated, or left unclosed (see awk `END`).
 sg0_count_hand_expect_paths_from_stdin() {
   awk '
-    BEGIN { hand = 0; count = 0 }
+    BEGIN { hand = 0; count = 0; saw_nt = 0; saw_t = 0; saw_f = 0 }
     /^const EXPECTED_HAND_AUTHORED_FRAGMENTS:/ {
+      saw_f++
       if (/\];/) {
         line = $0
         while (match(line, /"src\/v3\/compiler\/[^"]+"/)) {
@@ -131,8 +133,8 @@ sg0_count_hand_expect_paths_from_stdin() {
       hand = 1
       next
     }
-    /^const EXPECTED_HAND_AUTHORED_NON_TEST:/ { hand = 1; next }
-    /^const EXPECTED_HAND_AUTHORED_TEST:/ { hand = 1; next }
+    /^const EXPECTED_HAND_AUTHORED_NON_TEST:/ { saw_nt++; hand = 1; next }
+    /^const EXPECTED_HAND_AUTHORED_TEST:/ { saw_t++; hand = 1; next }
     hand == 1 {
       if ($0 ~ /^];/) {
         hand = 0
@@ -141,7 +143,17 @@ sg0_count_hand_expect_paths_from_stdin() {
       if ($0 ~ /^    "src\/v3\/compiler\/[^"]+",[[:space:]]*$/) count++
       next
     }
-    END { print count + 0 }
+    END {
+      if (saw_nt != 1 || saw_t != 1 || saw_f != 1) {
+        print "sg0_census_counter: expected exactly one const each EXPECTED_HAND_AUTHORED_NON_TEST, EXPECTED_HAND_AUTHORED_TEST, EXPECTED_HAND_AUTHORED_FRAGMENTS (missing, renamed, or duplicated)" > "/dev/stderr"
+        exit 1
+      }
+      if (hand != 0) {
+        print "sg0_census_counter: unclosed hand-authored EXPECTED_HAND_AUTHORED_* array (no closing ] line)" > "/dev/stderr"
+        exit 1
+      }
+      print count + 0
+    }
   '
 }
 
@@ -184,7 +196,43 @@ self_test() {
     fi
   }
 
-  # Positive delta requires pairing
+  run_census_case() {
+    local name="$1" snippet="$2" want="$3" want_n="${4:-}"
+    set +e
+    out=$(printf '%s\n' "$snippet" | sg0_count_hand_expect_paths_from_stdin 2>&1)
+    st=$?
+    set -e
+    if [ "$want" = pass ]; then
+      if [ "$st" -ne 0 ] || [ "$out" != "$want_n" ]; then
+        echo "::error::self-test FAIL census $name: exit=$st out=$out want_count=$want_n"
+        failed=1
+      fi
+    else
+      if [ "$st" -eq 0 ]; then
+        echo "::error::self-test FAIL census $name expected counter fail, got pass out=$out"
+        failed=1
+      fi
+    fi
+  }
+
+  # --- census counter (stdin synthetic snapshots; fail-closed shape) ---
+  local census_ok census_miss_nt census_miss_f census_dup census_unclosed
+  census_ok=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n    "src/v3/compiler/a.rs",\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n    "src/v3/compiler/tests/b.rs",\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
+  run_census_case "census counter minimal valid" "$census_ok" pass 3
+
+  census_miss_nt=$'const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
+  run_census_case "census counter missing NON_TEST" "$census_miss_nt" fail
+
+  census_miss_f=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\n'
+  run_census_case "census counter missing FRAGMENTS" "$census_miss_f" fail
+
+  census_dup=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
+  run_census_case "census counter duplicate NON_TEST" "$census_dup" fail
+
+  census_unclosed=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[\n    "src/v3/compiler/c.txt",\n'
+  run_census_case "census counter unclosed FRAGMENTS array" "$census_unclosed" fail
+
+  # --- PR-body pairing (existing) ---
   run_case "pairing (b) with +1" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b) https://example.com/budget' pass
   run_case "+1 missing pairing" $'SG-0 hand-path delta: +1\n(no pairing line)' fail
   run_case "+0 skips pairing" $'SG-0 hand-path delta: +0' pass
