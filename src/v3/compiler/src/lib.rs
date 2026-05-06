@@ -57,9 +57,9 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag,
-        DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode,
-        TransformTarget, TypeConnective,
+        ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, ComparisonOp,
+        Dag, DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId,
+        TransformNode, TransformTarget, TypeConnective,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -471,12 +471,13 @@ pub mod evaluator {
 
     /// Monomorphized and alias-specialized callables often carry
     /// [`TypeConnective::Instantiation`] whose [`Instantiation::template`] is the
-    /// underlying [`TypeConnective::Arrow`] with [`ArrowBody::UserDefined`]. The
-    /// body evaluator must peel those layers so `std.list.fold` and other generic
-    /// lowers reach the same `Bind` entry as the template declaration.
+    /// underlying [`TypeConnective::Arrow`] with [`ArrowBody::UserDefined`], or sit
+    /// behind [`TypeConnective::Atom`] `ResolvedBy*` indirection. The body evaluator
+    /// peels those layers so `std.list.fold` and other generic lowers reach the same
+    /// `Bind` entry as the template declaration.
     fn peel_to_arrow_user_defined_bind_node(dag: &Dag, mut decl_id: DeclarationId) -> Option<NodeId> {
-        const MAX_INSTANTIATION_DEPTH: usize = 64;
-        for _ in 0..MAX_INSTANTIATION_DEPTH {
+        const MAX_PEEL_DEPTH: usize = 64;
+        for _ in 0..MAX_PEEL_DEPTH {
             match &dag.declaration(decl_id).connective {
                 TypeConnective::Arrow {
                     body: ArrowBody::UserDefined(bind_id),
@@ -484,6 +485,11 @@ pub mod evaluator {
                 } => return Some(bind_id.node_id()),
                 TypeConnective::Instantiation { template, .. } => {
                     decl_id = *template;
+                }
+                TypeConnective::Atom(
+                    AtomPayload::ResolvedByStructure(next) | AtomPayload::ResolvedByName(next),
+                ) => {
+                    decl_id = *next;
                 }
                 _ => return None,
             }
@@ -692,6 +698,12 @@ pub mod evaluator {
                     return Ok(Value::RecordValue(record_fields));
                 }
 
+                eprintln!(
+                    "DEBUG Callable fail: id={:?} name={:?} connective={:?}",
+                    callee_decl,
+                    dag.declaration(callee_decl).name,
+                    dag.declaration(callee_decl).connective
+                );
                 Err(EvalError::BadTransformOperands {
                     reason: "Callable target declaration is not an Arrow type",
                 })

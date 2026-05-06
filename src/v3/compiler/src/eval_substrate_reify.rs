@@ -7,20 +7,41 @@
 //! **Program scope:** [`reify_compiled_dag_as_substrate_value`] names whole-`Dag` authority: it
 //! reflects **every** behavior in `program.nodes()` in graph order — no `source_file` filter and
 //! no inheritance of `reflect_program_dag_nodes_in_file` narrowing.
+//!
+//! **Variant payload fields:** [`eval_constructor_variant_payload_fields`] is the public
+//! reification-facing entry to the same [`crate::lower`] query used by the body evaluator when
+//! lowering `FieldValue::Variant` into [`Value::VariantValue`] (do not duplicate payload-shape
+//! logic in `lens_apply.rs`).
+//!
+//! **Declaration references:** `runtime.dag` locks [`Value`] to five variants and does not carry
+//! `DeclarationId` as a first-class inhabitant. [`field_value_to_eval_value`] therefore encodes
+//! [`FieldValue::Reference`] as [`LiteralBits::Int`] holding [`DeclarationId::raw`] (sign-extended
+//! to `i64`). This is an explicit host-bridge contract for reflected substrate facts (e.g.
+//! `TransformTarget::Callable`, `BranchPattern::ResolvedVariant`); user programs must not rely on
+//! mathematical `Int` semantics for those handles until the substrate value model grows a typed
+//! declaration reference.
 
 use crate::behavior_field_reflection;
-use crate::dag::{Dag, FieldValue, LiteralBits};
+use crate::dag::{Dag, DeclarationId, FieldValue, LiteralBits};
 use crate::evaluator::{NamedField, Value};
 use crate::lens_apply::{empty_substrate_list_value, LensApplyError};
-use crate::lower;
+
+/// Resolves variant-constructor payload field labels for eager reification into
+/// [`Value::VariantValue`], delegating to [`crate::lower::eval_constructor_variant_payload_fields`].
+///
+/// Exposed from this module (not `lens_apply`) so downstream callers have a stable public
+/// substrate query without importing the private `lower` module.
+pub fn eval_constructor_variant_payload_fields(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    outer_instantiation: Option<DeclarationId>,
+) -> Option<Vec<(String, DeclarationId)>> {
+    crate::lower::eval_constructor_variant_payload_fields(dag, callee_decl, outer_instantiation)
+}
 
 /// Convert structural [`FieldValue`] (from [`behavior_field_reflection`]) into [`Value`].
 ///
-/// [`FieldValue::Reference`] carries a [`DeclarationId`]. The locked five-variant
-/// [`Value`] model (`runtime.dag`) has no declaration-reference inhabitant; this
-/// bridge encodes ids as [`LiteralBits::Int`] of the raw handle for evaluator
-/// plumbing (E6-G1.a). Revisit when PB-Runtime exposes a typed declaration handle
-/// in [`Value`].
+/// See the module note on [`FieldValue::Reference`] encoding.
 pub fn field_value_to_eval_value(dag: &Dag, fv: &FieldValue) -> Result<Value, LensApplyError> {
     match fv {
         FieldValue::Literal(bits) => Ok(Value::LiteralValue(bits.clone())),
@@ -45,7 +66,7 @@ pub fn field_value_to_eval_value(dag: &Dag, fv: &FieldValue) -> Result<Value, Le
             constructor,
             payload,
         } => {
-            let field_defs = lower::eval_constructor_variant_payload_fields(dag, *constructor, None)
+            let field_defs = eval_constructor_variant_payload_fields(dag, *constructor, None)
                 .ok_or(LensApplyError::SubstrateReflect(
                     "variant constructor payload fields missing",
                 ))?;
