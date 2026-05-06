@@ -83,11 +83,20 @@ type EmissionProvenance {
 or β named-string lookup, whichever shape T-Rule-Enumeration ratified).
 Worker imports the rule-name carrier verbatim; brief does NOT re-author it.
 
-**Practice 4 classification**: 🟢 PRIMITIVE — `EmissionOrigin` is a
-closed sum type with structural enumeration; both arms have non-trivial
-carriers. No SCAFFOLD or dissolution trigger needed (typed-sum makes
-"both-absent" structurally impossible — earlier optional-pair-with-runtime-
-assertion C-8 check is now structural).
+**Practice 4 classification**: 🟢 GREEN (terminal) — `EmissionOrigin`
+is a closed sum type with structural enumeration; both arms have
+non-trivial carriers. No richer source exists; the variants trace
+to the actual two emission origin classes (substrate-decl mirror vs
+LangSpec rule emission). No 🟡 YELLOW or 🔴 RED classification applies.
+
+**§1.8 ledger entry for GREEN classification** (per
+`docs/modeling-discipline.md#4-coproduct-dissolution` — *"checkpoint
+comment naming its classification (🟢/🟡/🔴), with a ledger entry if
+GREEN"*): `emission_origin_classification_green` (or canonical
+project-naming convention) — sibling row to the parent
+`emission_provenance_lens_landed` gate. Worker authors both ledger
+rows + in-source `// 🟢 GREEN (terminal)` checkpoint comment on the
+live `EmissionOrigin` declaration.
 
 ### Deliverable 2 — `Lens<List<EmissionProvenance>>` instance
 
@@ -159,7 +168,9 @@ Phase ordering (PR-internal):
 ## Acceptance
 
 - `EmissionOrigin` typed-sum + `EmissionProvenance` record landed in
-  `src/v3/std/` with Practice 4 🟢 PRIMITIVE checkpoint comment
+  `src/v3/std/` with Practice 4 in-source `// 🟢 GREEN (terminal)`
+  checkpoint comment + §1.8 ledger entry for GREEN classification
+  (`emission_origin_classification_green` sibling row)
 - `Lens<List<EmissionProvenance>>` instance landed per 6-field
   Director-locked shape; T-CostLens-Composition precedent verified for
   shape parity

@@ -46,8 +46,8 @@ location at dispatch — likely `langspec.dag` adjacent if such file
 exists, or new file `langspec_emission_rules.dag`). Two shape options
 worker chooses via DFS:
 
-- **Option α (sum type)**: `type EmissionRule = DeriveForDisj | PredicatePerVariant | ConstructorPerConj | ...` — enumerated variants per current rule. **🟢 PRIMITIVE** if rule set is small (<20) and stable; closed sum.
-- **Option β (named-string list)**: `data emission_rules: List<RuleName>` where `RuleName = String` with discipline that emission code looks up by name. **🟡 SCAFFOLD** with named dissolution trigger (rule-name typo'd at usage site won't fail closed; closed-sum form is structural).
+- **Option α (sum type)**: `type EmissionRule = DeriveForDisj | PredicatePerVariant | ConstructorPerConj | ...` — enumerated variants per current rule. **🟢 GREEN** if rule set is small (<20) and stable; closed sum.
+- **Option β (named-string list)**: `data emission_rules: List<RuleName>` where `RuleName = String` with discipline that emission code looks up by name. **🟡 YELLOW** with named dissolution trigger (rule-name typo'd at usage site won't fail closed; closed-sum form is structural).
 
 **Mgr recommendation: α (sum type) if rule set is enumerable closed**. Worker DFS-catalogs current `render_named_template(...)` call sites at HEAD to count actual rule names; if count is reasonable (<20-30) and rules are structurally distinguished (not just template variants), α is the right shape. If rules turn out to be open-ended (template-name-as-data per LangSpec authoring convention), β with named dissolution trigger.
 
@@ -63,8 +63,8 @@ emission files surfaced via grep) to:
 ### Deliverable 3 — Practice 4 checkpoint
 
 Per `docs/modeling-discipline.md#4-coproduct-dissolution`:
-- α (sum type with N≥2 variants): 🟢 PRIMITIVE checkpoint comment naming the classification + ledger entry
-- β (named-string list): 🟡 SCAFFOLD checkpoint with named dissolution trigger (e.g., `rule_name_typo_fail_closed_landed` — closed-sum graduation gate)
+- α (sum type with N≥2 variants): 🟢 GREEN checkpoint comment naming the classification + ledger entry
+- β (named-string list): 🟡 YELLOW checkpoint with named dissolution trigger (e.g., `rule_name_typo_fail_closed_landed` — closed-sum graduation gate)
 
 Worker authors in-source checkpoint comment on the live declaration
 (not just PR-body summary) per modeling-discipline.md.

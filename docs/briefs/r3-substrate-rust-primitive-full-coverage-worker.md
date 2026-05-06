@@ -73,7 +73,7 @@ Add `u128` row to `dsl/extdeps/languages/rust/primitives.dag` consuming Delivera
 ### Deliverable 5 — Practice 4 checkpoint
 
 Per `docs/modeling-discipline.md#4-coproduct-dissolution`:
-- `BoundDeclaration` is existing 🟢 PRIMITIVE substrate (no new variants added; Deliverable 2/3 just consume existing variants on RustPrimitive rows)
+- `BoundDeclaration` is existing 🟢 GREEN substrate (no new variants added; Deliverable 2/3 just consume existing variants on RustPrimitive rows)
 - `ExactInterval` widening (α BigInt or β typed-variants) — α is type-substitution (no Practice 4 implication); β adds variants and needs 🟢/🟡/🔴 classification + checkpoint comment
 - Worker authors checkpoint comment if β chosen; α path doesn't require new checkpoint
 
