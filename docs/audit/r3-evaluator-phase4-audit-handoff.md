@@ -10,10 +10,8 @@ generated manifests, alter CI, or change runner code.
 below; this file turns it into the next actionable audit shape.
 
 **Sibling receipt:** PR #1839
-(`docs/audit/r3-evaluator-pr-1500-1803-debt-sweep.md`) is **open / pending**
-at the time this packet is authored. Treat it as the sibling #1500-#1803
-receipt until it lands; update this packet's downstream compile note if #1839
-merges before the broader Phase 4 compile consumes it.
+(`docs/audit/r3-evaluator-pr-1500-1803-debt-sweep.md`) merged on
+2026-05-06 as the sibling #1500-#1803 receipt.
 
 ## Live Residuals From #1838
 
@@ -36,9 +34,9 @@ These items remain live after the merged #1275-#1500 receipt:
 
 ## Next Audit Queue
 
-The next queue should not reopen #1275-#1500. It should consume #1838 plus
-the pending sibling #1839 and then sweep the **post-#1803 evaluator authority
-surface**.
+The next queue should not reopen #1275-#1500 or #1500-#1803. It should
+consume #1838 plus merged sibling #1839 and then sweep the
+**post-#1803 evaluator authority surface**.
 
 **Queue name:** R3 Evaluator post-#1803 authority sweep.
 
@@ -56,8 +54,7 @@ or evaluator-consuming surfaces:
 
 **Trigger to fire the queue:** start this sweep when both of these are true:
 
-1. PR #1839 either merges or is explicitly dispositioned as not feeding the
-   Phase 4 compile.
+1. The merged #1839 receipt is available to the Phase 4 compile.
 2. The next evaluator implementation/audit PR after #1803 lands or receives
    blocking review that changes one of the live residuals above.
 
@@ -96,8 +93,8 @@ The Phase 4 compile should combine:
 
 - #1838 / `docs/audit/r3-evaluator-pr-1275-1500-debt-sweep.md` for the
   #1275-#1500 slice;
-- #1839 / `docs/audit/r3-evaluator-pr-1500-1803-debt-sweep.md` if merged, or
-  its explicit disposition if not merged;
+- #1839 / `docs/audit/r3-evaluator-pr-1500-1803-debt-sweep.md` for the
+  #1500-#1803 slice;
 - this packet's post-#1803 queue definition.
 
 Do not infer global debt counts from this packet. Its job is to preserve the
