@@ -76,7 +76,7 @@ type ProgramShape
   // a new primitive form. Initial bootstrap: LiteralProgram only.
 ```
 
-**Why a single-variant coproduct, not a record**: per `INVARIANTS.md §P1` Step 2 (coproduct-vs-coordinate check), shapes are alternatives — a generated program is *one kind* at a time (a `LiteralProgram` OR, eventually, a `ParameterizedProgram`, OR a `SubstrateDerivedProgram`). The variants are not coordinates. Single-variant-at-bootstrap is structurally honest (it admits future variants without restructuring) and matches `feedback_state_space_vs_behavioral_invariants` (a coproduct is the right shape because illegal combinations like "both LiteralProgram fields and ParameterizedProgram fields populated simultaneously" become unrepresentable).
+**Why a single-variant coproduct, not a record**: per `INVARIANTS.md#p1-modeling-faithfulness` Step 2 (coproduct-vs-coordinate check), shapes are alternatives — a generated program is *one kind* at a time (a `LiteralProgram` OR, eventually, a `ParameterizedProgram`, OR a `SubstrateDerivedProgram`). The variants are not coordinates. Single-variant-at-bootstrap is structurally honest (it admits future variants without restructuring) and matches `feedback_state_space_vs_behavioral_invariants` (a coproduct is the right shape because illegal combinations like "both LiteralProgram fields and ParameterizedProgram fields populated simultaneously" become unrepresentable).
 
 ### §2.2 `Quantifier` and `QuantifiedTestClaim`
 
@@ -124,7 +124,7 @@ type TestSuite {
 
 Existing suite declarations migrate by wrapping each claim in `Enumerated(...)`. The migration is mechanical (one constructor wrap per claim site); the runner consumes both shapes uniformly via match.
 
-**Alternative considered, rejected**: a single `TestSuite { enumerated_claims, quantified_claims }` record. Rejected per `INVARIANTS.md §P1` Step 2 — the order claims appear in the suite is a load-bearing facet (test reporting order, dependency traversal order); a record loses ordering across the two lists. The sum-typed list preserves the ordered sequence.
+**Alternative considered, rejected**: a single `TestSuite { enumerated_claims, quantified_claims }` record. Rejected per `INVARIANTS.md#p1-modeling-faithfulness` Step 2 — the order claims appear in the suite is a load-bearing facet (test reporting order, dependency traversal order); a record loses ordering across the two lists. The sum-typed list preserves the ordered sequence.
 
 ### §2.4 Generator authoring shape
 
@@ -148,17 +148,17 @@ data parse_smoke_universal: QuantifiedTestClaim = {
 }
 ```
 
-**Bootstrap ergonomics**: at R3 lane open, generators are explicit `List<ProgramShape>` declarations (no recursion, no induction over a substrate walk). This keeps the bootstrap predicate-runner change small (walk the list, apply predicate per element). Richer generators — programs derived from typed substrate walks (e.g., "every Behavior variant produces a smoke fixture") — attach via the same `ProgramGenerator` carrier without further substrate change: the body returns `List<ProgramShape>` regardless of how the body computes it. Per `INVARIANTS.md §P4` (decidability) the body must be bounded; that is already the substrate-wide invariant.
+**Bootstrap ergonomics**: at R3 lane open, generators are explicit `List<ProgramShape>` declarations (no recursion, no induction over a substrate walk). This keeps the bootstrap predicate-runner change small (walk the list, apply predicate per element). Richer generators — programs derived from typed substrate walks (e.g., "every Behavior variant produces a smoke fixture") — attach via the same `ProgramGenerator` carrier without further substrate change: the body returns `List<ProgramShape>` regardless of how the body computes it. Per `INVARIANTS.md#p4-decidability` (decidability) the body must be bounded; that is already the substrate-wide invariant.
 
 ### §2.5 Why `ForAll` / `Exists` here, not as `TestPredicate` variants
 
 A tempting alternative shape: `TestPredicate::ForAll { generator, predicate }` and `TestPredicate::Exists { generator, predicate }` — fold the quantifier into the predicate coproduct.
 
-**Rejected** per `INVARIANTS.md §P2` (boundary discipline) and `feedback_compositional_not_templating`. Reasons:
+**Rejected** per `INVARIANTS.md#p2-boundary-discipline` (boundary discipline) and `feedback_compositional_not_templating`. Reasons:
 
 1. **Predicate vs claim are different scopes.** A `TestPredicate` is "the property checked once given a single program." A quantifier is "how the family relates to the property." Conflating them confuses the reader: every other `TestPredicate` variant takes "the program" as implicit context (the surrounding `TestClaim.source`); `ForAll`/`Exists` would take "a generator" instead, breaking that invariant.
 2. **Dispatch is structurally different.** The runner's `TestPredicate` evaluator (`test_runner::evaluate_predicate`) is a per-program function. A `ForAll` predicate is a per-*generator* function. The dispatch shape differs; encoding both through one coproduct buries the distinction in a runtime branch instead of a type-level partition.
-3. **Recursion shape.** A `ForAll/Exists`-wrapped predicate could nest (`ForAll { predicate: Exists { ... } }`), implying second-order quantification. That is meaningful in mathematical logic but not in the substrate's bounded-forward-execution premise (per `INVARIANTS.md §P4`). Putting the quantifier on the *claim* makes nesting structurally unexpressible, which is the right answer at this stage of the language.
+3. **Recursion shape.** A `ForAll/Exists`-wrapped predicate could nest (`ForAll { predicate: Exists { ... } }`), implying second-order quantification. That is meaningful in mathematical logic but not in the substrate's bounded-forward-execution premise (per `INVARIANTS.md#p4-decidability`). Putting the quantifier on the *claim* makes nesting structurally unexpressible, which is the right answer at this stage of the language.
 
 The structural separation (quantifier on `QuantifiedTestClaim`, not in `TestPredicate`) preserves the predicate's "given one program, check property" semantics and isolates the quantification at the claim level where it belongs.
 
@@ -363,7 +363,7 @@ Steps 1–2 are sequential (carrier substrate must land before runner consumes i
 
 This lane is **owned by Verification Manager**, with **Substrate Manager assisting on the carrier authoring**:
 
-- **Substrate Manager owns**: the `ProgramGenerator` / `ProgramShape` / `Quantifier` / `QuantifiedTestClaim` / `SuiteClaim` carrier additions in `src/v3/std/verification.dag`. The substrate-fact-introduction procedure (`INVARIANTS.md §P1` Steps 1–3) was applied during this design (see §9). Substrate authoring is a small, focused PR.
+- **Substrate Manager owns**: the `ProgramGenerator` / `ProgramShape` / `Quantifier` / `QuantifiedTestClaim` / `SuiteClaim` carrier additions in `src/v3/std/verification.dag`. The substrate-fact-introduction procedure (`INVARIANTS.md#p1-modeling-faithfulness` Steps 1–3) was applied during this design (see §9). Substrate authoring is a small, focused PR.
 - **Verification Manager owns** (lane primary): the migration audit, every Rust→`.dag` port, the cementing dispatch port, the `m1_5_testgen_test.rs` final port. Owns all closure gates. Owns the migration audit declaration that drives per-PR progress reporting.
 - **Per-target emission tables (§4)** distribute by emitter: Rust template-contract row authoring is Substrate-adjacent (lives in `rust_method_template_contracts.dag`); same for Python and Go. Verification Manager dispatches the emitter table extensions and owns their behavioral-equivalence tests (Path A vs Path B).
 
@@ -379,7 +379,7 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 **Question:** When `QuantifiedTestClaim { quantifier: ForAll, generator: G, predicate: P }` evaluates, does the runner walk every program in G's family even after the first failure, or stop at the first failing program?
 
-**Resolved:** stop at the first failing program; emit a typed `Diagnostic` naming (a) the failing program shape, (b) the predicate's specific failure (not just "predicate failed" but the structured failure carrier the predicate already produces). Per `INVARIANTS.md §P3` (fail-closed): failing fast at the first counterexample matches "every detectable problem is a Diagnostic" — exhaustive walk after first failure produces noise without information gain (the user already knows the predicate doesn't hold universally).
+**Resolved:** stop at the first failing program; emit a typed `Diagnostic` naming (a) the failing program shape, (b) the predicate's specific failure (not just "predicate failed" but the structured failure carrier the predicate already produces). Per `INVARIANTS.md#p3-fail-closed` (fail-closed): failing fast at the first counterexample matches "every detectable problem is a Diagnostic" — exhaustive walk after first failure produces noise without information gain (the user already knows the predicate doesn't hold universally).
 
 **Why not "walk all and report all":** a `ForAll` claim is logically refuted by one counterexample. Reporting more counterexamples is a performance cost without semantic content. A user who wants per-program diagnostics writes per-program enumerated `TestClaim`s (the existing surface); `ForAll` is the universal-quantifier semantic, not a "report all failing fixtures" surface.
 
@@ -389,9 +389,9 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 **Question:** `ProgramShape` is a sum type. At lane open, which variants ship? Future extensions exist (parameterized programs, substrate-derived programs); naming all of them at lane open would inflate scope.
 
-**Resolved:** **bootstrap with `LiteralProgram { source, file_name }` only**. This single variant matches the existing `TestClaim.source` / `file_name` pair and lets every today's enumerated test become a 1-element generator if rewritten as quantified. The substrate ships with `ProgramShape` as a 1-variant sum (per `INVARIANTS.md §P1` — single-variant sums are structurally honest, admitting future variants without restructuring).
+**Resolved:** **bootstrap with `LiteralProgram { source, file_name }` only**. This single variant matches the existing `TestClaim.source` / `file_name` pair and lets every today's enumerated test become a 1-element generator if rewritten as quantified. The substrate ships with `ProgramShape` as a 1-variant sum (per `INVARIANTS.md#p1-modeling-faithfulness` — single-variant sums are structurally honest, admitting future variants without restructuring).
 
-**Dissolution trigger for richer shapes** (per `INVARIANTS.md §P5` scaffold-discipline): when a real lane (e.g., a property-based testing lane in a future release) needs `ParameterizedProgram { template, parameter_bindings: List<...> }` or `SubstrateDerivedProgram { walker_ref: DeclarationRef }`, that lane authors the new variant alongside its first consumer. **The 1-variant bootstrap does not bridge** — the variant is structurally complete for the literal-program use case; future extensions are additive, not migration-required.
+**Dissolution trigger for richer shapes** (per `INVARIANTS.md#p5-progress-is-dissolution` scaffold-discipline): when a real lane (e.g., a property-based testing lane in a future release) needs `ParameterizedProgram { template, parameter_bindings: List<...> }` or `SubstrateDerivedProgram { walker_ref: DeclarationRef }`, that lane authors the new variant alongside its first consumer. **The 1-variant bootstrap does not bridge** — the variant is structurally complete for the literal-program use case; future extensions are additive, not migration-required.
 
 ### §8.3 How does the cementing dispatch port preserve the register projection? — RESOLVED: cementing dispatch reads the register declaration directly
 
@@ -416,7 +416,7 @@ fn cementing_modules_for_v2_complete_claims(register: List<LensCapabilityEntry>)
 
 The markdown table at `docs/v3-lens-capability-register.md` becomes a *rendering* of the structured register (per `feedback_no_metadata_markers` — the source of truth is structural, not textual; the markdown is generated documentation). **Authority shift** is a one-time migration; afterward, every register update is one `.dag` edit.
 
-**Why not "keep markdown, add `.dag` mirror"**: parallel authority (per `INVARIANTS.md §P2`) — markdown and `.dag` would drift. Single-authority requires one source of truth.
+**Why not "keep markdown, add `.dag` mirror"**: parallel authority (per `INVARIANTS.md#p2-boundary-discipline`) — markdown and `.dag` would drift. Single-authority requires one source of truth.
 
 **Lane scope**: the register migration (markdown → `.dag` declaration) is in scope for this lane (specifically step 5 — cementing dispatch port). The migration is small (one register declaration ~20 rows) and unblocks the cementing dispatch closure gate.
 
@@ -460,9 +460,9 @@ The meta-harness becomes a `QuantifiedTestClaim` whose generator is "every mater
 
 **Question:** §4 named "Path B" (emit target-language test code from `TestClaim` declarations). When does Path B fire — always for every claim, or opt-in?
 
-**Resolved:** opt-in via `TestSuite.target_emission: TargetEmission`, default `NativeRunnerOnly`. Per `INVARIANTS.md §P5` (progress is dissolution): emitting target-language test code for every claim by default would inflate the `target/` tree by ~Nx (one test runner per claim per target) without the user opting into the cross-target equivalence proof. Opt-in matches user intent and keeps default workflow lean.
+**Resolved:** opt-in via `TestSuite.target_emission: TargetEmission`, default `NativeRunnerOnly`. Per `INVARIANTS.md#p5-progress-is-dissolution` (progress is dissolution): emitting target-language test code for every claim by default would inflate the `target/` tree by ~Nx (one test runner per claim per target) without the user opting into the cross-target equivalence proof. Opt-in matches user intent and keeps default workflow lean.
 
-**Implementation note:** `TargetEmission` is a sum type per §4.3. The default value (`NativeRunnerOnly`) is set at the `TestSuite` declaration level, not per-claim; per-claim override is unnecessary at lane open (a user wanting per-claim variation declares two suites). Per `INVARIANTS.md §P1` Step 2, `TargetEmission` is a true coproduct (`NativeRunnerOnly` and `EmitToTargets(...)` are alternatives, not coordinates).
+**Implementation note:** `TargetEmission` is a sum type per §4.3. The default value (`NativeRunnerOnly`) is set at the `TestSuite` declaration level, not per-claim; per-claim override is unnecessary at lane open (a user wanting per-claim variation declares two suites). Per `INVARIANTS.md#p1-modeling-faithfulness` Step 2, `TargetEmission` is a true coproduct (`NativeRunnerOnly` and `EmitToTargets(...)` are alternatives, not coordinates).
 
 **Why on `TestSuite`, not `TestClaim`:** test suites are the natural emission unit (per-suite Cargo target; per-suite Python module; per-suite Go test file). Per-claim emission would generate one target test runner per claim, exploding the file count. Per-suite emission generates one runner per suite per target — same shape as today's hand-authored Rust test files (one file per suite). The granularity matches existing target idioms.
 
