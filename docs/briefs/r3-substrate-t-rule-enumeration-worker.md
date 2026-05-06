@@ -1,5 +1,5 @@
 ---
-status: dispatchable per Director Q1+Q2+Q3 RATIFICATION at gunbc#1739 #issuecomment-4392562911 (2026-05-06)
+status: FLAGGED FOR RETIREMENT — smart-ram-167 STOP at gunbc#1759 #issuecomment-4392696623 + codex BLOCKING at PR #1910 sha 2ed1046e Finding #2 both surfaced that rule authority lives in `src/v3/spec/rust.dag` + `v3.std.emit_model` carrier data, not `render_named_template` call-site strings. Brief premise is wrong-shape; substrate gap is structurally already closed via existing carrier addressing. Reading C surfaced to Director at gunbc#828 #issuecomment-4392780871 — pending Director ratification on retirement
 authority parent: R3 Substrate Manager (#1739)
 ratification: Q1 (a) per-Behavior Lens<C> + Q2 YES T-Rule-Enumeration parallel-dispatches + Q3 two new gates RATIFIED at gunbc#1739 #issuecomment-4392562911 (zesty-bear-812, 2026-05-06)
 roadmap row: §1.8 ledger row TBD slot — gate `langspec_emission_rules_enumerable_data` under T-CostLens-Composition cluster per Director Q3 ratification

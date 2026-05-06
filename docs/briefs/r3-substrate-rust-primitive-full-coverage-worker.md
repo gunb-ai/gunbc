@@ -53,20 +53,28 @@ Refactor `src/v3/compiler/src/int_literal_ranges.rs` to support integer ranges b
 
 Update consumers of `ExactInterval` at HEAD (worker greps for usage sites; refactor signatures; preserve semantic equivalence on the existing 9 i8-i64+u8-u64 rows via bootstrap snapshot + parse corpus manifest verification).
 
-### Deliverable 2 — `RustPrimitive` structural `BoundDeclaration` field
+### Deliverable 2 — `TargetIntegerInhabitanceBound` carrier alignment
 
-Refactor `dsl/extdeps/languages/rust/primitives.dag` to:
-- Replace static `range_min_inclusive: String` / `range_max_inclusive: String` fields on `RustPrimitive` with a structural `bound: BoundDeclaration` field (or sibling field if backwards-compat receipt is required for the existing 9 rows)
-- `BoundDeclaration` is the existing substrate carrier (`StaticBound(Interval<Int>) | PlatformDependent`) per `src/v3/std/substrate.dag` landed earlier
-- Existing 9 rows migrate from static-string form to `StaticBound(...)` BoundDeclaration form (semantic equivalence required; bootstrap snapshot + parse corpus manifest verification)
+Refactor target: `v3.std.emit_model` carrier `TargetIntegerInhabitanceBound` (the actual bound-field type used by `TargetIntegerTypeInhabitance` rows in `src/v3/spec/rust.dag` lines 169/180/191/199/207).
 
-This Deliverable consumes Deliverable 1's widened `Interval<Int>` representation — `StaticBound(Interval<Int>)` for u128 row uses the BigInt-backed interval landed in Deliverable 1.
+Two paths per Deliverable 2 framing in Context (worker DFS at dispatch picks):
 
-### Deliverable 3 — `spec/rust.dag` PlatformDependent row population
+- **Option (i) — wire BoundDeclaration into TargetIntegerInhabitanceBound**: refactor `TargetIntegerInhabitanceBound` to embed/wrap `BoundDeclaration` (existing substrate at `src/v3/std/substrate.dag` line 136 with `StaticBound(Interval<Int>) | PlatformDependent` variants). Existing 5 rows (rust_integer_inhabit_u32 / i32 / int64 / i128 / i32_at_program_bound) migrate to consume BoundDeclaration; existing semantics preserved.
+- **Option (ii) — populate via existing TargetIntegerInhabitanceBound variants**: if the live carrier already carries platform-dependent semantics (worker greps emit_model.dag at dispatch), no refactor needed; isize/usize rows populate via existing PlatformDependent-equivalent variant.
 
-Add `RustPrimitive` rows for isize / usize using `PlatformDependent` BoundDeclaration variant (NOT widened static range). Per S7 Phase 1 brief framing — `PlatformDependent` is the existing variant for compile-time-unknown bound facts that resolve at target-platform discharge time.
+Worker DFS-catalogs `TargetIntegerInhabitanceBound` variant set in `src/v3/std/emit_model.dag` at dispatch:
+- If PlatformDependent variant exists → Option (ii); narrow scope (just row population)
+- If PlatformDependent variant absent → Option (i); requires carrier alignment refactor + existing-row migration
 
-Add corresponding rows to `src/v3/spec/rust.dag` for `isize` / `usize` consuming the `PlatformDependent` variant (worker DFS-catalogs existing row population convention at HEAD; aligns to it).
+Both options consume Deliverable 1's widened `Interval<Int>` representation for the u128 row.
+
+`dsl/extdeps/languages/rust/primitives.dag` is a separate file with its own `RustPrimitive` shape — worker confirms whether that file's rows are also a target for refactor at dispatch (per loyal-stag-699's STOP that surfaced both files as gap sites). If primitives.dag also needs structural-bound-field migration, scope expands to both files; bundled-scope check applies (likely allowed as "necessary structural fix" — same axis).
+
+### Deliverable 3 — `src/v3/spec/rust.dag` `TargetIntegerTypeInhabitance` rows for isize / usize
+
+Add `TargetIntegerTypeInhabitance` rows in `src/v3/spec/rust.dag` for `isize` / `usize` using `TargetIntegerInhabitanceBound` PlatformDependent-equivalent variant (post-Deliverable-2 carrier alignment if Option (i)). Per S7 Phase 1 brief framing — `PlatformDependent` is the substrate-side variant for compile-time-unknown bound facts.
+
+Worker DFS-catalogs existing row population convention at `src/v3/spec/rust.dag` lines 169-207 (5 existing rows: u32 / i32 / int64 / i128 / i32_at_program_bound) and aligns isize/usize rows to that convention.
 
 ### Deliverable 4 — u128 row addition
 
