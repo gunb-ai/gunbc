@@ -1066,7 +1066,7 @@ fn test_registered_predicate_placeholder_works_outside_types_dag() {
 #[test]
 fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
     let f = "dsl/std/integer.dag";
-    let dag = cached_compile_to_dag("type B = NonEmptyStr where brand(\"B\")", f);
+    let dag = cached_compile_to_dag("type B = Int where brand(\"B\")", f);
     let decl = dag
         .declaration_by_name("B")
         .expect("type alias `B` should exist");
