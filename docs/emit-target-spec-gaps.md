@@ -6,7 +6,7 @@
 
 **Audit base**: `origin/main` as of 2026-04-20. 45 audit points identified (reconciled from initial 46 — see Overview table note).
 
-**LOC / count figures in this document are an as-of-snapshot.** File sizes (e.g. `rust_target.rs` ~5,700 LOC) and the "46 audit points" headline will drift as code moves on `main`. Per INVARIANTS.md §"Documentation Describes Live State," treat these numbers as sizing guidance from the snapshot date, not live invariants. **Phase 2 workers should re-measure at Phase 2 kickoff** — the classification (Cluster A-J) is stable; the absolute counts aren't.
+**LOC / count figures in this document are an as-of-snapshot.** File sizes (e.g. `rust_target.rs` ~5,700 LOC) and the "46 audit points" headline will drift as code moves on `main`. Per [INVARIANTS.md#p1-modeling-faithfulness](../INVARIANTS.md#p1-modeling-faithfulness) (Documentation Describes Live State), treat these numbers as sizing guidance from the snapshot date, not live invariants. **Phase 2 workers should re-measure at Phase 2 kickoff** — the classification (Cluster A-J) is stable; the absolute counts aren't.
 
 ## Overview
 
