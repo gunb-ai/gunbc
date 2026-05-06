@@ -629,14 +629,27 @@ pub mod evaluator {
                             got: operands.len(),
                         });
                     }
-                    let record_fields: Vec<NamedField> = fields
-                        .into_iter()
-                        .zip(operands)
-                        .map(|((label, _), value)| NamedField { label, value })
-                        .collect();
+                    // Match `infer::resolve_payload_binding_type`: a single Conj field labeled
+                    // `_0` uses `PayloadBindingResolution::Direct` — the match arm's payload port
+                    // is typed as the inner `T`, not a record shape. Runtime `VariantValue.payload`
+                    // must carry `T` directly so `eval_branch` binding agrees with inference.
+                    let payload: Value = if fields.len() == 1 && fields[0].0 == "_0" {
+                        operands
+                            .into_iter()
+                            .next()
+                            .expect("length checked against fields.len()")
+                    } else {
+                        Value::RecordValue(
+                            fields
+                                .into_iter()
+                                .zip(operands)
+                                .map(|((label, _), value)| NamedField { label, value })
+                                .collect(),
+                        )
+                    };
                     return Ok(Value::VariantValue {
                         tag: variant_tag_template,
-                        payload: Box::new(Value::RecordValue(record_fields)),
+                        payload: Box::new(payload),
                     });
                 }
 
@@ -992,11 +1005,30 @@ pub mod evaluator {
                 tag, expected_tag,
                 "tag must be template variant id (matches BranchPattern::ResolvedVariant), not an anonymous Instantiation id"
             );
-            let Value::RecordValue(fields) = *payload else {
-                panic!("expected record payload");
+            assert_eq!(
+                *payload,
+                Value::LiteralValue(LiteralBits::Int(99)),
+                "positional `Some(T)` payload must be Direct-shaped (infer `PayloadBindingResolution::Direct`), not RecordValue(_0)"
+            );
+        }
+
+        #[test]
+        fn e6_g0d_positional_variant_payload_round_trips_through_direct_binding_arm() {
+            let src = "type Boxed<T> = Box(T) | Empty\n\
+                        fn mk(x: Int) -> Boxed<Int> = Box(x)\n\
+                        fn bump(x: Int) -> Int = match mk(x) { Box(p) => p + 1, Empty => 0 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_positional_direct.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "bump");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
             };
-            assert_eq!(fields.len(), 1);
-            assert_eq!(fields[0].value, Value::LiteralValue(LiteralBits::Int(99)));
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(5)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(6)));
         }
 
         #[test]
