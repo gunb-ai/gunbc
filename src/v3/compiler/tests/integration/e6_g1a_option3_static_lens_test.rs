@@ -426,19 +426,39 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
     );
 }
 
-/// Lowering-only contract (TESTING.md §2 / §4): `mini_read` / `mini_validate` reach the graph as
-/// `TransformTarget::Callable` sites — split from the end-to-end `mini_report` eval test so a
-/// lowering refactor fails only this test, not the behavior harness.
+/// Lowering-only (TESTING.md §2 / §4): `mini_read` lowers as `TransformTarget::Callable` — split
+/// from end-to-end `mini_report` eval so lowering refactors fail only this test.
 #[test]
-fn e6_g1a_option3_fixture_lowers_mini_read_and_mini_validate_as_callable_transforms() {
+fn e6_g1a_option3_fixture_lowers_mini_read_as_callable_transform() {
     let dag = cached_compile_to_dag(OPTION3_SOURCE, OPTION3_FILE);
     assert!(
         dag.diagnostics().is_empty(),
         "option3 fixture must compile: {:?}",
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
-
     let mini_read_id = dag.declaration_by_name("mini_read").expect("mini_read").id;
+    assert!(
+        dag.nodes().iter().any(|n| {
+            matches!(
+                n,
+                Behavior::Transform(t)
+                    if matches!(&t.target, TransformTarget::Callable(id) if *id == mini_read_id)
+            )
+        }),
+        "mini_read must lower to TransformTarget::Callable(mini_read)"
+    );
+}
+
+/// Lowering-only (TESTING.md §2 / §4): `mini_validate` lowers as `TransformTarget::Callable` —
+/// split from end-to-end `mini_report` eval so lowering refactors fail only this test.
+#[test]
+fn e6_g1a_option3_fixture_lowers_mini_validate_as_callable_transform() {
+    let dag = cached_compile_to_dag(OPTION3_SOURCE, OPTION3_FILE);
+    assert!(
+        dag.diagnostics().is_empty(),
+        "option3 fixture must compile: {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
     let mini_validate_id = dag
         .declaration_by_name("mini_validate")
         .expect("mini_validate")
@@ -447,14 +467,11 @@ fn e6_g1a_option3_fixture_lowers_mini_read_and_mini_validate_as_callable_transfo
         dag.nodes().iter().any(|n| {
             matches!(
                 n,
-                Behavior::Transform(t) if matches!(
-                    &t.target,
-                    TransformTarget::Callable(id)
-                        if *id == mini_read_id || *id == mini_validate_id
-                )
+                Behavior::Transform(t)
+                    if matches!(&t.target, TransformTarget::Callable(id) if *id == mini_validate_id)
             )
         }),
-        "mini_read / mini_validate must lower to TransformTarget::Callable"
+        "mini_validate must lower to TransformTarget::Callable(mini_validate)"
     );
 }
 
