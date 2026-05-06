@@ -1039,7 +1039,7 @@ The cost-lens-over-emission framing in Modeling problem 8 generalizes structural
 
 **Q1 refinement (Director-authored 2026-04-29) — asymmetric parent assignment for distinct bound carriers**
 
-Q1's DECISION names `LoopBound::Descent` and `CostBound` as "distinct" from `Interval<D>` but doesn't name their parents. Workers retrofitting bound types would re-litigate; per INVARIANTS.md §P1 substrate-fact-introduction Step 1 (DAG-ancestor check), the parent is determined by the bound's **algebra shape**, not by name similarity. Naming each carrier's parent explicitly:
+Q1's DECISION names `LoopBound::Descent` and `CostBound` as "distinct" from `Interval<D>` but doesn't name their parents. Workers retrofitting bound types would re-litigate; per INVARIANTS.md#p1-modeling-faithfulness substrate-fact-introduction Step 1 (DAG-ancestor check), the parent is determined by the bound's **algebra shape**, not by name similarity. Naming each carrier's parent explicitly:
 
 | Bound carrier | Algebra shape | Parent |
 |---|---|---|

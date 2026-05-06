@@ -469,7 +469,7 @@ Director's framing refinements:
 
 **Question Q6 left under-specified:** when an Evaluator lens-instance `validate` function needs a new diagnostic kind, who owns the addition? Substrate (closed sum at `src/v3/std/diagnostics.dag`)? Evaluator? Lens author? Q6's "lens-framework's structural inhabitance" phrase implies a mechanism but doesn't name the cross-manager surface.
 
-**Resolution: two-layer diagnostic-kind authority.** Per INVARIANTS.md §P1 substrate-fact-introduction procedure Step 3 (Primitive-vs-lens-extensible check), diagnostic kinds split into two layers:
+**Resolution: two-layer diagnostic-kind authority.** Per INVARIANTS.md#p1-modeling-faithfulness substrate-fact-introduction procedure Step 3 (Primitive-vs-lens-extensible check), diagnostic kinds split into two layers:
 
 **Layer 1 — compiler-primitive diagnostic kinds.** Closed sum at `src/v3/std/diagnostics.dag` (`CompilerDiagnosticKind` + `DiagnosticKind` per `src/v3/std/verification.dag`). Owned by Substrate Manager. Variants: `TokenizerError`, `ParseError`, `TypeMismatch`, `UnitMismatch`, `ArityMismatch`, `ResolveError`, `NominalOpacityViolation` (current set). Adding a primitive kind = Substrate Manager edits the closed sum; rare, design-locked, requires SCAFFOLD-note acknowledgment of where the diagnostic surfaces.
 
@@ -483,7 +483,7 @@ Director's framing refinements:
 
 **Anti-bridge invariant:** lens authors MUST NOT extend `CompilerDiagnosticKind` for lens-instance kinds. Doing so would re-introduce the cross-manager handoff Q6.5 dissolves and would violate P2 single-authority (lens-instance kind authority lives in the lens, not in the substrate). The lens framework's structural inhabitance is the structural surface for Layer-2; modifying the closed sum is reserved for Layer-1 only. (Per `feedback_groundedness_gates_lenses.md`: language vocabulary is primitives + namespacing; the lens framework's inhabitance IS the namespacing for Layer-2.) Dynamic resolution by string interning is rejected per `feedback_opaque_strings_attract_heuristics.md`.
 
-**Name-collision protocol (anti-shadowing):** a Layer-2 lens-instance kind MUST NOT reuse a Layer-1 `CompilerDiagnosticKind` variant name. A lens declaring `TypeMismatch` (Layer-1 variant) is a **compile error**, not silent shadowing. Structural separation between layers requires distinct namespaces; reuse defeats the layer separation by allowing a lens-namespace lookup to mask a substrate-primitive concern. Lens authors are structurally constrained to non-overlapping names; collision detection lives at the lens-framework's substrate-fact-introduction step (per INVARIANTS.md §P1 Step 3 — name uniqueness across both layers is verifiable structurally).
+**Name-collision protocol (anti-shadowing):** a Layer-2 lens-instance kind MUST NOT reuse a Layer-1 `CompilerDiagnosticKind` variant name. A lens declaring `TypeMismatch` (Layer-1 variant) is a **compile error**, not silent shadowing. Structural separation between layers requires distinct namespaces; reuse defeats the layer separation by allowing a lens-namespace lookup to mask a substrate-primitive concern. Lens authors are structurally constrained to non-overlapping names; collision detection lives at the lens-framework's substrate-fact-introduction step (per INVARIANTS.md#p1-modeling-faithfulness Step 3 — name uniqueness across both layers is verifiable structurally).
 
 **Worked example: `Lens<TenantFlow>` declares `CapabilityViolation`:**
 
