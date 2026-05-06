@@ -204,22 +204,38 @@ Phase ordering (PR-internal):
 
 ## Authority audit receipt
 
-1. **Substrate exists?** Per proud-lynx-311 pre-flight DFS:
-   - `gt_zero` does NOT exist anywhere in `dsl/std/`, `src/v3/`,
-     or Rust source
-   - PB-1 shim exists at `lower.rs:821-835` (`lower_type_alias_refinements_phase`)
-   - Predicate registry does NOT exist as substrate-fact-introduction;
-     registry-shaped substrate-fact-introduction is part of this
-     slice's scope
-   Worker re-greps at dispatch.
+1. **Substrate exists?** Verified at HEAD post-#1840 merge by
+   Substrate Mgr independent grep (parallel verification of
+   proud-lynx-311's pre-flight DFS at gunbc#1746 #issuecomment-4390253616):
+   - `gt_zero` / `gtzero`: zero matches across `dsl/std/` + `src/v3/`
+     (verified via `grep -rn "gt_zero\|gtzero" dsl/std/ src/v3/`)
+   - `dsl/std/integer.dag:133` carries `type NonNegativeInt = Nat`
+     (Slice 2 partial-ship; #1840 MERGED 16:54Z)
+   - `dsl/std/types.dag:255` carries `type PositiveInt = Int where range(min: 1)`
+     (unchanged in Slice 2 partial-ship; consumer of registry post-Slice-2.5)
+   - PB-1 shim at `src/v3/compiler/src/lower.rs` doc-block (around
+     `lower_type_alias_refinements_phase`) confirmed: heuristic
+     gates on `span.file == "dsl/std/types.dag"`; comment explicitly
+     names dissolution criteria ("delete the file gate / placeholders
+     when one of these is [a real registry]" — paraphrase). The
+     shim's own doc-block frames it as bridge-text per
+     `feedback_construction_over_ratchets`.
+   - Predicate registry does NOT exist as substrate-fact-introduction
+     (verified via `grep -rn "predicate.registry\|known_predicate"
+     src/v3/compiler/src/`); registry-shaped substrate-fact-introduction
+     is part of this slice's scope.
+   Worker re-greps at dispatch (per substrate-state-grep discipline);
+   Mgr's independent grep is parallel verification, not substitute.
 2. **Existing brief?** Original Slice 2.5 dispatch packet at
    gunbc#1746 #issuecomment-4390216297 (now superseded by Path 3
    ratification + this brief). No other competing brief.
 3. **Design-doc match?** Director ratification at gunbc#828
    #issuecomment-4390333451 is the design-doc anchor. Worker re-reads
    ratification at dispatch.
-4. **Citations live?** Verified at HEAD post-#1840 merge (NonNegativeInt
-   = Nat in integer.dag confirmed). Worker re-verifies at dispatch.
+4. **Citations live?** Verified at HEAD post-#1840 merge by Mgr
+   independent grep (above): `dsl/std/integer.dag:133`,
+   `dsl/std/types.dag:255`, PB-1 shim location confirmed.
+   Worker re-verifies at dispatch.
 5. **Carrier dissolves the bridge?** Yes — PB-1 shim is the bridge;
    predicate-registry landing is the structural fix; retirement in
    same slice closes the loop. Per `feedback_dissolve_bridges`: go
