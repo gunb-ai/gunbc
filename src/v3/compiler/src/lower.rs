@@ -621,9 +621,40 @@ fn build_refinement_predicate_declaration(
 /// `gunbc#1746 issuecomment-4390253616` + brief `docs/briefs/r3-substrate-s9-slice-2-5-predicate-registry-worker.md`
 /// authority audit): no parallel predicate-registry exists under another
 /// name; this constant IS the substrate-fact-introduction.
+/// Argument-shape contract for a registered predicate. Matched against the
+/// parsed `SurfaceExpr` at the predicate's call position. Path (a) RATIFIED
+/// at gunbc#828 `issuecomment-4390760353` per Codex/openai-pro REQUEST_CHANGES
+/// — the registry must validate not just the predicate name + carrier but
+/// also the predicate's argument shape, so malformed registered calls
+/// fail-closed (`Diagnostic::ResolveError`) rather than silently take a
+/// placeholder.
+#[derive(Debug, Clone, Copy)]
+enum PredicateArgShape {
+    /// Bare predicate — no argument list, must parse as `SurfaceExpr::Var`.
+    /// E.g. `non_empty`, `gt_zero`.
+    Bare,
+    /// Single string-literal argument — `SurfaceExpr::Call { args: [Literal::String(_)] }`.
+    /// E.g. `pattern("…")`, `brand("…")`.
+    SingleStringLiteral,
+    /// Single ident or string literal — covers `format(uuid)` / `format("uuid")`.
+    SingleIdentOrStringLiteral,
+    /// Single variant ident — `content(Text)` / `content(Binary)`.
+    SingleVariantIdent {
+        allowed: &'static [&'static str],
+    },
+    /// Record-shape with named numeric-literal fields. At least one of the
+    /// listed fields must be present; all present fields must be integer
+    /// literals. E.g. `range(min: N)` / `range(min: N, max: M)`.
+    NumericRecord {
+        accepted_fields: &'static [&'static str],
+        require_at_least_one: bool,
+    },
+}
+
 struct PredicateSpec {
     name: &'static str,
     allowed_carriers: &'static [&'static str],
+    arg_shape: PredicateArgShape,
 }
 
 const KNOWN_PREDICATES: &[PredicateSpec] = &[
@@ -634,14 +665,20 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
     PredicateSpec {
         name: "range",
         allowed_carriers: &["Int", "Nat"],
+        arg_shape: PredicateArgShape::NumericRecord {
+            accepted_fields: &["min", "max"],
+            require_at_least_one: true,
+        },
     },
     PredicateSpec {
         name: "pattern",
         allowed_carriers: &["String", "NonEmptyStr"],
+        arg_shape: PredicateArgShape::SingleStringLiteral,
     },
     PredicateSpec {
         name: "non_empty",
         allowed_carriers: &["String", "Secret", "List"],
+        arg_shape: PredicateArgShape::Bare,
     },
     PredicateSpec {
         // `brand` is the most-frequently-applied predicate in `types.dag`;
@@ -657,14 +694,19 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
             "Nat",
             "Secret",
         ],
+        arg_shape: PredicateArgShape::SingleStringLiteral,
     },
     PredicateSpec {
         name: "format",
         allowed_carriers: &["String"],
+        arg_shape: PredicateArgShape::SingleIdentOrStringLiteral,
     },
     PredicateSpec {
         name: "content",
         allowed_carriers: &["FilePath"],
+        arg_shape: PredicateArgShape::SingleVariantIdent {
+            allowed: &["Text", "Binary"],
+        },
     },
     // S9 Slice 2.5 new primitive (Director Option 2 ratification at
     // gunbc#828 issuecomment-4390199218). `gt_zero` IS the reason for "Nat
@@ -673,6 +715,7 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
     PredicateSpec {
         name: "gt_zero",
         allowed_carriers: &["Nat", "Int"],
+        arg_shape: PredicateArgShape::Bare,
     },
 ];
 
@@ -704,36 +747,220 @@ fn carrier_chain_names(dag: &Dag, decl_id: DeclarationId) -> Vec<String> {
     out
 }
 
-/// Recursively walk a `where`-sugar refinement expression and confirm every
-/// predicate-position identifier is in [`KNOWN_PREDICATES`] AND each
-/// predicate's allowed-carrier list intersects the alias chain of the base
-/// type. Predicates combine via `Operator { op: Logical(And), … }` (per
-/// `parse_type_alias_where_tail` / `fold_type_alias_where_parts`); the leaves
-/// are `SurfaceExpr::Call` (e.g. `range(min: 1)`, `brand("X")`) or
-/// `SurfaceExpr::Var` (bare predicates like `non_empty`). Argument
-/// expressions are not walked — only the predicate-name position matters for
-/// registry membership.
-fn all_predicate_names_registered(expr: &SurfaceExpr, carrier_chain: &[String]) -> bool {
-    let predicate_name = match expr {
-        SurfaceExpr::Call { target, .. } => target.as_str(),
-        SurfaceExpr::Var { name, .. } => name.as_str(),
-        SurfaceExpr::Operator {
-            op: OperatorKind::Logical(LogicalOp::And),
-            args,
-            ..
-        } => {
-            return args
-                .iter()
-                .all(|arg| all_predicate_names_registered(arg, carrier_chain));
-        }
-        _ => return false,
+/// Outcome of validating a single registered-predicate clause against
+/// [`KNOWN_PREDICATES`]. Path (a) RATIFIED at gunbc#828
+/// `issuecomment-4390760353`: registered predicates must validate carrier
+/// **and** argument shape; mismatches fail-closed via `Diagnostic::ResolveError`
+/// rather than silently take a placeholder.
+enum PredicateValidation {
+    /// Predicate name is registered, carrier is allowed, and argument shape
+    /// matches the spec. Eligible for placeholder allocation.
+    Registered,
+    /// Predicate name is registered but the call is malformed (wrong carrier
+    /// or arg shape). Falls through to live resolution; diagnostic is the
+    /// caller's responsibility to surface in a fail-closed way.
+    RegisteredButMalformed { reason: String, span: SourceSpan },
+    /// Predicate name is not in the registry. Falls through to live
+    /// resolution unchanged (existing `build_refinement_predicate_declaration`
+    /// path emits `Diagnostic::ResolveError` if the name does not resolve).
+    NotRegistered,
+}
+
+/// Validate a single predicate-position `SurfaceExpr` against the registry.
+fn validate_predicate_clause(
+    expr: &SurfaceExpr,
+    carrier_chain: &[String],
+) -> PredicateValidation {
+    let (predicate_name, predicate_span) = match expr {
+        SurfaceExpr::Call { target, span, .. } => (target.as_str(), span.clone()),
+        SurfaceExpr::Var { name, span } => (name.as_str(), span.clone()),
+        _ => return PredicateValidation::NotRegistered,
     };
     let Some(spec) = predicate_spec(predicate_name) else {
-        return false;
+        return PredicateValidation::NotRegistered;
     };
-    spec.allowed_carriers
+    let carrier_ok = spec
+        .allowed_carriers
         .iter()
-        .any(|allowed| carrier_chain.iter().any(|name| name == allowed))
+        .any(|allowed| carrier_chain.iter().any(|name| name == allowed));
+    if !carrier_ok {
+        return PredicateValidation::RegisteredButMalformed {
+            reason: format!(
+                "predicate `{predicate_name}` requires a carrier in {{{}}}; \
+                 base-type chain has none of those (chain: {})",
+                spec.allowed_carriers.join(", "),
+                if carrier_chain.is_empty() {
+                    "<unnamed>".to_string()
+                } else {
+                    carrier_chain.join(" → ")
+                }
+            ),
+            span: predicate_span,
+        };
+    }
+    if let Some(reason) = arg_shape_mismatch(spec, expr) {
+        return PredicateValidation::RegisteredButMalformed {
+            reason,
+            span: predicate_span,
+        };
+    }
+    PredicateValidation::Registered
+}
+
+/// Check whether the call shape at `expr` matches `spec.arg_shape`. Returns
+/// `Some(reason)` if malformed.
+fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String> {
+    let predicate_name = spec.name;
+    match (&spec.arg_shape, expr) {
+        (PredicateArgShape::Bare, SurfaceExpr::Var { .. }) => None,
+        (PredicateArgShape::Bare, SurfaceExpr::Call { args, .. }) if args.is_empty() => None,
+        (PredicateArgShape::Bare, _) => Some(format!(
+            "predicate `{predicate_name}` is bare; expected no arguments"
+        )),
+        (PredicateArgShape::SingleStringLiteral, SurfaceExpr::Call { args, .. })
+            if matches!(
+                args.as_slice(),
+                [SurfaceExpr::Literal {
+                    value: SurfaceLiteral::String(_),
+                    ..
+                }]
+            ) =>
+        {
+            None
+        }
+        (PredicateArgShape::SingleStringLiteral, _) => Some(format!(
+            "predicate `{predicate_name}` requires a single string-literal argument"
+        )),
+        (PredicateArgShape::SingleIdentOrStringLiteral, SurfaceExpr::Call { args, .. })
+            if matches!(
+                args.as_slice(),
+                [SurfaceExpr::Var { .. }]
+                    | [SurfaceExpr::Literal {
+                        value: SurfaceLiteral::String(_),
+                        ..
+                    }]
+            ) =>
+        {
+            None
+        }
+        (PredicateArgShape::SingleIdentOrStringLiteral, _) => Some(format!(
+            "predicate `{predicate_name}` requires a single ident or string-literal argument"
+        )),
+        (
+            PredicateArgShape::SingleVariantIdent { allowed },
+            SurfaceExpr::Call { args, .. },
+        ) => match args.as_slice() {
+            [SurfaceExpr::Var { name, .. }] => {
+                if allowed.contains(&name.as_str()) {
+                    None
+                } else {
+                    Some(format!(
+                        "predicate `{predicate_name}` requires variant in {{{}}}, got `{name}`",
+                        allowed.join(", ")
+                    ))
+                }
+            }
+            _ => Some(format!(
+                "predicate `{predicate_name}` requires a single variant-ident argument"
+            )),
+        },
+        (PredicateArgShape::SingleVariantIdent { .. }, _) => Some(format!(
+            "predicate `{predicate_name}` requires a single variant-ident argument"
+        )),
+        (
+            PredicateArgShape::NumericRecord {
+                accepted_fields,
+                require_at_least_one,
+            },
+            SurfaceExpr::Call { args, .. },
+        ) => {
+            // Per `parse_type_alias_where_tail` doc-comment: `range(min: 1, max: 5)`
+            // desugars to a single `Record` argument.
+            let Some(SurfaceExpr::Record { fields, .. }) = args.first() else {
+                return Some(format!(
+                    "predicate `{predicate_name}` requires record-shaped \
+                     arguments (e.g. `{predicate_name}(min: N)`)"
+                ));
+            };
+            if args.len() != 1 {
+                return Some(format!(
+                    "predicate `{predicate_name}` accepts a single record argument; got {}",
+                    args.len()
+                ));
+            }
+            if *require_at_least_one && fields.is_empty() {
+                return Some(format!(
+                    "predicate `{predicate_name}` requires at least one of \
+                     the fields {{{}}}",
+                    accepted_fields.join(", ")
+                ));
+            }
+            for field in fields {
+                if !accepted_fields.contains(&field.name.as_str()) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` does not accept field `{}` \
+                         (accepts: {})",
+                        field.name,
+                        accepted_fields.join(", ")
+                    ));
+                }
+                if !matches!(
+                    &field.value,
+                    SurfaceExpr::Literal {
+                        value: SurfaceLiteral::Int(_),
+                        ..
+                    }
+                ) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` field `{}` requires an \
+                         integer-literal value",
+                        field.name
+                    ));
+                }
+            }
+            None
+        }
+        (PredicateArgShape::NumericRecord { .. }, _) => Some(format!(
+            "predicate `{predicate_name}` requires record-shaped arguments"
+        )),
+    }
+}
+
+/// Recursively walk a `where`-sugar refinement expression. Predicates combine
+/// via `Operator { op: Logical(And), … }` (per `parse_type_alias_where_tail`
+/// / `fold_type_alias_where_parts`); the leaves are `SurfaceExpr::Call`
+/// (e.g. `range(min: 1)`, `brand("X")`) or `SurfaceExpr::Var` (bare
+/// predicates like `non_empty`). Per Path (a) RATIFIED at gunbc#828
+/// `issuecomment-4390760353`, returns the worst-case validation across all
+/// leaves: any single malformed registered predicate fails the whole clause
+/// closed; any single non-registered leaf falls through to live resolution.
+fn validate_where_clause(
+    expr: &SurfaceExpr,
+    carrier_chain: &[String],
+) -> PredicateValidation {
+    if let SurfaceExpr::Operator {
+        op: OperatorKind::Logical(LogicalOp::And),
+        args,
+        ..
+    } = expr
+    {
+        let mut all_registered = true;
+        for arg in args {
+            match validate_where_clause(arg, carrier_chain) {
+                PredicateValidation::Registered => {}
+                PredicateValidation::RegisteredButMalformed { reason, span } => {
+                    return PredicateValidation::RegisteredButMalformed { reason, span };
+                }
+                PredicateValidation::NotRegistered => all_registered = false,
+            }
+        }
+        return if all_registered {
+            PredicateValidation::Registered
+        } else {
+            PredicateValidation::NotRegistered
+        };
+    }
+    validate_predicate_clause(expr, carrier_chain)
 }
 
 /// P3 / “facts flow forward” for registered-predicate refinements: allocate
@@ -1032,24 +1259,41 @@ fn lower_type_alias_refinements_phase(
         dag.declaration_mut(decl_id).connective =
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id));
 
-        // S9 Slice 2.5 (Path 3 RATIFIED) — replaces prior PB-1 file-path
-        // special case (`span.file == "dsl/std/types.dag"`) with a
-        // predicate-name registry plus carrier-compatibility check. See
-        // `KNOWN_PREDICATES`, `carrier_chain_names`, and
-        // `all_predicate_names_registered`. A registered predicate applied
-        // to an allowed carrier gets a placeholder refinement (P3
-        // facts-flow-forward — alias still carries a named refinement); an
-        // unregistered predicate, or a registered predicate applied to a
-        // non-allowed carrier, falls through to live resolution and surfaces
-        // `Diagnostic::ResolveError` if the predicate name does not resolve
-        // as a callable. The carrier check addresses Codex's BLOCKING
-        // finding at PR #1846 (`92758dd0`): without it the registry is a
-        // broad diagnostic escape hatch.
+        // S9 Slice 2.5 (Path (a) RATIFIED at gunbc#828 issuecomment-4390760353)
+        // — replaces prior PB-1 file-path special case
+        // (`span.file == "dsl/std/types.dag"`) with a predicate-name registry
+        // plus carrier + arg-shape contract. See `KNOWN_PREDICATES`,
+        // `carrier_chain_names`, and `validate_where_clause`. A registered
+        // predicate applied to an allowed carrier with valid arg shape gets a
+        // placeholder refinement (P3 facts-flow-forward — alias still carries
+        // a named refinement; predicate-body lowering is the named follow-on
+        // ladder rung). A registered predicate with malformed carrier or
+        // arg-shape produces `Diagnostic::ResolveError` directly — fail-closed
+        // per Codex/openai-pro REQUEST_CHANGES at PR #1846 (`92758dd0` /
+        // `788d6acb` / `e2698434`). An unregistered predicate falls through
+        // to live resolution unchanged.
         let carrier_chain = carrier_chain_names(dag, base_decl_id);
-        if all_predicate_names_registered(predicate, &carrier_chain) {
-            let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
-            dag.declaration_mut(decl_id).refinement = Some(ph);
-            continue;
+        match validate_where_clause(predicate, &carrier_chain) {
+            PredicateValidation::Registered => {
+                let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
+                dag.declaration_mut(decl_id).refinement = Some(ph);
+                continue;
+            }
+            PredicateValidation::RegisteredButMalformed {
+                reason,
+                span: pred_span,
+            } => {
+                report_declaration_error(
+                    dag,
+                    Diagnostic::ResolveError {
+                        name: reason,
+                        span: pred_span,
+                        fixes: Vec::new(),
+                    },
+                );
+                continue;
+            }
+            PredicateValidation::NotRegistered => {}
         }
         let pred_decl_id = build_refinement_predicate_declaration(
             base_decl_id,
