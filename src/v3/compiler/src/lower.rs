@@ -1127,9 +1127,7 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
     dag.declaration(refinement)
         .name
         .as_deref()
-        .is_some_and(|name| {
-            name.starts_with("<std/types.dag: `where` parsed, predicate not lowered: ")
-        })
+        .is_some_and(|name| name.starts_with("<registered predicate, body not lowered: "))
 }
 
 fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {

@@ -7,9 +7,9 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         declarations: bootstrapped_std_fixture_dag_declarations(),
         ports: bootstrapped_std_fixture_dag_ports(),
         diagnostics: bootstrapped_std_fixture_dag_diagnostics(),
-        next_node_id: 2,
+        next_node_id: 0,
         next_declaration_id: 606,
-        next_port_id: 6,
+        next_port_id: 0,
         primitives: PrimitiveCache::default(),
         substrate_markers: SubstrateMarkers::default(),
         realization_metas: RealizationMetaCache::default(),
@@ -30,28 +30,7 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
 
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
-    {
-        let mut nodes = Vec::with_capacity(2);
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(0),
-            name: "<refinement:TextFilePath>".to_string(),
-            value: PortId(2),
-            params: vec![PortId(0)],
-            span: SourceSpan::new("dsl/std/types.dag", 17804, 17817),
-            lane2_workflow: None,
-            emit_participation: None,
-        }));
-        nodes.push(Behavior::Bind(BindNode {
-            id: NodeId(1),
-            name: "<refinement:BinaryFilePath>".to_string(),
-            value: PortId(5),
-            params: vec![PortId(3)],
-            span: SourceSpan::new("dsl/std/types.dag", 17855, 17870),
-            lane2_workflow: None,
-            emit_participation: None,
-        }));
-        nodes
-    }
+    Vec::new()
 }
 
 #[allow(clippy::vec_init_then_push)]
@@ -12257,12 +12236,8 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(589),
-            name: None,
-            connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(131)],
-                output: DeclarationId(101),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(0))),
-            },
+            name: Some("<registered predicate, body not lowered: TextFilePath>".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -12271,16 +12246,12 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17804, 17817),
+            span: SourceSpan::new("dsl/std/types.dag", 17767, 17817),
         });
         declarations.push(Declaration {
             id: DeclarationId(590),
-            name: None,
-            connective: TypeConnective::Arrow {
-                inputs: vec![DeclarationId(131)],
-                output: DeclarationId(101),
-                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(1))),
-            },
+            name: Some("<registered predicate, body not lowered: BinaryFilePath>".to_string()),
+            connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -12289,7 +12260,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 17855, 17870),
+            span: SourceSpan::new("dsl/std/types.dag", 17818, 17870),
         });
         declarations.push(Declaration {
             id: DeclarationId(591),
@@ -12530,111 +12501,11 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
 }
 
 fn bootstrapped_std_fixture_dag_ports() -> HashMap<PortId, Port> {
-    {
-        let mut ports = HashMap::new();
-        ports.insert(
-            PortId(0),
-            Port {
-                id: PortId(0),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(131))),
-                produced_by: None,
-            },
-        );
-        ports.insert(
-            PortId(1),
-            Port {
-                id: PortId(1),
-                state: PortState::Unresolved,
-                produced_by: None,
-            },
-        );
-        ports.insert(
-            PortId(2),
-            Port {
-                id: PortId(2),
-                state: PortState::Unresolved,
-                produced_by: None,
-            },
-        );
-        ports.insert(
-            PortId(3),
-            Port {
-                id: PortId(3),
-                state: PortState::Resolved(TypeShape::new(DeclarationId(131))),
-                produced_by: None,
-            },
-        );
-        ports.insert(
-            PortId(4),
-            Port {
-                id: PortId(4),
-                state: PortState::Unresolved,
-                produced_by: None,
-            },
-        );
-        ports.insert(
-            PortId(5),
-            Port {
-                id: PortId(5),
-                state: PortState::Unresolved,
-                produced_by: None,
-            },
-        );
-        ports
-    }
+    HashMap::new()
 }
 
 fn bootstrapped_std_fixture_dag_diagnostics() -> DiagnosticTable {
-    {
-        let mut table = DiagnosticTable::new();
-        table.insert(
-            PortId(1),
-            Diagnostic::ResolveError {
-                name: "Text".to_string(),
-                span: SourceSpan::new("dsl/std/types.dag", 17812, 17816),
-                fixes: vec![],
-            },
-        );
-        table.insert(
-            PortId(2),
-            Diagnostic::ResolveError {
-                name:
-                    "named constructor `content` is not a variant of the expected sum type `Bool`"
-                        .to_string(),
-                span: SourceSpan::new("dsl/std/types.dag", 17804, 17817),
-                fixes: vec![crate::diagnostics::Correction {
-                    description: "replace unresolved call `content` with a `Bool` value"
-                        .to_string(),
-                    span: SourceSpan::new("dsl/std/types.dag", 17804, 17817),
-                    new_source: "True".to_string(),
-                }],
-            },
-        );
-        table.insert(
-            PortId(4),
-            Diagnostic::ResolveError {
-                name: "Binary".to_string(),
-                span: SourceSpan::new("dsl/std/types.dag", 17863, 17869),
-                fixes: vec![],
-            },
-        );
-        table.insert(
-            PortId(5),
-            Diagnostic::ResolveError {
-                name:
-                    "named constructor `content` is not a variant of the expected sum type `Bool`"
-                        .to_string(),
-                span: SourceSpan::new("dsl/std/types.dag", 17855, 17870),
-                fixes: vec![crate::diagnostics::Correction {
-                    description: "replace unresolved call `content` with a `Bool` value"
-                        .to_string(),
-                    span: SourceSpan::new("dsl/std/types.dag", 17855, 17870),
-                    new_source: "True".to_string(),
-                }],
-            },
-        );
-        table
-    }
+    DiagnosticTable::new()
 }
 
 fn bootstrapped_std_fixture_dag_clusters() -> Vec<Cluster> {
