@@ -265,7 +265,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 ## §4. 5 substrate-gap classes — detail
 
-**Framing (PM-recommended; Q2, §10)**: closure criteria over existing lane work, not new separate lanes. Each class is a TestClaim that fires when its representative gap-test executes through v3 cleanly.
+**Framing (Q2 RATIFIED 2026-05-06)**: closure criteria over existing lane work, not new separate lanes. Each class is a TestClaim that fires when **both** (per §1.4 conjunctive predicate; Director poke-hole 2026-05-06 finding 1.3 + openai-pro 2026-05-06 finding 2.2): **(a)** representative gap-test executes through v3 cleanly per Pass condition AND **(b)** systematic enumeration of class-bridges shows count = 0 (or any survivors carry explicit Director allocation per §7.2 / `docs/audit/r3-debt-sweep-2026-05-06.md` §3.A STRUCTURAL exception). Single-test-pass alone is sample-of-class, NOT closure-of-class.
 
 ### §4.1 Class 1 — parser/grammar surface
 
