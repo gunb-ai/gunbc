@@ -104,6 +104,15 @@ author to add one before citing.
 `MODELING.md`, `modeling-discipline.md`, design-doc references,
 etc.
 
+**Scope of enforcement** — this rule applies prospectively to
+**briefs landing after the policy was added** (commit `b4cae5299`,
+2026-05-06). Pre-existing briefs in the corpus that use bare
+`file.md:NNN` references are flagged as paydown work but are
+NOT individually blocking; a coordinated single-PR corpus sweep
+is the appropriate paydown shape. Substrate-Mgr-authored briefs
+on this branch were swept at `127287a66`. Other-Mgr scope (~232
+references across ~50 non-Substrate briefs) is queued.
+
 **Specific to Practice 4 / coproduct classification**: cite
 `docs/modeling-discipline.md#4-coproduct-dissolution` (Practice 4)
 plus the "What to check" rule text inline. Do NOT cite "Step 4

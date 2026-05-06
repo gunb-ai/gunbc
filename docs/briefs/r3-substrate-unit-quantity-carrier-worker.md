@@ -151,9 +151,21 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
 - `dsl/std/units.dag` (or canonical equivalent path) lands with
   `Unit<Q, S>` + `Quantity` + `Scale` declarations at the
   ratified shape.
-- Practice 4 classification receipts in PR body: `Unit<Q, S>`
-  🟢, `Quantity` 🟡 SCAFFOLD, `Scale` 🟡 SCAFFOLD with named
-  dissolution trigger.
+- **Practice 4 in-source checkpoint comments** on the live
+  declarations in `dsl/std/units.dag` (the load-bearing artifact
+  per `docs/modeling-discipline.md#4-coproduct-dissolution`
+  "What to check" — *"Any new Rust enum with N ≥ 2 variants
+  must have a checkpoint comment naming its classification
+  (🟢/🟡/🔴), with a ledger entry if GREEN or a named trigger
+  if YELLOW."*). Specifically:
+  - `Unit<Q, S>` carries a 🟢 PRIMITIVE checkpoint comment
+  - `Quantity` carries a 🟡 SCAFFOLD checkpoint comment naming
+    the dissolution trigger ("all Quantity values consumed by
+    ≥ 1 emission rule")
+  - `Scale` carries a 🟡 SCAFFOLD checkpoint comment with the
+    same dissolution trigger
+  Inline comments on the source are mandatory; PR-body summary
+  is supplementary, not substitute.
 - S9 Phase-3 `Duration` / `Seconds` / `Milliseconds`
   declarations updated to Unit-typed `Refined<Unit<Time, ...>, ...>`
   shape (Q-Unit-4 RATIFIED outer-Refined / inner-Unit).
