@@ -1,6 +1,6 @@
 # R3 PB — BinShim instances + emit pattern + retirement dispatch (PB-owned planning brief)
 
-**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-04-29 by PB Manager continuation per the BinShim instances + emit pattern row in [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#owns-r3-continuation--director-cascade-item-4--item-8-ratified-2026-04-28) and the Item 5 ownership lock from [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §5.4 (LANDED via #1176/#1186).
+**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-04-29 by PB Manager continuation per the BinShim instances + emit pattern row in [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) and the Item 5 ownership lock from [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §5.4 (LANDED via #1176/#1186).
 
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation per `r3-structure.md` §"Manager structure" Item 1).
 
@@ -123,7 +123,7 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 
 ## Cross-refs
 
-- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#owns-r3-continuation--director-cascade-item-4--item-8-ratified-2026-04-28) — R3 continuation row "BinShim instances + emit pattern + retirement dispatch" + [`Locked design decisions consumed`](r2-pure-bootstrap-manager.md#locked-design-decisions-consumed-per-1078-dialogue--cascade) §"PB-Runtime interpreter-as-data + PB-1 bin-shim emit pattern (LANDED via #1176)".
+- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) — R3 continuation row "BinShim instances + emit pattern + retirement dispatch" + [`Locked design decisions consumed`](r2-pure-bootstrap-manager.md#locked-design-decisions-consumed-per-1078-dialogue--cascade) §"PB-Runtime interpreter-as-data + PB-1 bin-shim emit pattern (LANDED via #1176)".
 - Design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) — §4.1 bin-shim class enumeration; §4.2 `BinShim` carrier-shape sketch + emitter shape; §4.3 dissolution path; §4.4 first-time-bootstrap compatibility; §5.1 R3-T-LensProducer-Retirement sub-gate decomposition; §5.4 PB/Substrate/Evaluator boundary; §6 anti-bridge invariants; §7.2 BinShim equivalence fixture; §7.3 No-new-bin-shim-hand-Rust fixture (with substrate prerequisite call-out).
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-LensProducer-Retirement row.
 - Sibling R3-PB lane (separate scope, gated separately): T-FixedPoint planning brief — [`docs/briefs/r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md).

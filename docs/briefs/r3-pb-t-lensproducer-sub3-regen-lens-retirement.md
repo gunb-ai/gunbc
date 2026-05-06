@@ -84,7 +84,7 @@ If any of (2)–(7) is unmet, brief stays in PROPOSAL state.
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §4 (Item 5 emit pattern), §4.3 (dissolution path), §5.1 (sub-gate decomposition), §5.2 (SG-0 cascade), §6 (anti-bridge invariants), §7.2 (BinShim equivalence fixture).
-- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#owns-r3-continuation--director-cascade-item-4--item-8-ratified-2026-04-28) — R3 continuation table rows for T-LensProducer-Retirement and BinShim instances + emit pattern + retirement dispatch.
+- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) — R3 continuation table rows for T-LensProducer-Retirement and BinShim instances + emit pattern + retirement dispatch.
 - BinShim retirement program (mechanism this sub-gate consumes): [`docs/briefs/r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md) — sub-gate 3 is this brief's "First slice — `regen_lens.rs`."
 - First-target retirement readiness checklist (planning only): [`docs/briefs/r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
