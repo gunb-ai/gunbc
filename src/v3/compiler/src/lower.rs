@@ -6347,6 +6347,95 @@ fn variant_payload_fields_for_lowering(
     )
 }
 
+/// E6-G0d: whether `variant_template` is listed as a variant arm on some
+/// substrate `TypeConnective::Disj` (membership authority for constructor
+/// execution, distinct from “walks to Conj”).
+pub(crate) fn declaration_is_disj_variant_arm(dag: &Dag, variant_template: DeclarationId) -> bool {
+    dag.declarations().iter().any(|decl| {
+        matches!(
+            &decl.connective,
+            TypeConnective::Disj { variants }
+                if variants.iter().any(|v| v.ty == variant_template)
+        )
+    })
+}
+
+/// E6-G0d: record constructor field **labels** in declaration order after the
+/// same `Instantiation` / `TypeParam` walk as `walk_to_conj_decl_with_subst_lower`.
+pub(crate) fn constructor_record_field_labels(
+    dag: &Dag,
+    record_target: DeclarationId,
+) -> Option<Vec<String>> {
+    let mut subst = LowerSubstStack::default();
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, record_target, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    Some(children.iter().map(|c| c.label.clone()).collect())
+}
+
+/// E6-G0d: variant constructor payload fields for runtime `RecordValue` assembly.
+///
+/// Reuses [`variant_payload_fields_for_lowering`]. When the lowerer would have
+/// threaded an outer expected type (generic sums) but the transform IR carries
+/// only the callee, fall back to trying each declaration as an outer prefix
+/// until the existing substrate walk succeeds — still a single authority
+/// (`variant_payload_fields_for_lowering`), not a parallel registry.
+///
+/// **Dissolution trigger:** delete this scan when `TransformTarget::Callable` (or
+/// adjacent transform metadata) threads the same outer expected-type
+/// `DeclarationId` the lowerer used at the constructor site, so the second
+/// argument to [`variant_payload_fields_for_lowering`] is authoritative without
+/// enumeration.
+///
+/// In `debug_assertions` builds, every successful prefix is checked to agree with
+/// the returned resolution so silent ambiguity cannot hide inconsistent payload
+/// shapes during development.
+pub(crate) fn eval_constructor_variant_payload_fields(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+) -> Option<Vec<(String, DeclarationId)>> {
+    let fields = if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
+        fields
+    } else {
+        let mut found = None;
+        for decl in dag.declarations() {
+            if let Some(fields) =
+                variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id))
+            {
+                found = Some(fields);
+                break;
+            }
+        }
+        found?
+    };
+    #[cfg(debug_assertions)]
+    debug_assert_variant_payload_prefix_scan_is_unambiguous(dag, callee_decl, &fields);
+    Some(fields)
+}
+
+#[cfg(debug_assertions)]
+fn debug_assert_variant_payload_prefix_scan_is_unambiguous(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    chosen: &[(String, DeclarationId)],
+) {
+    if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
+        debug_assert_eq!(
+            fields, chosen,
+            "eval_constructor_variant_payload_fields: None-outer payload disagrees with chosen resolution"
+        );
+    }
+    for decl in dag.declarations() {
+        if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id)) {
+            debug_assert_eq!(
+                fields, chosen,
+                "eval_constructor_variant_payload_fields: prefix-scan payload disagrees with chosen resolution"
+            );
+        }
+    }
+}
+
 fn variant_payload_fields_for_lowering_with_subst(
     dag: &Dag,
     variant_decl: DeclarationId,
