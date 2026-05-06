@@ -131,12 +131,8 @@ fn mini_report(d: Dag, b: Behavior) -> DimensionReport<Int> =
             witnesses: singleton_witness(Inhabits(c))
           }
       }
-    Violates { reason: diag, at: beh } =>
-      DimensionFail {
-        dimension_name: mini_lens.name,
-        violations: singleton_diagnostic(diag),
-        witnesses: singleton_witness(Violates { reason: diag, at: beh })
-      }
+    Violates { reason: _reason, at: _behavior } =>
+      STOP
   }
 ```
 
@@ -151,6 +147,15 @@ The implementation may choose an equivalent already-declared list producer, but
 it must not replace the witness list with an unrelated literal or empty list:
 the `Witness<C>` returned by `mini_lens.read(d, b)` must flow into the
 `DimensionReport<C>`.
+
+The read-channel `Violates` branch is deliberately a STOP in the candidate.
+`Witness<C>::Violates` carries `reason: String` and `at: Behavior`, while
+`DimensionFail.violations` carries `List<Diagnostic>`. The probe must not
+invent a `String` / `Behavior` to `Diagnostic` lift. Outcome A may only include
+a read-violation report path if an existing declared diagnostic-construction
+path is identified and exercised; otherwise the first representative must keep
+`mini_read` on the `Inhabits` path and leave read-channel violation lifting to
+Q-Reification / diagnostic carrier follow-up.
 
 ## Feasibility Checks
 
@@ -170,7 +175,11 @@ Before authoring an implementation brief, verify at HEAD:
    the returned `Witness<C>` to choose the report path and populate report
    witnesses/composed/fail fields as appropriate. A report built from only
    literals is not sufficient.
-6. The representative avoids `LoopBound::Descent`; any iteration uses
+6. Any read-channel `Violates` to `DimensionFail.violations` path uses an
+   existing declared diagnostic-construction path. If no such path exists, the
+   candidate must STOP on read-channel violations and the first representative
+   must exercise the `Inhabits` path only.
+7. The representative avoids `LoopBound::Descent`; any iteration uses
    cardinality-only behavior or no loop.
 
 ## Feasibility Outcomes
@@ -193,6 +202,10 @@ Acceptance for the implementation brief:
 - the implementation test fails if `mini_lens.read(d, b)` is removed, bypassed,
   or replaced by a literal carrier; the returned `Witness<C>` must feed the
   `DimensionReport<C>`;
+- the implementation either identifies and uses an existing declared
+  diagnostic-construction path for read-channel `Violates`, or proves the first
+  representative stays on the `Inhabits` path and fails closed if `Violates`
+  would need to be lifted into `DimensionFail.violations`;
 - non-function field reads execute through `FieldProject` where the live
   representative uses them, such as `mini_lens.name` or
   `mini_lens.sequential.identity`;
@@ -222,6 +235,8 @@ STOP and report the exact blocker:
   weak for Path A; or
 - the evaluator cannot bind opaque `Dag` / `Behavior` arguments without
   reflection or new carriers; or
+- read-channel `Violates` must be lifted into `DimensionFail.violations` but no
+  declared `Diagnostic` construction path exists; or
 - report construction still requires a typed reference carrier absent from
   evaluator `Value`; or
 - static lens function fields cannot be authored without parser/lowerer or
