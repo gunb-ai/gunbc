@@ -38,7 +38,7 @@ usage() {
 # Sets SG0_DECLARED_INT (signed net paths claimed in PR body).
 sg0_validate_pr_body_format() {
   local body="$1"
-  local delta_line token need_pairing pairing_block
+  local delta_line token need_pairing pairing_block pairing_flat
 
   # Use here-strings (not `printf … | grep`) so `pipefail` + early `grep -q`
   # exit cannot SIGPIPE the writer on large PR bodies.
@@ -48,8 +48,7 @@ sg0_validate_pr_body_format() {
   fi
   delta_line=$(grep -E '^SG-0 hand-path delta:' <<<"$body" | head -1)
   token=${delta_line#SG-0 hand-path delta:}
-  # shellcheck disable=SC2086
-  token=$(echo "$token" | awk '{print $1; exit}')
+  read -r token _ <<<"$token"
   if [ -z "$token" ]; then
     echo "::error::SG-0 hand-path delta line has no numeric token"
     return 1
