@@ -57,7 +57,7 @@ Prior `AbelianGroup<Nat>` references in r3-structure.md, r3-program-plan.md, thi
 **S3 dispatch unblocked on machine-constraint side** (independent of T-Numeric-Construction algebra-side Option A vs B selection per PR #1815 — interaction semantics carries through under either). **Sub-decision 2's `.dag`-generated discipline** means S3 worker brief must specify the interaction substrate as `.dag`-declared with any Rust counterpart generated, not hand-authored.
 
 **Dispatch trigger**: now (foundational; gates Class 1 closure).
-**Closure predicate**: §1.8 gate #60 `substrate_gap_parser_grammar_closed` (Class 1 5-criteria Pass: substrate carriers + parser handles generic interaction syntax + ≥3 algebra×constraint pairs emit to target primitives + target primitives NOT primary substrate entities).
+**Closure predicate**: §1.8 gate #60 `substrate_gap_parser_grammar_closed`. **Pass = concept faithfully modeled** (per sub-decision 5 above): substrate carries algebra and machine-constraint as independent axes; interaction substrate is `.dag`-generated; parser handles generic `Compose<...>` interaction syntax; concrete types are derived consequences (not primary entities). The 3-pair set (`Int<64>` / `Real<64>` / `Nat<8>`) lowering without v2-fallback is **minimum existence-proof evidence**, NOT the closure target — once the substrate carries the separation faithfully, all valid pairs work by construction.
 **Cross-lane**: T-Numeric-Construction provides algebra side (in flight); MachineConstraint<C> is new substrate.
 
 ### S4 — Workflow* family carriers (Class 4)
