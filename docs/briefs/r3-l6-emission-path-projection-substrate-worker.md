@@ -114,7 +114,7 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
    PR populates the 42 Phase 1 rows.
 
 2. Add a small ratchet asserting that:
-   - The five types and the `data` declaration exist with the
+   - The six types (`ShapeATarget`, `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`) and the `data` declaration exist with the
      ratified field shapes (typed-substrate read, no string scan).
    - When `emission_path_projections` is non-empty, its row count
      equals the sum of `MethodTemplateContract` row counts across
@@ -129,7 +129,7 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
 ## Acceptance
 
 - `src/v3/std/cross_target_coverage.dag` lands with the five
-  types + the empty `data` declaration + the mandatory
+  types (`ShapeATarget`, `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`) + the empty `data` declaration + the mandatory
   option-(c) header note.
 - **Practice 4 classification receipts on the live declaration
   (mandatory).** Each new sum-typed declaration carries an

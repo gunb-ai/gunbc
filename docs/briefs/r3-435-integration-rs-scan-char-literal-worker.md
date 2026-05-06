@@ -299,8 +299,11 @@ must satisfy:
 - `cargo clippy --all-targets -- -D warnings` clean.
 - ROADMAP row flips Open → Retired with PR sha; ledger row 71 in
   `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` flips Open →
-  Retired with the dissolution shape ("scanner widened to char
-  literals; workaround attractor removed").
+  Retired with the dissolution shape that matches the path taken:
+  Path A — "`IntegrationRsScan` retired; replaced by typed-AST
+  `(LitStr, Ident)` extraction; workaround attractor dissolved";
+  Path B — "scanner widened to char literals (Branch 3 byte-state
+  handling); workaround attractor removed".
 
 ## STOP-AND-ESCALATE
 
@@ -343,10 +346,16 @@ must satisfy:
 4. **Citations live?** `mod.rs:138, 141, 320-326` verified via
    wait-window grep at HEAD (2026-05-05). State enum at `:138`,
    doc comment block at `:320-326`.
-5. **Carrier dissolves the bridge?** Yes — adding `Char` state
-   removes the "byte-constant workaround attractor" the row names;
-   dissolution sentence in ROADMAP is "widen the scanner to model
-   Rust char literals."
+5. **Carrier dissolves the bridge?** Yes — both authorized paths
+   dissolve the "byte-constant workaround attractor" the row
+   names: Path A by retiring `IntegrationRsScan` entirely in favor
+   of typed-AST `(path_attr_literal: LitStr, mod_ident: Ident)`
+   extraction; Path B by widening the existing scanner with a
+   `Char` state. ROADMAP's existing dissolution sentence ("widen
+   the scanner to model Rust char literals") covers Path B
+   verbatim and Path A in spirit (typed reader subsumes char-
+   literal modeling); the retirement receipt names the path
+   taken.
 
 ## Provenance
 
