@@ -33,6 +33,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
   "dsl/std/error_primitives.dag": StdAuthority,
   "dsl/std/algebra.dag": StdAuthority,
   "dsl/std/magnitude.dag": StdAuthority,
+  "dsl/std/machine_constraints.dag": StdAuthority,
   "dsl/std/nat.dag": StdAuthority,
   "dsl/std/integer.dag": StdAuthority,
   "dsl/std/rational.dag": StdAuthority,
