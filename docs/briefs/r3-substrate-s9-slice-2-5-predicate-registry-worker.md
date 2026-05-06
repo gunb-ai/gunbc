@@ -244,8 +244,10 @@ Phase ordering (PR-internal):
    #issuecomment-4390333451 is the design-doc anchor. Worker re-reads
    ratification at dispatch.
 4. **Citations live?** Verified at HEAD post-#1840 merge by Mgr
-   independent grep (above): `dsl/std/integer.dag:133`,
-   `dsl/std/types.dag:255`, PB-1 shim location confirmed.
+   independent grep (above): `dsl/std/integer.dag` declaration of
+   `NonNegativeInt`, `dsl/std/types.dag` declaration of
+   `PositiveInt`, PB-1 shim location confirmed by
+   `lower_type_alias_refinements_phase` doc-block grep.
    Worker re-verifies at dispatch.
 5. **Carrier dissolves the bridge?** Yes — PB-1 shim is the bridge;
    predicate-registry landing is the structural fix; retirement in
