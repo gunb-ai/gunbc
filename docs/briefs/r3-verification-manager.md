@@ -61,7 +61,7 @@ Per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Ret
 - **R2-Evaluator** — PR-A.3 carriers (closed strategy + memoization), PR-B body evaluator (eager baseline), PR-D harness primitives (`DifferentialEquals` runner wiring), PR-E lens application (`fold_lens_over_reflected_program` integration seam).
 - **R2-Grounding** — Shape A 3-target grounding (Rust + Python + Go) for L5 cross-target receipts.
 - **PB Manager continuation** — T-FixedPoint completion (TC3 dependency); T-LensProducer-Retirement (consumed indirectly via TC1 substrate-research strengthening); 3 PB-side bridge slices landing toward ledger-zero.
-- **Substrate Manager continuation** — T-Substrate-Lens-Primitive (TC1/TC2 strengthening; TC3 evaluation-step witness shape per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L165; Lane 3 `Lens<C>` prerequisite); T-CostLens-Composition (Lane 3 cost-related claims); SourceSpan.file participation retirement (Bridge #1).
+- **Substrate Manager continuation** — T-Substrate-Lens-Primitive (TC1/TC2 strengthening; TC3 evaluation-step witness shape per [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L165; Lane 3 `Lens<C>` prerequisite); T-CostLens-Composition (Lane 3 cost-related claims); SourceSpan.file participation retirement (Bridge #1). **T-LBP option (b) + LAS #95:** carve scope (**#81**/**#82**/**#95**) is **canonical** in `r3-structure.md` §"Acceptance", `docs/r4-carve-out-routing.md`, and `docs/design-lens-application-surface.md` §**7** — Verification worker briefs **defer** (**INVARIANTS** §P2).
 
 ## Autonomous dispatch authority
 
@@ -101,7 +101,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 - [`r3-v-pattern-a-rust-dag-isomorphism-v1-worker.md`](r3-v-pattern-a-rust-dag-isomorphism-v1-worker.md) — Pattern-A gate **#14** `rust_dag_isomorphism_executable` (**PRE-AUTH**; Dag-iso / shape-report consumer shell).
 - [`r3-v-tests-as-data-v1-worker.md`](r3-v-tests-as-data-v1-worker.md) — T-Tests-As-Data-Completeness unified dispatch overlay (**PRE-AUTH**; facet-3 + quantifiers + cementing alignment).
 - [`r3-v-t-lbp-narrowed-scope-partner-worker.md`](r3-v-t-lbp-narrowed-scope-partner-worker.md) — T-LBP Verification partner (**PRE-AUTH**; option **(b)** complexity+cost in R3; cementing + register **C3** receipts).
-- [`r3-v-t-lens-application-surface-execution-split-worker.md`](r3-v-t-lens-application-surface-execution-split-worker.md) — T-LAS execution split (**PRE-AUTH**; substrate gates **88–91** vs demonstration **92–95**).
+- [`r3-v-t-lens-application-surface-execution-split-worker.md`](r3-v-t-lens-application-surface-execution-split-worker.md) — T-LAS execution split (**PRE-AUTH**; substrate **88–91** + demos **92–94** for **R3**; **#95** **R4 C1** per structure/plan carve).
 - [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — absorbed-responsibility TC1/TC2/TC3 bundle (NOT a lane; audit-cadence artifact per `r3-structure.md` §"Manager structure" Item 2 3-lane authority).
 
 **Pending (post-spawn manager authors autonomously):**
