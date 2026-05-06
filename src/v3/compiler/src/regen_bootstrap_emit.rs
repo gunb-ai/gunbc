@@ -238,7 +238,7 @@ fn render_type_connective(connective: &TypeConnective) -> String {
             render_arrow_body(body),
         ),
         TypeConnective::Cardinality(payload) => format!(
-            "TypeConnective::Cardinality(CardinalityPayload::new_unchecked({}, {}))",
+            "TypeConnective::Cardinality(CardinalityPayload::new_unchecked_bypassing_idempotence({}, {}))",
             render_declaration_id(payload.element()),
             render_cardinality_bound(&payload.bound()),
         ),
