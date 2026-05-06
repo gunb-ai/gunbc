@@ -78,7 +78,7 @@ Examples 1-7 from `design-emission-model.md` (lines 415-792) are lifted as the s
 
 ### F. P1 substrate-fact-introduction receipts
 
-Worker MUST run the 3-step procedure (`INVARIANTS.md:94-129`) for any new substrate type / variant / field introduced under this lane:
+Worker MUST run the 3-step procedure ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)) for any new substrate type / variant / field introduced under this lane:
 
 - **Step 1 (DAG-ancestor):** the per-axis `Witness<C>` and `TestClaim` carriers — does an ancestor exist in `dsl/std/` or `src/v3/std/`? (`Witness<C>` is from `src/v3/std/dimensions.dag`; `TestClaim` is from `src/v3/std/test_claims.dag` if present, else escalate.)
 - **Step 2 (Coproduct-vs-coordinate):** the test outcome shape — `TestClaim::Pass | Fail(Diagnostic)` is a proper alternative; per-axis verdicts on a single (program, target) inhabitance are coordinates of a record.
@@ -211,6 +211,6 @@ PR body covers: scope (A-F); routing-stability strata (Stratum A name-keyed pari
 - Lens framework: [`docs/design-lens-framework.md`](../design-lens-framework.md) — Q4 four-property entries; `Lens<C>` substrate input shape
 - Sibling lanes: [`t-ground-languagespec.md`](t-ground-languagespec.md) (axis vocabulary), [`t-ground-lifetime-analyzer.md`](t-ground-lifetime-analyzer.md) (structural intent inputs), [`t-ground-diagnostic.md`](t-ground-diagnostic.md) (`EmissionDiagnostic` shape consumed)
 - R3 successor: `T-Verification-L4-L7-Direct` (per `design-emission-model.md:404` — runtime-equivalence companion)
-- Substrate-fact-introduction: [`INVARIANTS.md`](../../INVARIANTS.md) §P1
+- Substrate-fact-introduction: [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness)
 - Brief shape templates: [`t-ground-languagespec.md`](t-ground-languagespec.md), [`t-ground-lifetime-analyzer.md`](t-ground-lifetime-analyzer.md), [`t-ground-diagnostic.md`](t-ground-diagnostic.md)
 - Pilot precedent: `src/v3/grounding_pilot/src/lib.rs:408-460` (Stratum A/B routing-stability seed); receipt at `r2-grounding-manager.md:120` (`pilot_inhabitance_routing_stability_landed` — DONE PR #765)
