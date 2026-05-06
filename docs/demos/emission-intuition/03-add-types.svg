@@ -1,127 +1,105 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1140 760" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 800" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
       .sub { font-size: 12px; fill: #57606a; }
-      .row-label { font-size: 10px; font-weight: 700; fill: #57606a; letter-spacing: 0.10em; }
+      .col-label { font-size: 10px; font-weight: 700; fill: #57606a; letter-spacing: 0.10em; }
       .badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
-      .badge-rust   { fill: #ce422b; }
-      .badge-python { fill: #3776ab; }
-      .badge-dag    { fill: #57606a; }
+      .badge-rust { fill: #ce422b; }
+      .badge-dag  { fill: #57606a; }
       .code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; fill: #1f2328; }
       .card { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
       .card-header { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">Add types.</text>
-  <text x="20" y="48" class="sub">Three types, three small consumers. Same two languages — but each side has more to emit.</text>
+  <text x="20" y="30" class="title">More facts. More consumers.</text>
+  <text x="20" y="48" class="sub">Four types, four small functions. Source on the wings grew a little — the module in the middle grew more.</text>
 
-  <!-- ROW 1: TYPES -->
-  <text x="20" y="78" class="row-label">TYPES — three compositional models</text>
+  <text x="20"   y="78" class="col-label">BUSINESS LOGIC</text>
+  <text x="320"  y="78" class="col-label">RUST — GENERATED</text>
+  <text x="820"  y="78" class="col-label">FACTS</text>
 
-  <rect x="20" y="88" width="320" height="22" class="card-header"/>
+  <!-- LEFT: business logic .dag (4 functions) -->
+  <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
-  <rect x="20" y="110" width="320" height="208" class="card"/>
-  <text x="32" y="130" class="code">type Pair&lt;A, B&gt; {</text>
-  <text x="32" y="148" class="code">  first: A; second: B</text>
-  <text x="32" y="166" class="code">}</text>
-  <text x="32" y="194" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="32" y="212" class="code">    Left  { value: A }</text>
-  <text x="32" y="230" class="code">  | Right { value: B }</text>
-  <text x="32" y="258" class="code">type Option&lt;T&gt; =</text>
-  <text x="32" y="276" class="code">    Some { value: T }</text>
-  <text x="32" y="294" class="code">  | None</text>
+  <rect x="20" y="110" width="280" height="558" class="card"/>
+  <text x="32" y="130" class="code">fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;)</text>
+  <text x="32" y="148" class="code">  -&gt; Pair&lt;B, A&gt; =</text>
+  <text x="32" y="166" class="code">  Pair { first:  p.second,</text>
+  <text x="32" y="184" class="code">         second: p.first }</text>
+  <text x="32" y="218" class="code">fn unwrap_str(</text>
+  <text x="32" y="236" class="code">    s: Sum&lt;Str, Str&gt;) -&gt; Str =</text>
+  <text x="32" y="254" class="code">  match s {</text>
+  <text x="32" y="272" class="code">    Left  { value } =&gt; value</text>
+  <text x="32" y="290" class="code">    Right { value } =&gt; value</text>
+  <text x="32" y="308" class="code">  }</text>
+  <text x="32" y="342" class="code">fn or_else&lt;T&gt;(</text>
+  <text x="32" y="360" class="code">    o: Option&lt;T&gt;, d: T) -&gt; T =</text>
+  <text x="32" y="378" class="code">  match o {</text>
+  <text x="32" y="396" class="code">    Some { value } =&gt; value</text>
+  <text x="32" y="414" class="code">    None           =&gt; d</text>
+  <text x="32" y="432" class="code">  }</text>
+  <text x="32" y="466" class="code">fn unwrap_or&lt;T, E&gt;(</text>
+  <text x="32" y="484" class="code">    r: Result&lt;T, E&gt;, d: T) -&gt; T =</text>
+  <text x="32" y="502" class="code">  match r {</text>
+  <text x="32" y="520" class="code">    Ok  { value } =&gt; value</text>
+  <text x="32" y="538" class="code">    Err { _ }     =&gt; d</text>
+  <text x="32" y="556" class="code">  }</text>
 
-  <rect x="360" y="88" width="380" height="22" class="card-header"/>
-  <text x="372" y="103" class="badge badge-rust">RUST</text>
-  <rect x="360" y="110" width="380" height="208" class="card"/>
-  <text x="372" y="130" class="code">pub struct Pair&lt;A, B&gt; {</text>
-  <text x="372" y="148" class="code">    pub first: A, pub second: B,</text>
-  <text x="372" y="166" class="code">}</text>
-  <text x="372" y="194" class="code">pub enum Sum&lt;A, B&gt; {</text>
-  <text x="372" y="212" class="code">    Left  { value: A },</text>
-  <text x="372" y="230" class="code">    Right { value: B },</text>
-  <text x="372" y="248" class="code">}</text>
-  <text x="372" y="276" class="code">pub enum Option&lt;T&gt; {</text>
-  <text x="372" y="294" class="code">    Some { value: T }, None,</text>
-  <text x="372" y="312" class="code">}</text>
+  <!-- CENTER: generated Rust -->
+  <rect x="320" y="88" width="480" height="22" class="card-header"/>
+  <text x="332" y="103" class="badge badge-rust">RUST</text>
+  <rect x="320" y="110" width="480" height="660" class="card"/>
+  <text x="332" y="130" class="code">pub struct Pair&lt;A, B&gt; { pub first: A, pub second: B }</text>
+  <text x="332" y="158" class="code">pub enum Sum&lt;A, B&gt; {</text>
+  <text x="332" y="176" class="code">    Left  { value: A },</text>
+  <text x="332" y="194" class="code">    Right { value: B },</text>
+  <text x="332" y="212" class="code">}</text>
+  <text x="332" y="240" class="code">pub enum Option&lt;T&gt; {</text>
+  <text x="332" y="258" class="code">    Some { value: T },</text>
+  <text x="332" y="276" class="code">    None,</text>
+  <text x="332" y="294" class="code">}</text>
+  <text x="332" y="322" class="code">pub enum Result&lt;T, E&gt; {</text>
+  <text x="332" y="340" class="code">    Ok  { value: T },</text>
+  <text x="332" y="358" class="code">    Err { error: E },</text>
+  <text x="332" y="376" class="code">}</text>
+  <text x="332" y="414" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;) -&gt; Pair&lt;B, A&gt; {</text>
+  <text x="332" y="432" class="code">    Pair { first: p.second, second: p.first }</text>
+  <text x="332" y="450" class="code">}</text>
+  <text x="332" y="478" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
+  <text x="332" y="496" class="code">    match s {</text>
+  <text x="332" y="514" class="code">        Sum::Left  { value } =&gt; value,</text>
+  <text x="332" y="532" class="code">        Sum::Right { value } =&gt; value,</text>
+  <text x="332" y="550" class="code">    }</text>
+  <text x="332" y="568" class="code">}</text>
+  <text x="332" y="596" class="code">pub fn or_else&lt;T&gt;(o: Option&lt;T&gt;, d: T) -&gt; T {</text>
+  <text x="332" y="614" class="code">    match o { Option::Some{value}=&gt;value, Option::None=&gt;d }</text>
+  <text x="332" y="632" class="code">}</text>
+  <text x="332" y="660" class="code">pub fn unwrap_or&lt;T, E&gt;(r: Result&lt;T, E&gt;, d: T) -&gt; T {</text>
+  <text x="332" y="678" class="code">    match r {</text>
+  <text x="332" y="696" class="code">        Result::Ok  { value }    =&gt; value,</text>
+  <text x="332" y="714" class="code">        Result::Err { error: _ } =&gt; d,</text>
+  <text x="332" y="732" class="code">    }</text>
+  <text x="332" y="750" class="code">}</text>
 
-  <rect x="760" y="88" width="380" height="22" class="card-header"/>
-  <text x="772" y="103" class="badge badge-python">PYTHON</text>
-  <rect x="760" y="110" width="380" height="208" class="card"/>
-  <text x="772" y="130" class="code">@dataclass</text>
-  <text x="772" y="148" class="code">class Pair(Generic[A,B]):</text>
-  <text x="772" y="166" class="code">    first: A; second: B</text>
-  <text x="772" y="194" class="code">@dataclass</text>
-  <text x="772" y="212" class="code">class Left(Generic[A]):  value: A</text>
-  <text x="772" y="230" class="code">class Right(Generic[B]): value: B</text>
-  <text x="772" y="248" class="code">Sum = Union[Left[A], Right[B]]</text>
-  <text x="772" y="276" class="code">@dataclass</text>
-  <text x="772" y="294" class="code">class Some(Generic[T]): value: T</text>
-  <text x="772" y="312" class="code">Option = Union[Some[T], None]</text>
+  <!-- RIGHT: facts .dag (4 type defs) -->
+  <rect x="820" y="88" width="280" height="22" class="card-header"/>
+  <text x="832" y="103" class="badge badge-dag">.dag</text>
+  <rect x="820" y="110" width="280" height="358" class="card"/>
+  <text x="832" y="130" class="code">type Pair&lt;A, B&gt; {</text>
+  <text x="832" y="148" class="code">  first: A</text>
+  <text x="832" y="166" class="code">  second: B</text>
+  <text x="832" y="184" class="code">}</text>
+  <text x="832" y="218" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="236" class="code">    Left  { value: A }</text>
+  <text x="832" y="254" class="code">  | Right { value: B }</text>
+  <text x="832" y="288" class="code">type Option&lt;T&gt; =</text>
+  <text x="832" y="306" class="code">    Some { value: T }</text>
+  <text x="832" y="324" class="code">  | None</text>
+  <text x="832" y="358" class="code">type Result&lt;T, E&gt; =</text>
+  <text x="832" y="376" class="code">    Ok  { value: T }</text>
+  <text x="832" y="394" class="code">  | Err { error: E }</text>
 
-  <!-- ROW 2: LOGIC -->
-  <text x="20" y="358" class="row-label">LOGIC — three small consumers</text>
-
-  <rect x="20" y="368" width="320" height="22" class="card-header"/>
-  <text x="32" y="383" class="badge badge-dag">.dag</text>
-  <rect x="20" y="390" width="320" height="328" class="card"/>
-  <text x="32" y="410" class="code">fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;)</text>
-  <text x="32" y="428" class="code">  -&gt; Pair&lt;B, A&gt; =</text>
-  <text x="32" y="446" class="code">  Pair { first: p.second,</text>
-  <text x="32" y="464" class="code">         second: p.first }</text>
-  <text x="32" y="492" class="code">fn unwrap_str(</text>
-  <text x="32" y="510" class="code">    s: Sum&lt;Str, Str&gt;) -&gt; Str =</text>
-  <text x="32" y="528" class="code">  match s {</text>
-  <text x="32" y="546" class="code">    Left  { value } =&gt; value</text>
-  <text x="32" y="564" class="code">    Right { value } =&gt; value</text>
-  <text x="32" y="582" class="code">  }</text>
-  <text x="32" y="610" class="code">fn or_else&lt;T&gt;(</text>
-  <text x="32" y="628" class="code">    o: Option&lt;T&gt;, d: T) -&gt; T =</text>
-  <text x="32" y="646" class="code">  match o {</text>
-  <text x="32" y="664" class="code">    Some { value } =&gt; value</text>
-  <text x="32" y="682" class="code">    None           =&gt; d</text>
-  <text x="32" y="700" class="code">  }</text>
-
-  <rect x="360" y="368" width="380" height="22" class="card-header"/>
-  <text x="372" y="383" class="badge badge-rust">RUST</text>
-  <rect x="360" y="390" width="380" height="328" class="card"/>
-  <text x="372" y="410" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;)</text>
-  <text x="372" y="428" class="code">  -&gt; Pair&lt;B, A&gt; {</text>
-  <text x="372" y="446" class="code">    Pair { first: p.second,</text>
-  <text x="372" y="464" class="code">           second: p.first }</text>
-  <text x="372" y="482" class="code">}</text>
-  <text x="372" y="510" class="code">pub fn unwrap_str(</text>
-  <text x="372" y="528" class="code">    s: Sum&lt;String, String&gt;) -&gt; String {</text>
-  <text x="372" y="546" class="code">    match s {</text>
-  <text x="372" y="564" class="code">        Sum::Left  { value } =&gt; value,</text>
-  <text x="372" y="582" class="code">        Sum::Right { value } =&gt; value,</text>
-  <text x="372" y="600" class="code">    }</text>
-  <text x="372" y="618" class="code">}</text>
-  <text x="372" y="646" class="code">pub fn or_else&lt;T&gt;(</text>
-  <text x="372" y="664" class="code">    o: Option&lt;T&gt;, d: T) -&gt; T {</text>
-  <text x="372" y="682" class="code">    match o {</text>
-  <text x="372" y="700" class="code">        Option::Some{value}=&gt;value,</text>
-  <text x="372" y="710" class="code">        Option::None=&gt;d } }</text>
-
-  <rect x="760" y="368" width="380" height="22" class="card-header"/>
-  <text x="772" y="383" class="badge badge-python">PYTHON</text>
-  <rect x="760" y="390" width="380" height="328" class="card"/>
-  <text x="772" y="410" class="code">def swap(p: Pair[A, B])</text>
-  <text x="772" y="428" class="code">    -&gt; Pair[B, A]:</text>
-  <text x="772" y="446" class="code">    return Pair(first=p.second,</text>
-  <text x="772" y="464" class="code">                second=p.first)</text>
-  <text x="772" y="492" class="code">def unwrap_str(</text>
-  <text x="772" y="510" class="code">    s: Sum[str, str]) -&gt; str:</text>
-  <text x="772" y="528" class="code">    match s:</text>
-  <text x="772" y="546" class="code">        case Left(value=v):  return v</text>
-  <text x="772" y="564" class="code">        case Right(value=v): return v</text>
-  <text x="772" y="610" class="code">def or_else(</text>
-  <text x="772" y="628" class="code">    o: Option[T], d: T) -&gt; T:</text>
-  <text x="772" y="646" class="code">    match o:</text>
-  <text x="772" y="664" class="code">        case Some(value=v): return v</text>
-  <text x="772" y="682" class="code">        case None_():       return d</text>
-
-  <text x="20" y="745" class="sub">Source grew by <tspan font-style="italic">a few lines per type</tspan>. The right side grew by <tspan font-style="italic">a whole module per language</tspan>.</text>
+  <text x="20" y="790" class="sub">Source on the wings is still scannable. The middle column is doing the heavy lifting.</text>
 </svg>
