@@ -479,6 +479,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // Dissolves when generic runner coverage can execute the claims without a
     // host-side integration harness.
     "src/v3/compiler/tests/integration/r3_free_consequences_second_batch_test.rs",
+    // R3 PB Row-4 corpus seeds (1)–(2): hand-Rust driver for author-now/fire-later
+    // `DifferentialEquals(pb_runtime_evaluate, r2_evaluator_evaluate, …)` TestClaims.
+    // Dissolves when Row-4 producers land and the runner can execute the PB-Runtime /
+    // R2-Evaluator corpus comparison directly without this host-side harness.
+    "src/v3/compiler/tests/integration/r3_pb_runtime_evaluator_corpus_seed_test.rs",
     // R3 L4/L7/L5 skeleton + L7 enum-backed algebra-law matrix: hand-Rust receipt that Lane 1
     // `DifferentialEquals` emit/eval pairing, Lane 2 `AlgebraicLaw::Identity`, and L5
     // `ForAllTargets` compile but defer as `NotYetImplemented`; matrix rows pin current
