@@ -11,8 +11,10 @@ variants are proposed here.
 - Path-grounded sources verified at HEAD with `git cat-file -e`:
   `dsl/std/algebra.dag`, `docs/r3-structure.md`, and
   `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
-- `docs/r3-structure.md:155` and `:189` expand T-V-L4-L7-Direct to exhaustive
-  per-(algebra, inhabitant, law) witness coverage.
+- [`docs/r3-structure.md`](../r3-structure.md) §"Acceptance" — gate row
+  `section_ref_substrate_landed` under **T-Lens-Application-Surface**, and the
+  **Demonstration principle** worked-example row `crdt_cost_basis_demonstrated`,
+  expand T-V-L4-L7-Direct to exhaustive per-(algebra, inhabitant, law) witness coverage.
 - PR #1419 is the direct lineage: it authored 17 enum-backed
   `(algebra, law)` rows for the current `AlgebraicLawKind` surface.
 - `dsl/std/algebra.dag:30-47` defines the law-emergence table;
@@ -29,7 +31,8 @@ variants are proposed here.
 The pair matrix can say "Semiring x Distributivity exists" once, but that
 does not prove every semiring inhabitant has a witness. The motivating bug
 class is PR #1430 section A / the local design receipt at
-`docs/design-cost-lens-sizevar-dimension-wiring.md:233-248`: `SymbolicCost`
+[`docs/design-cost-lens-sizevar-dimension-wiring.md`](../design-cost-lens-sizevar-dimension-wiring.md)
+§"3.2 Where the consumer attaches in the lens": `SymbolicCost`
 normalization treated additive zero and multiplicative zero with one helper,
 so a product containing zero failed to collapse to zero. The invariant is not
 just "Semiring has laws"; it is "`SymbolicCost` as a Semiring inhabitant has
@@ -74,7 +77,7 @@ encoding.
 | Int8/16/32/64/128 | Declared: `dsl/std/integer.dag:50-54`; Rust target rows mirror signed OrderedRing carriers | OrderedRing<Word*> | additive commutativity Wired; multiplicative identity NYI | additive inverse, order compatibility, distributivity P1 | Fixed-width signed rows stay distinct from abstract Int after the construction-chain pivot. |
 | Int | Declared: `dsl/std/integer.dag:83` is `AbelianGroup<GroupCompletion<Nat>>`; kernel profile still maps "Int" to OrderedRingProfile | transitional abstract integer | Abelian-group identity NYI / commutativity Wired if using current enum surface | OrderedRing/Ring residual requires cascade decision; order and distributivity P1 | Audit-sensitive: do not collapse kernel profile and construction-chain alias into one witness without a lane decision. |
 | Float | Profile: `kernel_algebra_profile["Float"] = ApproximateFieldProfile`; denotational Float is ApproximateField | approximate field, not exact Field | exact associativity should not be claimed for floating addition; current enum laws need approximate semantics before fixture use | approximate identity/rounding, reciprocal/division, order laws P1 | Exclude from exact L7 law closure until approximate-law substrate shape exists. |
-| SymbolicCost | Candidate: `docs/design-cost-lens-sizevar-dimension-wiring.md:248-268` proposes `Semiring<SymbolicCost>`; `:427-433` resolves Semiring, not CommutativeSemiring | Semiring<SymbolicCost> candidate | no PR #1419 fixture row yet | annihilation/product-zero, distributivity, add/mul identity P1 | Canonical proof that per-inhabitant coverage is required; author only after the semiring declaration lands. |
+| SymbolicCost | Candidate: [`design-cost-lens-sizevar-dimension-wiring.md`](../design-cost-lens-sizevar-dimension-wiring.md) §"4. SymbolicCost commutative-semiring discipline (product-zero bug class)" proposes `Semiring<SymbolicCost>`; §"8.3 `Dimension<SymbolicCost>` declaration scope for slice 2" resolves Semiring, not CommutativeSemiring | Semiring<SymbolicCost> candidate | no PR #1419 fixture row yet | annihilation/product-zero, distributivity, add/mul identity P1 | Canonical proof that per-inhabitant coverage is required; author only after the semiring declaration lands. |
 
 ## Implications for PR #1419 Fixture Lineage
 
