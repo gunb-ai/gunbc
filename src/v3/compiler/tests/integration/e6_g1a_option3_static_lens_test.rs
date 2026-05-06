@@ -14,11 +14,11 @@
 //! `Violates` arm returns `DimensionFail` with **empty** `violations` / `witnesses` lists — a
 //! fail-closed stub, not a claim that read-channel diagnostics are populated.
 //!
-//! **Witness lists on the Inhabits path:** runtime assembly via std `cons` / `singleton` is not
-//! evaluated in this slice (those std arrows stay `Unparsed` in bootstrap). The fixture keeps
-//! `witnesses` on `DimensionOk` aligned with `empty_witness_int()` so the acceptance test stays
-//! within already-evaluable constructors until list monoid constructor execution is separately
-//! authorized.
+//! **Witness list (Inhabits path):** `DimensionOk.witnesses` is built with the **List sum
+//! variant constructors** `Cons { head: …, tail: … }` and `Empty`, not the std `cons` /
+//! `singleton` **functions** (those arrows remain `Unparsed` in bootstrap and are not
+//! body-evaluable here). That keeps #1844 / #1853 witness-flow acceptance: the same
+//! `Inhabits(c)` payload from the read path feeds both `composed` and the report witness list.
 
 use crate::common::{cached_compile_to_dag, find_list_empty_constructor_tag};
 use v3_compiler::dag::{
@@ -54,6 +54,9 @@ fn mini_validate(d: Dag, c: Int) -> OptionalDiagnostic = NoDiagnostic
 fn empty_witness_int() -> List<Witness<Int>> = Empty
 fn empty_diag_list() -> List<Diagnostic> = Empty
 
+fn witnesses_inhabits(c: Int) -> List<Witness<Int>> =
+  Cons { head: Inhabits(c), tail: Empty }
+
 fn violations_singleton(diag: Diagnostic) -> List<Diagnostic> =
   cons(diag, empty_diag_list())
 
@@ -70,14 +73,14 @@ fn report_dim_ok(d: Dag, c: Int) -> DimensionReport<Int> =
   DimensionOk {
     dimension_name: mini_lens.name,
     composed: c,
-    witnesses: empty_witness_int()
+    witnesses: witnesses_inhabits(c)
   }
 
 fn report_dim_fail(d: Dag, c: Int, diag: Diagnostic) -> DimensionReport<Int> =
   DimensionFail {
     dimension_name: mini_lens.name,
     violations: violations_singleton(diag),
-    witnesses: empty_witness_int()
+    witnesses: witnesses_inhabits(c)
   }
 
 fn report_inhabits_branch(d: Dag, c: Int, od: OptionalDiagnostic) -> DimensionReport<Int> =
@@ -434,35 +437,18 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
         .map(|f| &f.value)
         .expect("witnesses");
     assert!(
-        list_value_is_empty(&dag, witnesses),
-        "read-channel slice uses `empty_witness_int()` until std list monoid constructors are evaluable; expected Empty list Value"
+        value_contains_int_literal(witnesses, 1),
+        "witness list must carry the same `Inhabits(c)` payload as `composed` (c = 1 from mini_read)"
     );
 }
 
-fn list_value_is_empty(dag: &v3_compiler::dag::Dag, v: &Value) -> bool {
-    let list_decl = match dag.declaration_by_name("List") {
-        Some(d) => d.id,
-        None => return false,
-    };
-    let empty_tag = match &dag.declaration(list_decl).connective {
-        v3_compiler::dag::TypeConnective::Disj { variants } => {
-            match variants.iter().find(|x| x.label == "Empty") {
-                Some(f) => f.ty,
-                None => return false,
-            }
-        }
-        _ => return false,
-    };
-    let Value::VariantValue { tag, payload } = v else {
-        return false;
-    };
-    match &dag.declaration(*tag).connective {
-        TypeConnective::Instantiation {
-            template,
-            arguments,
-        } if arguments.len() == 1 => {
-            *template == empty_tag && payload.as_ref() == &Value::RecordValue(vec![])
-        }
-        _ => *tag == empty_tag && payload.as_ref() == &Value::RecordValue(vec![]),
+fn value_contains_int_literal(v: &Value, needle: i64) -> bool {
+    match v {
+        Value::LiteralValue(LiteralBits::Int(i)) => *i == needle,
+        Value::RecordValue(fs) => fs
+            .iter()
+            .any(|f| value_contains_int_literal(&f.value, needle)),
+        Value::VariantValue { payload, .. } => value_contains_int_literal(payload, needle),
+        _ => false,
     }
 }
