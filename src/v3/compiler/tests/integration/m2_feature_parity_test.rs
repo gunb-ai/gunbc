@@ -996,10 +996,15 @@ fn test_db11_type_alias_where_comma_conjoins() {
 #[test]
 fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
     let f = "dsl/std/types.dag";
-    for src in [
-        "type R = Int where range(min: 1)",
-        "type S = String where non_empty, pattern(\"x\")",
-    ] {
+    // Per S9 Slice 2.5 Option A revised (Director RATIFIED at gunbc#828
+    // `issuecomment-4392245968`): `pattern` is structurally absent from the
+    // registry — the pre-Option-A combined spelling
+    // `String where non_empty, pattern("x")` no longer compiles cleanly.
+    // The remaining test exercises a registered predicate over an
+    // alias-friendly carrier (`Int`), which is the parse-coverage shape
+    // this test was originally locking. The full corpus coverage moves
+    // to the predicate-specific cement tests below.
+    for src in ["type R = Int where range(min: 1)"] {
         let _ = cached_compile_to_dag(src, f);
     }
 }
