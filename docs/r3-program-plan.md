@@ -405,7 +405,7 @@ Each retires per its natural-owner program prerequisites. Verification Mgr's `br
 | T-Lens-Application-Surface | YELLOW | `r3-substrate-tests-as-data-carrier-slice-1-stop-ping` | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
 | T-Workflow-As-Data | YELLOW | `r3-v-bridge-row-*` + `design-timing-lens` | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
 | T-Lens-Self-Application | RED | (waits on Workflow-As-Data + LAS) | T-Workflow-As-Data + T-Lens-Application-Surface | post-WAD+LAS |
-| T-Debt-Paydown (standing) | YELLOW | PR #1807 (SG-0 PR-body / diff-reconcile gate; OPEN); PR #1566 (rollup hygiene; OPEN/DRAFT per `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`); Tier-1 dispatch-brief drift sweep (`docs/audit/r3-dispatch-brief-drift-sweep-2026-05-05.md`) verified | per-PR rule + drift-item reconciliation (Q7) + velocity-tripwire reporting cadence + closure-receipt cadence + SG-0 PR-window net-shrink discipline | continuous |
+| T-Debt-Paydown (standing) | YELLOW | PR #1807 merged (SG-0 PR-window discipline); PR #1892 merged (DP1/Q7 ledger↔ROADMAP); PR #1903 merged (§S4 audit receipt on schedule); PR #1566 OPEN/DRAFT (rollup hygiene); Tier-1 dispatch-brief drift sweep verified | §1.8 gate **#75** `pr_anticipation_discipline_ci_active` **DECLARED** (see §1 table); **T-LBP COMPLETE** gates downstream S4 substrate work coordinated outside this lane | continuous |
 
 **Status legend**: GREEN = no open work, awaiting close audit. YELLOW = work in flight. RED = blocked on upstream.
 
