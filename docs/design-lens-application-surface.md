@@ -374,7 +374,7 @@ User-authored `apply_lens(complexity, my_function, Introspect)` is functionally 
 This lane is **cross-program** between Substrate Manager and Verification Manager (per [`docs/r3-structure.md`](r3-structure.md) lane 16):
 
 - **Substrate Manager owns**: the `EnforceableLens<Output, Budget>` / `EnforcedApplication<Output, Budget>` / `IntrospectApplication<Output>` / `SectionRef` / `LensEnforcement<Output, Budget>` parametric carriers in `src/v3/std/lens_application.dag` (EnforceableLens is the bundled authority that EnforcedApplication references — packaging lens + enforcement into ONE substrate authority per P2 single-authority discipline); the compiler-side lens-fold integration (two separate walks — Enforce list reads `enforceable_lens.lens/enforcement`, Introspect list reads `lens` only); per-lens `EnforceableLens` declarations co-located with each lens — these are the canonical bundled authorities apply_lens references (one per lens — complexity, cost, parallelism, effect_enumeration). (No `Lens<C>.budget_type` field — the type parameters Output + Budget are the structural authority on each separate carrier; the EnforceableLens bundle prevents non-canonical lens/enforcement pairings at the application site.)
-- **Verification Manager owns**: the closure-gate TestClaims (`complexity_violation_compile_error_demonstrated`, `crdt_cost_basis_demonstrated`, `memory_peak_cost_basis_demonstrated`, `opt_in_iteration_parallelism_via_lens_application_demonstrated`); cross-target equivalence on lens-application semantics (does Rust-emitted code respect the budget in the same way Python-emitted does?).
+- **Verification Manager owns**: the closure-gate TestClaims (`complexity_violation_compile_error_demonstrated`, `crdt_cost_basis_demonstrated`, `memory_peak_cost_basis_demonstrated`) for **R3**; plus **`opt_in_iteration_parallelism_via_lens_application_demonstrated`** on the **R4** horizon (C1 — schedules with parallelism lens completeness per §7); cross-target equivalence on lens-application semantics (does Rust-emitted code respect the budget in the same way Python-emitted does?).
 
 The split mirrors the existing T-CostLens-Composition split: substrate authors carriers + fold semantics, Verification asserts the demonstrations.
 
@@ -481,9 +481,9 @@ Within T-Lens-Application-Surface lane (per [`docs/r3-structure.md`](r3-structur
 3. **Worked example #1: complexity contract** (`complexity_violation_compile_error_demonstrated`). TestClaim per §4.1.
 4. **Worked example #2: CRDT cost basis** (`crdt_cost_basis_demonstrated`). TestClaim per §4.2.
 5. **Worked example #3: memory-peak cost basis** (`memory_peak_cost_basis_demonstrated`). TestClaim per §4.3.
-6. **Worked example #4: opt-in parallelism** (`opt_in_iteration_parallelism_via_lens_application_demonstrated`). TestClaim per §4.4.
+6. **Worked example #4: opt-in parallelism** (`opt_in_iteration_parallelism_via_lens_application_demonstrated`). TestClaim per §4.4 — **R4 horizon**: requires **`parallelism_lens_behaviorally_complete`** (C1) per §7; schedules **after** worked examples **1–3** (plan gates **92–94**) land for **R3**.
 
-Steps 1-2 are sequential (carriers must exist before fold-pass consumes them). Steps 3-6 are parallel-dispatchable (each is an independent worked example referencing the same fold-pass infrastructure).
+Steps 1-2 are sequential (carriers must exist before fold-pass consumes them). Steps 3-5 are parallel-dispatchable for **R3** (each is an independent worked example referencing the same fold-pass infrastructure). Step **6** schedules with **R4** parallelism parity — **not** R3-conjunction load-bearing (§7).
 
 Total estimate (per L-XL sizing in the lane row): substrate carriers + fold-pass = M-L; 4 worked examples = M each in parallel = L overall. End-to-end: 4-6 weeks worker time at standard R3 cadence.
 
