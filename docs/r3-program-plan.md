@@ -25,19 +25,19 @@ Each predicate has a passing TestClaim against representative input, producing a
 
 | Predicate | TestClaim gate | Owner Lane |
 |---|---|---|
-| BridgeLedgerZero | `bridge_retirement_ledger_zero` | T-Bridge-Retirement (existing — `r3-structure.md` §"Acceptance" line 115) |
+| BridgeLedgerZero | `bridge_retirement_ledger_zero` | T-Bridge-Retirement (existing — `r3-structure.md` §"Acceptance" → T-Bridge-Retirement gates) |
 | RustDagIsomorphism | `rust_dag_isomorphism_executable` | T-V-L4-L7-Direct (cross-target consistency) |
 | SymbolicCostExprEquals | `symbolic_cost_expr_equals_executable` | T-CostLens-Composition |
 | TC1 (η-equivalence) | `tc1_eta_equivalence_executable` | T-V-L4-L7-Direct |
 | TC2 (Church-Rosser) | `tc2_church_rosser_executable` | T-V-L4-L7-Direct |
 | TC3 (Pattern-A second-mover) | `tc3_pattern_a_second_mover_executable` | T-V-L4-L7-Direct |
-| Free-Consequences-Demonstration | (composite of 10 gates, `r3-structure.md` §"Acceptance" line 119–129) | T-Free-Consequences-Demonstration |
+| Free-Consequences-Demonstration | (composite of 10 gates, `r3-structure.md` §"Acceptance" → T-Free-Consequences-Demonstration gates) | T-Free-Consequences-Demonstration |
 
 Existing fixtures in `r3-v-pattern-a-coverage-rollup.md` + `r3-v-pattern-a-second-mover-conformance-audit.md` series document predicate scaffolds. **Open** (Verification Mgr canvas escalation #1, §10): which executable slice fires first.
 
 ### §1.2 v2 fully retired (2 predicates — already declared)
 
-Existing gates (`r3-structure.md` §"Acceptance" lines 117–118):
+Existing gates (`r3-structure.md` §"Acceptance" → T-V2-Retirement gates):
 - `v2_oracle_no_remaining_test_consumers`
 - `v2_directory_deleted`
 
@@ -45,10 +45,10 @@ Owner: PB Mgr (T-V2-Retirement lane). No new predicates needed.
 
 ### §1.3 BridgeLedgerZero ratcheting at zero (1 predicate — already declared)
 
-Existing gate (`r3-structure.md` §"Acceptance" line 115):
+Existing gate (`r3-structure.md` §"Acceptance" → T-Bridge-Retirement gates):
 - `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining.
 
-Owner: Verification Mgr (ledger gate); retirement work distributed per `r3-structure.md` line 152 distribution map (2 Substrate-owned + 3 PB-owned).
+Owner: Verification Mgr (ledger gate); retirement work distributed per `r3-structure.md` §"Lane structure" → T-Bridge-Retirement row (2 Substrate-owned + 3 PB-owned).
 
 ### §1.4 5 substrate-gap classes closed (5 predicates — NEW; Brian-ratified scope)
 
@@ -79,7 +79,7 @@ R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown
 **Demonstration discipline:**
 - Static-fact gate (e.g., `X declared in std/`) is necessary but not sufficient.
 - Demonstration gate runs the feature on a representative input and produces an observable result.
-- "Look, it runs" minimal artifact per `r3-structure.md` §"R3 demo discipline" line 487.
+- "Look, it runs" minimal artifact per `r3-structure.md` §"R3 demo discipline + omni-emission TDD".
 - Closure ledger reports demonstration-gate status separately from substrate-shape gates.
 
 **Per-lane demonstration audit** (PM-recommended; ratification pending):
@@ -132,7 +132,7 @@ For each predicate not yet GREEN, what's blocking + sequence to close.
 
 **Blockers** (per Grounding Mgr canvas, bold-ferret-748, item #2): PR-F (`BoundDeclaration` consumer + Rust `ReferenceModel<T>` axes) blocks T-Ground-Rust; T-NumericConstruction-ApproximateField blocks Rust float rows.
 
-**Sequence** (from `r3-structure.md` §"Lane structure" T-V2-Retirement row, line 154):
+**Sequence** (from `r3-structure.md` §"Lane structure" → T-V2-Retirement row):
 1. T-FixedPoint completes (PB Mgr) — `compiler.dag` self-compile fixed-point
 2. T-LensProducer-Retirement completes (PB Mgr) — 3 hand-Rust files retired
 3. PR-F lands (T-Ground-Rust unblocks)
@@ -143,7 +143,7 @@ For each predicate not yet GREEN, what's blocking + sequence to close.
 
 ### §2.3 BridgeLedgerZero (1 predicate)
 
-**Sub-bridges** (`r3-structure.md` line 152 distribution map):
+**Sub-bridges** (`r3-structure.md` §"Lane structure" → T-Bridge-Retirement row distribution map):
 - **Substrate-owned (2)**: `SourceSpan.file` participation checks; `mark_bootstrap_secret_nominal_opacity()`
 - **PB-owned (3)**: canonical lens-name dispatch; `include_str!` side channels (e.g., `pipeline_authority.rs`); `patch_lower_helpers_*` residual
 
@@ -210,7 +210,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 **Representative gap-test**: TBD via Substrate canvas. Candidate: `Int<N>` refinement parsing + lowering through stage0 emission.
 
-**Closes via**: T-V2-Retirement parser path (post-T-FixedPoint) + Substrate parser continuation work (cited in `r3-structure.md` line 149 T-Numeric-Construction T-V2-Retirement coordination dependency).
+**Closes via**: T-V2-Retirement parser path (post-T-FixedPoint) + Substrate parser continuation work (cited in `r3-structure.md` §"Lane structure" → T-Numeric-Construction row, T-V2-Retirement coordination dependency).
 
 **Owner Mgr**: PB Mgr (T-V2-Retirement scope) coordinating with Substrate Mgr (parser substrate carriers).
 
@@ -242,7 +242,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 **Representative gap-test**: CI workflow modeled as `.dag` data executes through evaluator + produces `DimensionReport<TimingMeasurement>` (gate `ci_workflow_modeled_as_dag`).
 
-**Closes via**: T-Workflow-As-Data + T-Lens-Self-Application (per `r3-structure.md` line 134, 160).
+**Closes via**: T-Workflow-As-Data + T-Lens-Self-Application (per `r3-structure.md` §"Acceptance" → T-Workflow-As-Data gates + §"Lane structure" → T-Workflow-As-Data row).
 
 **Owner Mgr**: Substrate Mgr (substrate authoring) + Verification Mgr (demonstration).
 
@@ -252,7 +252,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 **Representative gap-test**: `lens_apply.rs` reflection routes via PB-Runtime interpreter-as-data; reflection-as-data substrate exercised end-to-end.
 
-**Closes via**: T-LensProducer-Retirement (`lens_apply_dot_rs_retired`) + advanced lifetime-analyzer cases d/e/f (per `r3-structure.md` line 145).
+**Closes via**: T-LensProducer-Retirement (`lens_apply_dot_rs_retired`) + advanced lifetime-analyzer cases d/e/f (per `r3-structure.md` §"Lane structure" → T-LensProducer-Retirement row).
 
 **Owner Mgr**: PB Mgr (T-LensProducer-Retirement scope).
 
@@ -266,17 +266,17 @@ Plus 35 v3 std mirror entries + 112 R2/R3-era PRs.
 
 This plan section reports cumulative bridge counts; PR #1804 holds the per-row inventory.
 
-**Phase 2 inventory snapshot** (compiled 2026-05-06):
+**Phase 2 inventory shape** (counts populate post-canvas-completion; **expected ranges** below are pre-Phase-2-completion estimates from Director's bridge-class framework, NOT compiled facts — see PR #1804 for authoritative per-row inventory as canvases land):
 
-- **Class A (substrate-gap-blocked)**: ~15-20 bridges expected; Phase 2 enumeration in progress.
-- **Class B (Pattern-A NYI predicates)**: 7 — TC1, TC2, TC3, free-consequences, RustDagIsomorphism, BridgeLedgerZero, SymbolicCostExprEquals.
-- **Class C (Pattern-C typed-carrier + Rust-mirror)**: ~6+ — EmissionDiagnostic, Value, EvalStrategy, BridgeLedgerRef, target-primitive routing, others TBD.
-- **Class D (generated bridges with freshness gates)**: ~3-5 — `render_repeat_string_bootstrap.dag`, `generated_method_template_projection.rs`, others.
-- **Class E (v2/v3 transition)**: ~50-100 — covered by T-V2-Retirement scope.
-- **Class F (operator-ontology-duplication)**: ~3-5 — TBD.
-- **Class G (local-small)**: ~10-20 — distributed across lanes.
+- **Class A (substrate-gap-blocked)**: expected range ~15-20 bridges; awaiting Mgr canvas enumeration.
+- **Class B (Pattern-A NYI predicates)**: count = 7 (this count IS authoritative — predicates pre-named in framework): TC1, TC2, TC3, free-consequences, RustDagIsomorphism, BridgeLedgerZero, SymbolicCostExprEquals.
+- **Class C (Pattern-C typed-carrier + Rust-mirror)**: expected range ~6+ — EmissionDiagnostic, Value, EvalStrategy, BridgeLedgerRef, target-primitive routing pre-named; others awaiting canvas.
+- **Class D (generated bridges with freshness gates)**: expected range ~3-5 — `render_repeat_string_bootstrap.dag`, `generated_method_template_projection.rs` pre-named; others awaiting canvas.
+- **Class E (v2/v3 transition)**: expected range covered by T-V2-Retirement scope (not enumerated per-bridge here; v2 retirement closure subsumes).
+- **Class F (operator-ontology-duplication)**: expected range — awaiting canvas.
+- **Class G (local-small)**: expected range — distributed across lanes; awaiting canvas.
 
-**Total bridges at R3 close**: 0 (per `bridge_retirement_ledger_zero` + 5 substrate-gap-class closure gates). Each bridge has a named dissolution trigger; bridges without triggers escalate to substrate gap requiring named R3 lane (per `r3-debt-sweep-2026-05-06.md` §4 anticipation discipline).
+**Authoritative counts populate via PR #1804 §1.A–§1.G as Mgr canvases land**. Net-bridge count at R3 close is 0 (per `bridge_retirement_ledger_zero` + 5 substrate-gap-class closure gates). Each bridge has a named dissolution trigger; bridges without triggers escalate to substrate gap requiring named R3 lane (per [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) §4 anticipation discipline).
 
 **Drift items from Phase 2 sweep** (3 known; surfaced for §10 reconciliation):
 - `#1638` ROADMAP retired but ledger Open
@@ -287,7 +287,7 @@ This plan section reports cumulative bridge counts; PR #1804 holds the per-row i
 
 ## §6. Dependency DAG — current → close
 
-**Authority**: `r3-structure.md` §"Dependency DAG" (line 214) holds canonical dependency shape.
+**Authority**: `r3-structure.md` §"Dependency DAG" holds canonical dependency shape.
 
 This section adds **forward-looking critical-path pointer**: from current state (2026-05-06) to R3 close.
 
@@ -345,7 +345,7 @@ Plus the parallel longest-path: **T-V2-Retirement** depends on T-FixedPoint + T-
 
 ## §7. PR-authoring contract
 
-Per R3 Debt-Paydown standing program (`r3-structure.md` §"Standing program — R3 Debt-Paydown" line 176 + INVARIANTS §P5):
+Per R3 Debt-Paydown standing program (`r3-structure.md` §"Standing program — R3 Debt-Paydown" + INVARIANTS §P5):
 
 ### §7.1 Per-PR debt-receipt
 
@@ -384,7 +384,7 @@ Per `feedback_corrections_must_grep_verify_source`: any correction-of-a-relay mu
 
 ### §8.1 Cross-Mgr queue
 
-Standard cross-Mgr queue per `r3-structure.md` §"Manager structure" line 196: blockers route through Director when:
+Standard cross-Mgr queue per `r3-structure.md` §"Manager structure": blockers route through Director when:
 - Cross-program scope conflict (e.g., who owns a bridge straddling two lanes)
 - Lane definition disagreement
 - Closure-gate-predicate disagreement

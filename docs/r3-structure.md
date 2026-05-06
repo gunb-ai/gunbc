@@ -136,6 +136,23 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `lens_self_application_demonstrated` — gunbc lenses (cost / complexity / parallelism / timing) applied to gunbc's own build/CI workflow (modeled as `.dag` data per T-Workflow-As-Data); produces `DimensionReport<C>` for each lens; demonstrates that the same lens framework users get also validates the workflow that produces gunbc itself
   - `apply_lens_self_application_demonstrated` — `apply_lens(timing, ci_workflow, Enforce { budget: max_ns })` enforced via existing `EnforcedApplication<Output, Budget>` carrier (per T-Lens-Application-Surface §2 + §3.2); fail-closed when observation reports `Missing | Ambiguous | Stale` per timing-lens design; demonstrates that user-authored apply_lens substrate generalizes to project-self-validation use case
   - `recursive_flex_demonstration_landed` — narrative-load-bearing thesis claim cashes in worked instance: *"the compiler that compiles gunbc programs validates the workflow that produces gunbc itself."* Compiler-people read this as the categorical move that the lens framework isn't just for user code — it applies recursively to gunbc's own runtime behavior. Either emit-back-to-CI-YAML (bidirectional case via T-Workflow-As-Data) OR direct execution. <1 min CI target tracked as informational SLO; **not a closure gate** (per Director ratification 2026-05-04 — performance metric, not structural commitment)
+- **Substrate-gap-class closure** (NEW 2026-05-06; per Brian directive at [gunbc#846](https://github.com/gunb-ai/gunbc/issues/846); closure-criteria over existing lane work, NOT new separate lanes — added without expanding R3 lane count). Five class-level closure gates ratifying that R3 close requires a representative gap-test executing through v3 cleanly per substrate-gap class. Per [`docs/r3-program-plan.md`](r3-program-plan.md) §1.4 + §4.
+  - `substrate_gap_parser_grammar_closed` — v3 parser handles `Int<N>` refinement syntax and lowers through stage0 emission without v2-fallback; gate Pass = Int<N>-bearing program produces 0 diagnostics + emitted artifact compiles. Closes via T-V2-Retirement parser path + T-Numeric-Construction (Int<N> refinement) + Substrate continuation
+  - `substrate_gap_function_valued_data_closed` — `Lens<C>` instance with function-typed payload executes through evaluator and produces `DimensionReport<C>` without Rust mediation. Closes via T-Lens-Application-Surface + T-E-P-Producer-Broadening
+  - `substrate_gap_file_ingestion_closed` — One `.dag` program ingests external file (timing observation set, JSON config) without `include_str!`; exercises file-ingestion grammar. Closes via T-Workflow-As-Data
+  - `substrate_gap_workflow_scheduling_closed` — CI workflow modeled as `.dag` data executes through evaluator + produces `DimensionReport<TimingMeasurement>`. Closes via T-Workflow-As-Data + T-Lens-Self-Application
+  - `substrate_gap_reflection_closure_closed` — `lens_apply.rs` reflection routes via PB-Runtime interpreter-as-data; reflection-as-data substrate exercised end-to-end. Closes via T-LensProducer-Retirement
+- **Demonstration principle** (NEW 2026-05-06; per Brian directive at [gunbc#846](https://github.com/gunb-ai/gunbc/issues/846): *"any feature we make should come with a demonstration"*; generalizes T-Free-Consequences-Demonstration framing to all R3 lanes; per [`docs/r3-program-plan.md`](r3-program-plan.md) §1.6). Each R3 lane MUST include at least one runtime-executable demonstration gate (a claim that exercises the lane's deliverable end-to-end, not just static-fact assertions about substrate shape). Existing demonstration-shaped gates (e.g., `pb_self_compile_fixed_point`, `omni_openapi_backend_emission_demo`, T-Free-Consequences-Demonstration's 10 gates, `lens_self_application_demonstrated`) satisfy this where present. New demonstration gates added per per-lane audit:
+  - `tier3_dissolution_demonstration_executes` — at least one Tier3-mirror-consumer `.dag` program runs end-to-end via Evaluator
+  - `lens_producer_retirement_demonstration` — `lens_apply` reflection routes via PB-Runtime on representative lens program
+  - `numeric_construction_demonstration` — end-to-end program using `Int<32>` + `Real<64>` round-trip executes
+  - `anthropic_wire_demonstration` — full request/response cycle executes against Anthropic API or mock
+  - `bridge_retirement_demonstration` — at least one retired-bridge replacement path executes (e.g., typed-identity-surface used in production code)
+  - `cost_lens_demonstration` — cost lens reads representative target program and composes algebra+realization cost end-to-end
+  - `v2_retirement_demonstration` — bootstrap path through PB-Runtime trampoline executes (the v3-only path runs end-to-end after v2 deletion)
+  - `e_p_producer_demonstration` — representative call site produces full descent evidence at runtime
+  - `lens_behavioral_parity_demonstration` — each lens (complexity / cost / parallelism / effect_enumeration) demonstrates on representative input + matches v2 oracle
+  - `tests_as_data_demonstration` — at least one Rust test ports to `.dag` TestClaim and executes via Evaluator
 
 ## Lane structure
 
@@ -450,6 +467,8 @@ This split resolves the prior single-authority drift between `:38` (non-gated la
 ## R3 closure criteria
 
 **All R3 gates green per `### Acceptance — .dag gates` section above.** R3 closes when each lane's TestClaim evaluates true at release.
+
+**Brian-ratified closure-criteria framing** (per [gunbc#846](https://github.com/gunb-ai/gunbc/issues/846), 2026-05-05): *"all 5 substrate-gap classes closed + v2 fully retired + Pattern A NYI predicates executable + BridgeLedgerZero ratcheting at zero + every feature comes with a demonstration."* This framing is structurally satisfied by the gate set in §"Acceptance" + the substrate-gap-class closure block + the demonstration principle block. See [`docs/r3-program-plan.md`](r3-program-plan.md) §1 for forward-looking per-predicate close path + §10 escalation register.
 
 **ROADMAP authority single source.** Once R3 promotes to ROADMAP as `## Release R3 Program`, gate semantics are owned there. r3-structure.md is the pre-promotion authority; ROADMAP is post-promotion authority.
 
