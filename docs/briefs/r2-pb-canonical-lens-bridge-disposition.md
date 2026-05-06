@@ -78,6 +78,6 @@ Either path is a substrate-level change outside PB authoring authority. PB terri
 - T-Bridge-Retirement distribution map: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Retirement row.
 - Adjacent worker brief (already-retired §0.1/§0.2 carriers): [`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md).
 - Identity-carrier substrate pass: [`b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-substrate-pass.md).
-- Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94` §"Procedure: substrate-fact introduction".
+- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
 - P2 cross-`Dag` reflection invariant (the constraint that holds the bridge in place): `INVARIANTS.md` §P2; runtime comment block at `src/v3/compiler/src/test_runner.rs:1762-1772` + `:1832-1833`.
 - Gating R3 lane: T-LensProducer-Retirement (PB-Runtime interpreter-as-data sub-gate); see [`r3-structure.md`](../r3-structure.md) §"Lane structure".
