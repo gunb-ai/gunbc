@@ -1,231 +1,228 @@
 ---
-status: PROPOSAL (worker brief; PM-authored under tactical authority per Director ratification 2026-05-06; **NOT dispatch-ready** pending Substrate Mgr canvas on Lens<C> read-shape question raised by codex BLOCKING 2026-05-06; dispatch-readiness assessed by Substrate Mgr)
+status: queued (worker brief; revised by Substrate Mgr per Director Q1 (a) RATIFICATION at gunbc#1739 #issuecomment-4392562911 (2026-05-06); supersedes earlier PM-authored PROPOSAL — PR #1902 merged then revised here. Dispatch fires post-T-Rule-Enumeration landing on main.)
 authority parent: R3 Substrate Manager (#1739)
-ratification: Director ratified scope at gunbc#828 #issuecomment-4392256151 (zesty-bear-812 — "Lens<EmissionProvenance> as another Lens<C> instance per feedback_lenses_not_passes; Substrate authors instance carrier; Verification asserts gate"); Brian directive 2026-05-06 chat ("R3 has idle workers under several managers, so we should put them to work asap")
-roadmap row: **TBD — gate authority pending** per codex BLOCKING 2026-05-06; no #89 (already taken by `section_ref_substrate_landed` under T-Lens-Application-Surface). Candidate retargets per Substrate Mgr disposition: (a) new gate added to T-CostLens-Composition lane scope (analogous to existing #37-#40 cluster); (b) new gate added to T-Lens-Application-Surface lane scope; (c) deferred until per-Behavior framing ratified
+ratification: Q1 (a) per-Behavior Lens<C>-compatible RATIFIED at gunbc#1739 #issuecomment-4392562911 (zesty-bear-812, 2026-05-06). Q1 (b) per-line instrumentation REJECTED. Q1 (d) parallel substrates REJECTED. Q3: gate `emission_provenance_lens_landed` under T-CostLens-Composition cluster.
+roadmap row: §1.8 ledger row TBD slot — gate `emission_provenance_lens_landed` under T-CostLens-Composition cluster per Director Q3 ratification
 authority docs:
-  - src/v3/std/lens.dag — `Lens<C>` substrate carrier (Director-locked 6-field shape; **`read: fn(Dag, Behavior) -> Witness<C>`** — per-Behavior read; codex BLOCKING 2026-05-06 surfaced category mismatch with per-emitted-line goal)
-  - src/v3/compiler/src/diagnostics_generated.rs:5 — `SourceSpan { file, byte_start, byte_end }` shape
-  - src/v3/compiler/src/dag.rs:47-48 — "SourceSpan lives on every Behavior and every Declaration structurally"
-  - docs/design-lens-framework.md — lens framework parent doc
-  - docs/r3-design-schedule-2026-05-06.md — pre-authored brief queue discipline (Brian directive 2026-05-06)
+  - gunbc#1739 #issuecomment-4392562911 (Director Q1+Q2+Q3 RATIFICATION)
+  - docs/briefs/r3-substrate-emission-provenance-shape-canvas.md (Substrate Mgr canvas; parent)
+  - docs/briefs/r3-substrate-t-rule-enumeration-worker.md (PREREQUISITE — must land first)
+  - src/v3/std/lens.dag (Lens<C> Director-locked 6-field carrier)
+  - PR #1879 (emission-intuition slide — visualization consumer)
 gates:
-  - TBD per Substrate Mgr canvas — not landed in §1.8 ledger
+  - `emission_provenance_lens_landed` (proposed §1.8 row; slot pending T-CostLens-Composition cluster)
+worker pin: TBD (queued post-T-Rule-Enumeration landing; smart-ram-167 likely on T-Rule-Enumeration so valiant-ibex-312 likely takes this — Mgr discretion at dispatch)
 ---
 
-## STATUS — PROPOSAL pending Substrate Mgr canvas (codex BLOCKING 2026-05-06)
-
-Codex BLOCKING review at sha `3c96212d` (PR #1902) surfaced 3 valid findings:
-
-1. **Optional+invariant origin → typed-sum origin** (applied below; structural fix per `feedback_state_space_vs_behavioral_invariants`)
-2. **Lens<C> reads (Dag, Behavior) → Witness<C>; emission provenance is per-line, not per-Behavior** (category mismatch — substantive Substrate Mgr canvas territory; brief stays PROPOSAL until ratified)
-3. **§1.8 #89 already taken by `section_ref_substrate_landed`** (gate authority retargeting required; PM grep-error)
-
-**The load-bearing finding is #2**: this brief framed emission-provenance as `Lens<EmissionProvenance>`, but the Lens<C> read shape is per-Behavior, not per-emitted-line. Two reframings possible:
-
-- **(a) Per-Behavior provenance** (Lens<C>-compatible): "for Behavior B, the emitted lines are [line-range / fold-rule] tuples." Lens<C> reads (Dag, Behavior) → Witness<List<EmissionAttribution>>. Narrower scope but structurally faithful. Doesn't directly give the slide visualization Brian wanted.
-- **(b) Per-emitted-line instrumentation** (NOT a lens): emission-fold instrumentation that runs DURING emission and records per-line origin. Different substrate shape entirely; matches Brian's slide visualization need; not a `Lens<C>` instance.
-- **(c) Withdraw brief**: pre-canvas the question via Substrate Mgr canvas first; re-author brief once shape ratified.
-
-PM read: recommend **(c)** — withdraw + canvas first. Brief was authored before this category mismatch was surfaced; substantive reshape needs Substrate Mgr substrate-state-grep + Director ratification on the right shape, not PM-tier pre-authoring.
-
-# R3 Substrate — `Lens<EmissionProvenance>` worker brief
+# R3 Substrate — `Lens<List<EmissionProvenance>>` worker brief (per (a) per-Behavior framing)
 
 ## Context
 
-PR #1879 (emission-intuition slide) surfaced that the structural fold's
-emitted output is currently uncolored — there is no metadata stream
-correlating each line of generated target-language code back to either
-its `.dag` source span (when directly mirrored from a Behavior /
-Declaration) OR the LangSpec fold-rule that produced it (when
-auto-emitted, e.g., `#[derive(...)]`, `impl X { is_left }` predicates,
-constructor accessors).
+Director Q1 (a) RATIFIED at gunbc#1739 #issuecomment-4392562911:
+per-Behavior Lens<C>-compatible framing. Reasoning per Director:
 
-Forward-direction span tracking already exists structurally — every
-`Behavior` and `Declaration` carries a `SourceSpan { file, byte_start,
-byte_end }` per `diagnostics_generated.rs:5`, and "Spans flow forward
-through lowering; no side tables, no reconstruction" per `dag.rs:47-48`.
-Diagnostics consume these for compile-error reporting.
+> `feedback_lenses_not_passes`: analyses are lenses over physics; zero
+> heuristics; heuristic = missing physics. Emission-provenance IS
+> analysis (which lines came from where); the right substrate shape
+> is a lens over physics, not runtime instrumentation.
 
-The inverse direction — "this emitted line came from THAT `.dag`
-declaration / OR from THIS LangSpec rule" — is **implicit in the fold**
-(each emitted item is produced by a specific Conj/Disj structure +
-LangSpec rule mapping) but **not currently exposed as a metadata
-stream**.
+> `feedback_compositional_not_templating`: don't materialize parallel
+> structures when one composes correctly. (a) composes; (b) is
+> instrumentation that drops compositional structure.
 
-Per `feedback_lenses_not_passes` ("analyses are lenses over physics;
-zero heuristics; heuristic = missing physics"): emission-provenance
-fits naturally as **`Lens<EmissionProvenance>` over the structural
-fold** — analogous to `Lens<SymbolicCost>` over algebra+realization
-cost (T-CostLens-Composition pattern). Same `Lens<C>` shape; new `C`
-type. No new substrate carrier shape required — only a new instance.
+(b) per-line instrumentation REJECTED; (d) parallel-substrates
+REJECTED — Brian's slide visualization is served by (a) projection
+(per-Behavior list flattens to per-line view at the visualization
+layer), not parallel substrate.
 
-## Slice
+This brief revises the earlier PM-authored proposal (PR #1902 merged
+at 54419badf, but the brief shape needed Substrate Mgr canvas + Director
+re-ratification per the codex BLOCKING category-mismatch finding).
 
-### Phase 1 — `EmissionProvenance` `C`-type declaration
+## Precondition gate
 
-Author `EmissionProvenance` carrier in `src/v3/std/` (alongside other
-`Lens<C>` instance C-types). Shape:
+**T-Rule-Enumeration MUST land first** per Director Q1 reasoning:
+
+> Without T-Rule-Enumeration: emission is opaque to the static lens;
+> (a) reads as "per-Behavior list of unknown provenance." That's not
+> honest.
+>
+> With T-Rule-Enumeration: emission becomes a `.dag` algebra over
+> Behavior + LangSpec rule data; static lens can fold it; (a) returns
+> honest per-line provenance.
+
+Brief dispatches when:
+1. T-Rule-Enumeration substrate-fact-introduction lands on main (gate
+   `langspec_emission_rules_enumerable_data` advances DECLARED →
+   CONSUMER_LANDED) — see `docs/briefs/r3-substrate-t-rule-enumeration-worker.md`
+2. Worker re-greps `src/v3/` to confirm rule-name carrier exists +
+   emission code dispatches via named-rule lookup
+
+If precondition is missing at dispatch, STOP and surface — this brief
+consumes T-Rule-Enumeration substrate; not a substrate-producer on
+the rule-enumeration axis.
+
+## Scope
+
+### Deliverable 1 — `EmissionProvenance` + `EmissionOrigin` carriers
+
+Author carriers in `src/v3/std/`. Per codex Finding 1 reshape (typed-sum
+origin, NOT optional-pair-with-runtime-invariant — applied in PR #1902
+at 0110f739d before supersession):
 
 ```dag
-// Typed origin sum — codex BLOCKING 2026-05-06 finding 1: provenance origin
-// must be a non-empty typed authority, NOT optional coordinates with a
-// runtime-asserted "at-least-one" invariant. Per
-// feedback_state_space_vs_behavioral_invariants: type enforcement > API enforcement.
-type EmissionOrigin =
-    SubstrateDeclMirror { span: SourceSpan }       // line directly mirrors a .dag Behavior / Declaration
-  | FoldRuleAutoEmit { rule_name: String }         // LangSpec auto-emitted (e.g., "rust.derive_for_disj")
+type EmissionOrigin = SubstrateDeclMirror(SourceSpan) | FoldRuleAutoEmit(EmissionRule)
 
 type EmissionProvenance {
-  emitted_line: Int     // line number in emitted target output
-  origin: EmissionOrigin   // REQUIRED, typed sum — fail-closed by construction
+  emitted_line: Int      // line number in emitted target output
+  origin: EmissionOrigin // structural fail-closed: every entry HAS an origin
 }
 ```
 
-**Structural fail-closed (per codex BLOCKING finding 1 + `feedback_state_space_vs_behavioral_invariants`)**: the `Disj` carrier `EmissionOrigin` makes "at least one origin class is present" structurally true by construction; no runtime invariant required. Eliminates the structural-recovery pattern from the prior optional+invariant shape.
+`EmissionRule` is the carrier landed by T-Rule-Enumeration (α sum type
+or β named-string lookup, whichever shape T-Rule-Enumeration ratified).
+Worker imports the rule-name carrier verbatim; brief does NOT re-author it.
 
-### Phase 2 — `Lens<EmissionProvenance>` instance authoring
+**Practice 4 classification**: 🟢 PRIMITIVE — `EmissionOrigin` is a
+closed sum type with structural enumeration; both arms have non-trivial
+carriers. No SCAFFOLD or dissolution trigger needed (typed-sum makes
+"both-absent" structurally impossible — earlier optional-pair-with-runtime-
+assertion C-8 check is now structural).
 
-Author the lens instance per existing `Lens<C>` 6-field shape
-(`src/v3/std/lens.dag` Director-locked):
-- `read: fn(Dag, Behavior) -> Witness<EmissionProvenance>`
-- `validate: fn(...) -> ...`
-- ... (remaining 4 fields per existing T-CostLens-Composition precedent;
-  worker greps the `Lens<SymbolicCost>` instance for shape parity)
+### Deliverable 2 — `Lens<List<EmissionProvenance>>` instance
 
-Per `Witness<C>` semantics (NOT `C`): missing per-Behavior provenance
-surfaces as `Violates` rather than silent None — matches the C-8
-discipline above structurally.
+Author lens instance per Director-locked 6-field shape:
 
-### Phase 3 — Cementing test (acceptance criterion)
+- `name: "EmissionProvenance"` (or canonical project-naming convention)
+- `read: fn(Dag, Behavior) -> Witness<List<EmissionProvenance>>` —
+  per-Behavior fold computing the provenance list. For each emitted
+  line attributable to this Behavior:
+  - Line directly mirrors a Behavior/Declaration → `SubstrateDeclMirror(span)`
+  - Line emitted by LangSpec rule → `FoldRuleAutoEmit(rule)` where
+    `rule: EmissionRule` is looked up from emission code's named-rule
+    dispatch (T-Rule-Enumeration carrier)
+  - Missing-origin case CANNOT occur structurally (typed sum; no None)
+- `sequential: Monoid<List<EmissionProvenance>>` — list-concat monoid
+  (`empty: []`, `concat: [...] ++ [...]`)
+- `branch: (List, List) -> List` — concat over both arms (static
+  emission tracking captures both branches; runtime exclusivity is
+  orthogonal to static-emission analysis)
+- `iterate: (List, LoopBound) -> List` — identity (body emitted once;
+  bound is data, not source). Worker confirms at dispatch via
+  substrate-state-grep on actual emission semantics; STOP if assumption
+  breaks
+- `validate: fn(Dag, List<EmissionProvenance>) -> OptionalDiagnostic` —
+  validation surface is reduced (typed-sum EmissionOrigin makes
+  "both-absent" structurally impossible). Aggregate validation:
+  surface diagnostic if rule-name in `FoldRuleAutoEmit(rule)` refers
+  to a name not in `EmissionRule` enumeration (mechanically caught by
+  type system if α; runtime check if β with named dissolution trigger)
+
+Per `feedback_compositional_not_templating`: per-Behavior fold composes
+to per-line view at the visualization layer (flatten the per-Behavior
+List<EmissionProvenance>); no parallel substrate needed for slide.
+
+### Deliverable 3 — Cementing test
 
 Author cementing test that:
-1. Walks the structural fold over a representative `.dag` source
-2. Emits target-language output (Rust acceptance target — extends
-   trivially to other targets per LangSpec)
-3. Runs `Lens<EmissionProvenance>` over the same source + emission
-4. **Verifies inverse mapping closes**: every emitted line has either
-   a non-empty `source_span` (and that span resolves to a real
-   `.dag` Behavior / Declaration in the input source) OR a non-empty
-   `fold_rule` (and that rule name is in the LangSpec's enumerated
-   rule set)
-5. **No line uncovered** (fail-closed acceptance — both-absent is
-   test failure, not warning)
+1. Walks structural fold over a representative `.dag` source (likely
+   reuses T-CostLens cementing-test source corpus)
+2. Emits target-language output (Rust acceptance target)
+3. Runs `Lens<List<EmissionProvenance>>` over the same source
+4. **Verifies**: every emitted line has a corresponding
+   `EmissionProvenance` entry in the per-Behavior aggregate; flatten
+   to per-line view matches emitted-line numbering
+5. **Verifies origin classes**: ≥1 `SubstrateDeclMirror` arm fires; ≥1
+   `FoldRuleAutoEmit` arm fires; both span/rule references resolve to
+   real substrate facts
+6. **Fail-closed paths**: missing rule-name carrier (precondition broke
+   post-merge) → test errors out
 
-Cementing test minimum: representative source with at least one of
-each origin class:
-- Substrate-decl mirror (e.g., `pub enum Foo { ... }` from a `.dag`
-  `type Foo = ... | ...` declaration → `source_span` populated)
-- LangSpec auto-emit (e.g., `#[derive(...)]` from
-  `rust.derive_for_disj` rule → `fold_rule` populated, no span)
-- LangSpec auto-emit predicate (e.g., `pub fn is_left(&self) -> bool`
-  from `rust.predicate_per_variant` rule → `fold_rule` populated)
-- LEFT-sourced logic (e.g., `pub fn map<...>` from a `.dag`
-  `fn map(...) = match ...` → `source_span` populated)
+### Deliverable 4 — §1.8 ledger receipt
 
-## Scope bars
+Add `emission_provenance_lens_landed` to §1.8 ledger under
+T-CostLens-Composition cluster (Director Q3). Advance DECLARED →
+PRODUCER_LANDED on merge (cementing test verifies producer shape; no
+Grounding-side visualization-consumer wiring in this PR).
 
-**`feedback_pre_authored_brief_queue` discipline applies**: this brief
-is pre-authored before dispatch; substrate-state grep happens at
-**both** brief-authoring time (PM-side, this commit) AND dispatch time
-(worker-side, per substrate-grep-discipline). Worker adjusts brief
-content lightly if substrate state has shifted between PR-merge and
-dispatch.
+## Slice — single PR
 
-**`feedback_no_textual_enforcement_bridges` discipline**: the
-provenance metadata stream IS structural (typed `EmissionProvenance`
-records), NOT a side-channel comment annotation. If worker finds the
-fold rule names aren't enumerable at the LangSpec layer (i.e., they're
-implicit in the Rust LangSpec emission code rather than data-declared
-rule identifiers), STOP and surface — that's a substrate gap that
-needs separate disposition (likely: name the rules as enumerable
-data first, then this lens instance lands cleanly).
+Phase ordering (PR-internal):
+1. Verify precondition: T-Rule-Enumeration on main; rule-name carrier
+   exists; emission code dispatches via named-rule lookup
+2. Author `EmissionOrigin` + `EmissionProvenance` carriers (Deliverable 1)
+3. Author `Lens<List<EmissionProvenance>>` instance (Deliverable 2)
+4. Author cementing test (Deliverable 3)
+5. Verify all standard ratchets green
+6. §1.8 ledger row receipt (Deliverable 4)
 
-**`feedback_construction_over_ratchets` discipline**: this brief
-adds a new `C`-type + `Lens<C>` instance. Both are existing-substrate
-extensions, NOT substrate-fact-introduction (per `INVARIANTS.md` P1).
-If implementation surfaces a P1-violating addition (e.g., new
-`OptionalSourceSpan` type because none exists at HEAD), worker
-STOPs and surfaces — that's substrate-fact-introduction requiring
-P1 procedure.
+## Acceptance
 
-## STOP triggers (fail-closed; do not bypass)
+- `EmissionOrigin` typed-sum + `EmissionProvenance` record landed in
+  `src/v3/std/` with Practice 4 🟢 PRIMITIVE checkpoint comment
+- `Lens<List<EmissionProvenance>>` instance landed per 6-field
+  Director-locked shape; T-CostLens-Composition precedent verified for
+  shape parity
+- Cementing test landed: per-Behavior fold output flattens to per-line
+  view matching emitted-line numbering; ≥1 of each origin class fires;
+  rule-name references resolve via T-Rule-Enumeration carrier
+- §1.8 row `emission_provenance_lens_landed` advances DECLARED →
+  PRODUCER_LANDED (Grounding-consumer for visualization wiring is a
+  separate downstream brief if needed; not bundled per Director
+  bundled-scope discipline at gunbc#1739 #issuecomment-4392225548)
+- `cargo test --workspace --exclude v2-compiler-tests` green
+- `cargo test -p v2-compiler-tests` green; strict-compile diagnostic ratchet at 0
+- `cargo clippy --all-targets -- -D warnings` clean
+- `cargo fmt --all --check` clean
+- Citation discipline per `docs/briefs/brief-authoring-checklist.md`
+- 5-question authority audit in PR body
 
-1. **Missing fold-rule names — likely prerequisite, not mid-implementation STOP** (per claude review observation 2026-05-06; PM grep-verified): grep at PM-authoring-time for `RuleName` / `FoldRule` / `fn emit_derive` in `src/v3/compiler/src/` returns **0 hits**. Fold-rule names are NOT enumerable in LangSpec emission code today; they're implicit in the Rust LangSpec emission code rather than data-declared rule identifiers. **This is most likely a hard prerequisite to resolve BEFORE dispatch, not a mid-implementation STOP**. **Resolution path**: Substrate Mgr disposes — either (a) author rule-name enumeration substrate first as separate brief (lens instance lands downstream once rules are enumerable), OR (b) confirm that grep was incomplete and rule names ARE enumerable somewhere PM didn't check. If neither: brief should be re-scoped to land partial-provenance (only source-span side; fold-rule side deferred to post-rule-enumeration). PM-side recommendation: Substrate Mgr resolves this before worker dispatch rather than after.
-2. **`Lens<C>` shape gaps** — if instance authoring surfaces missing
-   substrate types from `Lens<C>` (e.g., needing T-LAS-only types
-   that aren't yet landed), STOP and surface. Director's ratification
-   notes T-LAS gate #88 is NOT a hard prerequisite for instance
-   authoring, but if implementation reveals otherwise, surface and
-   re-ratify the dispatch trigger.
-3. **`feedback_fail_closed_discipline` violation surface** — if
-   implementation reveals emitted lines that genuinely have NEITHER
-   source_span NOR fold_rule (i.e., a third origin class not
-   accounted for in the brief), STOP and surface. Either the brief's
-   2-class enumeration is incomplete, OR the LangSpec emission has
-   a substrate gap.
-4. **Substrate-state-grep mismatch** — if worker greps `src/v3/std/`
-   and finds the existing lens instances diverged from the
-   `Lens<SymbolicCost>` precedent referenced here, surface for
-   Substrate Mgr triage before authoring against drifted shape.
+## STOP-AND-ESCALATE
 
-## Acceptance criteria
+- **T-Rule-Enumeration not landed at dispatch**: STOP — reopen on
+  rule-name carrier landing on main
+- **`iterate` identity assumption breaks** (body emitted multiple times
+  per LoopBound, NOT once): STOP — surface to Substrate Mgr; lens
+  iterate field shape may need rework
+- **Cementing test reveals provenance gap** — emitted line that the
+  per-Behavior fold cannot attribute (i.e., a third origin class beyond
+  SubstrateDeclMirror / FoldRuleAutoEmit): STOP — typed sum
+  EmissionOrigin needs a third variant (substrate-fact-introduction
+  cascade); surface to Mgr. Do NOT add an `Unknown` variant — that's
+  the placeholder anti-pattern Director rejected on Slice 2.5
+- **Bundled-scope drift**: do NOT bundle T-Rule-Enumeration edits or
+  Grounding-side visualization-consumer wiring into this PR
 
-1. **`EmissionProvenance` carrier landed** in `src/v3/std/` per
-   Phase 1 shape (or Mgr-adjusted equivalent if substrate-grep
-   surfaces drift).
-2. **`Lens<EmissionProvenance>` instance landed** per Phase 2 (full
-   6-field `Lens<C>` shape; worker greps T-CostLens-Composition
-   precedent for parity).
-3. **Cementing test passes** per Phase 3 (every emitted line has
-   either populated `source_span` or `fold_rule`; both-absent fails
-   closed).
-4. **§1.8 ledger gate `emission_provenance_lens_landed` (#89)**
-   updates from DECLARED → CONSUMER_LANDED.
-5. **No bridge introductions** — implementation does not introduce
-   any side-channel comment annotation, regex-based rule extraction,
-   or string-matching against emission code. All metadata flows
-   through typed `EmissionProvenance` records via `Lens<C>` shape.
+## Authority audit receipt
 
-## Cross-lane references
-
-- **T-Lens-Application-Surface (T-LAS, §1.8 #88
-  `lens_application_carrier_landed`)**: `Lens<EmissionProvenance>` is
-  an instance that becomes consumable via `apply_lens(...)` once T-LAS
-  lands. R3 scope = instance landing only; downstream
-  `apply_lens(emission_provenance, dag, Introspect)` consumer is
-  T-LAS-downstream and out of scope here.
-- **Grounding (post-R2 continuation)**: emission-side annotation
-  consumer optional; R3 scope = lens instance landing only. If
-  Grounding wants to consume for emit-side annotation (e.g., to
-  surface "this Rust line came from this `.dag` location" in
-  diagnostic context), that's a Grounding-tier consumer dispatch
-  separate from this brief.
-- **T-CostLens-Composition (§1.8 #37-#40)**: shape precedent —
-  `Lens<SymbolicCost>` is the existing instance pattern; worker greps
-  for shape parity at brief time.
-- **PR #1879 (emission-intuition slide)**: surfaced this gap; the
-  visualization claim ("you didn't write this; the fold did")
-  benefits from this lens once landed.
-
-## Worker pin candidate
-
-Substrate Mgr discretion. PM observation: pre-authored-queue tier-2
-candidates per Substrate inventory at gunbc#846 #issuecomment-4390098574
-include freed-pool workers post-S11/S12 landings. **smart-ram-167** OR
-**valiant-ibex-312** are candidate pins per Substrate Mgr's worker-pool
-state at dispatch time. Final pin is Mgr's call.
+1. **Substrate exists?** At brief-author time:
+   - `Lens<C>` carrier landed (`src/v3/std/lens.dag`, 🟢 TERMINAL) ✓
+   - `EmissionRule` carrier — gates on T-Rule-Enumeration landing
+   - `EmissionOrigin` / `EmissionProvenance` carriers — this brief is producer
+   - Lens instance — this brief is producer
+2. **Existing brief?** PM-authored proposal at PR #1902 (merged at
+   54419badf) is the prior artifact; this brief revises per Substrate
+   Mgr canvas + Director Q1 (a) RATIFICATION
+3. **Design-doc match?** Director Q1 (a) RATIFIED + canvas Q1 disposition
+   + Lens<C> Director-locked shape. T-CostLens-Composition is shape
+   precedent
+4. **Citations live?** Worker re-verifies at dispatch
+5. **Carrier dissolves the bridge?** Yes — typed-sum `EmissionOrigin`
+   dissolves the "is this line span-attributable or rule-attributable?"
+   bridge structurally (closed sum; no third silent class). Per-Behavior
+   `Lens<List<EmissionProvenance>>` composes to per-line view at
+   visualization layer per `feedback_compositional_not_templating`
 
 ## Provenance
 
-PM-authored under Director-ratified tactical authority 2026-05-06
-(role boundary item e: docs/audit authorship). Director ratification
-at gunbc#828 #issuecomment-4392256151. Brian directive driving
-priority: gunbc#846 chat 2026-05-06 ("R3 has idle workers under
-several managers, so we should put them to work asap").
+Revised 2026-05-06 by Substrate Mgr per Director Q1 (a) RATIFICATION
+at gunbc#1739 #issuecomment-4392562911. Brief revises PM-authored
+proposal at PR #1902 (merged at 54419badf; brief shape needed canvas
++ re-ratification per codex BLOCKING category-mismatch finding).
 
-Substrate Mgr disposes dispatch readiness at brief-PR-merge time per
-pre-authored-brief-queue discipline (`feedback_pre_authored_brief_queue`).
-Adjustment-vs-from-scratch: Mgr adjusts brief content lightly at
-dispatch if substrate state has shifted; doesn't re-author from
-scratch.
+Cross-references:
+- Canvas `r3-substrate-emission-provenance-shape-canvas.md` (parent)
+- T-Rule-Enumeration brief (PREREQUISITE)
+- PR #1902 (PM proposal — brief shape superseded by this revision)
+- Lens<C> Director-locked shape at `src/v3/std/lens.dag`
+- T-CostLens-Composition shape precedent (#37-#40 cluster)
