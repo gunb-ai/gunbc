@@ -1,6 +1,6 @@
 //! `LifetimeFacts` carrier and per-axis sums.
 //!
-//! # P1 substrate-fact introduction (INVARIANTS.md §P1)
+//! # P1 substrate-fact introduction (INVARIANTS.md#p1-modeling-faithfulness)
 //!
 //! **Step 1 (DAG-ancestor):** These types are new lane-local carriers for
 //! program-side intent that mirror the worked-example substrate rows in

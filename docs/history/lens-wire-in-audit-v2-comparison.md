@@ -38,7 +38,7 @@ Two concrete questions to answer:
 - `src/v3/lenses/cost.dag` — 258 lines, sourced for the "cost_symbolic" registry entry
 - `src/v3/compiler/tests/integration/m1_3_lens_cost_test.rs` — existing integration test for the v3 cost/complexity lens
 - `src/v2/complexity.dag` — 5488 lines, heuristic approach (per `feedback_variant_provenance_shape`, the majority is bridge code reconstructing facts dropped upstream)
-- INVARIANTS.md §P1 Modeling Faithfulness — the "heuristics indicate lost structure" framing this lane is meant to demonstrate concretely
+- INVARIANTS.md#p1-modeling-faithfulness Modeling Faithfulness — the "heuristics indicate lost structure" framing this lane is meant to demonstrate concretely
 
 ## Work — three phases, each landable independently
 
