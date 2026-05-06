@@ -114,23 +114,37 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
    PR populates the 42 Phase 1 rows.
 
 2. Add a small ratchet asserting that:
-   - The six types (`ShapeATarget`, `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`) and the `data` declaration exist with the
-     ratified field shapes (typed-substrate read, no string scan).
-   - **Per-row key bijection** (the load-bearing modeled fact —
-     count-parity alone is insufficient because it permits
-     duplicate projection keys + missing source rows): every
-     `MethodTemplateContract` row across the union of
-     `*_method_template_contracts` lists has exactly one
-     `EmissionPathProjection` row whose `key:
-     MethodTemplateContractKey { target, dag_method }` matches
-     the source row's `(target, dag_method)`; every projection
-     key resolves to exactly one source row; duplicate projection
-     keys fail closed (ratchet asserts uniqueness on the
+   - **(Slice-active gate)** The six types (`ShapeATarget`,
+     `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`,
+     `EmissionCell`, `EmissionPathProjection`) and the `data`
+     declaration exist with the ratified field shapes (typed-
+     substrate read, no string scan).
+   - **(Slice-active gate)** `emission_path_projections == []`
+     (the empty-state predicate). The slice ships with the data
+     declaration empty by design; populated rows are scoped to
+     Grounding's follow-up per §4.D=(b). The empty-state
+     assertion is the slice's load-bearing claim that no row
+     drift sneaks in via this PR.
+   - **(Deferred-activation gate, asserted by Grounding's
+     follow-up PR — NOT this slice)** Per-row key bijection
+     between `emission_path_projections` and the union of
+     `*_method_template_contracts` rows. The `*_method_template_
+     contracts` lists at HEAD (`rust_method_template_contracts`,
+     `python_method_template_contracts`,
+     `go_method_template_contracts`) are non-empty, so a strict
+     bijection cannot pass while this slice ships
+     `emission_path_projections: []` — that's why the bijection
+     check belongs in Grounding's row-population PR, not here.
+     Test scaffold authored by this slice but **`#[ignore]`'d**
+     (or feature-gated on `emission_path_projections.len() > 0`)
+     until Grounding lands; on activation the test asserts:
+     every `MethodTemplateContract` row has exactly one
+     matching `EmissionPathProjection` row by
+     `MethodTemplateContractKey { target, dag_method }`; every
+     projection key resolves to exactly one source row;
+     duplicate projection keys fail closed (uniqueness on the
      projection key set + bijective coverage of the source key
-     set). Bijection is structurally trivial while
-     `emission_path_projections` is empty (vacuously true on the
-     empty source set) and activates the load-bearing check once
-     Grounding populates.
+     set).
 
 3. **No row population, no `coverage.rs` edits in this slice.**
    Both are scoped to the Grounding follow-up per §4.D=(b).
