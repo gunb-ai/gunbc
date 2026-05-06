@@ -23,6 +23,16 @@
 //!   (**INVARIANTS.md E-6** same-PR consumer); Examples 2 and 8 then select by the row's
 //!   `language`, `kernel_integer`, `algebra`, `bound`, and `type_realization` facts.
 //!
+//! **ScratchIntExamples ceiling (S7 Phase 1):** the checkpoint still runs **only** Examples 1, 2,
+//! 5, 6, and 8 — it does **not** exercise end-to-end selection for platform-sized program bounds
+//! (`usize`, Go `int`, …). Separately, the fold module already implements the structural
+//! **`match_bound` predicate** for `PlatformDependentFact` target rows vs program platform-kind
+//! bounds (Track B kind-only gate). Declared **spec rows** can name `PlatformDependentFact` (e.g. Go
+//! native `int` in `v3/spec/go.dag`); wiring **program** `PlatformDependent` bounds through
+//! `LanguageSpecProjection` + lifetime facts remains #1133 / #1286. Opportunistic fixed-width widening
+//! (u128 / UInt128 rows) stays **STOP+PING** per ROADMAP Pattern D unless tied to the Int\<N\>/Nat\<N\>
+//! refinement path.
+//!
 //! ## SG-0 / discipline
 //!
 //! - **No** edits under [`src/v3/compiler/`](../../compiler) — consume `v3-compiler` APIs only.
