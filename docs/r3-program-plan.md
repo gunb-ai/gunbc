@@ -736,9 +736,38 @@ Substrate Mgr's full forward-looking escalation canvas (per gunbc#846 #issuecomm
 
 **Plan integration**: 12 new escalations added to §10.3 covering B1-B6 + C1-C4 + E1+E2 + E3 (RED). E3 is the highest-leverage scope question — if T-Lens-Behavioral-Parity doesn't close in R3, the entire critical-path chain (T-E-P → T-LBP → T-LAS → T-WAD → T-LSA) is at risk.
 
-#### §10.2.4 R3 Evaluator Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
+#### §10.2.4 R3 Evaluator Mgr (merry-gull-128, #1743) — full canvas absorbed 2026-05-06T01:52Z
+
+Substantive review surfaces R3 Evaluator continuation work that plan was treating as already-landed under "R2-Evaluator capacity." 6 plan findings + 3 EVAL escalations.
+
+**Plan findings absorbed**:
+
+- **F1 (§2.1 + §10.3 TC1-first under-scoped)**: TC1 requires lens producer/fold path + generic `fold_lens<C> -> DimensionReport<C>` + lens/value authoring + report lifting + eta relation + universal-vs-representative coverage decision per `docs/briefs/r3-v-pattern-a-coverage-rollup.md`. Q-PAFS naive "TC1 quick first slice" reading is wrong. Either split Q-PAFS into TC1-static-representative (E6-G1.a) vs TC1-generic (E6-G1.b/X1.b), OR pick RustDagIsomorphism if it has fewer evaluator deps. → **Surfaces as Q-Pattern-A-First-Slice-Subscope** in §10.3.
+- **F4 (§1.1 per-predicate prereqs not specific enough)**: each Pattern-A predicate has DIFFERENT runtime prereqs. Plan §1.1 implies shared `BinaryDimensionReportEquals` envelope; reality requires per-predicate decomposition (see EVAL canvas + §10.3 below).
+- **F2/F3 deferred to canonical ledger** (per openai-pro meta-review structural-consolidation): §4.2 Class 2 evaluator deps + §6 R3-Evaluator-continuation-chain fold into the §1.8 canonical closure-authority ledger when authored. Currently the per-predicate prereq table below captures the load-bearing constraints.
+- **F5 (§3 "R2-Evaluator" umbrella too coarse)**: deferred to canonical ledger; row-blocker columns will name specific evaluator surfaces (constructor runtime / lens fold / Descent proof / generic dispatch).
+
+**Per-predicate runtime prereqs** (per Evaluator Mgr F4 — load-bearing for any Pattern-A consumer infrastructure):
+
+| Predicate | Runtime prereq |
+|---|---|
+| TC1 | E6-G1.a static representative OR E6-G1.b generic fold_lens<C> + eta relation |
+| TC2 | second executable strategy/input order + strategy-keyed report production |
+| TC3 | Descent execution proof / termination contract (E5) + evaluation-step producer |
+| RustDagIsomorphism | shape-report producers |
+| SymbolicCostExprEquals | cost lens / report producer (T-CostLens-Composition runtime) |
+| BridgeLedgerZero | ledger retirement work (NOT report comparison; Pattern E ratchet) |
+| Free-Consequences | split `BinaryDimensionReportEquals` subset from `LensOutputEquals` subset |
+
+**EVAL escalation canvas**:
+
+- **EVAL-1. E6-G0d constructor runtime execution open** — `eval_transform_node` rejects non-Arrow constructor `Callable` ("Callable target declaration is not an Arrow type"); G0d brief at `docs/briefs/r3-pr-e6-g0d-constructor-runtime-execution-worker.md` ready (#1784) but not landed. Authorize evaluator implementation slice using `Value::RecordValue` / `Value::VariantValue` + shared substrate declaration-walk. Required before Pop A constructor behavior + honest `Witness`/`DimensionReport` construction + static lens fold can close. → **Q-EVAL-G0d-Dispatch** in §10.3.
+- **EVAL-2. E5 `LoopBound::Descent` blocked on substrate termination contract** — `eval_loop` fails closed with `LoopBoundDescentResidual`; sharp-ibex #1799 STOP/audit; quick-koi substrate impl authorized. Substrate must land `descent_execution_proof(&Dag, ClusterId, PortId) -> Result<DescentExecutionProof, DescentResidual>` with `Missing | Unknown | Incomplete | NonStrict` fail-closed residuals; evaluator consumes proof token only. Required for TC3 + any lens fold traversing Descent loops. → **Q-EVAL-Descent-Termination-Contract** in §10.3.
+- **EVAL-3. E6-G1.a static lens fold is next executable lens/report slice (NOT generic fold_lens<C>)** — Decision needed: Pattern A first executable uses single static top-level `data ... : Lens<C>` representative (G1.a) OR closure requires generic dispatch (G1.b). The TC1 cascading requirement chains here — F1 surfaces this as scope-question. → **Q-EVAL-Lens-Fold-First-Slice** in §10.3 (overlaps with Q-PAFS).
 
 #### §10.2.5 R3 PB Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
+
+#### §10.2.5 R3 PB Mgr (neat-bear-351, #1742) — pending canvas response (as-of 2026-05-06T01:52Z)
 
 #### §10.2.6 R3 Debt-Paydown Mgr (quiet-otter-416) — full canvas + plan-poke-hole absorbed at sha `e41e4fbe8` (2026-05-06)
 
