@@ -103,7 +103,7 @@ Each class closes under a structural acceptance gate authored as a `.dag` `TestC
 - `docs/briefs/t-impossiblebugs-unenumerated-effects-parser-worker.md` (SUPERSEDED 2026-04-25 by design doc; closed-system framing dissolves the proposed parser surface).
 
 **Pending — Manager dispatches residuals (3 main implementations already landed via #890/#969/#971; manager drives class-close completion):**
-- Nested-optional-flatten: residuals after #890 + #962 (verify structural test coverage; audit integration paths; close class).
+- Nested-optional-flatten: residuals after #890 + #962 (verify structural test coverage; audit integration paths; close class). **Queued follow-up:** [`r2-impossible-bugs-nested-optional-codegen-bypass-closure-worker.md`](r2-impossible-bugs-nested-optional-codegen-bypass-closure-worker.md) narrows the remaining scope to `CardinalityPayload::new_unchecked` and generated construction sites beyond the original std-only audit; authored from a `git-metadata-unavailable` checkout.
 - Unhandled-diagnostic-paths: dispatch indexing / quotient / remainder slices (per-class totality-by-omission, modeled on the #969 `Int/Int` first slice).
 - Unenumerated-effects: drive `OperationEffect` parallel-representation retirement per #971's path (ii) verdict.
 - PR #805 Fn→Arrow refactor stays dispatchable as independent vestigial-syntax cleanup (not a thesis-claim closure dependency).
