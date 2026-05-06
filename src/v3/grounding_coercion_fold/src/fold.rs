@@ -48,6 +48,8 @@ enum BoundDeclarationView {
 enum TargetIntegerInhabitanceBoundView {
     BoundUnspecified,
     StaticBoundFact(Interval<i64>),
+    /// Target row mirrors `BoundDeclaration::PlatformDependent` (emit_model `PlatformDependentFact`).
+    PlatformDependentFact,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
