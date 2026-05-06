@@ -21,19 +21,23 @@ PM-recommended TestClaim predicate set (RATIFIED 2026-05-06 per Brian directive 
 
 ### §1.1 Pattern A NYI predicates executable (7 predicates)
 
-Each predicate has a passing TestClaim against representative input, producing a real `DimensionReport<C>` (not `NotYetImplemented` shell).
+Each predicate has a passing TestClaim against representative input — **NOT** a `NotYetImplemented` shell. Predicate-shape varies by family (per Verification Mgr poke-hole 2026-05-06): the Brian-ratified language *"Pattern A NYI predicates executable + BridgeLedgerZero ratcheting at zero"* covers four distinct predicate-shape families, not a single DimensionReport-typed receipt.
 
-| Predicate | TestClaim gate | Owner Lane |
-|---|---|---|
-| BridgeLedgerZero | `bridge_retirement_ledger_zero` | T-Bridge-Retirement (existing — `r3-structure.md` §"Acceptance" → T-Bridge-Retirement gates) |
-| RustDagIsomorphism | `rust_dag_isomorphism_executable` | T-V-L4-L7-Direct (cross-target consistency) |
-| SymbolicCostExprEquals | `symbolic_cost_expr_equals_executable` | T-CostLens-Composition |
-| TC1 (η-equivalence) | `tc1_eta_equivalence_executable` | T-V-L4-L7-Direct |
-| TC2 (Church-Rosser) | `tc2_church_rosser_executable` | T-V-L4-L7-Direct |
-| TC3 (Pattern-A second-mover) | `tc3_pattern_a_second_mover_executable` | T-V-L4-L7-Direct |
-| Free-Consequences-Demonstration | (composite of 10 gates, `r3-structure.md` §"Acceptance" → T-Free-Consequences-Demonstration gates) | T-Free-Consequences-Demonstration |
+**Predicate-shape families:**
 
-Existing fixtures in `r3-v-pattern-a-coverage-rollup.md` + `r3-v-pattern-a-second-mover-conformance-audit.md` series document predicate scaffolds. **Open** (Verification Mgr canvas escalation #1, §10): which executable slice fires first.
+| Predicate | Shape family | TestClaim gate (proposed; Q1 ledger-name) | Owner Lane |
+|---|---|---|---|
+| TC1 (η-equivalence) | `BinaryDimensionReportEquals` (DimensionReport-typed) | `tc1_eta_equivalence_executable` | T-V-L4-L7-Direct |
+| TC2 (Church-Rosser) | `BinaryDimensionReportEquals` (DimensionReport-typed) | `tc2_church_rosser_executable` | T-V-L4-L7-Direct |
+| TC3 (Pattern-A second-mover) | `BinaryDimensionReportEquals` (DimensionReport-typed) | `tc3_pattern_a_second_mover_executable` | T-V-L4-L7-Direct |
+| RustDagIsomorphism | structural-equivalence assertion (Dag isomorphism, not DimensionReport) | `rust_dag_isomorphism_executable` | T-V-L4-L7-Direct |
+| SymbolicCostExprEquals | cost-predicate (`SymbolicCost`-typed; per `src/v3/compiler/src/test_runner.rs` `SymbolicCostExprEquals: structural shape is valid` NYI receipt) | `symbolic_cost_expr_equals_executable` | T-CostLens-Composition |
+| BridgeLedgerZero | ledger-row count (Pattern E ratchet — decreasing-open-count, NOT DimensionReport; per `ROADMAP.md` §"Course correction #4" + `r3-structure.md` `bridge_retirement_ledger_zero` gate) | `bridge_retirement_ledger_zero` (existing) | T-Bridge-Retirement |
+| Free-Consequences-Demonstration | **composite of 10 gates** (NOT a single predicate; `r3-structure.md` §"Acceptance" → T-Free-Consequences-Demonstration gates) | (composite — see existing gates) | T-Free-Consequences-Demonstration |
+
+**Gate names labeled as "proposed (Q1 ledger-name)"** for the 5 newly-named predicates that don't yet exist in `r3-structure.md` §"Acceptance" or `src/v3/std/verification.dag` as authored TestClaims. Existing gates (`bridge_retirement_ledger_zero`, T-Free-Consequences-Demonstration's 10 gates) keep canonical names.
+
+Existing fixtures in `docs/briefs/r3-v-pattern-a-coverage-rollup.md` + `r3-v-pattern-a-second-mover-conformance-audit.md` series document predicate scaffolds. **Open** (Verification Mgr canvas escalation V1, §10): first executable slice — see §2.1 + Q-PAFS in §10.3.
 
 ### §1.2 v2 fully retired (2 predicates — already declared)
 
@@ -88,7 +92,7 @@ R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown
 |---|---|---|
 | T-Tier3-Dissolution | `tier3_*_mirror_dissolved` (state-check) | + `tier3_dissolution_demonstration_executes` — at least one Tier3-mirror-consumer .dag program runs end-to-end via Evaluator |
 | T-LensProducer-Retirement | retirement gates (state-check) | + `lens_producer_retirement_demonstration` — `lens_apply` reflection routes via PB-Runtime on representative lens program |
-| T-V-L4-L7-Direct | `l4_emit_eval_match`, `l7_algebraic_laws_witnessed` ✓ | (existing) |
+| T-V-L4-L7-Direct | `l4_emit_eval_match`, `l7_algebraic_laws_witnessed` (skeleton/staged at HEAD; closure bar = exhaustive per-(algebra, inhabitant, law) coverage per `r3-structure.md` §"Lane structure" → T-Verification-L4-L7-Direct row + 2026-05-02 fold-in) | (existing harness — NOT yet "fully demonstrated"; over-greening risk per Verification Mgr poke-hole 2026-05-06) |
 | T-V-L5-Corpus | `l5_cross_target_consistency` ✓ | (existing) |
 | T-FixedPoint | `pb_self_compile_fixed_point` ✓ | (existing) |
 | T-Numeric-Construction | substrate-shape gates only | + `numeric_construction_demonstration` — end-to-end program using `Int<32>` + `Real<64>` round-trip executes |
@@ -115,12 +119,18 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 
 For each predicate not yet GREEN, what's blocking + sequence to close.
 
-### §2.1 Pattern A executable (7 predicates)
+### §2.1 Pattern A executable (4-family predicate cluster)
 
-**Critical-path blocker**: at least one `BinaryDimensionReportEquals` path must compare real `DimensionReport<C>` outputs (not `NotYetImplemented` shells) before any of the 7 can ratchet to executable. Per Verification Mgr canvas escalation #1 (cool-owl-579, 00:07:13Z).
+**Critical-path blocker (DimensionReport-typed family — TC1/TC2/TC3)**: at least one `BinaryDimensionReportEquals` path must compare real `DimensionReport<C>` outputs (not `NotYetImplemented` shells) before any of TC1/TC2/TC3 can ratchet to executable. Per Verification Mgr canvas escalation V1 (cool-owl-579).
 
-**Sequence**:
-1. **Director / Brian ratify first executable slice** (Q-Pattern-A-First-Slice, §10) — TC1 η-equivalence vs RustDagIsomorphism vs other.
+**Other Pattern-A families** have distinct unblock paths (per Verification Mgr poke-hole 2026-05-06):
+- **RustDagIsomorphism**: structural-Dag-equivalence harness; not gated on DimensionReport unblock.
+- **SymbolicCostExprEquals**: cost-predicate; gated on `SymbolicCost`-side runner work (separate from DimensionReport).
+- **BridgeLedgerZero**: ledger-count ratchet; gated on retirement work landing across 5 sub-bridges (see §2.3).
+- **Free-Consequences**: 10 sub-gates each with their own runtime prerequisites.
+
+**Sequence (DimensionReport-typed family)**:
+1. **Director countersignature on first executable slice** (Q-PAFS, §10) — TC1 η-equivalence vs RustDagIsomorphism vs other. *Note: `r3-v-tc1-eta-equivalence-deeper-analysis.md` is `Status: PROPOSAL / research-only` and explicitly states "This analysis does not choose among those paths." TC1-first is **PM/Brian convenience default** pending Director engineering sign-off, NOT Verification-Mgr-ratified from the analysis alone.*
 2. R3 Evaluator Mgr surfaces runtime prerequisites for chosen slice (`Pattern A` runtime executable).
 3. Substrate Mgr authors any missing carrier (likely none if first slice is TC1).
 4. Verification worker dispatches gap-test → first predicate ratchets to executable.
@@ -176,8 +186,9 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 |---|---|---|---|---|---|
 | T-Tier3-Dissolution | PB | YELLOW | (TBD from PB canvas) | (TBD) | (TBD) |
 | T-LensProducer-Retirement | PB | YELLOW | (TBD from PB canvas) | T-FixedPoint + R2-Evaluator | (TBD) |
-| T-V-L4-L7-Direct | Verification | YELLOW | r3-v-l4-l7-direct-* briefs | Pattern A first slice (Q-PAFS) | (TBD) |
-| T-V-L5-Corpus | Verification | RED | (waits on L4 corpus) | T-V-L4-L7-Direct landing | post-L4 |
+| T-V-L4 (emit/eval match) | Verification | YELLOW | r3-v-l4-l7-direct-* briefs | Pattern A first slice (Q-PAFS) + corpus build-out | (TBD) |
+| T-V-L7 (algebraic-law witness coverage) | Verification | YELLOW | r3-v-l7-algebra-coverage-matrix briefs | per-(algebra, inhabitant, law) exhaustive coverage gap | (TBD) |
+| T-V-L5-Corpus | Verification | RED | (waits on L4 corpus + Shape A grounding) | T-V-L4 corpus existing first | post-L4 |
 | T-FixedPoint | PB | YELLOW | (TBD from PB canvas) | SG-0 zero from T-LensProducer | (TBD) |
 | T-Numeric-Construction | Substrate | YELLOW | T-NumericConstruction-ApproximateField; #1523 landed | Float migration + Real/base-carrier convention (Grounding canvas item 2) | (TBD) |
 | T-Omni-Shape-B | Release | RED | (post-R2-Evaluator + Shape A targets) | dependencies | (TBD) |
@@ -338,13 +349,22 @@ Pattern A executable (7 predicates):
 R3 close = all ~65 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive sweep zero-debt-rows-remaining
 ```
 
-**Critical-path chain** (longest dependency from now to close):
+**Two longest-dependency paths** (per `r3-structure.md` §"Dependency DAG" — Verification Mgr poke-hole 2026-05-06 surfaced this dual structure was missing from earlier framing):
+
+**Global critical-path chain** (substrate-completion + recursive-flex commit):
 
 1. T-E-P-Producer-Broadening (Substrate, foundational)
 2. → T-Lens-Behavioral-Parity (cross-program, 4 sub-slices)
 3. → T-Lens-Application-Surface (cross-program)
 4. → T-Workflow-As-Data (Substrate)
 5. → T-Lens-Self-Application (Verification, demonstration)
+
+**Verification-internal critical path** (longest verification path; parallel to global chain):
+
+1. T-Verification-L4-L7-Direct (post-R2-Evaluator + R2-T-Substrate-Lens-Primitive + Shape A grounding for L4 corpus)
+2. → T-Verification-L5-Corpus (consumes L4 corpus + R2-Grounding-Rust + R2-Grounding-Python)
+
+Verification-internal path runs in parallel with global chain post-R2-Evaluator. Plus parallel longest single-lane path: **T-V2-Retirement** depends on T-FixedPoint + T-LensProducer-Retirement.
 
 Plus the parallel longest-path: **T-V2-Retirement** depends on T-FixedPoint + T-LensProducer-Retirement; longest single-lane path.
 
@@ -459,7 +479,11 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 #### §10.2.1 R3 Verification Mgr (cool-owl-579, #1740) — 2 escalations
 
-**V1. Pattern A blocks executable BridgeLedgerZero / net bridge shrink** (canvas item 1, structural)
+**V1. Pattern A (DimensionReport-typed family) blocks executable / net bridge shrink** (canvas item 1, structural)
+
+**Note** (Verification Mgr poke-hole 2026-05-06): V1's DimensionReport-unblock fixes TC1/TC2/TC3 cluster but does NOT automatically fix **V2** (SymbolicCostExprEquals — different predicate family, `SymbolicCost`-typed, distinct runner work) NOR **BridgeLedgerZero** (Pattern E ledger-count ratchet, separate retirement-work cascade). Each Pattern-A predicate family has its own unblock path per §1.1 + §2.1.
+
+**V1 (continued)**:
 - **Needs**: Director + Brian — which first executable slice (TC1 vs RustDagIsomorphism vs other) + lane priority.
 - **R3 zero-debt impact**: Must be explicit pre-close. Cannot be "post-R3" without renaming the close predicate.
 - **Plan integration**: §1.1, §2.1; ratification opens Q-PAFS in §10.3.
@@ -536,7 +560,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 | ID | Question | PM recommendation (applied as default) | Status |
 |---|---|---|---|
-| Q-PAFS | Which Pattern-A first executable slice (TC1 vs RustDagIsomorphism vs other) | TC1 η-equivalence first (Verification has deeper analysis docs in flight: `r3-v-tc1-eta-equivalence-deeper-analysis.md`) | RATIFIED-by-default; Director may explicitly redirect |
+| Q-PAFS | Which Pattern-A (DimensionReport-typed family) first executable slice (TC1 vs RustDagIsomorphism vs other) | **TC1 η-equivalence first as PM/Brian convenience default; needs Director countersignature** — `r3-v-tc1-eta-equivalence-deeper-analysis.md` is `Status: PROPOSAL / research-only` and explicitly does not choose among paths. PM-default ≠ Verification-Mgr engineering sign-off. | **PENDING DIRECTOR COUNTERSIGNATURE** (per Verification Mgr poke-hole 2026-05-06; PM convenience-default applies until then) |
 | Q-NYI-Accounting | NYI claim coverage/completeness accounting | Mark NYI incomplete in aggregation reporting; ratchet to executable per evaluator-slice landing | RATIFIED-by-default |
 | Q-Std-Carrier-Phasing | Rust std-carrier phasing (Option/Cardinal/HigherOrderMethodSpec/allocator-hasher) | Phase 1 = default-only/default-instance; later phases as separate Substrate slices post-Phase-1 | RATIFIED-by-default |
 | Q-Drift-Reconcile | Drift items routing (#1638, #1499, declaration_by_name) | Single Debt-Paydown worker reconciles all three → one PR closing rows in ledger + ROADMAP | RATIFIED-by-default |
