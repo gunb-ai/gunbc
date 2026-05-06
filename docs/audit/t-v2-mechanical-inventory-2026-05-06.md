@@ -2,7 +2,7 @@
 
 **Status:** AUDIT artifact (docs-only; no code changes; no `src/v2/` deletion; no Cargo edge removal). Authored 2026-05-06 by PB Manager continuation per dispatch on inbox #1768 (sleek-eagle-514). Refreshes the per-surface inventory in [`docs/audit/t-v2-retirement-migration-matrix.md`](t-v2-retirement-migration-matrix.md) §2 against current `origin/main` HEAD.
 
-**HEAD verified:** `2d26ed2b3` (`origin/main` at refresh time; same tree merged into `session/sleek-eagle-514` for this audit).
+**HEAD verified:** `2d26ed2b3` (initial inventory authoring against `origin/main` at refresh time). Methodology deltas applied during follow-up (regex coverage fix, C-data split extension to `compiler.dag:270`, line-completeness sweep) re-validated against `origin/main` after the #1848 squash-merge — line citations spot-checked at the post-merge tree (PB Mgr review confirmed `:53` / `:270` / `p0:L25` still resolve). Future refreshes should re-pin HEAD and re-run the unified grep in §"Search authority" before citing line numbers.
 
 **This is an inventory refresh, not a decision.** It does not propose carrier shape, migration order, or G-1/G-2 sequencing — those remain S-1 / Substrate-Manager territory per [`docs/audit/t-v2-retirement-audit.md`](t-v2-retirement-audit.md) §1 STOP conditions and [`docs/briefs/r3-pb-tv2-s1-input-packet.md`](../briefs/r3-pb-tv2-s1-input-packet.md) §"Decision checklist". Every cell below cites a live grep / file/line on `2d26ed2b3`.
 
