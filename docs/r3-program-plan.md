@@ -530,11 +530,11 @@ This plan section reports cumulative bridge counts; **the audit doc in this PR (
 
 **Authoritative counts populate via Phase 3 compile of [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) §1.A–§1.G in this PR** (Phase 2 partial deliverables on now-superseded PR #1804 comment thread fold in during Phase 3). Net-bridge count at R3 close is 0 (per `bridge_retirement_ledger_zero` + 5 substrate-gap-class closure gates). Each bridge has a named dissolution trigger; bridges without triggers escalate to substrate gap requiring named R3 lane (per audit doc §4 anticipation discipline).
 
-**Drift items from Phase 2 sweep** (per Grounding Mgr poke-hole 2026-05-06 finding 5 normalization — earlier list double-counted #1638/declaration_by_name as same issue + omitted CollectionOps drift):
+**Drift items from Phase 2 sweep** (per Grounding Mgr poke-hole 2026-05-06 finding 5 normalization — earlier list double-counted #1638/declaration_by_name as same issue + omitted CollectionOps drift) — **reconciled 2026-05-06 (DP1 / Q7, R3 Debt-Paydown Mgr)** in `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`:
 
-- **`declaration_by_name` ROADMAP↔ledger drift**: ROADMAP says `declaration_by_name(...) pattern in emit` retired by PR #1638; `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` still marks `declaration_by_name(...) emit pattern` Open. Single-row reconciliation needed.
-- **#1499 transitional fence ledger-row gap**: ROADMAP transitional-fence retirement not reflected in ledger row.
-- **CollectionOps / StringOps / MapOps stale ledger refresh**: ROADMAP records CollectionOps fold + map progress, but ledger row says `Partial (fold)` and text says `concat / length / map` remain open. Ledger refresh needed.
+- **`declaration_by_name`**: ledger row → **Retired** citing **PR #1638** + ratchet name (matches ROADMAP).
+- **`#1499` transitional fence ledger-row gap**: ledger **acknowledgment row** added for **PR #1499** merge receipt (plan stratum B — no separate ROADMAP predicate row was omitted).
+- **CollectionOps / StringOps / MapOps**: ledger row refreshed with explicit ROADMAP strand cross-reference + unchanged **Partial (fold)** status.
 
 ---
 
