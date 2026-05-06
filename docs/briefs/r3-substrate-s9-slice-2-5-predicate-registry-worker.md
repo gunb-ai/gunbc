@@ -137,6 +137,50 @@ Per Director ratification at gunbc#828 #issuecomment-4390333451:
 4. **Cascade-clearance verification**: every existing predicate-using
    declaration in types.dag continues to resolve correctly post-registry;
    bootstrap snapshot + parse corpus manifest hold
+5. **Same-slice carrier+argument-contract verification (Path (a)
+   RATIFIED at gunbc#828 #issuecomment-4390760353 + gunbc#828
+   #issuecomment-4390794121)**: registered-predicate placeholder
+   semantics REMOVED from registry path. Each registered predicate
+   verifies its carrier+argument contract at lower-time:
+   - Carrier compatibility check fires at lower-time (not just
+     resolve-time)
+   - Argument-shape contract validates at lower-time (e.g.,
+     `range(min: N)` validates N is numeric literal compatible
+     with carrier; `pattern(s)` validates s is string literal; etc.)
+   - Mismatched carrier OR malformed argument produces
+     `Diagnostic::ResolveError` (or equivalent fail-closed
+     diagnostic) per `feedback_fail_closed_discipline` /
+     `INVARIANTS.md#p3-fail-closed`
+   - No "named but not checked" path remains in registry-resolved
+     declarations
+   Per Director's pattern note: dissolution trigger named in a
+   brief authored as substrate-fact-introduction must specify
+   same-slice acceptance, not deferred follow-up — otherwise the
+   brief encodes "land bridge + defer dissolution" anti-pattern,
+   the same shape `feedback_construction_over_ratchets` warns
+   against at the implementation layer applied at the brief
+   layer.
+
+## Scope expansion (L → XL per Path (a) RATIFICATION)
+
+Original Path 3 brief landed registry + PB-1 shim retirement +
+gt_zero primitive + PositiveInt consumer update with ratified
+placeholder semantics for the 7 registered predicates. Codex
+REQUEST_CHANGES on PR #1846 surfaced that placeholder + user-code
+reach = `feedback_fail_closed_discipline` violation: registered
+predicates without carrier+argument contract verification at
+lower-time produce silent acceptance ("named but not checked"),
+which crosses P3 fail-closed.
+
+Director Path (a) RATIFICATION expands scope:
+- Predicate-body lowering for **all 7 registered predicates**
+  (`gt_zero`, `range`, `pattern`, `non_empty`, `brand`, `format`,
+  `content`)
+- Per-predicate arg-shape validation
+- Placeholder lowering REMOVED from registry path
+- L → XL absorption acknowledged; multi-session work expected
+- Carrier-check at `788d6acb4` retained as structural improvement;
+  predicate-body lowering builds on top
 
 ## Slice — single PR per Director ratification
 
@@ -156,7 +200,14 @@ Phase ordering (PR-internal):
 ## Acceptance
 
 - `gt_zero` primitive predicate enrolled in registry; resolves over
-  Nat only (Int-side EXPLICITLY OUT-OF-SCOPE per Deliverable 1)
+  Nat only (Int-side EXPLICITLY OUT-OF-SCOPE per Deliverable 1);
+  predicate body lowered with arg-shape validation (zero-arg form
+  for `gt_zero`); mismatched-carrier produces `Diagnostic::ResolveError`
+- **All 7 registered predicates** (`gt_zero`, `range`, `pattern`,
+  `non_empty`, `brand`, `format`, `content`) carry **carrier+argument
+  contract verification at lower-time**; placeholder lowering REMOVED
+  from registry path; mismatched-carrier or malformed-argument
+  produces `Diagnostic::ResolveError` per Path (a) RATIFICATION
 - Predicate registry infrastructure landed; sole authority for
   predicate-name resolution
 - PB-1 shim retired (`span.file == "dsl/std/types.dag"` branch
