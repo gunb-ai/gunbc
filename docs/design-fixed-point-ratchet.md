@@ -88,32 +88,15 @@ Comparison uses raw byte equality — whitespace matters, line endings matter. M
 
 ### CI integration
 
-`.github/workflows/ci.yml` — add a new job:
+Canonical wiring is **`.github/workflows/ci.yml`**, job **`self_host_ratchet`** (`needs: [v3]`).
 
-```yaml
-self_host:
-  runs-on: ubuntu-latest
-  timeout-minutes: 15
-  needs: [ci, v3]   # runs after basic build + v3 tests pass
-  steps:
-    - uses: actions/checkout@v4
-    - uses: actions-rust-lang/setup-rust-toolchain@v1.16.0
-      with:
-        cache: false
-        rustflags: ""
-    - name: Cache Cargo (self_host)
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          target/
-        key: cargo-self-host-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('src/v3/compiler/**') }}
-    - name: Self-host fixed-point check
-      run: cargo run --bin self_host_fixed_point --release
-```
+While DB-8 stays **staged** and the job remains **`continue-on-error: true`**, it is scheduled on **`push` to `refs/heads/main` only** (PR runs were producing merge-blocking red checks when Actions cancelled in-flight jobs). The **`v3`** job still runs **`determinism_test`** on pull requests.
 
-Runs after the core `v3` job. If emission changes, this fails; CI blocks merge.
+- **Runner / wall clock:** `ubicloud-standard-8`, `timeout-minutes: 60` (heavy release work + cold cache).
+- **Rust setup:** `actions-rust-lang/setup-rust-toolchain@v1.16.0` with **`toolchain:` omitted** so the action reads `rust-toolchain.toml` (enforced by `scripts/check-rust-toolchain-single-authority.sh`).
+- **Steps (release):** `cargo test -p v3-compiler --release --test determinism_test`, then `cargo run -p v3-compiler --release --bin self_host_fixed_point`, plus informational `emit.rs` HashMap/HashSet grep.
+
+Failures are **advisory** until Lane 1e graduates the ratchet to merge-blocking.
 
 ### Sources of non-determinism (to eliminate)
 
@@ -223,7 +206,7 @@ Runs per-test, local to each emit call. Catches non-determinism without needing 
 
 **Why per-fixture 5x re-run test?** Because most non-determinism manifests within a single process (HashMap seed randomness). 5 runs gives high confidence without absurd test runtime.
 
-**Why separate `self_host_fixed_point` binary, not a test?** Because it's a pipeline (emit → rustc → run → diff) too heavyweight for `cargo test`. CI runs it as its own job; developers can invoke it locally via `cargo run --bin self_host_fixed_point --release`.
+**Why separate `self_host_fixed_point` binary, not a test?** Because it's a pipeline (emit → rustc → run → diff) too heavyweight for `cargo test`. CI runs it as its own job; developers can invoke it locally via `cargo run -p v3-compiler --release --bin self_host_fixed_point`.
 
 ---
 
@@ -233,7 +216,7 @@ Runs per-test, local to each emit call. Catches non-determinism without needing 
 
 **Structural diff (parse both, compare ASTs)** — allows whitespace differences. Too lenient. We want bit-identical as the contract. Rejected.
 
-**Only check on push to main** — misses PRs that introduce non-determinism. Run on every PR + main push. Rejected "only on main."
+**Only check on push to main** — misses PRs that introduce non-determinism if it were the *sole* long-term policy. **Current compromise (staged):** `self_host_ratchet` runs on **`main` pushes only** while the job is still advisory, because cancelled PR workflow runs were surfacing as merge-blocking failures; PRs still get **`determinism_test`** inside **`v3`**. Re-open PR+`main` coverage when the ratchet graduates merge-blocking.
 
 **Accept "close enough" — diff lines < 5** — opens a hole. Any intentional emission change must be accompanied by snapshot update; any unintentional change is a bug. Rejected.
 
@@ -256,7 +239,7 @@ target/self_host/
 
 ### Performance
 
-Self-host cycle takes: emit (2s) + rustc (30s) + run (1s) + diff (instant) = ~33s per cycle. Running once per PR is acceptable. If it grows to the v2 "20-minute self-compile" regime (THESIS.md §merge_envs case study), sound alarm — see open question 2 below.
+Self-host cycle takes: emit (2s) + rustc (30s) + run (1s) + diff (instant) = ~33s per cycle on a warm machine. CI runs the dedicated job on each **`main` push** while staged (see **CI integration**). If it grows to the v2 "20-minute self-compile" regime (THESIS.md §merge_envs case study), sound alarm — see open question 2 below.
 
 ### Bisecting non-determinism
 
@@ -277,7 +260,7 @@ Maintain a `docs/self-host-incidents.md` log of found non-determinism sources �
 - **`src/v3/compiler/compiler.dag`** — the compiler source being cycled (PR #418 and later additions)
 - **Create `src/v3/compiler/src/bin/self_host_fixed_point.rs`** — the CI binary
 - **Create `src/v3/compiler/tests/determinism_test.rs`** (+ shared matrix in `tests/common/determinism_fixtures.rs`) — per-fixture 5× determinism check
-- **Update `.github/workflows/ci.yml`** — `self_host` job
+- **Update `.github/workflows/ci.yml`** — `self_host_ratchet` job
 - **Update `.gitignore`** — `target/self_host/`
 - **Thesis anchor** — SELF_HOSTING.md §14 (fixed-point discipline)
 
@@ -286,7 +269,7 @@ Maintain a `docs/self-host-incidents.md` log of found non-determinism sources �
 ## Acceptance (Lane 3 Stage 3c owns)
 
 - [ ] `self_host_fixed_point` binary passes full emit → rustc → run → **byte-identical** diff on `dsl/gunbc/compiler.dag` (staged until v3 parses + emits a CLI-shaped crate)
-- [x] CI job `self_host_ratchet` runs after `v3` on every PR + main push; **`continue-on-error: true`** until Lane 1e closes (then graduate to merge-blocking)
+- [x] CI job `self_host_ratchet` runs after `v3` on each **`main` branch push** while staged (PRs: `determinism_test` in **`v3`**); **`continue-on-error: true`** until Lane 1e closes (then graduate to merge-blocking)
 - [x] `tests/determinism_test.rs` passes per-matrix-row 5× equivalence (Rust full matrix; Go/Python scoped per `determinism_fixtures.rs`)
 - [x] Informational grep step in `self_host_ratchet` surfaces `HashMap`/`HashSet::` in `emit.rs` (strict gate deferred until Lane 1e clears iteration debt)
 - [x] Invariant D-1 (determinism) added to `INVARIANTS.md`
@@ -295,7 +278,7 @@ Maintain a `docs/self-host-incidents.md` log of found non-determinism sources �
 
 ## Open questions
 
-1. **Does the ratchet need to run in `release` mode?** Probably yes — rustc release inlines more, which can stabilize output. Design has `cargo run --bin self_host_fixed_point --release`.
+1. **Does the ratchet need to run in `release` mode?** Probably yes — rustc release inlines more, which can stabilize output. Design has `cargo run -p v3-compiler --release --bin self_host_fixed_point`.
 
 2. **What if self-host cycle time approaches v2's 20-min issue?** Alarm. Root-cause the slowdown (usually HashMap-dependent re-derivation, per THESIS.md case study). Don't accept >2min for the cycle.
 
