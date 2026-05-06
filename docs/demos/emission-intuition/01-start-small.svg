@@ -14,14 +14,14 @@
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">One primitive.</text>
-  <text x="20" y="48" class="sub">A single Sum type. One function that uses it. The starting point.</text>
+  <text x="20" y="30" class="title">One layer.</text>
+  <text x="20" y="48" class="sub">A primitive on the right. A small consumer of it on the left. The compiler emits a working module.</text>
 
   <text x="20"  y="78" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
   <text x="320" y="78" class="col-label">RUST — GENERATED</text>
   <text x="820" y="78" class="col-label">FACTS · STRUCTS · OBJECTS</text>
 
-  <!-- LEFT: primitive consumer -->
+  <!-- LEFT -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
   <rect x="20" y="110" width="280" height="160" class="card"/>
@@ -34,7 +34,7 @@
   <text x="32" y="240" class="code">    Right { value } =&gt; value</text>
   <text x="32" y="258" class="code">  }</text>
 
-  <!-- CENTER: emission -->
+  <!-- CENTER -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
   <text x="332" y="103" class="badge badge-rust">RUST</text>
   <rect x="320" y="110" width="480" height="338" class="card"/>
@@ -56,12 +56,13 @@
   <text x="332" y="420" class="code">    }</text>
   <text x="332" y="438" class="code">}</text>
 
-  <!-- RIGHT: facts (tiny) -->
+  <!-- RIGHT -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
-  <rect x="820" y="110" width="280" height="58" class="card"/>
-  <text x="832" y="130" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="148" class="code">  Left{value:A} | Right{value:B}</text>
+  <rect x="820" y="110" width="280" height="78" class="card"/>
+  <text x="832" y="130" class="layer">// PRIMITIVE</text>
+  <text x="832" y="150" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="168" class="code">  Left{value:A} | Right{value:B}</text>
 
-  <text x="20" y="468" class="sub">2 lines of facts. 7 lines of logic. ~18 lines of Rust. These facts won't grow as we add more layers.</text>
+  <text x="20" y="468" class="sub">One layer of facts. One consumer. The middle is what runs.</text>
 </svg>

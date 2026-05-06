@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1240" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1480" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
@@ -11,118 +11,139 @@
       .layer  { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; font-style: italic; fill: #6e7781; }
       .card { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
       .card-header { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
-      .stable { fill: #ddf4ff; stroke: #54aeff; stroke-width: 1; }
-      .stable-text { font-size: 10px; font-weight: 600; fill: #0969da; letter-spacing: 0.04em; }
       .punchline { font-size: 14px; font-weight: 600; fill: #1f2328; }
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">An app uses the library.</text>
-  <text x="20" y="48" class="sub">Same Sum on the right. App handler on the left composes library functions through the helpers. The middle is the real Rust module.</text>
+  <text x="20" y="30" class="title">Four layers — primitive · helpers · library · domain.</text>
+  <text x="20" y="48" class="sub">A business handler on the left. It talks only to the domain and library. Sum, Result, the helpers — all abstracted away in the source, all materialized in the middle.</text>
 
   <text x="20"  y="78" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
   <text x="320" y="78" class="col-label">RUST — GENERATED</text>
   <text x="820" y="78" class="col-label">FACTS · STRUCTS · OBJECTS</text>
 
-  <!-- LEFT: 4 layers -->
+  <!-- LEFT: business handler — touches only domain + library -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
-  <rect x="20" y="110" width="280" height="1098" class="card"/>
-  <text x="32" y="130" class="layer">// primitive consumer</text>
-  <text x="32" y="150" class="code">fn unwrap_str(</text>
-  <text x="32" y="168" class="code">    s: Sum&lt;Str, Str&gt;) -&gt; Str =</text>
-  <text x="32" y="186" class="code">  match s {</text>
-  <text x="32" y="204" class="code">    Left  { value } =&gt; value</text>
-  <text x="32" y="222" class="code">    Right { value } =&gt; value }</text>
-  <text x="32" y="260" class="layer">// helpers</text>
-  <text x="32" y="280" class="code">fn map&lt;A,B,C&gt;(s: Sum&lt;A,B&gt;,</text>
-  <text x="32" y="298" class="code">    f: A-&gt;C) -&gt; Sum&lt;C,B&gt; =</text>
-  <text x="32" y="316" class="code">  match s {</text>
-  <text x="32" y="334" class="code">    Left  { value } =&gt; Left { value: f(value) }</text>
-  <text x="32" y="352" class="code">    Right { value } =&gt; Right { value } }</text>
-  <text x="32" y="386" class="code">fn and_then&lt;A,B,C&gt;(s: Sum&lt;A,B&gt;,</text>
-  <text x="32" y="404" class="code">    f: A-&gt;Sum&lt;C,B&gt;) -&gt; Sum&lt;C,B&gt; =</text>
-  <text x="32" y="422" class="code">  match s {</text>
-  <text x="32" y="440" class="code">    Left  { value } =&gt; f(value)</text>
-  <text x="32" y="458" class="code">    Right { value } =&gt; Right { value } }</text>
-  <text x="32" y="496" class="layer">// library</text>
-  <text x="32" y="516" class="code">fn parse_int(s: Str)</text>
-  <text x="32" y="534" class="code">  -&gt; Sum&lt;ParseError, Int&gt;</text>
-  <text x="32" y="552" class="code"></text>
-  <text x="32" y="572" class="code">fn http_get(url: Str)</text>
-  <text x="32" y="590" class="code">  -&gt; Sum&lt;HttpError, Bytes&gt;</text>
-  <text x="32" y="610" class="code"></text>
-  <text x="32" y="630" class="code">fn validate_email(s: Str)</text>
-  <text x="32" y="648" class="code">  -&gt; Sum&lt;ValidationError, Email&gt;</text>
-  <text x="32" y="686" class="layer">// app — composes the library</text>
-  <text x="32" y="706" class="code">fn handle_signup(</text>
-  <text x="32" y="724" class="code">    req: SignupRequest</text>
-  <text x="32" y="742" class="code">) -&gt; Sum&lt;HttpError, Session&gt; =</text>
-  <text x="32" y="760" class="code">  and_then(</text>
-  <text x="32" y="778" class="code">    http_get(profile_url(req.email)),</text>
-  <text x="32" y="796" class="code">    fn(bytes) =&gt;</text>
-  <text x="32" y="814" class="code">      Right { value: mint_session(bytes) })</text>
+  <rect x="20" y="110" width="280" height="568" class="card"/>
+  <text x="32" y="130" class="layer">// library — known signatures</text>
+  <text x="32" y="150" class="code">fn validate(</text>
+  <text x="32" y="168" class="code">    req: LoginRequest</text>
+  <text x="32" y="186" class="code">) -&gt; ApiResponse&lt;Credentials&gt;</text>
+  <text x="32" y="222" class="code">fn fetch_user(</text>
+  <text x="32" y="240" class="code">    creds: Credentials</text>
+  <text x="32" y="258" class="code">) -&gt; ApiResponse&lt;User&gt;</text>
+  <text x="32" y="294" class="code">fn mint_session(</text>
+  <text x="32" y="312" class="code">    user: User</text>
+  <text x="32" y="330" class="code">) -&gt; ApiResponse&lt;UserSession&gt;</text>
+  <text x="32" y="368" class="layer">// app — handler composes them</text>
+  <text x="32" y="388" class="code">fn handle_login(</text>
+  <text x="32" y="406" class="code">    req: LoginRequest</text>
+  <text x="32" y="424" class="code">) -&gt; ApiResponse&lt;UserSession&gt; =</text>
+  <text x="32" y="442" class="code">  and_then(</text>
+  <text x="32" y="460" class="code">    validate(req),</text>
+  <text x="32" y="478" class="code">    fn(creds) =&gt;</text>
+  <text x="32" y="496" class="code">      and_then(</text>
+  <text x="32" y="514" class="code">        fetch_user(creds),</text>
+  <text x="32" y="532" class="code">        fn(user) =&gt; mint_session(user)))</text>
+  <text x="32" y="572" class="layer">// the handler doesn't say "Sum"</text>
+  <text x="32" y="588" class="layer">// or "Result" anywhere. Lower</text>
+  <text x="32" y="604" class="layer">// layers are abstract here.</text>
 
-  <!-- CENTER: emission for everything -->
+  <!-- CENTER: full emission for all 4 layers -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
   <text x="332" y="103" class="badge badge-rust">RUST</text>
-  <rect x="320" y="110" width="480" height="1098" class="card"/>
-  <text x="332" y="130" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="148" class="code">pub enum Sum&lt;A, B&gt; { Left { value: A }, Right { value: B } }</text>
-  <text x="332" y="176" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
-  <text x="332" y="194" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
-  <text x="332" y="212" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
-  <text x="332" y="230" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
-  <text x="332" y="248" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
-  <text x="332" y="266" class="code">}</text>
-  <text x="332" y="294" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
-  <text x="332" y="332" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
-  <text x="332" y="350" class="code">    match s {</text>
-  <text x="332" y="368" class="code">        Sum::Left  { value } =&gt; value,</text>
-  <text x="332" y="386" class="code">        Sum::Right { value } =&gt; value,</text>
-  <text x="332" y="404" class="code">    }</text>
-  <text x="332" y="422" class="code">}</text>
-  <text x="332" y="450" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
-  <text x="332" y="468" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
-  <text x="332" y="486" class="code">    match s {</text>
-  <text x="332" y="504" class="code">        Sum::Left  { value } =&gt; Sum::Left  { value: f(value) },</text>
-  <text x="332" y="522" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
-  <text x="332" y="540" class="code">    }</text>
-  <text x="332" y="558" class="code">}</text>
-  <text x="332" y="586" class="code">pub fn and_then&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;,</text>
-  <text x="332" y="604" class="code">    f: impl FnOnce(A) -&gt; Sum&lt;C, B&gt;) -&gt; Sum&lt;C, B&gt; {</text>
-  <text x="332" y="622" class="code">    match s {</text>
-  <text x="332" y="640" class="code">        Sum::Left  { value } =&gt; f(value),</text>
-  <text x="332" y="658" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
-  <text x="332" y="676" class="code">    }</text>
-  <text x="332" y="694" class="code">}</text>
-  <text x="332" y="722" class="code">pub fn parse_int(s: &amp;str) -&gt; Sum&lt;ParseError, i64&gt; {</text>
-  <text x="332" y="740" class="code">    s.parse::&lt;i64&gt;().map_or_else(</text>
-  <text x="332" y="758" class="code">        |e| Sum::Left  { value: ParseError::from(e) },</text>
-  <text x="332" y="776" class="code">        |n| Sum::Right { value: n })</text>
-  <text x="332" y="794" class="code">}</text>
-  <text x="332" y="822" class="code">pub fn http_get(url: &amp;str) -&gt; Sum&lt;HttpError, Bytes&gt; {</text>
-  <text x="332" y="840" class="code">    unimplemented!()</text>
-  <text x="332" y="858" class="code">}</text>
-  <text x="332" y="886" class="code">pub fn validate_email(s: &amp;str) -&gt; Sum&lt;ValidationError, Email&gt; {</text>
-  <text x="332" y="904" class="code">    unimplemented!()</text>
-  <text x="332" y="922" class="code">}</text>
-  <text x="332" y="950" class="code">pub fn handle_signup(req: SignupRequest) -&gt; Sum&lt;HttpError, Session&gt; {</text>
-  <text x="332" y="968" class="code">    and_then(</text>
-  <text x="332" y="986" class="code">        http_get(&amp;profile_url(&amp;req.email)),</text>
-  <text x="332" y="1004" class="code">        |bytes| Sum::Right { value: mint_session(bytes) },</text>
-  <text x="332" y="1022" class="code">    )</text>
-  <text x="332" y="1040" class="code">}</text>
+  <rect x="320" y="110" width="480" height="1318" class="card"/>
+  <text x="332" y="130" class="layer">// primitive</text>
+  <text x="332" y="150" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="168" class="code">pub enum Sum&lt;A, B&gt; { Left { value: A }, Right { value: B } }</text>
+  <text x="332" y="196" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
+  <text x="332" y="214" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
+  <text x="332" y="232" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
+  <text x="332" y="250" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
+  <text x="332" y="268" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
+  <text x="332" y="286" class="code">}</text>
+  <text x="332" y="314" class="layer">// helpers</text>
+  <text x="332" y="334" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
+  <text x="332" y="362" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
+  <text x="332" y="380" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
+  <text x="332" y="398" class="code">    match s {</text>
+  <text x="332" y="416" class="code">        Sum::Left  { value } =&gt; Sum::Left  { value: f(value) },</text>
+  <text x="332" y="434" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
+  <text x="332" y="452" class="code">    }</text>
+  <text x="332" y="470" class="code">}</text>
+  <text x="332" y="498" class="code">pub fn and_then&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;,</text>
+  <text x="332" y="516" class="code">    f: impl FnOnce(A) -&gt; Sum&lt;C, B&gt;) -&gt; Sum&lt;C, B&gt; {</text>
+  <text x="332" y="534" class="code">    match s { Sum::Left{value}=&gt;f(value), Sum::Right{value}=&gt;Sum::Right{value} }</text>
+  <text x="332" y="552" class="code">}</text>
+  <text x="332" y="580" class="layer">// library</text>
+  <text x="332" y="600" class="code">pub type ApiResponse&lt;T&gt; = Result&lt;T, HttpError&gt;;</text>
+  <text x="332" y="628" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="646" class="code">pub struct HttpError { pub status: i32, pub body: String }</text>
+  <text x="332" y="664" class="code">impl HttpError {</text>
+  <text x="332" y="682" class="code">    pub fn new(status: i32, body: String) -&gt; Self { Self { status, body } }</text>
+  <text x="332" y="700" class="code">}</text>
+  <text x="332" y="728" class="layer">// domain</text>
+  <text x="332" y="748" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="766" class="code">pub struct LoginRequest { pub email: String, pub password: String }</text>
+  <text x="332" y="784" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="802" class="code">pub struct Credentials  { pub email: String, pub hash: Vec&lt;u8&gt; }</text>
+  <text x="332" y="820" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="838" class="code">pub struct User { pub id: UserId, pub email: String }</text>
+  <text x="332" y="856" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="874" class="code">pub struct UserSession { pub user_id: UserId, pub expires_at: Timestamp }</text>
+  <text x="332" y="902" class="code">impl LoginRequest {</text>
+  <text x="332" y="920" class="code">    pub fn new(email: String, password: String) -&gt; Self {</text>
+  <text x="332" y="938" class="code">        Self { email, password }</text>
+  <text x="332" y="956" class="code">    }</text>
+  <text x="332" y="974" class="code">}</text>
+  <text x="332" y="1002" class="code">pub fn validate(req: LoginRequest)     -&gt; ApiResponse&lt;Credentials&gt; { unimplemented!() }</text>
+  <text x="332" y="1020" class="code">pub fn fetch_user(creds: Credentials)  -&gt; ApiResponse&lt;User&gt;        { unimplemented!() }</text>
+  <text x="332" y="1038" class="code">pub fn mint_session(user: User)        -&gt; ApiResponse&lt;UserSession&gt; { unimplemented!() }</text>
+  <text x="332" y="1066" class="layer">// app handler — composes the library</text>
+  <text x="332" y="1086" class="code">pub fn handle_login(</text>
+  <text x="332" y="1104" class="code">    req: LoginRequest,</text>
+  <text x="332" y="1122" class="code">) -&gt; ApiResponse&lt;UserSession&gt; {</text>
+  <text x="332" y="1140" class="code">    and_then(</text>
+  <text x="332" y="1158" class="code">        validate(req),</text>
+  <text x="332" y="1176" class="code">        |creds| and_then(</text>
+  <text x="332" y="1194" class="code">            fetch_user(creds),</text>
+  <text x="332" y="1212" class="code">            |user| mint_session(user),</text>
+  <text x="332" y="1230" class="code">        ),</text>
+  <text x="332" y="1248" class="code">    )</text>
+  <text x="332" y="1266" class="code">}</text>
 
-  <!-- RIGHT: facts — STILL essentially Sum -->
+  <!-- RIGHT: 4 layers stacked -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
-  <rect x="820" y="110" width="280" height="98" class="card"/>
-  <text x="832" y="130" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="148" class="code">  Left{value:A} | Right{value:B}</text>
-  <text x="832" y="178" class="code">type Result&lt;T, E&gt; = Sum&lt;E, T&gt;</text>
-  <rect x="820" y="220" width="240" height="18" rx="4" class="stable"/>
-  <text x="832" y="234" class="stable-text">SAME 3 LINES OF FACTS</text>
+  <rect x="820" y="110" width="280" height="638" class="card"/>
+  <text x="832" y="130" class="layer">// PRIMITIVE</text>
+  <text x="832" y="150" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="168" class="code">  Left{value:A} | Right{value:B}</text>
+  <text x="832" y="208" class="layer">// HELPERS</text>
+  <text x="832" y="228" class="code">type Result&lt;T, E&gt; =</text>
+  <text x="832" y="246" class="code">  Sum&lt;E, T&gt;</text>
+  <text x="832" y="286" class="layer">// LIBRARY</text>
+  <text x="832" y="306" class="code">type ApiResponse&lt;T&gt; =</text>
+  <text x="832" y="324" class="code">  Result&lt;T, HttpError&gt;</text>
+  <text x="832" y="352" class="code">type HttpError {</text>
+  <text x="832" y="370" class="code">  status: Int; body: Str</text>
+  <text x="832" y="388" class="code">}</text>
+  <text x="832" y="428" class="layer">// DOMAIN</text>
+  <text x="832" y="448" class="code">type LoginRequest {</text>
+  <text x="832" y="466" class="code">  email: Str</text>
+  <text x="832" y="484" class="code">  password: Str</text>
+  <text x="832" y="502" class="code">}</text>
+  <text x="832" y="530" class="code">type Credentials {</text>
+  <text x="832" y="548" class="code">  email: Str; hash: Bytes</text>
+  <text x="832" y="566" class="code">}</text>
+  <text x="832" y="594" class="code">type User {</text>
+  <text x="832" y="612" class="code">  id: UserId; email: Str</text>
+  <text x="832" y="630" class="code">}</text>
+  <text x="832" y="658" class="code">type UserSession {</text>
+  <text x="832" y="676" class="code">  user_id: UserId</text>
+  <text x="832" y="694" class="code">  expires_at: Timestamp</text>
+  <text x="832" y="712" class="code">}</text>
 
-  <text x="20" y="1230" class="punchline">3 lines of facts. ~60 lines of business logic on the left. ~140 lines of generated Rust in the middle. The facts didn't change. The middle is what runs.</text>
+  <text x="20" y="1470" class="punchline">Four stacked layers on the right. The handler on the left only writes against the top two. The middle has the whole stack built and ready to run.</text>
 </svg>

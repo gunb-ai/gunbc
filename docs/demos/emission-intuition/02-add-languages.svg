@@ -11,19 +11,17 @@
       .layer  { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; font-style: italic; fill: #6e7781; }
       .card { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
       .card-header { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
-      .stable { fill: #ddf4ff; stroke: #54aeff; stroke-width: 1; }
-      .stable-text { font-size: 10px; font-weight: 600; fill: #0969da; letter-spacing: 0.04em; }
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">Helpers built on it.</text>
-  <text x="20" y="48" class="sub">Same Sum on the right. Two generic combinators on the left. The middle holds Sum's emission and three function bodies.</text>
+  <text x="20" y="30" class="title">Two layers — primitive and helpers.</text>
+  <text x="20" y="48" class="sub">A second layer on the right (an alias). Helper combinators on the left, still operating at the primitive layer.</text>
 
   <text x="20"  y="78" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
   <text x="320" y="78" class="col-label">RUST — GENERATED</text>
   <text x="820" y="78" class="col-label">FACTS · STRUCTS · OBJECTS</text>
 
-  <!-- LEFT: primitive consumer + 2 helpers -->
+  <!-- LEFT -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
   <rect x="20" y="110" width="280" height="478" class="card"/>
@@ -34,7 +32,7 @@
   <text x="32" y="204" class="code">    Left  { value } =&gt; value</text>
   <text x="32" y="222" class="code">    Right { value } =&gt; value</text>
   <text x="32" y="240" class="code">  }</text>
-  <text x="32" y="278" class="layer">// helpers (generic over Sum)</text>
+  <text x="32" y="278" class="layer">// generic helpers (still on Sum)</text>
   <text x="32" y="298" class="code">fn map&lt;A, B, C&gt;(</text>
   <text x="32" y="316" class="code">    s: Sum&lt;A, B&gt;,</text>
   <text x="32" y="334" class="code">    f: A -&gt; C</text>
@@ -52,7 +50,7 @@
   <text x="32" y="570" class="code">    Left  { value } =&gt; f(value)</text>
   <text x="32" y="582" class="code">    Right { value } =&gt; Right { value } }</text>
 
-  <!-- CENTER: emission for Sum + 3 fns -->
+  <!-- CENTER -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
   <text x="332" y="103" class="badge badge-rust">RUST</text>
   <rect x="320" y="110" width="480" height="568" class="card"/>
@@ -64,35 +62,37 @@
   <text x="332" y="230" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
   <text x="332" y="248" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
   <text x="332" y="266" class="code">}</text>
-  <text x="332" y="294" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
-  <text x="332" y="312" class="code">    match s {</text>
-  <text x="332" y="330" class="code">        Sum::Left  { value } =&gt; value,</text>
-  <text x="332" y="348" class="code">        Sum::Right { value } =&gt; value,</text>
-  <text x="332" y="366" class="code">    }</text>
-  <text x="332" y="384" class="code">}</text>
-  <text x="332" y="412" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
-  <text x="332" y="430" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
-  <text x="332" y="448" class="code">    match s {</text>
-  <text x="332" y="466" class="code">        Sum::Left  { value } =&gt; Sum::Left  { value: f(value) },</text>
-  <text x="332" y="484" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
-  <text x="332" y="502" class="code">    }</text>
-  <text x="332" y="520" class="code">}</text>
-  <text x="332" y="548" class="code">pub fn and_then&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;,</text>
-  <text x="332" y="566" class="code">    f: impl FnOnce(A) -&gt; Sum&lt;C, B&gt;) -&gt; Sum&lt;C, B&gt; {</text>
-  <text x="332" y="584" class="code">    match s {</text>
-  <text x="332" y="602" class="code">        Sum::Left  { value } =&gt; f(value),</text>
-  <text x="332" y="620" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
-  <text x="332" y="638" class="code">    }</text>
-  <text x="332" y="656" class="code">}</text>
+  <text x="332" y="294" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
+  <text x="332" y="332" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
+  <text x="332" y="350" class="code">    match s {</text>
+  <text x="332" y="368" class="code">        Sum::Left  { value } =&gt; value,</text>
+  <text x="332" y="386" class="code">        Sum::Right { value } =&gt; value,</text>
+  <text x="332" y="404" class="code">    }</text>
+  <text x="332" y="422" class="code">}</text>
+  <text x="332" y="450" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
+  <text x="332" y="468" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
+  <text x="332" y="486" class="code">    match s {</text>
+  <text x="332" y="504" class="code">        Sum::Left  { value } =&gt; Sum::Left  { value: f(value) },</text>
+  <text x="332" y="522" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
+  <text x="332" y="540" class="code">    }</text>
+  <text x="332" y="558" class="code">}</text>
+  <text x="332" y="586" class="code">pub fn and_then&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;,</text>
+  <text x="332" y="604" class="code">    f: impl FnOnce(A) -&gt; Sum&lt;C, B&gt;) -&gt; Sum&lt;C, B&gt; {</text>
+  <text x="332" y="622" class="code">    match s {</text>
+  <text x="332" y="640" class="code">        Sum::Left  { value } =&gt; f(value),</text>
+  <text x="332" y="658" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
+  <text x="332" y="676" class="code">    }</text>
 
-  <!-- RIGHT: facts — STILL just Sum -->
+  <!-- RIGHT -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
-  <rect x="820" y="110" width="280" height="58" class="card"/>
-  <text x="832" y="130" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="148" class="code">  Left{value:A} | Right{value:B}</text>
-  <rect x="820" y="180" width="160" height="18" rx="4" class="stable"/>
-  <text x="832" y="194" class="stable-text">FACTS UNCHANGED</text>
+  <rect x="820" y="110" width="280" height="158" class="card"/>
+  <text x="832" y="130" class="layer">// PRIMITIVE</text>
+  <text x="832" y="150" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="168" class="code">  Left{value:A} | Right{value:B}</text>
+  <text x="832" y="208" class="layer">// HELPERS (alias)</text>
+  <text x="832" y="228" class="code">type Result&lt;T, E&gt; =</text>
+  <text x="832" y="246" class="code">  Sum&lt;E, T&gt;</text>
 
-  <text x="20" y="708" class="sub">The facts didn't change. We added two helpers, and the middle grew to hold Sum's full impl block plus three Rust function bodies.</text>
+  <text x="20" y="708" class="sub">Two layers of facts. The helpers on the left know about the primitive — and they're enough to power everything that comes next.</text>
 </svg>
