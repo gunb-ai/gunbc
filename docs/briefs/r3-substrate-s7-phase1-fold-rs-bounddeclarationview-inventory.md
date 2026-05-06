@@ -81,15 +81,27 @@ kind-only** bounds per `design-emission-model.md` — matched via the outer
 `BoundDeclaration` sum (`PlatformDependent`), **not** by pretending their
 semantics are “wider `Interval<Int>` literals.” **`match_bound`** already has a
 **kind-only** arm for `BoundDeclarationView::PlatformDependent` (`fold.rs`
-`L118`). **Explicit gate:** extending Phase 1 here means **substrate +
-`TargetIntegerTypeInhabitance` row facts + `parse_target_integer_inhabitance_bound`**
-alignment for platform-bound inhabitants — validate **before** folding Track B
-into Track A work items.
+`L118`).
 
-**`isize` boundary:** Classify per declared inhabitance rows at dispatch (exact
-static intervals vs platform-sizing policies). Do **not** lump **isize** with
-Track A u128 widening **or** Track B usize matching without reading the shape of
-the rows being added.
+**Not wider `StaticBoundFact` (Q1):** Under **`design-emission-model.md` Q1**
+consolidation, **`PlatformDependent` is a distinct outer kind**, not an
+`Interval<Int>` edge case. **`usize` / architecture-dependent rows are not**
+“broader `TargetIntegerInhabitanceBoundView::StaticBoundFact` intervals.” Encoding
+them that way would **split substrate authority** (same failure mode Q1 calls out
+for “`BoundDeclaration = Interval<Int>` only”). **P1 modeling faithfulness:**
+extend the **target inhabitance carrier** (`TargetIntegerTypeInhabitance` **`bound:`**
+field + **`parse_target_integer_inhabitance_bound`**) so platform targets **name
+`PlatformDependent` structurally** — **STOP** if consumer work invents interval
+width where substrate requires the platform-kind gate.
+
+**Explicit gate:** Phase 1 Track B work lands **substrate + row facts** first,
+then consumers — **never** merge Track B into Track A as “interval widening.”
+
+**`isize` boundary:** Classify per declared inhabitance rows — **`isize`** is **not**
+automatically Track B like **`usize`**; substrate may use **`StaticBound` exact
+intervals** for a fixed pointer-sized signed range **or** other declared shapes.
+Do **not** lump **isize** with Track A u128 widening **or** Track B usize matching
+without reading each row’s **`BoundDeclaration`** kind.
 
 ---
 
