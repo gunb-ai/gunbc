@@ -195,3 +195,22 @@ A single new docs-only file (`docs/briefs/r3-pb-tv2-population-coverage-audit.md
 **Single-authority pointer (P2 from §A) reaffirmed:** §"Post-#1715 reclassification" remains the canonical Pop A dispatch-readiness authority. Per-row §A.1–§A.4 cells continue to carry substrate-presence context only.
 
 **HEAD commit verified:** `530c76ea7 docs: E6-G1.a static lens fold dispatch packet (post-cleanup)`.
+
+### B.2 reclassification — substrate authority migration already landed (correction 2026-05-06)
+
+Per blocking review on PR #1805 (codex sha:`72667918`): the §Delta row for B.2 above incorrectly inferred from the surviving v2 oracle that Substrate authority migration is still pending. Re-grep at HEAD `530c76ea7` shows the migration **already landed**:
+
+- `src/v3/compiler/src/dag.rs:1789-1791` (doc comment on `pub fn kernel_algebra_profile`): *"Semantic authority is `dsl/std/algebra.dag` (`data kernel_algebra_profile`). `v2_compiler::std_algebra::kernel_algebra_profile` remains only as a [drift ratchet]"*.
+- `src/v3/compiler/src/dag.rs:3596-3605` — typed accessor `Dag::kernel_algebra_profile` reads the lowered `data kernel_algebra_profile` Map directly from `dsl/std/algebra.dag`.
+- `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs:1239` — `fn v3_kernel_algebra_profile_reads_lowered_dag_map_authority` ratchets v3 reading the lowered-Dag Map authority (P0 invariant).
+- The surviving `v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` test at `:1208` is the **drift ratchet** (test name + doc both label v3 as authority; v2 stage0 is the mirror, regenerated from `dsl/std/algebra.dag`). The original audit's framing that v2 stage0 is "the *authority* the v3 mirror is checked against" is reversed by the live state.
+
+**Reclassified disposition for B.2:**
+
+> Substrate `kernel_algebra_profile` authority migration **DONE** at HEAD `530c76ea7`. B.2's remaining R3 PB-lane work is **parity-test retirement + Cargo-edge drop**, not authority migration:
+> - retire `v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` (and its `v2_profile_to_v3` shim) once the cross-program decision allows; the test is structurally redundant given `v3_kernel_algebra_profile_reads_lowered_dag_map_authority` already ratchets the v3-side authority read.
+> - drop `v2-compiler` / `v2-compiler-tests` Cargo edges in `src/v3/compiler/Cargo.toml:37-38` once B.1 + B.2 parity-test retirement both close.
+
+**Net dispatch order correction:** the original §"Net dispatch order this audit implies" §3.2 sequencing assumed Substrate-Manager-routed authority migration is the prerequisite. With migration already landed, B.2 collapses to a PB-lane-internal mechanical retirement (atomic with Cargo-edge drop), no Substrate-Manager dispatch needed for B.2 disposition.
+
+**§A reclassification single-authority pointer reaffirmed for Pop A** — this B.2 correction does not affect Pop A's gate set (still §"Post-#1715 reclassification" — v3 evaluator runtime constructor/value execution). Authority changes here are B.2 (Pop B) only.
