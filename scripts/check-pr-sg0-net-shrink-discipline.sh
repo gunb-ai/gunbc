@@ -17,7 +17,8 @@
 #
 # Exit codes:
 #   0 — not a pull_request event, census file unchanged, or body satisfies rules
-#   1 — census changed on PR but body missing / invalid / positive delta without pairing
+#   1 — pull_request but origin/main missing; census changed on PR but body missing /
+#       invalid / positive delta without pairing; or other gate failure
 
 set -euo pipefail
 
@@ -234,8 +235,8 @@ if [ "${GITHUB_EVENT_NAME:-}" != "pull_request" ]; then
 fi
 
 if ! git rev-parse -q --verify origin/main >/dev/null 2>&1; then
-  echo "::notice::origin/main not available locally — skipping SG-0 PR-body discipline (CI fetches before this step)"
-  exit 0
+  echo "::error::SG-0 PR-body discipline requires \`origin/main\` on pull_request (fail-closed). Fetch \`main\` to \`refs/remotes/origin/main\` before this script — see \`.github/workflows/ci.yml\` step \"Fetch main for PR discipline diffs\"."
+  exit 1
 fi
 
 # Census unchanged vs origin/main — path-limited diff only (avoid
