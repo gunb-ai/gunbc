@@ -165,7 +165,10 @@ Worker should align to the three named gates structurally.
   introduction; STOP and follow `INVARIANTS.md` P1 procedure
   (DAG-ancestor / coproduct-vs-coordinate / primitive-vs-lens-extensible).
   The new variant ALSO inherits the existing `CallPattern` 🟡
-  SCAFFOLD classification at `dag.rs:1187` per Practice 4 (Step 4),
+  SCAFFOLD classification at `dag.rs:1187` per
+  `docs/modeling-discipline.md#4-coproduct-dissolution` (Practice 4 —
+  *"Any new Rust enum with N ≥ 2 variants must have a checkpoint
+  comment naming its classification (🟢/🟡/🔴)..."*),
   with the same dissolution trigger as `SizeBound`. Do not silently
   grow the enum past current count without P1 receipt AND
   Practice-4 classification confirmation in the PR body.

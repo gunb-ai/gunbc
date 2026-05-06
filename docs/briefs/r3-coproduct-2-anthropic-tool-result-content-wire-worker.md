@@ -196,8 +196,12 @@ silent invention of new `VariantEncoding` shapes).
   substrate-fact-introduction-ratified shape) covering the
   scalar-vs-array dispatch.
 - **Practice 4 classification receipts on the live declarations
-  (mandatory).** Per `docs/modeling-discipline.md` Practice 4
-  Step 4, the new `AnthropicToolResultBlock` sum carries an
+  (mandatory).** Per
+  `docs/modeling-discipline.md#4-coproduct-dissolution`
+  (Practice 4) — *"Any new Rust enum with N ≥ 2 variants must
+  have a checkpoint comment naming its classification (🟢/🟡/🔴),
+  with a ledger entry if GREEN or a named trigger if YELLOW."*
+  The new `AnthropicToolResultBlock` sum carries an
   inline 🟢/🟡/🔴 doc comment with named dissolution trigger
   (🟡 SCAFFOLD if more block kinds are gap-carried beyond the
   three Anthropic-only variants; 🟢 TERMINAL if the variant set

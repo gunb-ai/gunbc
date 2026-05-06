@@ -189,8 +189,12 @@ codex BLOCKING (sha 84aebd90) finding 2.
 - `AnthropicMessages200ContentBlock` (or equivalent renaming)
   expresses all five missing variants with typed payloads.
 - **Practice 4 classification receipts on the live declarations
-  (mandatory).** Per `docs/modeling-discipline.md` Practice 4
-  Step 4, the renamed `AnthropicMessages200ContentBlock` sum
+  (mandatory).** Per
+  `docs/modeling-discipline.md#4-coproduct-dissolution`
+  (Practice 4) — *"Any new Rust enum with N ≥ 2 variants must
+  have a checkpoint comment naming its classification (🟢/🟡/🔴),
+  with a ledger entry if GREEN or a named trigger if YELLOW."*
+  The renamed `AnthropicMessages200ContentBlock` sum
   carries an inline 🟢/🟡/🔴 doc comment with named dissolution
   trigger. The new `service_tier` typed coproduct (if added per
   item (9)) carries a mark. Existing sums whose variant set

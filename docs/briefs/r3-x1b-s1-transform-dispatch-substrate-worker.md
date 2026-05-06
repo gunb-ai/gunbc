@@ -192,8 +192,10 @@ fail-closed arms for `FieldCall` and `Indirect`.
   variants carry the same marks (kept in sync per slice §1's
   Migrate-reflection-sum step). The marks must be present on
   the source in both files, not only in the design doc, brief,
-  or PR body — per `docs/modeling-discipline.md` Practice 4
-  Step 4 the in-source receipt is the load-bearing artifact.
+  or PR body — per
+  `docs/modeling-discipline.md#4-coproduct-dissolution`
+  (Practice 4 "What to check") the in-source checkpoint comment
+  is the load-bearing artifact.
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green; strict-compile diagnostic
   ratchet (`v2_strict_compile_diagnostic_count -- --ignored`)

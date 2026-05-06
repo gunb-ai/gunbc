@@ -181,8 +181,12 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
   through bootstrap.
 - **Practice 4 classification receipts on the live declaration
   (mandatory).** Each new sum-typed declaration carries an
-  inline 🟢/🟡/🔴 doc comment per `docs/modeling-discipline.md`
-  Practice 4 Step 4: `ShapeATarget` → 🟢 TERMINAL;
+  inline 🟢/🟡/🔴 doc comment per
+  `docs/modeling-discipline.md#4-coproduct-dissolution`
+  (Practice 4) — *"Any new Rust enum with N ≥ 2 variants must
+  have a checkpoint comment naming its classification (🟢/🟡/🔴),
+  with a ledger entry if GREEN or a named trigger if YELLOW."*
+  `ShapeATarget` → 🟢 TERMINAL;
   `FormAxis` → 🟡 SCAFFOLD with named dissolution trigger
   (option (c) substrate-`Disj`-mirroring generator);
   `BehaviorAxis` → 🟡 SCAFFOLD with same dissolution trigger.

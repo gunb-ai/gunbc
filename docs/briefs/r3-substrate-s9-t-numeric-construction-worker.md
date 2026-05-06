@@ -51,9 +51,23 @@ phases below; Substrate Mgr ratifies phase-by-phase.
 
 ### Phase 1 — Int / UInt direct construction (gates #17 / #18)
 
-1. **`Int = AbelianGroup<Nat>` algebra carrier**. Author or verify
-   `Int` declaration as projection of algebraic structure
-   (`AbelianGroup<Nat>`) + machine axis (`MachineConstraint<C>`).
+1. **`Int` algebra carrier — group-completion of `Nat`-monoid**.
+   Author or verify `Int` declaration as projection of algebraic
+   structure + machine axis (`MachineConstraint<C>`). Per
+   substrate-modeling discipline: `Nat` is a commutative monoid
+   under addition (closure / associativity / identity / commutativity;
+   no inverses). `Int` is the additive Abelian group on integers
+   (carrier `Z`); the algebraic relationship to `Nat` is **explicit
+   group-completion** (Grothendieck construction —
+   `Int ≡ GroupCompletion<CommutativeMonoid<Nat>>`), NOT a
+   parameterization `AbelianGroup<Nat>` (which is unfaithful — Nat
+   does not satisfy group axioms; additive inverses are not
+   representable in Nat). Worker EITHER models `Int` directly as
+   `AbelianGroup` (terminal Abelian-group instance over `Z`,
+   `Nat` not a parameter) OR introduces explicit
+   `GroupCompletion<M>` substrate carrier consuming
+   commutative-monoid `M`. Decision lands in Phase-1 PR body
+   per P1 substrate-fact-introduction procedure.
    Practice 4 classification: 🟢 PRIMITIVE if algebra-only;
    🟡 SCAFFOLD if machine-axis composition is hand-modeled.
 2. **`UInt = Monoid<Nat>` algebra carrier**. Companion to `Int`;
@@ -113,7 +127,9 @@ shape. Worker:
    vs which use Nat as concrete primitive (drift; should migrate
    to `UInt × MachineWidth<N>` product).
 3. Migrates concrete-primitive uses to product form. Algebra-axis
-   uses are preserved (`AbelianGroup<Nat>` etc.).
+   uses are preserved (Nat as commutative-monoid carrier in
+   group-completion / `CommutativeMonoid<Nat>` shapes — NOT
+   `AbelianGroup<Nat>`, which would be unfaithful).
 
 ## Acceptance
 

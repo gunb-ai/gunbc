@@ -124,9 +124,13 @@ on the Anthropic side live at `dsl/extdeps/llm/anthropic.dag:20-30`.
   invariant; no `role` field on payloads).
 - `OpenAiChatMessageRole` includes `Tool` and `Function`.
 - **Practice 4 classification receipts on the live declarations
-  (mandatory).** Per `docs/modeling-discipline.md` Practice 4
-  Step 4, every new sum-typed declaration carries an inline
-  🟢/🟡/🔴 doc comment. For this slice: `OpenAiChatMessage`
+  (mandatory).** Per
+  `docs/modeling-discipline.md#4-coproduct-dissolution`
+  (Practice 4) — *"Any new Rust enum with N ≥ 2 variants must
+  have a checkpoint comment naming its classification (🟢/🟡/🔴),
+  with a ledger entry if GREEN or a named trigger if YELLOW."*
+  Every new sum-typed declaration carries an inline 🟢/🟡/🔴
+  doc comment. For this slice: `OpenAiChatMessage`
   (the widened coproduct) and the new `OpenAiChatMessageContent`
   / `OpenAiChatMessagePart` sums all carry classification marks
   with named dissolution triggers where 🟡 (e.g., gap-carried

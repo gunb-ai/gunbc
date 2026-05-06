@@ -18,9 +18,12 @@ worker pin: valiant-ant-72 (per S7 brief partition; valiant-ant-72 reserved for 
 ## Context
 
 Per Brian directive 2026-05-06 (chat): concrete types like `i64`
-emerge as products of independent constraint axes — algebra
-(`Int = AbelianGroup<Nat>`) × machine constraint (`MachineWidth<64>`)
-— **NOT primary substrate entities**. The current substrate treats
+emerge as products of independent constraint axes — algebra (`Int`,
+the additive Abelian group on integers `Z`) × machine constraint
+(`MachineWidth<64>`) — **NOT primary substrate entities**. (The
+algebra side is a load-bearing instance of an algebraic structure;
+the relationship of `Int` to `Nat` is explicit group-completion
+per S9, NOT `AbelianGroup<Nat>` — Nat lacks additive inverses.) The current substrate treats
 some concrete primitives (e.g., `Int<32>`, `Float<64>`) as primary
 declarations; modeling target reframes them as projections of
 algebra × machine-constraint products.
@@ -186,7 +189,8 @@ substrate; Grounding consumes. Coordinate Phase-3/4 hand-off receipts.
    algebra × machine-constraint product. Worker re-greps at dispatch.
 2. **Existing brief?** None for machine-constraint axis. S9
    (T-Numeric-Construction) is the algebra-side companion — it
-   lands `Int = AbelianGroup<Nat>` shape; this brief lands the
+   lands `Int` algebra-side shape (group-completion of Nat-monoid;
+   see S9 Phase-1); this brief lands the
    machine-side shape. Brief co-references S9; the two briefs
    are independent axes (Substrate Mgr partition response 2026-05-06).
 3. **Design-doc match?** Brian directive 2026-05-06 (chat) is the
