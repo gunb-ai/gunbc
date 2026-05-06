@@ -348,12 +348,11 @@ jobs:
   # Lane 1 Stage 1e closes: do not block merges on this job yet.
   self_host_ratchet:
     if: github.event.pull_request.draft != true
-    # Same sizing rationale as `v3` above: cargo release builds +
-    # determinism_test (5x emit matrix) + self_host_fixed_point bin
-    # need >2 cores to clear the 30min cap. Hard-coded to
-    # ubicloud-standard-8.
+    # Same sizing rationale as `v3` above: DB-8 release builds run on
+    # ubicloud-standard-8. Use a 60m wall-clock cap so cold-cache / full release
+    # `cargo` work is unlikely to hit mid-compile cancellation (ratchet remains non-blocking).
     runs-on: ubicloud-standard-8
-    timeout-minutes: 30
+    timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:
