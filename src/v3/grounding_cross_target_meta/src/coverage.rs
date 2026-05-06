@@ -113,7 +113,7 @@ pub(crate) enum ProjectionCoverageError {
         target: ShapeATarget,
         dag_method: DeclarationId,
     },
-    DuplicateProjectionKeyConflictingCells {
+    DuplicateProjectionKey {
         row_index: usize,
         target: ShapeATarget,
         dag_method: DeclarationId,
@@ -136,9 +136,9 @@ struct ProjectionRow {
 /// at least one emission-path template at substrate load time.
 ///
 /// Fail-closed: any malformed projection surface, empty projection list, empty
-/// row-local cell list, projection/source mismatch, or duplicate key with
-/// conflicting cells contributes **no** coverage. The walker then reports the
-/// cells as typed missing coverage rather than fabricating a partial answer.
+/// row-local cell list, projection/source mismatch, or duplicate key
+/// contributes **no** coverage. The walker then reports the cells as typed
+/// missing coverage rather than fabricating a partial answer.
 pub(crate) fn language_spec_emission_cells_covered(dag: &Dag) -> HashSet<Cell> {
     language_spec_emission_cells_covered_checked(dag).unwrap_or_default()
 }
@@ -216,17 +216,12 @@ fn projection_rows_by_key(
         if !source_keys.contains(&row.key) {
             return Err(ProjectionCoverageError::ProjectionWithoutSourceRow { row_index });
         }
-        if let Some(existing) = by_key.get(&row.key) {
-            if existing != &row.cells {
-                return Err(
-                    ProjectionCoverageError::DuplicateProjectionKeyConflictingCells {
-                        row_index,
-                        target: row.key.target,
-                        dag_method: row.key.dag_method,
-                    },
-                );
-            }
-            continue;
+        if by_key.contains_key(&row.key) {
+            return Err(ProjectionCoverageError::DuplicateProjectionKey {
+                row_index,
+                target: row.key.target,
+                dag_method: row.key.dag_method,
+            });
         }
         by_key.insert(row.key, row.cells);
     }
@@ -584,6 +579,31 @@ mod tests {
     }
 
     #[test]
+    fn projection_rows_fail_closed_for_duplicate_key_even_with_identical_cells() {
+        let (source_keys, rust_key, _) = bootstrap_key_pair();
+        let cell = Cell {
+            connective: FormAxis::Cardinality,
+            behavior: BehaviorAxis::Transform,
+            target: ShapeATarget::Rust,
+        };
+        let rows = vec![
+            ProjectionRow {
+                key: rust_key,
+                cells: [cell].into_iter().collect(),
+            },
+            ProjectionRow {
+                key: rust_key,
+                cells: [cell].into_iter().collect(),
+            },
+        ];
+
+        assert!(matches!(
+            projection_rows_by_key(rows, &source_keys),
+            Err(ProjectionCoverageError::DuplicateProjectionKey { row_index: 1, .. })
+        ));
+    }
+
+    #[test]
     fn projection_rows_fail_closed_for_duplicate_key_conflicting_cells() {
         let (source_keys, rust_key, _) = bootstrap_key_pair();
         let rows = vec![
@@ -611,12 +631,7 @@ mod tests {
 
         assert!(matches!(
             projection_rows_by_key(rows, &source_keys),
-            Err(
-                ProjectionCoverageError::DuplicateProjectionKeyConflictingCells {
-                    row_index: 1,
-                    ..
-                }
-            )
+            Err(ProjectionCoverageError::DuplicateProjectionKey { row_index: 1, .. })
         ));
     }
 
