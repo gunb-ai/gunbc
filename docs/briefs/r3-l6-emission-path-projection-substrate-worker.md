@@ -116,12 +116,21 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
 2. Add a small ratchet asserting that:
    - The six types (`ShapeATarget`, `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`) and the `data` declaration exist with the
      ratified field shapes (typed-substrate read, no string scan).
-   - When `emission_path_projections` is non-empty, its row count
-     equals the sum of `MethodTemplateContract` row counts across
-     `*_method_template_contracts` lists (row-count parity).
-     The parity assertion is structurally trivial while the list
-     is empty (vacuously true) and activates the load-bearing
-     check once Grounding populates.
+   - **Per-row key bijection** (the load-bearing modeled fact —
+     count-parity alone is insufficient because it permits
+     duplicate projection keys + missing source rows): every
+     `MethodTemplateContract` row across the union of
+     `*_method_template_contracts` lists has exactly one
+     `EmissionPathProjection` row whose `key:
+     MethodTemplateContractKey { target, dag_method }` matches
+     the source row's `(target, dag_method)`; every projection
+     key resolves to exactly one source row; duplicate projection
+     keys fail closed (ratchet asserts uniqueness on the
+     projection key set + bijective coverage of the source key
+     set). Bijection is structurally trivial while
+     `emission_path_projections` is empty (vacuously true on the
+     empty source set) and activates the load-bearing check once
+     Grounding populates.
 
 3. **No row population, no `coverage.rs` edits in this slice.**
    Both are scoped to the Grounding follow-up per §4.D=(b).
