@@ -183,7 +183,7 @@ Run at minimum:
 ```bash
 cargo fmt --all --check
 cargo test -p v3-grounding-coercion-fold -- --nocapture
-rg -n '\b(ScratchIntExamples|IntScratchExample|TargetInhabitance|fold_design_doc_example_[A-Za-z0-9_]*)\b' src/v3/grounding_coercion_fold/src
+! rg -n '\b(ScratchIntExamples|IntScratchExample|TargetInhabitance|fold_design_doc_example_[A-Za-z0-9_]*)\b' src/v3/grounding_coercion_fold/src
 ```
 
 If the landed executable projection requires bootstrap regeneration or parse
