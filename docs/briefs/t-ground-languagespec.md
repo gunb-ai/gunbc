@@ -10,7 +10,7 @@
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 6 (line 192), §"Affected lanes" option (c) (lines 900-910), MethodContract consolidation (line 942), `BoundDeclaration` consumer note (line 1008), apparent-multi-inhabitance audit (line 895), Q3 `RealizationCost` lock (lines 1143-1208), lane row line 384.
 - Reflection completeness: [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md) — LanguageSpec as a reflection consumer (no per-consumer projection; line 103).
 - THESIS: `THESIS.md:171` — "Coercion = emission. No separate coercion engine."
-- Substrate-fact-introduction procedure: [`INVARIANTS.md`](../../INVARIANTS.md) §P1 (line 86 onward).
+- Substrate-fact-introduction procedure: [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
 - Brief shape template: [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md).
 
 ---
@@ -54,7 +54,7 @@ Author the `LanguageSpec` schema as `.dag` substrate. Per Modeling problem 6 (`d
 
 **Parallel-authority dissolution:** `dsl/std/languages.dag:438`'s `LanguageSpec` declaration + its `rust_spec` / `go_spec` / `python_spec` data items (lines 1244 / 1268 / 1292) converge with `src/v3/std/emit_model.dag:303` under one authority. If the two shapes have already drifted, this lane resolves the drift explicitly (no silent reconciliation) and lands the dissolution receipt in the PR body. If the shapes are reconcilable, T-Ground-Dissolve retires the duplicate; if they are not (i.e., `dsl/std/languages.dag` carries a structural fact `emit_model.dag` cannot absorb), escalate to manager (#1133) — that is itself a substrate-modeling call.
 
-**P1 procedure receipts** (`INVARIANTS.md:94-129`): worker MUST cite which steps resolved each *new* field added to the existing type, in the PR body. Step 1 (DAG-ancestor) for the type itself is landed by this brief — the parent is `emit_model.dag`'s existing `LanguageSpec`.
+**P1 procedure receipts** ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)): worker MUST cite which steps resolved each *new* field added to the existing type, in the PR body. Step 1 (DAG-ancestor) for the type itself is landed by this brief — the parent is `emit_model.dag`'s existing `LanguageSpec`.
 
 ### B. Per-primitive `RealizationCost` (Q3 lock — `design-emission-model.md:1143-1208`)
 
@@ -128,9 +128,9 @@ Sub-tasks (per target):
 
 This is the load-bearing consequence of Q4's universal four-property gate (Faithful / Correct / Minimal / Performant; PR-I lock). Each candidate retained must pass all four; each candidate retracted must produce a structural reason citation.
 
-### G. Substrate-fact-introduction P1 procedure (per `INVARIANTS.md` §P1)
+### G. Substrate-fact-introduction P1 procedure (per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness))
 
-Worker MUST run the 3-step procedure (`INVARIANTS.md:94-129`) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
+Worker MUST run the 3-step procedure ([`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)) for every new substrate type / variant / field introduced under this lane and cite the receipts in the PR body:
 - **Step 1 (DAG-ancestor):** which existing parent does the new fact attach to? (Worked example: `LanguageSpec` itself — does an ancestor target-spec carrier exist already?)
 - **Step 2 (Coproduct-vs-coordinate):** for each new sum, do all variants ever co-inhabit (→ record) or alternate (→ sum)? (`RealizationCost` is correctly a record — Q3 lock receipt; `BoundDeclaration` is correctly a sum — Q1 lock receipt.)
 - **Step 3 (Primitive-vs-lens-extensible):** for new leaves introduced under *this* lane's scope (e.g., `PlaceholderConvention` instances populated against the Substrate-owned `MethodTemplateContract` type), are they substrate primitives or lens-extensible labels? (Type-shape Step 1+2 receipts for `MethodTemplateContract` itself land on Substrate's PR per E above.)
@@ -262,6 +262,6 @@ PR body covers: scope (A-G); per-target population status (Rust full / Python fu
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Modeling problem 6 + §"Affected lanes" + Q3 lock + line 942 method-contract consolidation (renamed `MethodTemplateContract` post-2026-04-29 Director routing; cited line still uses doc's original wording)
 - Reflection completeness: [`docs/design-reflection-completeness.md`](../design-reflection-completeness.md)
 - THESIS: `THESIS.md:171` (engine-retraction)
-- Substrate-fact-introduction: [`INVARIANTS.md`](../../INVARIANTS.md) §P1
+- Substrate-fact-introduction: [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness)
 - Brief shape template: [`t-ground-engine-phase-1-typestructure.md`](t-ground-engine-phase-1-typestructure.md)
 - Sibling lanes: [`t-ground-engine-substrate-audit.md`](t-ground-engine-substrate-audit.md), [`t-ground-engine-substrate-escalation.md`](t-ground-engine-substrate-escalation.md) (both pre-cascade; post-cascade naming aligns with the 11-lane structure). These pre-cascade docs will be superseded by the post-cascade lane briefs (T-Ground-Coercion-Fold / -Lifetime-Analyzer / -Diagnostic / -CrossTarget-Meta) once authored; lineage stays visible until then.
