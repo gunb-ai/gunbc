@@ -1,0 +1,63 @@
+// std/machine_constraints.dag — Machine-width axis + algebra × machine composition carrier.
+//
+// Authority: Director-ratified Q-MachineConstraint-Carrier (gunbc#828, 2026-05-06): universal
+// substrate carries machine-width facts for every target; targets lacking native width semantics
+// discharge omission at **Grounding** (lowering), not by making substrate target-conditional.
+//
+// R3 scope: `MachineWidth<bits>` is the **only** machine-axis carrier. The retracted top-level
+// `MachineConstraint<C>` subsumer record is **not** revived here. Deferred post-R3: RegisterClass,
+// EndianMode, Alignment, signedness as independent axes (construction only on consumer demand).
+//
+// Interaction: parametric `Compose<Algebra, MachineConstraint>` — `MachineConstraint` names the
+// **type parameter slot** for the machine-side carrier (instantiate with `MachineWidth<bits>` in
+// R3). Equivalent algebra-side spellings (canonical `AbelianGroup`/terminal `Int` vs
+// `GroupCompletion<CommutativeMonoid<Nat>>`) do not change composition semantics (PR #1815 / Q6).
+
+module std.machine_constraints
+
+// ----------------------------------------------------------------------------
+// MachineWidth<bits> — sole R3 machine-axis carrier (phantom `bits`, grounded vs Nat at emission).
+// ----------------------------------------------------------------------------
+
+// 🟢 PRIMITIVE — substrate authority for machine word width. `bits` is a phantom type parameter
+// (documentation intent: indexed by `Nat` magnitude); not an alternate Nat authority (`dsl/std/nat.dag`).
+//
+// Practice 4 dissolution ledger (nominal opaque carrier; no coproduct variants here):
+// - Pattern 1 (fact placement): fails — width centralizes as the machine axis composed with algebra.
+// - Pattern 2 (variant-is-data): n/a — no variants.
+// - Pattern 3 (algebraic form): fails — width does not dissolve into an algebra witness over Nat.
+// - Pattern 4 (dimensional): fails — word width is an irreducible machine fact at this layer.
+// Verdict: terminal at machine-width axis scope.
+//
+// P2 / P5 — **TRACKED PARAMETER GAP / bounded scaffold** (INVARIANTS.md § P5 scaffold boundaries —
+//   named dissolution trigger below; closes “prose-only Nat index” / “unbounded phantom” reviews):
+// - **P2 (Boundary discipline, INVARIANTS.md § P2):** `bits` is phantom; v3 `.dag` surface grammar
+//   here does **not** attach a structural `bits : Nat` bound. The Nat-magnitude intent above is
+//   **single-authority documentation** plus **Grounding lowering** enforcement — not a second,
+//   parser-parallel “Nat police” encoded only in comments.
+// - **Constructibility:** shapes like `MachineWidth<String>` are **not R3-valid substrate uses**
+//   of this carrier; absent a parse-time bound, rejection is **mechanical at Grounding** (fail
+//   closed / omit per universal-substrate posture, gunbc#828) — not silent acceptance.
+// - **P5 (Dissolution trigger, INVARIANTS.md § P5 / scaffold boundaries):** dissolve this gap in
+//   the **same PR** that first lands one of: (a) substrate grammar for bounded phantom parameters
+//   tying `bits` to `Nat`, or (b) a non-phantom canonical `MachineWidth` indexed by an explicit
+//   `Nat` carrier — then delete this block and re-measure consumers.
+type MachineWidth<bits>
+
+// ----------------------------------------------------------------------------
+// Compose<Algebra, MachineConstraint> — type-level phantom composition (ratified interaction shape).
+// ----------------------------------------------------------------------------
+
+// Parametric pairing of independent algebra and machine axes. **Sub-decision 2:** record-keyed
+// lookup carriers are rejected; this unary phantom sum is the substrate interaction witness.
+//
+// spelling note: The second type parameter is spelled `MachineConstraint` per ratification — it is a
+// generic slot (R3: actual argument `MachineWidth<…>`), not the retracted `MachineConstraint<C>` record.
+//
+// Encoding note: Brief pseudocode `data Compose<…> = Phantom` is modeled as a single-variant sum
+// (`= Phantom` without `|`) — v3 `parse_type_rhs_after_eq` accepts unary sums; `data` declarations do
+// not yet allow generic parameters on the declaration name.
+//
+// Practice 4: single-variant sum — no multi-variant coproduct checkpoint until extension adds a
+// second discriminant.
+type Compose<Algebra, MachineConstraint> = Phantom
