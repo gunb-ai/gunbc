@@ -45,7 +45,16 @@
 
 Prior `AbelianGroup<Nat>` references in r3-structure.md, r3-program-plan.md, this doc are **DEFERRED-shorthand** until design selection lands. **T-Numeric-Construction further dispatch HELD** (Brian directive 2026-05-06) until algebra-side selection ratified. S3 (`MachineConstraint<C>`) interaction modeling proceeds in parallel — once algebra-side resolves, the interaction `Int<N> = Int × MachineWidth<N>` semantics carries through identically under either option (Int participates as AbelianGroup carrier in both).
 
-Carriers needed: `MachineConstraint<C>` + `MachineWidth<bits>` + interaction-lookup substrate. May require additional axes (`RegisterClass<R>`, `EndianMode<E>`, alignment) per use cases.
+**Q-MachineConstraint-Carrier scope RATIFIED 2026-05-06** (Brian directive: "universal substrate, ratify defaults"). Per `r3-program-plan.md` §10.3 Q-MachineConstraint-Carrier row, the 6 sub-decisions are:
+
+1. **Axes in R3 scope**: `MachineWidth<bits>` only. `RegisterClass<R>` / `EndianMode<E>` / alignment / signedness-as-axis deferred post-R3 absent a closure-gate forcing them.
+2. **Interaction substrate shape**: parametric `Compose<Algebra, MachineConstraint>` type-level construction. Closed-enumeration lookup-maps are bridges (rejected).
+3. **Type-level spelling**: `Int<64>` parses/elaborates as `Compose<AbelianGroup, MachineWidth<64>>` parametrically. Surface intuition is the literal product `Int × MachineWidth<64>`; substrate spelling is parametric. Equivalent under both algebra-side options per PR #1815.
+4. **Approximate-algebra layering**: algebra-side approximation (`ApproximateField<Rational>`) and machine-side approximation (`MachineWidth<64>`) stay as independent axes that compose. `Real<64>` = `Compose<ApproximateField<Rational>, MachineWidth<64>>` carries both layers explicitly per S8's named-axiom-relaxation discipline.
+5. **Class 1 demonstration breadth**: ≥3 algebra×constraint pairs (`Int<64>` / `Real<64>` / `Nat<8>`) is **minimum, not target**. Broader coverage follows automatically once parser handles generic interaction syntax.
+6. **Target-specificity**: **`MachineConstraint<C>` is universal substrate** (Brian directive). Every target carries machine-constraint facts as substrate; targets lacking native machine-width semantics (Python `int` / `float`) handle the omission at **Grounding-level discharge** (target-conditioned lowering, not target-conditioned substrate).
+
+**S3 dispatch unblocked on machine-constraint side** (independent of T-Numeric-Construction algebra-side Option A vs B selection per PR #1815 — interaction semantics carries through under either).
 
 **Dispatch trigger**: now (foundational; gates Class 1 closure).
 **Closure predicate**: §1.8 gate #60 `substrate_gap_parser_grammar_closed` (Class 1 5-criteria Pass: substrate carriers + parser handles generic interaction syntax + ≥3 algebra×constraint pairs emit to target primitives + target primitives NOT primary substrate entities).
