@@ -57,9 +57,9 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, ComparisonOp,
-        Dag, DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId,
-        TransformNode, TransformTarget, TypeConnective,
+        ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag,
+        DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode,
+        TransformTarget, TypeConnective,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -579,49 +579,35 @@ pub mod evaluator {
             }
             TransformTarget::Callable(callee_decl) => {
                 let callee_decl = *callee_decl;
-                // Peel `Instantiation` / resolved-atom chains so generic callees whose
-                // substrate stores `Callable(Instantiation { template: Arrow, .. })` still
-                // reach the same `UserDefined` bind as a bare Arrow target.
-                let mut arrow_peel = callee_decl;
-                for _ in 0..32 {
-                    match &dag.declaration(arrow_peel).connective {
-                        TypeConnective::Arrow { body, .. } => {
-                            let ArrowBody::UserDefined(bind_id) = body else {
-                                return Err(EvalError::UnsupportedTransformTarget {
-                                    kind: "Callable (non-UserDefined body)",
-                                });
-                            };
-                            let bind_node_id = bind_id.node_id();
-                            let Behavior::Bind(bind) = dag.node(bind_node_id) else {
-                                return Err(EvalError::MissingNode { node: bind_node_id });
-                            };
-                            let bind = bind.clone();
-                            if operands.len() != bind.params.len() {
-                                return Err(EvalError::TransformArityMismatch {
-                                    expected: bind.params.len(),
-                                    got: operands.len(),
-                                });
-                            }
-                            let bindings: Vec<(PortId, Value)> =
-                                bind.params.iter().copied().zip(operands).collect();
-                            state.push_frame(EvalFrame::empty());
-                            let body_result = eval_callable_body_in_pushed_frame(
-                                dag, &bind, bindings, state, strategy,
-                            );
-                            let pop_result = state.pop_frame();
-                            return match (body_result, pop_result) {
-                                (Ok(value), Ok(_)) => Ok(value),
-                                (Err(err), _) => Err(err),
-                                (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
-                            };
-                        }
-                        TypeConnective::Instantiation { template, .. } => arrow_peel = *template,
-                        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
-                        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
-                            arrow_peel = *next;
-                        }
-                        _ => break,
+                let connective = &dag.declaration(callee_decl).connective;
+                if let TypeConnective::Arrow { body, .. } = connective {
+                    let ArrowBody::UserDefined(bind_id) = body else {
+                        return Err(EvalError::UnsupportedTransformTarget {
+                            kind: "Callable (non-UserDefined body)",
+                        });
+                    };
+                    let bind_node_id = bind_id.node_id();
+                    let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+                        return Err(EvalError::MissingNode { node: bind_node_id });
+                    };
+                    let bind = bind.clone();
+                    if operands.len() != bind.params.len() {
+                        return Err(EvalError::TransformArityMismatch {
+                            expected: bind.params.len(),
+                            got: operands.len(),
+                        });
                     }
+                    let bindings: Vec<(PortId, Value)> =
+                        bind.params.iter().copied().zip(operands).collect();
+                    state.push_frame(EvalFrame::empty());
+                    let body_result =
+                        eval_callable_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
+                    let pop_result = state.pop_frame();
+                    return match (body_result, pop_result) {
+                        (Ok(value), Ok(_)) => Ok(value),
+                        (Err(err), _) => Err(err),
+                        (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+                    };
                 }
 
                 // E6-G0d: non-Arrow `Callable` targets lowered as record/variant constructors.
