@@ -219,8 +219,14 @@ follow-on Q-Regex-Primitive substrate-fact-introduction.
   shim retirement Deliverable 3 likewise gates on the chosen path
   (Option A retires shim cleanly; Option B retires shim post-Q-Regex;
   Option C retires shim with named-trigger exception path retained)
-- **PB-1 shim**: FULLY RETIRED (file-path-special-case dissolved
-  per Director hard scope bar #3)
+- **PB-1 shim**: retirement shape gates on Options A/B/C ratification
+  (above). Director hard scope bar #3 ("PB-1 retirement non-negotiable
+  in same slice") still binds the *gt_zero / range / non_empty / brand*
+  half — those four predicates retire shim coverage cleanly via Gap 1.
+  pattern/format/content shim coverage retires per the chosen path
+  (A: post-migration / B: post-Q-Regex / C: replaced by named-trigger
+  exception). No path leaves PB-1 alive as a parallel-authority shim
+  on slice landing
 - **Carrier-check at `788d6acb4`**: retained as structural improvement
 
 ## Slice — single PR per Director ratification
