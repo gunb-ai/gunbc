@@ -54,17 +54,21 @@ Author `EmissionProvenance` carrier in `src/v3/std/` (alongside other
 ```dag
 type EmissionProvenance {
   emitted_line: Int       // line number in emitted target output
-  source_span: OptionalSourceSpan    // populated when line directly mirrors a .dag Behavior / Declaration
-  fold_rule: OptionalString          // populated when LangSpec auto-emitted (e.g., "rust.derive_for_disj")
+  source_span: SourceSpan?    // populated when line directly mirrors a .dag Behavior / Declaration
+  fold_rule: String?          // populated when LangSpec auto-emitted (e.g., "rust.derive_for_disj")
 }
 ```
 
+**Optional shape note (per claude review observation 2026-05-06)**:
+canonical Optional in `.dag` is `T?` suffix (e.g., `String?` at
+`src/v3/std/anthropic_schema.dag:115-119`). Named Optional carriers
+like `OptionalDiagnostic` exist at `src/v3/std/dimensions.dag:41`
+but generic Optional is the `T?` suffix form. Worker grep-verifies
+at dispatch + adjusts to project convention if it has shifted.
+
 **Hard scope bar (per `feedback_fail_closed_discipline` C-8)**: at least
 one of `source_span` / `fold_rule` MUST be present per emitted line.
-Both-absent is a Diagnostic, not a silent None. Worker grep-verifies
-the substrate carrier shape against existing `OptionalSourceSpan` /
-`OptionalString` representations at brief time and adjusts naming if
-the project conventions differ at HEAD.
+Both-absent is a Diagnostic, not a silent None.
 
 ### Phase 2 — `Lens<EmissionProvenance>` instance authoring
 
@@ -133,14 +137,7 @@ P1 procedure.
 
 ## STOP triggers (fail-closed; do not bypass)
 
-1. **Missing fold-rule names** — if the Rust LangSpec emission code
-   doesn't expose enumerable rule identifiers (e.g.,
-   `rust.derive_for_disj`, `rust.predicate_per_variant`,
-   `rust.constructor_per_conj`), STOP and surface to Substrate Mgr.
-   The lens instance can't faithfully name `fold_rule` if the rules
-   aren't structurally declared. **Resolution path**: name the rules
-   as enumerable data in the LangSpec first; lens instance lands
-   downstream.
+1. **Missing fold-rule names — likely prerequisite, not mid-implementation STOP** (per claude review observation 2026-05-06; PM grep-verified): grep at PM-authoring-time for `RuleName` / `FoldRule` / `fn emit_derive` in `src/v3/compiler/src/` returns **0 hits**. Fold-rule names are NOT enumerable in LangSpec emission code today; they're implicit in the Rust LangSpec emission code rather than data-declared rule identifiers. **This is most likely a hard prerequisite to resolve BEFORE dispatch, not a mid-implementation STOP**. **Resolution path**: Substrate Mgr disposes — either (a) author rule-name enumeration substrate first as separate brief (lens instance lands downstream once rules are enumerable), OR (b) confirm that grep was incomplete and rule names ARE enumerable somewhere PM didn't check. If neither: brief should be re-scoped to land partial-provenance (only source-span side; fold-rule side deferred to post-rule-enumeration). PM-side recommendation: Substrate Mgr resolves this before worker dispatch rather than after.
 2. **`Lens<C>` shape gaps** — if instance authoring surfaces missing
    substrate types from `Lens<C>` (e.g., needing T-LAS-only types
    that aren't yet landed), STOP and surface. Director's ratification
