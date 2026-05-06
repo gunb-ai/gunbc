@@ -650,3 +650,32 @@ type DocSource {
   path: FilePath
   kind: DocSourceKind
 }
+
+// --- ReferenceModel<T> — pointer/reference parent carrier (PR-F S7 / design-emission §Q2) ---
+//
+// DFS parent attachment (INVARIANTS.md#p1-modeling-faithfulness Step 1): lands under the shared
+// kernel vocabulary in `std.types`, adjacent to other carriers typed over generic parameters (same
+// epistemic-stacking pattern as Q1 `Interval<D>`). Authority: docs/design-emission-model.md §Q2 DECISION
+// (2026-04-28) — Rust `Box<T>` / `&T` / `Rc<T>`, Go `*T`, Python object references declare projections
+// over this parent; flavors are not unrelated sibling enums here.
+//
+// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (docs/modeling-discipline.md §4 coproduct dissolution)
+// Type-parameter carrier for downstream projections/specializations (`&T`, `Box<T>`, …): widening adds
+// those shapes, not new `ReferenceModel` variants at this substrate layer.
+//
+// Substrate note (INVARIANTS.md P2 / modeling-discipline Practice 6): today `T` lowers only into
+// `type_params` with `phantom_params` empty — comments alone do not enforce phantom discipline.
+// Compare `Dimension<Unit, Carrier>` in `src/v3/std/dimensions.dag`, which gets a fail-closed
+// `phantom_params` edge from the std `Dimension` bridge in `src/v3/compiler/src/lower.rs`. Until a
+// similar bridge (or source `phantom_params` on the declaration) exists for `ReferenceModel`, do
+// not read API-level “phantom” intent from this block; follow `phantom_params` on the declaration.
+//
+// Named consumer demand (Grounding G1 / T-Ground-Rust Phase 1): worker brief
+// `docs/briefs/r3-substrate-s7-pr-f-bounddeclaration-consumer-worker.md` bundles this carrier with the
+// BoundDeclaration consumer lane under Substrate canvas B3.
+//
+// HARD BOUNDARIES:
+//   - No runtime payload / value refinement at this declaration — same constrained-inhabitance deferral
+//     pattern as `Measure<Q, S>` in `dsl/std/measure.dag` until substrate where-clauses land.
+//
+type ReferenceModel<T>
