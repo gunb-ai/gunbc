@@ -133,6 +133,22 @@ Before flagging an item RED, apply inversion test:
 
 If inversion dissolves the case → status updates to GREEN/YELLOW. If inversion doesn't dissolve it → RED is structurally honest.
 
+### §3.A STRUCTURAL grandfathering — pre-existing apparatus exemption (per openai-pro NON-BLOCKING 2026-05-06 at PR #1804 #issuecomment-4384427761)
+
+A fourth status exists alongside GREEN / YELLOW / RED for **pre-existing STRUCTURAL infrastructure only** — the SG-0 measurement apparatus itself (the sg0_census_test.rs framework, its expected-arrays, and the test-runner that uses them). This apparatus is hand-authored Rust by necessity (it measures hand-Rust at the test boundary; it cannot itself be generated without dissolving the measurement primitive). It is grandfathered from the GREEN/YELLOW/RED rubric pending explicit Director ratification of "STRUCTURAL" as a permanent status.
+
+**Bounds — what counts as STRUCTURAL grandfathered**:
+- The SG-0 measurement apparatus (`src/v3/compiler/tests/integration/sg0_census_test.rs` + its expected-array authority arrays + the test framework it depends on)
+- NOT generic "compiler scaffold I think is load-bearing forever" — that's an escape hatch and explicitly disallowed per §4 going-forward contract
+
+**Going-forward (post-framework-merge) STRUCTURAL additions**: require explicit Director allocation citing the program shape (per §4 Refinement B). There is no implicit-pass; a Mgr cannot self-classify an addition as STRUCTURAL without Director ratification.
+
+**Interaction with §3 GREEN/YELLOW/RED**: STRUCTURAL is NOT a fourth ledger-counted status (does not contribute to ledger-zero count per §1.3 inclusion rules). It's an explicit out-of-ledger category for the measurement primitive itself. R3 close-criteria treat STRUCTURAL items as out-of-scope for `bridge_retirement_ledger_zero` predicate but in-scope for the measurement framework's continued existence.
+
+**Boundary with substrate-gap-class closures**: STRUCTURAL apparatus is NOT eligible for the 5 substrate-gap-class closures (§1.4) — it's the measurement framework that detects gaps, not a gap itself.
+
+**Status-flow if Director rejects "STRUCTURAL" status**: items currently in §3.A revert to YELLOW with explicit prerequisite "Director ratification of STRUCTURAL status as new R3-close ledger category." If neither STRUCTURAL ratification nor dissolution path materializes by R3 close, items become RED.
+
 ---
 
 ## §4 Anticipated debt — preventive lane
