@@ -1,4 +1,4 @@
-> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 1 Stage 1b (substrate keyed-lookup) | Consumes: INVARIANTS.md § E-9 "External realization lives on Arrow.body"
+> Part of: [post-l15-phase-plan.md](./post-l15-phase-plan.md) | Unblocks: Lane 1 Stage 1b (substrate keyed-lookup) | Consumes: [INVARIANTS.md#e-9](../INVARIANTS.md#e-9) "External realization lives on Arrow.body"
 
 # Design DB-14 — Substrate external primitives (banked against E-9)
 
