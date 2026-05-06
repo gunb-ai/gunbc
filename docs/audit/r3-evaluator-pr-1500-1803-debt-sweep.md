@@ -31,7 +31,9 @@ entry points.
 - it reuses existing `EvalError` shapes;
 - it adds no substrate carrier;
 - it adds no new dispatch variant;
-- it retires the E6-G0c FieldProject + Arrow/UserDefined Callable blocker.
+- it provides implementation evidence for the E6-G0c FieldProject +
+  Arrow/UserDefined Callable blocker, anchored in the live
+  `eval_transform_node` FieldProject and Arrow/UserDefined Callable arms.
 
 #1799 is correctly classified as a STOP/receipt, not new evaluator debt:
 `LoopBound::Descent` remains active and fail-closed as
@@ -53,7 +55,7 @@ outside evaluator execution and should not be charged to PR-E.
 | #1598 | feat(r3): Gap 4 build-step producer -- bounded MethodTemplateContract Map adapter | 2026-05-04 00:44 UTC | `lib.rs` only exports `pb_method_template_projection_dag_emit`; no evaluator behavior. | Yes, producer/adapter hand-Rust. | Yes, bounded Gap 4 adapter; PR body rejects v2->v3.std import bridge and second hand-authored Map authority. | Active until legacy `Single`-template leaf migration / generated structural producer replaces adapter. | ROADMAP MethodTemplateContract / CollectionOps algebra-reframe rows; row 85 adjacency. |
 | #1664 | F5: deactivate v3 service parser authority | 2026-05-04 22:55 UTC | `lib.rs` listed, but parser/table/generated-manifest authority churn; no evaluator-symbol patch found. | Generated/parser authority changes, not evaluator hand-Rust. | Not evaluator-lane debt. | N/A for evaluator. | ROADMAP F5 service parser authority row. |
 | #1661 | keen-swift-519 | 2026-05-04 23:59 UTC | `lib.rs` patch only reorders/exports `LAYER1_DIAGNOSTIC_KIND_LABELS`; no evaluator behavior. | No evaluator hand-Rust. | No evaluator bridge/debt row found. | N/A. | Diagnostics/verification authority, outside PR-E evaluator execution. |
-| #1715 | feat(v3): E6-G0c -- evaluator execution for FieldProject and Callable | 2026-05-05 00:12 UTC | Yes. `eval_transform_node` executes `TransformTarget::FieldProject` and Arrow/UserDefined `TransformTarget::Callable`; adds `eval_callable_body_in_pushed_frame` and focused tests. | Yes, production evaluator Rust. | No new debt row per PR receipt; no census shift, no new substrate carriers, no new `TransformTarget` variants, no new `EvalError` variants. | Retires E6-G0c FieldProject / Arrow-UserDefined Callable fail-closed blocker. Active residuals remain: G1.b runtime-sourced / Indirect callable dispatch, declared lens-instance data, `DimensionReport` lifting, and `LoopBound::Descent`. | `docs/briefs/r3-pr-e6-lens-fold-readiness-audit.md` G0c / residual sections; `docs/briefs/r3-evaluator-dispatch.md` §E6; PR receipt references #1532. |
+| #1715 | feat(v3): E6-G0c -- evaluator execution for FieldProject and Callable | 2026-05-05 00:12 UTC | Yes. `eval_transform_node` executes `TransformTarget::FieldProject` and Arrow/UserDefined `TransformTarget::Callable`; adds `eval_callable_body_in_pushed_frame` and focused tests. | Yes, production evaluator Rust. | No new debt row per PR receipt; no census shift, no new substrate carriers, no new `TransformTarget` variants, no new `EvalError` variants. | Implementation evidence for E6-G0c FieldProject / Arrow-UserDefined Callable support. The Phase 3 compile should verify against current `eval_transform_node`; this receipt is not standalone retirement authority. Active residuals remain: G1.b runtime-sourced / Indirect callable dispatch, declared lens-instance data, `DimensionReport` lifting, and `LoopBound::Descent`. | `docs/briefs/r3-pr-e6-lens-fold-readiness-audit.md` G0c / residual sections; `docs/briefs/r3-evaluator-dispatch.md` §E6; current `src/v3/compiler/src/lib.rs` `eval_transform_node` FieldProject and Arrow/UserDefined Callable arms; PR receipt references #1532. |
 | #1719 | test(v3): refresh parse corpus manifest | 2026-05-05 00:43 UTC | `lib.rs` touched inside evaluator but patch is formatting of Callable binding collection; no behavior change. | No new hand-Rust surface beyond existing #1715 code. | No evaluator bridge/debt row found. | N/A; housekeeping after parser-manifest drift. | Parser corpus manifest authority. |
 | #1725 | docs(evaluator): E6-G0d constructor runtime execution brief | 2026-05-05 04:03 UTC | Docs only. | No. | No code debt; queues constructor runtime execution boundary. | Active at merge time. Post-range PR #1813 implements E6-G0d constructor Callable runtime support; this row is evidence for the Phase 3 compile, not standalone retirement authority. | `docs/briefs/r3-pr-e6-g0d-constructor-runtime-execution-worker.md`; PR #1813 (`feat(v3-eval): E6-G0d constructor Callable runtime execution`); current `src/v3/compiler/src/lib.rs` `eval_transform_node` Callable constructor arms; current `src/v3/compiler/src/lower.rs` E6-G0d constructor helper anchors. |
 | #1799 | sharp-ibex-91 -- E5 LoopBound::Descent STOP packet | 2026-05-06 05:27 UTC | Docs/test CI only; no evaluator code. | No production hand-Rust. | No new debt; records STOP boundary for existing Descent residual. | Active STOP: `LoopBound::Descent` remains `EvalError::LoopBoundDescentResidual` until termination-evidence authority exists. | `docs/briefs/r3-pr-e5-loopbound-descent-stop-packet.md`; `docs/briefs/r3-evaluator-dispatch.md` §E5; `src/v3/compiler/src/lib.rs` `eval_loop` / `EvalError::LoopBoundDescentResidual`. |
@@ -80,7 +82,10 @@ consume these lane-specific rows without treating this receipt as a global
 count:
 
 - **#1715** as the only production evaluator behavior expansion in #1500-#1803,
-  with no new evaluator debt row and with E6-G0c retired.
+  with no new evaluator debt row. The Phase 3 compile may use #1715 plus the
+  current `eval_transform_node` FieldProject and Arrow/UserDefined Callable
+  arms as E6-G0c support evidence, but this #1500-#1803 receipt does not by
+  itself close that blocker.
 - **#1799** as an active STOP receipt for `LoopBound::Descent`, not a new debt
   introduction.
 - **#1503 / #1505** as test-only E7 pressure feeding the runner/TestClaim
