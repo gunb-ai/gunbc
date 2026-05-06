@@ -200,7 +200,7 @@ Each Population B / C row above maps back to a migration-matrix surface and (whe
 | `dsl/extdeps/languages/{rust,python,go}/emit.dag` legacy chain | §4 | Decision 4 (gate timing) | (G-2 prereq, not G-1) |
 | `dsl/std/verification.dag` (v2-era) vs `src/v3/std/verification.dag` | §5 | Decision 5 (Substrate-routed) | (G-2 prereq, not G-1) |
 | `src/v3/compiler/src/dag.rs` doc-comments | §2.3 | (cosmetic — sweep at G-2) | C |
-| `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs:29`, `pb_method_template_projection_dag_emit_test.rs:28,54` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
+| `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs:29`, `pb_method_template_projection_dag_emit_test.rs:24,28,54` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
 | `dsl/tools/purity_check.dag:157`, `dsl/std/{node,constructors,syntax}.dag`, `dsl/extdeps/{llm/openai,languages/python/syntax}.dag`, `dsl/gunbc/compiler.dag:29`, `dsl/gunbc/tools/{review_codex,ci_runner}.dag` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
 | **`dsl/gunbc/compiler.dag:53`** `data compiler_source: SourceRoot = { path: "src/v2" }` | (not in matrix) | **Decision 6 scope coverage (S-1 routes)** | **C-data** (G-2 prereq, named disposition) |
 | **`dsl/gunbc/compiler.dag:270`** `data test_package: NonEmptyStr = "v2-compiler-tests"` | (not in matrix) | **Decision 6 scope coverage (S-1 routes)** as a **G-2** decision (CI test package retargeting tied to root-workspace `src/v2/tests` removal at §1.4 / Cargo.toml L8). NOT tied to §B.2 Decision 3 (G-1 dev-dep edge deletion). | **C-data** (G-2 prereq, named disposition) |
