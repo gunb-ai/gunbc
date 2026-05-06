@@ -1058,13 +1058,46 @@ fn test_registered_predicate_placeholder_works_outside_types_dag() {
     );
 }
 
-/// S9 Slice 2.5 Path (a) Rung 3 cement: `brand("X")` body synthesis produces
-/// a **real** refinement (not a placeholder). The synthesized body is
-/// `subject == subject` (Comparison(Eq) reflexive) — semantically `true` for
-/// every carrier value, and references the bind subject so the
-/// unused-parameter lens doesn't flag it.
+/// S9 Slice 2.5 Path (a) cement (openai-pro REQUEST_CHANGES at gunbc PR
+/// #1846 `79c4da09`): a mixed `where`-clause that combines a body-synthesized
+/// predicate (`gt_zero`) with a placeholder-only predicate (`range`)
+/// fails-closed via `Diagnostic::ResolveError` rather than collapsing both
+/// into a single placeholder (which would silently lose the gt_zero
+/// enforcement). Per-leaf refinement representation is the named follow-on
+/// that would let mixed clauses lower without fail-closed.
 #[test]
-fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
+fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_any("type M = Nat where gt_zero, range(max: 10)", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "mixed synthesizable + placeholder predicate clause must surface a \
+         diagnostic (synthesized facts cannot collapse into a single \
+         placeholder without losing enforcement)"
+    );
+    if let Some(decl) = dag.declaration_by_name("M") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "mixed clause should NOT take a placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) cement: `brand("X")` body synthesis is
+/// structurally available (reflexive `subject == subject`) but held at
+/// placeholder for this slice — re-enabling triggers the openai-pro
+/// REQUEST_CHANGES mixed-fail-closed path on the existing
+/// `Milliseconds = Int where range(min: 0), brand(...)` and
+/// `Seconds = Int where range(min: 0), brand(...)` declarations (range
+/// is placeholder-only; brand body would be synthesizable). Brand
+/// re-enables when per-leaf refinement representation lands or when
+/// range body synthesis lands. Test cements that brand currently
+/// takes a placeholder.
+#[test]
+fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
     let f = "dsl/std/integer.dag";
     let dag = cached_compile_to_dag("type B = Int where brand(\"B\")", f);
     let decl = dag
@@ -1072,15 +1105,17 @@ fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
         .expect("type alias `B` should exist");
     let pred_id = decl
         .refinement
-        .expect("`brand` refinement must produce a real `Declaration::refinement`");
-    let pred = dag.declaration(pred_id);
-    if let Some(label) = pred.name.as_deref() {
-        assert!(
-            !label.contains("predicate not lowered"),
-            "`brand` must lower to a real refinement body, not placeholder; \
-             got label {label:?}"
-        );
-    }
+        .expect("`brand` refinement must produce a `Declaration::refinement`");
+    let label = dag
+        .declaration(pred_id)
+        .name
+        .as_deref()
+        .expect("placeholder should carry a diagnostic name");
+    assert!(
+        label.contains("predicate not lowered"),
+        "`brand` currently takes a placeholder pending mixed-clause fix; \
+         got label {label:?}"
+    );
 }
 
 /// S9 Slice 2.5 Path (a) Rung 3 cement: `gt_zero` body synthesis produces a

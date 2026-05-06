@@ -948,22 +948,20 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
-        "brand" => {
-            // `brand("X")` is a structural-only predicate — it tags the alias
-            // with a brand identity but imposes no value-level constraint.
-            // Body shape: `subject == subject` (Comparison(Eq) reflexive
-            // application) — semantically `true` for every carrier value
-            // (reflexivity), and importantly *references the bind subject*
-            // so the unused-parameter lens (`m2_lens_unused_parameters_migration_test`)
-            // doesn't flag the synthesized refinement param as unused.
-            // Plain `Literal(Bool(true))` would discharge correctly but
-            // would surface as unused-param in lens-self-analysis.
-            Some(SurfaceExpr::Operator {
-                op: OperatorKind::Comparison(ComparisonOp::Eq),
-                args: vec![subject_var(), subject_var()],
-                span,
-            })
-        }
+        // `brand` body synthesis is structurally available (`subject ==
+        // subject` reflexive Comparison(Eq) — references subject so the
+        // unused-parameter lens doesn't flag it; semantically `true` for
+        // every carrier value), but is held at placeholder for this slice
+        // because the existing `dsl/std/types.dag` declarations
+        //   `Milliseconds = Int where range(min: 0), brand("Milliseconds")`
+        //   `Seconds      = Int where range(min: 0), brand("Seconds")`
+        // would mix synthesizable `brand` with placeholder-only `range`,
+        // tripping the openai-pro REQUEST_CHANGES `Mixed`-fail-closed path
+        // (gunbc PR #1846 `79c4da09` finding). brand body synthesis
+        // re-enables when either (a) per-leaf refinement representation
+        // lands so mixed clauses preserve each fact, or (b) range body
+        // synthesis lands and the And combination is uniformly
+        // synthesizable.
         // range body synthesis disabled pending investigation: synthesizing
         // `subject >= min && subject <= max` for the existing types.dag
         // Int-where-range declarations (RetryCount, HttpStatus, Port,
@@ -1038,44 +1036,113 @@ fn synthesize_predicate_body(
     }
 }
 
+/// Result of attempting per-leaf body synthesis on a (possibly And-combined)
+/// `where`-sugar clause. The mixed case is the openai-pro REQUEST_CHANGES
+/// finding (gunbc PR #1846): if a clause combines a synthesizable predicate
+/// (e.g. `gt_zero`) with an unsynthesizable one (e.g. `range` pre-Gap-3),
+/// returning a placeholder for the whole clause silently weakens the
+/// enforceable `gt_zero` fact. Returning a mixed-result variant lets the
+/// caller fail-closed instead.
+enum BodySynthOutcome {
+    /// Every leaf synthesized; combined body lowers via the live predicate
+    /// declaration path.
+    AllSynthesized(SurfaceExpr),
+    /// No leaf synthesized; whole clause routes through the placeholder
+    /// allocator (status quo for unsynthesized registered predicates).
+    AllPlaceholder,
+    /// Mixed: at least one leaf synthesized, at least one didn't. Caller
+    /// emits `Diagnostic::ResolveError` with the listed predicate names so
+    /// the synthesized fact isn't silently weakened by being merged into
+    /// the placeholder. Pairs with the test
+    /// `test_mixed_synthesizable_and_placeholder_predicates_fails_closed`.
+    Mixed {
+        synthesized_names: Vec<String>,
+        unsynthesized_names: Vec<String>,
+    },
+}
+
 /// Walk a (possibly And-combined) `where`-sugar refinement expression and
-/// synthesize a single `Bool`-returning `SurfaceExpr` body for the whole
-/// clause. For a single registered predicate, delegates to
-/// [`synthesize_predicate_body`]. For `Operator { And, [a, b, …] }`, returns
-/// the combined `Operator { And, [body_a, body_b, …] }` only if EVERY leaf
-/// is synthesizable. Returns `None` if any leaf's body cannot yet be
-/// synthesized — the caller falls through to placeholder allocation.
+/// classify per-leaf synthesizability. Single registered predicate delegates
+/// to [`synthesize_predicate_body`]. `Operator { And, [a, b, …] }` walks each
+/// leaf and aggregates outcomes; if any leaf classifies different from the
+/// rest, returns `Mixed` so the caller fails closed.
 fn registered_predicate_synthesized_body(
     expr: &SurfaceExpr,
     bind_name: &str,
     carrier_chain: &[String],
-) -> Option<SurfaceExpr> {
+) -> BodySynthOutcome {
     match expr {
         SurfaceExpr::Operator {
             op: OperatorKind::Logical(LogicalOp::And),
             args,
             span,
         } => {
-            let mut synthesized = Vec::with_capacity(args.len());
+            let mut synthesized: Vec<SurfaceExpr> = Vec::with_capacity(args.len());
+            let mut synthesized_names: Vec<String> = Vec::new();
+            let mut unsynthesized_names: Vec<String> = Vec::new();
             for arg in args {
-                synthesized.push(registered_predicate_synthesized_body(
-                    arg,
-                    bind_name,
-                    carrier_chain,
-                )?);
+                let leaf_name = leaf_predicate_name(arg);
+                match registered_predicate_synthesized_body(arg, bind_name, carrier_chain) {
+                    BodySynthOutcome::AllSynthesized(body) => {
+                        synthesized.push(body);
+                        if let Some(n) = leaf_name {
+                            synthesized_names.push(n);
+                        }
+                    }
+                    BodySynthOutcome::AllPlaceholder => {
+                        if let Some(n) = leaf_name {
+                            unsynthesized_names.push(n);
+                        }
+                    }
+                    BodySynthOutcome::Mixed {
+                        synthesized_names: s,
+                        unsynthesized_names: u,
+                    } => {
+                        synthesized_names.extend(s);
+                        unsynthesized_names.extend(u);
+                    }
+                }
             }
-            Some(SurfaceExpr::Operator {
-                op: OperatorKind::Logical(LogicalOp::And),
-                args: synthesized,
-                span: span.clone(),
-            })
+            match (synthesized_names.is_empty(), unsynthesized_names.is_empty()) {
+                (false, true) => BodySynthOutcome::AllSynthesized(SurfaceExpr::Operator {
+                    op: OperatorKind::Logical(LogicalOp::And),
+                    args: synthesized,
+                    span: span.clone(),
+                }),
+                (true, false) => BodySynthOutcome::AllPlaceholder,
+                (true, true) => BodySynthOutcome::AllPlaceholder,
+                (false, false) => BodySynthOutcome::Mixed {
+                    synthesized_names,
+                    unsynthesized_names,
+                },
+            }
         }
-        SurfaceExpr::Call { target, .. } => {
-            synthesize_predicate_body(predicate_spec(target)?, expr, bind_name, carrier_chain)
-        }
-        SurfaceExpr::Var { name, .. } => {
-            synthesize_predicate_body(predicate_spec(name)?, expr, bind_name, carrier_chain)
-        }
+        SurfaceExpr::Call { target, .. } => match predicate_spec(target) {
+            Some(spec) => match synthesize_predicate_body(spec, expr, bind_name, carrier_chain) {
+                Some(body) => BodySynthOutcome::AllSynthesized(body),
+                None => BodySynthOutcome::AllPlaceholder,
+            },
+            None => BodySynthOutcome::AllPlaceholder,
+        },
+        SurfaceExpr::Var { name, .. } => match predicate_spec(name) {
+            Some(spec) => match synthesize_predicate_body(spec, expr, bind_name, carrier_chain) {
+                Some(body) => BodySynthOutcome::AllSynthesized(body),
+                None => BodySynthOutcome::AllPlaceholder,
+            },
+            None => BodySynthOutcome::AllPlaceholder,
+        },
+        _ => BodySynthOutcome::AllPlaceholder,
+    }
+}
+
+/// Extract the predicate identifier at the head of a `where`-clause leaf.
+/// Returns `None` for non-leaf expressions (e.g. `Operator(And)` itself, or
+/// shapes that aren't predicate calls). Used to attribute names in the
+/// `Mixed` synthesis-outcome diagnostic.
+fn leaf_predicate_name(expr: &SurfaceExpr) -> Option<String> {
+    match expr {
+        SurfaceExpr::Call { target, .. } => Some(target.clone()),
+        SurfaceExpr::Var { name, .. } => Some(name.clone()),
         _ => None,
     }
 }
@@ -1445,22 +1512,54 @@ fn lower_type_alias_refinements_phase(
                 // allocating a `Conj`-shaped placeholder. Currently
                 // synthesizable: `gt_zero`. Pending substrate: the others
                 // (see `synthesize_predicate_body` doc-comment).
-                if let Some(synthesized) =
-                    registered_predicate_synthesized_body(predicate, name, &carrier_chain)
-                {
-                    let pred_decl_id = build_refinement_predicate_declaration(
-                        base_decl_id,
-                        &synthesized,
-                        name,
-                        symbols,
-                        dag,
-                        span.clone(),
-                    );
-                    dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
-                    continue;
+                match registered_predicate_synthesized_body(predicate, name, &carrier_chain) {
+                    BodySynthOutcome::AllSynthesized(synthesized) => {
+                        let pred_decl_id = build_refinement_predicate_declaration(
+                            base_decl_id,
+                            &synthesized,
+                            name,
+                            symbols,
+                            dag,
+                            span.clone(),
+                        );
+                        dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
+                    }
+                    BodySynthOutcome::AllPlaceholder => {
+                        let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
+                        dag.declaration_mut(decl_id).refinement = Some(ph);
+                    }
+                    BodySynthOutcome::Mixed {
+                        synthesized_names,
+                        unsynthesized_names,
+                    } => {
+                        // openai-pro REQUEST_CHANGES at PR #1846 (`79c4da09`):
+                        // mixed clauses (synthesizable + unsynthesizable
+                        // registered predicates combined via And) cannot route
+                        // to a single placeholder without silently weakening
+                        // the synthesized facts. Fail-closed via
+                        // `Diagnostic::ResolveError` until per-leaf refinement
+                        // representation lands.
+                        report_declaration_error(
+                            dag,
+                            Diagnostic::ResolveError {
+                                name: format!(
+                                    "registered `where` clause mixes \
+                                     body-synthesized predicates ({}) with \
+                                     placeholder-only predicates ({}); the \
+                                     synthesized facts cannot collapse into a \
+                                     single placeholder without losing \
+                                     enforcement. Author the predicates as \
+                                     separate type aliases until per-leaf \
+                                     refinement representation lands.",
+                                    synthesized_names.join(", "),
+                                    unsynthesized_names.join(", ")
+                                ),
+                                span: span.clone(),
+                                fixes: Vec::new(),
+                            },
+                        );
+                    }
                 }
-                let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
-                dag.declaration_mut(decl_id).refinement = Some(ph);
                 continue;
             }
             PredicateValidation::RegisteredButMalformed {
