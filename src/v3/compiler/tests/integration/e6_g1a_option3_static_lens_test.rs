@@ -359,25 +359,6 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
-    let mini_read_id = dag.declaration_by_name("mini_read").expect("mini_read").id;
-    let mini_validate_id = dag
-        .declaration_by_name("mini_validate")
-        .expect("mini_validate")
-        .id;
-    assert!(
-        dag.nodes().iter().any(|n| {
-            matches!(
-                n,
-                Behavior::Transform(t) if matches!(
-                    &t.target,
-                    TransformTarget::Callable(id)
-                        if *id == mini_read_id || *id == mini_validate_id
-                )
-            )
-        }),
-        "mini_read / mini_validate must lower to TransformTarget::Callable"
-    );
-
     let (d_port, b_port) = {
         let bind_node_id = bind_node_id_for_fn(&dag, "mini_report");
         let Behavior::Bind(bind) = dag.node(bind_node_id) else {
@@ -442,6 +423,38 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
     assert!(
         value_contains_int_literal(witnesses, 1),
         "witness list must carry the same `Inhabits(c)` payload as `composed` (c = 1 from mini_read)"
+    );
+}
+
+/// Lowering-only contract (TESTING.md §2 / §4): `mini_read` / `mini_validate` reach the graph as
+/// `TransformTarget::Callable` sites — split from the end-to-end `mini_report` eval test so a
+/// lowering refactor fails only this test, not the behavior harness.
+#[test]
+fn e6_g1a_option3_fixture_lowers_mini_read_and_mini_validate_as_callable_transforms() {
+    let dag = cached_compile_to_dag(OPTION3_SOURCE, OPTION3_FILE);
+    assert!(
+        dag.diagnostics().is_empty(),
+        "option3 fixture must compile: {:?}",
+        dag.diagnostics().iter().collect::<Vec<_>>()
+    );
+
+    let mini_read_id = dag.declaration_by_name("mini_read").expect("mini_read").id;
+    let mini_validate_id = dag
+        .declaration_by_name("mini_validate")
+        .expect("mini_validate")
+        .id;
+    assert!(
+        dag.nodes().iter().any(|n| {
+            matches!(
+                n,
+                Behavior::Transform(t) if matches!(
+                    &t.target,
+                    TransformTarget::Callable(id)
+                        if *id == mini_read_id || *id == mini_validate_id
+                )
+            )
+        }),
+        "mini_read / mini_validate must lower to TransformTarget::Callable"
     );
 }
 
