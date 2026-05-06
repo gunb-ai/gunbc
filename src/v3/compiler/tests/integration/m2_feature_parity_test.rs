@@ -1108,6 +1108,30 @@ fn test_registered_predicate_on_disallowed_carrier_fails_closed() {
     }
 }
 
+/// S9 Slice 2.5 Path (a) cement: registered predicate with duplicate
+/// record-shape field fails closed. `range(min: 1, min: 2)` lists `min`
+/// twice; the arg-shape validator rejects the duplicate so it cannot
+/// silently take a placeholder.
+#[test]
+fn test_registered_predicate_with_duplicate_record_field_fails_closed() {
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_any("type P = Int where range(min: 1, min: 2)", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "duplicate-field registered predicate must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "duplicate-field registered predicate should NOT take a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
 /// S9 Slice 2.5 Path (a) cement: registered predicate with malformed
 /// argument shape fails closed. `range(bogus: 1)` does not match the
 /// `range(min, max)` arg-shape contract; it must surface a

@@ -891,6 +891,7 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
                     accepted_fields.join(", ")
                 ));
             }
+            let mut seen: Vec<&str> = Vec::with_capacity(fields.len());
             for field in fields {
                 if !accepted_fields.contains(&field.name.as_str()) {
                     return Some(format!(
@@ -900,6 +901,14 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
                         accepted_fields.join(", ")
                     ));
                 }
+                if seen.contains(&field.name.as_str()) {
+                    return Some(format!(
+                        "predicate `{predicate_name}` does not accept duplicate \
+                         field `{}`",
+                        field.name
+                    ));
+                }
+                seen.push(field.name.as_str());
                 if !matches!(
                     &field.value,
                     SurfaceExpr::Literal {
