@@ -613,7 +613,7 @@ Verification-internal path runs in parallel with global chain post-R2-Evaluator.
 | `EmissionPathProjection` carrier (Substrate; per `docs/briefs/r3-substrate-l6-per-row-projection-routing-decision.md`) | Substrate Mgr lands carrier | L6 CrossTarget-Meta row population + `coverage.rs` conversion | L6 cross-product fold gate |
 | Variant-aware typed REST response projection carrier (Substrate) | Substrate Mgr lands carrier | #1702 Anthropic re-dispatch | T-Anthropic-Wire close + Q-Anthropic-Variant-Aware resolve |
 | Real LanguageSpec projection (Substrate / LanguageSpec) | LanguageSpec projection executable | Coercion-Fold `ScratchIntExamples` + `TargetInhabitance` retirement in `src/v3/grounding_coercion_fold` | Q-Coercion-Fold-Scratch close |
-| F10 cleanup (`dsl/extdeps/tools.dag` `install_hint`) | next Grounding signal PR or explicit small cleanup PR | Grounding worker dispatches | M5 cleanup close |
+| F10 cleanup (`dsl/extdeps/tools.dag` `install_hint`) | **DONE / NO-OP 2026-05-06** | shape already present at HEAD `cde2457` per silent-badger-711 verification (`map`/`join` form, `one_hint` single authority, no sentinel fold); 482/0 tests pass | M5 cleanup CLOSED |
 
 These edges parallel the global + Verification critical paths; Grounding lane consumers wait on upstream Substrate carrier landing.
 
@@ -824,15 +824,14 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 - **R3 zero-debt impact**: must close before zero-debt if Coercion-Fold scaffolds count against R3 closure.
 - **Plan integration**: §10.3 Q-Coercion-Fold-Scratch.
 
-**G8. Small cleanup F10 `install_hint` queued, not dispatched**
-- **Description**: `dsl/extdeps/tools.dag` `install_hint` uses `fold(init: "")` + `acc == ""` first-element sentinel instead of standard join semantics.
-- **Needs**: bundling decision — bundle into next Grounding signal PR vs small cleanup PR (despite `feedback_brief_pr_cadence`).
-- **R3 zero-debt impact**: small but real M5 cleanup; resolve before zero-debt close unless explicitly ruled out.
-- **Plan integration**: PM-level (PM proceeds with bundle-into-next-signal); §10.3 informational.
+**G8. Small cleanup F10 `install_hint` — DONE / NO-OP 2026-05-06**
+- **Description (historical)**: `dsl/extdeps/tools.dag` `install_hint` was alleged to use `fold(init: "")` + `acc == ""` first-element sentinel instead of standard join semantics.
+- **Closure outcome (2026-05-06)**: silent-badger-711 grep-verified at HEAD `cde2457` that `install_hint` already implements the requested `sources |> map(...) |> join(...)` form; `one_hint` (line 79) is single per-source rendering authority; no sentinel-fold pattern present. **No diff, no PR needed.** Verification: `cargo test -p v2-compiler-tests` 482 passed / 0 failed. Closure signal: [gunbc#846 #issuecomment-4387302181](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4387302181).
+- **R3 zero-debt impact**: M5 cleanup CLOSED.
 
 **G9. Worker-side idle state (proud-lark, silent-badger)**
 - **Description**: Both workers idle post-#1804 sweep; proud-lark owns #1783 draft feedback; silent-badger has no active PR.
-- **Needs**: execution-ready Grounding tasks from R3 plan (PR-F-dependent / L6 post-EmissionPathProjection / Anthropic post-projection-metadata / F10 cleanup).
+- **Needs**: execution-ready Grounding tasks from R3 plan (PR-F-dependent / L6 post-EmissionPathProjection / Anthropic post-projection-metadata; F10 cleanup CLOSED 2026-05-06 as DONE/no-op).
 - **Plan integration**: §3 lane status + §9 cadence; resolves once upstream substrate decisions land.
 
 **G10. Structural concern — cross-manager dependencies must be explicit in plan**
