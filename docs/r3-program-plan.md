@@ -76,7 +76,9 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 ### §1.5 Closure-ledger total
 
-**Total R3 closure gates** (post-Q1 + Q2 ratification): **70 gates** at sha `a72293bbf` per `r3-structure.md` §"Acceptance" enumeration. Composition: existing R3 lane gates (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-Workflow-As-Data` 4, `T-Lens-Self-Application` 3) = 54 lane gates; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06 in this PR. Total: 54 + 16 = 70 across 18 lanes + 1 standing program.
+**Total R3 closure gates** (post-Q1 + Q2 ratification): **75 gates** at this commit per `r3-structure.md` §"Acceptance" enumeration. Composition: existing R3 lane gates (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2 + 4 NEW Pattern-A executable (TC1/TC2/TC3 + RustDagIso) = 6, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3 + 1 NEW Pattern-A executable (SymbolicCostExprEquals) = 4, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-Workflow-As-Data` 4, `T-Lens-Self-Application` 3) = 59 lane gates; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06 in this PR. Total: 59 + 16 = **75** across 18 lanes + 1 standing program.
+
+**Per codex BLOCKING 2026-05-06 inline at line 79**: prior 70-count omitted the 5 NEW Pattern-A executable gates (`tc1_eta_equivalence_executable`, `tc2_church_rosser_executable`, `tc3_pattern_a_second_mover_executable`, `rust_dag_isomorphism_executable`, `symbolic_cost_expr_equals_executable`) declared in §1.1 but not yet in `r3-structure.md` §"Acceptance". This commit adds them to the canonical authority and bumps total from 70 → 75; single-authority restored (INVARIANTS P2/P5).
 
 R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
 
@@ -105,9 +107,9 @@ Per openai-pro meta-review on PR #1808 sha `cf249389` ([#issuecomment-4384405832
 - **CONSUMER_LANDED** — the consumer (CI check, `.dag` TestClaim runner executing through Evaluator, manual demonstration receipt) executes the Pass condition + can fail-closed if violated.
 - **PASSING** — consumer landed AND Pass condition currently true.
 
-**Status at HEAD (PR #1808 sha at this commit)**: ~all 70 gates are **DECLARED**; very few have CONSUMER_LANDED status (existing `pb_self_compile_fixed_point` + `tier3_*_mirror_dissolved` + similar pre-R3-plan gates have consumers; the 16 NEW gates added 2026-05-06 in this PR are DECLARED-only).
+**Status at HEAD (PR #1808 sha at this commit)**: ~all 75 gates are **DECLARED**; very few have CONSUMER_LANDED status (existing `pb_self_compile_fixed_point` + `tier3_*_mirror_dissolved` + similar pre-R3-plan gates have consumers; the 16 NEW gates added 2026-05-06 in this PR are DECLARED-only).
 
-**R3 close criteria implies CONSUMER_LANDED for all 70 gates**: declarations alone don't satisfy `r3_debt_paydown_zero_remaining` or the substrate-gap-class closures or the demonstration principle. Per Brian directive `feedback_no_textual_enforcement_bridges` + Director poke-hole 2026-05-06 finding 1.1 (demo-gate minimum bar) — closure requires runtime-executable verification, not document-level claims.
+**R3 close criteria implies CONSUMER_LANDED for all 75 gates**: declarations alone don't satisfy `r3_debt_paydown_zero_remaining` or the substrate-gap-class closures or the demonstration principle. Per Brian directive `feedback_no_textual_enforcement_bridges` + Director poke-hole 2026-05-06 finding 1.1 (demo-gate minimum bar) — closure requires runtime-executable verification, not document-level claims.
 
 **Consumer infrastructure to land before R3 close**:
 - **T-Tests-As-Data-Completeness lane** (existing R3 lane): every test ports to `.dag` TestClaim or generated target-language test code; predicates execute via Evaluator. Closes the predicate→consumer gap for substrate-gap-class + Pattern-A predicate gates.
@@ -439,7 +441,7 @@ Pattern A executable (4-family cluster — see §1.1):
    - Remaining families (RustDagIsomorphism / SymbolicCostExprEquals / BridgeLedgerZero / Free-Consequences)
      have separate unblock paths per §2.1
 
-R3 close = all 70 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive sweep zero-debt-rows-remaining
+R3 close = all 75 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive sweep zero-debt-rows-remaining (per §1 two-Pass-surfaces clarification; both must hold)
 ```
 
 **Edges added in §6 graph per Director poke-hole 2026-05-06**:
@@ -596,7 +598,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 | # | Question | PM recommendation | Status |
 |---|---|---|---|
-| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; 70 closure gates total (54 existing R3 lane gates + 5 substrate-gap-class + 10 demonstration + 1 PR-anticipation-discipline; precise enumeration per §1.5) | RATIFIED |
+| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **75 closure gates total** (59 R3 lane gates including 5 NEW Pattern-A executable gates added 2026-05-06 to canonical authority + 5 substrate-gap-class + 10 demonstration + 1 PR-anticipation-discipline; precise enumeration per §1.5) | RATIFIED |
 | Q2 | 5 substrate-gap classes — separate lanes vs closure-criteria-over-existing-lanes | Closure-criteria framing (§1.4 + §4) | RATIFIED |
 | Q3 | v2 retirement Mgr ownership | PB Mgr owns all (existing T-V2-Retirement scope) | RATIFIED |
 | Q4 | Mgr structure (keep 9 vs reorganize) | Keep 9 standing Mgrs with re-anchored scope | RATIFIED |
