@@ -1356,6 +1356,7 @@ fn substrate_coproducts_match_runtime_carriers() {
         vec![
             (String::from("BoundUnspecified"), Vec::new()),
             (String::from("StaticBoundFact"), vec![String::from("_0")]),
+            (String::from("PlatformDependentFact"), Vec::new()),
         ]
     );
     assert_eq!(
