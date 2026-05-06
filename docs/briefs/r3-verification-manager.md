@@ -34,7 +34,7 @@ Per [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Ret
 | 1 | `SourceSpan.file` participation checks | **Substrate** | **R3-deferred** | #1273 STOP+PING audit landed; #1130 Director acceptance — partial string-check retirement rejected; structural prerequisites named (module/compilation-unit identity for lens reflection; typed authority/emit-scope carriers for lower/emit). Per [`r3-structure.md`](../r3-structure.md) §"Lane structure" T-Bridge-Retirement row item (1). |
 | 2 | `mark_bootstrap_secret_nominal_opacity()` | **Substrate** | **retired** | #1272 (refactor(v3): retire Secret bootstrap opacity bridge). |
 | 3 | Canonical lens-name dispatch | **PB** | **slice landed; ledger-zero pending** | #1183 — narrow-scope canonical lens-name dispatch slice. Broader exact-string lens-name patching not yet structurally retired. |
-| 4 | `include_str!` side channels (e.g., `pipeline_authority.rs`) | **PB** | **outstanding-or-waiting** | #1171 suspended `reconcile_with_compile_body` rather than swapping `include_str!` for runtime file IO; **`bridge_include_str_side_channels_retired` still open** per [`docs/design-emission-model.md:944`](../design-emission-model.md). Awaits derivation or structural compile-body witness. |
+| 4 | `include_str!` side channels (e.g., `pipeline_authority.rs`) | **PB** | **outstanding-or-waiting** | #1171 suspended `reconcile_with_compile_body` rather than swapping `include_str!` for runtime file IO; **`bridge_include_str_side_channels_retired` still open** per [`design-emission-model.md`](../design-emission-model.md) §"Per Director directive 2026-04-28 (gpt-5-5-pro reflective analysis)" (`include_str!` retirement bullet). Awaits derivation or structural compile-body witness. |
 | 5 | `patch_lower_helpers_*` residual | **PB** | **slice landed; narrow scope** | #1014 (first slice — generated field native) + #1192 (`bridge_lower_helpers_patch_zero_residual_test.rs` — narrow ratchet-zero). Broader exact-string patching outside this slice not claimed retired. |
 
 **Net position:** 1 retired (#1272), 2 narrow slices landed (#1183 canonical lens / #1014 + #1192 lower-helper), 1 outstanding (#1171 suspended `reconcile_with_compile_body` only — `bridge_include_str_side_channels_retired` still open; tracked separately by closure-ledger update #1283), 1 R3-deferred (#1273). **Unified `bridge_retirement_ledger_zero` gate remains open** until all 5 fire structurally — row stays in-flight per closure ledger discipline.
@@ -95,6 +95,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 - [`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md) — Lane 1 standby brief.
 - [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md) — Lane 2 standby brief.
 - [`r3-v-free-consequences-worker.md`](r3-v-free-consequences-worker.md) — Lane 3 standby brief.
+- [`r3-v-pattern-a-tc1-v1-worker.md`](r3-v-pattern-a-tc1-v1-worker.md) — Pattern-A V1 (TC1 first executable slice; Q-PAFS Path A **ACCEPTED** 2026-05-06).
 - [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — absorbed-responsibility TC1/TC2/TC3 bundle (NOT a lane; audit-cadence artifact per `r3-structure.md` §"Manager structure" Item 2 3-lane authority).
 
 **Pending (post-spawn manager authors autonomously):**
