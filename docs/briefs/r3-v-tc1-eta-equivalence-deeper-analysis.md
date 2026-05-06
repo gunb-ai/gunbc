@@ -1,20 +1,16 @@
 # R3 TC1 Eta-Equivalence Deeper Structural Verification Analysis
 
-**Status:** **DESIGN** (2026-05-06). Verification Mgr engineering choice among Pattern-A
-first-slice paths; **not** yet **ACCEPTED** (Director countersignature still required per
-`docs/r3-program-plan.md` §10.3 **Q-PAFS** and Brian directive: PROPOSAL → DESIGN →
-ACCEPTED).
+**Status:** **ACCEPTED** (2026-05-06 — Brian Director countersign: Path **A** / **G1.a**). Bundled with [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 **Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, and **Q-EVAL-Lens-Fold-First-Slice** (PR [#1824](https://github.com/gunb-ai/gunbc/pull/1824)). **Worker dispatch:** [`r3-v-pattern-a-tc1-v1-worker.md`](r3-v-pattern-a-tc1-v1-worker.md).
 
 **Lifecycle**
 
 | Stage | Meaning |
 | --- | --- |
-| PROPOSAL | Exploratory surface map only (superseded by this revision). |
-| **DESIGN** (here) | Chooses a concrete first-slice shape, defers alternatives, states runtime prereqs and scope deltas. |
-| ACCEPTED | Director/Brian countersign; authorizes implementation dispatch (V1 TC1 executable slice + Evaluator **E6-G1.a** lens-fold first slice in lockstep). |
+| PROPOSAL | Exploratory surface map only (superseded). |
+| DESIGN | Path A / B / C resolution recorded 2026-05-06 (superseded as policy stage by ACCEPTED). |
+| **ACCEPTED** (here) | Path **A** ratified — implementation authorized in lockstep with Evaluator **E3** (**E6-G1.a**). |
 
-TC1 deferred fixture remains **as-is** until ACCEPTED + routed implementation; this brief
-still does **not** authorize substrate, runner, or fixture edits by itself.
+This brief binds **Verification policy scope**; executable routing + carrier shapes land via coordinated PRs (see worker brief). **Do not** treat ACCEPTED as permission to widen `SubstrateResearchDeferredClaim` or activate strict-fire fixtures without those PRs.
 
 **Owning manager:** R3 Verification Manager, absorbed formal-grounding responsibility.
 
