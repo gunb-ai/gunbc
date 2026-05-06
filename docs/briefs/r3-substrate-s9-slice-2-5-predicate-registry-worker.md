@@ -201,14 +201,24 @@ follow-on Q-Regex-Primitive substrate-fact-introduction.
   (no partial implementation; same-slice-dissolution discipline)
 - **non_empty + brand body synthesis**: lands via Gap 1 discharge
   mechanism (`non_empty(s)` → `s != ""`; `brand` → trivially-true)
-- **pattern / format / content**: fail-closed-with-named-dep at
-  user-code authoring layer. Diagnostic: `Diagnostic::ResolveError`
-  explicitly names Q-Regex-Primitive as the unblock dependency.
-  **NOT placeholder semantics** — structural rejection per
-  `feedback_fail_closed_discipline`.
+- **pattern / format / content**: **PENDING DIRECTOR RATIFICATION**
+  on scope shape. Director rejected Option 4 (pending_substrate
+  warning placeholder) at gunbc#828 #issuecomment-4392... 2026-05-06.
+  Options A (extdeps + types.dag consumer migration off
+  pattern/format/content prior to slice landing), B (Q-Regex-Primitive
+  bundled into slice scope), and C (typed fail-closed exception
+  with named trigger covering existing std/types.dag usages until
+  Q-Regex lands) await ratification. Migration-cost catalog
+  surfaced at gunbc#828 #issuecomment-4392116215. Worker DOES NOT
+  proceed on pattern/format/content body shape until Director
+  ratifies one of A/B/C; STOP-AND-ESCALATE if dispatched before
+  ratification lands.
 - **Within types.dag**: existing pattern/format/content usages
-  discharge through Gap 1 mechanism (Substrate Mgr discretion;
-  if any usage doesn't fit Gap 1 reach, STOP and surface)
+  shape gates on Director ratification (above). Until then,
+  PB-1 shim coverage of those usages remains the operative behavior;
+  shim retirement Deliverable 3 likewise gates on the chosen path
+  (Option A retires shim cleanly; Option B retires shim post-Q-Regex;
+  Option C retires shim with named-trigger exception path retained)
 - **PB-1 shim**: FULLY RETIRED (file-path-special-case dissolved
   per Director hard scope bar #3)
 - **Carrier-check at `788d6acb4`**: retained as structural improvement
@@ -245,12 +255,13 @@ Phase ordering (PR-internal):
   - `range(x, min: m, max: M)` → `x >= m && x <= M` (per-field)
   - `non_empty(s)` → `s != ""` via Gap 1 discharge mechanism
   - `brand` → trivially-true via Gap 1 discharge mechanism
-- **3 of 7 predicates fail-closed-with-named-dependency** (`pattern`
-  / `format` / `content`): `Diagnostic::ResolveError` at user-code
-  authoring layer explicitly names `Q-Regex-Primitive` as unblock
-  dependency. **NOT placeholder semantics** — structural rejection
-  per `feedback_fail_closed_discipline`. No "named but not checked"
-  path remains for any registered predicate
+- **3 of 7 predicates** (`pattern` / `format` / `content`):
+  acceptance shape **PENDING DIRECTOR RATIFICATION** of Options
+  A/B/C (Director rejected Option 4 fail-closed-with-named-dep at
+  gunbc#828 #issuecomment-4392... 2026-05-06). Worker does not
+  land final shape on these three until ratification arrives; if
+  brief dispatched pre-ratification, STOP and surface. Once
+  ratified, brief absorbs the chosen path verbatim before authoring
 - **Gap 1 discharge mechanism landed in same slice**: extends
   `scalar_literal_requires_refinement_discharge` (or equivalent)
   to evaluate trivial-true + basic-comparison predicates against
