@@ -66,7 +66,7 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 | Class | TestClaim gate | Representative gap-test | Lane(s) producing closure |
 |---|---|---|---|
-| 1 — parser/grammar surface | `substrate_gap_parser_grammar_closed` | v3 parser handles `Int<N>` refinement syntax (`dsl/std/types.dag` Slice 2 alignment per Substrate Mgr design stance) and lowers through stage0 emission without v2-fallback; gate Pass = `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` evaluates Int<N>-bearing program → 0 diagnostics + emitted artifact compiles | T-V2-Retirement (parser path) + T-Numeric-Construction (Int<N> refinement) + Substrate continuation |
+| 1 — parser/grammar surface | `substrate_gap_parser_grammar_closed` | v3 parser handles **generic refinement syntax `Type<N>` over any algebraic type T** — refinements are projections of abstract algebraic concepts onto concrete register/memory constraints, NOT Int-specific (per Brian directive 2026-05-06: *"we have to handle this generically for 'all' types, not just 'int' — though int is a good representation and good north star"*). Pass condition: parser + stage0 lowering accept the generic shape, demonstrated against `Int<N>` (north-star integer projection) + `Real<N>` (real-number projection — `ApproximateField<F>` per T-Numeric-Construction) + `Nat<N>` (natural-number projection) without v2-fallback; gate Pass = `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` evaluates programs using all 3 refinement shapes → 0 diagnostics + emitted artifact compiles. The generic-shape requirement prevents accidentally hard-coding `Int`-only handling. | T-V2-Retirement (parser path) + T-Numeric-Construction (refinement chain Int/Real/Nat) + Substrate continuation |
 | 2 — function-valued data | `substrate_gap_function_valued_data_closed` | `Lens<C>` instance with function-typed payload executes through evaluator | T-Lens-Application-Surface + T-E-P-Producer-Broadening |
 | 3 — file-ingestion | `substrate_gap_file_ingestion_closed` | One `.dag` program ingests external file (e.g., timing observation set) without `include_str!` | T-Workflow-As-Data |
 | 4 — workflow/scheduling | `substrate_gap_workflow_scheduling_closed` | CI workflow modeled as `.dag` data executes through evaluator | T-Workflow-As-Data + T-Lens-Self-Application |
@@ -244,15 +244,20 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 ### §4.1 Class 1 — parser/grammar surface
 
-**What this class names**: bridges that exist because v3 parser cannot handle certain grammar surfaces (e.g., refinement syntax `Int<N>`, `where bits <= N` constraints, function-valued return types). v2 currently catches these; v3 cannot.
+**What this class names**: bridges that exist because v3 parser cannot handle certain grammar surfaces — particularly **generic refinement syntax `Type<N>` over abstract algebraic types T**. Refinement is the structural projection of an algebraic concept (Int = AbelianGroup<Nat>, Real = ApproximateField<Rational>, etc.) onto concrete machine/register constraints (Int<32>, Real<64>, Nat<8>, etc.). v2 currently catches these; v3 cannot. Other parser-surface gaps (e.g., `where bits <= N` constraints, function-valued return types) fall under this class but are subordinate to the generic-refinement gap.
 
-**Representative gap-test**: TBD via Substrate canvas. Candidate: `Int<N>` refinement parsing + lowering through stage0 emission.
+**Modeling discipline (Brian directive 2026-05-06 at gunbc#846)**: handle refinement syntax generically for **all** algebraic types, not just `Int`. *"We are usually modeling abstract algebra or other concepts, and its likely that any machine/computer oriented concepts are a projection of those onto specific constraints (i.e. memory registers) - my point is, we have to handle this generically for 'all' types, not just 'int' - though int is a good representation and good north star for others to take note of."*
+
+**Representative gap-test**: parser + stage0 emission accept the generic `Type<N>` shape, demonstrated against:
+- `Int<N>` — north-star integer projection (memory-register width refinement of `AbelianGroup<Nat>`)
+- `Real<N>` — real-number projection (precision refinement of `ApproximateField<Rational>` per T-Numeric-Construction reframe)
+- `Nat<N>` — natural-number projection (bit-width refinement of `Magnitude → Nat` semiring)
+
+Pass condition: all three shapes produce 0 diagnostics + emitted artifact compiles via `cargo test -p v2-compiler-tests v2_strict_compile_diagnostic_count -- --ignored` against the test corpus.
 
 **Closes via**: T-V2-Retirement parser path (post-T-FixedPoint) + Substrate parser continuation work (cited in `r3-structure.md` §"Lane structure" → T-Numeric-Construction row, T-V2-Retirement coordination dependency).
 
-**Owner Mgr**: PB Mgr (T-V2-Retirement scope) coordinating with Substrate Mgr (parser substrate carriers).
-
-**Open (§10)**: Substrate canvas response selects representative gap-test.
+**Owner Mgr**: PB Mgr (T-V2-Retirement scope) coordinating with Substrate Mgr (parser substrate carriers + T-Numeric-Construction refinement chain).
 
 ### §4.2 Class 2 — function-valued data
 
