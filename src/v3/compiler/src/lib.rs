@@ -734,6 +734,12 @@ pub mod evaluator {
                     }
                 }
 
+                eprintln!(
+                    "DEBUG eval Callable non-arrow: callee={callee_decl:?} name={:?} connective={:?}",
+                    dag.declaration(callee_decl).name,
+                    dag.declaration(callee_decl).connective
+                );
+
                 Err(EvalError::BadTransformOperands {
                     reason: "Callable target declaration is not an Arrow type",
                 })
