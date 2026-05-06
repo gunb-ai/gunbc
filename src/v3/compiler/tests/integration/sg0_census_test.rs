@@ -332,6 +332,13 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
+    // R3 L6 carrier slice (#1819 follow-on, Director Option 2 RATIFIED at
+    // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
+    // `cross_target_coverage.dag` (six type declarations exist;
+    // `emission_path_projections == []`). Stays hand-Rust alongside
+    // `method_template_contract_test.rs` until testgen covers
+    // reflected-Dag structural assertions over std/ row authorities.
+    "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
     "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
     // Path 2): hand-Rust integration test pinning
