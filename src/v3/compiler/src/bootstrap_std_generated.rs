@@ -4749,7 +4749,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24490, 24509),
+            span: SourceSpan::new("dsl/std/types.dag", 25101, 25120),
         });
         declarations.push(Declaration {
             id: DeclarationId(203),
@@ -4763,7 +4763,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/types.dag", 24490, 24509),
+            span: SourceSpan::new("dsl/std/types.dag", 25101, 25120),
         });
         declarations.push(Declaration {
             id: DeclarationId(204),
