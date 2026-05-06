@@ -7,9 +7,9 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
         declarations: bootstrapped_std_fixture_dag_declarations(),
         ports: bootstrapped_std_fixture_dag_ports(),
         diagnostics: bootstrapped_std_fixture_dag_diagnostics(),
-        next_node_id: 0,
+        next_node_id: 3,
         next_declaration_id: 606,
-        next_port_id: 0,
+        next_port_id: 3,
         primitives: PrimitiveCache::default(),
         substrate_markers: SubstrateMarkers::default(),
         realization_metas: RealizationMetaCache::default(),
@@ -30,7 +30,33 @@ pub(crate) fn bootstrapped_std_fixture_dag() -> Dag {
 
 #[allow(clippy::vec_init_then_push)]
 fn bootstrapped_std_fixture_dag_nodes() -> Vec<Behavior> {
-    Vec::new()
+    {
+        let mut nodes = Vec::with_capacity(3);
+        nodes.push(Behavior::Value(ValueNode {
+            id: NodeId(0),
+            data: LiteralBits::Int(0),
+            output: PortId(1),
+            span: SourceSpan::new("dsl/std/integer.dag", 7199, 7206),
+            lane2_workflow: None,
+        }));
+        nodes.push(Behavior::Transform(TransformNode {
+            id: NodeId(1),
+            target: TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)),
+            inputs: vec![PortId(0), PortId(1)],
+            output: PortId(2),
+            span: SourceSpan::new("dsl/std/integer.dag", 7199, 7206),
+        }));
+        nodes.push(Behavior::Bind(BindNode {
+            id: NodeId(2),
+            name: "<refinement:PositiveInt>".to_string(),
+            value: PortId(2),
+            params: vec![PortId(0)],
+            span: SourceSpan::new("dsl/std/integer.dag", 7199, 7206),
+            lane2_workflow: None,
+            emit_participation: None,
+        }));
+        nodes
+    }
 }
 
 #[allow(clippy::vec_init_then_push)]
@@ -9832,8 +9858,12 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(437),
-            name: Some("<registered predicate not lowered: PositiveInt>".to_string()),
-            connective: TypeConnective::Conj { children: vec![] },
+            name: None,
+            connective: TypeConnective::Arrow {
+                inputs: vec![DeclarationId(70)],
+                output: DeclarationId(101),
+                body: ArrowBody::UserDefined(BindNodeId::new_unchecked(NodeId(2))),
+            },
             type_params: vec![],
             phantom_params: Vec::new(),
             meta_tag: None,
@@ -9842,7 +9872,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/integer.dag", 7167, 7206),
+            span: SourceSpan::new("dsl/std/integer.dag", 7199, 7206),
         });
         declarations.push(Declaration {
             id: DeclarationId(438),
@@ -12501,7 +12531,34 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
 }
 
 fn bootstrapped_std_fixture_dag_ports() -> HashMap<PortId, Port> {
-    HashMap::new()
+    {
+        let mut ports = HashMap::new();
+        ports.insert(
+            PortId(0),
+            Port {
+                id: PortId(0),
+                state: PortState::Resolved(TypeShape::new(DeclarationId(70))),
+                produced_by: None,
+            },
+        );
+        ports.insert(
+            PortId(1),
+            Port {
+                id: PortId(1),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(0)),
+            },
+        );
+        ports.insert(
+            PortId(2),
+            Port {
+                id: PortId(2),
+                state: PortState::Uninferred,
+                produced_by: Some(NodeId(1)),
+            },
+        );
+        ports
+    }
 }
 
 fn bootstrapped_std_fixture_dag_diagnostics() -> DiagnosticTable {

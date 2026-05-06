@@ -1055,6 +1055,32 @@ fn test_registered_predicate_placeholder_works_outside_types_dag() {
     );
 }
 
+/// S9 Slice 2.5 Path (a) Rung 3 cement: `gt_zero` body synthesis produces a
+/// **real** refinement (not a placeholder). `synthesize_predicate_body`
+/// lowers `gt_zero` to `subject > 0`, which `build_refinement_predicate_declaration`
+/// turns into a proper `Arrow` declaration (Bool-returning predicate body) —
+/// satisfying Director Path (a) requirement that valid registered predicates
+/// must have actual refinement-body lowering, not placeholder semantics.
+#[test]
+fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_to_dag("type Pos = Nat where gt_zero", f);
+    let decl = dag
+        .declaration_by_name("Pos")
+        .expect("type alias `Pos` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("`gt_zero` refinement must produce a real `Declaration::refinement`");
+    let pred = dag.declaration(pred_id);
+    if let Some(label) = pred.name.as_deref() {
+        assert!(
+            !label.contains("predicate not lowered"),
+            "`gt_zero` must lower to a real refinement body, not placeholder; \
+             got label {label:?}"
+        );
+    }
+}
+
 /// S9 Slice 2.5 Path (a) cement: registered predicate applied to a
 /// non-allowed carrier fails closed — either via the carrier-compatibility
 /// reject in `validate_predicate_clause` (emits `Diagnostic::ResolveError`

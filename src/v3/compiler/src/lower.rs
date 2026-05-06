@@ -41,7 +41,7 @@ use crate::int_literal_ranges::{
     IntegerRangeLookup,
 };
 use crate::lower_helpers::{expr_span, item_span, pattern_binding_names};
-use crate::operators::{ArithmeticOp, LogicalOp, OperatorKind};
+use crate::operators::{ArithmeticOp, ComparisonOp, LogicalOp, OperatorKind};
 use crate::parse::{
     SurfaceExpr, SurfaceField, SurfaceItem, SurfaceLiteral, SurfaceModule, SurfaceParam,
     SurfacePattern, SurfacePatternField, SurfaceType, SurfaceVariant, VariantPayload,
@@ -922,6 +922,87 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
     }
 }
 
+/// Synthesize a `Bool`-returning `SurfaceExpr` body equivalent to the
+/// registered predicate's semantic content, suitable for handing to
+/// [`build_refinement_predicate_declaration`]. Returns `None` if the
+/// predicate's body cannot yet be synthesized from existing substrate
+/// primitives (e.g. `pattern` requires regex-matching primitives that have
+/// not landed; surfacing as STOP-AND-ESCALATE per S9 Slice 2.5 brief).
+///
+/// `bind_name` is the alias being declared (the predicate's subject).
+/// `predicate` is the parsed `where`-clause predicate (e.g. the `gt_zero`
+/// `SurfaceExpr::Var` or the `range(min: 1)` `SurfaceExpr::Call`).
+///
+/// Currently implemented:
+/// - **`gt_zero`**: subject `> 0`. Equivalent for both `Nat` and `Int`
+///   carriers (Nat's structural lower bound is 0; gt_zero is "above
+///   structural bound").
+///
+/// Pending substrate (returns `None` — falls through to placeholder for now):
+/// - `range`, `non_empty`, `brand`, `format`, `content`, `pattern` —
+///   sequenced after `gt_zero` proves the synthesis pattern.
+fn synthesize_predicate_body(
+    spec: &PredicateSpec,
+    predicate: &SurfaceExpr,
+    bind_name: &str,
+) -> Option<SurfaceExpr> {
+    let span = expr_span(predicate);
+    match spec.name {
+        "gt_zero" => Some(SurfaceExpr::Operator {
+            op: OperatorKind::Comparison(ComparisonOp::Gt),
+            args: vec![
+                SurfaceExpr::Var {
+                    name: bind_name.to_string(),
+                    span: span.clone(),
+                },
+                SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(0),
+                    span: span.clone(),
+                },
+            ],
+            span,
+        }),
+        _ => None,
+    }
+}
+
+/// Walk a (possibly And-combined) `where`-sugar refinement expression and
+/// synthesize a single `Bool`-returning `SurfaceExpr` body for the whole
+/// clause. For a single registered predicate, delegates to
+/// [`synthesize_predicate_body`]. For `Operator { And, [a, b, …] }`, returns
+/// the combined `Operator { And, [body_a, body_b, …] }` only if EVERY leaf
+/// is synthesizable. Returns `None` if any leaf's body cannot yet be
+/// synthesized — the caller falls through to placeholder allocation.
+fn registered_predicate_synthesized_body(
+    expr: &SurfaceExpr,
+    bind_name: &str,
+) -> Option<SurfaceExpr> {
+    match expr {
+        SurfaceExpr::Operator {
+            op: OperatorKind::Logical(LogicalOp::And),
+            args,
+            span,
+        } => {
+            let mut synthesized = Vec::with_capacity(args.len());
+            for arg in args {
+                synthesized.push(registered_predicate_synthesized_body(arg, bind_name)?);
+            }
+            Some(SurfaceExpr::Operator {
+                op: OperatorKind::Logical(LogicalOp::And),
+                args: synthesized,
+                span: span.clone(),
+            })
+        }
+        SurfaceExpr::Call { target, .. } => {
+            synthesize_predicate_body(predicate_spec(target)?, expr, bind_name)
+        }
+        SurfaceExpr::Var { name, .. } => {
+            synthesize_predicate_body(predicate_spec(name)?, expr, bind_name)
+        }
+        _ => None,
+    }
+}
+
 /// Recursively walk a `where`-sugar refinement expression. Predicates combine
 /// via `Operator { op: Logical(And), … }` (per `parse_type_alias_where_tail`
 /// / `fold_type_alias_where_parts`); the leaves are `SurfaceExpr::Call`
@@ -1268,6 +1349,25 @@ fn lower_type_alias_refinements_phase(
         let carrier_chain = carrier_chain_names(dag, base_decl_id);
         match validate_where_clause(predicate, &carrier_chain) {
             PredicateValidation::Registered => {
+                // Path (a) Rung 3 (S9 Slice 2.5): for predicates whose body
+                // can be synthesized from existing substrate primitives,
+                // lower a real `Bool`-returning predicate body via
+                // `build_refinement_predicate_declaration` rather than
+                // allocating a `Conj`-shaped placeholder. Currently
+                // synthesizable: `gt_zero`. Pending substrate: the others
+                // (see `synthesize_predicate_body` doc-comment).
+                if let Some(synthesized) = registered_predicate_synthesized_body(predicate, name) {
+                    let pred_decl_id = build_refinement_predicate_declaration(
+                        base_decl_id,
+                        &synthesized,
+                        name,
+                        symbols,
+                        dag,
+                        span.clone(),
+                    );
+                    dag.declaration_mut(decl_id).refinement = Some(pred_decl_id);
+                    continue;
+                }
                 let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
                 dag.declaration_mut(decl_id).refinement = Some(ph);
                 continue;
