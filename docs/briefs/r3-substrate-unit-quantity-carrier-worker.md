@@ -127,14 +127,22 @@ this model):
 | `Milliseconds` | `Measure<Time, Milli>` (predicate deferred per (c)) | 🟢 |
 | `EpochMs` | **DEFERRED** to R4 C6 (Aspect-axis follow-up) | — |
 
-Refined predicate `non_negative` applies at the Measure-typed level
-(predicates over "durations" are semantically coherent; predicates
-over "raw Ints that happen to be milliseconds" are not).
+Per Q-Refined-Phantom-Composition (c) RATIFIED: **predicates do NOT
+attach at the Measure (phantom) layer in Phase-1 substrate**. The
+literal `Refined<Measure<...>, predicate>` form is **deferred** —
+Phase-1 substrate has no first-class `Refined<>` type expression
+and phantom-carrier predicates fail entailment. Dimensional semantics
+ride on the `Quantity` tag at this layer; predicates re-attach via
+where-sugar at value-typed Int/UInt level (downstream of dimensional
+reframe), or when value-typed integration arrives in a follow-up
+that lands `Refined<>` as first-class type expression with concrete
+value-typed bases.
 
 Worker authors the 3 in-scope refinements (`Duration` /
-`Seconds` / `Milliseconds`) inheriting the Unit shape. `EpochMs`
-**stays unchanged or carries a SCAFFOLD comment naming the R4
-trigger** — do NOT land it under a forced shape.
+`Seconds` / `Milliseconds`) inheriting the Measure shape **without
+predicate at this layer**. `EpochMs` **stays unchanged or carries a
+SCAFFOLD comment naming the R4 trigger** — do NOT land it under a
+forced shape.
 
 ### Phase 3 — Cross-program emission coordination
 
