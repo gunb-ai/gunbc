@@ -35,7 +35,7 @@
   <text x="32" y="258" class="code">) -&gt; ApiResponse&lt;User&gt;</text>
   <text x="32" y="296" class="layer">// composes the library</text>
   <text x="32" y="316" class="code">fn fetch_user(</text>
-  <text x="32" y="334" class="code">    id: UserId</text>
+  <text x="32" y="334" class="code">    id: Int</text>
   <text x="32" y="352" class="code">) -&gt; ApiResponse&lt;User&gt; =</text>
   <text x="32" y="370" class="code">  and_then(</text>
   <text x="32" y="388" class="code">    http_get(format("/u/{id}")),</text>
@@ -80,19 +80,21 @@
   <text x="332" y="728" class="code">impl HttpError {</text>
   <text x="332" y="746" class="code">    pub fn new(status: i32, body: String) -&gt; Self { Self { status, body } }</text>
   <text x="332" y="764" class="code">}</text>
-  <text x="332" y="792" class="code">pub fn http_get(url: &amp;str) -&gt; ApiResponse&lt;Bytes&gt; { unimplemented!() }</text>
-  <text x="332" y="810" class="code">pub fn parse_user(bytes: Bytes) -&gt; ApiResponse&lt;User&gt; { unimplemented!() }</text>
-  <text x="332" y="838" class="code">pub fn fetch_user(id: UserId) -&gt; ApiResponse&lt;User&gt; {</text>
-  <text x="332" y="856" class="code">    and_then(</text>
-  <text x="332" y="874" class="code">        http_get(&amp;format!("/u/{}", id)),</text>
-  <text x="332" y="892" class="code">        |bytes| parse_user(bytes),</text>
-  <text x="332" y="910" class="code">    )</text>
-  <text x="332" y="928" class="code">}</text>
+  <text x="332" y="792" class="code">pub struct User { pub id: u64 }</text>
+  <text x="332" y="810" class="code">pub type Bytes = Vec&lt;u8&gt;;</text>
+  <text x="332" y="838" class="code">pub fn http_get(url: &amp;str) -&gt; ApiResponse&lt;Bytes&gt; { unimplemented!() }</text>
+  <text x="332" y="856" class="code">pub fn parse_user(bytes: Bytes) -&gt; ApiResponse&lt;User&gt; { unimplemented!() }</text>
+  <text x="332" y="884" class="code">pub fn fetch_user(id: u64) -&gt; ApiResponse&lt;User&gt; {</text>
+  <text x="332" y="902" class="code">    and_then(</text>
+  <text x="332" y="920" class="code">        http_get(&amp;format!("/u/{}", id)),</text>
+  <text x="332" y="938" class="code">        |bytes| parse_user(bytes),</text>
+  <text x="332" y="956" class="code">    )</text>
+  <text x="332" y="974" class="code">}</text>
 
   <!-- RIGHT: 3 layers stacked -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
-  <rect x="820" y="110" width="280" height="318" class="card"/>
+  <rect x="820" y="110" width="280" height="380" class="card"/>
   <text x="832" y="130" class="layer">// PRIMITIVE</text>
   <text x="832" y="150" class="code">type Sum&lt;A, B&gt; =</text>
   <text x="832" y="168" class="code">  Left{value:A} | Right{value:B}</text>
@@ -106,6 +108,8 @@
   <text x="832" y="370" class="code">  status: Int</text>
   <text x="832" y="388" class="code">  body:   Str</text>
   <text x="832" y="406" class="code">}</text>
+  <text x="832" y="440" class="code">type User { id: Int }</text>
+  <text x="832" y="458" class="code">type Bytes = Vec&lt;u8&gt;</text>
 
   <text x="20" y="1068" class="sub">Three stacked layers on the right. Library code on the left only mentions the top one. Everything underneath still gets emitted.</text>
 </svg>
