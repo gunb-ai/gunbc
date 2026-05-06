@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
@@ -7,75 +7,87 @@
       .badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
       .badge-rust { fill: #ce422b; }
       .badge-dag  { fill: #57606a; }
-      .code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; fill: #1f2328; }
+      .code   { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; fill: #1f2328; }
+      .layer  { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; font-style: italic; fill: #6e7781; }
       .card { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
       .card-header { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
+      .stable { fill: #ddf4ff; stroke: #54aeff; stroke-width: 1; }
+      .stable-text { font-size: 10px; font-weight: 600; fill: #0969da; letter-spacing: 0.04em; }
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">Layer in another fact and consumer.</text>
-  <text x="20" y="48" class="sub">Source on the wings barely moved. The middle doubled.</text>
+  <text x="20" y="30" class="title">Helpers built on it.</text>
+  <text x="20" y="48" class="sub">Same Sum on the right. Two generic combinators on the left. The middle holds Sum's emission and three function bodies.</text>
 
   <text x="20"  y="78" class="col-label">BUSINESS LOGIC</text>
   <text x="320" y="78" class="col-label">RUST — GENERATED</text>
   <text x="820" y="78" class="col-label">FACTS</text>
 
-  <!-- LEFT: 2 functions -->
+  <!-- LEFT: primitive consumer + 2 helpers -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
-  <rect x="20" y="110" width="280" height="298" class="card"/>
-  <text x="32" y="130" class="code">fn swap&lt;A, B&gt;(</text>
-  <text x="32" y="148" class="code">    p: Pair&lt;A, B&gt;</text>
-  <text x="32" y="166" class="code">) -&gt; Pair&lt;B, A&gt; =</text>
-  <text x="32" y="184" class="code">  Pair { first:  p.second,</text>
-  <text x="32" y="202" class="code">         second: p.first }</text>
-  <text x="32" y="240" class="code">fn unwrap_str(</text>
-  <text x="32" y="258" class="code">    s: Sum&lt;Str, Str&gt;</text>
-  <text x="32" y="276" class="code">) -&gt; Str =</text>
-  <text x="32" y="294" class="code">  match s {</text>
-  <text x="32" y="312" class="code">    Left  { value } =&gt; value</text>
-  <text x="32" y="330" class="code">    Right { value } =&gt; value</text>
-  <text x="32" y="348" class="code">  }</text>
+  <rect x="20" y="110" width="280" height="478" class="card"/>
+  <text x="32" y="130" class="layer">// primitive consumer</text>
+  <text x="32" y="150" class="code">fn unwrap_str(</text>
+  <text x="32" y="168" class="code">    s: Sum&lt;Str, Str&gt;) -&gt; Str =</text>
+  <text x="32" y="186" class="code">  match s {</text>
+  <text x="32" y="204" class="code">    Left  { value } =&gt; value</text>
+  <text x="32" y="222" class="code">    Right { value } =&gt; value</text>
+  <text x="32" y="240" class="code">  }</text>
+  <text x="32" y="278" class="layer">// helpers (generic over Sum)</text>
+  <text x="32" y="298" class="code">fn map&lt;A, B, C&gt;(</text>
+  <text x="32" y="316" class="code">    s: Sum&lt;A, B&gt;,</text>
+  <text x="32" y="334" class="code">    f: A -&gt; C</text>
+  <text x="32" y="352" class="code">) -&gt; Sum&lt;C, B&gt; =</text>
+  <text x="32" y="370" class="code">  match s {</text>
+  <text x="32" y="388" class="code">    Left  { value } =&gt;</text>
+  <text x="32" y="406" class="code">      Left { value: f(value) }</text>
+  <text x="32" y="424" class="code">    Right { value } =&gt; Right { value }</text>
+  <text x="32" y="442" class="code">  }</text>
+  <text x="32" y="480" class="code">fn and_then&lt;A, B, C&gt;(</text>
+  <text x="32" y="498" class="code">    s: Sum&lt;A, B&gt;,</text>
+  <text x="32" y="516" class="code">    f: A -&gt; Sum&lt;C, B&gt;</text>
+  <text x="32" y="534" class="code">) -&gt; Sum&lt;C, B&gt; =</text>
+  <text x="32" y="552" class="code">  match s {</text>
+  <text x="32" y="570" class="code">    Left  { value } =&gt; f(value)</text>
+  <text x="32" y="582" class="code">    Right { value } =&gt; Right { value } }</text>
 
-  <!-- CENTER: full Rust emission -->
+  <!-- CENTER: emission for Sum + 3 fns -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
   <text x="332" y="103" class="badge badge-rust">RUST</text>
-  <rect x="320" y="110" width="480" height="558" class="card"/>
+  <rect x="320" y="110" width="480" height="478" class="card"/>
   <text x="332" y="130" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="148" class="code">pub struct Pair&lt;A, B&gt; { pub first: A, pub second: B }</text>
-  <text x="332" y="176" class="code">impl&lt;A, B&gt; Pair&lt;A, B&gt; {</text>
-  <text x="332" y="194" class="code">    pub fn new(first: A, second: B) -&gt; Self { Self { first, second } }</text>
-  <text x="332" y="212" class="code">}</text>
-  <text x="332" y="240" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="258" class="code">pub enum Sum&lt;A, B&gt; {</text>
-  <text x="332" y="276" class="code">    Left  { value: A },</text>
-  <text x="332" y="294" class="code">    Right { value: B },</text>
-  <text x="332" y="312" class="code">}</text>
-  <text x="332" y="340" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
-  <text x="332" y="358" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
-  <text x="332" y="376" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
-  <text x="332" y="394" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
-  <text x="332" y="412" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
-  <text x="332" y="430" class="code">}</text>
-  <text x="332" y="468" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;) -&gt; Pair&lt;B, A&gt; {</text>
-  <text x="332" y="486" class="code">    Pair { first: p.second, second: p.first }</text>
-  <text x="332" y="504" class="code">}</text>
-  <text x="332" y="532" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
-  <text x="332" y="550" class="code">    match s {</text>
-  <text x="332" y="568" class="code">        Sum::Left  { value } =&gt; value,</text>
-  <text x="332" y="586" class="code">        Sum::Right { value } =&gt; value,</text>
-  <text x="332" y="604" class="code">    }</text>
-  <text x="332" y="622" class="code">}</text>
+  <text x="332" y="148" class="code">pub enum Sum&lt;A, B&gt; { Left { value: A }, Right { value: B } }</text>
+  <text x="332" y="176" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
+  <text x="332" y="194" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
+  <text x="332" y="212" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
+  <text x="332" y="230" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
+  <text x="332" y="248" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
+  <text x="332" y="266" class="code">}</text>
+  <text x="332" y="294" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
+  <text x="332" y="312" class="code">    match s {</text>
+  <text x="332" y="330" class="code">        Sum::Left  { value } =&gt; value,</text>
+  <text x="332" y="348" class="code">        Sum::Right { value } =&gt; value,</text>
+  <text x="332" y="366" class="code">    }</text>
+  <text x="332" y="384" class="code">}</text>
+  <text x="332" y="412" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
+  <text x="332" y="430" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
+  <text x="332" y="448" class="code">    match s {</text>
+  <text x="332" y="466" class="code">        Sum::Left  { value } =&gt; Sum::Left  { value: f(value) },</text>
+  <text x="332" y="484" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
+  <text x="332" y="502" class="code">    }</text>
+  <text x="332" y="520" class="code">}</text>
+  <text x="332" y="548" class="code">pub fn and_then&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;,</text>
+  <text x="332" y="566" class="code">    f: impl FnOnce(A) -&gt; Sum&lt;C, B&gt;) -&gt; Sum&lt;C, B&gt; { ... }</text>
 
-  <!-- RIGHT: 2 type defs -->
+  <!-- RIGHT: facts — STILL just Sum -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
-  <rect x="820" y="110" width="280" height="118" class="card"/>
-  <text x="832" y="130" class="code">type Pair&lt;A, B&gt; {</text>
-  <text x="832" y="148" class="code">  first: A; second: B</text>
-  <text x="832" y="166" class="code">}</text>
-  <text x="832" y="200" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="218" class="code">  Left{value:A}|Right{value:B}</text>
+  <rect x="820" y="110" width="280" height="58" class="card"/>
+  <text x="832" y="130" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="148" class="code">  Left{value:A} | Right{value:B}</text>
+  <rect x="820" y="180" width="160" height="18" rx="4" class="stable"/>
+  <text x="832" y="194" class="stable-text">FACTS UNCHANGED</text>
 
-  <text x="20" y="688" class="sub">Wings: ~18 lines. Middle: ~36 lines. Each fact you add costs you 2-3 lines and nets you a working impl block of derives, constructors, and predicates.</text>
+  <text x="20" y="608" class="sub">The fact didn't move. The logic added a couple of helpers. The middle expanded by Sum's full impl block plus three Rust function bodies.</text>
 </svg>
