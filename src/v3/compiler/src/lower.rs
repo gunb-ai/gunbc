@@ -956,16 +956,26 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 ///   validation already guaranteed Int-literal field values when reaching
 ///   this point.
 ///
-/// Pending substrate (returns `None` — falls through to placeholder for now):
-/// - `non_empty` / `brand` — small substrate work pending.
-/// - `pattern` / `format` / `content` — STOP-AND-ESCALATE candidates per
-///   S9 Slice 2.5 brief; require regex-primitive substrate-fact-introduction
-///   (Q-Regex-Primitive) that has not landed.
+/// Pending substrate — STOP-AND-ESCALATE candidates per S9 Slice 2.5 brief
+/// (returns `None` — falls through to placeholder for now):
+/// - `non_empty` / `brand`: synthesizing real Bool bodies for these
+///   predicates triggers a *discharge cascade* — `scalar_literal_requires_refinement_discharge`
+///   treats any non-placeholder refinement as needing static discharge,
+///   and the existing infrastructure cannot yet evaluate `subject != ""`
+///   (non_empty) or `true` (brand) against scalar data literals like
+///   `name: "lower_helpers"`. Result: bootstrap regen emits 18+ spurious
+///   "scalar literal does not satisfy `where` refinement" diagnostics for
+///   data declarations whose fields are typed as branded/non-empty
+///   carriers (e.g. `LensRegistryEntry.name: NonEmptyStr`). Surfacing as
+///   STOP per brief — the lowerer-side discharge mechanism is the
+///   substrate-fact-introduction needed before these synthesize.
+/// - `pattern` / `format` / `content`: regex-primitive substrate-fact-introduction
+///   (Q-Regex-Primitive) has not landed.
 fn synthesize_predicate_body(
     spec: &PredicateSpec,
     predicate: &SurfaceExpr,
     bind_name: &str,
-    carrier_chain: &[String],
+    _carrier_chain: &[String],
 ) -> Option<SurfaceExpr> {
     let span = expr_span(predicate);
     let subject_var = || SurfaceExpr::Var {
@@ -982,47 +992,6 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
-        "brand" => {
-            // `brand("X")` is a structural-only predicate — it tags the alias
-            // with a brand identity but imposes no value-level constraint.
-            // The Bool body is therefore trivially `true`: every value of the
-            // underlying carrier inhabits the branded type. Predicate is the
-            // arg-shape-validated `Call { args: [Literal::String(_)] }`; we
-            // discard the brand string at body-synthesis time because the
-            // brand tag lives on `Declaration::nominal_opacity` / similar
-            // substrate, not in the predicate body.
-            Some(SurfaceExpr::Literal {
-                value: SurfaceLiteral::Bool(true),
-                span,
-            })
-        }
-        "non_empty" => {
-            // `non_empty` over String / NonEmptyStr / FilePath etc. →
-            // `subject != ""` (Bool body via Comparison(Ne) primitive on
-            // String carrier). Only synthesize when the carrier alias chain
-            // includes a String-derived carrier — Secret and List carriers
-            // are deferred (Secret needs a length-of-secret primitive; List
-            // needs list-emptiness substrate that doesn't lower through the
-            // existing operator infrastructure as simply).
-            let synthesizable_carriers = ["String", "NonEmptyStr", "FilePath"];
-            if !carrier_chain
-                .iter()
-                .any(|c| synthesizable_carriers.contains(&c.as_str()))
-            {
-                return None;
-            }
-            Some(SurfaceExpr::Operator {
-                op: OperatorKind::Comparison(ComparisonOp::Ne),
-                args: vec![
-                    subject_var(),
-                    SurfaceExpr::Literal {
-                        value: SurfaceLiteral::String(String::new()),
-                        span: span.clone(),
-                    },
-                ],
-                span,
-            })
-        }
         "range" => {
             // arg-shape validation has already confirmed:
             //   - exactly 1 SurfaceExpr::Record arg
@@ -1098,6 +1067,7 @@ fn synthesize_predicate_body(
 fn registered_predicate_synthesized_body(
     expr: &SurfaceExpr,
     bind_name: &str,
+    carrier_chain: &[String],
 ) -> Option<SurfaceExpr> {
     match expr {
         SurfaceExpr::Operator {
@@ -1107,7 +1077,11 @@ fn registered_predicate_synthesized_body(
         } => {
             let mut synthesized = Vec::with_capacity(args.len());
             for arg in args {
-                synthesized.push(registered_predicate_synthesized_body(arg, bind_name)?);
+                synthesized.push(registered_predicate_synthesized_body(
+                    arg,
+                    bind_name,
+                    carrier_chain,
+                )?);
             }
             Some(SurfaceExpr::Operator {
                 op: OperatorKind::Logical(LogicalOp::And),
@@ -1116,10 +1090,10 @@ fn registered_predicate_synthesized_body(
             })
         }
         SurfaceExpr::Call { target, .. } => {
-            synthesize_predicate_body(predicate_spec(target)?, expr, bind_name)
+            synthesize_predicate_body(predicate_spec(target)?, expr, bind_name, carrier_chain)
         }
         SurfaceExpr::Var { name, .. } => {
-            synthesize_predicate_body(predicate_spec(name)?, expr, bind_name)
+            synthesize_predicate_body(predicate_spec(name)?, expr, bind_name, carrier_chain)
         }
         _ => None,
     }
@@ -1478,7 +1452,9 @@ fn lower_type_alias_refinements_phase(
                 // allocating a `Conj`-shaped placeholder. Currently
                 // synthesizable: `gt_zero`. Pending substrate: the others
                 // (see `synthesize_predicate_body` doc-comment).
-                if let Some(synthesized) = registered_predicate_synthesized_body(predicate, name) {
+                if let Some(synthesized) =
+                    registered_predicate_synthesized_body(predicate, name, &carrier_chain)
+                {
                     let pred_decl_id = build_refinement_predicate_declaration(
                         base_decl_id,
                         &synthesized,
