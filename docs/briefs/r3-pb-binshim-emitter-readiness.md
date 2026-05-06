@@ -1,6 +1,6 @@
 # R3 PB — BinShim Rust emitter readiness (PB-owned planning slice)
 
-**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-05-01 by PB Manager continuation per inbox #1150 / #1134 — **emitter boundary** after `BinShim` carrier landing (#1361), **before** `regen_lens_shim` instance merge is required and **without** authoring the §7.2 equivalence `TestClaim` (PB-assigned §7.2 worker under the BinShim retirement dispatch — not this readiness slice).
+**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-05-01 by PB Manager continuation per inbox #1150 / #1134 — **emitter boundary** after `BinShim` carrier landing (#1361), **before** `regen_lens_shim` instance merge is required and **without** authoring the §7.2 equivalence `TestClaim` (PB-assigned §7.2 worker under the BinShim retirement dispatch — not this readiness slice). **Mechanical HEAD refresh 2026-05-06** (warm-ant-877 / [#1895](https://github.com/gunb-ai/gunbc/issues/1895)): loader / build facts in §"Implementation slice STOP" re-pinned to `origin/main` **`8ca252983`** — `feat(std): ReferenceModel<T> phantom carrier (S7 PR-F Phase 2) (#1898)`.
 
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation per `docs/r3-structure.md` §"Manager structure" Item 1).
 
@@ -33,9 +33,9 @@ Until (1)–(2) are at least **named on main**, a merge-blocking `.dag` emitter 
 
 **Loader / build audit (facts on `origin/main`):**
 
-- **`regen_bootstrap.rs`** — full-bootstrap labels are still `dsl/std/*.dag + src/v3/std/*.dag + …` (see `compile_full_bootstrap_*` call sites around lines 70–80). **`dsl/std/runtime/**` is not concatenated** into that snapshot; per-shim instance files planned under `dsl/std/runtime/bin_shims/` do not enter `bootstrap_generated*.rs` unless the glob / seed pipeline is extended under Substrate + build coordination.
+- **`regen_bootstrap.rs`** — full-bootstrap labels are still the `compile_full_bootstrap_*` glob strings at **`67–81`** (see `render_bootstrap_generated_rs` call sites: full bootstrap **`70–71`**, no-parse-surface **`79–80`**). **`dsl/std/runtime/**` is not concatenated** into that snapshot; per-shim instance files planned under `dsl/std/runtime/bin_shims/` do not enter `bootstrap_generated*.rs` unless the glob / seed pipeline is extended under Substrate + build coordination.
 - **`REGEN_OUTPUTS`** (`src/v3/compiler/build.rs`) — gates **written** codegen outputs for SG-0 partition; adding generated `regen_lens.rs` from an emitter belongs to a **retirement** slice, not this STOP.
-- **Parse prep harness** (`src/v3/compiler/tests/integration.rs` `parse_corpus_paths`) — enumerates a fixed `dsl/std` eight-file subset + **all** `src/v3/std/*.dag` + compiler/spec paths; a new `src/v3/std/*.dag` authority file is prep-visible, but **does not** solve `dsl/std/runtime/bin_shims/*.dag` loader inclusion for bootstrap.
+- **Parse prep harness** (`src/v3/compiler/tests/integration.rs`, **`mod parse_stage4_prep`**) — **`PARSE_CORPUS_MANIFEST`** / `include_str!("integration/parse_corpus_manifest.txt")` at **`816`**; **`fn parse_corpus_paths`** at **`851`** (`repo_root()` / `.expect(...)` at **`822–829`** are **below** the manifest — do not confuse with **`816`**). Lists explicit **`dsl/std`** paths in the harness `vec!` + **all** `src/v3/std/*.dag` + compiler/spec paths; a new `src/v3/std/*.dag` authority file is prep-visible, but **does not** solve `dsl/std/runtime/bin_shims/*.dag` loader inclusion for bootstrap.
 
 **Honest blocker — why a “tiny” `regen_lens_main` is not a free commit today**
 
@@ -65,4 +65,4 @@ Until (1)–(2) are at least **named on main**, a merge-blocking `.dag` emitter 
 - Parent program: [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md).
 - Instance framework: [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md).
 - Consumer / call-surface audit: [`r3-pb-regen-lens-consumer-audit.md`](r3-pb-regen-lens-consumer-audit.md).
-- Carrier ratchet: [`src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`](../../src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs) (`bin_shim_carrier_*` — consolidated here post-#1370; standalone `bin_shim_carrier_test.rs` removed).
+- Carrier ratchet: [`src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs`](../../src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs) (`bin_shim_carrier_*` — consolidated here post-#1370; standalone `bin_shim_carrier_test.rs` removed; three-field shape test ~`:2870` at 2026-05-06 HEAD).
