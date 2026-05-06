@@ -37,7 +37,13 @@
 
 ### S3 — `MachineConstraint<C>` carrier design (Brian directive 2026-05-06)
 
-**Scope**: design substrate carriers for **algebra × machine-constraints interaction modeling** per Brian directive: concrete types like `i64` emerge as products of independent constraint axes (algebra `Int = AbelianGroup<Nat>` × machine `MachineWidth<64>`), NOT primary entities.
+**Scope**: design substrate carriers for **algebra × machine-constraints interaction modeling** per Brian directive: concrete types like `i64` emerge as products of independent constraint axes (algebra side × machine `MachineWidth<64>`), NOT primary entities.
+
+**P1 axiom-violation paydown (2026-05-06; Brian directive)**: prior framing `Int = AbelianGroup<Nat>` is **structurally false** — Nat is a commutative monoid under +, not the carrier of an Abelian group (no additive inverses in {0,1,2,...}). Per ratified self-correction at [gunbc#1739 issuecomment-4385432940](https://github.com/gunb-ai/gunbc/issues/1739#issuecomment-4385432940) (cross-ref: Director-side memory entry `feedback_verify_algebraic_axioms_in_ratification` logs the discipline going forward). Two mathematically sound options pending design selection (worker judgment per `feedback_compositional_not_templating`):
+- **Option A** — `Int` as canonical AbelianGroup primitive (terminal, no Nat parameter). Severs the constructive Nat→Int edge; `Int` is just-ℤ, not derived.
+- **Option B** — `Int ≡ GroupCompletion<CommutativeMonoid<Nat>>` (Grothendieck). Algebra-faithful; preserves compositional Nat→Int edge; introduces `GroupCompletion<M>` as new substrate (P1 procedure required: name second consumer beyond Int OR justify single-consumer via P1 carve-out).
+
+Prior `AbelianGroup<Nat>` references in r3-structure.md, r3-program-plan.md, this doc are **DEFERRED-shorthand** until design selection lands. **T-Numeric-Construction further dispatch HELD** (Brian directive 2026-05-06) until algebra-side selection ratified. S3 (`MachineConstraint<C>`) interaction modeling proceeds in parallel — once algebra-side resolves, the interaction `Int<N> = Int × MachineWidth<N>` semantics carries through identically under either option (Int participates as AbelianGroup carrier in both).
 
 Carriers needed: `MachineConstraint<C>` + `MachineWidth<bits>` + interaction-lookup substrate. May require additional axes (`RegisterClass<R>`, `EndianMode<E>`, alignment) per use cases.
 
