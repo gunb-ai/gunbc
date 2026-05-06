@@ -28,7 +28,7 @@
 //! while this slice ships empty. That's why the bijection check belongs
 //! in Grounding's row-population PR (#1745).
 
-use v3_compiler::dag::{TypeConnective, ValueBody};
+use v3_compiler::dag::{Dag, Declaration, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
 
 const SHAPE_A_TARGET: &str = "ShapeATarget";
@@ -55,57 +55,147 @@ fn cross_target_coverage_six_carrier_types_present() {
     }
 }
 
+/// Collect the structural variant labels (in declaration order) of a `Disj`
+/// declaration, panicking with a typed message if the carrier is not a `Disj`.
+fn disj_variant_labels<'a>(decl: &'a Declaration, name: &str) -> Vec<&'a str> {
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        panic!("`{name}` must be `Disj`; got {:?}", decl.connective);
+    };
+    variants.iter().map(|f| f.label.as_str()).collect()
+}
+
+/// Collect the `(label, type-name)` pairs of a `Conj` declaration's children
+/// (record-type field shape), panicking with a typed message if the carrier
+/// is not a `Conj`.
+fn conj_field_label_and_type_names<'a>(
+    dag: &'a Dag,
+    decl: &'a Declaration,
+    name: &str,
+) -> Vec<(&'a str, &'a str)> {
+    let TypeConnective::Conj { children } = &decl.connective else {
+        panic!(
+            "`{name}` must be `Conj` (record); got {:?}",
+            decl.connective
+        );
+    };
+    children
+        .iter()
+        .map(|f| {
+            let ty_decl = dag.declaration(f.ty);
+            let ty_name = ty_decl.name.as_deref().unwrap_or("<anonymous>");
+            (f.label.as_str(), ty_name)
+        })
+        .collect()
+}
+
 #[test]
-fn shape_a_target_is_disj_with_three_variants() {
+fn shape_a_target_disj_variants_match_ratified_labels() {
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name(SHAPE_A_TARGET)
         .expect("ShapeATarget must exist");
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        panic!(
-            "ShapeATarget must be `Disj` (Rust | Python | Go); got {:?}",
-            decl.connective
-        );
-    };
+    let labels = disj_variant_labels(decl, SHAPE_A_TARGET);
     assert_eq!(
-        variants.len(),
-        3,
-        "ShapeATarget must carry exactly three variants (Rust / Python / Go); got {}",
-        variants.len()
+        labels,
+        vec!["Rust", "Python", "Go"],
+        "ShapeATarget variants must be exactly [Rust, Python, Go] in declaration order \
+         (closed set per Q-Unit-1 brief §1; new target requires P1 substrate-fact-introduction)"
     );
 }
 
 #[test]
-fn form_axis_is_disj_with_six_variants() {
+fn form_axis_disj_variants_match_type_connective_discriminants() {
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name(FORM_AXIS)
         .expect("FormAxis must exist");
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        panic!("FormAxis must be `Disj`; got {:?}", decl.connective);
-    };
+    let labels = disj_variant_labels(decl, FORM_AXIS);
     assert_eq!(
-        variants.len(),
-        6,
-        "FormAxis must mirror v3_compiler::dag::TypeConnective's six discriminants; got {}",
-        variants.len()
+        labels,
+        vec!["Atom", "Conj", "Disj", "Arrow", "Cardinality", "Instantiation"],
+        "FormAxis variants must mirror v3_compiler::dag::TypeConnective's six discriminants \
+         in substrate-declaration order (label-by-label parity; drift requires P1 procedure \
+         on the upstream Rust enum first)"
     );
 }
 
 #[test]
-fn behavior_axis_is_disj_with_five_variants() {
+fn behavior_axis_disj_variants_match_behavior_discriminants() {
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name(BEHAVIOR_AXIS)
         .expect("BehaviorAxis must exist");
-    let TypeConnective::Disj { variants } = &decl.connective else {
-        panic!("BehaviorAxis must be `Disj`; got {:?}", decl.connective);
-    };
+    let labels = disj_variant_labels(decl, BEHAVIOR_AXIS);
     assert_eq!(
-        variants.len(),
-        5,
-        "BehaviorAxis must mirror v3_compiler::dag::Behavior's five discriminants; got {}",
-        variants.len()
+        labels,
+        vec!["Value", "Transform", "Branch", "Loop", "Bind"],
+        "BehaviorAxis variants must mirror v3_compiler::dag::Behavior's five discriminants \
+         in L1 model order (label-by-label parity)"
+    );
+}
+
+#[test]
+fn method_template_contract_key_record_fields_match_ratified_shape() {
+    let dag = generated_full_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name(METHOD_TEMPLATE_CONTRACT_KEY)
+        .expect("MethodTemplateContractKey must exist");
+    let fields = conj_field_label_and_type_names(&dag, decl, METHOD_TEMPLATE_CONTRACT_KEY);
+    assert_eq!(
+        fields,
+        vec![("target", "ShapeATarget"), ("dag_method", "MethodRef")],
+        "MethodTemplateContractKey must carry exactly {{ target: ShapeATarget, dag_method: MethodRef }} \
+         per Director Option 2 §4.C=(i) RATIFIED (typed dispatch, no string-name)"
+    );
+}
+
+#[test]
+fn emission_cell_record_fields_match_ratified_shape() {
+    let dag = generated_full_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name(EMISSION_CELL)
+        .expect("EmissionCell must exist");
+    let fields = conj_field_label_and_type_names(&dag, decl, EMISSION_CELL);
+    assert_eq!(
+        fields,
+        vec![("connective", "FormAxis"), ("behavior", "BehaviorAxis")],
+        "EmissionCell must carry exactly {{ connective: FormAxis, behavior: BehaviorAxis }}"
+    );
+}
+
+#[test]
+fn emission_path_projection_record_fields_match_ratified_shape() {
+    let dag = generated_full_bootstrap_dag();
+    let decl = dag
+        .declaration_by_name(EMISSION_PATH_PROJECTION)
+        .expect("EmissionPathProjection must exist");
+    let fields = conj_field_label_and_type_names(&dag, decl, EMISSION_PATH_PROJECTION);
+    assert_eq!(fields.len(), 2, "EmissionPathProjection must have exactly two fields; got {fields:?}");
+    assert_eq!(
+        fields[0],
+        ("row_identity", "MethodTemplateContractKey"),
+        "EmissionPathProjection.row_identity must be MethodTemplateContractKey"
+    );
+    // `cells: List<EmissionCell>` lowers as a `Cardinality`-wrapped element ref.
+    // Verify the field name and that the wrapped element resolves to EmissionCell.
+    assert_eq!(
+        fields[1].0, "cells",
+        "EmissionPathProjection's second field must be `cells`"
+    );
+    let TypeConnective::Conj { children } = &decl.connective else {
+        unreachable!("already established Conj above")
+    };
+    let cells_ty_decl = dag.declaration(children[1].ty);
+    // `List<X>` lowers to a `Cardinality { element_type: X, ... }` Atom payload
+    // or to an `Instantiation` reference. Walk to find the `EmissionCell`
+    // declaration referenced by the cells field's type.
+    let cells_repr = format!("{:?}", cells_ty_decl.connective);
+    assert!(
+        cells_repr.contains("EmissionCell")
+            || cells_repr.contains("Cardinality")
+            || cells_repr.contains("Instantiation"),
+        "EmissionPathProjection.cells must resolve through `List<EmissionCell>` \
+         (Cardinality/Instantiation wrapper around EmissionCell); got {cells_repr}"
     );
 }
 
@@ -135,5 +225,24 @@ fn emission_path_projections_data_is_empty_list() {
          row population is Grounding's follow-up (#1745) per §4.D=(b). \
          Got {} row(s).",
         rows.len()
+    );
+    // The list's declared element type must be `EmissionPathProjection`. The
+    // data declaration's `connective` records the typed list shape (e.g.,
+    // `List<EmissionPathProjection>` lowers through a Cardinality/Instantiation
+    // wrapper around the element-type DeclarationId). Walk the connective and
+    // require the EmissionPathProjection id to be transitively reachable —
+    // without this, an empty `List<Foo>` would silently pass even if the
+    // element type drifted from the ratified shape.
+    let projection_decl = dag
+        .declaration_by_name(EMISSION_PATH_PROJECTION)
+        .expect("EmissionPathProjection must exist");
+    let projection_id_token = format!("DeclarationId({})", projection_decl.id.raw());
+    let connective_repr = format!("{:?}", decl.connective);
+    assert!(
+        connective_repr.contains(&projection_id_token)
+            || connective_repr.contains("EmissionPathProjection"),
+        "emission_path_projections must be typed as `List<EmissionPathProjection>` \
+         (connective must reference EmissionPathProjection's DeclarationId or name); \
+         got connective {connective_repr}"
     );
 }
