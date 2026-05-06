@@ -50,9 +50,11 @@ landing).
 1. **Author `dsl/std/machine_constraints.dag`** introducing:
 
    Each new coproduct / sum declaration MUST carry a 🟢/🟡/🔴
-   classification annotation per `docs/modeling-discipline.md`
-   Practice 4 (Step 4 of the type-introduction checklist;
-   `INVARIANTS.md#p1-modeling-faithfulness` worked example).
+   checkpoint-comment classification per `docs/modeling-discipline.md`
+   Practice 4 (coproduct dissolution; the "What to check" rule at
+   `docs/modeling-discipline.md:131` — checkpoint comment naming
+   classification, ledger entry if GREEN, named trigger if YELLOW).
+   Implements `INVARIANTS.md#p1-modeling-faithfulness`.
 
    - `MachineWidth<bits>` — phantom-parameter carrier; `bits: Nat`.
      **🟢 PRIMITIVE** — width values are Nat-valued; the carrier
