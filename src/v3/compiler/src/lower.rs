@@ -602,12 +602,8 @@ enum PredicateArgShape {
     /// E.g. `non_empty`, `gt_zero`.
     Bare,
     /// Single string-literal argument — `SurfaceExpr::Call { args: [Literal::String(_)] }`.
-    /// E.g. `pattern("…")`, `brand("…")`.
+    /// E.g. `brand("…")`.
     SingleStringLiteral,
-    /// Single ident or string literal — covers `format(uuid)` / `format("uuid")`.
-    SingleIdentOrStringLiteral,
-    /// Single variant ident — `content(Text)` / `content(Binary)`.
-    SingleVariantIdent { allowed: &'static [&'static str] },
     /// Record-shape with named numeric-literal fields. At least one of the
     /// listed fields must be present; all present fields must be integer
     /// literals. E.g. `range(min: N)` / `range(min: N, max: M)`.
@@ -661,6 +657,18 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
     // `allowed_carriers` derived from the surface usage at `dsl/std/types.dag`
     // pre-PR; the registry now enforces structurally what the file-path shim
     // tolerated by location.
+    //
+    // **Pattern / format / content REMOVED from the registry** per Director
+    // Option A revised RATIFIED at gunbc#828 `issuecomment-4392245968`:
+    // these predicates needed regex-primitive substrate that doesn't exist
+    // (`Q-Regex-Primitive`); rather than ride a placeholder-with-named-trigger
+    // bridge through this slice, they are structurally absent until
+    // `Q-Regex-Primitive` lands. User-code `where pattern(...)` (or
+    // format/content) now falls through to live resolution and surfaces a
+    // `Diagnostic::ResolveError` naming the unblock dependency. The 12
+    // types.dag declarations that previously used these predicates have
+    // dropped their where-clauses with inline-comment receipts pointing at
+    // the Q-Regex restoration path.
     PredicateSpec {
         name: "range",
         allowed_carriers: &["Int", "Nat"],
@@ -668,11 +676,6 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
             accepted_fields: &["min", "max"],
             require_at_least_one: true,
         },
-    },
-    PredicateSpec {
-        name: "pattern",
-        allowed_carriers: &["String", "NonEmptyStr"],
-        arg_shape: PredicateArgShape::SingleStringLiteral,
     },
     PredicateSpec {
         name: "non_empty",
@@ -694,18 +697,6 @@ const KNOWN_PREDICATES: &[PredicateSpec] = &[
             "Secret",
         ],
         arg_shape: PredicateArgShape::SingleStringLiteral,
-    },
-    PredicateSpec {
-        name: "format",
-        allowed_carriers: &["String"],
-        arg_shape: PredicateArgShape::SingleIdentOrStringLiteral,
-    },
-    PredicateSpec {
-        name: "content",
-        allowed_carriers: &["FilePath"],
-        arg_shape: PredicateArgShape::SingleVariantIdent {
-            allowed: &["Text", "Binary"],
-        },
     },
     // S9 Slice 2.5 new primitive (Director Option 2 ratification at
     // gunbc#828 issuecomment-4390199218). `gt_zero` IS the reason for "Nat
@@ -832,41 +823,6 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
         }
         (PredicateArgShape::SingleStringLiteral, _) => Some(format!(
             "predicate `{predicate_name}` requires a single string-literal argument"
-        )),
-        (PredicateArgShape::SingleIdentOrStringLiteral, SurfaceExpr::Call { args, .. })
-            if matches!(
-                args.as_slice(),
-                [SurfaceExpr::Var { .. }]
-                    | [SurfaceExpr::Literal {
-                        value: SurfaceLiteral::String(_),
-                        ..
-                    }]
-            ) =>
-        {
-            None
-        }
-        (PredicateArgShape::SingleIdentOrStringLiteral, _) => Some(format!(
-            "predicate `{predicate_name}` requires a single ident or string-literal argument"
-        )),
-        (PredicateArgShape::SingleVariantIdent { allowed }, SurfaceExpr::Call { args, .. }) => {
-            match args.as_slice() {
-                [SurfaceExpr::Var { name, .. }] => {
-                    if allowed.contains(&name.as_str()) {
-                        None
-                    } else {
-                        Some(format!(
-                            "predicate `{predicate_name}` requires variant in {{{}}}, got `{name}`",
-                            allowed.join(", ")
-                        ))
-                    }
-                }
-                _ => Some(format!(
-                    "predicate `{predicate_name}` requires a single variant-ident argument"
-                )),
-            }
-        }
-        (PredicateArgShape::SingleVariantIdent { .. }, _) => Some(format!(
-            "predicate `{predicate_name}` requires a single variant-ident argument"
         )),
         (
             PredicateArgShape::NumericRecord {
