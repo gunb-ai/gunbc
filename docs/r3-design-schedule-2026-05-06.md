@@ -228,6 +228,8 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 **Dispatch trigger**: ongoing (audit cadence). **Worker** (per Verification Mgr 2026-05-06): bold-crane-790 — ACTIVE.
 **Closure predicate**: gate #36 reaches PASSING.
 
+**Doc / grep alignment**: §3 **P4** (warm-ant-877) + [`docs/briefs/r3-v-bridge-retirement-ledger-zero-audit.md`](briefs/r3-v-bridge-retirement-ledger-zero-audit.md) §"Grep hygiene" maintain SB5/6-style enumeration receipts on the same three DAG paths (`bridge_ledger.dag`, `r3_bridge_retirement_ledger_zero.dag`, `verification.dag`). PB and Substrate retire evidence; Verification owns the ledger-zero gate — appendix hygiene complements execution audits without shifting gate ownership.
+
 ### V7 — ValueBody isomorphism gate design (Q-ValueBody-Isomorphism)
 
 **Scope**: per Verification canvas V6 + `feedback_isomorphism_or_generation_for_mirrors` — Rust↔.dag mirror conformance gate. Verification test-only pressure; Substrate Mgr authority on mirror.
@@ -245,12 +247,14 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 | Schedule row | Worker / inbox | Dispatch posture |
 |---|---|---|
-| **P1** T-LensProducer-Retirement | sleek-eagle-514 (#1768) — PR #1805 path-1 + sub-briefs gunbc#828 (Sub1/2/3) | Next executable slice = `lens_apply` retirement design/audit receipts; not stalled on Director-thread unless §3 names HOLD |
+| **P1** T-LensProducer-Retirement | sleek-eagle-514 (#1768) — PR #1805 path-1 + sub-briefs gunbc#828 (Sub1/2/3) | Roadmap intent: Sub1–Sub3 retirement stack (`lens_apply` / `lens_testgen` / `regen_lens`). **Live dispatch:** Sub1 **parked** until Item 4 / Row 4 / canonical-lens prerequisites — PB Mgr STOP on [#1768](https://github.com/gunb-ai/gunbc/issues/1768). |
 | **P1** parallel doc spine | zesty-ram-316 (#1769) — PR #1806 regen_lens audit + Sub2/Sub3 brief threads | post-R2-Evaluator + PB-1 bin-shim pattern; parallel doc-spine on P1 |
-| **P4** bridge appendix / cross-links | warm-ant-877 (#1770) — grep / ledger hygiene against `bridge_ledger.dag` / `r3_bridge_retirement_ledger_zero.dag` / `verification.dag` | Lockstep with P1/P2 sequencing; `include_str!` post-T-FixedPoint per Q-Bridge-Retirement-Sequencing-Authority |
+| **P4** bridge appendix / cross-links | warm-ant-877 (#1770) — grep / ledger hygiene against `bridge_ledger.dag` / `r3_bridge_retirement_ledger_zero.dag` / `verification.dag` | Lockstep with §2 **V6** `bridge_retirement_ledger_zero` audit cadence (bold-crane) + P1/P2 sequencing; `include_str!` post-T-FixedPoint per Q-Bridge-Retirement-Sequencing-Authority |
 | **P5** F2 + F8 doc-sharpening | PB Mgr coordinates consumer-side with Substrate S12 owner | No duplicate PR; PB-named co-author OR comment-only on Substrate's PR (PM ratify if explicit co-author shape needed) |
 | **P2** T-FixedPoint | HOLD until P1 + SG-0 zero per F1 | No worker spawn that pretends LP is done; TC3 text stays proposal-side |
 | **P3** T-V2-Retirement | HOLD on broad ~79 .rs sweep until P2 + LP + T-Numeric-Construction `Int<N>` clear | Q-V2-Retirement-Boundary-Matrix split visible (PB vs Grounding vs Debt-Paydown) |
+
+*Schedule rows summarize roadmap intent and stable sequencing; **worker inbox STOP/park** states supersede “next slice” wording when PB Mgr accepts them (Sub1 example above).*
 
 **§2.2 sequencing authority — HARD DAG (PM ratification 2026-05-06)**: per PB Mgr ask + r3-structure.md §"Lane structure" → T-FixedPoint row "R2-close dependency: SG-0 zero from T-LensProducer-Retirement" — sequencing is **hard DAG, not staffing parallelism**. T-FixedPoint cannot complete until T-LP-Retirement completes (SG-0 zero is structural precondition; not just resource sequencing). Plan §2.2 sequence is canonical authority. Per r3-structure.md T-FixedPoint row: "SG-0 zero from T-LensProducer-Retirement" is named explicit dependency.
 
@@ -285,6 +289,29 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Dispatch trigger**: per per-bridge prerequisite chain.
 **Closure predicate**: contributes to §1.8 gate #36 (bridge_retirement_ledger_zero) + #69 (bridge_retirement_demonstration).
+
+#### P4 — Verification V6 alignment + grep hygiene (PR #1804 SB5/6 + PR #1810 schedule)
+
+**Cross-lane contract** ([gunbc#828](https://github.com/gunb-ai/gunbc/issues/828), PR [#1810](https://github.com/gunb-ai/gunbc/pull/1810) §3 table): PB (and Substrate, for Substrate-owned bridges) **lands retirement evidence** in owning programs; Verification **audits** unified `bridge_retirement_ledger_zero` via production `BridgeLedgerZero` + integration harness (**§2 V6**, bold-crane-790). Doc work here does not substitute for gate execution — it keeps PM compile passes **grep-aligned** with live ledger + predicate surfaces.
+
+**Authoritative paths** (same triple as Phase-2 SB5/6 bridge appendix on PR [#1804](https://github.com/gunb-ai/gunbc/pull/1804)):
+
+- `src/v3/std/bridge_ledger.dag` — row truth for the five named bridges + statuses
+- `src/v3/compiler/tests/fixtures/r3_bridge_retirement_ledger_zero.dag` — fixture wiring for `bridge_retirement_ledger_zero`
+- `src/v3/std/verification.dag` — `BridgeLedgerZero` and adjacent verification predicates that ride the harness
+
+**Repeatable enumeration gate** (squash-merge PR numbers from subjects; per-PR file receipt):
+
+```bash
+git log origin/main --format='%s' -- \
+  src/v3/std/bridge_ledger.dag \
+  src/v3/compiler/tests/fixtures/r3_bridge_retirement_ledger_zero.dag \
+  src/v3/std/verification.dag
+
+gh pr view <N> --repo gunb-ai/gunbc --json files,title
+```
+
+**Sequencing (ratified HARD-DAG)**: PB-owned `include_str!` side-channel retirement stays **post-T-FixedPoint** per Q-Bridge-Retirement-Sequencing-Authority — ledger rows remain **honestly Open** until structural receipts land; schedule ordering does not relax `BridgeLedgerZero` truth.
 
 ### P5 — F2 + F8 doc-sharpening PR (per S12 + B6)
 
@@ -370,7 +397,7 @@ No additional PM/Director ratification needed from Evaluator for E1/E5. **E3 dis
 | **G1** L6 row population | HELD | Trigger = Substrate S6 `EmissionPathProjection` carrier landing |
 | **G2** T-Ground-Rust full coverage | HELD | Trigger = Substrate S7 PR-F + S8 Float migration / Real base-carrier for float rows; #1783 remains draft as dispatch-guide staging artifact |
 | **G3** Coercion-Fold scratch retirement | HELD | Trigger = executable LanguageSpec projection |
-| **G4** F10 `install_hint` cleanup | **DISPATCHED 2026-05-06** | silent-badger-711 (#1774); see [gunbc#1774 #issuecomment-4385080257](https://github.com/gunb-ai/gunbc/issues/1774#issuecomment-4385080257) |
+| **G4** F10 `install_hint` cleanup | **DONE / NO-OP 2026-05-06** | silent-badger-711 (#1774) verified shape already present at HEAD `cde245713f89a08e11c4242e4bb1cd98e098a881`; no diff, no PR needed; `cargo test -p v2-compiler-tests` 482 passed / 0 failed. Closure signal at [gunbc#846 #issuecomment-4387302181](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4387302181). |
 | **G5** Anthropic #1702 re-dispatch | HELD | Trigger = Substrate S5 variant-aware projection metadata carrier + Q-Anthropic-Variant-Aware closure-scope ratification |
 
 No additional PM/Director ratification needed for G4. For G1/G2/G3/G5, schedule already names sufficient upstream triggers; Grounding dispatches as soon as triggers land. Grounding lane is largely consumer of Substrate work — most items HELD on Substrate cascade.
@@ -396,12 +423,18 @@ No additional PM/Director ratification needed for G4. For G1/G2/G3/G5, schedule 
 **Dispatch trigger**: post-Substrate/LanguageSpec projection executable.
 **Closure predicate**: Q-Coercion-Fold-Scratch closure.
 
-### G4 — F10 install_hint cleanup
+### G4 — F10 install_hint cleanup (DONE / NO-OP 2026-05-06)
 
-**Scope**: `dsl/extdeps/tools.dag` `install_hint` join semantics fix (per Substrate canvas G8).
+**Scope (verified)**: `dsl/extdeps/tools.dag` `install_hint` join semantics fix (per Substrate canvas G8).
 
-**Dispatch trigger**: now (small cleanup; bundle into next Grounding signal PR).
-**Closure predicate**: M5 cleanup close.
+**Closure outcome**: **DONE / NO-OP at HEAD `cde2457`** per Grounding Mgr (silent-badger-711) closure signal at [gunbc#846 #issuecomment-4387302181](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4387302181). Grep-verified at `dsl/extdeps/tools.dag:91-92`:
+- `install_hint` already implements `sources |> map(s => one_hint(source: s)) |> join(separator: " | ")`
+- `one_hint` (line 79) is the single per-source rendering authority
+- No sentinel-fold / `acc == ""` / `fold(init: "")` pattern present
+
+Verification: `cargo test -p v2-compiler-tests -- --nocapture` 482 passed / 0 failed / 55 ignored.
+
+**G4 closed** — no follow-up Grounding worker dispatch pending.
 
 ### G5 — Anthropic #1702 re-dispatch (post-variant-aware projection)
 
