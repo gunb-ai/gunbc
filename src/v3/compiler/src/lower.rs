@@ -965,6 +965,7 @@ fn synthesize_predicate_body(
     spec: &PredicateSpec,
     predicate: &SurfaceExpr,
     bind_name: &str,
+    carrier_chain: &[String],
 ) -> Option<SurfaceExpr> {
     let span = expr_span(predicate);
     let subject_var = || SurfaceExpr::Var {
@@ -981,6 +982,47 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
+        "brand" => {
+            // `brand("X")` is a structural-only predicate — it tags the alias
+            // with a brand identity but imposes no value-level constraint.
+            // The Bool body is therefore trivially `true`: every value of the
+            // underlying carrier inhabits the branded type. Predicate is the
+            // arg-shape-validated `Call { args: [Literal::String(_)] }`; we
+            // discard the brand string at body-synthesis time because the
+            // brand tag lives on `Declaration::nominal_opacity` / similar
+            // substrate, not in the predicate body.
+            Some(SurfaceExpr::Literal {
+                value: SurfaceLiteral::Bool(true),
+                span,
+            })
+        }
+        "non_empty" => {
+            // `non_empty` over String / NonEmptyStr / FilePath etc. →
+            // `subject != ""` (Bool body via Comparison(Ne) primitive on
+            // String carrier). Only synthesize when the carrier alias chain
+            // includes a String-derived carrier — Secret and List carriers
+            // are deferred (Secret needs a length-of-secret primitive; List
+            // needs list-emptiness substrate that doesn't lower through the
+            // existing operator infrastructure as simply).
+            let synthesizable_carriers = ["String", "NonEmptyStr", "FilePath"];
+            if !carrier_chain
+                .iter()
+                .any(|c| synthesizable_carriers.contains(&c.as_str()))
+            {
+                return None;
+            }
+            Some(SurfaceExpr::Operator {
+                op: OperatorKind::Comparison(ComparisonOp::Ne),
+                args: vec![
+                    subject_var(),
+                    SurfaceExpr::Literal {
+                        value: SurfaceLiteral::String(String::new()),
+                        span: span.clone(),
+                    },
+                ],
+                span,
+            })
+        }
         "range" => {
             // arg-shape validation has already confirmed:
             //   - exactly 1 SurfaceExpr::Record arg
