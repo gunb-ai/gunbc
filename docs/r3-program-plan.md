@@ -5,7 +5,7 @@
 **Merge gates** (distinct from PR-open status — per openai-pro 2026-05-06 finding):
 - **PR open**: ✓ at sha `d1bfbbe22`
 - **Plan PR merge-eligible**: open RED escalations in §10.3 acknowledged + tracked (not necessarily resolved); PR can merge with RED items in flight provided they're explicitly tracked + assigned routing
-- **R3 close** (NOT plan PR merge): all 95 closure gates GREEN (with §10.3 Q-Lens-Behavioral-Parity-R3-Closeability **RATIFIED option (b) 2026-05-06**: T-LBP R3 scope = complexity + cost lenses only; parallelism + effect_enum carved to R4 per `docs/r4-carve-out-routing.md`) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt + other §10.3 RED items resolved per their owners
+- **R3 close** (NOT plan PR merge): all **R3-load-bearing** §1.8 closure gates GREEN (**95** gate IDs enumerated; **#81**/**#82**/**#95** are **CARVED to R4** per `docs/r4-carve-out-routing.md` C1/C2/C1 — not in the R3 conjunction) + §10.3 Q-Lens-Behavioral-Parity-R3-Closeability **option (b)** (T-LBP = complexity + cost in R3; parallelism + effect_enum R4) + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt + other §10.3 RED items resolved per their owners
 
 **Purpose.** Forward-looking program plan for **R3 close with zero debt**. Per user directive 2026-05-05 (gunbc#846): *"clear dependency graph from here to R3 close"* + *"surface escalations now and solve them"*.
 
@@ -87,10 +87,12 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 **Per codex BLOCKING 2026-05-06 inline at line 79**: prior 70-count omitted the 5 NEW Pattern-A executable gates (`tc1_eta_equivalence_executable`, `tc2_church_rosser_executable`, `tc3_pattern_a_second_mover_executable`, `rust_dag_isomorphism_executable`, `symbolic_cost_expr_equals_executable`) declared in §1.1 but not yet in `r3-structure.md` §"Acceptance". This commit adds them to the canonical authority and bumps total from 70 → 75; single-authority restored (INVARIANTS P2/P5).
 
-R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
+R3 closes when **all non-carved §1.8 gates** pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
+
+**R4-carved §1.8 rows** (enumerated for traceability; **excluded** from R3 thesis-close conjunction — **INVARIANTS** §P2): **`#81`** `parallelism_lens_behaviorally_complete`, **`#82`** `effect_enumeration_lens_behaviorally_complete`, **`#95`** `opt_in_iteration_parallelism_via_lens_application_demonstrated` — per `docs/r4-carve-out-routing.md` C1/C2/C1 cascade + `docs/design-lens-application-surface.md` §7.
 
 **Two distinct Pass surfaces** (per Debt-Paydown Mgr poke-hole 2026-05-06 — clarification prevents conflating predicates):
-- **Lane `.dag` TestClaim gates (95 total)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
+- **Lane `.dag` TestClaim gates (95 enumerated; 92 load-bearing for R3 thesis close)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
 - **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
 
 Both must hold for R3 close. "95 gates green" alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
@@ -163,7 +165,7 @@ Mgrs author per-gate spec citing the (a)/(b)/(c) satisfaction; closure-ledger en
 | T-V2-Retirement | deletion gates (state-check) | + `v3_self_host_demonstration` — bootstrap path through PB-Runtime trampoline executes end-to-end; v3-only self-host pipeline runs without v2 fallback (Director poke-hole 2026-05-06 finding 4.1: reframed from `v2_retirement_demonstration` "deletion's inverse" to direct positive-statement form) |
 | T-Free-Consequences-Demonstration | 10 demo gates ✓ | (existing — full demo suite) |
 | T-E-P-Producer-Broadening | substrate-shape gates | + `e_p_producer_demonstration` — representative call site produces full descent evidence at runtime |
-| T-Lens-Behavioral-Parity | parity-complete gates | + `lens_behavioral_parity_demonstration` — each lens (complexity/cost/parallelism/effect_enumeration) demonstrates on representative input + matches **frozen v2-oracle cementing-test snapshot** (per `r3-structure.md` §"Lane structure" → T-Lens-Behavioral-Parity row "cementing test against v2 oracle on same source"). Snapshot is captured pre-v2-retirement; demo at R3 close consumes the frozen receipt, NOT a live v2 oracle — preserves `v2_oracle_no_remaining_test_consumers` gate (per openai-pro 2026-05-06 finding 5 — v2-oracle conflict resolved) |
+| T-Lens-Behavioral-Parity | parity-complete gates | + `lens_behavioral_parity_demonstration` — **R3:** **complexity + cost** lenses demonstrate on representative input + match **frozen v2-oracle cementing-test snapshot** (per `r3-structure.md` §"Acceptance" T-Lens-Behavioral-Parity option **(b)** narrowing). **Parallelism + effect_enumeration** demos **R4-carved** — same frozen-receipt discipline when executed in R4; not R3 closure. Snapshot is captured pre-v2-retirement; demo at R3 close consumes the frozen receipt, NOT a live v2 oracle — preserves `v2_oracle_no_remaining_test_consumers` gate (per openai-pro 2026-05-06 finding 5 — v2-oracle conflict resolved) |
 | T-Tests-As-Data-Completeness | substrate-shape gates | + `tests_as_data_demonstration` — at least one Rust test ports to .dag TestClaim and executes |
 | T-Lens-Application-Surface | 4 worked-example demos ✓ | (existing) |
 | T-Workflow-As-Data | `ci_workflow_modeled_as_dag` ✓ | (existing) |
@@ -267,7 +269,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 | 70 | `cost_lens_demonstration` | demonstration | T-CostLens-Composition | DECLARED (NEW 2026-05-06) | ≥2 algebra-instances + ≥1 recursive call |
 | 71 | `v3_self_host_demonstration` | demonstration | T-V2-Retirement | DECLARED (NEW 2026-05-06) | bootstrap PB-Runtime trampoline runs end-to-end |
 | 72 | `e_p_producer_demonstration` | demonstration | T-E-P-Producer-Broadening | DECLARED (NEW 2026-05-06) | call-site produces full descent evidence |
-| 73 | `lens_behavioral_parity_demonstration` | demonstration | T-Lens-Behavioral-Parity | DECLARED (NEW 2026-05-06) | matches frozen v2-oracle cementing-test snapshot |
+| 73 | `lens_behavioral_parity_demonstration` | demonstration | T-Lens-Behavioral-Parity | DECLARED (NEW 2026-05-06) | **R3:** complexity+cost vs frozen v2-oracle snapshot; parallelism/effect_enum **R4-carved** (see `r3-structure.md` §"Acceptance") |
 | 74 | `tests_as_data_demonstration` | demonstration | T-Tests-As-Data-Completeness | DECLARED (NEW 2026-05-06) | Rust test ports to `.dag` TestClaim + executes |
 | 75 | `pr_anticipation_discipline_ci_active` | CI-discipline | R3 Debt-Paydown (standing) | DECLARED (NEW 2026-05-06) | `scripts/check-pr-sg0-net-shrink-discipline.sh` in CI |
 | 76 | `e_p_per_call_descent_evidence_full_coverage` | substrate-shape | T-E-P-Producer-Broadening | DECLARED (added to §"Acceptance" 2026-05-06 per codex BLOCKING) | per-call DescentEvidence covers all live call sites |
