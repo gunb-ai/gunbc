@@ -992,7 +992,16 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
-        "range" => {
+        // range body synthesis disabled pending investigation: synthesizing
+        // `subject >= min && subject <= max` for the existing types.dag
+        // Int-where-range declarations (RetryCount, HttpStatus, Port,
+        // EpochMs, Duration, Milliseconds, Seconds) breaks the
+        // int_literal_cardinality_test::let_annotated_uint8_* tests —
+        // annotated `let x: UInt8 = 5` resolves to `Int` instead of `UInt8`.
+        // Cause is the synthesized refinement bodies cascading through the
+        // integer-routing-witness walk; needs targeted fix before re-enable.
+        // Surfacing as STOP per S9 Slice 2.5 brief substrate-extension question.
+        "range" if false => {
             // arg-shape validation has already confirmed:
             //   - exactly 1 SurfaceExpr::Record arg
             //   - each field name is in {"min", "max"} (no duplicates)
