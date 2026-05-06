@@ -187,7 +187,7 @@ independent success criterion.
 
 ### §2.3 Decidability of the inference function itself
 
-v3's decidability invariant (`INVARIANTS.md` §"Decidability")
+v3's decidability invariant ([`INVARIANTS.md#p4-decidability`](../INVARIANTS.md#p4-decidability))
 says every `.dag` program must terminate by construction:
 bounded folds, bounded recursion via `Loop`, no unbounded
 iteration. Inference rules implemented as `.dag` functions
