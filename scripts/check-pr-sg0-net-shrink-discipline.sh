@@ -70,30 +70,30 @@ sg0_validate_pr_body_format() {
 
   if [ "$need_pairing" -eq 1 ]; then
     pairing_block=$(awk '
-      /^[[:space:]]*SG-0 pairing:/ {
+      /^SG-0 pairing:/ {
         print
         if (getline > 0) print
         exit
       }
     ' <<<"$body")
     if [ -z "$pairing_block" ]; then
-      echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a \`SG-0 pairing:\` line"
+      echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a column-0 \`SG-0 pairing:\` line (no leading whitespace — see PR template)"
       return 1
     fi
     # Flatten pairing line + continuation so evidence may sit on the next line
     # (template: "that line or immediately after") while grep(1) does not span '\n' with '.'.
     pairing_flat=$(printf '%s\n' "$pairing_block" | tr '\n' ' ')
-    if grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(a\)' <<<"$pairing_block"; then
+    if grep -qE '^SG-0 pairing:[[:space:]]*\(a\)' <<<"$pairing_block"; then
       if ! grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
         return 1
       fi
-    elif grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(b\)' <<<"$pairing_block"; then
+    elif grep -qE '^SG-0 pairing:[[:space:]]*\(b\)' <<<"$pairing_block"; then
       if ! grep -qE 'https://|http://' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (b) must cite a Director-budget URL (http(s):// on the pairing line or the line immediately after)"
         return 1
       fi
-    elif grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(c\)' <<<"$pairing_block"; then
+    elif grep -qE '^SG-0 pairing:[[:space:]]*\(c\)' <<<"$pairing_block"; then
       if ! grep -qiE '\(c\).*dispatch' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         return 1
@@ -194,6 +194,7 @@ self_test() {
   run_case "(c) dispatch on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch: TM-0 lane' pass
   run_case "mid-line SG-0 pairing mention ignored" $'SG-0 hand-path delta: +1\nNarrative: not SG-0 pairing: (b) https://trap.example\nSG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "only mid-line pairing substring" $'SG-0 hand-path delta: +1\nNote: not SG-0 pairing: (b) https://x.com' fail
+  run_case "indented SG-0 pairing rejected" $'SG-0 hand-path delta: +1\n    SG-0 pairing: (b) https://example.com/budget' fail
 
   if [ "$failed" -ne 0 ]; then
     exit 1
