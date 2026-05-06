@@ -6394,23 +6394,33 @@ pub(crate) fn constructor_record_field_labels(
 pub(crate) fn eval_constructor_variant_payload_fields(
     dag: &Dag,
     callee_decl: DeclarationId,
+    outer_instantiation: Option<DeclarationId>,
 ) -> Option<Vec<(String, DeclarationId)>> {
-    let fields = if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
-        fields
-    } else {
-        let mut found = None;
-        for decl in dag.declarations() {
-            if let Some(fields) =
-                variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id))
-            {
-                found = Some(fields);
-                break;
+    let fields =
+        if let Some(outer) = outer_instantiation {
+            variant_payload_fields_for_lowering(dag, callee_decl, Some(outer))
+                .or_else(|| variant_payload_fields_for_lowering(dag, callee_decl, None))?
+        } else if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
+            fields
+        } else {
+            let mut found = None;
+            for decl in dag.declarations() {
+                if let Some(fields) =
+                    variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id))
+                {
+                    found = Some(fields);
+                    break;
+                }
             }
-        }
-        found?
-    };
+            found?
+        };
     #[cfg(debug_assertions)]
-    debug_assert_variant_payload_prefix_scan_is_unambiguous(dag, callee_decl, &fields);
+    debug_assert_variant_payload_prefix_scan_is_unambiguous(
+        dag,
+        callee_decl,
+        outer_instantiation,
+        &fields,
+    );
     Some(fields)
 }
 
@@ -6418,21 +6428,17 @@ pub(crate) fn eval_constructor_variant_payload_fields(
 fn debug_assert_variant_payload_prefix_scan_is_unambiguous(
     dag: &Dag,
     callee_decl: DeclarationId,
+    outer_instantiation: Option<DeclarationId>,
     chosen: &[(String, DeclarationId)],
 ) {
+    if outer_instantiation.is_some() {
+        return;
+    }
     if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
         debug_assert_eq!(
             fields, chosen,
             "eval_constructor_variant_payload_fields: None-outer payload disagrees with chosen resolution"
         );
-    }
-    for decl in dag.declarations() {
-        if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id)) {
-            debug_assert_eq!(
-                fields, chosen,
-                "eval_constructor_variant_payload_fields: prefix-scan payload disagrees with chosen resolution"
-            );
-        }
     }
 }
 

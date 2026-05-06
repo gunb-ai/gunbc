@@ -2715,9 +2715,15 @@ pub mod evaluator {
     }
 }
 mod int_literal_ranges;
+/// Structural `Behavior` → [`FieldValue`] reflection (design-reflection-completeness).
+/// Split from `lens_apply.rs` so evaluator-owned substrate reification does not route through
+/// the lens compatibility seam as its authority.
+mod behavior_field_reflection;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
 /// (see module docs in `lens_apply.rs`).
 pub mod lens_apply;
+/// E6-G1.a: evaluator-owned reification of substrate `Dag` shapes into [`evaluator::Value`].
+pub mod eval_substrate_reify;
 pub mod lens_testgen;
 
 /// Effect-enumeration lens. Authority lives in
