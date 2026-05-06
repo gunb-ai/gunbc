@@ -2718,6 +2718,7 @@ mod int_literal_ranges;
 /// T-LensAPI D1: bounded lens interpreter over substrate-shaped [`FieldValue`]
 /// (see module docs in `lens_apply.rs`).
 pub mod lens_apply;
+pub mod eval_substrate_reify;
 pub mod lens_testgen;
 
 /// Effect-enumeration lens. Authority lives in

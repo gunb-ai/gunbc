@@ -53,6 +53,8 @@ mod canonical_lens_bridge_ratchet_test;
 mod cementing_lens_registry_dispatch_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
 mod e_i_lane_induction_preflight_test;
+#[path = "integration/e6_g1a_static_lens_fold_test.rs"]
+mod e6_g1a_static_lens_fold_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
 mod extdeps_rust_primitives_loader_test;
 #[path = "integration/four_fixture_regression_test.rs"]

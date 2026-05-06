@@ -317,6 +317,15 @@ pub fn reflect_program_dag_nodes_in_file(
     Ok(FieldValue::Record(vec![("nodes".to_string(), nodes)]))
 }
 
+/// Whole-`program.nodes()` reflection in graph order using `program` as id-space (no `source_file`
+/// filter).
+///
+/// E6-G1.a: evaluator-owned [`crate::eval_substrate_reify`] uses this for Dag [`Value`] carriers.
+/// Contrast [`reflect_program_dag_nodes_in_file`], which narrows by compilation unit.
+pub fn reflect_program_nodes_whole_dag(program: &Dag) -> Result<FieldValue, LensApplyError> {
+    substrate_reflection::reflect_behavior_list(program, program.nodes()).map_err(Into::into)
+}
+
 /// PR-E (Evaluator): apply a lens declaration over
 /// [`reflect_program_dag_nodes_in_file`] output (substrate-shaped `FieldValue` program spine).
 ///
