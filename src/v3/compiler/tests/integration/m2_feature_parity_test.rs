@@ -1012,7 +1012,7 @@ fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
 #[test]
 fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
     let f = "dsl/std/types.dag";
-    let dag = cached_compile_to_dag("type P = Int where range(min: 1)", f);
+    let dag = cached_compile_to_dag("type P = String where non_empty", f);
     let decl = dag
         .declaration_by_name("P")
         .expect("type alias `P` should exist");
@@ -1037,7 +1037,7 @@ fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
 #[test]
 fn test_registered_predicate_placeholder_works_outside_types_dag() {
     let f = "dsl/std/integer.dag";
-    let dag = cached_compile_to_dag("type P = Int where range(min: 1)", f);
+    let dag = cached_compile_to_dag("type P = String where non_empty", f);
     let decl = dag
         .declaration_by_name("P")
         .expect("type alias `P` should exist");
@@ -1103,6 +1103,38 @@ fn test_registered_predicate_on_disallowed_carrier_fails_closed() {
                 label.is_none() || !label.unwrap().contains("predicate not lowered"),
                 "carrier-incompatible registered predicate should NOT take a \
                  placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) Rung 3 cement: `range(min: N, max: M)` body
+/// synthesis produces a real refinement (not a placeholder).
+/// `synthesize_predicate_body` lowers `range(min: m, max: M)` to
+/// `subject >= m && subject <= M`; min-only/max-only forms produce the
+/// matching single-comparison body. Cements that valid registered
+/// `range(...)` clauses get an Arrow body, not the placeholder Conj.
+#[test]
+fn test_range_lowers_to_real_refinement_body_not_placeholder() {
+    let f = "dsl/std/integer.dag";
+    for src in [
+        "type R = Int where range(min: 1)",
+        "type R = Int where range(max: 100)",
+        "type R = Int where range(min: 1, max: 100)",
+    ] {
+        let dag = cached_compile_to_dag(src, f);
+        let decl = dag
+            .declaration_by_name("R")
+            .expect("type alias `R` should exist");
+        let pred_id = decl
+            .refinement
+            .expect("`range` refinement must produce a real `Declaration::refinement`");
+        let pred = dag.declaration(pred_id);
+        if let Some(label) = pred.name.as_deref() {
+            assert!(
+                !label.contains("predicate not lowered"),
+                "`range` must lower to a real refinement body, not placeholder \
+                 (src={src:?}); got label {label:?}"
             );
         }
     }
