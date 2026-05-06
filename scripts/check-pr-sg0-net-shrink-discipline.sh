@@ -117,7 +117,7 @@ sg0_validate_pr_body_format() {
 # Count path-string rows in EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}
 # only (ROADMAP / PR-template authority). stdin = full `sg0_census_test.rs`.
 # Assumptions: `rustfmt` keeps a trailing comma on each multi-line path row (the
-# block counter matches `,` at EOL). `EXPECTED_HAND_AUTHORED_FRAGMENTS` today is
+# block counter matches `,` before optional EOL `//` comment). `EXPECTED_HAND_AUTHORED_FRAGMENTS` today is
 # a one-line `&[...];` const (inline scan); a multi-line reformatted block would
 # fall through to the same `hand==1` arm as NON_TEST/TEST — extend explicitly if
 # both shapes must diverge. Counter **fail-closes** if any of the three `const`
@@ -145,7 +145,17 @@ sg0_count_hand_expect_paths_from_stdin() {
         hand = 0
         next
       }
-      if ($0 ~ /^    "src\/v3\/compiler\/[^"]+",[[:space:]]*$/) count++
+      line = $0
+      sub(/\/\/.*$/, "", line)
+      gsub(/[[:space:]]+$/, "", line)
+      if (line ~ /^[[:space:]]*"src\/v3\/compiler\/[^"]+",[[:space:]]*$/) {
+        count++
+        next
+      }
+      if (line ~ /"src\/v3\/compiler\//) {
+        print "sg0_census_counter: hand-authored path row does not match supported shape (rustfmt path + trailing comma, optional // comment)" > "/dev/stderr"
+        exit 1
+      }
       next
     }
     END {
@@ -221,9 +231,15 @@ self_test() {
   }
 
   # --- census counter (stdin synthetic snapshots; fail-closed shape) ---
-  local census_ok census_frag_ml census_miss_nt census_miss_f census_dup census_unclosed
+  local census_ok census_frag_ml census_miss_nt census_miss_f census_dup census_unclosed census_row_comment census_bad_row
   census_ok=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n    "src/v3/compiler/a.rs",\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n    "src/v3/compiler/tests/b.rs",\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
   run_census_case "census counter minimal valid" "$census_ok" pass 3
+
+  census_row_comment=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n    "src/v3/compiler/x.rs", // ratchet note\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
+  run_census_case "census counter path row with trailing // comment" "$census_row_comment" pass 2
+
+  census_bad_row=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n    "src/v3/compiler/x.rs"\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
+  run_census_case "census counter non-matching path row fails closed" "$census_bad_row" fail
 
   census_frag_ml=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[\n    "src/v3/compiler/z.txt",\n];\n'
   run_census_case "census counter multiline FRAGMENTS block" "$census_frag_ml" pass 1
