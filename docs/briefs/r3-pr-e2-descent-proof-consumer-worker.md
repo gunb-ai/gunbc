@@ -1,10 +1,10 @@
-# R3 PR-E E2 — Descent Execution Proof Consumer Worker
+# R3 Evaluator EVAL-2 — Descent Execution Proof Consumer Worker
 
 **Status:** pre-authored worker brief. Do not dispatch until the substrate
 `descent_execution_proof` carrier/query lands or Director/Substrate explicitly
 names an equivalent authority.
 
-**Lane:** R3 Evaluator E5 residual closure / E2 consumer wiring.
+**Lane:** R3 Evaluator EVAL-2 / E5 `LoopBound::Descent` residual closure.
 
 **Dispatch trigger:** Substrate merges a proof authority with the shape:
 
@@ -20,12 +20,19 @@ or an explicitly ratified equivalent that lets the evaluator distinguish
 certified `LoopBound::Descent` execution from missing, unknown, incomplete, or
 non-strict evidence without inferring proof facts locally.
 
-## Source Authority
+## Live Source Authority
 
 - [`r3-pr-e5-loopbound-descent-stop-packet.md`](r3-pr-e5-loopbound-descent-stop-packet.md)
-  is the active STOP receipt.
-- [`docs/r3-program-plan.md`](../r3-program-plan.md) EVAL-2 names the resume
-  contract and fail-closed residual classes.
+  is the active E5 STOP receipt for `LoopBound::Descent`.
+- [`r3-pr-e5-loop-readiness-audit.md`](r3-pr-e5-loop-readiness-audit.md)
+  records cardinality loop execution as live and keeps Descent outside the
+  cardinality slice.
+- [`docs/r3-program-plan.md`](../r3-program-plan.md) EVAL-2 and
+  Q-EVAL-Descent-Termination-Contract name the live resume contract:
+  Substrate lands
+  `descent_execution_proof(&Dag, ClusterId, PortId) -> Result<DescentExecutionProof, DescentResidual>`
+  with `Missing | Unknown | Incomplete | NonStrict` fail-closed residuals;
+  the evaluator consumes the proof token only.
 - `src/v3/compiler/src/lib.rs` currently returns
   `EvalError::LoopBoundDescentResidual { node, cluster, measure }` from
   `eval_loop` for `LoopBound::Descent`.
