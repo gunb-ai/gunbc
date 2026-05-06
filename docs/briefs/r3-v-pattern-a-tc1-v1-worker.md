@@ -4,7 +4,7 @@
 
 **Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — absorbed formal-grounding / Pattern-A cluster (not a fourth lane; see [`docs/r3-structure.md`](../r3-structure.md) §"Manager structure").
 
-**Ratified scope authority:** [`docs/briefs/r3-v-tc1-eta-equivalence-deeper-analysis.md`](r3-v-tc1-eta-equivalence-deeper-analysis.md) §"DESIGN — Q-PAFS first executable slice (Pattern-A / TC1)" **Path A** — TC1 **static representative** via **E6-G1.a** (finite Director-visible lens set + fixed eta pair; `BinaryDimensionReportEquals` consumer envelope per [`docs/briefs/r3-v-pattern-a-coverage-rollup.md`](r3-v-pattern-a-coverage-rollup.md)).
+**Ratified scope narrative (engineering brief):** [`docs/briefs/r3-v-tc1-eta-equivalence-deeper-analysis.md`](r3-v-tc1-eta-equivalence-deeper-analysis.md) §"DESIGN — Q-PAFS first executable slice (Pattern-A / TC1)" **Path A** — TC1 **static representative** via **E6-G1.a** (finite Director-visible lens set + fixed eta pair; `BinaryDimensionReportEquals` consumer envelope per [`docs/briefs/r3-v-pattern-a-coverage-rollup.md`](r3-v-pattern-a-coverage-rollup.md)).
 
 **Program plan:** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 rows **Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, **Q-EVAL-Lens-Fold-First-Slice** — **ACCEPTED 2026-05-06 (Path A / G1.a)**.
 
