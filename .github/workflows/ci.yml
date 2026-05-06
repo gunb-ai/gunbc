@@ -363,9 +363,11 @@ jobs:
     # PR job still reports as a failed check, which makes this advisory ratchet
     # merge-blocking before Lane 1e graduation.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Same sizing rationale as `v3` above: DB-8 release builds run on
-    # `ubicloud-standard-8` (#1814). **60m** wall so cold-cache / full release `cargo`
-    # work is unlikely to hit mid-compile cancellation (#1794); ratchet remains non-blocking.
+    # Same sizing rationale as `v3` above: DB-8 release builds + determinism_test (5× matrix) +
+    # `self_host_fixed_point` run on `ubicloud-standard-8` (#1814); small/default runners saw
+    # mid-compile shutdown on #1794. **60m** wall so cold-cache / full release `cargo` is unlikely
+    # to cancel mid-job; ratchet remains non-blocking. (Runner label is orthogonal to P2:
+    # `rust-toolchain.toml` + no workflow `toolchain:` input.)
     runs-on: ubicloud-standard-8
     timeout-minutes: 60
     needs: [v3]
