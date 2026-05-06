@@ -595,60 +595,145 @@ fn build_refinement_predicate_declaration(
 
 /// **Predicate registry** (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
 /// `issuecomment-4390333451`). Authoritative set of predicate identifiers
-/// recognized by `where`-sugar refinements. Predicates listed here lower to
-/// a `Conj`-shaped placeholder declaration via
-/// `alloc_registered_refinement_placeholder` (refinement is *named* at the
-/// declaration level — P3 facts-flow-forward — without requiring a lowered
-/// `Bool` predicate body, which would need helper resolution that is not yet
-/// substrate-uniform). Predicates not in the registry fall through to live
-/// resolution in `build_refinement_predicate_declaration` and surface
-/// `Diagnostic::ResolveError` if unresolved.
+/// recognized by `where`-sugar refinements. Each entry pairs the predicate
+/// name with its **allowed carrier types** — the set of base-type names a
+/// `where <predicate>(…)` clause may legitimately refine. Predicates listed
+/// here, applied to an allowed carrier, lower to a `Conj`-shaped placeholder
+/// declaration via `alloc_registered_refinement_placeholder` (refinement is
+/// *named* at the declaration level — P3 facts-flow-forward — without
+/// requiring a lowered `Bool` predicate body, which would need helper
+/// resolution that is not yet substrate-uniform). Predicates not in the
+/// registry — or registered predicates applied to a non-allowed carrier —
+/// fall through to live resolution in `build_refinement_predicate_declaration`
+/// and surface `Diagnostic::ResolveError` if unresolved.
 ///
 /// Replaces the prior PB-1 file-path special case
 /// (`span.file == "dsl/std/types.dag"`) — the asymmetry that motivated this
 /// slice. Per `feedback_no_textual_enforcement_bridges`: gating structural
 /// behavior on a textual file identifier was the anti-pattern; gating on
-/// whether the predicate name is registered is the substrate-faithful
-/// authority.
+/// whether the predicate name is registered AND carrier-compatible is the
+/// substrate-faithful authority. The carrier check addresses Codex's
+/// BLOCKING finding at PR #1846 (`92758dd0`): without it, the registry
+/// becomes a broad diagnostic escape hatch (e.g. `String where gt_zero` would
+/// silently get a placeholder despite `gt_zero` being undefined over String).
 ///
 /// **DFS-of-concept-DAG receipt** (proud-lynx-311 pre-flight grep at
 /// `gunbc#1746 issuecomment-4390253616` + brief `docs/briefs/r3-substrate-s9-slice-2-5-predicate-registry-worker.md`
 /// authority audit): no parallel predicate-registry exists under another
 /// name; this constant IS the substrate-fact-introduction.
-const KNOWN_PREDICATE_REGISTRY: &[&str] = &[
-    // Pre-existing types.dag predicates absorbed via the prior PB-1 shim:
-    "range",
-    "pattern",
-    "non_empty",
-    "brand",
-    "format",
-    "content",
+struct PredicateSpec {
+    name: &'static str,
+    allowed_carriers: &'static [&'static str],
+}
+
+const KNOWN_PREDICATES: &[PredicateSpec] = &[
+    // Pre-existing types.dag predicates absorbed via the prior PB-1 shim.
+    // `allowed_carriers` derived from the surface usage at `dsl/std/types.dag`
+    // pre-PR; the registry now enforces structurally what the file-path shim
+    // tolerated by location.
+    PredicateSpec {
+        name: "range",
+        allowed_carriers: &["Int", "Nat"],
+    },
+    PredicateSpec {
+        name: "pattern",
+        allowed_carriers: &["String", "NonEmptyStr"],
+    },
+    PredicateSpec {
+        name: "non_empty",
+        allowed_carriers: &["String", "Secret", "List"],
+    },
+    PredicateSpec {
+        // `brand` is the most-frequently-applied predicate in `types.dag`;
+        // it tags any nominal carrier with a brand identity. Allowed carriers
+        // span every type that carries a brand in the existing surface.
+        name: "brand",
+        allowed_carriers: &[
+            "NonEmptyStr",
+            "String",
+            "FilePath",
+            "Unit",
+            "Int",
+            "Nat",
+            "Secret",
+        ],
+    },
+    PredicateSpec {
+        name: "format",
+        allowed_carriers: &["String"],
+    },
+    PredicateSpec {
+        name: "content",
+        allowed_carriers: &["FilePath"],
+    },
     // S9 Slice 2.5 new primitive (Director Option 2 ratification at
     // gunbc#828 issuecomment-4390199218). `gt_zero` IS the reason for "Nat
-    // without zero" / "Nat above structural bound"; carrier-compatible with
-    // Nat (intrinsic) and Int (generalization).
-    "gt_zero",
+    // without zero" / "Nat above structural bound"; intrinsic to Nat and
+    // generalizes over Int.
+    PredicateSpec {
+        name: "gt_zero",
+        allowed_carriers: &["Nat", "Int"],
+    },
 ];
 
+fn predicate_spec(name: &str) -> Option<&'static PredicateSpec> {
+    KNOWN_PREDICATES.iter().find(|spec| spec.name == name)
+}
+
+/// Walk an alias chain (`Atom::ResolvedByStructure` / `Atom::ResolvedByName` /
+/// `Instantiation`) collecting every *named* declaration encountered.
+/// Returns the names of every level in the chain — both the immediate alias
+/// and any transitive aliases — so a predicate like `brand` over
+/// `NonEmptyStr` matches because `NonEmptyStr` itself is allowed (alias chain
+/// doesn't need to bottom out at `String`).
+fn carrier_chain_names(dag: &Dag, decl_id: DeclarationId) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut current = decl_id;
+    for _ in 0..32 {
+        let decl = dag.declaration(current);
+        if let Some(name) = decl.name.as_deref() {
+            out.push(name.to_string());
+        }
+        match &decl.connective {
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => current = *next,
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            _ => break,
+        }
+    }
+    out
+}
+
 /// Recursively walk a `where`-sugar refinement expression and confirm every
-/// predicate-position identifier is in `KNOWN_PREDICATE_REGISTRY`. Predicates
-/// combine via `Operator { op: Logical(And), … }` (per
+/// predicate-position identifier is in [`KNOWN_PREDICATES`] AND each
+/// predicate's allowed-carrier list intersects the alias chain of the base
+/// type. Predicates combine via `Operator { op: Logical(And), … }` (per
 /// `parse_type_alias_where_tail` / `fold_type_alias_where_parts`); the leaves
 /// are `SurfaceExpr::Call` (e.g. `range(min: 1)`, `brand("X")`) or
-/// `SurfaceExpr::Var` (bare predicates like `non_empty`). Argument expressions
-/// are not walked — only the predicate-name position matters for registry
-/// membership.
-fn all_predicate_names_registered(expr: &SurfaceExpr) -> bool {
-    match expr {
-        SurfaceExpr::Call { target, .. } => KNOWN_PREDICATE_REGISTRY.contains(&target.as_str()),
-        SurfaceExpr::Var { name, .. } => KNOWN_PREDICATE_REGISTRY.contains(&name.as_str()),
+/// `SurfaceExpr::Var` (bare predicates like `non_empty`). Argument
+/// expressions are not walked — only the predicate-name position matters for
+/// registry membership.
+fn all_predicate_names_registered(expr: &SurfaceExpr, carrier_chain: &[String]) -> bool {
+    let predicate_name = match expr {
+        SurfaceExpr::Call { target, .. } => target.as_str(),
+        SurfaceExpr::Var { name, .. } => name.as_str(),
         SurfaceExpr::Operator {
             op: OperatorKind::Logical(LogicalOp::And),
             args,
             ..
-        } => args.iter().all(all_predicate_names_registered),
-        _ => false,
-    }
+        } => {
+            return args
+                .iter()
+                .all(|arg| all_predicate_names_registered(arg, carrier_chain));
+        }
+        _ => return false,
+    };
+    let Some(spec) = predicate_spec(predicate_name) else {
+        return false;
+    };
+    spec.allowed_carriers
+        .iter()
+        .any(|allowed| carrier_chain.iter().any(|name| name == allowed))
 }
 
 /// P3 / “facts flow forward” for registered-predicate refinements: allocate
@@ -949,13 +1034,19 @@ fn lower_type_alias_refinements_phase(
 
         // S9 Slice 2.5 (Path 3 RATIFIED) — replaces prior PB-1 file-path
         // special case (`span.file == "dsl/std/types.dag"`) with a
-        // predicate-name registry. See `KNOWN_PREDICATE_REGISTRY` and
-        // `all_predicate_names_registered`. A registered predicate gets a
-        // placeholder refinement (P3 facts-flow-forward — alias still carries
-        // a named refinement); an unregistered predicate falls through to
-        // live resolution and surfaces `Diagnostic::ResolveError` if the
-        // predicate name does not resolve as a callable.
-        if all_predicate_names_registered(predicate) {
+        // predicate-name registry plus carrier-compatibility check. See
+        // `KNOWN_PREDICATES`, `carrier_chain_names`, and
+        // `all_predicate_names_registered`. A registered predicate applied
+        // to an allowed carrier gets a placeholder refinement (P3
+        // facts-flow-forward — alias still carries a named refinement); an
+        // unregistered predicate, or a registered predicate applied to a
+        // non-allowed carrier, falls through to live resolution and surfaces
+        // `Diagnostic::ResolveError` if the predicate name does not resolve
+        // as a callable. The carrier check addresses Codex's BLOCKING
+        // finding at PR #1846 (`92758dd0`): without it the registry is a
+        // broad diagnostic escape hatch.
+        let carrier_chain = carrier_chain_names(dag, base_decl_id);
+        if all_predicate_names_registered(predicate, &carrier_chain) {
             let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
             dag.declaration_mut(decl_id).refinement = Some(ph);
             continue;
