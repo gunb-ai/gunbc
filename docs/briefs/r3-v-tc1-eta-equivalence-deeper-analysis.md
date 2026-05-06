@@ -1,6 +1,20 @@
 # R3 TC1 Eta-Equivalence Deeper Structural Verification Analysis
 
-**Status:** PROPOSAL / research-only. TC1 fixture remains as-is; this brief explores the strict-fire extension surface only. No substrate, runner, or fixture changes are proposed here.
+**Status:** **DESIGN** (2026-05-06). Verification Mgr engineering choice among Pattern-A
+first-slice paths; **not** yet **ACCEPTED** (Director countersignature still required per
+`docs/r3-program-plan.md` §10.3 **Q-PAFS** and Brian directive: PROPOSAL → DESIGN →
+ACCEPTED).
+
+**Lifecycle**
+
+| Stage | Meaning |
+| --- | --- |
+| PROPOSAL | Exploratory surface map only (superseded by this revision). |
+| **DESIGN** (here) | Chooses a concrete first-slice shape, defers alternatives, states runtime prereqs and scope deltas. |
+| ACCEPTED | Director/Brian countersign; authorizes implementation dispatch (V1 TC1 executable slice + Evaluator **E6-G1.a** lens-fold first slice in lockstep). |
+
+TC1 deferred fixture remains **as-is** until ACCEPTED + routed implementation; this brief
+still does **not** authorize substrate, runner, or fixture edits by itself.
 
 **Owning manager:** R3 Verification Manager, absorbed formal-grounding responsibility.
 
