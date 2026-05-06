@@ -1004,9 +1004,7 @@ fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
     // alias-friendly carrier (`Int`), which is the parse-coverage shape
     // this test was originally locking. The full corpus coverage moves
     // to the predicate-specific cement tests below.
-    for src in ["type R = Int where range(min: 1)"] {
-        let _ = cached_compile_to_dag(src, f);
-    }
+    let _ = cached_compile_to_dag("type R = Int where range(min: 1)", f);
 }
 
 /// Registered-predicate `where` clauses keep a placeholder `refinement` id
