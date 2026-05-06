@@ -4,7 +4,7 @@
 
 **Lane:** T-Ground-Rust (XL) — item 2 of 11 in [`r2-grounding-manager.md`](r2-grounding-manager.md) (line 28 + lane row line 63).
 
-**Manager:** R2 Grounding Manager ([`r2-grounding-manager.md`](r2-grounding-manager.md)) — T-Ground sub-program lives under R2 Grounding per the live authority docs.
+**Manager:** R3 Grounding Manager (`#1745`) — T-Ground sub-program lives under R3 Grounding per the current live authority/topology (R2 → R3 Grounding rename absorbed; the prior "R2 Grounding Manager" framing is superseded). All STOP-and-escalate routing (§"Manager + escalation routing" + STOP #1-#12) targets `#1745` consistently.
 
 **Lineage / authorities consumed (no re-litigation):**
 - Engine-reframe spec: [`docs/design-emission-model.md`](../design-emission-model.md) — Q1 `BoundDeclaration` (lines 994-1067), Q2 `ReferenceModel<T>` (lines 1068-1117), Q3 `RealizationCost` (lines 1143-1208), Q4 universal four-property gate (line 1234), cadence table (lines 1271-1282).
@@ -82,7 +82,7 @@ Each primitive row cites its **authority URL** (Rust Reference section or std-do
 Authority: <https://doc.rust-lang.org/1.86.0/std/> per type (pinned per §Lineage; every row in §B consumes the 1.86.0 std base — e.g., `Vec<T, A>` → `https://doc.rust-lang.org/1.86.0/std/vec/struct.Vec.html`). Coverage required:
 
 - **`String`** — owned, growable, UTF-8 char sequence. Inhabits `FreeMonoid<Char>` (per `design-emission-model.md:534`); the algebra choice IS the encoding distinction (`FreeMonoid<Byte>` would be raw bytes — `Vec<u8>` territory, not a `String` candidate). Refinement axes: ownership = `Owned`; growability = `Growable`; lifetime = `self`. **No `encoding` axis** — that would duplicate the algebra-carried fact.
-**std-carrier full-signature discipline.** Per Rust std documentation, every collection carrier carries hidden generic parameters (allocator `A`, hasher `S`) that the brief MUST surface as structural axes. Dropping them loses extdeps-fidelity facts before grounding (P1 violation). Each row enumerates the full Rust signature, with hasher/allocator axes carried alongside K/V/T:
+**std-carrier full-signature discipline.** Per Rust std documentation, every collection carrier carries hidden generic parameters (hasher `S`, and on nightly the allocator `A`) that the brief MUST surface as structural axes **for the parameters stable at the pinned 1.86.0 toolchain**. Dropping stable-surfaced axes loses extdeps-fidelity facts before grounding (P1 violation). Each row enumerates the full Rust 1.86.0 *stable* signature, with the hasher axis carried alongside K/V/T (stable, in scope for Phase 1). The allocator axis is **NOT** authored in Phase 1 — it is unstable at the pin and held under STOP #11 + STOP #12 (see "Allocator parameter status" below + §H STOP table). When the toolchain pin is later raised past `allocator_api` stabilization, the rows must add `A: Allocator` per the new Rust Reference signature; until then, authoring an allocator-axis on a §B row is itself a P1 violation (it would author an unstable spec fact under a stable pin).
 
 **Trait-bound discipline.** Each row enumerates the full Rust signature *as it appears at the pinned 1.86.0 stable target* (per §Lineage authority pin), including parameter trait bounds (e.g., `T: ?Sized`, `S: BuildHasher`). Bounds are structural admissibility facts; dropping them silently loses std-spec fidelity (P1/P2).
 
