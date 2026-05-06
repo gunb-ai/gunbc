@@ -371,6 +371,113 @@ pub fn empty_substrate_list_value(dag: &Dag) -> Result<FieldValue, LensApplyErro
     })
 }
 
+/// Convert a structural [`FieldValue`] (as produced by the substrate reflection spine in
+/// [`substrate_reflection`]) into the body evaluator's [`crate::evaluator::Value`] carrier.
+///
+/// **E6-G1.a bridge.** User `data … : Dag = …` literals remain blocked (class-5); host reification
+/// uses the same shapes as `reflect_program_dag_nodes_in_file` without introducing a parallel
+/// witness/report authority.
+pub fn field_value_to_eval_value(
+    dag: &Dag,
+    fv: &FieldValue,
+) -> Result<crate::evaluator::Value, LensApplyError> {
+    match fv {
+        FieldValue::Literal(bits) => Ok(crate::evaluator::Value::LiteralValue(bits.clone())),
+        FieldValue::Reference(_) => Err(LensApplyError::SubstrateReflect(
+            "FieldValue::Reference is not reified into evaluator Value (E6-G1.a)",
+        )),
+        FieldValue::List(_) => Err(LensApplyError::SubstrateReflect(
+            "FieldValue::List is not reified; reflection uses Cons spines",
+        )),
+        FieldValue::Map(_) => Err(LensApplyError::SubstrateReflect(
+            "FieldValue::Map is not reified into evaluator Value (E6-G1.a)",
+        )),
+        FieldValue::Record(rec) => {
+            let mut fields = Vec::with_capacity(rec.len());
+            for (label, child) in rec {
+                fields.push(crate::evaluator::NamedField {
+                    label: label.clone(),
+                    value: field_value_to_eval_value(dag, child)?,
+                });
+            }
+            Ok(crate::evaluator::Value::RecordValue(fields))
+        }
+        FieldValue::Variant {
+            constructor,
+            payload,
+        } => {
+            let field_defs = crate::lower::eval_constructor_variant_payload_fields(dag, *constructor)
+                .ok_or(LensApplyError::SubstrateReflect(
+                    "variant constructor payload fields missing",
+                ))?;
+            if field_defs.len() != payload.len() {
+                return Err(LensApplyError::SubstrateReflect(
+                    "variant payload arity mismatch for eval reification",
+                ));
+            }
+            let converted: Vec<crate::evaluator::Value> = payload
+                .iter()
+                .map(|p| field_value_to_eval_value(dag, p))
+                .collect::<Result<_, _>>()?;
+            let inner = if field_defs.len() == 1 && field_defs[0].0 == "_0" {
+                converted.into_iter().next().expect("length checked")
+            } else {
+                crate::evaluator::Value::RecordValue(
+                    field_defs
+                        .into_iter()
+                        .zip(converted)
+                        .map(|((label, _), value)| crate::evaluator::NamedField { label, value })
+                        .collect(),
+                )
+            };
+            Ok(crate::evaluator::Value::VariantValue {
+                tag: *constructor,
+                payload: Box::new(inner),
+            })
+        }
+    }
+}
+
+/// Build a substrate-typed `Dag` [`crate::evaluator::Value`] for [`crate::evaluator::evaluate_body`]
+/// from a compiled program graph.
+///
+/// `declarations`, `ports`, and `clusters` are empty lists; `nodes` lists every [`Behavior`] whose
+/// `span.file` matches `source_file`, in `program.nodes()` order — the same filter as
+/// [`reflect_program_dag_nodes_in_file`].
+pub fn reify_substrate_dag_value_for_eval(
+    program: &Dag,
+    source_file: &str,
+) -> Result<crate::evaluator::Value, LensApplyError> {
+    let empty_fv = empty_substrate_list_value(program)?;
+    let empty_val = field_value_to_eval_value(program, &empty_fv)?;
+    let nodes: Vec<Behavior> = program
+        .nodes()
+        .iter()
+        .filter(|b| behavior_source_file(b) == source_file)
+        .cloned()
+        .collect();
+    let nodes_fv = substrate_reflection::reflect_behavior_list(program, &nodes)?;
+    let nodes_val = field_value_to_eval_value(program, &nodes_fv)?;
+    Ok(crate::evaluator::Value::RecordValue(vec![
+        crate::evaluator::NamedField {
+            label: "declarations".to_string(),
+            value: empty_val.clone(),
+        },
+        crate::evaluator::NamedField {
+            label: "nodes".to_string(),
+            value: nodes_val,
+        },
+        crate::evaluator::NamedField {
+            label: "ports".to_string(),
+            value: empty_val.clone(),
+        },
+        crate::evaluator::NamedField {
+            label: "clusters".to_string(),
+            value: empty_val,
+        },
+    ]))
+}
+
 fn behavior_source_file(behavior: &Behavior) -> &str {
     match behavior {
         Behavior::Value(v) => v.span.file.as_str(),
