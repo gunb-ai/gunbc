@@ -112,7 +112,14 @@ fn form_axis_disj_variants_match_type_connective_discriminants() {
     let labels = disj_variant_labels(decl, FORM_AXIS);
     assert_eq!(
         labels,
-        vec!["Atom", "Conj", "Disj", "Arrow", "Cardinality", "Instantiation"],
+        vec![
+            "Atom",
+            "Conj",
+            "Disj",
+            "Arrow",
+            "Cardinality",
+            "Instantiation"
+        ],
         "FormAxis variants must mirror v3_compiler::dag::TypeConnective's six discriminants \
          in substrate-declaration order (label-by-label parity; drift requires P1 procedure \
          on the upstream Rust enum first)"
@@ -170,7 +177,11 @@ fn emission_path_projection_record_fields_match_ratified_shape() {
         .declaration_by_name(EMISSION_PATH_PROJECTION)
         .expect("EmissionPathProjection must exist");
     let fields = conj_field_label_and_type_names(&dag, decl, EMISSION_PATH_PROJECTION);
-    assert_eq!(fields.len(), 2, "EmissionPathProjection must have exactly two fields; got {fields:?}");
+    assert_eq!(
+        fields.len(),
+        2,
+        "EmissionPathProjection must have exactly two fields; got {fields:?}"
+    );
     assert_eq!(
         fields[0],
         ("row_identity", "MethodTemplateContractKey"),
