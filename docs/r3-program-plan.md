@@ -771,8 +771,6 @@ Substantive review surfaces R3 Evaluator continuation work that plan was treatin
 - **EVAL-2. E5 `LoopBound::Descent` blocked on substrate termination contract** — `eval_loop` fails closed with `LoopBoundDescentResidual`; sharp-ibex #1799 STOP/audit; quick-koi substrate impl authorized. Substrate must land `descent_execution_proof(&Dag, ClusterId, PortId) -> Result<DescentExecutionProof, DescentResidual>` with `Missing | Unknown | Incomplete | NonStrict` fail-closed residuals; evaluator consumes proof token only. Required for TC3 + any lens fold traversing Descent loops. → **Q-EVAL-Descent-Termination-Contract** in §10.3.
 - **EVAL-3. E6-G1.a static lens fold is next executable lens/report slice (NOT generic fold_lens<C>)** — Decision needed: Pattern A first executable uses single static top-level `data ... : Lens<C>` representative (G1.a) OR closure requires generic dispatch (G1.b). The TC1 cascading requirement chains here — F1 surfaces this as scope-question. → **Q-EVAL-Lens-Fold-First-Slice** in §10.3 (overlaps with Q-PAFS).
 
-#### §10.2.5 R3 PB Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
-
 #### §10.2.7 Research PM (loyal-swift-270, gunb-ai/ctrl#339) — full canvas absorbed 2026-05-06T02:00Z
 
 Substantive cross-program review surfacing ctrl-side coupling concerns + structural taxonomy + timeline risk. 3 RED + 4 YELLOW + 4 GREEN.
