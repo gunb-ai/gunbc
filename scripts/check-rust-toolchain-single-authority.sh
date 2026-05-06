@@ -7,8 +7,8 @@
 # `ci_pinned_toolchain` symbol — see PR #1794 / INVARIANTS P2. Word channels (e.g.
 # `stable`) are only checked in quoted form to avoid unrelated prose false positives.
 #
-# Also fail if any `.github/workflows/*.{yml,yaml}` sets an explicit `toolchain:`
-# input on `actions-rust-lang/setup-rust-toolchain` (the action ignores
+# Also fail if any `.github/workflows/*.{yml,yaml}` pairs `toolchain:` with
+# `actions-rust-lang/setup-rust-toolchain` in the same step (the action ignores
 # rust-toolchain.toml when that input is present — same authority drift class).
 #
 # Dissolution: delete this script and its CI step if extdeps + workflow toolchain
@@ -71,20 +71,67 @@ if grep -Eq '^[[:space:]]*data[[:space:]]+ci_pinned_toolchain' "$rustup_dag"; th
   exit 1
 fi
 
-# Indented YAML key `toolchain:` under a `with:` block would make setup-rust-toolchain
-# ignore rust-toolchain.toml — forbid it (comments must not fake this shape at BOL).
-shopt -s nullglob
-workflow_files=("$workflows_dir"/*.yml "$workflows_dir"/*.yaml)
-if [ "${#workflow_files[@]}" -eq 0 ]; then
-  echo "::error::no *.yml or *.yaml under $workflows_dir"
+# Indented YAML key `toolchain:` under `with:` for `actions-rust-lang/setup-rust-toolchain`
+# ignores rust-toolchain.toml — forbid that pairing only (not unrelated `toolchain:` keys
+# in other actions). Implemented with a small Python scan (bounded step walk); see PR #1794
+# codex review (narrow authority boundary vs raw file-wide grep).
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "::error::python3 is required for workflow toolchain guard (setup-rust-toolchain scope)"
   exit 2
 fi
-for wf in "${workflow_files[@]}"; do
-  if grep -Eq '^[[:space:]]+toolchain[[:space:]]*:' "$wf"; then
-    rel=${wf#"$repo_root/"}
-    echo "::error::${rel} contains an explicit \`toolchain:\` input — rust-toolchain.toml would be ignored. Remove it from setup-rust-toolchain steps."
-    exit 1
-  fi
-done
+
+python3 - "$workflows_dir" "$repo_root" <<'PY'
+import pathlib
+import re
+import sys
+
+SETUP = "actions-rust-lang/setup-rust-toolchain"
+
+
+def violation_in_file(wf_path: pathlib.Path):
+    lines = wf_path.read_text(encoding="utf-8").splitlines()
+    for i, line in enumerate(lines):
+        m_tc = re.match(r"^(\s+)toolchain\s*:", line)
+        if not m_tc:
+            continue
+        tc_ws = len(m_tc.group(1))
+        j = i - 1
+        while j >= 0:
+            m_dash = re.match(r"^(\s*)-\s", lines[j])
+            if m_dash is not None and len(m_dash.group(1)) < tc_ws:
+                break
+            j -= 1
+        if j < 0:
+            continue
+        block = "\n".join(lines[j : i + 1])
+        if SETUP in block:
+            return i + 1, line.strip()
+    return None
+
+
+def main() -> int:
+    workflows_dir = pathlib.Path(sys.argv[1])
+    repo_root = pathlib.Path(sys.argv[2])
+    files = sorted(workflows_dir.glob("*.yml")) + sorted(workflows_dir.glob("*.yaml"))
+    if not files:
+        print(f"::error::no *.yml or *.yaml under {workflows_dir}")
+        return 2
+    for wf in files:
+        hit = violation_in_file(wf)
+        if hit is not None:
+            lineno, preview = hit
+            rel = wf.resolve().relative_to(repo_root.resolve())
+            print(
+                f"::error::file={rel},line={lineno}::explicit `toolchain:` input on "
+                f"{SETUP} — rust-toolchain.toml would be ignored. Remove it from that step's `with:`."
+            )
+            print(f"{rel}:{lineno}: {preview}")
+            return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+PY
 
 echo "Rust toolchain single-authority check OK (channel=${channel}; rustup.dag + workflow guard)."
