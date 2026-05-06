@@ -6,7 +6,7 @@
 
 **Design lock:** [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md).
 
-**Cascade note:** Lane is **Evaluator-gated** and listed **after** T-LBP in the R3 critical-path narrative; **T-LBP option (b)** narrows behavioral-complete work to **complexity + cost** in R3 — parallelism / effect_enum behavioral completeness are **R4-carved**. Demonstration gate **#95** still names `Lens<Iteration-Independence>` **as a lens-application worked example**; execution may proceed **without** waiting for R4 parallelism **lens behavioral completeness** if substrate + evaluator can exercise the **apply_lens** surface per design doc (coordinate Substrate — **no false lane-closure** claim).
+**Cascade / carve (INVARIANTS §P2):** Internal LAS cascade in [`docs/design-lens-application-surface.md`](../design-lens-application-surface.md) §**7** / §**9** requires each worked example’s lens to be **behaviorally substantive**. Under Director **option (b)** + [`docs/r4-carve-out-routing.md`](../r4-carve-out-routing.md) **C1**, **`parallelism_lens_behaviorally_complete`** is **R4-carved**, and **`opt_in_iteration_parallelism_via_lens_application_demonstrated` (#95) carves with it** — **no #95 PASSING in R3** (demo §4.4 needs parallelism lens parity per design §4.4). **R3** executes substrate **88–91** + demos **92–94** only after **complexity+cost** T-LBP completeness + register **C3**; **#95** schedules against **R4** parallelism landing.
 
 ## Execution slice A — substrate-shape + routing (Substrate-primary)
 
@@ -21,12 +21,19 @@
 
 ## Execution slice B — demonstrations (cross-program)
 
+### B1 — **R3** (after complexity+cost T-LBP + slice **A**)
+
 | Plan §1.8 # | Gate ID | Pass intent |
 | --- | --- | --- |
 | 92 | `complexity_violation_compile_error_demonstrated` | `apply_lens(complexity, …, Enforce)` compile-error worked example |
 | 93 | `crdt_cost_basis_demonstrated` | CRDT cost basis via `apply_lens` |
 | 94 | `memory_peak_cost_basis_demonstrated` | Memory-peak cost basis |
-| 95 | `opt_in_iteration_parallelism_via_lens_application_demonstrated` | Iteration-independence opt-in via lens application |
+
+### B2 — **R4 (C1)** — blocked on `parallelism_lens_behaviorally_complete`
+
+| Plan §1.8 # | Gate ID | Pass intent |
+| --- | --- | --- |
+| 95 | `opt_in_iteration_parallelism_via_lens_application_demonstrated` | Iteration-independence opt-in via lens application (**design** §4.4 — requires **parallelism** lens substantive semantics; **carves with C1** per `r4-carve-out-routing.md`) |
 
 **Verification-owned:** integration `TestClaim`s, corpus fixtures, diagnostic assertions by shape ([`TESTING.md`](../../TESTING.md)).
 
@@ -37,11 +44,12 @@
 | A1 | Slice **A** gates green | Hard prerequisite for meaningful Slice **B** demos |
 | A2 | Evaluator + lens runtime | Lane row R2-Evaluator gating |
 | A3 | Class 2 gap-test narrative | `substrate_gap_function_valued_data_closed` traces through LAS + T-E-P per plan §1.8 — keep receipts aligned (**#828** chain-break discipline) |
+| A4 | **`parallelism_lens_behaviorally_complete` (R4 C1)** | **Gate #95 only** — demos **92–94** do **not** wait on parallelism parity |
 
 ## Dispatch triggers
 
 1. Substrate signals **88–91** consumer-ready.
-2. Verification schedules **92–95** PRs with finite representative programs (no parallel authority).
+2. Verification schedules demos **92–94** when **complexity+cost** T-LBP + slice **A** clear; schedules **#95** only after **R4** parallelism parity (**C1**) — **no parallel authority**.
 3. Escalate substrate-shape questions → **[#1739](https://github.com/gunb-ai/gunbc/issues/1739)**; Verification inbox **[#1740](https://github.com/gunb-ai/gunbc/issues/1740)**.
 
 ## STOP+PING
@@ -50,6 +58,7 @@
 | --- | --- |
 | Demonstrations **before** enforce routing landed | **STOP+PING** — fail-closed semantics undefined |
 | Claiming **T-LBP COMPLETE** for carved lenses | **STOP+PING** — **C1/C2** remain R4 |
+| **`#95` PASSING under R3 thesis close** | **STOP+PING** — **R4 (C1)** per `r4-carve-out-routing.md` + design §7 |
 
 ## Cross-refs
 
