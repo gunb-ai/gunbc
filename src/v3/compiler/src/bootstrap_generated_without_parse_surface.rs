@@ -6116,7 +6116,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/integer.dag", 7149, 7174),
+            span: SourceSpan::new("dsl/std/integer.dag", 7141, 7166),
         });
         declarations.push(Declaration {
             id: DeclarationId(84),
@@ -6130,7 +6130,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: Some(DeclarationId(437)),
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/integer.dag", 7175, 7214),
+            span: SourceSpan::new("dsl/std/integer.dag", 7167, 7206),
         });
         declarations.push(Declaration {
             id: DeclarationId(85),
@@ -13933,7 +13933,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/integer.dag", 7175, 7214),
+            span: SourceSpan::new("dsl/std/integer.dag", 7167, 7206),
         });
         declarations.push(Declaration {
             id: DeclarationId(438),

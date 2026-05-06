@@ -593,41 +593,9 @@ fn build_refinement_predicate_declaration(
     pred_decl_id
 }
 
-/// **Predicate registry** (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
-/// `issuecomment-4390333451`). Authoritative set of predicate identifiers
-/// recognized by `where`-sugar refinements. Each entry pairs the predicate
-/// name with its **allowed carrier types** — the set of base-type names a
-/// `where <predicate>(…)` clause may legitimately refine. Predicates listed
-/// here, applied to an allowed carrier, lower to a `Conj`-shaped placeholder
-/// declaration via `alloc_registered_refinement_placeholder` (refinement is
-/// *named* at the declaration level — P3 facts-flow-forward — without
-/// requiring a lowered `Bool` predicate body, which would need helper
-/// resolution that is not yet substrate-uniform). Predicates not in the
-/// registry — or registered predicates applied to a non-allowed carrier —
-/// fall through to live resolution in `build_refinement_predicate_declaration`
-/// and surface `Diagnostic::ResolveError` if unresolved.
-///
-/// Replaces the prior PB-1 file-path special case
-/// (`span.file == "dsl/std/types.dag"`) — the asymmetry that motivated this
-/// slice. Per `feedback_no_textual_enforcement_bridges`: gating structural
-/// behavior on a textual file identifier was the anti-pattern; gating on
-/// whether the predicate name is registered AND carrier-compatible is the
-/// substrate-faithful authority. The carrier check addresses Codex's
-/// BLOCKING finding at PR #1846 (`92758dd0`): without it, the registry
-/// becomes a broad diagnostic escape hatch (e.g. `String where gt_zero` would
-/// silently get a placeholder despite `gt_zero` being undefined over String).
-///
-/// **DFS-of-concept-DAG receipt** (proud-lynx-311 pre-flight grep at
-/// `gunbc#1746 issuecomment-4390253616` + brief `docs/briefs/r3-substrate-s9-slice-2-5-predicate-registry-worker.md`
-/// authority audit): no parallel predicate-registry exists under another
-/// name; this constant IS the substrate-fact-introduction.
 /// Argument-shape contract for a registered predicate. Matched against the
-/// parsed `SurfaceExpr` at the predicate's call position. Path (a) RATIFIED
-/// at gunbc#828 `issuecomment-4390760353` per Codex/openai-pro REQUEST_CHANGES
-/// — the registry must validate not just the predicate name + carrier but
-/// also the predicate's argument shape, so malformed registered calls
-/// fail-closed (`Diagnostic::ResolveError`) rather than silently take a
-/// placeholder.
+/// parsed `SurfaceExpr` at the predicate's call position. See [`KNOWN_PREDICATES`]
+/// for the full registry doc + the substrate-fact-introduction receipt.
 #[derive(Debug, Clone, Copy)]
 enum PredicateArgShape {
     /// Bare predicate — no argument list, must parse as `SurfaceExpr::Var`.
@@ -655,6 +623,39 @@ struct PredicateSpec {
     arg_shape: PredicateArgShape,
 }
 
+/// **Predicate registry** (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
+/// `issuecomment-4390333451`; Path (a) extension RATIFIED at gunbc#828
+/// `issuecomment-4390760353`). Authoritative set of predicate identifiers
+/// recognized by `where`-sugar refinements. Each entry pairs the predicate
+/// name with its **allowed carrier types** (the set of base-type names a
+/// `where <predicate>(…)` clause may legitimately refine) and its
+/// **`arg_shape`** contract (the parsed `SurfaceExpr` shape the predicate's
+/// call position must match).
+///
+/// **Validation outcomes** (see [`PredicateValidation`] / [`validate_where_clause`]):
+/// - Registered name + allowed carrier + matching arg shape → placeholder
+///   refinement via [`alloc_registered_refinement_placeholder`] (refinement
+///   is *named* at the declaration level — P3 facts-flow-forward — without
+///   requiring a lowered `Bool` predicate body).
+/// - Registered name but disallowed carrier OR malformed arg shape →
+///   [`PredicateValidation::RegisteredButMalformed`]; the call site emits
+///   `Diagnostic::ResolveError` directly via `report_declaration_error`
+///   (fail-closed per Codex/openai-pro REQUEST_CHANGES at PR #1846).
+/// - Unregistered name → fall through to live resolution in
+///   [`build_refinement_predicate_declaration`] (which emits its own
+///   `Diagnostic::ResolveError` if the name does not resolve as a callable).
+///
+/// Replaces the prior PB-1 file-path special case
+/// (`span.file == "dsl/std/types.dag"`) — the asymmetry that motivated this
+/// slice. Per `feedback_no_textual_enforcement_bridges`: gating structural
+/// behavior on a textual file identifier was the anti-pattern; gating on
+/// whether the predicate name is registered AND carrier-compatible AND
+/// arg-shape-matched is the substrate-faithful authority.
+///
+/// **DFS-of-concept-DAG receipt** (proud-lynx-311 pre-flight grep at
+/// `gunbc#1746 issuecomment-4390253616` + brief `docs/briefs/r3-substrate-s9-slice-2-5-predicate-registry-worker.md`
+/// authority audit): no parallel predicate-registry exists under another
+/// name; this constant IS the substrate-fact-introduction.
 const KNOWN_PREDICATES: &[PredicateSpec] = &[
     // Pre-existing types.dag predicates absorbed via the prior PB-1 shim.
     // `allowed_carriers` derived from the surface usage at `dsl/std/types.dag`
@@ -755,8 +756,9 @@ enum PredicateValidation {
     /// matches the spec. Eligible for placeholder allocation.
     Registered,
     /// Predicate name is registered but the call is malformed (wrong carrier
-    /// or arg shape). Falls through to live resolution; diagnostic is the
-    /// caller's responsibility to surface in a fail-closed way.
+    /// or arg shape). Caller emits `Diagnostic::ResolveError` directly via
+    /// `report_declaration_error` and skips refinement allocation
+    /// (fail-closed; no placeholder, no live-resolution fallback).
     RegisteredButMalformed { reason: String, span: SourceSpan },
     /// Predicate name is not in the registry. Falls through to live
     /// resolution unchanged (existing `build_refinement_predicate_declaration`

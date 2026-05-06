@@ -131,7 +131,7 @@ type UInt = Nat
 // the prior range(min: 1) over Int was a misleading label that treated
 // Nat's lower-bound = 0 as a contingent rather than structural fact.
 // gt_zero is enrolled in the lowerer's predicate registry
-// (KNOWN_PREDICATE_REGISTRY in src/v3/compiler/src/lower.rs), which
+// (KNOWN_PREDICATES in src/v3/compiler/src/lower.rs), which
 // retired the prior PB-1 file-path special case.
 type NonNegativeInt = Nat
 type PositiveInt    = Nat where gt_zero
