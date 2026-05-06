@@ -12,10 +12,10 @@ Mechanical census: enumerate every workspace `v2_compiler` / `v2-compiler` / `sr
 
 ## Search authority
 
-All counts use the audit-sanctioned search command from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review):
+All counts use the audit-sanctioned search shape from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review). Note the matrix-cited path set was `src/ tests/`, but the repo has no top-level `tests/` directory — Rust integration tests live under `src/<crate>/tests/`. Reproducible form for current tree:
 
 ```sh
-grep -rEln 'src/v2/|\bv2_compiler(_tests)?\b' src/ tests/
+grep -rEln 'src/v2/|\bv2_compiler(_tests)?\b' src/
 ```
 
 Substantive vs cosmetic split per #1338 §3.1: substantive = `use` / call / function-signature / type reference; cosmetic = doc-comment / string literal / README mention.
@@ -205,7 +205,11 @@ The matrix's structural map (Populations A/B/C, G-1 vs G-2 split, ownership rout
 
 ---
 
-## 4. Constraints honored (verbatim from dispatch)
+## 4. Reproducibility note
+
+The migration-matrix §1 cites `grep -rEln '...' src/ tests/`. The `tests/` argument is a no-op on current tree (no top-level `tests/` dir exists; integration tests live under `src/<crate>/tests/`, which `src/` already covers recursively). The grep emits a warning but its match set is unaffected. This inventory's counts were produced with the `src/`-only form; matrix-cited form yields the same counts modulo the spurious warning. Flagged as a minor doc-hygiene cleanup for the matrix on its next touch (not in scope for this PR — separate doc).
+
+## 5. Constraints honored (verbatim from dispatch)
 
 - ✅ No `src/v2/` deletion.
 - ✅ No `v2-compiler` / `v2-compiler-tests` Cargo edge removal.
