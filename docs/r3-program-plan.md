@@ -114,7 +114,7 @@ Per openai-pro meta-review on PR #1808 sha `cf249389` ([#issuecomment-4384405832
 - **CONSUMER_LANDED** — the consumer (CI check, `.dag` TestClaim runner executing through Evaluator, manual demonstration receipt) executes the Pass condition + can fail-closed if violated.
 - **PASSING** — consumer landed AND Pass condition currently true.
 
-**Status at HEAD (PR #1808 sha at this commit)**: ~all 95 gates are **DECLARED**; very few have CONSUMER_LANDED status (existing `pb_self_compile_fixed_point` + `tier3_*_mirror_dissolved` + similar pre-R3-plan gates have consumers; the 16 NEW gates added 2026-05-06 in this PR are DECLARED-only).
+**Status at HEAD**: per §1.8 canonical ledger Status column — most gates are **DECLARED**; `pb_self_compile_fixed_point` is the canonical CONSUMER_LANDED exemplar (R1 horizon Pass = current `verification.dag` + `test_runner` evaluation). `tier3_*_mirror_dissolved` gates remain **DECLARED** at HEAD (T-Tier3-Dissolution lane work in flight per §3 lane status; consumer count / mirror-symbol count test not yet authored). Per-gate status updates flow through §1.8 ledger as Mgrs land consumer infrastructure per their lane scope; all 16 NEW gates added 2026-05-06 in PR #1808 are DECLARED-only.
 
 **R3 close criteria implies CONSUMER_LANDED for all 95 gates**: declarations alone don't satisfy `r3_debt_paydown_zero_remaining` or the substrate-gap-class closures or the demonstration principle. Per Brian directive `feedback_no_textual_enforcement_bridges` + Director poke-hole 2026-05-06 finding 1.1 (demo-gate minimum bar) — closure requires runtime-executable verification, not document-level claims.
 
