@@ -68,13 +68,17 @@ Author `EmissionProvenance` carrier in `src/v3/std/` (alongside other
 `Lens<C>` instance C-types). Shape:
 
 ```dag
-// Typed origin sum — codex BLOCKING 2026-05-06 finding 1: provenance origin
-// must be a non-empty typed authority, NOT optional coordinates with a
-// runtime-asserted "at-least-one" invariant. Per
-// feedback_state_space_vs_behavioral_invariants: type enforcement > API enforcement.
+// Typed origin sum — codex BLOCKING 2026-05-06 (parent + inline at line 57):
+// (a) provenance origin must be a non-empty typed authority, NOT optional
+//     coordinates with a runtime-asserted "at-least-one" invariant
+// (b) fold-rule reference must be a typed LangSpec rule ref, NOT an
+//     arbitrary string (otherwise admits arbitrary fold-rule strings;
+//     fails P2 illegal-states-unrepresentable)
+// Per feedback_state_space_vs_behavioral_invariants: type enforcement >
+// API enforcement.
 type EmissionOrigin =
-    SubstrateDeclMirror { span: SourceSpan }       // line directly mirrors a .dag Behavior / Declaration
-  | FoldRuleAutoEmit { rule_name: String }         // LangSpec auto-emitted (e.g., "rust.derive_for_disj")
+    SubstrateDeclMirror { span: SourceSpan }     // line directly mirrors a .dag Behavior / Declaration
+  | FoldRuleAutoEmit { rule: LangSpecRule }      // LangSpec auto-emitted; rule is typed enum, NOT String
 
 type EmissionProvenance {
   emitted_line: Int     // line number in emitted target output
@@ -82,7 +86,13 @@ type EmissionProvenance {
 }
 ```
 
-**Structural fail-closed (per codex BLOCKING finding 1 + `feedback_state_space_vs_behavioral_invariants`)**: the `Disj` carrier `EmissionOrigin` makes "at least one origin class is present" structurally true by construction; no runtime invariant required. Eliminates the structural-recovery pattern from the prior optional+invariant shape.
+**Hard prerequisite (per codex BLOCKING + cross-relay to Substrate Mgr at gunbc#1739 #issuecomment-4392435376)**: `LangSpecRule` typed enumeration MUST exist as a substrate carrier before this brief can dispatch. PM grep at brief-authoring time: `RuleName` / `FoldRule` / `fn emit_derive` returns 0 hits in `src/v3/compiler/src/`; fold-rule names are NOT enumerable today. **Substrate Mgr disposes**: (a) author `LangSpecRule` enumeration substrate first as separate brief; (b) confirm grep was incomplete + rules ARE enumerable elsewhere; (c) brief dispatched only after typed-rule prerequisite lands.
+
+**Structural fail-closed (per codex BLOCKING finding 1 + `feedback_state_space_vs_behavioral_invariants`)**: the `Disj` carrier `EmissionOrigin` over typed `SourceSpan` + typed `LangSpecRule` makes both:
+- "at least one origin class is present" structurally true by construction
+- "rule names are well-formed LangSpec identifiers" structurally true by construction (no arbitrary strings admitted)
+
+Eliminates two structural-recovery patterns simultaneously.
 
 ### Phase 2 — `Lens<EmissionProvenance>` instance authoring
 
