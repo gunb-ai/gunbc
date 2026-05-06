@@ -21,13 +21,28 @@ Codex BLOCKING review at sha `3c96212d` (PR #1902) surfaced 3 valid findings:
 2. **Lens<C> reads (Dag, Behavior) → Witness<C>; emission provenance is per-line, not per-Behavior** (category mismatch — substantive Substrate Mgr canvas territory; brief stays PROPOSAL until ratified)
 3. **§1.8 #89 already taken by `section_ref_substrate_landed`** (gate authority retargeting required; PM grep-error)
 
-**The load-bearing finding is #2**: this brief framed emission-provenance as `Lens<EmissionProvenance>`, but the Lens<C> read shape is per-Behavior, not per-emitted-line. Two reframings possible:
+**The load-bearing finding is #2 — DEEPER than initially framed** (per codex BLOCKING inline at line 73, sha `c375eba45`):
 
-- **(a) Per-Behavior provenance** (Lens<C>-compatible): "for Behavior B, the emitted lines are [line-range / fold-rule] tuples." Lens<C> reads (Dag, Behavior) → Witness<List<EmissionAttribution>>. Narrower scope but structurally faithful. Doesn't directly give the slide visualization Brian wanted.
-- **(b) Per-emitted-line instrumentation** (NOT a lens): emission-fold instrumentation that runs DURING emission and records per-line origin. Different substrate shape entirely; matches Brian's slide visualization need; not a `Lens<C>` instance.
-- **(c) Withdraw brief**: pre-canvas the question via Substrate Mgr canvas first; re-author brief once shape ratified.
+Initial frame: "Lens<C> is per-Behavior; goal is per-emitted-line — category mismatch on granularity."
 
-PM read: recommend **(c)** — withdraw + canvas first. Brief was authored before this category mismatch was surfaced; substantive reshape needs Substrate Mgr substrate-state-grep + Director ratification on the right shape, not PM-tier pre-authoring.
+**Deeper frame**: Lens<C>.read **domain** is `Behavior = Value | Transform | Branch` (per `src/v3/std/substrate.dag:465`). The brief's acceptance surface includes lines from **Declaration-origin** (e.g., `pub enum Sum<A,B>` from a `.dag` `type Sum = ...` declaration; `pub struct HttpError` from `type HttpError {...}` declaration) AND **LangSpec auto-emits** (e.g., `#[derive(...)]` / `impl X { is_left, is_right }` / `impl X { new }` from no-`.dag`-source LangSpec rules). **Both are outside Lens<C>.read's domain entirely** — Declarations are at `src/v3/std/substrate.dag:235`, structurally separate from Behaviors. Auto-emits have no `.dag` source at all.
+
+So the mismatch is structural at TWO axes simultaneously:
+- **Granularity**: per-Behavior (lens) vs per-emitted-line (goal)
+- **Domain coverage**: Lens<C> can read only Behaviors; brief's acceptance includes Declaration-origin + LangSpec auto-emits, which Lens<C> structurally cannot read
+
+To satisfy P2 boundary discipline without parallel lookups, the brief would need either:
+1. A new structural event surface that includes Declarations + LangSpec auto-emits (so Lens<C> CAN read them) — substantive new substrate
+2. Narrow acceptance to only Behavior-source lines (so Lens<C> read domain matches) — extremely narrow scope; doesn't cover Brian's visualization
+3. A different shape entirely (NOT Lens<C>) — emission-fold instrumentation as a separate substrate
+
+Reframing paths (revised per deeper codex finding):
+
+- **(a) Per-Behavior, narrow domain** (Lens<C>-compatible, Behavior-only): "for Behavior B, the emitted lines attributable to B are [line-range / typed-rule] tuples." Lens<C> reads (Dag, Behavior) → Witness<List<EmissionAttribution>>. **Excludes Declaration-origin + auto-emit lines entirely**. Very narrow scope; doesn't support Brian's full visualization.
+- **(b) Per-emitted-line instrumentation, NEW substrate** (NOT a lens): emission-fold instrumentation that runs DURING emission and records per-line origin (with typed `LangSpecRule`). Different substrate shape entirely; matches Brian's visualization need; not a `Lens<C>` instance. Requires substrate-fact-introduction (P1 procedure).
+- **(c) Withdraw brief**: pre-canvas the question via Substrate Mgr canvas first; re-author brief once shape ratified. **Stronger PM recommendation given the deeper mismatch.**
+
+PM read (revised): **strongly recommend (c)** — withdraw + canvas first. The Lens<C> framing isn't just narrow; it's structurally insufficient for the brief's acceptance surface. Substantive reshape needs Substrate Mgr canvas + Director ratification on the right shape (per-Behavior narrow lens vs new emission-instrumentation substrate vs different framing entirely).
 
 # R3 Substrate — `Lens<EmissionProvenance>` worker brief
 
