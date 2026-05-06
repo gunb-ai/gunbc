@@ -1,6 +1,20 @@
 # R3 TC1 Eta-Equivalence Deeper Structural Verification Analysis
 
-**Status:** PROPOSAL / research-only. TC1 fixture remains as-is; this brief explores the strict-fire extension surface only. No substrate, runner, or fixture changes are proposed here.
+**Status:** **DESIGN** (2026-05-06). Verification Mgr engineering choice among Pattern-A
+first-slice paths; **not** yet **ACCEPTED** (Director countersignature still required per
+`docs/r3-program-plan.md` §10.3 **Q-PAFS** and Brian directive: PROPOSAL → DESIGN →
+ACCEPTED).
+
+**Lifecycle**
+
+| Stage | Meaning |
+| --- | --- |
+| PROPOSAL | Exploratory surface map only (superseded by this revision). |
+| **DESIGN** (here) | Chooses a concrete first-slice shape, defers alternatives, states runtime prereqs and scope deltas. |
+| ACCEPTED | Director/Brian countersign; authorizes implementation dispatch (V1 TC1 executable slice + Evaluator **E6-G1.a** lens-fold first slice in lockstep). |
+
+TC1 deferred fixture remains **as-is** until ACCEPTED + routed implementation; this brief
+still does **not** authorize substrate, runner, or fixture edits by itself.
 
 **Owning manager:** R3 Verification Manager, absorbed formal-grounding responsibility.
 
@@ -59,7 +73,84 @@ Potential substrate paths, for Director/Substrate ratification:
 - generalize `LensOutputEquals` into a binary structural equality predicate over two lens applications;
 - model eta-equivalence as a substrate relation over reflected functions, then reuse a generic `DifferentialEquals`-style output comparison.
 
-This analysis does not choose among those paths.
+**DESIGN resolution (which slice first):** concrete choice lives in **§DESIGN — Q-PAFS
+first executable slice** below. Predicate/carrier *shape* inside strict-fire remains
+Substrate-owned STOP+PING until ACCEPTED routing.
+
+## DESIGN — Q-PAFS first executable slice (Pattern-A / TC1)
+
+This section satisfies the Verification Mgr obligation called out in
+`r3-program-plan.md` §10.3 **Q-PAFS**: PM default ("TC1 first") is not engineering
+sign-off; **DESIGN** records the explicit tradeoff and recommended path.
+
+### Path A — TC1 **static representative** via **E6-G1.a** (**recommended**)
+
+**Shape:** Ratify a **finite**, Director-visible **representative set** (not universal
+quantification over all `Lens<C>` for the first executable slice): fixed eta pair of
+programs (`f` and `lambda x.apply(f, [x])`) plus a named list of lens instances (or
+substrate-approved typed lens handles) that the evaluator can fold with **existing**
+`fold_lens<C>` / `DimensionReport<C>` machinery.
+
+**Runtime prereqs (Evaluator / E6, aligned with Evaluator Mgr F4 + program-plan
+Q-EVAL-Lens-Fold-First-Slice / Q-Pattern-A-First-Slice-Subscope):**
+
+- **E6-G1.a** static lens fold: two **structurally named** programs in `.dag` (or
+  equivalent declared scope) each produce a **typed** `DimensionReport<C>` through the
+  same evaluator-owned fold authority—no X1.b generic transform-dispatch requirement for
+  this slice.
+- **T-Substrate-Lens-Primitive** + lens producer retirement progress assumed per existing
+  lane dependencies: TC1 strict-fire still does **not** rest on widening
+  `SubstrateResearchDeferredClaim` (see **Carrier Scope Analysis**).
+- **Pattern-A consumer envelope** unchanged: `BinaryDimensionReportEquals` over the two
+  reports once producers exist (`docs/briefs/r3-v-pattern-a-coverage-rollup.md`).
+
+**Substrate vs evaluator scope:** Substrate names the **representative lens set** and
+any eta-pair **declaration refs**; Evaluator proves it can **execute** the fold twice and
+lift reports without fixture-local producer identity or string bypass (Evaluator #1131
+safe contract).
+
+**Engineering justification:** Smallest executable surface that honors the PM default
+(TC1 before TC2/TC3/RustDagIsomorphism ordering) **without** blocking on **E6-G1.b** /
+**X1.b** S1/S3 generic dispatch. Unblocks **V1** “TC1 first slice” and **Evaluator E3**
+(E6-G1.a) on the **same** Director **ACCEPTED** gate, per PM coordination note.
+
+### Path B — TC1 **generic** via **E6-G1.b / X1.b** (**defer**)
+
+**Shape:** Universal or parametric coverage over `Lens<C>` / programs requiring **X1.b**
+transform dispatch and **G1.b** generic lens-fold substrate not required for Path A.
+
+**Runtime prereqs:** Substrate **X1.b** S1/S3 + generic dispatch path; substantially
+larger than G1.a; sequenced **after** Path A strict-fire is green or explicitly reprioritized
+by Director.
+
+**Scope delta vs A:** Shifts primary risk from “representative selection” to “generic
+dispatch + substrate carrier completion.” **Not** chosen for first executable slice.
+
+### Path C — **RustDagIsomorphism** first (**alternate, not recommended for Q-PAFS default**)
+
+**Shape:** Prioritize shape-report producers for `DimensionReport<Dag>` before TC1 eta
+pair (`docs/briefs/r3-v-pattern-a-coverage-rollup.md` §4 row **RustDagIsomorphism**).
+
+**Runtime prereqs:** Still requires generic typed `DimensionReport<C>` production and two
+structural shape reports; **fewer eta-specific** obligations than TC1.
+
+**Why not for Q-PAFS default:** Conflicts with stated PM/Brian **Pattern-A ordering**
+(TC1 first) unless Director explicitly reorders. Remains a **credible fallback** if Director
+rules TC1 eta unblockers dominate calendar—would require explicit scope edit, not silent
+Verification drift.
+
+### DESIGN verdict
+
+| Question | Decision |
+| --- | --- |
+| First Pattern-A executable slice for TC1? | **Path A** — static representative **E6-G1.a**. |
+| Generic TC1 (Path B)? | **Deferred** after Path A closes or Director reprioritizes. |
+| RustDagIsomorphism before TC1? | **Not** under Q-PAFS default; **Path C** only with Director reorder. |
+| Universal vs representative for first fire? | **Representative finite set** for slice one; universal quantification is a **later** ratchet question (see Open Questions). |
+
+**Surface for Director countersign (ACCEPTED):** Path A as written + explicit acknowledgment
+that PM default and **DESIGN** engineering choice align; any deviation (e.g., Path C first)
+is Director-owned scope calibration.
 
 ## Lens-Framework Anchors
 
@@ -96,13 +187,17 @@ Shared with TC3:
 
 ## Open Questions
 
-- Is TC1 universal over all `Lens<C>` instances, or strict-fire over the migrated built-in lens set plus user-authored lens fixture?
+- **Representative set contents:** which built-in / staged lens instances and which
+  single eta pair land in slice-one (Substrate + Director visibility)—DESIGN defers
+  enumeration to implementation routing post-ACCEPTED.
+- **Universal quantification:** remains **out of scope** for first executable slice (Path
+  A); revisit after Path A strict-fire or if Director mandates broader coverage.
 - Does eta-equivalence live as a function/program relation in substrate, or only inside a verification predicate?
 - Should equality include witness-list ordering, or compare `DimensionReport<C>` modulo semantically irrelevant witness ordering?
 - Does lens producer retirement provide enough reflection authority to construct eta-expanded forms structurally, or is a lambda-calculus grounding carrier still needed?
 
 ## Non-Goals
 
-- No fixture activation today.
+- No fixture activation or runner widening until **ACCEPTED** + implementation dispatch.
 - No runner validity widening for `SubstrateResearchDeferredClaim`.
-- No edits to `r2-closure-ledger.md`, `r3-v-formal-grounding-tc-bundle.md`, `r3-verification-manager.md`, or `r3-pb-t-fixedpoint-worker.md`.
+- No edits to `r2-closure-ledger.md`, `r3-v-formal-grounding-tc-bundle.md`, `r3-verification-manager.md`, or `r3-pb-t-fixedpoint-worker.md` from this DESIGN revision alone.
