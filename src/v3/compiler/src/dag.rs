@@ -3771,14 +3771,13 @@ impl Dag {
         self.declarations.push(declaration);
     }
 
-    /// Test-only: materialize `List<elem>.Empty` as a fresh `Instantiation` declaration id.
+    /// Materialize `List<elem>.Empty` as a fresh `Instantiation` declaration id.
     ///
-    /// Generic `empty()` / `List` `Empty` are not yet body-evaluable in the public
-    /// eager evaluator, but integration tests still need structurally valid
-    /// `Value::VariantValue` tags when hand-assembling substrate carriers (e.g. an
-    /// argument-opaque `Dag` record).
-    #[cfg(test)]
-    pub fn test_materialize_list_empty_variant_tag(&mut self, list_ty: DeclarationId) -> DeclarationId {
+    /// Used when assembling hand-built [`Value::VariantValue`] carriers (integration
+    /// tests, staged harnesses): generic `empty()` is not yet body-evaluable in the
+    /// public eager evaluator, but empty lists still need a constructor tag consistent
+    /// with inference.
+    pub fn materialize_list_empty_variant_tag(&mut self, list_ty: DeclarationId) -> DeclarationId {
         let list_decl_id = self
             .declaration_by_name("List")
             .expect("bootstrap must load `List`")
