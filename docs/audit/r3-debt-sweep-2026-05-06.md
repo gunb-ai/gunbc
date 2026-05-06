@@ -114,14 +114,16 @@ Three valid statuses per item. Each item in §1 has a defined status; the count 
 
 **Example shape** (post-population): `EmissionDiagnostic` Rust mirror → trigger: "v3 evaluator authoritatively executes std diagnostic constructors"; prerequisite: "T-V2-Retirement G-2 deletion landing (which gates on T-FixedPoint + T-LensProducer-Retirement)"
 
-### RED — no clear path / explicitly post-R3 / unknown; flagged for Director review
+### RED — no clear path / unknown / requires substrate-gap escalation; flagged for Director review
 
 **Criteria** (any of):
 - No clear dissolution path identified
-- Explicitly post-R3 / out-of-current-scope by design
+- Requires substrate-gap escalation to a named R3 lane (per Brian directive 2026-05-02 + `docs/r3-structure.md` §"Standing program — R3 Debt-Paydown" — *"there is no post-R3 deferral path for tracked debt; if a row appears unretirable within R3 it surfaces as a substrate gap requiring a named R3 lane, not a deferral"*)
 - Unknown / unclassified — flagged for Director investigation
 
-**RED count is the load-bearing signal.** Each RED needs Director-level investigation per Brian's framing: "are these honestly out-of-scope, or are they 'we don't know how to close this'?"
+**No "post-R3 deferral" RED option** — Brian's R3 zero-debt close criteria + the no-post-R3-deferral discipline (per `docs/r3-structure.md` §"Standing program — R3 Debt-Paydown") mean RED items cannot resolve via "explicitly out-of-R3-scope by design"; they must either surface as named R3 work, escalate as substrate-gap requiring R3 lane, or carry explicit Director allocation. Earlier framing of "explicitly post-R3 / out-of-current-scope by design" as RED criterion conflicted with the canonical no-post-R3-deferral policy and is removed (per codex BLOCKING on PR #1808 sha `424a921a`, 2026-05-06).
+
+**RED count is the load-bearing signal.** Each RED needs Director-level investigation per Brian's framing: "are these honestly substrate-gap-requiring-R3-lane, or are they 'we don't know how to close this'?"
 
 ### Inversion-test discipline (per `feedback_modeling_inversion_and_paydown_flow`)
 

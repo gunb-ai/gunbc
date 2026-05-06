@@ -72,7 +72,7 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 | 4 — workflow/scheduling | `substrate_gap_workflow_scheduling_closed` | CI workflow modeled as `.dag` data executes through evaluator | T-Workflow-As-Data + T-Lens-Self-Application |
 | 5 — reflection-closure | `substrate_gap_reflection_closure_closed` | `lens_apply.rs` reflection work routes via PB-Runtime interpreter-as-data | T-LensProducer-Retirement |
 
-**Open** (Q2, §10): all gap-test selections per-class ratified by default per Brian directive 2026-05-06 (*"take recommendations unless controversial"*).
+**Q2 status (per §10.1)**: RATIFIED 2026-05-06. All gap-test selections per-class take PM recommendations per Brian directive (*"take recommendations unless controversial on all Q1-Q7"*). No outstanding ratification gap.
 
 ### §1.5 Closure-ledger total
 
