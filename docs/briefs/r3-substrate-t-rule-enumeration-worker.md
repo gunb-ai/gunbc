@@ -1,15 +1,15 @@
 ---
-status: draft (worker brief; pre-authored per pre-authored-brief-queue discipline; dispatch fires on Director Q2 ratification of emission-provenance canvas at gunbc#828 #issuecomment-4392519713)
+status: dispatchable per Director Q1+Q2+Q3 RATIFICATION at gunbc#1739 #issuecomment-4392562911 (2026-05-06)
 authority parent: R3 Substrate Manager (#1739)
-ratification: pending — gates on Director Q2 ratification of `r3-substrate-emission-provenance-shape-canvas.md` (Q2: T-Rule-Enumeration parallel-dispatch authorization)
-roadmap row: §1.8 ledger row TBD (gate: `langspec_emission_rules_enumerable`); cluster pending Q1 disposition (likely T-LangSpec or new cluster)
+ratification: Q1 (a) per-Behavior Lens<C> + Q2 YES T-Rule-Enumeration parallel-dispatches + Q3 two new gates RATIFIED at gunbc#1739 #issuecomment-4392562911 (zesty-bear-812, 2026-05-06)
+roadmap row: §1.8 ledger row TBD slot — gate `langspec_emission_rules_enumerable_data` under T-CostLens-Composition cluster per Director Q3 ratification
 authority docs:
   - docs/briefs/r3-substrate-emission-provenance-shape-canvas.md (parent canvas — Q2 names this brief as prerequisite to every Q1 path)
   - src/v3/compiler/src/emit/rust_target.rs (current emission code; uses inline `&str` template names via `render_named_template(template: &str, ...)`)
   - gunbc#1739 #issuecomment-4392477594 (Substrate Mgr fold-rule-enumerability finding — 0 hits on RuleName/FoldRule/EmitRule/EmissionRule across src/v3/)
   - gunbc#846 #issuecomment-4392510255 / #issuecomment-4392543633 (PM concur on Path 1)
 gates:
-  - `langspec_emission_rules_enumerable` (proposed §1.8 row; slot pending)
+  - `langspec_emission_rules_enumerable_data` (proposed §1.8 row; slot pending)
 worker pin: TBD — smart-ram-167 (S12-retirement-context-fresh) OR valiant-ibex-312 (substrate-authoring discipline fresh post-#1842) per Mgr discretion at dispatch
 ---
 
@@ -71,7 +71,7 @@ Worker authors in-source checkpoint comment on the live declaration
 
 ### Deliverable 4 — §1.8 ledger row receipt
 
-Add `langspec_emission_rules_enumerable` to §1.8 ledger; advance
+Add `langspec_emission_rules_enumerable_data` to §1.8 ledger; advance
 DECLARED → CONSUMER_LANDED on merge IF emission code refactor
 (Deliverable 2) lands same-PR (consumer + producer co-located —
 allowed per bundled-scope discipline as "necessary structural fix").
@@ -96,7 +96,7 @@ Phase ordering (PR-internal):
   `render_named_template` call sites replaced
 - Substrate-state-grep verification: post-refactor, `grep -E "RuleName|FoldRule|EmitRule|EmissionRule"` returns ≥ N hits (N = number of distinct rules enumerated); previously 0
 - Bootstrap snapshot + parse corpus manifest hold (semantic equivalence)
-- §1.8 ledger row `langspec_emission_rules_enumerable` advances
+- §1.8 ledger row `langspec_emission_rules_enumerable_data` advances
   DECLARED → CONSUMER_LANDED (or PRODUCER_LANDED if refactor splits)
 - `cargo test --workspace --exclude v2-compiler-tests` green (3 pre-existing v2-compiler --lib failures verified unrelated)
 - `cargo test -p v2-compiler-tests` green; strict-compile diagnostic ratchet at 0
