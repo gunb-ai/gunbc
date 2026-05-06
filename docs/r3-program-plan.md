@@ -76,7 +76,7 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 ### §1.5 Closure-ledger total
 
-**Total R3 closure gates** (post-Q1 + Q2 ratification): existing 60+ gates from `r3-structure.md` §"Acceptance" + 5 new substrate-gap-class gates + per-lane demonstration gates (§1.6) + 1 PR-anticipation-discipline gate (§7) = **~71 gates** across 18 lanes + 1 standing program.
+**Total R3 closure gates** (post-Q1 + Q2 ratification): **70 gates** at sha `a72293bbf` per `r3-structure.md` §"Acceptance" enumeration. Composition: existing R3 lane gates (`T-Tier3-Dissolution` 4, `T-LensProducer-Retirement` 4, `T-V-L4-L7-Direct` 2, `T-V-L5-Corpus` 1, `T-FixedPoint` 1, `T-Numeric-Construction` 8, `T-Omni-Shape-B` 4, `T-Anthropic-Wire` 2, `T-Bridge-Retirement` 6, `T-CostLens-Composition` 3, `T-V2-Retirement` 2, `T-Free-Consequences-Demonstration` 10, `T-Workflow-As-Data` 4, `T-Lens-Self-Application` 3) = 54 lane gates; plus 5 substrate-gap-class gates + 10 demonstration gates + 1 PR-anticipation-discipline gate = 16 gates added 2026-05-06 in this PR. Total: 54 + 16 = 70 across 18 lanes + 1 standing program.
 
 R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
 
@@ -129,7 +129,7 @@ Mgrs author per-gate spec citing the (a)/(b)/(c) satisfaction; closure-ledger en
 | T-Workflow-As-Data | `ci_workflow_modeled_as_dag` ✓ | (existing) |
 | T-Lens-Self-Application | `lens_self_application_demonstrated` ✓ | (existing) |
 
-**Net additions**: ~9 new demonstration gates across substrate-heavy / state-check-only lanes. Owner Mgrs author per their lane scope.
+**Net additions**: 10 new demonstration gates across substrate-heavy / state-check-only lanes (per per-lane audit table above; rows with "+" prefix in "Needed demo gate" column). Owner Mgrs author per their lane scope.
 
 This principle is NOT a separate lane; it's a per-lane gate-shape requirement applied uniformly. Closes when each lane has at least one runtime-executable demonstration gate green.
 
@@ -378,7 +378,7 @@ Pattern A executable (4-family cluster — see §1.1):
    - Remaining families (RustDagIsomorphism / SymbolicCostExprEquals / BridgeLedgerZero / Free-Consequences)
      have separate unblock paths per §2.1
 
-R3 close = all ~71 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive sweep zero-debt-rows-remaining
+R3 close = all 70 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive sweep zero-debt-rows-remaining
 ```
 
 **Edges added in §6 graph per Director poke-hole 2026-05-06**:
@@ -514,7 +514,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 | # | Question | PM recommendation | Status |
 |---|---|---|---|
-| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; 7 Pattern-A + 2 v2 + 1 BridgeLedgerZero + 5 substrate-gap + ~9 demonstration gates = ~70 total | RATIFIED |
+| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; 70 closure gates total (54 existing R3 lane gates + 5 substrate-gap-class + 10 demonstration + 1 PR-anticipation-discipline; precise enumeration per §1.5) | RATIFIED |
 | Q2 | 5 substrate-gap classes — separate lanes vs closure-criteria-over-existing-lanes | Closure-criteria framing (§1.4 + §4) | RATIFIED |
 | Q3 | v2 retirement Mgr ownership | PB Mgr owns all (existing T-V2-Retirement scope) | RATIFIED |
 | Q4 | Mgr structure (keep 9 vs reorganize) | Keep 9 standing Mgrs with re-anchored scope | RATIFIED |

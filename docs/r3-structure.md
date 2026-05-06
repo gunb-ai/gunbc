@@ -153,6 +153,8 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `e_p_producer_demonstration` — representative call site produces full descent evidence at runtime
   - `lens_behavioral_parity_demonstration` — each lens (complexity / cost / parallelism / effect_enumeration) demonstrates on representative input + matches v2 oracle
   - `tests_as_data_demonstration` — at least one Rust test ports to `.dag` TestClaim and executes via Evaluator
+- **PR-authoring-discipline gate** (NEW 2026-05-06; per Brian directive at [gunbc#846](https://github.com/gunb-ai/gunbc/issues/846) Director poke-hole finding 3.2; per [`docs/r3-program-plan.md`](r3-program-plan.md) §7).
+  - `pr_anticipation_discipline_ci_active` — CI is verifiably enforcing the §7 PR-authoring contract (per-PR debt-receipt + ratchet-only-down + anticipation discipline); fires when `scripts/check-pr-sg0-net-shrink-discipline.sh` is in CI workflow + self-test passes. R3 Debt-Paydown owner.
 
 ## Lane structure
 
