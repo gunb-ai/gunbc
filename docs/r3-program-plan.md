@@ -658,7 +658,37 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 - **R3 zero-debt impact**: main RED risk — if upstream carrier decisions are not scheduled as prerequisite plan nodes, Grounding cannot honestly close by R3.
 - **Plan integration**: this plan §6 Dependency DAG + §3 lane status (cross-Mgr dependency edges) directly addresses this; G10 closes when §6 graph is Mgr-validated.
 
-#### §10.2.3 R3 Substrate Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
+#### §10.2.3 R3 Substrate Mgr (quick-crab-830, #1739) — full canvas absorbed 2026-05-06T01:14Z
+
+Substrate Mgr's full forward-looking escalation canvas (per gunbc#846 #issuecomment-4384149022) — substantial: 6 design decisions held + 4 architectural questions + 3 structural concerns including 1 RED.
+
+**Section A — Currently-blocked items**: A1 = none. Clean.
+
+**Section B — Design decisions held (all need Director/PM ratification)**:
+- **B1. Slice C scope sub-shape**: prose+regen-bundling vs separate sub-slice carve-out for `.dag` substrate files in #1795 follow-up. → Q-Slice-C-Shape
+- **B2. T-Numeric-Construction parallel-author posture**: Mgr-tier brief authoring authorization vs sequence post-:425. → Q-Numeric-Construction-Trigger
+- **B3. T-E-P-Producer-Broadening dispatch trigger**: brief drafted (PR #1782); dispatch trigger needed (anytime vs gate). → Q-T-E-P-Dispatch-Trigger
+- **B4. L6 EmissionPathProjection dispatch trigger**: brief drafted; cross-Mgr handoff to Grounding wired; dispatch trigger needed. → Q-L6-Dispatch-Trigger
+- **B5. X1.b S1 TransformDispatch dispatch trigger**: gated on E6-G0c merge from merry-gull-128 (#1743). → Q-X1b-S1-Dispatch-Coord
+- **B6. F2 + F8 doc-sharpening PR scope**: bundle vs separate; Mgr vs worker dispatch. → Q-F2-F8-PR-Shape
+
+**Section C — Open architectural questions (Director architectural calls)**:
+- **C1. Variant-aware projection carrier closure scope**: carrier-only sufficient vs 3 follow-up paydowns required for "wire-typing zero-debt" — 3-4x scope difference. → Q-Variant-Aware-Closure-Scope
+- **C2. T-E-P-Producer-Broadening cascade timing realism**: does R3 close gate on full cascade (T-E-P → T-LBP → T-LAS → T-WAD + T-LSA) or just T-E-P? Major R3-close-predicate calibration. → Q-T-E-P-Cascade-Scope
+- **C3. Slice C → :425 retirement receipt**: who authors (Mgr-tier vs worker), single combined vs per-slice. → Q-Slice-C-Retirement-Receipt
+- **C4. R3 Substrate / R3 Grounding boundary on `.dag` files**: Slice C residual `.dag` files that overlap Grounding scope. → Q-Substrate-Grounding-DAG-Routing
+
+**Section D — Worker bandwidth**:
+- 3 workers idle (loyal-wolf, valiant-ant, plus proud-lynx/smart-ram/valiant-ibex post-:425); awaiting plan-driven dispatch shapes.
+
+**Section E — Structural concerns about R3 zero-debt close**:
+- **E1**: 10 wait-window briefs in PR #1782 all R3 Substrate scope (4 :425-related + 6 independent substrate dispatches). All must dispatch before R3 close.
+- **E2**: 6+ substrate carrier dispatches form serialized queue (cross-lane coord ratchet per dispatch). Cadence rate-limits R3 close.
+- **E3 (RED — *"I don't know how to close this"*)**: T-Lens-Behavioral-Parity (PROXY → BEHAVIORALLY COMPLETE for 4 lenses) is L-XL sized, gates on T-E-P-Producer-Broadening (foundational), itself has 4 sub-slices per lens. **Honest assessment: this is the largest R3-Substrate-shaped substantive work and may not close cleanly in R3 timeline.** → Q-Lens-Behavioral-Parity-R3-Closeability (RED escalation)
+
+**Plan integration**: 12 new escalations added to §10.3 covering B1-B6 + C1-C4 + E1+E2 + E3 (RED). E3 is the highest-leverage scope question — if T-Lens-Behavioral-Parity doesn't close in R3, the entire critical-path chain (T-E-P → T-LBP → T-LAS → T-WAD → T-LSA) is at risk.
+
+#### §10.2.4 R3 Evaluator Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
 
 #### §10.2.4 R3 Evaluator Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
 
@@ -689,6 +719,18 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 | Q-MachineConstraint-Carrier | Substrate carrier for `MachineConstraint<C>` independent axis (per Brian directive 2026-05-06 — concrete types emerge from algebra × machine-constraint interaction; `i64` = `Int × MachineWidth<64>` consequence, NOT primary entity) | Substrate Mgr authors `MachineConstraint<C>` carrier + interaction lookup; folds into T-Numeric-Construction continuation (algebra side already in flight); surfaces as new Substrate sub-program. Required for Class 1 substrate-gap-class closure per §1.4. | OPEN — Substrate Mgr + Director scoping needed (NEW 2026-05-06 from Brian inline at PR #1808 line 69) |
 | Q-Verification-NYI-Carry-Forward | Closure-criteria alignment for cross-program Verification rows: which predicates must execute in R3 vs remain honest NYI with explicit incomplete classification until evaluator lands? | Per §1.6 demonstration-gate minimum bar (Director finding 1.1): predicates without runtime evaluator execution canNOT claim "GREEN" closure; honest NYI classification with explicit carry-forward owner required. R3-Verification rows that depend on evaluator runtime that's NYI at R3 close → explicit NYI + named carry-forward Mgr (NOT silent assumption of evaluator landing). | RATIFIED-by-default per Director finding 1.1 minimum bar; closure-ledger reports separate "demonstration-executes" vs "static-fact" status per row (per §1.6). Verification Mgr ratifies per-row carry-forward classification at lane-close audit. |
 | Q-ValueBody-Isomorphism | ValueBody Rust↔.dag mirror drift gate — structural-isomorphism / conformance gate in R3 close, OR explicit post-R3 carry with named owner? Mirror divergence risk + no CI isomorphism gate currently. | Per `feedback_isomorphism_or_generation_for_mirrors`: Rust↔.dag mirrors need generation-or-isomorphism-test, not hand-maintenance. R3 zero-debt-close framing implies isomorphism gate IN R3 scope — gate fires at R3 close requiring CI conformance test. Owner: R3 Substrate Mgr (mirror authority) + Verification Mgr (test-only pressure). | OPEN — Director + R3 Substrate Mgr + Brian scoping needed (NEW 2026-05-06 from Verification Mgr canvas item 6) |
+| Q-Slice-C-Shape | Slice C `.dag` files in #1795 follow-up: prose+regen-bundling (path-(a) precedent) vs separate sub-slice carve-out | Path-(a) precedent from #1795 establishes regen-bundling-acceptable; default to single-PR prose+regen. | RATIFIED-by-default (Substrate Mgr B1) |
+| Q-Numeric-Construction-Trigger | T-Numeric-Construction Mgr-tier brief authoring authorization vs post-:425 sequencing | Authorize Mgr-tier brief authoring now (parallel to :425 close); non-Evaluator-gated lane per r3-structure.md §"Dependency on R2". | RATIFIED-by-default (Substrate Mgr B2) |
+| Q-T-E-P-Dispatch-Trigger | T-E-P-Producer-Broadening dispatch trigger (brief in PR #1782) | Dispatch anytime post-#1782 brief landing — foundational lane, no upstream prerequisite per r3-structure.md §"Dependency on R2". | RATIFIED-by-default (Substrate Mgr B3) |
+| Q-L6-Dispatch-Trigger | L6 EmissionPathProjection dispatch trigger (brief in PR #1782) | Dispatch anytime post-#1782 brief landing — non-Evaluator-gated; can fire parallel to T-E-P. | RATIFIED-by-default (Substrate Mgr B4) |
+| Q-X1b-S1-Dispatch-Coord | X1.b S1 TransformDispatch gate on E6-G0c merge (merry-gull-128 / #1743) | merry-gull cross-lane status update on E6-G0c required; Substrate Mgr standing by. | OPEN — Evaluator Mgr cross-lane status needed (Substrate Mgr B5) |
+| Q-F2-F8-PR-Shape | F2 (`.v3` filename-suffix) + F8 (bootstrap load-order) doc-sharpening: bundle vs separate, Mgr-tier vs worker | Bundle into single Substrate Mgr-tier doc-sharpening PR (small scope; one PR per `feedback_brief_pr_cadence`). | RATIFIED-by-default (Substrate Mgr B6) |
+| Q-Variant-Aware-Closure-Scope | Variant-aware projection carrier closure: carrier-only vs 3 follow-up paydowns required for "wire-typing zero-debt" | Per Brian "no post-R3 deferral" + R3 zero-debt close: ALL 3 follow-up paydowns (Anthropic + OpenAI ChatCompletion + OpenAI Responses) required for R3 close. 3-4x scope vs carrier-only. | OPEN — Director / Brian scope calibration (Substrate Mgr C1; significant scope-determination question) |
+| Q-T-E-P-Cascade-Scope | T-E-P-Producer-Broadening cascade timing: R3 close gates on full chain (T-E-P → T-LBP → T-LAS → T-WAD + T-LSA) vs T-E-P alone? | Per r3-structure.md §"Lane structure" + Brian no-post-R3-deferral: R3 close requires the FULL cascade. T-Lens-Self-Application is the closure gate (recursive-flex demonstration); without T-LBP COMPLETE there's no consumer. | OPEN — Director / Brian scope calibration (Substrate Mgr C2 + Verification V3 closure-criteria alignment; reinforces Q-Verification-NYI-Carry-Forward) |
+| Q-Slice-C-Retirement-Receipt | Slice C → :425 retirement receipt: Mgr-tier vs worker authoring; single combined vs per-slice | Mgr-tier authoring; single combined receipt covering Slice A+B+C (Brian-style condensation per `feedback_brief_pr_cadence`). | RATIFIED-by-default (Substrate Mgr C3) |
+| Q-Substrate-Grounding-DAG-Routing | Slice C residual `.dag` files overlap Grounding scope (`docs/parallelism-design.md` etc.) — routing | Substrate Mgr owns Slice C residual entirely; cross-Mgr coord with bold-ferret-748 for Grounding-impacting `.dag` content via comment-thread review (no separate Grounding dispatch). | RATIFIED-by-default (Substrate Mgr C4) |
+| Q-Substrate-Cadence-Throughput | 10 wait-window briefs in PR #1782 + 6+ substrate carrier dispatches form serialized queue; rate-limits R3 close | Authorize parallel-dispatch where lanes have no shared prerequisite (T-E-P + L6 + Numeric-Construction parallel; X1.b sequenced post-E6-G0c; coproduct paydowns sequenced post-variant-aware carrier). PM tracks cadence in §9 weekly cadence; lane-owning Mgr packages PR-sized specs. | RATIFIED-by-default (Substrate Mgr E1+E2) |
+| Q-Lens-Behavioral-Parity-R3-Closeability | **RED**: T-Lens-Behavioral-Parity (PROXY → BEHAVIORALLY COMPLETE for 4 lenses) is L-XL sized + 4 sub-slices per lens + foundational-dependency on T-E-P-Producer-Broadening. Substrate Mgr honest assessment: may not close cleanly in R3 timeline. | Per Brian no-post-R3-deferral: T-LBP MUST close in R3 OR escalate as substrate-gap requiring named R3 lane. RED escalation needs Director / Brian scope calibration: (a) accept T-LBP scope as-is + extend R3 close horizon if needed; (b) reframe T-LBP scope (e.g., 1-2 lenses BEHAVIORALLY COMPLETE for R3 close, others post-R3 with substrate-gap routing); (c) escalate as substrate-gap requiring named R3 lane subdivision. | **OPEN — RED — Director / Brian scope calibration urgent** (Substrate Mgr E3; load-bearing scope-question for R3 close horizon) |
 
 ---
 
