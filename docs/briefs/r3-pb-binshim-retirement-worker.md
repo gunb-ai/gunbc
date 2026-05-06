@@ -18,7 +18,7 @@ PB owns three deliverables for the bin-shim class of T-LensProducer-Retirement s
 
 PB does **not** own and **must not** edit:
 
-- The `BinShim` carrier-type shape (additional fields, signature refinement of `entry: () -> std.process.ProcessExit`, etc.) — that's Substrate Manager territory per §5.4 boundary; generalized carrier-shape evolution escalates via `INVARIANTS.md` §P1 substrate-fact-introduction procedure.
+- The `BinShim` carrier-type shape (additional fields, signature refinement of `entry: () -> std.process.ProcessExit`, etc.) — that's Substrate Manager territory per §5.4 boundary; generalized carrier-shape evolution escalates via [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) substrate-fact-introduction procedure.
 - The PB-Runtime interpreter-as-data implementation (Item 4 / sub-gates i + ii — `lens_apply.rs` and `lens_testgen.rs` retirement). Those are separate and gated separately.
 - The §7.3 `CensusListConstant` / filter-predicate substrate question (see §"Substrate gap" below).
 
@@ -46,7 +46,7 @@ Per design doc §5.4 + §7 + the broader R3 Evaluator-gated lane discipline in [
 2. **Item 4 (PB-Runtime interpreter-as-data) landed.** Item 5 (this lane) inherits Item 4's runtime-value vocabulary; the bin-shim emitter is "one of many `.dag` emitters" per §6 anti-bridge invariant #4, sharing the same fold-over-`Lens<C>` substrate.
 3. **Substrate-owned `BinShim` carrier type live.** The `type BinShim { ... }` sketch in design doc §4.2 is the locked design; Substrate Manager lands the carrier (in `dsl/std/runtime/bin_shim.dag` or wherever Substrate picks per their dispatch). PB cannot author instance declarations against a carrier that doesn't exist.
 4. **`std.process.ProcessExit` substrate live.** Design doc §4.2 names this as the structural contract for translating `.dag` program return values into host process exit codes. Already declared per design doc reference; verify on dispatch.
-5. **No-new-bin-shim-hand-Rust fixture's substrate prerequisite.** §7.3 names a substrate gap: neither `expected_hand_authored_bin_shims` `CensusListConstant` nor a filter-predicate-over-`expected_hand_authored_non_test` exists today (current `CensusListConstant` values per design doc §7.3 are `expected_hand_authored_non_test` and `expected_hand_authored_test` only). Substrate Manager picks the §P1 disposition (new constant vs filter predicate vs `CensusSubsetCount` reuse) when this lane dispatches; PB does not pre-empt that choice.
+5. **No-new-bin-shim-hand-Rust fixture's substrate prerequisite.** §7.3 names a substrate gap: neither `expected_hand_authored_bin_shims` `CensusListConstant` nor a filter-predicate-over-`expected_hand_authored_non_test` exists today (current `CensusListConstant` values per design doc §7.3 are `expected_hand_authored_non_test` and `expected_hand_authored_test` only). Substrate Manager picks the [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition (new constant vs filter predicate vs `CensusSubsetCount` reuse) when this lane dispatches; PB does not pre-empt that choice.
 
 These dependencies are cumulative: R2-Evaluator → Item 4 (PB-Runtime) → BinShim carrier + ProcessExit live → bin-shim instances/emitter (this lane) → per-shim retirement.
 
@@ -69,11 +69,11 @@ test_claim {
 }
 ```
 
-If the existing `TestPredicate` envelope at `src/v3/std/verification.dag:108-235` cannot express "behavioral equivalence between emitted and hand-Rust binaries," this is a **substrate gap** — escalate per `INVARIANTS.md` §P1 to Substrate Manager. PB does not invent a new `TestPredicate` variant from this lane.
+If the existing `TestPredicate` envelope at `src/v3/std/verification.dag:108-235` cannot express "behavioral equivalence between emitted and hand-Rust binaries," this is a **substrate gap** — escalate per `INVARIANTS.md` [P1](../../INVARIANTS.md#p1-modeling-faithfulness) to Substrate Manager. PB does not invent a new `TestPredicate` variant from this lane.
 
 ### `no_new_bin_shim_hand_rust` (§7.3)
 
-Closed-set retirement gate: hand-Rust bin-shim count never exceeds the documented retirement schedule. Substrate prerequisite is **not yet live** (see §"Dependencies" item 5); this gate is unauthorable until Substrate Manager picks the §P1 disposition.
+Closed-set retirement gate: hand-Rust bin-shim count never exceeds the documented retirement schedule. Substrate prerequisite is **not yet live** (see §"Dependencies" item 5); this gate is unauthorable until Substrate Manager picks the [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition.
 
 ### Other behavioral acceptance bullets (per dispatch directive)
 
@@ -89,8 +89,8 @@ This lane explicitly does NOT cover:
 - **T-FixedPoint implementation** (#1169 lane; gated separately).
 - **`lens_apply.rs` / `lens_testgen.rs` retirement** — Item 4 sub-gates i + ii. Different runtime substrate (PB-Runtime interpreter-as-data); this lane consumes Item 4 but does not implement it.
 - **PB-Runtime interpreter-as-data implementation** — Item 4. This lane assumes Item 4 has landed.
-- **Substrate-owned `BinShim` carrier-shape edits** — additional fields, refining `entry: () -> std.process.ProcessExit` beyond the locked signature, etc. Escalate to Substrate Manager via §P1 if the retirement work surfaces a real shape gap.
-- **§7.3 `CensusListConstant` / filter-predicate substrate authoring** — Substrate Manager territory per §P1 disposition. This lane consumes whatever Substrate authors; it does not pre-empt the choice.
+- **Substrate-owned `BinShim` carrier-shape edits** — additional fields, refining `entry: () -> std.process.ProcessExit` beyond the locked signature, etc. Escalate to Substrate Manager via [P1](../../INVARIANTS.md#p1-modeling-faithfulness) if the retirement work surfaces a real shape gap.
+- **§7.3 `CensusListConstant` / filter-predicate substrate authoring** — Substrate Manager territory per [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition. This lane consumes whatever Substrate authors; it does not pre-empt the choice.
 
 ## Dispatch preconditions
 
@@ -108,8 +108,8 @@ If any of (1)-(5) is unmet, this brief stays in PROPOSAL state; PB Manager does 
 
 Worker MUST STOP and escalate to PB Manager (which escalates to Director if cross-program) when:
 
-- **`BinShim` carrier shape pressure.** Authoring a `data <name>_shim: BinShim = { ... }` instance reveals that the locked carrier shape (per design doc §4.2) cannot express the bin's actual entry-function signature or pipeline composition. That's a Substrate-owned carrier-shape evolution per §5.4 boundary; signal Substrate Manager via §P1 — do not extend the carrier from this lane.
-- **No fitting `TestPredicate` variant for §7.2 equivalence.** If "behavioral equivalence between emitted Rust and hand-Rust binary" cannot compose from existing variants at `src/v3/std/verification.dag:108-235`, that's a substrate gap — §P1 to Substrate Manager. Do not invent a new variant here.
+- **`BinShim` carrier shape pressure.** Authoring a `data <name>_shim: BinShim = { ... }` instance reveals that the locked carrier shape (per design doc §4.2) cannot express the bin's actual entry-function signature or pipeline composition. That's a Substrate-owned carrier-shape evolution per §5.4 boundary; signal Substrate Manager via [P1](../../INVARIANTS.md#p1-modeling-faithfulness) — do not extend the carrier from this lane.
+- **No fitting `TestPredicate` variant for §7.2 equivalence.** If "behavioral equivalence between emitted Rust and hand-Rust binary" cannot compose from existing variants at `src/v3/std/verification.dag:108-235`, that's a substrate gap — [P1](../../INVARIANTS.md#p1-modeling-faithfulness) to Substrate Manager. Do not invent a new variant here.
 - **Emit-pattern divergence from `dsl/extdeps/languages/rust/emit.dag` shape.** Per anti-bridge invariant #4 the `BinShim` emitter "is one of many `.dag` emitters; its shape mirrors `dsl/extdeps/languages/rust/emit.dag`." If the retirement worker finds itself authoring parallel emit logic, STOP — that's a sign the carrier or pattern is wrong.
 - **§7.3 substrate disposition not yet live.** If the substrate prerequisite (item (5) above) hasn't landed, the lane cannot close even if the per-shim retirement is mechanically successful — `no_new_bin_shim_hand_rust` would be unauthorable. Surface this to Substrate Manager + R3 Release Manager rather than working around it.
 - **SG-0 census drift the wrong way.** Per `feedback_ratchet_only_down`: if the retirement PR does not net-decrease the hand-Rust bin-shim count, that's a defect in the work, not a ratchet to relax.
@@ -119,7 +119,7 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - **Evaluator Manager** — runtime-value model convergence (§5.4 cross-program coordination); PB-Runtime mirrors Evaluator's value model. Per-shim authoring confirms the mirror; deviation is a co-design escalation, not unilateral PB authority.
 - **Substrate Manager** — `BinShim` carrier-shape evolution (§5.4 boundary), §7.3 `CensusListConstant` / filter-predicate disposition (§7.3 substrate prerequisite), any new `TestPredicate` variant proposed by §7.2's equivalence requirement.
 - **R3 Release Manager** (when authored) — sub-gate progress reporting per `r2-pure-bootstrap-manager.md` §"Reporting cadence" (closure-ledger reports T-LensProducer-Retirement sub-gate progress within the one-program lane).
-- **Director** — scope-change escalations (e.g., a bin-shim that needs Director-approved continuing exception rather than retirement); §P1 escalation arbitration if Substrate disposition stalls.
+- **Director** — scope-change escalations (e.g., a bin-shim that needs Director-approved continuing exception rather than retirement); [P1](../../INVARIANTS.md#p1-modeling-faithfulness) escalation arbitration if Substrate disposition stalls.
 
 ## Cross-refs
 

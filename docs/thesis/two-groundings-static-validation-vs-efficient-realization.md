@@ -17,7 +17,7 @@ M1(3)+ as language-spec declarations in
 some primitive Arrows carry a scaffolded `Pending` realization
 state: their concept decomposes completely via inhabitance, but
 their target-language realization is declared later. A CI
-ratchet (tracked in `INVARIANTS.md` §"No short-term solutions"
+ratchet (tracked in [`docs/invariants/no-short-term-solutions.md`](../invariants/no-short-term-solutions.md)
 exception 2) requires that the Pending count monotonically
 decreases and every Pending Arrow resolves to `UserDefined` or
 `ExternalRealization` before M3 completes. The top-level executability claim is
