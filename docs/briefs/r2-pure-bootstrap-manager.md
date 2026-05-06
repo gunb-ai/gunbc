@@ -131,11 +131,12 @@ Authored:
 - [`r3-pb-tv2-g1-readiness-receipt.md`](r3-pb-tv2-g1-readiness-receipt.md) — T-V2-Retirement G-1 first-consumer readiness check (docs-only). Verifies S-1 NOT MET on origin/main; STOP+PING per audit/migration-matrix STOP rules; pins next-unblock order (S-1 lands → §3.1 first slice → §3.2 cross-program → §3.3 Cargo edges → G-1 green).
 - [`r3-pb-tv2-s1-input-packet.md`](r3-pb-tv2-s1-input-packet.md) — T-V2-Retirement S-1 input packet (input to PM/Director; not S-1 itself). Decision checklist for the PM-authored worker brief: 6 rows enumerating §3.1 / §3.2 / §3.3 / legacy emit chain / `verification.dag` convergence routing / S-1 scope; PB recommended defaults + owner per decision (PM / PB / Substrate / Director). Docs-only.
 - [`r3-pb-tv2-population-coverage-audit.md`](r3-pb-tv2-population-coverage-audit.md) — T-V2-Retirement Population A (4 named tests in `src/v2/tests/`) + Population B (2 G-1 consumers outside `src/v2/`) coverage spot-check audit. Live v3 substrate analogs verified for all 4 Pop A targets (LIVE; tests MISSING — mechanical port). Pop B disposition recommendations match S-1 input packet Decisions 1+2; per-file v3-coverage state spot-checked. Net dispatch order from audit/matrix DAG. Docs-only.
+- [`r3-pb-bridge-include-str-side-channels-closure.md`](r3-pb-bridge-include-str-side-channels-closure.md) — T-Bridge-Retirement bridge #4 (`bridge_include_str_side_channels_retired`) **closure worker brief** for `pipeline_authority` / #1171 lineage (PROPOSAL; **dispatch-gated** on structural compile-body witness or approved derivation — **not** runtime file-IO swap).
 
 Pending — pre-spawn Director-authored per inbox #828 coordination split; post-spawn manager-authored autonomously:
 - `kernel_algebra_profile` worker brief (gated on Substrate Manager `ValueBody::Map` consumer plumbing)
 - **R3 T-Tier3-Dissolution** worker brief (may share with Tier 3 Manager continuing post-R2)
-- **R3 distributed bridge retirements** — 3 worker briefs (canonical lens-name dispatch / include_str! / patch_lower_helpers_* residual)
+- **R3 distributed bridge retirements** — remaining worker briefs where not superseded by authored closures (**canonical lens-name dispatch** closure brief still pending; ~~`include_str!`~~ → [`r3-pb-bridge-include-str-side-channels-closure.md`](r3-pb-bridge-include-str-side-channels-closure.md); ~~`patch_lower_helpers_*` Tier-2 slice~~ closed PR #1014)
 
 Closed:
 - Tier 2 `patch_lower_helpers_*` retirement first slice (PR #1014)
