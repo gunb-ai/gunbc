@@ -90,7 +90,7 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
 
 **Two distinct Pass surfaces** (per Debt-Paydown Mgr poke-hole 2026-05-06 — clarification prevents conflating predicates):
-- **Lane `.dag` TestClaim gates (75 total)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
+- **Lane `.dag` TestClaim gates (95 total)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
 - **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
 
 Both must hold for R3 close. "95 gates green" alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
@@ -104,7 +104,7 @@ Predicate cannot be satisfied by deletion-of-rows-without-actual-resolution; eac
 
 ### §1.7 Closure-criteria status — DECLARATIONS-ONLY staging (per openai-pro meta-review 2026-05-06)
 
-**This plan + r3-structure.md DECLARE 75 closure gates. The declarations are NOT YET load-bearing closure predicates — no consumer infrastructure verifies them at HEAD.**
+**This plan + r3-structure.md DECLARE 95 closure gates. The declarations are NOT YET load-bearing closure predicates — no consumer infrastructure verifies them at HEAD.**
 
 Per openai-pro meta-review on PR #1808 sha `cf249389` ([#issuecomment-4384405832](https://github.com/gunb-ai/gunbc/pull/1808#issuecomment-4384405832)) PAUSE_AND_REGROUP verdict — structurally honest framing of where this PR sits in the closure-evidence chain:
 
@@ -294,7 +294,7 @@ This principle is NOT a separate lane; it's a per-lane gate-shape requirement ap
 **Plus standing-program ledger predicate** (NOT a lane gate; separate Pass surface per §1):
 - `r3_debt_paydown_zero_remaining` — no tracked-debt rows survive R3 close (per §1.5 inclusion list); ROADMAP `Post-merge debt` rows + sweep §1 Class A/B/C/F/G entries + §10 RED escalations.
 
-**R3 close = ALL 75 lane gates GREEN + `r3_debt_paydown_zero_remaining` GREEN** (per §1 Two distinct Pass surfaces).
+**R3 close = ALL 95 lane gates GREEN + `r3_debt_paydown_zero_remaining` GREEN** (per §1 Two distinct Pass surfaces).
 
 **Authoritative source per gate**: `r3-structure.md` §"Acceptance" carries the Pass-condition body for each row above. This ledger is the consolidated index — body lives in canonical archive.
 
@@ -738,7 +738,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 | # | Question | PM recommendation | Status |
 |---|---|---|---|
-| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **75 closure gates total** (59 R3 lane gates including 5 NEW Pattern-A executable gates added 2026-05-06 to canonical authority + 5 substrate-gap-class + 10 demonstration + 1 PR-anticipation-discipline; precise enumeration per §1.5) | RATIFIED |
+| Q1 | Closure-criteria predicate set (§1.1–§1.4) | Predicates per §1 tables; **95 closure gates total** (79 R3 lane gates across 18 lanes including 5 NEW Pattern-A executable + 20 lane gates added 2026-05-06 to §"Acceptance" per codex BLOCKING + 5 substrate-gap-class + 10 demonstration + 1 PR-anticipation-discipline; precise enumeration per §1.5 + §1.8) | RATIFIED |
 | Q2 | 5 substrate-gap classes — separate lanes vs closure-criteria-over-existing-lanes | Closure-criteria framing (§1.4 + §4) | RATIFIED |
 | Q3 | v2 retirement Mgr ownership | PB Mgr owns all (existing T-V2-Retirement scope) | RATIFIED |
 | Q4 | Mgr structure (keep 9 vs reorganize) | Keep 9 standing Mgrs with re-anchored scope | RATIFIED |
@@ -938,7 +938,7 @@ PB Mgr's substantive review on PR #1808 + canvas/refinements receipt at gunbc#84
 #### §10.2.6 R3 Debt-Paydown Mgr (quiet-otter-416) — full canvas + plan-poke-hole absorbed at sha `e41e4fbe8` (2026-05-06)
 
 Substrate canvas + plan-poke-hole both folded in. Key absorptions:
-- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (75 total) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
+- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (95 total) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
 - **§7 four-mechanism structure** (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" canonical authority): added §7.6 Velocity tripwire + §7.7 Closure-receipt cadence + §7.8 SG-0 PR-window net-shrink discipline
 - **§3 T-Debt-Paydown row** updated from "(TBD from canvas)" → YELLOW with PR #1807 + PR #1566 + Tier-1 dispatch-brief-drift-sweep anchors
 
