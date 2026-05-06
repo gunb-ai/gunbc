@@ -1108,6 +1108,33 @@ fn test_registered_predicate_on_disallowed_carrier_fails_closed() {
     }
 }
 
+/// S9 Slice 2.5 Option A revised cement (Director RATIFIED at gunbc#828
+/// `issuecomment-4392245968`): `where pattern(...)` / `where format(...)` /
+/// `where content(...)` are STRUCTURALLY ABSENT from the predicate registry
+/// — user-code authoring these where-clauses falls through to live
+/// resolution and surfaces a `Diagnostic::ResolveError`. Q-Regex-Primitive
+/// is the named substrate-fact-introduction follow-on that will re-enroll
+/// these predicates. Until then, no "named but not checked" path exists.
+#[test]
+fn test_pattern_format_content_unregistered_fails_closed() {
+    // Use cached_compile_any so we can read diagnostics for fail-closed
+    // verification (cached_compile_to_dag panics on semantic errors).
+    let f = "dsl/std/types.dag";
+    for src in [
+        "type P = Int where pattern(\"^x\")",
+        "type F = Int where format(uuid)",
+        "type C = Int where content(Text)",
+    ] {
+        let dag = cached_compile_any(src, f);
+        assert!(
+            !dag.diagnostics().is_empty(),
+            "user-code authoring of pattern/format/content predicate must surface \
+             a diagnostic (predicate is structurally absent from the registry \
+             pending Q-Regex-Primitive); src={src:?}"
+        );
+    }
+}
+
 /// S9 Slice 2.5 Path (a) cement: bare predicate with explicit empty arg
 /// list (e.g. `gt_zero()`) is rejected — bare-predicate arg-shape contract
 /// is strictly the bare-ident form, not zero-arg-call-compatible. Cements
