@@ -43,11 +43,13 @@ on origin/main):
 
 **Phase-2 scope**: parser-grammar surface for the **interaction syntax** —
 the user-facing way to write `Int<64>` etc. that parses to
-`Compose<AbelianGroup, MachineWidth<64>>` shape.
+`Compose<Int, MachineWidth<64>>` shape (where `Int` in slot-1 is the
+fully-applied algebraic concept = `AbelianGroup<GroupCompletion<Nat>>`).
 
 Per Q-MachineConstraint sub-decision 3 RATIFIED (gunbc#828 #issuecomment-4385530115):
-> "Type spelling: `Int<64> = Compose<AbelianGroup, MachineWidth<64>>`
-> parametrically. Equivalent under both algebra-side options per PR #1815."
+> "Type spelling: `Int<64>` parses/elaborates as `Compose<Int, MachineWidth<64>>`
+> parametrically; first slot is the algebraic concept (fully-applied
+> carrier+witness composite — `Int = AbelianGroup<GroupCompletion<Nat>>` per #1466)."
 
 The brief lands the **parser surface** that allows users to write the
 interaction syntax in `.dag` source.
@@ -160,9 +162,9 @@ folds into parent worker brief Acceptance bullets, NOT separate dispatch
   surfaces during implementation): STOP — surface to Substrate Mgr;
   Director re-ratification needed
 - **Lowerer desugar produces semantically wrong `Compose<...>` shape**
-  (e.g., candidate C's positional `Int<32>` → `Compose<AbelianGroup,
-  MachineWidth<32>>` ambiguous if position is "first generic arg" vs
-  "numeric literal arg"): STOP — surface as substrate-extension
+  (e.g., positional `Int<32>` → `Compose<Int, MachineWidth<32>>`
+  ambiguous if position is "first generic arg" vs "numeric literal
+  arg"): STOP — surface as substrate-extension
   question; positional encoding rules need explicit specification
 - **Bootstrap demonstrator landing breaks downstream consumers** (e.g.,
   some `.dag` file expects `Int` to be the bare algebra-side carrier
@@ -180,8 +182,12 @@ folds into parent worker brief Acceptance bullets, NOT separate dispatch
    Substrate Mgr independent grep:
    - `MachineWidth<bits>` at `dsl/std/machine_constraints.dag` ✓
    - `Compose<Algebra, MachineConstraint> = Phantom` at same file ✓
-   - Algebra-side carriers (`AbelianGroup`, `CommutativeSemiring`)
-     in `dsl/std/algebra.dag` (worker re-greps at dispatch)
+   - Algebraic-concept names (`Int` = AbelianGroup<GroupCompletion<Nat>>;
+     `UInt` = CommutativeSemiring<Nat>; `Real` = ApproximateField<Rational>)
+     in `dsl/std/integer.dag` / canonical equivalents (worker re-greps
+     at dispatch). These are the slot-1 elaboration targets per
+     Q-MC sub-decision 3 — NOT bare witness shapes
+     (`AbelianGroup` / `CommutativeSemiring`)
    - Parser does NOT yet recognize the interaction syntax; that's
      this Phase 2 scope
 2. **Existing brief?** S3 parent brief

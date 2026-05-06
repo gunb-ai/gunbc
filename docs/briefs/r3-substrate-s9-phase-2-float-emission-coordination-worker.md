@@ -54,12 +54,19 @@ Author parametric instantiations in `dsl/std/float.dag` (or canonical
 equivalent — worker greps for the file used by the Float migration in
 S8, and authors emission entries adjacent to it):
 
-- `Float<32>` ≡ `Compose<ApproximateField<Real>, MachineWidth<32>>` → emits Rust `f32`
-- `Float<64>` ≡ `Compose<ApproximateField<Real>, MachineWidth<64>>` → emits Rust `f64`
+- `Real<32>` ≡ `Compose<Real, MachineWidth<32>>` → emits Rust `f32`
+- `Real<64>` ≡ `Compose<Real, MachineWidth<64>>` → emits Rust `f64`
 
-Algebra-side spelling: `ApproximateField<Real>` per S8 ratified shape
-(Real is the base algebraic field; ApproximateField wraps with
-rounding-relaxed axioms).
+**Spelling note**: per Q-MC sub-decision 3 critical correction at
+gunbc#828 #issuecomment-4385530115, the user-facing surface is
+`Real<N>` (not `Float<N>`); `Float` is target-language name for the
+Rust primitive, `Real` is the algebraic-concept name. Substrate
+elaboration is `Compose<Real, MachineWidth<N>>` — first slot is
+the fully-applied algebraic concept `Real` (= `ApproximateField<Rational>`
+per S8), NOT bare `ApproximateField` witness or `ApproximateField<Real>`
+parameterization. Same correction shape that applies to Int/UInt
+slot-1 spellings: witness shape doesn't go in slot-1; the named
+concept does.
 
 Q-ApproximateField-Axiom-Set ratification (S8) is **prerequisite** —
 if Director has not chosen the relaxation set at dispatch time,
@@ -100,8 +107,9 @@ Phase ordering (PR-internal):
 
 ## Acceptance
 
-- 2 concrete Float emission entries landed: `Float<32>` / `Float<64>`
-  via `Compose<ApproximateField<Real>, MachineWidth<N>>`
+- 2 concrete `Real<N>` emission entries landed: `Real<32>` / `Real<64>`
+  via `Compose<Real, MachineWidth<N>>` (slot-1 is the algebraic-concept
+  name `Real`, not the witness `ApproximateField` or its parameterization)
 - Algebra-side spelling matches S8 ratified shape
   (`ApproximateField<Real>` per Q-ApproximateField-Axiom-Set
   ratification — brief absorbs verbatim before authoring)
@@ -146,7 +154,7 @@ Phase ordering (PR-internal):
   shape before authoring.
 - **Grounding emission rule shape not yet defined for Float pair
   consumption** (G2 doesn't have per-pair lowering rules for
-  `Compose<ApproximateField<Real>, MachineWidth<N>>`): STOP —
+  `Compose<Real, MachineWidth<N>>`): STOP —
   coordinate with Grounding Mgr (#1745); cross-program handoff
   receipt needs concrete consumer surface, not aspirational.
 - **End-to-end demonstration fails at evaluator or emission**: STOP —
