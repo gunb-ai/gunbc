@@ -4,9 +4,9 @@
 
 **Purpose.** Forward-looking program plan for **R3 close with zero debt**. Per user directive 2026-05-05 (gunbc#846): *"clear dependency graph from here to R3 close"* + *"surface escalations now and solve them"*.
 
-**Authority hierarchy.**
-- [`docs/r3-structure.md`](r3-structure.md) — **architectural-decision archive**. Lane definitions, manager structure, design-challenges resolution, dependency-on-R2 spec. Authoritative for *what R3 is*.
-- [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) — **bridge inventory snapshot** (PR #1804 lane). Authoritative for *what bridges exist now*.
+**Authority hierarchy** (all three docs land in this PR — single coordinated authority drop):
+- [`docs/r3-structure.md`](r3-structure.md) — **architectural-decision archive**. Lane definitions, manager structure, design-challenges resolution, dependency-on-R2 spec. Authoritative for *what R3 is*. Updated in this PR to absorb new closure gates.
+- [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) — **bridge inventory snapshot framework** (PM-authored Phase 1 framework; codex APPROVE on prior sha `860e175d`; Phase 2-3 inventory populates as Mgr canvases compile via PR comments). Authoritative for *what bridges exist now*. Consolidated into this PR per Grounding Mgr poke-hole 2026-05-06 finding 1 + codex BLOCKING on PR #1808 sha `0719d7a6` line 9 (eliminates cross-PR dependency on prior PR #1804 — superseded).
 - **THIS DOC** — **forward-looking dependency-graph + escalation register**. Authoritative for *path from here to R3 close + open ratifications*.
 
 Cross-link discipline: this plan never restates lane definitions from `r3-structure.md`; cites them by section/symbol per `feedback_section_anchors_over_line_numbers`.
@@ -298,9 +298,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 ## §5. Bridge inventory snapshot
 
-**Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (PR #1804 lane). Phase 2 sweep deliverables landed §1.1–§2.2.
-
-**Cross-PR dependency** (per Grounding Mgr poke-hole 2026-05-06 finding 1 — authority hierarchy correctness): the audit doc above is on PR #1804 (claude APPROVE on sha `450502c3`), NOT on `main` or this PR's branch. **Plan PR #1808 is sequenced to land AFTER PR #1804 merges** to prevent this plan section from citing a missing authority. PR #1804 is doc-only + mergeable + approved; expected to merge before PR #1808.
+**Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (consolidated into this PR; PR #1804 superseded). PM-authored Phase 1 framework + §4 anticipation discipline + §3 GREEN/YELLOW/RED rubric live; Phase 2-3 inventory (per-class bridge enumeration) populates via Mgr canvas + PR comments as canvases compile.
 
 **Status (2026-05-06)**: per-class counts below are PRE-Phase-3-compile expected ranges from Director's bridge-class framework. Phase 2 sweep deliverables (PR #1804 §1.1–§2.2) have landed substantive partial data; **Phase 3 compile** populates verified-at-HEAD counts replacing these expected ranges before plan PR opens (per Director poke-hole 2026-05-06 finding 6.3).
 
