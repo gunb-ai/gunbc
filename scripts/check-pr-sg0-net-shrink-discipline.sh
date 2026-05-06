@@ -18,7 +18,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 usage() {
-  echo "usage: $0 [--self-test]" >&2
+  echo "usage: $0 [--self-test | --check-body-only]" >&2
+  echo "  --self-test / --check-body-only take no additional arguments." >&2
   echo "  pull_request: requires GITHUB_EVENT_NAME=pull_request, PR_BODY," >&2
   echo "  and origin/main fetch so git diff origin/main...HEAD is meaningful." >&2
 }
@@ -54,6 +55,8 @@ self_test() {
   run_case "(a) without path evidence" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) deferred only' fail
   run_case "(c) without dispatch" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) later' fail
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
+  run_case "mid-line SG-0 pairing mention ignored" $'SG-0 hand-path delta: +1\nNarrative: not SG-0 pairing: (b) https://trap.example\nSG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/1' pass
+  run_case "only mid-line pairing substring" $'SG-0 hand-path delta: +1\nNote: not SG-0 pairing: (b) https://x.com' fail
 
   if [ "$failed" -ne 0 ]; then
     exit 1
@@ -64,6 +67,10 @@ self_test() {
 
 # Body-only check (invoked from --self-test harness).
 if [ "${1:-}" = --check-body-only ]; then
+  if [ -n "${2:-}" ]; then
+    usage
+    exit 2
+  fi
   body=${PR_BODY:-}
   if ! printf '%s\n' "$body" | grep -qE '^SG-0 hand-path delta:'; then
     echo "::error::PR body missing required line starting with \`SG-0 hand-path delta:\`"
@@ -92,7 +99,7 @@ if [ "${1:-}" = --check-body-only ]; then
 
   if [ "$need_pairing" -eq 1 ]; then
     pairing_block=$(printf '%s\n' "$body" | awk '
-      index($0, "SG-0 pairing:") > 0 {
+      /^[[:space:]]*SG-0 pairing:/ {
         print
         if (getline > 0) print
         exit
@@ -102,17 +109,17 @@ if [ "${1:-}" = --check-body-only ]; then
       echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a \`SG-0 pairing:\` line"
       exit 1
     fi
-    if printf '%s\n' "$pairing_block" | grep -qE 'SG-0 pairing:[[:space:]]*\(a\)'; then
+    if printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(a\)'; then
       if ! printf '%s\n' "$pairing_block" | grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)'; then
         echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
         exit 1
       fi
-    elif printf '%s\n' "$pairing_block" | grep -qE 'SG-0 pairing:[[:space:]]*\(b\)'; then
+    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(b\)'; then
       if ! printf '%s\n' "$pairing_block" | grep -qE 'https://|http://'; then
         echo "::error::SG-0 pairing (b) must cite a Director-budget URL (http(s):// on the pairing line or the line immediately after)"
         exit 1
       fi
-    elif printf '%s\n' "$pairing_block" | grep -qE 'SG-0 pairing:[[:space:]]*\(c\)'; then
+    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(c\)'; then
       if ! printf '%s\n' "$pairing_block" | grep -qiE '\(c\).*dispatch'; then
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         exit 1
@@ -126,6 +133,10 @@ if [ "${1:-}" = --check-body-only ]; then
 fi
 
 if [ "${1:-}" = --self-test ]; then
+  if [ -n "${2:-}" ]; then
+    usage
+    exit 2
+  fi
   self_test
 fi
 
