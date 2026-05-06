@@ -44,7 +44,7 @@ Sub-gate 3 has **no Row-4-equivalence dependency** (different mechanism) — its
 
 Worker MUST STOP and escalate when:
 
-- **`BinShim` carrier-shape pressure.** If authoring `data regen_lens_shim: BinShim = { ... }` reveals the locked carrier shape cannot express `regen_lens`'s pipeline composition, STOP — that's substrate-owned per `design-pb-runtime-interpreter.md` §5.4 boundary; route to Substrate Manager via `INVARIANTS.md:94` §P1.
+- **`BinShim` carrier-shape pressure.** If authoring `data regen_lens_shim: BinShim = { ... }` reveals the locked carrier shape cannot express `regen_lens`'s pipeline composition, STOP — that's substrate-owned per `design-pb-runtime-interpreter.md` §5.4 boundary; route to Substrate Manager via [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
 - **Emit-pattern divergence.** If the BinShim emitter authoring path needs to diverge from `dsl/extdeps/languages/rust/emit.dag` shape (per anti-bridge invariant #4: "the `BinShim` emitter is one of many `.dag` emitters; its shape mirrors `dsl/extdeps/languages/rust/emit.dag`"), STOP — that's a sign the carrier or pattern is wrong.
 - **Equivalence fixture authoring needs new substrate.** If the §7.2 fixture cannot compose from existing `TestPredicate` variants at `src/v3/std/verification.dag`, STOP — §P1 escalation, not in-this-lane substrate authoring.
 - **§7.3 closed-set fixture pressure.** Sub-gate 3 retires one element; if the worker finds themselves trying to author the broader `no_new_bin_shim_hand_rust` gate (which depends on Substrate Manager's §7.3 disposition), STOP — that's outside sub-gate 3's scope.
@@ -84,7 +84,7 @@ If any of (2)–(7) is unmet, brief stays in PROPOSAL state.
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §4 (Item 5 emit pattern), §4.3 (dissolution path), §5.1 (sub-gate decomposition), §5.2 (SG-0 cascade), §6 (anti-bridge invariants), §7.2 (BinShim equivalence fixture).
-- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) line 36 (T-LensProducer-Retirement R3 lane row) + line 37 (BinShim instances + emit pattern + retirement dispatch).
+- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) — R3 continuation table rows for T-LensProducer-Retirement and BinShim instances + emit pattern + retirement dispatch.
 - BinShim retirement program (mechanism this sub-gate consumes): [`docs/briefs/r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md) — sub-gate 3 is this brief's "First slice — `regen_lens.rs`."
 - First-target retirement readiness checklist (planning only): [`docs/briefs/r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
@@ -92,4 +92,4 @@ If any of (2)–(7) is unmet, brief stays in PROPOSAL state.
 - Sibling PB R3 brief: [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md).
 - SG-0 census authority: `src/v3/compiler/tests/integration/sg0_census_test.rs` (`EXPECTED_HAND_AUTHORED_NON_TEST`); `src/v3/compiler/build.rs` `REGEN_OUTPUTS`.
 - File targeted for retirement (do not edit until dispatch): `src/v3/compiler/src/bin/regen_lens.rs`.
-- Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94`.
+- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).

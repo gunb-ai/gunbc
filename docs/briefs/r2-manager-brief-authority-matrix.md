@@ -65,7 +65,7 @@ A continuous-state ledger / monitor / aggregated report owned by a manager throu
 - **Artifact format:** ledger entries / cadence reports inline in manager brief's "Working state" section, OR sibling ledger doc.
 - **Lifecycle:** activates on spawn → refreshes per cadence (integration-reflection pass / weekly health check / etc.) → dissolves on manager's dissolution.
 
-**Examples:** R2 closure ledger (R2 Release Manager); velocity-tripwire ratio report (R2 Release Manager surfacing to Director per `INVARIANTS.md §P5`); Substrate-Manager bottleneck watch (R2 Release Manager, per `docs/r2-structure.md` §"R2 Release Manager"); R1 Closure Manager's lane status table.
+**Examples:** R2 closure ledger (R2 Release Manager); velocity-tripwire ratio report (R2 Release Manager surfacing to Director per `INVARIANTS.md#p5-progress-is-dissolution`); Substrate-Manager bottleneck watch (R2 Release Manager, per `docs/r2-structure.md` §"R2 Release Manager"); R1 Closure Manager's lane status table.
 
 ### Category 5: Pre-spawn placeholder
 
@@ -202,7 +202,7 @@ Before authoring a brief that references substrate state, gate condition, existi
 
 Cite specific `file:line` / brief filename / `§ref` in the brief's `Read first` section. State the audit receipt before slicing. The 7-reframe pattern on PR #836 (`feedback_verify_thesis_claims` violations: nested-optional gating, unhandled-diagnostic predicate-entailment default, unenumerated-effects 8-req elision, parametric-algebra producer redundancy, cardinality-for-int-lit redundancy, nominal-opaque 7th-connective option, int-lit consumer scope mismatch with `wise-pike-578`) demonstrates the failure mode this invariant prevents. This is the operationalization of `feedback_verify_thesis_claims` for the brief-authoring family.
 
-These do not need new top-level INVARIANTS.md P-rules; `INVARIANTS.md §P2` (single-authority), `§P5` (dispatch-discipline), and the existing `feedback_verify_thesis_claims` discipline already cover them. These are the **local invariants** for the manager-brief family — collected here so brief authoring can cite this matrix as a single review checkpoint.
+These do not need new top-level INVARIANTS.md P-rules; `INVARIANTS.md#p2-boundary-discipline` (single-authority), `INVARIANTS.md#p5-progress-is-dissolution` (dispatch-discipline), and the existing `feedback_verify_thesis_claims` discipline already cover them. These are the **local invariants** for the manager-brief family — collected here so brief authoring can cite this matrix as a single review checkpoint.
 
 ## Refresh discipline
 
@@ -219,5 +219,5 @@ These do not need new top-level INVARIANTS.md P-rules; `INVARIANTS.md §P2` (sin
 - Cross-manager signal example (Category 3 on PR #847): B7 priority-hint relay.
 - Standing duties (Category 4) inline in `r2-release-manager.md` Owned deliverables section.
 - Manager structure authority: [`docs/r2-structure.md` §"Manager structure"](../r2-structure.md).
-- Discipline framework: [`INVARIANTS.md §P5` "Dispatch-Discipline Mechanisms"](../../INVARIANTS.md).
+- Discipline framework: [`INVARIANTS.md#p5-progress-is-dissolution` "Dispatch-Discipline Mechanisms"](../../INVARIANTS.md#p5-progress-is-dissolution).
 - Escalation discipline: [`docs/escalation-paths.md`](../escalation-paths.md).

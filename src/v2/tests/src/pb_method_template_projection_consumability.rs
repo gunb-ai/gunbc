@@ -122,9 +122,7 @@ fn rust_count_template() -> Map<String, String> { rust_method_template_emit }
         .to_string_lossy()
         .to_string();
     assert!(
-        loaded_paths
-            .iter()
-            .any(|path| *path == expected_generated_path.as_str()),
+        loaded_paths.contains(&expected_generated_path.as_str()),
         "expected the ephemeral generated module to load at exactly \
          {expected_generated_path}; got: {loaded_paths:?}"
     );

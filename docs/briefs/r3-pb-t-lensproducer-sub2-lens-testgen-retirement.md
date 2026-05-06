@@ -37,7 +37,7 @@ Sub-gates 1+2 share Item 4's mechanism. Sub-gate 2 does **not** require sub-gate
 - **`lens_testgen_dot_rs_retired`** — `src/v3/compiler/src/lens_testgen.rs` deleted.
 - **SG-0 census delta** — `EXPECTED_HAND_AUTHORED_NON_TEST` decreases by 1 (`lens_testgen.rs` removed from the census authority at `src/v3/compiler/tests/integration/sg0_census_test.rs`).
 - **Testgen invariants preserved by construction** — every testgen consumer that reached `lens_testgen.rs` now routes through PB-Runtime's `evaluate(...)` of the equivalent `.dag` testgen body (per anti-bridge invariant #4: "no parallel emit logic"; one canonical mechanism).
-- **No new `TestPredicate` variant** — escalate per `INVARIANTS.md:94` §P1 if a substrate gap surfaces.
+- **No new `TestPredicate` variant** — escalate per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure) if a substrate gap surfaces.
 
 The sub-gate is reported as a `.dag` `TestClaim` to the closure ledger; the locked predicate name is `lens_testgen_dot_rs_retired` per design-doc §5.1.
 
@@ -80,7 +80,7 @@ If any of (2)–(6) is unmet, brief stays in PROPOSAL state.
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3 (Item 4), §5.1 (sub-gate decomposition), §5.2 (SG-0 cascade), §6 (anti-bridge invariants).
-- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) line 36 (T-LensProducer-Retirement R3 lane row).
+- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) — R3 continuation table row for T-LensProducer-Retirement.
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
 - Convergence matrix: [`docs/briefs/r2-pb-runtime-evaluator-convergence-matrix.md`](r2-pb-runtime-evaluator-convergence-matrix.md) Rows 1+2+4.
 - Corpus seed audit: [`docs/briefs/r3-pb-runtime-equivalence-corpus-seed-audit.md`](r3-pb-runtime-equivalence-corpus-seed-audit.md).
@@ -88,4 +88,4 @@ If any of (2)–(6) is unmet, brief stays in PROPOSAL state.
 - Sibling PB R3 briefs: [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md), [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md).
 - SG-0 census authority: `src/v3/compiler/tests/integration/sg0_census_test.rs` (`EXPECTED_HAND_AUTHORED_NON_TEST`).
 - File targeted for retirement (do not edit until dispatch): `src/v3/compiler/src/lens_testgen.rs`.
-- Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94`.
+- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).

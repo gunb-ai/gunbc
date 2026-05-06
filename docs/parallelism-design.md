@@ -1,7 +1,7 @@
 # Parallelism + Concurrency — Design
 
 > **Parent docs:** `THESIS.md` (§"parallelism is not a feature"),
-> `INVARIANTS.md` §"Decidability" (bounded iteration),
+> [`INVARIANTS.md#p4-decidability`](../INVARIANTS.md#p4-decidability) (bounded iteration),
 > `src/v3/SELF_HOSTING.md` §14.7 (ownership track),
 > `docs/ownership-rendering-design.md` (rendering model).
 >
