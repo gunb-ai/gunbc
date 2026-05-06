@@ -630,3 +630,25 @@ type DocSource {
   path: FilePath
   kind: DocSourceKind
 }
+
+// --- ReferenceModel<T> — pointer/reference parent carrier (PR-F S7 / design-emission §Q2) ---
+//
+// DFS parent attachment (INVARIANTS.md#p1-modeling-faithfulness Step 1): lands under the shared
+// kernel vocabulary in `std.types`, adjacent to other carriers typed over generic parameters (same
+// epistemic-stacking pattern as Q1 `Interval<D>`). Authority: docs/design-emission-model.md §Q2 DECISION
+// (2026-04-28) — Rust `Box<T>` / `&T` / `Rc<T>`, Go `*T`, Python object references declare projections
+// over this parent; flavors are not unrelated sibling enums here.
+//
+// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE (docs/modeling-discipline.md §4 coproduct dissolution)
+// Phantom-parameter carrier: widening adds downstream projections/specializations (`&T`, `Box<T>`, …),
+// not new `ReferenceModel` variants at this substrate layer.
+//
+// Named consumer demand (Grounding G1 / T-Ground-Rust Phase 1): worker brief
+// `docs/briefs/r3-substrate-s7-pr-f-bounddeclaration-consumer-worker.md` bundles this carrier with the
+// BoundDeclaration consumer lane under Substrate canvas B3.
+//
+// HARD BOUNDARIES:
+//   - No runtime payload / value refinement at this declaration — same constrained-inhabitance deferral
+//     pattern as `Measure<Q, S>` in `dsl/std/measure.dag` until substrate where-clauses land.
+//
+type ReferenceModel<T>
