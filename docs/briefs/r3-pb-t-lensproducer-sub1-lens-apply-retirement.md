@@ -62,7 +62,7 @@ Worker MUST STOP and escalate to PB Manager when any of these surface during imp
 - **Not** `Lens<C>` substrate carrier-shape edits — Substrate Manager territory.
 - **Not** `TestPredicate` invention — §P1 escalation route only.
 - **Not** T-FixedPoint implementation — separate planning brief.
-- **Not** advanced lifetime analyzer cases d/e/f folding — per PB Manager brief line 36, those land alongside retirement; this skeleton stays scoped to retirement mechanics. The lifetime-analyzer-handles-closures-of-async-self-referential-state work is its own dispatch chain.
+- **Not** advanced lifetime analyzer cases d/e/f folding — per the PB Manager brief's [`Owns (R3 continuation — Director cascade Item 4 + Item 8 ratified 2026-04-28)`](r2-pure-bootstrap-manager.md#owns-r3-continuation--director-cascade-item-4--item-8-ratified-2026-04-28) table, those land alongside retirement; this skeleton stays scoped to retirement mechanics. The lifetime-analyzer-handles-closures-of-async-self-referential-state work is its own dispatch chain.
 
 ## Cross-program signals
 
@@ -88,7 +88,7 @@ If any of (2)–(6) is unmet, this brief stays in PROPOSAL state; PB Manager doe
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3 (Item 4 PB-Runtime), §5.1 (sub-gate decomposition), §5.2 (SG-0 cascade), §6 (anti-bridge invariants).
-- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) line 36 (T-LensProducer-Retirement R3 lane row).
+- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#owns-r3-continuation--director-cascade-item-4--item-8-ratified-2026-04-28) — R3 continuation table row for T-LensProducer-Retirement.
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
 - Convergence matrix: [`docs/briefs/r2-pb-runtime-evaluator-convergence-matrix.md`](r2-pb-runtime-evaluator-convergence-matrix.md) Rows 1+2+4.
 - Corpus seed audit (Row-4 expansion): [`docs/briefs/r3-pb-runtime-equivalence-corpus-seed-audit.md`](r3-pb-runtime-equivalence-corpus-seed-audit.md) Seed (3) `Lens<C>` instance.

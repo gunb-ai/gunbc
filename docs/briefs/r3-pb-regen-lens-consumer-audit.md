@@ -152,6 +152,6 @@ No carrier/emitter implementation is implied by these deltas. The current cutove
 - Sub-gate 3 skeleton: [`docs/briefs/r3-pb-t-lensproducer-sub3-regen-lens-retirement.md`](r3-pb-t-lensproducer-sub3-regen-lens-retirement.md).
 - Instance-declaration framework (PR #1347): [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md).
 - Quick-newt's parallel readiness checklist: [`docs/briefs/r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
-- PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) line 37 (BinShim instances + emit pattern + retirement dispatch).
+- PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#owns-r3-continuation--director-cascade-item-4--item-8-ratified-2026-04-28) — R3 continuation table row for BinShim instances + emit pattern + retirement dispatch.
 - Substrate-fact-introduction procedure: [`INVARIANTS.md`](../../INVARIANTS.md) §P1.
 - Live source paths cited (anchor for future workers): `src/v3/compiler/src/bin/regen_lens.rs`, `src/v3/compiler/regen.dag`, `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs:479-516`, `src/v3/compiler/tests/integration/sg0_census_test.rs:174`, `src/v3/compiler/tests/integration/lens_register_correspondence_test.rs`, `src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs`, `scripts/slow-test-exemptions.txt:78`, `dsl/std/process.dag:39` (`type ProcessExit`).

@@ -80,7 +80,7 @@ If any of (2)–(6) is unmet, brief stays in PROPOSAL state.
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §3 (Item 4), §5.1 (sub-gate decomposition), §5.2 (SG-0 cascade), §6 (anti-bridge invariants).
-- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) line 36 (T-LensProducer-Retirement R3 lane row).
+- Parent manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#owns-r3-continuation--director-cascade-item-4--item-8-ratified-2026-04-28) — R3 continuation table row for T-LensProducer-Retirement.
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure".
 - Convergence matrix: [`docs/briefs/r2-pb-runtime-evaluator-convergence-matrix.md`](r2-pb-runtime-evaluator-convergence-matrix.md) Rows 1+2+4.
 - Corpus seed audit: [`docs/briefs/r3-pb-runtime-equivalence-corpus-seed-audit.md`](r3-pb-runtime-equivalence-corpus-seed-audit.md).
