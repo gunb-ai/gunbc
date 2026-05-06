@@ -57,8 +57,9 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        ArithmeticOp, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag, DeclarationId,
-        LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode, TransformTarget,
+        ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag,
+        DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode,
+        TransformTarget, TypeConnective,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -577,39 +578,101 @@ pub mod evaluator {
                 Ok(field.value.clone())
             }
             TransformTarget::Callable(callee_decl) => {
-                let connective = &dag.declaration(*callee_decl).connective;
-                let crate::dag::TypeConnective::Arrow { body, .. } = connective else {
-                    return Err(EvalError::BadTransformOperands {
-                        reason: "Callable target declaration is not an Arrow type",
-                    });
+                let callee_decl = *callee_decl;
+                let connective = &dag.declaration(callee_decl).connective;
+                if let TypeConnective::Arrow { body, .. } = connective {
+                    let ArrowBody::UserDefined(bind_id) = body else {
+                        return Err(EvalError::UnsupportedTransformTarget {
+                            kind: "Callable (non-UserDefined body)",
+                        });
+                    };
+                    let bind_node_id = bind_id.node_id();
+                    let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+                        return Err(EvalError::MissingNode { node: bind_node_id });
+                    };
+                    let bind = bind.clone();
+                    if operands.len() != bind.params.len() {
+                        return Err(EvalError::TransformArityMismatch {
+                            expected: bind.params.len(),
+                            got: operands.len(),
+                        });
+                    }
+                    let bindings: Vec<(PortId, Value)> =
+                        bind.params.iter().copied().zip(operands).collect();
+                    state.push_frame(EvalFrame::empty());
+                    let body_result =
+                        eval_callable_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
+                    let pop_result = state.pop_frame();
+                    return match (body_result, pop_result) {
+                        (Ok(value), Ok(_)) => Ok(value),
+                        (Err(err), _) => Err(err),
+                        (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+                    };
+                }
+
+                // E6-G0d: non-Arrow `Callable` targets lowered as record/variant constructors.
+                let variant_tag_template = match &dag.declaration(callee_decl).connective {
+                    TypeConnective::Instantiation { template, .. } => *template,
+                    _ => callee_decl,
                 };
-                let crate::dag::ArrowBody::UserDefined(bind_id) = body else {
-                    return Err(EvalError::UnsupportedTransformTarget {
-                        kind: "Callable (non-UserDefined body)",
-                    });
-                };
-                let bind_node_id = bind_id.node_id();
-                let crate::dag::Behavior::Bind(bind) = dag.node(bind_node_id) else {
-                    return Err(EvalError::MissingNode { node: bind_node_id });
-                };
-                let bind = bind.clone();
-                if operands.len() != bind.params.len() {
-                    return Err(EvalError::TransformArityMismatch {
-                        expected: bind.params.len(),
-                        got: operands.len(),
+                if crate::lower::declaration_is_disj_variant_arm(dag, variant_tag_template) {
+                    let Some(fields) =
+                        crate::lower::eval_constructor_variant_payload_fields(dag, callee_decl)
+                    else {
+                        return Err(EvalError::BadTransformOperands {
+                            reason: "variant constructor payload fields could not be resolved",
+                        });
+                    };
+                    if operands.len() != fields.len() {
+                        return Err(EvalError::TransformArityMismatch {
+                            expected: fields.len(),
+                            got: operands.len(),
+                        });
+                    }
+                    // Match `infer::resolve_payload_binding_type`: a single Conj field labeled
+                    // `_0` uses `PayloadBindingResolution::Direct` — the match arm's payload port
+                    // is typed as the inner `T`, not a record shape. Runtime `VariantValue.payload`
+                    // must carry `T` directly so `eval_branch` binding agrees with inference.
+                    let payload: Value = if fields.len() == 1 && fields[0].0 == "_0" {
+                        operands
+                            .into_iter()
+                            .next()
+                            .expect("length checked against fields.len()")
+                    } else {
+                        Value::RecordValue(
+                            fields
+                                .into_iter()
+                                .zip(operands)
+                                .map(|((label, _), value)| NamedField { label, value })
+                                .collect(),
+                        )
+                    };
+                    return Ok(Value::VariantValue {
+                        tag: variant_tag_template,
+                        payload: Box::new(payload),
                     });
                 }
-                let bindings: Vec<(PortId, Value)> =
-                    bind.params.iter().copied().zip(operands).collect();
-                state.push_frame(EvalFrame::empty());
-                let body_result =
-                    eval_callable_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
-                let pop_result = state.pop_frame();
-                match (body_result, pop_result) {
-                    (Ok(value), Ok(_)) => Ok(value),
-                    (Err(err), _) => Err(err),
-                    (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+
+                if let Some(labels) =
+                    crate::lower::constructor_record_field_labels(dag, callee_decl)
+                {
+                    if operands.len() != labels.len() {
+                        return Err(EvalError::TransformArityMismatch {
+                            expected: labels.len(),
+                            got: operands.len(),
+                        });
+                    }
+                    let record_fields: Vec<NamedField> = labels
+                        .into_iter()
+                        .zip(operands)
+                        .map(|(label, value)| NamedField { label, value })
+                        .collect();
+                    return Ok(Value::RecordValue(record_fields));
                 }
+
+                Err(EvalError::BadTransformOperands {
+                    reason: "Callable target declaration is not an Arrow type",
+                })
             }
         }
     }
@@ -758,15 +821,17 @@ pub mod evaluator {
 
     #[cfg(test)]
     mod tests {
+        use super::NamedField;
         use super::{
             eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame, EvalFrameError,
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
+        use crate::compile_to_dag;
         use crate::dag::{
-            ArithmeticOp, Behavior, BranchPattern, Cluster, ComparisonOp, Dag, DeclarationId,
-            IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent, NodeId,
-            NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
-            TransformTarget,
+            ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster, ComparisonOp, Dag,
+            DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent,
+            NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
+            TransformTarget, TypeConnective,
         };
         use crate::diagnostics::SourceSpan;
 
@@ -793,6 +858,241 @@ pub mod evaluator {
             EvalStrategy::ApplicativeOrder {
                 input_order: InputEvaluationOrder::LeftFirst,
             }
+        }
+
+        fn bind_node_id_for_fn(dag: &Dag, fn_name: &str) -> NodeId {
+            let decl = dag
+                .declaration_by_name(fn_name)
+                .unwrap_or_else(|| panic!("missing fn `{fn_name}`"));
+            let TypeConnective::Arrow { body, .. } = &decl.connective else {
+                panic!("`{fn_name}` must be Arrow");
+            };
+            let ArrowBody::UserDefined(bind_id) = body else {
+                panic!("`{fn_name}` must be UserDefined");
+            };
+            bind_id.node_id()
+        }
+
+        fn first_resolved_variant_tag_in_bind_body(dag: &Dag, fn_name: &str) -> DeclarationId {
+            let entry = bind_node_id_for_fn(dag, fn_name);
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("expected Bind");
+            };
+            let mut stack = vec![bind.value];
+            while let Some(port) = stack.pop() {
+                let Some(producer) = dag.port(port).produced_by else {
+                    continue;
+                };
+                match dag.node(producer) {
+                    Behavior::Branch(branch) => {
+                        for path in &branch.paths {
+                            if let BranchPattern::ResolvedVariant(decl) = &path.pattern {
+                                return *decl;
+                            }
+                        }
+                    }
+                    Behavior::Bind(inner) => stack.push(inner.value),
+                    _ => {}
+                }
+            }
+            panic!("no ResolvedVariant pattern in `{fn_name}` body");
+        }
+
+        fn template_decl_id_for_callable_constructor_in_fn(
+            dag: &Dag,
+            fn_name: &str,
+        ) -> DeclarationId {
+            let entry = bind_node_id_for_fn(dag, fn_name);
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("expected Bind");
+            };
+            let mut stack = vec![bind.value];
+            while let Some(port) = stack.pop() {
+                let Some(producer) = dag.port(port).produced_by else {
+                    continue;
+                };
+                match dag.node(producer) {
+                    Behavior::Transform(t) => {
+                        if let TransformTarget::Callable(callee) = t.target {
+                            return match &dag.declaration(callee).connective {
+                                TypeConnective::Instantiation { template, .. } => *template,
+                                _ => callee,
+                            };
+                        }
+                    }
+                    Behavior::Bind(inner) => stack.push(inner.value),
+                    _ => {}
+                }
+            }
+            panic!("no TransformTarget::Callable in `{fn_name}` body");
+        }
+
+        #[test]
+        fn e6_g0d_variant_constructor_executes_to_variant_value() {
+            let src = "type MaybeInt = Some { value: Int } | None\n\
+                        fn pack(x: Int) -> MaybeInt = Some { value: x }\n";
+            let dag = compile_to_dag(src, "e6_g0d_variant.v3").expect("compile");
+            let expected_tag = template_decl_id_for_callable_constructor_in_fn(&dag, "pack");
+            let entry = bind_node_id_for_fn(&dag, "pack");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
+            };
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(42)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::VariantValue { tag, payload } = value else {
+                panic!("expected VariantValue, got {value:?}");
+            };
+            assert_eq!(tag, expected_tag);
+            let Value::RecordValue(fields) = *payload else {
+                panic!("expected record payload");
+            };
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].label, "value");
+            assert_eq!(fields[0].value, Value::LiteralValue(LiteralBits::Int(42)));
+        }
+
+        #[test]
+        fn e6_g0d_record_constructor_preserves_declaration_field_order() {
+            let src = "type R { a: Int, b: Int }\n\
+                        fn mk() -> R = { b: 7, a: 5 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_record.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "mk");
+            let mut state = empty_state();
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::RecordValue(fields) = value else {
+                panic!("expected RecordValue, got {value:?}");
+            };
+            assert_eq!(
+                fields,
+                vec![
+                    NamedField {
+                        label: "a".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Int(5)),
+                    },
+                    NamedField {
+                        label: "b".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Int(7)),
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn e6_g0d_generic_variant_constructor_tag_matches_resolved_variant_pattern() {
+            let src = "type Maybe<T> = Some(T) | None\n\
+                        fn pack_int(x: Int) -> Maybe<Int> = Some(x)\n\
+                        fn probe(x: Int) -> Int = match pack_int(x) { Some(p) => p, None => 0 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_gen_variant.v3").expect("compile");
+            let expected_tag = first_resolved_variant_tag_in_bind_body(&dag, "probe");
+            let entry = bind_node_id_for_fn(&dag, "pack_int");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
+            };
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(99)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::VariantValue { tag, payload } = value else {
+                panic!("expected VariantValue");
+            };
+            assert_eq!(
+                tag, expected_tag,
+                "tag must be template variant id (matches BranchPattern::ResolvedVariant), not an anonymous Instantiation id"
+            );
+            assert_eq!(
+                *payload,
+                Value::LiteralValue(LiteralBits::Int(99)),
+                "positional `Some(T)` payload must be Direct-shaped (infer `PayloadBindingResolution::Direct`), not RecordValue(_0)"
+            );
+        }
+
+        #[test]
+        fn e6_g0d_positional_variant_payload_round_trips_through_direct_binding_arm() {
+            let src = "type Boxed<T> = Box(T) | Empty\n\
+                        fn mk(x: Int) -> Boxed<Int> = Box(x)\n\
+                        fn bump(x: Int) -> Int = match mk(x) { Box(p) => p + 1, Empty => 0 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_positional_direct.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "bump");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
+            };
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(5)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(6)));
+        }
+
+        #[test]
+        fn e6_g0d_generic_record_constructor_preserves_template_field_order() {
+            let src = "type PairAB<A, B> { first: A, second: B }\n\
+                        fn mk() -> PairAB<Int, Bool> = { second: true, first: 3 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_gen_record.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "mk");
+            let mut state = empty_state();
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::RecordValue(fields) = value else {
+                panic!("expected RecordValue");
+            };
+            assert_eq!(
+                fields,
+                vec![
+                    NamedField {
+                        label: "first".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Int(3)),
+                    },
+                    NamedField {
+                        label: "second".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Bool(true)),
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn e6_g0d_nullary_variant_constructor_empty_record_payload() {
+            let src = "type U = Z | S { n: Int }\n\
+                        fn zed() -> U = Z\n";
+            let dag = compile_to_dag(src, "e6_g0d_nullary.v3").expect("compile");
+            let expected_tag = template_decl_id_for_callable_constructor_in_fn(&dag, "zed");
+            let entry = bind_node_id_for_fn(&dag, "zed");
+            let mut state = empty_state();
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::VariantValue { tag, payload } = value else {
+                panic!("expected VariantValue");
+            };
+            assert_eq!(tag, expected_tag);
+            let Value::RecordValue(fields) = *payload else {
+                panic!("expected record payload");
+            };
+            assert!(fields.is_empty());
+        }
+
+        #[test]
+        fn e6_g0d_variant_constructor_round_trips_through_branch_match() {
+            let src = "type MaybeInt = Some { value: Int } | None\n\
+                        fn pack(x: Int) -> MaybeInt = Some { value: x }\n\
+                        fn unpack(x: Int) -> Int = match pack(x) { Some { value: v } => v, None => 0 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_roundtrip.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "unpack");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
+            };
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(11)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
         }
 
         #[test]
