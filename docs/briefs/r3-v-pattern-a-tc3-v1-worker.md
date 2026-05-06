@@ -8,7 +8,7 @@
 
 **Program plan (single operational authority):** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 — **Q-PAFS** / Pattern-A **policy** lives in the table; **TC1 V1 supersession** does **not** block authoring **TC3** coverage requirements. **This brief** elaborates **gate #13** `tc3_pattern_a_second_mover_executable` per [`docs/r3-structure.md`](../r3-structure.md) §"Acceptance" — **does not** override §10.3 (**INVARIANTS** §P2).
 
-**Bundle authority (two-stage):** [`docs/briefs/r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — TC3 **stage (a)** vs **stage (b)**; **strict-fire PASSING** requires **(b) T-FixedPoint** horizon per PB ownership transition ([`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) L145–215, L181–185).
+**Bundle authority (two-stage):** [`docs/briefs/r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — TC3 **stage (a)** vs **stage (b)**; **strict-fire PASSING** requires **(b) T-FixedPoint** horizon per PB ownership transition ([`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md) §"Dispatch preconditions" for the Evaluator-gated dispatch floor; §"TC3 — Strong-normalization TestClaim (author-now-fire-later, PB → R3 Verification transition)" / §"Transition to R3 Verification" for the PB→Verification handoff and declarative TC3 scope).
 
 **Consumer envelope:** `BinaryDimensionReportEquals` over **`DimensionReport<Dag>`** role pair — **baseline evaluation-step projection** vs **bounded-step / termination-evidence projection** (same carrier `C = Dag`; audit §Contract).
 
