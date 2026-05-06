@@ -593,15 +593,73 @@ fn build_refinement_predicate_declaration(
     pred_decl_id
 }
 
-/// P3 / “facts flow forward” for `dsl/std/types.dag` where predicate lowering
-/// is deferred: allocate a **non-Arrow** declaration id used only as
-/// `Declaration::refinement` for those aliases. Refinement discharge in infer
-/// requires a `Arrow` + `UserDefined` `Bind` predicate; this placeholder uses a
-/// `Conj` so it is never mistaken for a lowered `Bool` predicate, except for
-/// identity on the same `DeclarationId` (the alias matches itself at call sites).
-/// The name encodes the heuristic; see `lower_type_alias_refinements_phase`
-/// **Heuristic (PB-1)** / **Dissolution**.
-fn alloc_deferred_types_dag_refinement_placeholder(
+/// **Predicate registry** (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
+/// `issuecomment-4390333451`). Authoritative set of predicate identifiers
+/// recognized by `where`-sugar refinements. Predicates listed here lower to
+/// a `Conj`-shaped placeholder declaration via
+/// `alloc_registered_refinement_placeholder` (refinement is *named* at the
+/// declaration level — P3 facts-flow-forward — without requiring a lowered
+/// `Bool` predicate body, which would need helper resolution that is not yet
+/// substrate-uniform). Predicates not in the registry fall through to live
+/// resolution in `build_refinement_predicate_declaration` and surface
+/// `Diagnostic::ResolveError` if unresolved.
+///
+/// Replaces the prior PB-1 file-path special case
+/// (`span.file == "dsl/std/types.dag"`) — the asymmetry that motivated this
+/// slice. Per `feedback_no_textual_enforcement_bridges`: gating structural
+/// behavior on a textual file identifier was the anti-pattern; gating on
+/// whether the predicate name is registered is the substrate-faithful
+/// authority.
+///
+/// **DFS-of-concept-DAG receipt** (proud-lynx-311 pre-flight grep at
+/// `gunbc#1746 issuecomment-4390253616` + brief `docs/briefs/r3-substrate-s9-slice-2-5-predicate-registry-worker.md`
+/// authority audit): no parallel predicate-registry exists under another
+/// name; this constant IS the substrate-fact-introduction.
+const KNOWN_PREDICATE_REGISTRY: &[&str] = &[
+    // Pre-existing types.dag predicates absorbed via the prior PB-1 shim:
+    "range",
+    "pattern",
+    "non_empty",
+    "brand",
+    "format",
+    "content",
+    // S9 Slice 2.5 new primitive (Director Option 2 ratification at
+    // gunbc#828 issuecomment-4390199218). `gt_zero` IS the reason for "Nat
+    // without zero" / "Nat above structural bound"; carrier-compatible with
+    // Nat (intrinsic) and Int (generalization).
+    "gt_zero",
+];
+
+/// Recursively walk a `where`-sugar refinement expression and confirm every
+/// predicate-position identifier is in `KNOWN_PREDICATE_REGISTRY`. Predicates
+/// combine via `Operator { op: Logical(And), … }` (per
+/// `parse_type_alias_where_tail` / `fold_type_alias_where_parts`); the leaves
+/// are `SurfaceExpr::Call` (e.g. `range(min: 1)`, `brand("X")`) or
+/// `SurfaceExpr::Var` (bare predicates like `non_empty`). Argument expressions
+/// are not walked — only the predicate-name position matters for registry
+/// membership.
+fn all_predicate_names_registered(expr: &SurfaceExpr) -> bool {
+    match expr {
+        SurfaceExpr::Call { target, .. } => KNOWN_PREDICATE_REGISTRY.contains(&target.as_str()),
+        SurfaceExpr::Var { name, .. } => KNOWN_PREDICATE_REGISTRY.contains(&name.as_str()),
+        SurfaceExpr::Operator {
+            op: OperatorKind::Logical(LogicalOp::And),
+            args,
+            ..
+        } => args.iter().all(all_predicate_names_registered),
+        _ => false,
+    }
+}
+
+/// P3 / “facts flow forward” for registered-predicate refinements: allocate
+/// a **non-Arrow** declaration id used only as `Declaration::refinement` for
+/// these aliases. Refinement discharge in infer requires a `Arrow` +
+/// `UserDefined` `Bind` predicate; this placeholder uses a `Conj` so it is
+/// never mistaken for a lowered `Bool` predicate, except for identity on the
+/// same `DeclarationId` (the alias matches itself at call sites). Successor
+/// to `alloc_deferred_types_dag_refinement_placeholder` (PB-1 file-path
+/// special-case retired in S9 Slice 2.5 Path 3).
+fn alloc_registered_refinement_placeholder(
     dag: &mut Dag,
     alias_name: &str,
     span: SourceSpan,
@@ -610,7 +668,7 @@ fn alloc_deferred_types_dag_refinement_placeholder(
     dag.push_declaration(Declaration {
         id,
         name: Some(format!(
-            "<std/types.dag: `where` parsed, predicate not lowered: {alias_name}>"
+            "<registered predicate, body not lowered: {alias_name}>"
         )),
         connective: TypeConnective::Conj { children: vec![] },
         type_params: Vec::new(),
@@ -818,21 +876,29 @@ fn lower_parameter_refinements_phase(
 /// identifier to the refined base type `T`. Authors write the subject as the
 /// alias name; there is no separate hidden parameter symbol.
 ///
-/// **Heuristic (PB-1):** for `span.file == "dsl/std/types.dag"`, we do **not**
-/// call [`build_refinement_predicate_declaration`] (unresolved `pattern` /
-/// `range` / … would emit diagnostics in the std seed and break snapshot
-/// identity), but we **do** set [`Declaration::refinement`] to a
-/// **placeholder** (see [`alloc_deferred_types_dag_refinement_placeholder`]) so
-/// the parsed `where` is not dropped silently: downstream sees a named carrier,
-/// not `None` as if no refinement were authored.
+/// **Predicate registry (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
+/// `issuecomment-4390333451`).** Predicates whose names live in
+/// [`KNOWN_PREDICATE_REGISTRY`] (e.g. `range`, `pattern`, `non_empty`,
+/// `brand`, `format`, `gt_zero`) lower to a placeholder `Declaration::refinement`
+/// (see [`alloc_registered_refinement_placeholder`]) so the parsed `where` is
+/// not dropped silently and downstream sees a named carrier; the actual
+/// `Bool` predicate body is not lowered (helper resolution is not yet
+/// substrate-uniform). Unregistered predicate names fall through to live
+/// resolution in [`build_refinement_predicate_declaration`] and surface
+/// `Diagnostic::ResolveError` if unresolved.
 ///
-/// **Dissolution (delete the file gate / placeholders when one of these is
-/// true):** (1) the bootstrap supplies resolved Bool-level helpers (or
-/// realizations) for `types.dag` refinement calls so predicate lowering is
-/// diagnostic-clean; (2) a `meta_tag` (or other substrate flag) marks
-/// documentation-only refinements, replacing the string-compare; or (3) PB-1
-/// defers to a different authority file list so `types.dag` is not
-/// `compile`d in the snapshot path that must stay diagnostic-empty.
+/// Replaces the prior PB-1 file-path special case
+/// (`span.file == "dsl/std/types.dag"`). Per
+/// `feedback_no_textual_enforcement_bridges`: gating structural behavior on a
+/// textual file identifier was the anti-pattern; the registry IS the
+/// substrate-faithful authority for predicate-name resolution.
+///
+/// **Dissolution (retire the placeholder branch when):** the bootstrap
+/// supplies resolved `Bool`-level helpers / realizations for these registered
+/// predicate calls so predicate lowering is diagnostic-clean; at that point
+/// every registered predicate routes through the live
+/// [`build_refinement_predicate_declaration`] path and the registry can be
+/// retired.
 fn lower_type_alias_refinements_phase(
     dag: &mut Dag,
     module: &SurfaceModule,
@@ -883,8 +949,16 @@ fn lower_type_alias_refinements_phase(
         dag.declaration_mut(decl_id).connective =
             TypeConnective::Atom(AtomPayload::ResolvedByStructure(base_decl_id));
 
-        if span.file == "dsl/std/types.dag" {
-            let ph = alloc_deferred_types_dag_refinement_placeholder(dag, name, span.clone());
+        // S9 Slice 2.5 (Path 3 RATIFIED) — replaces prior PB-1 file-path
+        // special case (`span.file == "dsl/std/types.dag"`) with a
+        // predicate-name registry. See `KNOWN_PREDICATE_REGISTRY` and
+        // `all_predicate_names_registered`. A registered predicate gets a
+        // placeholder refinement (P3 facts-flow-forward — alias still carries
+        // a named refinement); an unregistered predicate falls through to
+        // live resolution and surfaces `Diagnostic::ResolveError` if the
+        // predicate name does not resolve as a callable.
+        if all_predicate_names_registered(predicate) {
+            let ph = alloc_registered_refinement_placeholder(dag, name, span.clone());
             dag.declaration_mut(decl_id).refinement = Some(ph);
             continue;
         }

@@ -241,18 +241,13 @@ type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
-// `NonNegativeInt` migrated to `Nat` (canonical-instance alias) per S9 Slice 2
-// Nat-alignment — declaration moved to `dsl/std/integer.dag` (which already
-// imports `std.nat { Nat }`); locating it here would require an
-// `std.types -> std.nat` import edge that triggers a circular-dependency
-// false-positive during transitive load of test fixtures via `std.render`
-// chains. Consumers should `import std.integer { NonNegativeInt }`.
-//
-// `PositiveInt` STAYS on `Int where range(min: 1)` here for this slice;
-// resolver does not currently entail `where range(min: …)` predicates over
-// `Nat`. Surfaced as a gap per dispatch STOP-AND-ESCALATE; migration
-// sequences after predicate-entailment substrate supports `range` over Nat.
-type PositiveInt     = Int where range(min: 1)
+// `NonNegativeInt` and `PositiveInt` migrated to Nat-based shapes per S9
+// Slice 2 / Slice 2.5; declarations now live in `dsl/std/integer.dag`
+// (which already imports `std.nat { Nat }`) — locating them here would
+// require an `std.types -> std.nat` import edge that triggers a
+// circular-dependency false-positive during transitive load of test
+// fixtures via `std.render` chains. Consumers should
+// `import std.integer { NonNegativeInt, PositiveInt }`.
 
 // Path modeling (EX-2):
 // - FilePath remains a compatibility alias for existing modules.
