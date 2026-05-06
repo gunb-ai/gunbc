@@ -113,7 +113,12 @@ Phase ordering (PR-internal):
   demonstration runs: source DSL → lower → execute → emit Rust f64 →
   numeric value correct
 - §1.8 ledger row #19 (`float_construction_landed`) advances DECLARED
-  → CONSUMER_LANDED upon merge
+  → PRODUCER_LANDED upon merge (not CONSUMER_LANDED — Grounding G2
+  follow-on PR carrying per-pair lowering rules + emitted-Rust-primitive
+  (`f32`/`f64`) verification advances the row to CONSUMER_LANDED;
+  this brief produces substrate emission entries, the consumer is
+  owned by Grounding Mgr #1745). Split-PR producer-then-consumer per
+  bundled-scope discipline (gunbc#1739 #issuecomment-4392225548)
 - §1.8 ledger row #67 (`numeric_construction_demonstration`)
   Acceptance bullet **complete** (Phase-1 Step 3 landed Int<32> half;
   this PR lands Real<64> half)

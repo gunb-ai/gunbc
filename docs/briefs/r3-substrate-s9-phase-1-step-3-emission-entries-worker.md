@@ -110,7 +110,7 @@ Phase ordering (PR-internal):
 - Cross-program handoff receipt to Grounding Mgr (#1745) in PR body for G2 consumer wiring
 - `Int<32>` round-trip demonstration runs: source DSL → lower → execute via E6-G0d evaluator → emit Rust i32 → numeric value correct
 - `Real<64>` demonstration EXPLICITLY OUT-OF-SCOPE (gates on S8 Float migration; Phase 2 absorbs)
-- §1.8 ledger rows #17 + #18 advance from DECLARED → CONSUMER_LANDED upon merge
+- §1.8 ledger rows #17 + #18 advance from DECLARED → PRODUCER_LANDED upon merge (not CONSUMER_LANDED — Grounding G2 follow-on PR carrying per-pair lowering rules + emitted-Rust-primitive verification is what advances the rows to CONSUMER_LANDED; this brief produces substrate emission entries, the consumer is owned by Grounding Mgr #1745). If same-PR Grounding consumer wiring is preferred at dispatch (cross-program co-author), surface to Substrate Mgr to coordinate with Grounding Mgr; default is split-PR producer-then-consumer per bundled-scope discipline (Director ratification at gunbc#1739 #issuecomment-4392225548 — parallel infrastructure DISALLOWED in same PR)
 - §1.8 ledger row #67 (`numeric_construction_demonstration`) Acceptance bullet partial — Int<32> half landed; Real<64> half via S8 cascade
 - `cargo test --workspace --exclude v2-compiler-tests` green (3 pre-existing v2-compiler --lib failures verified unrelated)
 - `cargo test -p v2-compiler-tests` green; strict-compile diagnostic ratchet at 0

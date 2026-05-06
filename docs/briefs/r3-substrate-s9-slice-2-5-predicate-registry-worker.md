@@ -203,7 +203,7 @@ follow-on Q-Regex-Primitive substrate-fact-introduction.
   mechanism (`non_empty(s)` → `s != ""`; `brand` → trivially-true)
 - **pattern / format / content**: **PENDING DIRECTOR RATIFICATION**
   on scope shape. Director rejected Option 4 (pending_substrate
-  warning placeholder) at gunbc#828 #issuecomment-4392... 2026-05-06.
+  warning placeholder) at gunbc#1739 #issuecomment-4392081719 (2026-05-06).
   Options A (extdeps + types.dag consumer migration off
   pattern/format/content prior to slice landing), B (Q-Regex-Primitive
   bundled into slice scope), and C (typed fail-closed exception
@@ -264,7 +264,7 @@ Phase ordering (PR-internal):
 - **3 of 7 predicates** (`pattern` / `format` / `content`):
   acceptance shape **PENDING DIRECTOR RATIFICATION** of Options
   A/B/C (Director rejected Option 4 fail-closed-with-named-dep at
-  gunbc#828 #issuecomment-4392... 2026-05-06). Worker does not
+  gunbc#1739 #issuecomment-4392081719 (2026-05-06)). Worker does not
   land final shape on these three until ratification arrives; if
   brief dispatched pre-ratification, STOP and surface. Once
   ratified, brief absorbs the chosen path verbatim before authoring
