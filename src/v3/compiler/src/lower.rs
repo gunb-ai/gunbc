@@ -809,10 +809,15 @@ fn validate_predicate_clause(expr: &SurfaceExpr, carrier_chain: &[String]) -> Pr
 fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String> {
     let predicate_name = spec.name;
     match (&spec.arg_shape, expr) {
+        // Bare predicates accept ONLY the bare-ident `SurfaceExpr::Var` shape.
+        // `gt_zero()` (zero-arg Call) is a different surface — explicit empty
+        // call list — and is rejected per Codex BLOCKING at PR #1846
+        // (S9 Slice 2.5 Path (a) cement: bare-predicate shape contract is
+        // strictly the bare-ident form, not zero-arg-call-compatible).
         (PredicateArgShape::Bare, SurfaceExpr::Var { .. }) => None,
-        (PredicateArgShape::Bare, SurfaceExpr::Call { args, .. }) if args.is_empty() => None,
         (PredicateArgShape::Bare, _) => Some(format!(
-            "predicate `{predicate_name}` is bare; expected no arguments"
+            "predicate `{predicate_name}` is bare; use the bare-ident form \
+             `{predicate_name}` (no parentheses, no arguments)"
         )),
         (PredicateArgShape::SingleStringLiteral, SurfaceExpr::Call { args, .. })
             if matches!(

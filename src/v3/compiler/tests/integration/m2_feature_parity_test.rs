@@ -1108,6 +1108,30 @@ fn test_registered_predicate_on_disallowed_carrier_fails_closed() {
     }
 }
 
+/// S9 Slice 2.5 Path (a) cement: bare predicate with explicit empty arg
+/// list (e.g. `gt_zero()`) is rejected — bare-predicate arg-shape contract
+/// is strictly the bare-ident form, not zero-arg-call-compatible. Cements
+/// Codex BLOCKING at PR #1846 inline `lower.rs:895`.
+#[test]
+fn test_bare_predicate_with_empty_call_args_fails_closed() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_any("type P = Nat where gt_zero()", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "bare predicate with explicit empty call args must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "bare-predicate-with-empty-args should NOT take a placeholder; \
+                 got label {label:?}"
+            );
+        }
+    }
+}
+
 /// S9 Slice 2.5 Path (a) Rung 3 cement: `range(min: N, max: M)` body
 /// synthesis produces a real refinement (not a placeholder).
 /// `synthesize_predicate_body` lowers `range(min: m, max: M)` to
