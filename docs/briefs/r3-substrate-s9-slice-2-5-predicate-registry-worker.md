@@ -216,10 +216,14 @@ Phase ordering (PR-internal):
    proud-lynx-311's pre-flight DFS at gunbc#1746 #issuecomment-4390253616):
    - `gt_zero` / `gtzero`: zero matches across `dsl/std/` + `src/v3/`
      (verified via `grep -rn "gt_zero\|gtzero" dsl/std/ src/v3/`)
-   - `dsl/std/integer.dag:133` carries `type NonNegativeInt = Nat`
-     (Slice 2 partial-ship; #1840 MERGED 16:54Z)
-   - `dsl/std/types.dag:255` carries `type PositiveInt = Int where range(min: 1)`
-     (unchanged in Slice 2 partial-ship; consumer of registry post-Slice-2.5)
+   - `dsl/std/integer.dag` carries `type NonNegativeInt = Nat`
+     (declaration named `NonNegativeInt`; verified via
+     `git show origin/main:dsl/std/integer.dag | grep "type NonNegativeInt"`;
+     Slice 2 partial-ship per #1840 MERGED 16:54Z)
+   - `dsl/std/types.dag` carries `type PositiveInt = Int where range(min: 1)`
+     (declaration named `PositiveInt`; verified via
+     `git show origin/main:dsl/std/types.dag | grep "type PositiveInt"`;
+     unchanged in Slice 2 partial-ship; consumer of registry post-Slice-2.5)
    - PB-1 shim at `src/v3/compiler/src/lower.rs` doc-block (around
      `lower_type_alias_refinements_phase`) confirmed: heuristic
      gates on `span.file == "dsl/std/types.dag"`; comment explicitly
