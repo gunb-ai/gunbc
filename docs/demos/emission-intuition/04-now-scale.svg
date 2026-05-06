@@ -20,9 +20,9 @@
   <text x="20" y="30" class="title">An app uses the library.</text>
   <text x="20" y="48" class="sub">Same Sum on the right. App handler on the left composes library functions through the helpers. The middle is the real Rust module.</text>
 
-  <text x="20"  y="78" class="col-label">BUSINESS LOGIC</text>
+  <text x="20"  y="78" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
   <text x="320" y="78" class="col-label">RUST — GENERATED</text>
-  <text x="820" y="78" class="col-label">FACTS</text>
+  <text x="820" y="78" class="col-label">FACTS · STRUCTS · OBJECTS</text>
 
   <!-- LEFT: 4 layers -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
@@ -54,19 +54,14 @@
   <text x="32" y="610" class="code"></text>
   <text x="32" y="630" class="code">fn validate_email(s: Str)</text>
   <text x="32" y="648" class="code">  -&gt; Sum&lt;ValidationError, Email&gt;</text>
-  <text x="32" y="686" class="layer">// app — composes everything</text>
+  <text x="32" y="686" class="layer">// app — composes the library</text>
   <text x="32" y="706" class="code">fn handle_signup(</text>
   <text x="32" y="724" class="code">    req: SignupRequest</text>
-  <text x="32" y="742" class="code">) -&gt; Sum&lt;AppError, Session&gt; =</text>
+  <text x="32" y="742" class="code">) -&gt; Sum&lt;HttpError, Session&gt; =</text>
   <text x="32" y="760" class="code">  and_then(</text>
-  <text x="32" y="778" class="code">    validate_email(req.email),</text>
-  <text x="32" y="796" class="code">    fn(email) =&gt;</text>
-  <text x="32" y="814" class="code">      and_then(</text>
-  <text x="32" y="832" class="code">        http_get(profile_url(email)),</text>
-  <text x="32" y="850" class="code">        fn(bytes) =&gt;</text>
-  <text x="32" y="868" class="code">          map(</text>
-  <text x="32" y="886" class="code">            parse_int(bytes_to_str(bytes)),</text>
-  <text x="32" y="904" class="code">            fn(uid) =&gt; mint_session(uid))))</text>
+  <text x="32" y="778" class="code">    http_get(profile_url(req.email)),</text>
+  <text x="32" y="796" class="code">    fn(bytes) =&gt;</text>
+  <text x="32" y="814" class="code">      Right { value: mint_session(bytes) })</text>
 
   <!-- CENTER: emission for everything -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
@@ -107,23 +102,17 @@
   <text x="332" y="776" class="code">        |n| Sum::Right { value: n })</text>
   <text x="332" y="794" class="code">}</text>
   <text x="332" y="822" class="code">pub fn http_get(url: &amp;str) -&gt; Sum&lt;HttpError, Bytes&gt; {</text>
-  <text x="332" y="840" class="code">    /* fetch implementation */</text>
+  <text x="332" y="840" class="code">    unimplemented!()</text>
   <text x="332" y="858" class="code">}</text>
   <text x="332" y="886" class="code">pub fn validate_email(s: &amp;str) -&gt; Sum&lt;ValidationError, Email&gt; {</text>
-  <text x="332" y="904" class="code">    /* regex implementation */</text>
+  <text x="332" y="904" class="code">    unimplemented!()</text>
   <text x="332" y="922" class="code">}</text>
-  <text x="332" y="950" class="code">pub fn handle_signup(req: SignupRequest)</text>
-  <text x="332" y="968" class="code">    -&gt; Sum&lt;AppError, Session&gt; {</text>
-  <text x="332" y="986" class="code">    and_then(</text>
-  <text x="332" y="1004" class="code">        validate_email(&amp;req.email),</text>
-  <text x="332" y="1022" class="code">        |email| and_then(</text>
-  <text x="332" y="1040" class="code">            http_get(&amp;profile_url(&amp;email))</text>
-  <text x="332" y="1058" class="code">                .map_left(AppError::Http),</text>
-  <text x="332" y="1076" class="code">            |bytes| map(</text>
-  <text x="332" y="1094" class="code">                parse_int(&amp;bytes_to_str(bytes))</text>
-  <text x="332" y="1112" class="code">                    .map_left(AppError::Parse),</text>
-  <text x="332" y="1130" class="code">                |uid| mint_session(uid))))</text>
-  <text x="332" y="1148" class="code">}</text>
+  <text x="332" y="950" class="code">pub fn handle_signup(req: SignupRequest) -&gt; Sum&lt;HttpError, Session&gt; {</text>
+  <text x="332" y="968" class="code">    and_then(</text>
+  <text x="332" y="986" class="code">        http_get(&amp;profile_url(&amp;req.email)),</text>
+  <text x="332" y="1004" class="code">        |bytes| Sum::Right { value: mint_session(bytes) },</text>
+  <text x="332" y="1022" class="code">    )</text>
+  <text x="332" y="1040" class="code">}</text>
 
   <!-- RIGHT: facts — STILL essentially Sum -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>

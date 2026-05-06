@@ -19,9 +19,9 @@
   <text x="20" y="30" class="title">A library built from those helpers.</text>
   <text x="20" y="48" class="sub">Same Sum on the right (with one alias). Library functions on the left use Sum at concrete types like Int and HttpError.</text>
 
-  <text x="20"  y="78" class="col-label">BUSINESS LOGIC</text>
+  <text x="20"  y="78" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
   <text x="320" y="78" class="col-label">RUST — GENERATED</text>
-  <text x="820" y="78" class="col-label">FACTS</text>
+  <text x="820" y="78" class="col-label">FACTS · STRUCTS · OBJECTS</text>
 
   <!-- LEFT: primitive consumer + helpers + library -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
@@ -98,8 +98,8 @@
   <text x="332" y="776" class="code">        |e| Sum::Left  { value: ParseError::from(e) },</text>
   <text x="332" y="794" class="code">        |n| Sum::Right { value: n })</text>
   <text x="332" y="812" class="code">}</text>
-  <text x="332" y="840" class="code">pub fn http_get(url: &amp;str) -&gt; Sum&lt;HttpError, Bytes&gt; { ... }</text>
-  <text x="332" y="868" class="code">pub fn validate_email(s: &amp;str) -&gt; Sum&lt;ValidationError, Email&gt; { ... }</text>
+  <text x="332" y="840" class="code">pub fn http_get(url: &amp;str) -&gt; Sum&lt;HttpError, Bytes&gt; { unimplemented!() }</text>
+  <text x="332" y="868" class="code">pub fn validate_email(s: &amp;str) -&gt; Sum&lt;ValidationError, Email&gt; { unimplemented!() }</text>
 
   <!-- RIGHT: facts (still tiny — Sum + one alias line) -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
