@@ -206,7 +206,19 @@ Contract applies to **PRs landing AFTER this framework merges** (not retroactive
 
 **Phase 1 (current — framework draft)**: PM authors §1 schema + §3 rubric + §4 anticipation discipline. Surface to Director for ratification.
 
-**Phase 2 (post-ratification)**: parallel Mgr canvas dispatch to all 6 R3 Mgr inboxes simultaneously; identical message format. Each Mgr surfaces lane debt with grep-verified sourcing.
+**Phase 2 (post-ratification)**: parallel Mgr canvas dispatch to the 6 R3 Mgr inboxes that PM has direct dispatch authority for in the PM subtree:
+- R3 Substrate Mgr (quick-crab-830, gunbc#1739)
+- R3 Verification Mgr (cool-owl-579, gunbc#1740)
+- R3 PB Mgr (neat-bear-351, gunbc#1742)
+- R3 Evaluator Mgr (merry-gull-128, gunbc#1743)
+- R3 Debt-Paydown Mgr (quiet-otter-416, gunbc#1744)
+- R3 Grounding Mgr (bold-ferret-748, gunbc#1745)
+
+Identical message format. Each Mgr surfaces lane debt with grep-verified sourcing.
+
+**Remaining R3 standing Mgrs** (per `docs/r3-structure.md` §"Manager structure" canonical 9-standing-Mgr count; the 3 not in PM subtree): **R3 Release Mgr** (owns T-Omni-Shape-B + R3 closure ledger + R3 demo coordination; may be R2 Release Mgr continuation) + 2 others per the "8 + Debt-Paydown" enumeration (likely include Tier 3 Mgr if separate from PB continuation, and one additional R2-continuation Mgr). These Mgrs **coordinate via Director** (zesty-bear-812, gunbc#828) per cross-Mgr cadence; their lane debt + canvas surfaces flow through Director-relayed comments. Per codex BLOCKING on PR #1804 line 209 (2026-05-06): this clarification closes the silent-omission risk that 6 ≠ 9 implies (INVARIANTS P2 single-authority + P1 live-state).
+
+No Mgr's lane debt is silently omitted — PM-subtree Mgrs report directly via canvas; non-subtree Mgrs report via Director relay.
 
 **Phase 3 (post-canvas)**: PM compiles Mgr responses + adds §2 hidden-debt audit + cross-references ROADMAP review + recent analyses. Surfaces compiled sweep for Director final ratification + R3 closure-criteria explicit list.
 
