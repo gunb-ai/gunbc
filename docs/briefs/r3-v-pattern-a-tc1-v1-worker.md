@@ -6,9 +6,9 @@
 
 **Ratified scope narrative (engineering brief):** [`docs/briefs/r3-v-tc1-eta-equivalence-deeper-analysis.md`](r3-v-tc1-eta-equivalence-deeper-analysis.md) §"DESIGN — Q-PAFS first executable slice (Pattern-A / TC1)" **Path A** — TC1 **static representative** via **E6-G1.a** (finite Director-visible lens set + fixed eta pair; `BinaryDimensionReportEquals` consumer envelope per [`docs/briefs/r3-v-pattern-a-coverage-rollup.md`](r3-v-pattern-a-coverage-rollup.md)).
 
-**Program plan:** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 rows **Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, **Q-EVAL-Lens-Fold-First-Slice** — **ACCEPTED 2026-05-06 (Path A / G1.a)**.
+**Program plan (single operational authority):** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 — rows **Q-PAFS** + **Q-EVAL-Lens-Fold-First-Slice** **Status** columns hold **policy ACCEPTED (Path A / G1.a)** **and** **implementation supersession**: TC1 V1 **HELD** until Q-Reification + non-vacuous η path (or explicit §1.8 plumbing-only revision — **not** ratified). **This brief elaborates worker mechanics only** — it **does not** override or restate dispatch authority independently of that table (**INVARIANTS** §P2 / modeling-discipline Practice 5).
 
-**Director routing:** canonical authority for **Q-Reification** propagates via Director audit ([gunbc#828](https://github.com/gunb-ai/gunbc/issues/828)) following Q-PAFS-style resolution; Verification consumes outcome — **no TC1 V1 Implementation dispatch** until STOP clears + non-vacuous η path (or revised §1.8 semantics) + brief patched.
+**Director routing:** **Q-Reification** propagates via Director audit ([gunbc#828](https://github.com/gunb-ai/gunbc/issues/828)); Verification consumes outcome and patches this brief when the §10.3 table moves.
 
 **PR #1844 caveat:** Director-confirmed **strict** argument-opacity (`read`/`validate` ignore `Dag`/`Behavior`; fixed witness) — Branch B stands. If Evaluator revises to **thread behavior-shaped evidence** before report formation despite opaque leaf bodies, re-open Verification analysis before dispatch.
 
