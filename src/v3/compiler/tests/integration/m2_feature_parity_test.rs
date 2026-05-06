@@ -1004,18 +1004,21 @@ fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
     }
 }
 
-/// `dsl/std/types.dag` keeps a placeholder `refinement` id (PB-1 defers `Bool` pred bodies)
-/// so the parsed `where` is not a silent `None` — `lower.rs` P3 path.
+/// Registered-predicate `where` clauses keep a placeholder `refinement` id
+/// (S9 Slice 2.5 — `KNOWN_PREDICATE_REGISTRY` defers `Bool` pred bodies for
+/// names enrolled in the registry) so the parsed `where` is not a silent
+/// `None` — `lower.rs` P3 path. Replaces the prior PB-1 file-path-keyed
+/// behavior with name-keyed registry dispatch.
 #[test]
 fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
     let f = "dsl/std/types.dag";
-    let dag = cached_compile_to_dag("type P = Int where P > 0", f);
+    let dag = cached_compile_to_dag("type P = Int where range(min: 1)", f);
     let decl = dag
         .declaration_by_name("P")
         .expect("type alias `P` should exist");
-    let pred_id = decl
-        .refinement
-        .expect("`types.dag` `where` must not disappear from the declaration; use placeholder");
+    let pred_id = decl.refinement.expect(
+        "registered-predicate `where` must not disappear from the declaration; use placeholder",
+    );
     let pred = dag.declaration(pred_id);
     let label = pred
         .name
@@ -1023,7 +1026,7 @@ fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
         .expect("placeholder should carry a diagnostic name");
     assert!(
         label.contains("predicate not lowered"),
-        "expected deferred-refinement placeholder label, got {label:?}"
+        "expected registered-refinement placeholder label, got {label:?}"
     );
 }
 

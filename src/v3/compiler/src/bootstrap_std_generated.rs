@@ -9832,7 +9832,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(437),
-            name: Some("<registered predicate, body not lowered: PositiveInt>".to_string()),
+            name: Some("<registered predicate not lowered: PositiveInt>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11774,7 +11774,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(556),
-            name: Some("<registered predicate, body not lowered: CommitSha>".to_string()),
+            name: Some("<registered predicate not lowered: CommitSha>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11788,7 +11788,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(557),
-            name: Some("<registered predicate, body not lowered: Sha256>".to_string()),
+            name: Some("<registered predicate not lowered: Sha256>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11802,7 +11802,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(558),
-            name: Some("<registered predicate, body not lowered: RetryCount>".to_string()),
+            name: Some("<registered predicate not lowered: RetryCount>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11816,7 +11816,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(559),
-            name: Some("<registered predicate, body not lowered: HttpStatus>".to_string()),
+            name: Some("<registered predicate not lowered: HttpStatus>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11830,7 +11830,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(560),
-            name: Some("<registered predicate, body not lowered: Email>".to_string()),
+            name: Some("<registered predicate not lowered: Email>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11844,7 +11844,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(561),
-            name: Some("<registered predicate, body not lowered: Port>".to_string()),
+            name: Some("<registered predicate not lowered: Port>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11858,7 +11858,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(562),
-            name: Some("<registered predicate, body not lowered: GistId>".to_string()),
+            name: Some("<registered predicate not lowered: GistId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11872,7 +11872,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(563),
-            name: Some("<registered predicate, body not lowered: SecretValue>".to_string()),
+            name: Some("<registered predicate not lowered: SecretValue>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11886,7 +11886,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(564),
-            name: Some("<registered predicate, body not lowered: Url>".to_string()),
+            name: Some("<registered predicate not lowered: Url>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11900,7 +11900,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(565),
-            name: Some("<registered predicate, body not lowered: SemVer>".to_string()),
+            name: Some("<registered predicate not lowered: SemVer>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11914,7 +11914,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(566),
-            name: Some("<registered predicate, body not lowered: NonEmptyStr>".to_string()),
+            name: Some("<registered predicate not lowered: NonEmptyStr>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11928,7 +11928,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(567),
-            name: Some("<registered predicate, body not lowered: LanguageId>".to_string()),
+            name: Some("<registered predicate not lowered: LanguageId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11942,7 +11942,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(568),
-            name: Some("<registered predicate, body not lowered: SecretName>".to_string()),
+            name: Some("<registered predicate not lowered: SecretName>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11956,7 +11956,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(569),
-            name: Some("<registered predicate, body not lowered: PathSegment>".to_string()),
+            name: Some("<registered predicate not lowered: PathSegment>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11970,7 +11970,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(570),
-            name: Some("<registered predicate, body not lowered: GlobSegment>".to_string()),
+            name: Some("<registered predicate not lowered: GlobSegment>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11984,7 +11984,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(571),
-            name: Some("<registered predicate, body not lowered: FilePath>".to_string()),
+            name: Some("<registered predicate not lowered: FilePath>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -11998,7 +11998,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(572),
-            name: Some("<registered predicate, body not lowered: Timestamp>".to_string()),
+            name: Some("<registered predicate not lowered: Timestamp>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12012,7 +12012,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(573),
-            name: Some("<registered predicate, body not lowered: EpochMs>".to_string()),
+            name: Some("<registered predicate not lowered: EpochMs>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12026,7 +12026,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(574),
-            name: Some("<registered predicate, body not lowered: Duration>".to_string()),
+            name: Some("<registered predicate not lowered: Duration>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12040,7 +12040,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(575),
-            name: Some("<registered predicate, body not lowered: Milliseconds>".to_string()),
+            name: Some("<registered predicate not lowered: Milliseconds>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12054,7 +12054,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(576),
-            name: Some("<registered predicate, body not lowered: Seconds>".to_string()),
+            name: Some("<registered predicate not lowered: Seconds>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12068,7 +12068,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(577),
-            name: Some("<registered predicate, body not lowered: IntentId>".to_string()),
+            name: Some("<registered predicate not lowered: IntentId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12082,7 +12082,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(578),
-            name: Some("<registered predicate, body not lowered: IssueId>".to_string()),
+            name: Some("<registered predicate not lowered: IssueId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12096,7 +12096,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(579),
-            name: Some("<registered predicate, body not lowered: RunKey>".to_string()),
+            name: Some("<registered predicate not lowered: RunKey>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12110,7 +12110,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(580),
-            name: Some("<registered predicate, body not lowered: ArtifactId>".to_string()),
+            name: Some("<registered predicate not lowered: ArtifactId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12124,7 +12124,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(581),
-            name: Some("<registered predicate, body not lowered: LeaseToken>".to_string()),
+            name: Some("<registered predicate not lowered: LeaseToken>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12138,7 +12138,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(582),
-            name: Some("<registered predicate, body not lowered: WorkerId>".to_string()),
+            name: Some("<registered predicate not lowered: WorkerId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12152,7 +12152,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(583),
-            name: Some("<registered predicate, body not lowered: CommentId>".to_string()),
+            name: Some("<registered predicate not lowered: CommentId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12166,7 +12166,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(584),
-            name: Some("<registered predicate, body not lowered: SignalKey>".to_string()),
+            name: Some("<registered predicate not lowered: SignalKey>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12180,7 +12180,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(585),
-            name: Some("<registered predicate, body not lowered: ContentHash>".to_string()),
+            name: Some("<registered predicate not lowered: ContentHash>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12194,7 +12194,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(586),
-            name: Some("<registered predicate, body not lowered: GitRef>".to_string()),
+            name: Some("<registered predicate not lowered: GitRef>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12208,7 +12208,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(587),
-            name: Some("<registered predicate, body not lowered: GcpProjectId>".to_string()),
+            name: Some("<registered predicate not lowered: GcpProjectId>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12222,7 +12222,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(588),
-            name: Some("<registered predicate, body not lowered: ServiceAccountEmail>".to_string()),
+            name: Some("<registered predicate not lowered: ServiceAccountEmail>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12236,7 +12236,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(589),
-            name: Some("<registered predicate, body not lowered: TextFilePath>".to_string()),
+            name: Some("<registered predicate not lowered: TextFilePath>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12250,7 +12250,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(590),
-            name: Some("<registered predicate, body not lowered: BinaryFilePath>".to_string()),
+            name: Some("<registered predicate not lowered: BinaryFilePath>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12264,7 +12264,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(591),
-            name: Some("<registered predicate, body not lowered: MimeType>".to_string()),
+            name: Some("<registered predicate not lowered: MimeType>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12278,7 +12278,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(592),
-            name: Some("<registered predicate, body not lowered: FilesystemHandle>".to_string()),
+            name: Some("<registered predicate not lowered: FilesystemHandle>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12292,7 +12292,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(593),
-            name: Some("<registered predicate, body not lowered: NetworkHandle>".to_string()),
+            name: Some("<registered predicate not lowered: NetworkHandle>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),
@@ -12306,7 +12306,7 @@ fn bootstrapped_std_fixture_dag_declarations() -> Vec<Declaration> {
         });
         declarations.push(Declaration {
             id: DeclarationId(594),
-            name: Some("<registered predicate, body not lowered: ToolHandle>".to_string()),
+            name: Some("<registered predicate not lowered: ToolHandle>".to_string()),
             connective: TypeConnective::Conj { children: vec![] },
             type_params: vec![],
             phantom_params: Vec::new(),

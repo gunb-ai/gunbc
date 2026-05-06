@@ -668,7 +668,7 @@ fn alloc_registered_refinement_placeholder(
     dag.push_declaration(Declaration {
         id,
         name: Some(format!(
-            "<registered predicate, body not lowered: {alias_name}>"
+            "<registered predicate not lowered: {alias_name}>"
         )),
         connective: TypeConnective::Conj { children: vec![] },
         type_params: Vec::new(),
@@ -1127,7 +1127,7 @@ fn is_deferred_refinement_placeholder(dag: &Dag, refinement: DeclarationId) -> b
     dag.declaration(refinement)
         .name
         .as_deref()
-        .is_some_and(|name| name.starts_with("<registered predicate, body not lowered: "))
+        .is_some_and(|name| name.starts_with("<registered predicate not lowered: "))
 }
 
 fn scalar_literal_requires_refinement_discharge(dag: &Dag, expected_type: DeclarationId) -> bool {
