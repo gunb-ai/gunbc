@@ -6347,6 +6347,56 @@ fn variant_payload_fields_for_lowering(
     )
 }
 
+/// E6-G0d: whether `variant_template` is listed as a variant arm on some
+/// substrate `TypeConnective::Disj` (membership authority for constructor
+/// execution, distinct from “walks to Conj”).
+pub(crate) fn declaration_is_disj_variant_arm(dag: &Dag, variant_template: DeclarationId) -> bool {
+    dag.declarations().iter().any(|decl| {
+        matches!(
+            &decl.connective,
+            TypeConnective::Disj { variants }
+                if variants.iter().any(|v| v.ty == variant_template)
+        )
+    })
+}
+
+/// E6-G0d: record constructor field **labels** in declaration order after the
+/// same `Instantiation` / `TypeParam` walk as `walk_to_conj_decl_with_subst_lower`.
+pub(crate) fn constructor_record_field_labels(
+    dag: &Dag,
+    record_target: DeclarationId,
+) -> Option<Vec<String>> {
+    let mut subst = LowerSubstStack::default();
+    let conj_id = walk_to_conj_decl_with_subst_lower(dag, record_target, &mut subst)?;
+    let TypeConnective::Conj { children } = &dag.declaration(conj_id).connective else {
+        return None;
+    };
+    Some(children.iter().map(|c| c.label.clone()).collect())
+}
+
+/// E6-G0d: variant constructor payload fields for runtime `RecordValue` assembly.
+///
+/// Reuses [`variant_payload_fields_for_lowering`]. When the lowerer would have
+/// threaded an outer expected type (generic sums) but the transform IR carries
+/// only the callee, fall back to trying each declaration as an outer prefix
+/// until the existing substrate walk succeeds — still a single authority
+/// (`variant_payload_fields_for_lowering`), not a parallel registry.
+pub(crate) fn eval_constructor_variant_payload_fields(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+) -> Option<Vec<(String, DeclarationId)>> {
+    if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
+        return Some(fields);
+    }
+    for decl in dag.declarations() {
+        if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id))
+        {
+            return Some(fields);
+        }
+    }
+    None
+}
+
 fn variant_payload_fields_for_lowering_with_subst(
     dag: &Dag,
     variant_decl: DeclarationId,

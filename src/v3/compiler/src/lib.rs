@@ -57,8 +57,9 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        ArithmeticOp, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag, DeclarationId,
-        LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode, TransformTarget,
+        ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, ComparisonOp,
+        Dag, DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId,
+        TransformNode, TransformTarget, TypeConnective,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -577,39 +578,101 @@ pub mod evaluator {
                 Ok(field.value.clone())
             }
             TransformTarget::Callable(callee_decl) => {
-                let connective = &dag.declaration(*callee_decl).connective;
-                let crate::dag::TypeConnective::Arrow { body, .. } = connective else {
-                    return Err(EvalError::BadTransformOperands {
-                        reason: "Callable target declaration is not an Arrow type",
-                    });
+                let callee_decl = *callee_decl;
+                // Peel `Instantiation` / resolved-atom chains so generic callees whose
+                // substrate stores `Callable(Instantiation { template: Arrow, .. })` still
+                // reach the same `UserDefined` bind as a bare Arrow target.
+                let mut arrow_peel = callee_decl;
+                for _ in 0..32 {
+                    match &dag.declaration(arrow_peel).connective {
+                        TypeConnective::Arrow { body, .. } => {
+                            let ArrowBody::UserDefined(bind_id) = body else {
+                                return Err(EvalError::UnsupportedTransformTarget {
+                                    kind: "Callable (non-UserDefined body)",
+                                });
+                            };
+                            let bind_node_id = bind_id.node_id();
+                            let Behavior::Bind(bind) = dag.node(bind_node_id) else {
+                                return Err(EvalError::MissingNode { node: bind_node_id });
+                            };
+                            let bind = bind.clone();
+                            if operands.len() != bind.params.len() {
+                                return Err(EvalError::TransformArityMismatch {
+                                    expected: bind.params.len(),
+                                    got: operands.len(),
+                                });
+                            }
+                            let bindings: Vec<(PortId, Value)> =
+                                bind.params.iter().copied().zip(operands).collect();
+                            state.push_frame(EvalFrame::empty());
+                            let body_result = eval_callable_body_in_pushed_frame(
+                                dag, &bind, bindings, state, strategy,
+                            );
+                            let pop_result = state.pop_frame();
+                            return match (body_result, pop_result) {
+                                (Ok(value), Ok(_)) => Ok(value),
+                                (Err(err), _) => Err(err),
+                                (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+                            };
+                        }
+                        TypeConnective::Instantiation { template, .. } => arrow_peel = *template,
+                        TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+                        | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                            arrow_peel = *next;
+                        }
+                        _ => break,
+                    }
+                }
+
+                // E6-G0d: non-Arrow `Callable` targets lowered as record/variant constructors.
+                let variant_tag_template = match &dag.declaration(callee_decl).connective {
+                    TypeConnective::Instantiation { template, .. } => *template,
+                    _ => callee_decl,
                 };
-                let crate::dag::ArrowBody::UserDefined(bind_id) = body else {
-                    return Err(EvalError::UnsupportedTransformTarget {
-                        kind: "Callable (non-UserDefined body)",
-                    });
-                };
-                let bind_node_id = bind_id.node_id();
-                let crate::dag::Behavior::Bind(bind) = dag.node(bind_node_id) else {
-                    return Err(EvalError::MissingNode { node: bind_node_id });
-                };
-                let bind = bind.clone();
-                if operands.len() != bind.params.len() {
-                    return Err(EvalError::TransformArityMismatch {
-                        expected: bind.params.len(),
-                        got: operands.len(),
+                if crate::lower::declaration_is_disj_variant_arm(dag, variant_tag_template) {
+                    let Some(fields) =
+                        crate::lower::eval_constructor_variant_payload_fields(dag, callee_decl)
+                    else {
+                        return Err(EvalError::BadTransformOperands {
+                            reason: "Callable target declaration is not an Arrow type",
+                        });
+                    };
+                    if operands.len() != fields.len() {
+                        return Err(EvalError::TransformArityMismatch {
+                            expected: fields.len(),
+                            got: operands.len(),
+                        });
+                    }
+                    let record_fields: Vec<NamedField> = fields
+                        .into_iter()
+                        .zip(operands)
+                        .map(|((label, _), value)| NamedField { label, value })
+                        .collect();
+                    return Ok(Value::VariantValue {
+                        tag: variant_tag_template,
+                        payload: Box::new(Value::RecordValue(record_fields)),
                     });
                 }
-                let bindings: Vec<(PortId, Value)> =
-                    bind.params.iter().copied().zip(operands).collect();
-                state.push_frame(EvalFrame::empty());
-                let body_result =
-                    eval_callable_body_in_pushed_frame(dag, &bind, bindings, state, strategy);
-                let pop_result = state.pop_frame();
-                match (body_result, pop_result) {
-                    (Ok(value), Ok(_)) => Ok(value),
-                    (Err(err), _) => Err(err),
-                    (Ok(_), Err(frame_err)) => Err(EvalError::from(frame_err)),
+
+                if let Some(labels) = crate::lower::constructor_record_field_labels(dag, callee_decl)
+                {
+                    if operands.len() != labels.len() {
+                        return Err(EvalError::TransformArityMismatch {
+                            expected: labels.len(),
+                            got: operands.len(),
+                        });
+                    }
+                    let record_fields: Vec<NamedField> = labels
+                        .into_iter()
+                        .zip(operands)
+                        .map(|(label, value)| NamedField { label, value })
+                        .collect();
+                    return Ok(Value::RecordValue(record_fields));
                 }
+
+                Err(EvalError::BadTransformOperands {
+                    reason: "Callable target declaration is not an Arrow type",
+                })
             }
         }
     }
@@ -763,12 +826,14 @@ pub mod evaluator {
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
         use crate::dag::{
-            ArithmeticOp, Behavior, BranchPattern, Cluster, ComparisonOp, Dag, DeclarationId,
-            IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent, NodeId,
-            NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
-            TransformTarget,
+            ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster, ComparisonOp, Dag,
+            DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent,
+            NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
+            TransformTarget, TypeConnective,
         };
+        use crate::compile_to_dag;
         use crate::diagnostics::SourceSpan;
+        use super::NamedField;
 
         fn span() -> SourceSpan {
             SourceSpan::new("evaluator_frame.unit", 0, 1)
