@@ -639,9 +639,7 @@ enum PredicateArgShape {
     /// Single ident or string literal — covers `format(uuid)` / `format("uuid")`.
     SingleIdentOrStringLiteral,
     /// Single variant ident — `content(Text)` / `content(Binary)`.
-    SingleVariantIdent {
-        allowed: &'static [&'static str],
-    },
+    SingleVariantIdent { allowed: &'static [&'static str] },
     /// Record-shape with named numeric-literal fields. At least one of the
     /// listed fields must be present; all present fields must be integer
     /// literals. E.g. `range(min: N)` / `range(min: N, max: M)`.
@@ -767,10 +765,7 @@ enum PredicateValidation {
 }
 
 /// Validate a single predicate-position `SurfaceExpr` against the registry.
-fn validate_predicate_clause(
-    expr: &SurfaceExpr,
-    carrier_chain: &[String],
-) -> PredicateValidation {
+fn validate_predicate_clause(expr: &SurfaceExpr, carrier_chain: &[String]) -> PredicateValidation {
     let (predicate_name, predicate_span) = match expr {
         SurfaceExpr::Call { target, span, .. } => (target.as_str(), span.clone()),
         SurfaceExpr::Var { name, span } => (name.as_str(), span.clone()),
@@ -846,24 +841,23 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
         (PredicateArgShape::SingleIdentOrStringLiteral, _) => Some(format!(
             "predicate `{predicate_name}` requires a single ident or string-literal argument"
         )),
-        (
-            PredicateArgShape::SingleVariantIdent { allowed },
-            SurfaceExpr::Call { args, .. },
-        ) => match args.as_slice() {
-            [SurfaceExpr::Var { name, .. }] => {
-                if allowed.contains(&name.as_str()) {
-                    None
-                } else {
-                    Some(format!(
-                        "predicate `{predicate_name}` requires variant in {{{}}}, got `{name}`",
-                        allowed.join(", ")
-                    ))
+        (PredicateArgShape::SingleVariantIdent { allowed }, SurfaceExpr::Call { args, .. }) => {
+            match args.as_slice() {
+                [SurfaceExpr::Var { name, .. }] => {
+                    if allowed.contains(&name.as_str()) {
+                        None
+                    } else {
+                        Some(format!(
+                            "predicate `{predicate_name}` requires variant in {{{}}}, got `{name}`",
+                            allowed.join(", ")
+                        ))
+                    }
                 }
+                _ => Some(format!(
+                    "predicate `{predicate_name}` requires a single variant-ident argument"
+                )),
             }
-            _ => Some(format!(
-                "predicate `{predicate_name}` requires a single variant-ident argument"
-            )),
-        },
+        }
         (PredicateArgShape::SingleVariantIdent { .. }, _) => Some(format!(
             "predicate `{predicate_name}` requires a single variant-ident argument"
         )),
@@ -934,10 +928,7 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 /// `issuecomment-4390760353`, returns the worst-case validation across all
 /// leaves: any single malformed registered predicate fails the whole clause
 /// closed; any single non-registered leaf falls through to live resolution.
-fn validate_where_clause(
-    expr: &SurfaceExpr,
-    carrier_chain: &[String],
-) -> PredicateValidation {
+fn validate_where_clause(expr: &SurfaceExpr, carrier_chain: &[String]) -> PredicateValidation {
     if let SurfaceExpr::Operator {
         op: OperatorKind::Logical(LogicalOp::And),
         args,
@@ -1188,7 +1179,7 @@ fn lower_parameter_refinements_phase(
 ///
 /// **Predicate registry (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
 /// `issuecomment-4390333451`).** Predicates whose names live in
-/// [`KNOWN_PREDICATE_REGISTRY`] (e.g. `range`, `pattern`, `non_empty`,
+/// [`KNOWN_PREDICATES`] (e.g. `range`, `pattern`, `non_empty`,
 /// `brand`, `format`, `gt_zero`) lower to a placeholder `Declaration::refinement`
 /// (see [`alloc_registered_refinement_placeholder`]) so the parsed `where` is
 /// not dropped silently and downstream sees a named carrier; the actual

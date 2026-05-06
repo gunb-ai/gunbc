@@ -7,7 +7,7 @@
 // These tests lock the feature-parity surface `compiler.dag` needs. If
 // any of them regresses, the self-hosting cycle cannot close.
 
-use crate::common::cached_compile_to_dag;
+use crate::common::{cached_compile_any, cached_compile_to_dag};
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::{
     ArrowBody, AtomPayload, Behavior, ComparisonOp, Dag, DeclarationId, LogicalOp, OperatorKind,
@@ -1005,10 +1005,10 @@ fn test_db11_type_alias_where_accepts_types_dag_constraint_spellings() {
 }
 
 /// Registered-predicate `where` clauses keep a placeholder `refinement` id
-/// (S9 Slice 2.5 — `KNOWN_PREDICATE_REGISTRY` defers `Bool` pred bodies for
-/// names enrolled in the registry) so the parsed `where` is not a silent
-/// `None` — `lower.rs` P3 path. Replaces the prior PB-1 file-path-keyed
-/// behavior with name-keyed registry dispatch.
+/// (S9 Slice 2.5 — `KNOWN_PREDICATES` defers `Bool` pred bodies for names
+/// enrolled in the registry) so the parsed `where` is not a silent `None` —
+/// `lower.rs` P3 path. Replaces the prior PB-1 file-path-keyed behavior with
+/// name-keyed registry dispatch.
 #[test]
 fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
     let f = "dsl/std/types.dag";
@@ -1028,6 +1028,82 @@ fn test_types_dag_alias_refinement_is_deferred_placeholder_not_dropped() {
         label.contains("predicate not lowered"),
         "expected registered-refinement placeholder label, got {label:?}"
     );
+}
+
+/// S9 Slice 2.5 Path (a) cement: registered-predicate placeholder dispatch is
+/// **not** scoped to `dsl/std/types.dag` — registry-name dispatch is
+/// substrate-state-keyed, not file-path-keyed. Locks the PB-1 shim retirement
+/// per Director ratification at gunbc#828 `issuecomment-4390333451`.
+#[test]
+fn test_registered_predicate_placeholder_works_outside_types_dag() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_to_dag("type P = Int where range(min: 1)", f);
+    let decl = dag
+        .declaration_by_name("P")
+        .expect("type alias `P` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("registered-predicate `where` must take a placeholder regardless of file path");
+    let label = dag
+        .declaration(pred_id)
+        .name
+        .as_deref()
+        .expect("placeholder should carry a diagnostic name");
+    assert!(
+        label.contains("predicate not lowered"),
+        "expected registered-refinement placeholder label, got {label:?}"
+    );
+}
+
+/// S9 Slice 2.5 Path (a) cement: registered predicate applied to a
+/// non-allowed carrier fails closed — either via the carrier-compatibility
+/// reject in `validate_predicate_clause` (emits `Diagnostic::ResolveError`
+/// directly) or via the fall-through to live resolution. Locks the carrier
+/// check from `788d6acb4`. `gt_zero` is allowed only over `Nat` / `Int`;
+/// applying to `String` must surface a diagnostic and must NOT take a
+/// placeholder.
+#[test]
+fn test_registered_predicate_on_disallowed_carrier_fails_closed() {
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_any("type P = String where gt_zero", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "carrier-incompatible registered predicate must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "carrier-incompatible registered predicate should NOT take a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
+}
+
+/// S9 Slice 2.5 Path (a) cement: registered predicate with malformed
+/// argument shape fails closed. `range(bogus: 1)` does not match the
+/// `range(min, max)` arg-shape contract; it must surface a
+/// `Diagnostic::ResolveError` rather than silently take a placeholder.
+#[test]
+fn test_registered_predicate_with_malformed_args_fails_closed() {
+    let f = "dsl/std/types.dag";
+    let dag = cached_compile_any("type P = Int where range(bogus: 1)", f);
+    assert!(
+        !dag.diagnostics().is_empty(),
+        "malformed-arg registered predicate must surface a diagnostic"
+    );
+    if let Some(decl) = dag.declaration_by_name("P") {
+        if let Some(pred_id) = decl.refinement {
+            let label = dag.declaration(pred_id).name.as_deref();
+            assert!(
+                label.is_none() || !label.unwrap().contains("predicate not lowered"),
+                "malformed-arg registered predicate should NOT take a \
+                 placeholder; got label {label:?}"
+            );
+        }
+    }
 }
 
 /// `call_args_open_with_named_field` is **global** call sugar (not only
