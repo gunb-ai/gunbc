@@ -1,7 +1,6 @@
 # Computation Model and Rendering — Design
 
-> **Parent docs:** `THESIS.md`, `INVARIANTS.md` §"Facts Flow
-> Forward", `src/v3/SELF_HOSTING.md` §14.7.
+> **Parent docs:** `THESIS.md`, [`docs/invariants/performance-invariant.md`](invariants/performance-invariant.md) (Facts Flow Forward), `src/v3/SELF_HOSTING.md` §14.7.
 >
 > **Purpose:** rendering decisions for each target language
 > derive from: .dag's computation model (the source facts),

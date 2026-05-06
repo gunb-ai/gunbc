@@ -177,7 +177,7 @@ mechanism, parameterized application.**
 Lenses are the structural answer to invariant enforcement, and
 layer opacity is the first invariant the project should use them
 for. Grep gates were the earlier proposal in this document; they
-are superseded by `INVARIANTS.md` §"Layer opacity" pointing at a
+are superseded by [`docs/invariants/layer-opacity.md`](../invariants/layer-opacity.md) pointing at a
 lens with opt-in application. The rename test remains as a
 regression safety net, but the primary enforcement is the lens
 output.

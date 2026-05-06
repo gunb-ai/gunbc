@@ -1032,7 +1032,7 @@ the lenses are additive.
   type system doesn't express. Over time, successful lens
   patterns migrate into the type system (e.g., the `DisplayName`
   refactor that would make layer opacity impossible to violate
-  structurally, as mentioned in `INVARIANTS.md` §"Layer opacity").
+  structurally, as mentioned in [`docs/invariants/layer-opacity.md`](invariants/layer-opacity.md)).
 - **Not a grep replacement for arbitrary source patterns.**
   Lenses operate on the DAG, not on source text. Patterns that
   don't have a structural form (determinism, license headers,
@@ -1067,8 +1067,8 @@ The library is successful when:
    fixes land, CI expects **Rule 2** clean on the exercised classes while
    **Rule 1** continues to suppress false alias-vs-canonical pairs (§2.1).
 4. **The existing layer-opacity grep-gate proposal in
-   `INVARIANTS.md` is fully superseded** — the §"Layer opacity"
-   invariant points at `lens_layer_opacity` as its primary
+   `INVARIANTS.md` is fully superseded** — the [layer-opacity invariant](invariants/layer-opacity.md)
+   points at `lens_layer_opacity` as its primary
    enforcement, with the rename test as a regression check.
 5. **Adding a fourth lens is measurably cheap** — the next
    invariant that becomes a lens should land in under 2 days
@@ -1105,7 +1105,7 @@ for starting.
 ## §11. Relationship to `INVARIANTS.md` and `THESIS.md`
 
 This document is the implementation spec for the enforcement
-mechanism that `INVARIANTS.md` §"Layer opacity" and
+mechanism that [`docs/invariants/layer-opacity.md`](invariants/layer-opacity.md) and
 `THESIS.md` §"Compositional layering" reference. The docs
 describe the principle and the invariant; this document describes
 how the invariant is enforced.
