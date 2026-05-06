@@ -15,8 +15,10 @@ Mechanical census: enumerate every workspace `v2_compiler` / `v2-compiler` / `sr
 All counts use the audit-sanctioned search shape from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review), broadened to also catch the hyphenated Cargo dep names (`v2-compiler` / `v2-compiler-tests`) and bare-string `src/v2` literals without a trailing slash — `\bv2_compiler\b` only matches the underscored module-path form, and `src/v2/` requires a trailing slash so it misses values like `path: "src/v2"`. The matrix-cited path set was `src/ tests/`, but the repo has no top-level `tests/` directory — Rust integration tests live under `src/<crate>/tests/`. Single unified census for current tree:
 
 ```sh
-grep -rEln 'src/v2\b|\bv2[-_]compiler(_tests|-tests)?\b' src/ Cargo.toml dsl/
+grep -rEn 'src/v2\b|\bv2[-_]compiler(_tests|-tests)?\b' src/ Cargo.toml dsl/
 ```
+
+(`-rEn` not `-rEln`: `-l` would print filenames only and cannot reproduce the line-numbered receipts in §1 — the matrix-cited `-rEln` is the file-level form, this inventory's line-level form needs `-rEn`.)
 
 The `src/v2\b` form (word-boundary, no trailing-slash requirement) matches `src/v2/...` paths, `"src/v2"` string literals, `src/v2.dag` / `src/v2-…` references, etc. without false-positives on `src/v23` or `src/v2something`. This single command catches every surface enumerated below in one pass: `src/v2` paths in any context, `v2_compiler` / `v2_compiler_tests` Rust module-path uses, AND `v2-compiler` / `v2-compiler-tests` Cargo dep names. Earlier inventory passes used narrower patterns and produced split receipts; this unified form is the canonical reproduction command for future refreshes.
 
