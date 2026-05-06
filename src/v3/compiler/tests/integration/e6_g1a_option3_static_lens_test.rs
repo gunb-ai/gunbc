@@ -2,7 +2,10 @@
 //!
 //! E6-G1.a Option 3 — static `Lens<Int>` consumer wiring (argument-opaque `Dag` / `Behavior`).
 //!
-//! Authority: `docs/briefs/r3-pr-e6-g1a-option3-static-lens-worker.md` + feasibility probe.
+//! Authority: `docs/briefs/r3-pr-e6-g1a-option3-static-lens-worker.md` + feasibility probe
+//! (`docs/briefs/r3-pr-e6-g1a-option3-feasibility-probe.md`). Both are on-tree (landed
+//! `gunbc#1853`); `include_str!` receipts at the end of this file bind the integration crate to
+//! those paths (P1/P5 checkable receipt even when the PR diff is test-only).
 //! Mechanism demonstration only; lens-over-`Dag` folding is deferred to `ReflectedProgram<T>` /
 //! typed declaration-reference carrier work (Q-Reification).
 //!
@@ -452,3 +455,14 @@ fn value_contains_int_literal(v: &Value, needle: i64) -> bool {
         _ => false,
     }
 }
+
+// INVARIANTS P1 / P5 — checkable receipt: this integration crate must not build if the cited
+// briefs are missing from the worktree (the PR file list may omit `docs/` when unchanged).
+const _: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../docs/briefs/r3-pr-e6-g1a-option3-static-lens-worker.md"
+));
+const _: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../docs/briefs/r3-pr-e6-g1a-option3-feasibility-probe.md"
+));
