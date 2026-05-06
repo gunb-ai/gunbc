@@ -163,7 +163,7 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 | **B — corpus / demos / data** | cool-heron-521 (#1766) | V2 + V4 + V5 (all post-R2-Evaluator-gated) | Prep now (design + skeleton); closure waits triggers |
 | **C — Mgr-reserved / cross-lane** | cool-owl-579 (this lane) | V3 (post-cascade) + V7 (hold) | V3 sequenced per §8; V7 design-first only |
 
-### V1 — Pattern-A executable cluster (TC1 first; pending Director countersignature on Q-PAFS)
+### V1 — Pattern-A executable cluster (TC1 first; Q-PAFS Path A ACCEPTED 2026-05-06)
 
 **Scope**: 4 NEW Pattern-A executable gates (DimensionReport-typed cluster) need consumer infrastructure here in V1:
 - TC1 (`tc1_eta_equivalence_executable`): static representative via E6-G1.a (PM-default; Q-Pattern-A-First-Slice-Subscope) — runtime prereq from Evaluator EVAL-3
@@ -173,7 +173,7 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Note (per codex BLOCKING 2026-05-06)**: the framework adds **5 NEW Pattern-A executable gates total** at PR #1809 (per `r3-program-plan.md:88`). The 5th — `symbolic_cost_expr_equals_executable` (§1.8 gate **#40**) — is **SymbolicCost-typed** (not DimensionReport-typed) and belongs to **T-CostLens-Composition** lane, not V1's TC cluster (per `r3-program-plan.md:755`: V1's DimensionReport-unblock fixes TC1/TC2/TC3 cluster but does NOT automatically fix SymbolicCostExprEquals — different predicate family, distinct runner work). Tracked separately under T-CostLens-Composition.
 
-**Dispatch trigger**: TC1 first slice — pending Director countersignature on Q-PAFS + EVAL-3 (E6-G1.a static lens fold landing).
+**Dispatch trigger**: **TC1 first slice (Path A) DISPATCH UNBLOCKED 2026-05-06** — Q-PAFS / Q-Pattern-A-First-Slice-Subscope / Q-EVAL-Lens-Fold-First-Slice ACCEPTED per Brian directive ("approved path A countersign"). TC1 static representative via E6-G1.a; Verification Mgr authors V1 worker brief; runtime prereq satisfied as Evaluator E3 (E6-G1.a static lens fold) lands in same release step.
 **Closure predicate**: §1.8 gates #11-#14 (4 Pattern-A executable, DimensionReport-typed) + cascades to BridgeLedgerZero net-shrink (gate #36). 5th gate (#40 `symbolic_cost_expr_equals_executable`, SymbolicCost-typed) closes via T-CostLens-Composition lane.
 
 ### V2 — L4 corpus + L7 exhaustive coverage
@@ -294,7 +294,7 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 |---|---|---|
 | **E1** E6-G0d constructor runtime execution | **DISPATCHED 2026-05-06** | valiant-carp-10 (#1767 #issuecomment-4385079490). Scope: evaluator-only `src/v3/compiler/src/lib.rs`; brief authority = #1784 G0d worker brief |
 | **E2** E5 Descent termination contract consumer | HELD | Trigger = Substrate carrier `descent_execution_proof` landing via quick-koi/quick-crab path; sharp-ibex #1799 remains STOP/audit, not consumer wiring yet |
-| **E3** E6-G1.a static lens fold | HELD | Trigger = Director countersignature on Q-PAFS / Q-EVAL-Lens-Fold-First-Slice; no worker dispatch until that fires |
+| **E3** E6-G1.a static lens fold | **DISPATCH UNBLOCKED 2026-05-06** | Q-PAFS / Q-EVAL-Lens-Fold-First-Slice ACCEPTED (Path A) per Brian directive ("approved path A countersign"); Evaluator Mgr authors E3 worker brief + dispatches. Lands in same release step as Verification V1 (TC1 first slice). |
 | **E4** E6-G1.b generic dispatch | HELD | Trigger = post-G1.a + post-Substrate X1.b S1/S3 |
 | **E5** X1.b S1 TransformDispatch coordination | **DONE** | Cross-lane status update sent to Substrate Mgr (quick-crab-830) at #1739 #issuecomment-4385080388 |
 
@@ -303,7 +303,7 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 - #1799 E5 STOP packet: `fmt` / `ci` / `v3` green; `self_host_ratchet` in progress. Held semantically behind Substrate termination contract.
 - warm-dove #1778: passing/held; no new code work assigned (existing PR needs Director/PM disposition).
 
-No additional PM/Director ratification needed from Evaluator for E1/E5. E3 still needs Director countersignature before dispatch.
+No additional PM/Director ratification needed from Evaluator for E1/E5. **E3 dispatch unblocked 2026-05-06** — Q-PAFS Path A ACCEPTED per Brian directive; Evaluator Mgr authors E3 worker brief and dispatches in same release step as Verification V1.
 
 ### E1 — E6-G0d constructor runtime execution (RATIFIED Mgr executes)
 
@@ -319,11 +319,11 @@ No additional PM/Director ratification needed from Evaluator for E1/E5. E3 still
 **Dispatch trigger**: post-Substrate carrier landing.
 **Closure predicate**: unblocks TC3 (gate #13) + any lens fold traversing Descent loops.
 
-### E3 — E6-G1.a static lens fold (Pattern A first slice — pending Director countersignature)
+### E3 — E6-G1.a static lens fold (Pattern A first slice — Q-PAFS Path A ACCEPTED 2026-05-06)
 
-**Scope**: single static top-level `data ... : Lens<C>` representative under G1.a. Per Q-Pattern-A-First-Slice-Subscope (PM-default TC1-static-rep first).
+**Scope**: single static top-level `data ... : Lens<C>` representative under G1.a. Per Q-Pattern-A-First-Slice-Subscope (TC1-static-rep first, ratified by Brian directive 2026-05-06).
 
-**Dispatch trigger**: pending Director countersignature on Q-PAFS / Q-EVAL-Lens-Fold-First-Slice.
+**Dispatch trigger**: **DISPATCH UNBLOCKED 2026-05-06** — Q-PAFS / Q-EVAL-Lens-Fold-First-Slice ACCEPTED (Path A: G1.a static representative). Evaluator Mgr authors E3 worker brief and dispatches; lands in same release step as Verification V1 (TC1 first slice).
 **Closure predicate**: §1.8 gate #11 (tc1_eta_equivalence_executable).
 
 ### E4 — E6-G1.b generic dispatch (post-G1.a)
