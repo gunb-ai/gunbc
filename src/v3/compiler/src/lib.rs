@@ -57,9 +57,9 @@ pub mod evaluator {
     use std::collections::HashMap;
 
     use crate::dag::{
-        ArithmeticOp, ArrowBody, Behavior, BranchNode, BranchPattern, ComparisonOp, Dag,
-        DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId, TransformNode,
-        TransformTarget, TypeConnective,
+        ArithmeticOp, ArrowBody, AtomPayload, Behavior, BranchNode, BranchPattern, ComparisonOp,
+        Dag, DeclarationId, LiteralBits, LoopBound, NodeId, OperatorKind, Path, PortId,
+        TransformNode, TransformTarget, TypeConnective,
     };
 
     /// Rust mirror of the substrate runtime `Value` carrier in
@@ -668,6 +668,70 @@ pub mod evaluator {
                         .map(|(label, value)| NamedField { label, value })
                         .collect();
                     return Ok(Value::RecordValue(record_fields));
+                }
+
+                // `List<τ>.Empty` spelled `Empty` in expression position lowers to a nullary
+                // `Callable` whose declaration is an `Instantiation` of the `Empty` arm payload
+                // type — not an `Arrow`, and not always classified as a disj variant arm for the
+                // generic constructor fast-path above. Recognize that shape explicitly.
+                if operands.is_empty() {
+                    if let TypeConnective::Instantiation {
+                        template,
+                        arguments,
+                    } = &dag.declaration(callee_decl).connective
+                    {
+                        if !arguments.is_empty() {
+                            if let Some(list_decl) = dag.declaration_by_name("List") {
+                                if let TypeConnective::Disj { variants } = &list_decl.connective {
+                                    if let Some(empty_arm) =
+                                        variants.iter().find(|v| v.label == "Empty")
+                                    {
+                                        let mut t = *template;
+                                        for _ in 0..32 {
+                                            match &dag.declaration(t).connective {
+                                                TypeConnective::Instantiation {
+                                                    template: inner,
+                                                    arguments: args,
+                                                } if args.is_empty() => {
+                                                    t = *inner;
+                                                }
+                                                TypeConnective::Atom(
+                                                    AtomPayload::ResolvedByStructure(n),
+                                                )
+                                                | TypeConnective::Atom(
+                                                    AtomPayload::ResolvedByName(n),
+                                                ) => {
+                                                    t = *n;
+                                                }
+                                                _ => break,
+                                            }
+                                        }
+                                        if t == empty_arm.ty {
+                                            return Ok(Value::VariantValue {
+                                                tag: callee_decl,
+                                                payload: Box::new(Value::RecordValue(vec![])),
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Nullary variant constructors whose `Callable` target is not an `Arrow`
+                // (broader fallback via payload-field resolution).
+                if operands.is_empty() {
+                    if let Some(fields) =
+                        crate::lower::eval_constructor_variant_payload_fields(dag, callee_decl)
+                    {
+                        if fields.is_empty() {
+                            return Ok(Value::VariantValue {
+                                tag: callee_decl,
+                                payload: Box::new(Value::RecordValue(vec![])),
+                            });
+                        }
+                    }
                 }
 
                 Err(EvalError::BadTransformOperands {
