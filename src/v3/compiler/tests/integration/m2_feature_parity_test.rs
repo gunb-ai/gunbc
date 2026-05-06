@@ -1132,14 +1132,19 @@ fn test_bare_predicate_with_empty_call_args_fails_closed() {
     }
 }
 
-/// S9 Slice 2.5 Path (a) Rung 3 cement: `range(min: N, max: M)` body
-/// synthesis produces a real refinement (not a placeholder).
-/// `synthesize_predicate_body` lowers `range(min: m, max: M)` to
-/// `subject >= m && subject <= M`; min-only/max-only forms produce the
-/// matching single-comparison body. Cements that valid registered
-/// `range(...)` clauses get an Arrow body, not the placeholder Conj.
+/// S9 Slice 2.5 Path (a) Rung 3 cement: `range` is registered, validated for
+/// carrier + arg-shape, and currently takes a placeholder body. Real body
+/// synthesis (`subject >= min && subject <= max`) was implemented but
+/// reverted because it cascaded through the integer-routing-witness walk and
+/// broke `int_literal_cardinality_test::let_annotated_uint8_*` (annotated
+/// `let x: UInt8 = N` resolved to `Int` instead of `UInt8`). Surfaced as a
+/// STOP-AND-ESCALATE substrate-extension question per Slice 2.5 brief —
+/// integer-routing needs to be insensitive to refinement-body declarations
+/// before `range` body synthesis can re-enable. Test cements that the
+/// placeholder path is exercised (parse + carrier validate works; body is
+/// just not lowered yet).
 #[test]
-fn test_range_lowers_to_real_refinement_body_not_placeholder() {
+fn test_range_takes_placeholder_pending_routing_fix() {
     let f = "dsl/std/integer.dag";
     for src in [
         "type R = Int where range(min: 1)",
@@ -1152,15 +1157,17 @@ fn test_range_lowers_to_real_refinement_body_not_placeholder() {
             .expect("type alias `R` should exist");
         let pred_id = decl
             .refinement
-            .expect("`range` refinement must produce a real `Declaration::refinement`");
+            .expect("`range` refinement must produce a `Declaration::refinement`");
         let pred = dag.declaration(pred_id);
-        if let Some(label) = pred.name.as_deref() {
-            assert!(
-                !label.contains("predicate not lowered"),
-                "`range` must lower to a real refinement body, not placeholder \
-                 (src={src:?}); got label {label:?}"
-            );
-        }
+        let label = pred
+            .name
+            .as_deref()
+            .expect("placeholder should carry a diagnostic name");
+        assert!(
+            label.contains("predicate not lowered"),
+            "`range` currently takes a placeholder pending routing fix \
+             (src={src:?}); got label {label:?}"
+        );
     }
 }
 
