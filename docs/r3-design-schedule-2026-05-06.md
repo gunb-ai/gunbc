@@ -20,20 +20,37 @@
 
 **Workers idle (per Substrate Mgr canvas D)**: loyal-wolf-828 + valiant-ant-72 fully idle; proud-lynx-311 / smart-ram-167 / valiant-ibex-312 holding on #1794-cascade.
 
-### S1 — Q-Class-2-Chain-Break gap-test surface (ENGAGE-NOW per Director disposition)
+### S1 — Q-Class-2-Chain-Break gap-test surface (CLOSED 2026-05-06: option (a) RATIFIED)
 
-**Scope**: surface option-(a) candidate function-valued data gap-test that traces to GREEN without requiring T-LBP COMPLETE. Per Director disposition + Refinement 3 chain-rule.
+**Scope (delivered)**: option (a) narrowed gap-test surfaced — function-valued `data` + evaluator consumption (lens-behavior out of scope) traces to GREEN without requiring T-LBP COMPLETE. Substrate fact under test: "function-valued data is first-class".
 
-**Dispatch trigger**: now.
-**Closure predicate**: §1.8 gate #61 `substrate_gap_function_valued_data_closed` — currently RED-blocked on Q-LBP-R3-Closeability; option-(a) re-pick gap-test traces to GREEN.
-**Cross-lane**: if option-(a) infeasible, escalates to (b) Director scope-calibration on LBP.
+**Closure outcome**: **Director ratified option (a) 2026-05-06** at [gunbc#828 #issuecomment-4385329180](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4385329180). Q1 RATIFIED (narrowing strips the non-substrate axis); Q2 RATIFIED (#61 RED → DECLARED YELLOW; single-prereq-blocked on T-E-P-Producer-Broadening Phase 1 + E6-G0d, both finite-trace; E6-G0d landed at #1813); Q3 N/A. Worker brief authored at `docs/briefs/r3-substrate-s1-gap-test-representative-worker.md`; dispatch single-prereq-blocked on T-E-P P1 / S10.
 
-### S2 — T-LBP scope-calibration canvas (ENGAGE-NOW per Director disposition)
+**Cascade impact**: §1.8 gate #61 reframes RED → DECLARED YELLOW. Independent of Q-LBP-R3-Closeability outcome (S2 ratified separately as option (b) — chain-break dissolution does not require T-LBP COMPLETE).
 
-**Scope**: Director needs Substrate canvas detail before engaging Q-Lens-Behavioral-Parity-R3-Closeability. Surface specific blockers per lens (4 lenses × 4 sub-slices each); name option (a)/(b)/(c) shape per Substrate Mgr E3 RED.
+**S1 closed** — worker dispatch follows T-E-P P1 / S10 cascade (post-#1782 → quick-koi-190).
 
-**Dispatch trigger**: now.
-**Closure predicate**: unblocks Q-LBP-R3-Closeability decision; cascades to §1.8 gates #79-#83 (T-Lens-Behavioral-Parity 5 gates) + #61 (Class 2 chain-break) + #88-#95 (T-Lens-Application-Surface) + #54 (timing_lens_carrier_landed) + #57-#59 (T-Lens-Self-Application).
+### S2 — T-LBP scope-calibration canvas (CLOSED 2026-05-06: option (b) RATIFIED)
+
+**Scope (delivered)**: Substrate canvas surfaced per-lens × per-sub-slice blocker matrix (16 cells); option (a)/(b)/(c) shape recommendations with feasibility analysis per blocker matrix. Canvas at `docs/briefs/r3-substrate-s2-t-lbp-scope-calibration-canvas.md` (landed via PR #1782 commit set).
+
+**Closure outcome**: **Director ratified option (b) 2026-05-06** at [gunbc#828 #issuecomment-4385329180](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4385329180) (zesty-bear-812 Director session; cross-relayed via deep-wolf-155 propagation PR Q-LBP option-b paydown).
+- **Q1 (option a) REJECTED**: option (a) full T-LBP scope requires landing 4c caller-side effect-set pinning carrier inside R3 — substrate-fact-introduction-without-confirmed-bridge-consumer; circular against R3 close per `INVARIANTS.md` P1.
+- **Q2 (option b) RATIFIED**: T-LBP narrows R3 scope to **complexity + cost lenses only** (both share T-E-P producer dependency; closing simultaneously is critical-path fastest). Carved to R4 per `docs/r4-carve-out-routing.md` C1+C2+C3: parallelism lens, effect_enumeration lens, register zero-proxy/zero-stub narrowed to in-R3 lenses.
+- **Q3** N/A.
+
+**Cascade impact** (per ratification):
+- §1.8 gate #79 (`complexity_lens_behaviorally_complete`) — IN R3
+- §1.8 gate #80 (`cost_lens_behaviorally_complete`) — IN R3
+- §1.8 gate #81 (`parallelism_lens_behaviorally_complete`) — R4-CARVED (C1)
+- §1.8 gate #82 (`effect_enumeration_lens_behaviorally_complete`) — R4-CARVED (C2)
+- §1.8 gate #83 (`lens_capability_register_zero_proxy_zero_stub`) — NARROWED scope IN R3 (C3): in-R3 lenses only
+- §1.8 gate #61 (Class 2 `substrate_gap_function_valued_data_closed`) — chain-break dissolved (Q-Class-2-Chain-Break option (a) RATIFIED separately): RED → DECLARED YELLOW; single-prereq-blocked on T-E-P P1 + E6-G0d (E6-G0d landed at #1813)
+- T-LAS gate `opt_in_iteration_parallelism_via_lens_application_demonstrated` — carves alongside C1 parallelism lens
+- T-LSA stays in R3 (timing-lens via T-WAD; not T-LBP scope)
+- T-WAD stays in R3 (timing-lens carrier separate from T-LBP)
+
+**S2 closed** — no further dispatch on this line item. Cascade work (T-E-P P1 / S10 dispatch on quick-koi-190; complexity + cost lens consumer wiring) follows separately.
 
 ### S3 — `MachineConstraint<C>` carrier design (Brian directive 2026-05-06)
 
