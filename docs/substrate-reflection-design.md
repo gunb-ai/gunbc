@@ -1193,7 +1193,7 @@ struct PayloadBinding {
   `Path`'s job is "coordinate one arm of a Branch" — the arm
   container. Payload binding is a property of the arm, not
   of the discrimination, so it belongs on Path. Per
-  `INVARIANTS.md` §"Minimal information per interface":
+  [`docs/invariants/minimal-information-per-interface.md`](invariants/minimal-information-per-interface.md):
   design signatures from the job outward. BranchPattern gains
   nothing; Path extends its existing arm-coordinator role.
 - **Pro: decoupled inference rewrite.** Infer's job is

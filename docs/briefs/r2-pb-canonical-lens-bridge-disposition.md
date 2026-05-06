@@ -35,7 +35,7 @@ The runner re-compiles these bytes via `compile_to_dag(...)` to obtain a "canoni
 
 ## Why these survive — the substrate gap
 
-The dispatch exists because **`INVARIANTS.md` §P2 (Boundary Discipline)** requires `Dag`-coherent reflection: when the runner reflects program nodes via `reflect_program_dag_nodes_in_file(...)` to feed a lens, the `Behavior`/`List` variant `DeclarationId`s in the reflected `FieldValue`s **must come from the same `Dag` instance** that the lens is applied against. Otherwise the lens's pattern-matches on `Behavior::Bind { ... }` etc. compare `DeclarationId`s across `Dag` instances and fail spuriously.
+The dispatch exists because [`INVARIANTS.md#p2-boundary-discipline`](../../INVARIANTS.md#p2-boundary-discipline) (Boundary Discipline) requires `Dag`-coherent reflection: when the runner reflects program nodes via `reflect_program_dag_nodes_in_file(...)` to feed a lens, the `Behavior`/`List` variant `DeclarationId`s in the reflected `FieldValue`s **must come from the same `Dag` instance** that the lens is applied against. Otherwise the lens's pattern-matches on `Behavior::Bind { ... }` etc. compare `DeclarationId`s across `Dag` instances and fail spuriously.
 
 Concretely (see comment block at `test_runner.rs:1762-1772` and `:1832-1833`):
 
@@ -57,7 +57,7 @@ Concretely (see comment block at `test_runner.rs:1762-1772` and `:1832-1833`):
 Full retirement of `bridge_canonical_lens_name_dispatch_retired` is gated on **either**:
 
 1. **PB-Runtime interpreter-as-data** landing (load-bearing for T-LensProducer-Retirement's `lens_apply.rs` retirement; see [`r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) §"Owns (R3 continuation)"). That work makes lens application a `.dag`-driven walk over typed `DeclarationRef` identity rather than Rust name-keyed dispatch, and dissolves both the name-arms (B) and the generic name-keyed lookup (C). This dependency is **explicitly gated on Items 4+5** per Director cascade and **must not be unblocked from this disposition PR**. OR
-2. **A typed lens-registry carrier substrate-introduction** authored by Substrate Manager per `INVARIANTS.md` §P1 substrate-fact-introduction procedure (line 86) — would dissolve the `include_str!` text bridges (A) by replacing canonical-lens-text with a typed `LensRegistryEntry` reference. The B4.1a worker brief explicitly STOPs and splits this as a sub-brief if it surfaces (per [`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md) §STOP-AND-ESCALATE: "Canonical lens identity requires loading a second DAG by path. Do not replace one `include_str!` bridge with another string registry; split a structural lens-registry carrier brief.").
+2. **A typed lens-registry carrier substrate-introduction** authored by Substrate Manager per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) substrate-fact-introduction procedure — would dissolve the `include_str!` text bridges (A) by replacing canonical-lens-text with a typed `LensRegistryEntry` reference. The B4.1a worker brief explicitly STOPs and splits this as a sub-brief if it surfaces (per [`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md) §STOP-AND-ESCALATE: "Canonical lens identity requires loading a second DAG by path. Do not replace one `include_str!` bridge with another string registry; split a structural lens-registry carrier brief.").
 
 Either path is a substrate-level change outside PB authoring authority. PB territory cannot self-serve here without violating the dispatch guardrail "do not replace one string/path side channel with another."
 
@@ -79,5 +79,5 @@ Either path is a substrate-level change outside PB authoring authority. PB terri
 - Adjacent worker brief (already-retired §0.1/§0.2 carriers): [`b4-1-declarationref-consumer-migration-worker.md`](b4-1-declarationref-consumer-migration-worker.md).
 - Identity-carrier substrate pass: [`b4-identity-carrier-substrate-pass.md`](b4-identity-carrier-substrate-pass.md).
 - Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
-- P2 cross-`Dag` reflection invariant (the constraint that holds the bridge in place): `INVARIANTS.md` §P2; runtime comment block at `src/v3/compiler/src/test_runner.rs:1762-1772` + `:1832-1833`.
+- P2 cross-`Dag` reflection invariant (the constraint that holds the bridge in place): [`INVARIANTS.md#p2-boundary-discipline`](../../INVARIANTS.md#p2-boundary-discipline); runtime comment block at `src/v3/compiler/src/test_runner.rs:1762-1772` + `:1832-1833`.
 - Gating R3 lane: T-LensProducer-Retirement (PB-Runtime interpreter-as-data sub-gate); see [`r3-structure.md`](../r3-structure.md) §"Lane structure".

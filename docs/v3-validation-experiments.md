@@ -231,7 +231,7 @@ below-boundary opacity by construction" claim. Specifically, that
 below-boundary changes in a layer are invisible to consumers — i.e.,
 the generated code is structurally unchanged when an intermediate
 layer is modified internally. See `THESIS.md` §"Compositional
-layering" and `INVARIANTS.md` §"Layer opacity" for the motivating
+layering" and [`docs/invariants/layer-opacity.md`](invariants/layer-opacity.md) for the motivating
 principle and the enforcement invariant.
 
 **Scope:** compile `dsl/examples/weather/weather.dag` to Rust using
@@ -346,15 +346,14 @@ scaffold waiting for structural replacement.
   ... }` patterns — identical shape to v2's `kernel_type_set`, at
   a different layer. This is what the review loop has been
   rediscovering round after round, and it is what
-  `INVARIANTS.md` §"Layer opacity" exists to catch going forward.
+  [`docs/invariants/layer-opacity.md`](invariants/layer-opacity.md) exists to catch going forward.
 
 **The rename test as a permanent invariant:** every experiment
 above reduces to "rename a below-boundary identifier, recompile,
 `diff -r`." The test is O(minutes) to run per identifier and
 catches the failure class that has historically been responsible
 for the largest share of review-round findings in both v2 and v3.
-CI-gate form is a grep audit (see `INVARIANTS.md` §"Layer
-opacity"); runtime form is to actually rename and diff, which is
+CI-gate form is a grep audit (see [`docs/invariants/layer-opacity.md`](invariants/layer-opacity.md)); runtime form is to actually rename and diff, which is
 what this experiment does.
 
 ## What the experiments actually prove

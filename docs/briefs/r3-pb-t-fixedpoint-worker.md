@@ -109,11 +109,11 @@ Concretely, at the earliest dispatch-eligible moment (Rust+Python floor met):
 - Rust + Python + Go closed → Row B target set frozen as {Rust, Python, Go} → suite has Row A + 3 Row Bs + Row C.
 - Rust-only (Python pending) → **NOT dispatch-eligible** per `r3-structure.md` authority; PB Manager waits.
 
-T-FixedPoint closes when every materialized row evaluates true. **Late-arriving `R2-Grounding-Go` closure after T-FixedPoint closes does not retroactively extend the suite** — it would land as a follow-up TestClaim or a follow-up PR that adds the Go Row B explicitly, not as a silent re-evaluation of the existing materialized rows. (Modeling ledger-quantified target coverage as live substrate — e.g., a `ForAllGroundedTargets` predicate that reads the ledger at evaluation time — is rejected here per the dispatch guardrails: PB territory does not introduce verification substrate. If the closed-system principle later demands that quantification, that's a Substrate Manager / Verification Manager substrate-introduction question per `INVARIANTS.md` §P1 — not a T-FixedPoint deliverable.)
+T-FixedPoint closes when every materialized row evaluates true. **Late-arriving `R2-Grounding-Go` closure after T-FixedPoint closes does not retroactively extend the suite** — it would land as a follow-up TestClaim or a follow-up PR that adds the Go Row B explicitly, not as a silent re-evaluation of the existing materialized rows. (Modeling ledger-quantified target coverage as live substrate — e.g., a `ForAllGroundedTargets` predicate that reads the ledger at evaluation time — is rejected here per the dispatch guardrails: PB territory does not introduce verification substrate. If the closed-system principle later demands that quantification, that's a Substrate Manager / Verification Manager substrate-introduction question per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) — not a T-FixedPoint deliverable.)
 
 ### Substrate readiness check
 
-Both `FixedPointConverges` and `RatchetZero` variants exist on main today (verified at `src/v3/std/verification.dag` ≈219–226 at authoring). The strong claim is **substrate-composition**, not substrate-introduction. STOP condition (see §"STOP conditions"): if `TestSuite`-level composition of these two predicates proves structurally insufficient at authoring time (e.g., the runtime cannot evaluate the AND-conjunction across the two predicate kinds, or the SG-0 census authority surface is not addressable from `RatchetZero.authority`), that's a substrate gap → escalate per `INVARIANTS.md` §P1 (signal Substrate Manager; do not extend variants from this lane).
+Both `FixedPointConverges` and `RatchetZero` variants exist on main today (verified at `src/v3/std/verification.dag` ≈219–226 at authoring). The strong claim is **substrate-composition**, not substrate-introduction. STOP condition (see §"STOP conditions"): if `TestSuite`-level composition of these two predicates proves structurally insufficient at authoring time (e.g., the runtime cannot evaluate the AND-conjunction across the two predicate kinds, or the SG-0 census authority surface is not addressable from `RatchetZero.authority`), that's a substrate gap → escalate per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (signal Substrate Manager; do not extend variants from this lane).
 
 ### Relationship to DB-8 ratchet infrastructure
 
@@ -168,7 +168,7 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - **SG-0 census drift:** the SG-0 `EXPECTED_HAND_AUTHORED_NON_TEST` count is non-zero at evaluation time — T-LensProducer-Retirement is incomplete; this lane is not yet dispatchable.
 - **Bit-identity fails for a structural reason** (e.g., emitter non-determinism: HashMap iteration order, timestamps, absolute paths in emitted output — full enumeration in [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md) §"Sources of non-determinism") — that's an emitter dissolution, not a fixed-point-acceptance edit. Surface to PB Manager; do not paper over with normalization in the gate. The DB-8 grep gate + `determinism_test.rs` 5× check should catch most of these before the strong gate evaluates.
 - **Trampoline expansion:** the "≤1 first-time-bootstrap trampoline" boundary tightens or expands — that's a Director-level cascade-decision change, not a worker call.
-- **Substrate gap:** any need to introduce a new `TestPredicate` variant or extend `FixedPointConverges` — follow `INVARIANTS.md` §P1; do not author the variant in this lane.
+- **Substrate gap:** any need to introduce a new `TestPredicate` variant or extend `FixedPointConverges` — follow [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness); do not author the variant in this lane.
 
 ## Cross-program signals
 
@@ -189,7 +189,7 @@ test_claim every_typed_dag_program_terminates_in_bounded_steps {
 }
 ```
 
-This is the **strong-normalization theorem** for the typed `.dag` fragment — the formal correlate of the totality choice that P4 Decidability rests on ([`INVARIANTS.md#p4-decidability`](../../INVARIANTS.md#p4-decidability) §P4; "bounded forward execution" foundational premise). Sufficient proof obligation per the add-on dispatch: structural induction on `Behavior` × `LoopBound BoundedLattice`.
+This is the **strong-normalization theorem** for the typed `.dag` fragment — the formal correlate of the totality choice that P4 Decidability rests on ([`INVARIANTS.md#p4-decidability`](../../INVARIANTS.md#p4-decidability); "bounded forward execution" foundational premise). Sufficient proof obligation per the add-on dispatch: structural induction on `Behavior` × `LoopBound BoundedLattice`.
 
 ### Dependencies (gates)
 
@@ -206,7 +206,7 @@ TC3 fires only when **both** land:
 
 Per the add-on dispatch guardrails:
 
-- **Do not invent a new `TestPredicate` variant from this lane.** PB territory does not introduce verification substrate; that authority lives with Substrate Manager (per `INVARIANTS.md` §P1 substrate-fact-introduction procedure at line 86) or with the future R3 Verification Manager once spawned.
+- **Do not invent a new `TestPredicate` variant from this lane.** PB territory does not introduce verification substrate; that authority lives with Substrate Manager (per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) substrate-fact-introduction procedure) or with the future R3 Verification Manager once spawned.
 - **Do not fabricate a runner path.** The claim text above is the *declarative shape*; the runner-side encoding (e.g., is this a structural-induction proof checked by the Evaluator? a corpus-driven termination harness? a `Lens<TerminationWitness>` instance?) depends on which substrate variant carries it, which is precisely the gap.
 - **Leave the declaration as a dispatch-gated proposal.** TC3 sits as text-form in this brief until B5 + T-Substrate-Lens-Primitive land and the R3 Verification Manager (spawned at R2 close) authors the substrate path.
 
@@ -214,7 +214,7 @@ Per the add-on dispatch guardrails:
 
 When the R3 Verification Manager spawns (per `r3-structure.md` §"Manager structure" Item 2), TC3 ownership moves from PB to Verification. Verification then:
 
-1. Picks up the substrate-gap question — either composes from existing variants (if a path emerges from B5 + T-Substrate-Lens-Primitive landing) OR escalates substrate introduction to Substrate Manager per §P1.
+1. Picks up the substrate-gap question — either composes from existing variants (if a path emerges from B5 + T-Substrate-Lens-Primitive landing) OR escalates substrate introduction to Substrate Manager per [P1 Modeling Faithfulness](../../INVARIANTS.md#p1-modeling-faithfulness).
 2. Authors the runner-side encoding once the substrate path is named.
 3. Cross-references this brief's TC3 section as the upstream PB-authored declarative shape; PB does not re-author after transition.
 
@@ -242,7 +242,7 @@ When the R3 Verification Manager spawns (per `r3-structure.md` §"Manager struct
 ### TC3-specific cross-refs
 
 - B5 audit (TC3 dependency): [`docs/briefs/r2-release-b5-loop-construction-closure-audit-worker.md`](r2-release-b5-loop-construction-closure-audit-worker.md)
-- P4 Decidability (TC3 formal home): [`INVARIANTS.md#p4-decidability`](../../INVARIANTS.md#p4-decidability) §P4
+- P4 Decidability (TC3 formal home): [`INVARIANTS.md#p4-decidability`](../../INVARIANTS.md#p4-decidability)
 - Termination carrier: `dsl/std/termination.dag` (`DescentEvidence` / BoundedLattice)
 - Substrate-fact-introduction procedure (TC3 escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure)
 - Strong-normalization theorem source (off-main at authoring): PR #1178 `docs/design-substrate-lambda-calculus-grounding.md` §"Strong normalization for the typed fragment"
