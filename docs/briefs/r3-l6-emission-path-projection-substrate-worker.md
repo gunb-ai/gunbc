@@ -113,7 +113,21 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
    The `data` declaration ships **empty**. Grounding's follow-up
    PR populates the 42 Phase 1 rows.
 
-2. Add a small ratchet asserting that:
+2. **Enroll the new file in the bootstrap/load authority** (P2
+   facts-flow-forward — without this the file is dead-letter on
+   disk and `EmissionPathProjection` can be absent from the
+   downstream Dag). Add a `cross_target_coverage: BootstrapFixture`
+   field to the `BootstrapFixtures` record in
+   `src/v3/std/extdeps_bootstrap_fixtures.dag` with `virtual_path:
+   "src/v3/std/cross_target_coverage.dag"`, mirroring the
+   `*_method_template_contracts` enrollment pattern at the same
+   file. Verify at HEAD that the enrolled fixture is reachable
+   from compile-time loader — a ratchet asserting the loader sees
+   the new module by name (analogous to the loader-coverage check
+   covering `rust_method_template_contracts` etc.) lands as part
+   of step 3.
+
+3. Add a small ratchet asserting that:
    - **(Slice-active gate)** The six types (`ShapeATarget`,
      `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`,
      `EmissionCell`, `EmissionPathProjection`) and the `data`
@@ -146,7 +160,7 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
      projection key set + bijective coverage of the source key
      set).
 
-3. **No row population, no `coverage.rs` edits in this slice.**
+4. **No row population, no `coverage.rs` edits in this slice.**
    Both are scoped to the Grounding follow-up per §4.D=(b).
 
 ## Acceptance
@@ -154,6 +168,13 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
 - `src/v3/std/cross_target_coverage.dag` lands with the six
   types (`ShapeATarget`, `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`) + the empty `data` declaration + the mandatory
   option-(c) header note.
+- **Bootstrap enrollment**: the new file is registered in
+  `src/v3/std/extdeps_bootstrap_fixtures.dag` with a
+  `cross_target_coverage` field on `BootstrapFixtures` whose
+  `virtual_path` points at `src/v3/std/cross_target_coverage.dag`
+  (matching the `*_method_template_contracts` enrollment pattern).
+  Loader-visibility ratchet asserts the module name resolves
+  through bootstrap.
 - **Practice 4 classification receipts on the live declaration
   (mandatory).** Each new sum-typed declaration carries an
   inline 🟢/🟡/🔴 doc comment per `docs/modeling-discipline.md`
