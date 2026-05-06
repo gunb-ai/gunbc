@@ -39,7 +39,7 @@ fn lower(source: &'static str, file: &'static str) -> Dag {
     }
 }
 
-fn claim<'a>(dag: &'a Dag, claim_name: &str) -> TestClaimValue {
+fn claim(dag: &Dag, claim_name: &str) -> TestClaimValue {
     let decl = dag
         .declaration_by_name(claim_name)
         .unwrap_or_else(|| panic!("missing `{claim_name}` in {FIXTURE_PATH}"));
