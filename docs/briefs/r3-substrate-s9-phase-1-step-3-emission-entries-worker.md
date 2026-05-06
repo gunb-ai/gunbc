@@ -20,6 +20,30 @@ worker pin: proud-lynx-311 (#1746) — S9 worker pin held; brief queues post-Sli
 
 ## Context
 
+### T-V2-Retirement coordination gate (precondition framing)
+
+T-Numeric-Construction historically carried an internal cascade gate
+on T-V2-Retirement landing (per S9 parent brief STOP-AND-ESCALATE
+bullet at `r3-substrate-s9-t-numeric-construction-worker.md` —
+"T-Numeric-Construction has named T-V2-Retirement-landing-first
+dependency for path-(a) v2-refinement-syntax-blocker resolution").
+
+**Director ratification at gunbc#828 #issuecomment-4385530115
+implicitly supersedes** that gate via Q-MachineConstraint
+sub-decision 6 (UNIVERSAL substrate posture) — the coordination
+moves from v2-side cascade to Grounding-side discharge. PR #1856
+landing the carrier substrate without T-V2-Retirement landing
+first confirms supersession in practice. This brief inherits
+the same supersession; T-V2-Retirement coordination is **not**
+a hard precondition.
+
+If the supersession is contested at dispatch (e.g., reviewer
+challenges that v2-refinement-syntax must land first), surface
+to Substrate Mgr (#1739) as STOP — Director re-ratification
+needed.
+
+### Substrate state
+
 S3 substrate landed at PR #1856 (squash-merged 2026-05-06; commit on origin/main):
 - `dsl/std/machine_constraints.dag` carries `MachineWidth<bits>` (sole R3 machine-axis carrier) + `Compose<Algebra, MachineConstraint>` (parametric type-level interaction shape; unary phantom sum)
 

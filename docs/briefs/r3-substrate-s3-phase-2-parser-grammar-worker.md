@@ -17,6 +17,23 @@ worker pin: valiant-ant-72 (#1765) — S3 Phase-1 precedent owner; substrate-sta
 
 ## Context
 
+### T-V2-Retirement coordination gate (precondition framing)
+
+T-Numeric-Construction historically carried an internal cascade
+gate on T-V2-Retirement landing first (path-(a) v2-refinement-syntax-blocker
+resolution). **Director ratification at gunbc#828
+#issuecomment-4385530115 implicitly supersedes** that gate via
+Q-MachineConstraint sub-decision 6 (UNIVERSAL substrate posture) —
+coordination moves from v2-side cascade to Grounding-side discharge.
+PR #1856 landing without T-V2-Retirement first confirms
+supersession in practice. This brief inherits the supersession;
+T-V2-Retirement coordination is **not** a hard precondition.
+
+If supersession is contested at dispatch, STOP and surface to
+Substrate Mgr (#1739).
+
+### Substrate state
+
 S3 Phase-1 carrier slice landed at PR #1856 (`dsl/std/machine_constraints.dag`
 on origin/main):
 - `MachineWidth<bits>` sole machine-axis carrier
