@@ -80,7 +80,7 @@ type AtomPayload
 // 🟢 TERMINAL. PR-PreF shared bound parent. CardinalityBound, SizeBound,
 // and the cardinality arm of LoopBound all describe bounded intervals over
 // different domains; this parent is the substrate target named by
-// INVARIANTS.md §P1. Existing carriers retrofit as instances instead of
+// INVARIANTS.md#p1-modeling-faithfulness. Existing carriers retrofit as instances instead of
 // growing new sibling bound declarations.
 //
 // `BoundedInterval` stores a lower endpoint plus a nonnegative width, never

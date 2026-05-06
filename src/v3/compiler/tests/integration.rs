@@ -207,6 +207,7 @@ mod t_demo_fixture_test {
     use std::path::PathBuf;
     use std::sync::OnceLock;
 
+    use crate::common::cached_compile_to_dag;
     use v3_compiler::compile_to_dag;
     use v3_compiler::dag::Dag;
     use v3_compiler::test_runner::{ClaimResult, TestRunner};
@@ -225,7 +226,7 @@ mod t_demo_fixture_test {
     }
 
     fn compile_fixture(source: &str) -> Dag {
-        crate::common::cached_compile_to_dag(source, FIXTURE)
+        cached_compile_to_dag(source, FIXTURE)
     }
 
     static T_DEMO_FIXTURE_DAG: OnceLock<Dag> = OnceLock::new();
