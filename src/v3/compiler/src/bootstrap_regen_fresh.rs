@@ -26,6 +26,7 @@ const BIT_DAG: &str = include_str!("../../../../dsl/std/bit.dag");
 const ERROR_PRIMITIVES_DAG: &str = include_str!("../../../../dsl/std/error_primitives.dag");
 const ALGEBRA_DAG: &str = include_str!("../../../../dsl/std/algebra.dag");
 const MAGNITUDE_DAG: &str = include_str!("../../../../dsl/std/magnitude.dag");
+const MACHINE_CONSTRAINTS_DAG: &str = include_str!("../../../../dsl/std/machine_constraints.dag");
 const NAT_DAG: &str = include_str!("../../../../dsl/std/nat.dag");
 const INTEGER_DAG: &str = include_str!("../../../../dsl/std/integer.dag");
 const RATIONAL_DAG: &str = include_str!("../../../../dsl/std/rational.dag");
@@ -140,6 +141,7 @@ fn std_fixtures() -> &'static [(&'static str, &'static str)] {
         ("dsl/std/error_primitives.dag", ERROR_PRIMITIVES_DAG),
         ("dsl/std/algebra.dag", ALGEBRA_DAG),
         ("dsl/std/magnitude.dag", MAGNITUDE_DAG),
+        ("dsl/std/machine_constraints.dag", MACHINE_CONSTRAINTS_DAG),
         ("dsl/std/nat.dag", NAT_DAG),
         ("dsl/std/integer.dag", INTEGER_DAG),
         ("dsl/std/rational.dag", RATIONAL_DAG),
