@@ -128,7 +128,7 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
 
 ## Acceptance
 
-- `src/v3/std/cross_target_coverage.dag` lands with the five
+- `src/v3/std/cross_target_coverage.dag` lands with the six
   types (`ShapeATarget`, `FormAxis`, `BehaviorAxis`, `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`) + the empty `data` declaration + the mandatory
   option-(c) header note.
 - **Practice 4 classification receipts on the live declaration

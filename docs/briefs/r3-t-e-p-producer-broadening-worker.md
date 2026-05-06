@@ -135,9 +135,13 @@ Worker should align to the three named gates structurally.
   `ExprCall.descent_evidence` populates an equivalent
   `CallDescentEvidence` row in v3; `SubValueUnknown` rate matches v2's
   unproven-edge rate exactly (no v3 regressions, no v3 fabrications).
-- `e_p_call_pattern_lookup_authoritative`: `lower_call_pattern` is
-  the only route from call site to `LoweringTarget`; no parallel
-  call-pattern derivation in lens or consumer code.
+- `e_p_call_pattern_lookup_authoritative`: `per_call_pattern_at`
+  is the only route from call site to `CallPattern` for lenses
+  and external consumers (the L-7 single-authority lookup gate);
+  the compiler-internal helper `lower_call_pattern` (`dag.rs:1318`)
+  routes call-site → `LoweringTarget` only inside lowering itself
+  and is **not** a consumer-facing entry point. No parallel call-
+  pattern derivation in lens or consumer code.
 - `e_p_sub_value_relation_per_call_landed`: cost + complexity lens
   consume the side table; per-lens v2-oracle cementing tests green.
 - `cargo test --workspace --exclude v2-compiler-tests` green.
