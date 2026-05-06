@@ -89,9 +89,9 @@
   <text x="332" y="784" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
   <text x="332" y="802" class="code">pub struct Credentials  { pub email: String, pub hash: Vec&lt;u8&gt; }</text>
   <text x="332" y="820" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="838" class="code">pub struct User { pub id: UserId, pub email: String }</text>
+  <text x="332" y="838" class="code">pub struct User { pub id: u64, pub email: String }</text>
   <text x="332" y="856" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="874" class="code">pub struct UserSession { pub user_id: UserId, pub expires_at: Timestamp }</text>
+  <text x="332" y="874" class="code">pub struct UserSession { pub user_id: u64, pub expires_at: i64 }</text>
   <text x="332" y="902" class="code">impl LoginRequest {</text>
   <text x="332" y="920" class="code">    pub fn new(email: String, password: String) -&gt; Self {</text>
   <text x="332" y="938" class="code">        Self { email, password }</text>
@@ -138,12 +138,12 @@
   <text x="832" y="548" class="code">  email: Str; hash: Bytes</text>
   <text x="832" y="566" class="code">}</text>
   <text x="832" y="594" class="code">type User {</text>
-  <text x="832" y="612" class="code">  id: UserId; email: Str</text>
+  <text x="832" y="612" class="code">  id: Int; email: Str</text>
   <text x="832" y="630" class="code">}</text>
   <text x="832" y="658" class="code">type UserSession {</text>
-  <text x="832" y="676" class="code">  user_id: UserId</text>
-  <text x="832" y="694" class="code">  expires_at: Timestamp</text>
+  <text x="832" y="676" class="code">  user_id: Int</text>
+  <text x="832" y="694" class="code">  expires_at: Int</text>
   <text x="832" y="712" class="code">}</text>
 
-  <text x="20" y="1470" class="punchline">Four stacked layers on the right. The handler on the left only writes against the top two. The middle has the whole stack built and ready to run.</text>
+  <text x="20" y="1470" class="punchline">Four stacked layers on the right. The handler on the left only writes against the top two. The middle is the whole stack — types, helpers, library scaffolding, app body — ready to compile (drop in the library bodies and it runs).</text>
 </svg>
