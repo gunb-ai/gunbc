@@ -201,6 +201,19 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Lane scope**: T-LensProducer-Retirement + T-FixedPoint + T-Tier3-Dissolution + T-V2-Retirement + 3 PB-owned bridges.
 
+**Worker partition** (per PB Mgr partition response 2026-05-06 at gunbc#846 #issuecomment-4385075315):
+
+| Schedule row | Worker / inbox | Dispatch posture |
+|---|---|---|
+| **P1** T-LensProducer-Retirement | sleek-eagle-514 (#1768) — PR #1805 path-1 + sub-briefs gunbc#828 (Sub1/2/3) | Next executable slice = `lens_apply` retirement design/audit receipts; not stalled on Director-thread unless §3 names HOLD |
+| **P1** parallel doc spine | zesty-ram-316 (#1769) — PR #1806 regen_lens audit + Sub2/Sub3 brief threads | post-R2-Evaluator + PB-1 bin-shim pattern; parallel doc-spine on P1 |
+| **P4** bridge appendix / cross-links | warm-ant-877 (#1770) — grep / ledger hygiene against `bridge_ledger.dag` / `r3_bridge_retirement_ledger_zero.dag` / `verification.dag` | Lockstep with P1/P2 sequencing; `include_str!` post-T-FixedPoint per Q-Bridge-Retirement-Sequencing-Authority |
+| **P5** F2 + F8 doc-sharpening | PB Mgr coordinates consumer-side with Substrate S12 owner | No duplicate PR; PB-named co-author OR comment-only on Substrate's PR (PM ratify if explicit co-author shape needed) |
+| **P2** T-FixedPoint | HOLD until P1 + SG-0 zero per F1 | No worker spawn that pretends LP is done; TC3 text stays proposal-side |
+| **P3** T-V2-Retirement | HOLD on broad ~79 .rs sweep until P2 + LP + T-Numeric-Construction `Int<N>` clear | Q-V2-Retirement-Boundary-Matrix split visible (PB vs Grounding vs Debt-Paydown) |
+
+**§2.2 sequencing authority — HARD DAG (PM ratification 2026-05-06)**: per PB Mgr ask + r3-structure.md §"Lane structure" → T-FixedPoint row "R2-close dependency: SG-0 zero from T-LensProducer-Retirement" — sequencing is **hard DAG, not staffing parallelism**. T-FixedPoint cannot complete until T-LP-Retirement completes (SG-0 zero is structural precondition; not just resource sequencing). Plan §2.2 sequence is canonical authority. Per r3-structure.md T-FixedPoint row: "SG-0 zero from T-LensProducer-Retirement" is named explicit dependency.
+
 ### P1 — T-LensProducer-Retirement (3 hand-Rust files retired)
 
 **Scope**: lens_apply.rs + lens_testgen.rs + regen_lens.rs retired via PB-Runtime + PB-1 patterns.
