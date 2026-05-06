@@ -469,6 +469,28 @@ pub mod evaluator {
         eval_port(dag, bind.value, state, strategy)
     }
 
+    /// Monomorphized and alias-specialized callables often carry
+    /// [`TypeConnective::Instantiation`] whose [`Instantiation::template`] is the
+    /// underlying [`TypeConnective::Arrow`] with [`ArrowBody::UserDefined`]. The
+    /// body evaluator must peel those layers so `std.list.fold` and other generic
+    /// lowers reach the same `Bind` entry as the template declaration.
+    fn peel_to_arrow_user_defined_bind_node(dag: &Dag, mut decl_id: DeclarationId) -> Option<NodeId> {
+        const MAX_INSTANTIATION_DEPTH: usize = 64;
+        for _ in 0..MAX_INSTANTIATION_DEPTH {
+            match &dag.declaration(decl_id).connective {
+                TypeConnective::Arrow {
+                    body: ArrowBody::UserDefined(bind_id),
+                    ..
+                } => return Some(bind_id.node_id()),
+                TypeConnective::Instantiation { template, .. } => {
+                    decl_id = *template;
+                }
+                _ => return None,
+            }
+        }
+        None
+    }
+
     fn eval_transform_node(
         dag: &Dag,
         t: &TransformNode,
@@ -579,14 +601,7 @@ pub mod evaluator {
             }
             TransformTarget::Callable(callee_decl) => {
                 let callee_decl = *callee_decl;
-                let connective = &dag.declaration(callee_decl).connective;
-                if let TypeConnective::Arrow { body, .. } = connective {
-                    let ArrowBody::UserDefined(bind_id) = body else {
-                        return Err(EvalError::UnsupportedTransformTarget {
-                            kind: "Callable (non-UserDefined body)",
-                        });
-                    };
-                    let bind_node_id = bind_id.node_id();
+                if let Some(bind_node_id) = peel_to_arrow_user_defined_bind_node(dag, callee_decl) {
                     let Behavior::Bind(bind) = dag.node(bind_node_id) else {
                         return Err(EvalError::MissingNode { node: bind_node_id });
                     };
