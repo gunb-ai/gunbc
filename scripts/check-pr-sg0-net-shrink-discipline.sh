@@ -87,8 +87,9 @@ sg0_validate_pr_body_format() {
     if grep -qE '^SG-0 pairing:[[:space:]]*\(a\)' <<<"$pairing_block"; then
       # (a) requires the literal "removed" plus a census-shaped path token (no
       # standalone .rs / slash tokens — those are not same-PR retirement evidence).
-      if ! grep -qE '\(a\).*removed[[:space:]]+(src/v3/compiler/[[:alnum:]_./-]+|[[:alnum:]_./-]+\.[rR][sS]|[[:alnum:]_./-]+\.[tT][xX][tT])' <<<"$pairing_flat"; then
-        echo "::error::SG-0 pairing (a) must cite same-PR retirements: include \`removed\` and a census-shaped path (\`src/v3/compiler/…\`, or a *.rs / *.txt token) on the pairing line or the line immediately after"
+      # `.txt` fragments must stay under `src/v3/compiler/`; short `*.rs` remains allowed.
+      if ! grep -qE '\(a\).*removed[[:space:]]+(src/v3/compiler/[[:alnum:]_./-]+|[[:alnum:]_./-]+\.[rR][sS]|src/v3/compiler/[[:alnum:]_./-]+\.[tT][xX][tT])' <<<"$pairing_flat"; then
+        echo "::error::SG-0 pairing (a) must cite same-PR retirements: include \`removed\` and a census-shaped path (\`src/v3/compiler/…\`, short \`*.rs\`, or \`src/v3/compiler/…*.txt\`) on the pairing line or the line immediately after"
         return 1
       fi
     elif grep -qE '^SG-0 pairing:[[:space:]]*\(b\)' <<<"$pairing_block"; then
@@ -216,9 +217,12 @@ self_test() {
   }
 
   # --- census counter (stdin synthetic snapshots; fail-closed shape) ---
-  local census_ok census_miss_nt census_miss_f census_dup census_unclosed
+  local census_ok census_frag_ml census_miss_nt census_miss_f census_dup census_unclosed
   census_ok=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n    "src/v3/compiler/a.rs",\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n    "src/v3/compiler/tests/b.rs",\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
   run_census_case "census counter minimal valid" "$census_ok" pass 3
+
+  census_frag_ml=$'const EXPECTED_HAND_AUTHORED_NON_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &[\n    "src/v3/compiler/z.txt",\n];\n'
+  run_census_case "census counter multiline FRAGMENTS block" "$census_frag_ml" pass 1
 
   census_miss_nt=$'const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[\n];\nconst EXPECTED_HAND_AUTHORED_FRAGMENTS: &[&str] = &["src/v3/compiler/c.txt"];\n'
   run_census_case "census counter missing NON_TEST" "$census_miss_nt" fail
@@ -246,6 +250,8 @@ self_test() {
   run_case "(a) without path evidence" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) deferred only' fail
   run_case "(a) removed without path-shaped token" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) removed not-a-path' fail
   run_case "(a) path-shaped token without removed keyword" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) src/v3/compiler/src/foo.rs' fail
+  run_case "(a) removed bare .txt rejected" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) removed other.txt' fail
+  run_case "(a) removed fragment txt under census root" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) removed src/v3/compiler/parse_parser_body.txt' pass
   run_case "(c) without dispatch" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) later' fail
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "(a) path evidence on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a)\nremoved src/v3/compiler/src/foo.rs' pass
