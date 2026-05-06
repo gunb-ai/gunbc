@@ -40,6 +40,10 @@ sg0_validate_pr_body_format() {
   local body="$1"
   local delta_line token need_pairing pairing_block pairing_flat
 
+  # GitHub `pull_request.body` can be CRLF-shaped; strip `\r` so column-0 anchors
+  # and numeric tokens match LF-only self-tests and typical Unix tooling.
+  body=${body//$'\r'/}
+
   # Use here-strings (not `printf … | grep`) so `pipefail` + early `grep -q`
   # exit cannot SIGPIPE the writer on large PR bodies.
   if ! grep -qE '^SG-0 hand-path delta:' <<<"$body"; then
@@ -238,9 +242,11 @@ self_test() {
 
   # --- PR-body pairing (existing) ---
   run_case "pairing (b) with +1" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b) https://example.com/budget' pass
+  run_case "CRLF +1 (b) pairing" $'SG-0 hand-path delta: +1\r\nSG-0 pairing: (b) https://example.com/budget\r\n' pass
   run_case "+1 missing pairing" $'SG-0 hand-path delta: +1\n(no pairing line)' fail
   run_case "+0 skips pairing" $'SG-0 hand-path delta: +0' pass
   run_case "zero skips pairing" $'SG-0 hand-path delta: 0' pass
+  run_case "CRLF +0 skips pairing" $'SG-0 hand-path delta: +0\r\n' pass
   run_case "shrink skips pairing" $'SG-0 hand-path delta: -2' pass
   run_case "(a) pairing" $'SG-0 hand-path delta: +3\nSG-0 pairing: (a) removed foo.rs bar.rs' pass
   run_case "(c) pairing" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) follow-up dispatch: TM-0 lane' pass
@@ -254,6 +260,7 @@ self_test() {
   run_case "(a) removed fragment txt under census root" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) removed src/v3/compiler/parse_parser_body.txt' pass
   run_case "(c) without dispatch" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) later' fail
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
+  run_case "CRLF (b) URL on following line" $'SG-0 hand-path delta: +1\r\nSG-0 pairing: (b)\r\nhttps://github.com/gunb-ai/gunbc/issues/1\r\n' pass
   run_case "(a) path evidence on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a)\nremoved src/v3/compiler/src/foo.rs' pass
   run_case "(c) dispatch on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch: TM-0 lane' pass
   run_case "mid-line SG-0 pairing mention ignored" $'SG-0 hand-path delta: +1\nNarrative: not SG-0 pairing: (b) https://trap.example\nSG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/1' pass
