@@ -37,7 +37,7 @@ Per `design-pb-runtime-interpreter.md` §5.1 sub-gate 1 row + §3 (Item 4) + the
 - **`lens_apply_dot_rs_retired`** — `src/v3/compiler/src/lens_apply.rs` deleted.
 - **SG-0 census delta** — `EXPECTED_HAND_AUTHORED_NON_TEST` decreases by 1 (`lens_apply.rs` removed from the census authority at `src/v3/compiler/tests/integration/sg0_census_test.rs`).
 - **Lens-application invariants preserved by construction** — every lens consumer that reached `apply_lens_declaration(...)` now routes through PB-Runtime's `evaluate(...)` (per anti-bridge invariant #4: "no parallel emit logic"; the `.dag` evaluator IS the dispatch path, not a parallel one). Behavioral equivalence proven by the convergence-matrix Row 4 TestClaim landing green pre-deletion.
-- **No new `TestPredicate` variant** introduced from this lane. If the equivalence acceptance requires a substrate gap, escalate per `INVARIANTS.md:94` §P1 to Substrate Manager.
+- **No new `TestPredicate` variant** introduced from this lane. If the equivalence acceptance requires a substrate gap, escalate per [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure) to Substrate Manager.
 - **Canonical-lens bridge ratchet** at `src/v3/compiler/tests/integration/canonical_lens_bridge_ratchet_test.rs` (#1183) lowers (or its companion deletion lands in the same PR) — that ratchet's pinned counts collapse when `lens_apply.rs` retires.
 
 The sub-gate is reported as a `.dag` `TestClaim` to the closure ledger; the locked predicate name is `lens_apply_dot_rs_retired` per design-doc §5.1.
@@ -97,4 +97,4 @@ If any of (2)–(6) is unmet, this brief stays in PROPOSAL state; PB Manager doe
 - Sibling PB R3 briefs: [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md), [`r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md).
 - SG-0 census authority: `src/v3/compiler/tests/integration/sg0_census_test.rs` (`EXPECTED_HAND_AUTHORED_NON_TEST`).
 - File targeted for retirement (do not edit until dispatch): `src/v3/compiler/src/lens_apply.rs`.
-- Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94`.
+- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
