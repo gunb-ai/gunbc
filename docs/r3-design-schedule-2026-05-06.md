@@ -228,6 +228,8 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 **Dispatch trigger**: ongoing (audit cadence). **Worker** (per Verification Mgr 2026-05-06): bold-crane-790 — ACTIVE.
 **Closure predicate**: gate #36 reaches PASSING.
 
+**Doc / grep alignment**: §3 **P4** (warm-ant-877) + [`docs/briefs/r3-v-bridge-retirement-ledger-zero-audit.md`](briefs/r3-v-bridge-retirement-ledger-zero-audit.md) §"Grep hygiene" maintain SB5/6-style enumeration receipts on the same three DAG paths (`bridge_ledger.dag`, `r3_bridge_retirement_ledger_zero.dag`, `verification.dag`). PB and Substrate retire evidence; Verification owns the ledger-zero gate — appendix hygiene complements execution audits without shifting gate ownership.
+
 ### V7 — ValueBody isomorphism gate design (Q-ValueBody-Isomorphism)
 
 **Scope**: per Verification canvas V6 + `feedback_isomorphism_or_generation_for_mirrors` — Rust↔.dag mirror conformance gate. Verification test-only pressure; Substrate Mgr authority on mirror.
@@ -247,7 +249,7 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 |---|---|---|
 | **P1** T-LensProducer-Retirement | sleek-eagle-514 (#1768) — PR #1805 path-1 + sub-briefs gunbc#828 (Sub1/2/3) | Next executable slice = `lens_apply` retirement design/audit receipts; not stalled on Director-thread unless §3 names HOLD |
 | **P1** parallel doc spine | zesty-ram-316 (#1769) — PR #1806 regen_lens audit + Sub2/Sub3 brief threads | post-R2-Evaluator + PB-1 bin-shim pattern; parallel doc-spine on P1 |
-| **P4** bridge appendix / cross-links | warm-ant-877 (#1770) — grep / ledger hygiene against `bridge_ledger.dag` / `r3_bridge_retirement_ledger_zero.dag` / `verification.dag` | Lockstep with P1/P2 sequencing; `include_str!` post-T-FixedPoint per Q-Bridge-Retirement-Sequencing-Authority |
+| **P4** bridge appendix / cross-links | warm-ant-877 (#1770) — grep / ledger hygiene against `bridge_ledger.dag` / `r3_bridge_retirement_ledger_zero.dag` / `verification.dag` | Lockstep with §2 **V6** `bridge_retirement_ledger_zero` audit cadence (bold-crane) + P1/P2 sequencing; `include_str!` post-T-FixedPoint per Q-Bridge-Retirement-Sequencing-Authority |
 | **P5** F2 + F8 doc-sharpening | PB Mgr coordinates consumer-side with Substrate S12 owner | No duplicate PR; PB-named co-author OR comment-only on Substrate's PR (PM ratify if explicit co-author shape needed) |
 | **P2** T-FixedPoint | HOLD until P1 + SG-0 zero per F1 | No worker spawn that pretends LP is done; TC3 text stays proposal-side |
 | **P3** T-V2-Retirement | HOLD on broad ~79 .rs sweep until P2 + LP + T-Numeric-Construction `Int<N>` clear | Q-V2-Retirement-Boundary-Matrix split visible (PB vs Grounding vs Debt-Paydown) |
@@ -285,6 +287,29 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Dispatch trigger**: per per-bridge prerequisite chain.
 **Closure predicate**: contributes to §1.8 gate #36 (bridge_retirement_ledger_zero) + #69 (bridge_retirement_demonstration).
+
+#### P4 — Verification V6 alignment + grep hygiene (PR #1804 SB5/6 + PR #1810 schedule)
+
+**Cross-lane contract** ([gunbc#828](https://github.com/gunb-ai/gunbc/issues/828), PR [#1810](https://github.com/gunb-ai/gunbc/pull/1810) §3 table): PB (and Substrate, for Substrate-owned bridges) **lands retirement evidence** in owning programs; Verification **audits** unified `bridge_retirement_ledger_zero` via production `BridgeLedgerZero` + integration harness (**§2 V6**, bold-crane-790). Doc work here does not substitute for gate execution — it keeps PM compile passes **grep-aligned** with live ledger + predicate surfaces.
+
+**Authoritative paths** (same triple as Phase-2 SB5/6 bridge appendix on PR [#1804](https://github.com/gunb-ai/gunbc/pull/1804)):
+
+- `src/v3/std/bridge_ledger.dag` — row truth for the five named bridges + statuses
+- `src/v3/compiler/tests/fixtures/r3_bridge_retirement_ledger_zero.dag` — fixture wiring for `bridge_retirement_ledger_zero`
+- `src/v3/std/verification.dag` — `BridgeLedgerZero` and adjacent verification predicates that ride the harness
+
+**Repeatable enumeration gate** (squash-merge PR numbers from subjects; per-PR file receipt):
+
+```bash
+git log origin/main --format='%s' -- \
+  src/v3/std/bridge_ledger.dag \
+  src/v3/compiler/tests/fixtures/r3_bridge_retirement_ledger_zero.dag \
+  src/v3/std/verification.dag
+
+gh pr view <N> --repo gunb-ai/gunbc --json files,title
+```
+
+**Sequencing (ratified HARD-DAG)**: PB-owned `include_str!` side-channel retirement stays **post-T-FixedPoint** per Q-Bridge-Retirement-Sequencing-Authority — ledger rows remain **honestly Open** until structural receipts land; schedule ordering does not relax `BridgeLedgerZero` truth.
 
 ### P5 — F2 + F8 doc-sharpening PR (per S12 + B6)
 
