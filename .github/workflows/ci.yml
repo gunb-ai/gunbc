@@ -75,7 +75,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          # Full clone so `git diff origin/main...HEAD` sees every commit on the PR
+          # branch (shallow `fetch-depth: 1` misses earlier commits and can false-negative
+          # the SG-0 net-shrink discipline gate).
+          fetch-depth: 0
+
+      - name: Fetch main for PR discipline diffs
+        if: github.event_name == 'pull_request'
+        run: git fetch origin main:refs/remotes/origin/main
+
+      - name: SG-0 net-shrink PR-body discipline (self-test)
+        run: bash scripts/check-pr-sg0-net-shrink-discipline.sh --self-test
+
+      - name: SG-0 net-shrink PR-body discipline
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: bash scripts/check-pr-sg0-net-shrink-discipline.sh
 
       - name: Fabrication sentinel ratchet (P0-C)
         run: bash scripts/check-fabrication-sentinels.sh
@@ -202,14 +218,17 @@ jobs:
       # miss, first compile + link on ubuntu-latest) can spend minutes — keep
       # headroom beyond a tight 120s; per-test discipline lives in
       # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
-      - name: v3 tests (Stage 2d integration module, 300s cold-compile-safe budget)
+      # Tracked headroom: ratchet this ceiling back toward 300s once cold
+      # lane2d CI runs regularly complete under 300s after fixture compile
+      # amortization lands for the remaining Stage 2d cases.
+      - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
         run: |
           start=$(date +%s)
           cargo test -p v3-compiler --test integration lane2_stage_2d_symbolic_cost_test::
           elapsed=$(( $(date +%s) - start ))
           echo "v3 Stage 2d (lane2d) wall time: ${elapsed}s"
-          if [ "$elapsed" -gt 300 ]; then
-            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 300s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
+          if [ "$elapsed" -gt 360 ]; then
+            echo "::error::v3 lane2d tests took ${elapsed}s (budget: 360s) — share bootstrap setup via OnceLock or collapse fine-grained tests"
             exit 1
           fi
 
@@ -332,12 +351,11 @@ jobs:
     # PR job still reports as a failed check, which makes this advisory ratchet
     # merge-blocking before Lane 1e graduation.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    # Same sizing rationale as `v3` above: cargo release builds +
-    # determinism_test (5x emit matrix) + self_host_fixed_point bin
-    # need >2 cores to clear the 30min cap. Hard-coded to
-    # ubicloud-standard-8.
+    # Same sizing rationale as `v3` above: DB-8 release builds run on
+    # ubicloud-standard-8. Use a 60m wall-clock cap so cold-cache / full release
+    # `cargo` work is unlikely to hit mid-compile cancellation (ratchet remains non-blocking).
     runs-on: ubicloud-standard-8
-    timeout-minutes: 45
+    timeout-minutes: 60
     needs: [v3]
     continue-on-error: true
     steps:

@@ -78,8 +78,8 @@ Locations swept (main HEAD only):
 | 28 | `docs/design-pure-bootstrap-zero.md` (implicit) | Migration path for a file in 35-file audit reveals path isn't structurally achievable | Escalate to PB-tier redesign | SOFT |
 | 29 | `docs/r2-structure.md:147` | Manager discovers program needs to expand (e.g., class-of-pattern dissolution under single-item brief) | Director adjudicates whether to expand program or split new lane (decision artifact format — see Fix 2 below) | SOFT |
 | 30 | `ROADMAP.md` (Grounding lane) | Scope changes to Grounding Manager's program | Route to director; amendments to THESIS.md require director-authored PRs | SOFT |
-| 31 | `INVARIANTS.md §P5` | Paired-dispatch or per-PR gate violations / scaffold without named dissolution trigger | Release Manager surfaces violations; per-brief enforcement at authoring manager's point | SOFT |
-| 32 | `INVARIANTS.md §P5` | Velocity tripwire fires (≥3:1 ratio scaffolds:deletions in 7-day window across all managers) | Release Manager surfaces to Director; indicates systemic violation pattern | SOFT (interpretation) / GROUNDED (calculation) |
+| 31 | `INVARIANTS.md#p5-progress-is-dissolution` | Paired-dispatch or per-PR gate violations / scaffold without named dissolution trigger | Release Manager surfaces violations; per-brief enforcement at authoring manager's point | SOFT |
+| 32 | `INVARIANTS.md#p5-progress-is-dissolution` | Velocity tripwire fires (≥3:1 ratio scaffolds:deletions in 7-day window across all managers) | Release Manager surfaces to Director; indicates systemic violation pattern | SOFT (interpretation) / GROUNDED (calculation) |
 
 ### Escalation target: Substrate Manager (post-R2-spawn) (1 clause)
 
@@ -165,6 +165,6 @@ The sweep surfaced three clauses where the trigger is grounded but the resolutio
 
 - Authority docs swept: `INVARIANTS.md`, `ROADMAP.md`, `THESIS.md`, `docs/r2-structure.md`
 - Brief locations swept: `docs/briefs/*.md`, `docs/design-*.md`, `docs/thesis/*.md`
-- Discipline framework: `INVARIANTS.md §P5` "Dispatch-Discipline Mechanisms"
+- Discipline framework: `INVARIANTS.md#p5-progress-is-dissolution` "Dispatch-Discipline Mechanisms"
 - Cross-manager signal pattern: R1 "Cross-manager notifications queued" brief pattern (per `docs/r2-structure.md`)
 - Outstanding sweep targets: PR #835 (`pm/r2-manager-briefs`), PR #836 (`session/zesty-bear-812`)

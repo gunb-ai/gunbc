@@ -24,7 +24,7 @@ Two core gaps plus an adjacent cosmetic:
 - `src/v2/complexity.dag` — v2 heuristic authority for comparison
 - `src/v2/stage0/src/v2_compiler_complexity.rs` (or equivalent) — v2 stage0 Rust binding (for invoking v2 complexity on a fixture)
 - `feedback_variant_provenance_shape` memory — context on why v2's complexity.dag is mostly bridge code
-- INVARIANTS.md §P1 worked example on termination via descent evidence — P1 Modeling Faithfulness framing
+- INVARIANTS.md#p1-modeling-faithfulness worked example on termination via descent evidence — P1 Modeling Faithfulness framing
 
 ## Work — two phases, Phase 2 is the payoff
 
