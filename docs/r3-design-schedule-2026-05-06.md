@@ -306,6 +306,18 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Lane scope**: L6 CrossTarget-Meta + T-Ground-Rust + Coercion-Fold retirement + emit shim consumption + F10 cleanup + Anthropic re-dispatch.
 
+**Worker partition** (per Grounding Mgr partition response 2026-05-06 at gunbc#846 #issuecomment-4385080863):
+
+| Item | Status | Worker / trigger |
+|---|---|---|
+| **G1** L6 row population | HELD | Trigger = Substrate S6 `EmissionPathProjection` carrier landing |
+| **G2** T-Ground-Rust full coverage | HELD | Trigger = Substrate S7 PR-F + S8 Float migration / Real base-carrier for float rows; #1783 remains draft as dispatch-guide staging artifact |
+| **G3** Coercion-Fold scratch retirement | HELD | Trigger = executable LanguageSpec projection |
+| **G4** F10 `install_hint` cleanup | **DISPATCHED 2026-05-06** | silent-badger-711 (#1774); see [gunbc#1774 #issuecomment-4385080257](https://github.com/gunb-ai/gunbc/issues/1774#issuecomment-4385080257) |
+| **G5** Anthropic #1702 re-dispatch | HELD | Trigger = Substrate S5 variant-aware projection metadata carrier + Q-Anthropic-Variant-Aware closure-scope ratification |
+
+No additional PM/Director ratification needed for G4. For G1/G2/G3/G5, schedule already names sufficient upstream triggers; Grounding dispatches as soon as triggers land. Grounding lane is largely consumer of Substrate work — most items HELD on Substrate cascade.
+
 ### G1 — L6 row population (post-EmissionPathProjection)
 
 **Scope**: per `docs/briefs/r3-l6-emission-path-projection-substrate-worker.md` consumer-side; populate L6 projection rows + convert `coverage.rs`.
