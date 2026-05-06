@@ -75,15 +75,15 @@ Carriers needed: `MachineConstraint<C>` + `MachineWidth<bits>` + interaction-loo
 
 **Scope**: substrate carrier landing per Substrate canvas B3 + Grounding G1.
 
-**Dispatch trigger**: now.
-**Worker pin** (per Q-PR-F bandwidth-aware routing): **loyal-wolf-828 OR valiant-ant-72** (Substrate Mgr selects); brief shape = T-E-P-Producer-Broadening adjacent precedent.
+**Dispatch trigger**: post-#1782 merge (Substrate Mgr 2026-05-06).
+**Worker pin** (per Q-PR-F bandwidth-aware routing + Substrate Mgr partition 2026-05-06): **loyal-wolf-828**; brief shape = T-E-P-Producer-Broadening adjacent precedent (Substrate Mgr authors brief; valiant-ant-72 reserved for S3 `MachineConstraint<C>` implementation post-design).
 **Closure predicate**: unblocks Grounding T-Ground-Rust Phase 1 (`u128` / `isize` / `usize` / walker arms / pilot mirror).
 
 ### S8 — `ApproximateField<F>` Float migration (T-NumericConstruction)
 
 **Scope**: Float32/Float64 migration from `Field<Word*>` to `ApproximateField<F>` per Substrate canvas B2 + Grounding G2; plus Real/base-carrier convention for `F`.
 
-**Dispatch trigger**: post-S3 (MachineConstraint<C> may inform F shape) OR parallel.
+**Dispatch trigger**: **parallel with S3** (per Substrate Mgr partition response 2026-05-06 at gunbc#846 #issuecomment-4385074769 — `MachineConstraint<C>` and `ApproximateField<F>` are independent axes: machine width vs algebra approximation). Both Mgr-tier design now; cross-reference at brief-landing.
 **Closure predicate**: unblocks Grounding Rust float rows + Class 1 Real<N> demonstration; advances §1.8 gates #17-#24 (T-Numeric-Construction 8 gates).
 
 ### S9 — T-Numeric-Construction Mgr-tier brief authoring (B2 ratified)
@@ -97,14 +97,16 @@ Carriers needed: `MachineConstraint<C>` + `MachineWidth<bits>` + interaction-loo
 
 **Scope**: brief drafted in PR #1782 (`docs/briefs/r3-t-e-p-producer-broadening-worker.md`); broaden per-call DescentEvidence / CallPattern / SubValueRelation producer coverage.
 
-**Dispatch trigger**: now (anytime post-#1782 brief landing per B3 RATIFIED).
+**Dispatch trigger**: post-#1782 merge (per B3 RATIFIED).
+**Worker pin** (per Substrate Mgr 2026-05-06): **quick-koi-190** (currently on #1799 termination-contract; T-E-P consumes descent-evidence, natural follow-on).
 **Closure predicate**: §1.8 gates #76-#78 (3 T-E-P gates) + foundational for cascade T-LBP → T-LAS → T-WAD → T-LSA.
 
 ### S11 — Slice C of #1795 follow-up (B1 ratified)
 
 **Scope**: Slice C residual covers ~10 files (per smart-ram-167 enumeration); paired prose+regen edits per #1795 path-(a) precedent.
 
-**Dispatch trigger**: now (B1 RATIFIED — prose+regen-bundling default).
+**Dispatch trigger**: post-#1795 (Slice A) + #1801 (Slice B) merge per B1 RATIFIED prose+regen bundling (Substrate Mgr 2026-05-06 — cascade-clearance gated).
+**Worker pin** (per Substrate Mgr 2026-05-06): **smart-ram-167** (Slice B precedent owner; pattern-familiar).
 **Closure predicate**: ROADMAP :425 row PARTIAL → Retired (per Substrate canvas C3); Q-Slice-C-Retirement-Receipt resolution.
 
 ### S12 — F2 + F8 doc-sharpening PR (B6 ratified)
@@ -116,13 +118,15 @@ Carriers needed: `MachineConstraint<C>` + `MachineWidth<bits>` + interaction-loo
 
 ### Substrate demonstration gates (per §1.6 minimum bar)
 
-| Gate (§1.8 row) | Demonstration scope |
-|---|---|
-| #67 `numeric_construction_demonstration` | end-to-end `Int<32>` + `Real<64>` round-trip |
-| #68 `anthropic_wire_demonstration` | full request/response cycle vs deterministic mock |
-| #70 `cost_lens_demonstration` | ≥2 algebra-instances + ≥1 recursive call + observable cost-bound |
-| #72 `e_p_producer_demonstration` | call-site produces full descent evidence at runtime |
-| #73 `lens_behavioral_parity_demonstration` | each lens demonstrates + matches frozen v2-oracle cementing-test snapshot (per openai-pro F2 — frozen, NOT live v2) |
+Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope folded into parent worker brief Acceptance bullets**, NOT separate dispatches. Each gate becomes an Acceptance bullet on the parent lane's worker brief.
+
+| Gate (§1.8 row) | Parent brief | Demonstration scope (Acceptance bullet) |
+|---|---|---|
+| #67 `numeric_construction_demonstration` | T-Numeric-Construction worker brief (S9) | end-to-end `Int<32>` + `Real<64>` round-trip |
+| #68 `anthropic_wire_demonstration` | T-Anthropic-Wire / variant-aware brief (S5 follow-on) | full request/response cycle vs deterministic mock |
+| #70 `cost_lens_demonstration` | T-CostLens-Composition brief | ≥2 algebra-instances + ≥1 recursive call + observable cost-bound |
+| #72 `e_p_producer_demonstration` | T-E-P-Producer-Broadening worker brief (S10) | call-site produces full descent evidence at runtime |
+| #73 `lens_behavioral_parity_demonstration` | T-LBP scope-calibrated brief (post-S2) | each lens demonstrates + matches frozen v2-oracle cementing-test snapshot (per openai-pro F2 — frozen, NOT live v2) |
 
 ---
 
