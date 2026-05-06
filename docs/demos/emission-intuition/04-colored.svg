@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1500" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1900" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
@@ -13,194 +13,259 @@
       .card-header { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
       .punchline { font-size: 14px; font-weight: 600; fill: #1f2328; }
 
-      /* concept tints — same color = same concept across columns */
-      .tint-primitive { fill: #dbeafe; }   /* light blue  — Sum */
-      .tint-helpers   { fill: #d1fae5; }   /* light green — Result alias, map, and_then */
-      .tint-library   { fill: #e9d5ff; }   /* light purple — ApiResponse, HttpError */
-      .tint-libfns    { fill: #fed7aa; }   /* light amber — validate / fetch_user / mint_session */
-      .tint-domain    { fill: #fce7f3; }   /* light pink  — LoginRequest, User, UserSession, … */
-      .tint-app       { fill: #fef9c3; }   /* light yellow — handle_login */
+      /* Layer tints — same color appears wherever that layer has content */
+      .tint-primitive { fill: #dbeafe; }   /* blue   */
+      .tint-helpers   { fill: #d1fae5; }   /* green  */
+      .tint-library   { fill: #e9d5ff; }   /* purple */
+      .tint-domain    { fill: #fce7f3; }   /* pink   */
+      .tint-app       { fill: #fef9c3; }   /* yellow */
+      .tint-tests     { fill: #ccfbf1; }   /* teal   */
 
-      /* legend swatches */
+      /* Legend block */
       .legend-swatch { stroke: #d0d7de; stroke-width: 1; }
-      .legend-text { font-size: 10px; fill: #57606a; }
+      .legend-text   { font-size: 11px; fill: #1f2328; }
+      .legend-meta   { font-size: 10px; fill: #6e7781; font-style: italic; }
+      .legend-frame  { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">Four layers — color-coded.</text>
-  <text x="20" y="48" class="sub">Same diagram as 04. Each concept gets a tint; the same color shows up wherever that concept appears, so you can trace a fact on the right (or a bit of logic on the left) to its expansion in the middle.</text>
+  <text x="20" y="30" class="title">Four layers, color-coded — and the tests come along.</text>
+  <text x="20" y="48" class="sub">Each layer gets a color. Watch how each layer contributes facts, logic, or both — and how the middle materializes everything plus a test module.</text>
 
-  <!-- ───── color legend ───── -->
-  <g>
-    <rect x="20"  y="60" width="14" height="14" class="legend-swatch tint-primitive"/>
-    <text x="40"  y="71" class="legend-text">Primitive (Sum)</text>
-    <rect x="170" y="60" width="14" height="14" class="legend-swatch tint-helpers"/>
-    <text x="190" y="71" class="legend-text">Helpers (Result, map, and_then)</text>
-    <rect x="420" y="60" width="14" height="14" class="legend-swatch tint-library"/>
-    <text x="440" y="71" class="legend-text">Library types (ApiResponse, HttpError)</text>
-    <rect x="700" y="60" width="14" height="14" class="legend-swatch tint-libfns"/>
-    <text x="720" y="71" class="legend-text">Library fns (validate / fetch_user / mint_session)</text>
-    <rect x="20"  y="80" width="14" height="14" class="legend-swatch tint-domain"/>
-    <text x="40"  y="91" class="legend-text">Domain types (LoginRequest, User, UserSession, …)</text>
-    <rect x="320" y="80" width="14" height="14" class="legend-swatch tint-app"/>
-    <text x="340" y="91" class="legend-text">App handler (handle_login)</text>
-  </g>
+  <!-- ───── Layered legend ───── -->
+  <rect x="20" y="62" width="1080" height="98" class="legend-frame"/>
+  <text x="32" y="80" class="col-label">LAYER → WHERE IT APPEARS</text>
 
-  <text x="20"  y="118" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
-  <text x="320" y="118" class="col-label">RUST — GENERATED</text>
-  <text x="820" y="118" class="col-label">FACTS · STRUCTS · OBJECTS</text>
+  <!-- Row: Primitive -->
+  <rect x="32"  y="92"  width="14" height="14" class="legend-swatch tint-primitive"/>
+  <text x="52"  y="103" class="legend-text">Primitive (Sum)</text>
+  <text x="52"  y="118" class="legend-meta">facts → generated  ·  no logic at this layer</text>
 
-  <!-- ───── LEFT card ───── -->
-  <rect x="20" y="128" width="280" height="22" class="card-header"/>
-  <text x="32" y="143" class="badge badge-dag">.dag</text>
-  <rect x="20" y="150" width="280" height="568" class="card"/>
+  <!-- Row: Helpers -->
+  <rect x="252" y="92"  width="14" height="14" class="legend-swatch tint-helpers"/>
+  <text x="272" y="103" class="legend-text">Helpers (Result, map, and_then)</text>
+  <text x="272" y="118" class="legend-meta">facts + logic → generated</text>
 
-  <!-- LEFT tints -->
-  <rect x="22" y="152" width="276" height="222" class="tint-libfns"/>
-  <rect x="22" y="378" width="276" height="200" class="tint-app"/>
+  <!-- Row: Library -->
+  <rect x="532" y="92"  width="14" height="14" class="legend-swatch tint-library"/>
+  <text x="552" y="103" class="legend-text">Library (ApiResponse, HttpError, fn sigs)</text>
+  <text x="552" y="118" class="legend-meta">facts + logic → generated</text>
 
-  <text x="32" y="170" class="layer">// library — known signatures</text>
-  <text x="32" y="190" class="code">fn validate(</text>
-  <text x="32" y="208" class="code">    req: LoginRequest</text>
-  <text x="32" y="226" class="code">) -&gt; ApiResponse&lt;Credentials&gt;</text>
-  <text x="32" y="262" class="code">fn fetch_user(</text>
-  <text x="32" y="280" class="code">    creds: Credentials</text>
-  <text x="32" y="298" class="code">) -&gt; ApiResponse&lt;User&gt;</text>
-  <text x="32" y="334" class="code">fn mint_session(</text>
-  <text x="32" y="352" class="code">    user: User</text>
-  <text x="32" y="370" class="code">) -&gt; ApiResponse&lt;UserSession&gt;</text>
-  <text x="32" y="408" class="layer">// app — handler composes them</text>
-  <text x="32" y="428" class="code">fn handle_login(</text>
-  <text x="32" y="446" class="code">    req: LoginRequest</text>
-  <text x="32" y="464" class="code">) -&gt; ApiResponse&lt;UserSession&gt; =</text>
-  <text x="32" y="482" class="code">  and_then(</text>
-  <text x="32" y="500" class="code">    validate(req),</text>
-  <text x="32" y="518" class="code">    fn(creds) =&gt;</text>
-  <text x="32" y="536" class="code">      and_then(</text>
-  <text x="32" y="554" class="code">        fetch_user(creds),</text>
-  <text x="32" y="572" class="code">        fn(user) =&gt; mint_session(user)))</text>
-  <text x="32" y="612" class="layer">// the handler doesn't say "Sum"</text>
-  <text x="32" y="628" class="layer">// or "Result" anywhere. Lower</text>
-  <text x="32" y="644" class="layer">// layers are abstract here.</text>
+  <!-- Row: Domain -->
+  <rect x="852" y="92"  width="14" height="14" class="legend-swatch tint-domain"/>
+  <text x="872" y="103" class="legend-text">Domain (LoginRequest, …)</text>
+  <text x="872" y="118" class="legend-meta">facts → generated</text>
 
-  <!-- ───── CENTER card ───── -->
-  <rect x="320" y="128" width="480" height="22" class="card-header"/>
-  <text x="332" y="143" class="badge badge-rust">RUST</text>
-  <rect x="320" y="150" width="480" height="1318" class="card"/>
+  <!-- Row: App -->
+  <rect x="32"  y="132" width="14" height="14" class="legend-swatch tint-app"/>
+  <text x="52"  y="143" class="legend-text">App (handle_login)</text>
+  <text x="52"  y="158" class="legend-meta">logic → generated</text>
 
-  <!-- CENTER tints, top-to-bottom -->
-  <rect x="322" y="152" width="476" height="170" class="tint-primitive"/>
-  <rect x="322" y="324" width="476" height="266" class="tint-helpers"/>
-  <rect x="322" y="592" width="476" height="146" class="tint-library"/>
-  <rect x="322" y="740" width="476" height="262" class="tint-domain"/>
-  <rect x="322" y="1004" width="476" height="68"  class="tint-libfns"/>
-  <rect x="322" y="1074" width="476" height="232" class="tint-app"/>
+  <!-- Row: Tests -->
+  <rect x="252" y="132" width="14" height="14" class="legend-swatch tint-tests"/>
+  <text x="272" y="143" class="legend-text">Tests (auto-emitted)</text>
+  <text x="272" y="158" class="legend-meta">no source — emitted from the structural fold</text>
 
-  <text x="332" y="170" class="layer">// primitive</text>
-  <text x="332" y="190" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="208" class="code">pub enum Sum&lt;A, B&gt; { Left { value: A }, Right { value: B } }</text>
-  <text x="332" y="236" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
-  <text x="332" y="254" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
-  <text x="332" y="272" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
-  <text x="332" y="290" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
-  <text x="332" y="308" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
-  <text x="332" y="316" class="code">}</text>
+  <text x="20"  y="190" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
+  <text x="320" y="190" class="col-label">RUST — GENERATED</text>
+  <text x="820" y="190" class="col-label">FACTS · STRUCTS · OBJECTS</text>
 
-  <text x="332" y="342" class="layer">// helpers</text>
-  <text x="332" y="362" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
-  <text x="332" y="390" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
-  <text x="332" y="408" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
-  <text x="332" y="426" class="code">    match s {</text>
-  <text x="332" y="444" class="code">        Sum::Left  { value } =&gt; Sum::Left  { value: f(value) },</text>
-  <text x="332" y="462" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
-  <text x="332" y="480" class="code">    }</text>
-  <text x="332" y="498" class="code">}</text>
-  <text x="332" y="526" class="code">pub fn and_then&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;,</text>
-  <text x="332" y="544" class="code">    f: impl FnOnce(A) -&gt; Sum&lt;C, B&gt;) -&gt; Sum&lt;C, B&gt; {</text>
-  <text x="332" y="562" class="code">    match s { Sum::Left{value}=&gt;f(value), Sum::Right{value}=&gt;Sum::Right{value} }</text>
-  <text x="332" y="580" class="code">}</text>
+  <!-- ─────────── LEFT card ─────────── -->
+  <rect x="20" y="200" width="280" height="22" class="card-header"/>
+  <text x="32" y="215" class="badge badge-dag">.dag</text>
+  <rect x="20" y="222" width="280" height="708" class="card"/>
 
-  <text x="332" y="610" class="layer">// library</text>
-  <text x="332" y="630" class="code">pub type ApiResponse&lt;T&gt; = Result&lt;T, HttpError&gt;;</text>
-  <text x="332" y="658" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="676" class="code">pub struct HttpError { pub status: i32, pub body: String }</text>
-  <text x="332" y="704" class="code">impl HttpError {</text>
-  <text x="332" y="722" class="code">    pub fn new(status: i32, body: String) -&gt; Self { Self { status, body } }</text>
-  <text x="332" y="730" class="code">}</text>
+  <!-- LEFT tints: helpers, library, app  (no primitive, no domain at left) -->
+  <rect x="22" y="224" width="276" height="278" class="tint-helpers"/>
+  <rect x="22" y="506" width="276" height="220" class="tint-library"/>
+  <rect x="22" y="730" width="276" height="198" class="tint-app"/>
 
-  <text x="332" y="758" class="layer">// domain</text>
-  <text x="332" y="778" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="796" class="code">pub struct LoginRequest { pub email: String, pub password: String }</text>
-  <text x="332" y="814" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="832" class="code">pub struct Credentials  { pub email: String, pub hash: Vec&lt;u8&gt; }</text>
-  <text x="332" y="850" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="868" class="code">pub struct User { pub id: UserId, pub email: String }</text>
-  <text x="332" y="886" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
-  <text x="332" y="904" class="code">pub struct UserSession { pub user_id: UserId, pub expires_at: Timestamp }</text>
-  <text x="332" y="932" class="code">impl LoginRequest {</text>
-  <text x="332" y="950" class="code">    pub fn new(email: String, password: String) -&gt; Self {</text>
-  <text x="332" y="968" class="code">        Self { email, password }</text>
-  <text x="332" y="986" class="code">    }</text>
-  <text x="332" y="996" class="code">}</text>
+  <!-- LEFT — HELPERS (green) -->
+  <text x="32" y="244" class="layer">// helpers (operate on Sum)</text>
+  <text x="32" y="264" class="code">fn map&lt;A, B, C&gt;(</text>
+  <text x="32" y="282" class="code">    s: Sum&lt;A, B&gt;, f: A -&gt; C</text>
+  <text x="32" y="300" class="code">) -&gt; Sum&lt;C, B&gt; =</text>
+  <text x="32" y="318" class="code">  match s {</text>
+  <text x="32" y="336" class="code">    Left  { value } =&gt;</text>
+  <text x="32" y="354" class="code">      Left { value: f(value) }</text>
+  <text x="32" y="372" class="code">    Right { value } =&gt; Right { value } }</text>
+  <text x="32" y="408" class="code">fn and_then&lt;A, B, C&gt;(</text>
+  <text x="32" y="426" class="code">    s: Sum&lt;A, B&gt;, f: A -&gt; Sum&lt;C, B&gt;</text>
+  <text x="32" y="444" class="code">) -&gt; Sum&lt;C, B&gt; =</text>
+  <text x="32" y="462" class="code">  match s {</text>
+  <text x="32" y="480" class="code">    Left  { value } =&gt; f(value)</text>
+  <text x="32" y="498" class="code">    Right { value } =&gt; Right { value } }</text>
 
-  <text x="332" y="1022" class="code">pub fn validate(req: LoginRequest)     -&gt; ApiResponse&lt;Credentials&gt; { unimplemented!() }</text>
-  <text x="332" y="1040" class="code">pub fn fetch_user(creds: Credentials)  -&gt; ApiResponse&lt;User&gt;        { unimplemented!() }</text>
-  <text x="332" y="1058" class="code">pub fn mint_session(user: User)        -&gt; ApiResponse&lt;UserSession&gt; { unimplemented!() }</text>
+  <!-- LEFT — LIBRARY (purple) -->
+  <text x="32" y="526" class="layer">// library — known signatures</text>
+  <text x="32" y="546" class="code">fn validate(</text>
+  <text x="32" y="564" class="code">    req: LoginRequest</text>
+  <text x="32" y="582" class="code">) -&gt; ApiResponse&lt;Credentials&gt;</text>
+  <text x="32" y="618" class="code">fn fetch_user(</text>
+  <text x="32" y="636" class="code">    creds: Credentials</text>
+  <text x="32" y="654" class="code">) -&gt; ApiResponse&lt;User&gt;</text>
+  <text x="32" y="690" class="code">fn mint_session(</text>
+  <text x="32" y="708" class="code">    user: User</text>
+  <text x="32" y="722" class="code">) -&gt; ApiResponse&lt;UserSession&gt;</text>
 
-  <text x="332" y="1092" class="layer">// app handler — composes the library</text>
-  <text x="332" y="1112" class="code">pub fn handle_login(</text>
-  <text x="332" y="1130" class="code">    req: LoginRequest,</text>
-  <text x="332" y="1148" class="code">) -&gt; ApiResponse&lt;UserSession&gt; {</text>
-  <text x="332" y="1166" class="code">    and_then(</text>
-  <text x="332" y="1184" class="code">        validate(req),</text>
-  <text x="332" y="1202" class="code">        |creds| and_then(</text>
-  <text x="332" y="1220" class="code">            fetch_user(creds),</text>
-  <text x="332" y="1238" class="code">            |user| mint_session(user),</text>
-  <text x="332" y="1256" class="code">        ),</text>
-  <text x="332" y="1274" class="code">    )</text>
-  <text x="332" y="1292" class="code">}</text>
+  <!-- LEFT — APP (yellow) -->
+  <text x="32" y="750" class="layer">// app — handler composes them</text>
+  <text x="32" y="770" class="code">fn handle_login(</text>
+  <text x="32" y="788" class="code">    req: LoginRequest</text>
+  <text x="32" y="806" class="code">) -&gt; ApiResponse&lt;UserSession&gt; =</text>
+  <text x="32" y="824" class="code">  and_then(</text>
+  <text x="32" y="842" class="code">    validate(req),</text>
+  <text x="32" y="860" class="code">    fn(creds) =&gt;</text>
+  <text x="32" y="878" class="code">      and_then(</text>
+  <text x="32" y="896" class="code">        fetch_user(creds),</text>
+  <text x="32" y="914" class="code">        fn(user) =&gt; mint_session(user)))</text>
 
-  <!-- ───── RIGHT card ───── -->
-  <rect x="820" y="128" width="280" height="22" class="card-header"/>
-  <text x="832" y="143" class="badge badge-dag">.dag</text>
-  <rect x="820" y="150" width="280" height="638" class="card"/>
+  <!-- ─────────── CENTER card ─────────── -->
+  <rect x="320" y="200" width="480" height="22" class="card-header"/>
+  <text x="332" y="215" class="badge badge-rust">RUST</text>
+  <rect x="320" y="222" width="480" height="1638" class="card"/>
 
-  <!-- RIGHT tints -->
-  <rect x="822" y="152" width="276" height="60"  class="tint-primitive"/>
-  <rect x="822" y="220" width="276" height="60"  class="tint-helpers"/>
-  <rect x="822" y="288" width="276" height="120" class="tint-library"/>
-  <rect x="822" y="416" width="276" height="370" class="tint-domain"/>
+  <!-- CENTER tints, top-to-bottom: primitive · helpers · library · domain · app · tests -->
+  <rect x="322" y="224" width="476" height="172" class="tint-primitive"/>
+  <rect x="322" y="398" width="476" height="266" class="tint-helpers"/>
+  <rect x="322" y="666" width="476" height="220" class="tint-library"/>
+  <rect x="322" y="888" width="476" height="282" class="tint-domain"/>
+  <rect x="322" y="1172" width="476" height="232" class="tint-app"/>
+  <rect x="322" y="1406" width="476" height="450" class="tint-tests"/>
 
-  <text x="832" y="170" class="layer">// PRIMITIVE</text>
-  <text x="832" y="190" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="208" class="code">  Left{value:A} | Right{value:B}</text>
+  <!-- CENTER — primitive (blue) -->
+  <text x="332" y="244" class="layer">// primitive</text>
+  <text x="332" y="264" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="282" class="code">pub enum Sum&lt;A, B&gt; { Left { value: A }, Right { value: B } }</text>
+  <text x="332" y="310" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
+  <text x="332" y="328" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
+  <text x="332" y="346" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
+  <text x="332" y="364" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
+  <text x="332" y="382" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
+  <text x="332" y="394" class="code">}</text>
 
-  <text x="832" y="248" class="layer">// HELPERS</text>
-  <text x="832" y="268" class="code">type Result&lt;T, E&gt; =</text>
-  <text x="832" y="286" class="code">  Sum&lt;E, T&gt;</text>
+  <!-- CENTER — helpers (green) -->
+  <text x="332" y="416" class="layer">// helpers</text>
+  <text x="332" y="436" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
+  <text x="332" y="464" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
+  <text x="332" y="482" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
+  <text x="332" y="500" class="code">    match s {</text>
+  <text x="332" y="518" class="code">        Sum::Left  { value } =&gt; Sum::Left  { value: f(value) },</text>
+  <text x="332" y="536" class="code">        Sum::Right { value } =&gt; Sum::Right { value },</text>
+  <text x="332" y="554" class="code">    }</text>
+  <text x="332" y="572" class="code">}</text>
+  <text x="332" y="600" class="code">pub fn and_then&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;,</text>
+  <text x="332" y="618" class="code">    f: impl FnOnce(A) -&gt; Sum&lt;C, B&gt;) -&gt; Sum&lt;C, B&gt; {</text>
+  <text x="332" y="636" class="code">    match s { Sum::Left{value}=&gt;f(value), Sum::Right{value}=&gt;Sum::Right{value} }</text>
+  <text x="332" y="654" class="code">}</text>
 
-  <text x="832" y="306" class="layer">// LIBRARY</text>
-  <text x="832" y="326" class="code">type ApiResponse&lt;T&gt; =</text>
-  <text x="832" y="344" class="code">  Result&lt;T, HttpError&gt;</text>
-  <text x="832" y="372" class="code">type HttpError {</text>
-  <text x="832" y="390" class="code">  status: Int; body: Str</text>
-  <text x="832" y="408" class="code">}</text>
+  <!-- CENTER — library (purple) -->
+  <text x="332" y="684" class="layer">// library</text>
+  <text x="332" y="704" class="code">pub type ApiResponse&lt;T&gt; = Result&lt;T, HttpError&gt;;</text>
+  <text x="332" y="732" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="750" class="code">pub struct HttpError { pub status: i32, pub body: String }</text>
+  <text x="332" y="778" class="code">impl HttpError {</text>
+  <text x="332" y="796" class="code">    pub fn new(status: i32, body: String) -&gt; Self { Self { status, body } }</text>
+  <text x="332" y="814" class="code">}</text>
+  <text x="332" y="842" class="code">pub fn validate(req: LoginRequest)     -&gt; ApiResponse&lt;Credentials&gt; { unimplemented!() }</text>
+  <text x="332" y="860" class="code">pub fn fetch_user(creds: Credentials)  -&gt; ApiResponse&lt;User&gt;        { unimplemented!() }</text>
+  <text x="332" y="878" class="code">pub fn mint_session(user: User)        -&gt; ApiResponse&lt;UserSession&gt; { unimplemented!() }</text>
 
-  <text x="832" y="436" class="layer">// DOMAIN</text>
-  <text x="832" y="456" class="code">type LoginRequest {</text>
-  <text x="832" y="474" class="code">  email: Str</text>
-  <text x="832" y="492" class="code">  password: Str</text>
-  <text x="832" y="510" class="code">}</text>
-  <text x="832" y="538" class="code">type Credentials {</text>
-  <text x="832" y="556" class="code">  email: Str; hash: Bytes</text>
-  <text x="832" y="574" class="code">}</text>
-  <text x="832" y="602" class="code">type User {</text>
-  <text x="832" y="620" class="code">  id: UserId; email: Str</text>
-  <text x="832" y="638" class="code">}</text>
-  <text x="832" y="666" class="code">type UserSession {</text>
-  <text x="832" y="684" class="code">  user_id: UserId</text>
-  <text x="832" y="702" class="code">  expires_at: Timestamp</text>
-  <text x="832" y="720" class="code">}</text>
+  <!-- CENTER — domain (pink) -->
+  <text x="332" y="906" class="layer">// domain</text>
+  <text x="332" y="926" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="944" class="code">pub struct LoginRequest { pub email: String, pub password: String }</text>
+  <text x="332" y="962" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="980" class="code">pub struct Credentials  { pub email: String, pub hash: Vec&lt;u8&gt; }</text>
+  <text x="332" y="998" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="1016" class="code">pub struct User { pub id: UserId, pub email: String }</text>
+  <text x="332" y="1034" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="1052" class="code">pub struct UserSession { pub user_id: UserId, pub expires_at: Timestamp }</text>
+  <text x="332" y="1080" class="code">impl LoginRequest {</text>
+  <text x="332" y="1098" class="code">    pub fn new(email: String, password: String) -&gt; Self {</text>
+  <text x="332" y="1116" class="code">        Self { email, password }</text>
+  <text x="332" y="1134" class="code">    }</text>
+  <text x="332" y="1152" class="code">}</text>
 
-  <text x="20" y="1490" class="punchline">Same color = same concept across columns. Trace blue, green, purple, pink, amber, yellow — each one shows up exactly where it lives, on either wing or in the middle.</text>
+  <!-- CENTER — app (yellow) -->
+  <text x="332" y="1190" class="layer">// app handler — composes the library</text>
+  <text x="332" y="1210" class="code">pub fn handle_login(</text>
+  <text x="332" y="1228" class="code">    req: LoginRequest,</text>
+  <text x="332" y="1246" class="code">) -&gt; ApiResponse&lt;UserSession&gt; {</text>
+  <text x="332" y="1264" class="code">    and_then(</text>
+  <text x="332" y="1282" class="code">        validate(req),</text>
+  <text x="332" y="1300" class="code">        |creds| and_then(</text>
+  <text x="332" y="1318" class="code">            fetch_user(creds),</text>
+  <text x="332" y="1336" class="code">            |user| mint_session(user),</text>
+  <text x="332" y="1354" class="code">        ),</text>
+  <text x="332" y="1372" class="code">    )</text>
+  <text x="332" y="1390" class="code">}</text>
+
+  <!-- CENTER — tests (teal) -->
+  <text x="332" y="1424" class="layer">// tests — emitted from the structural fold</text>
+  <text x="332" y="1444" class="code">#[cfg(test)]</text>
+  <text x="332" y="1462" class="code">mod tests {</text>
+  <text x="332" y="1480" class="code">    use super::*;</text>
+  <text x="332" y="1508" class="code">    #[test]</text>
+  <text x="332" y="1526" class="code">    fn sum_constructors_and_predicates() {</text>
+  <text x="332" y="1544" class="code">        let l: Sum&lt;i32, &amp;str&gt; = Sum::left(42);</text>
+  <text x="332" y="1562" class="code">        let r: Sum&lt;i32, &amp;str&gt; = Sum::right("hi");</text>
+  <text x="332" y="1580" class="code">        assert!(l.is_left()  &amp;&amp; !l.is_right());</text>
+  <text x="332" y="1598" class="code">        assert!(r.is_right() &amp;&amp; !r.is_left());</text>
+  <text x="332" y="1616" class="code">    }</text>
+  <text x="332" y="1644" class="code">    #[test]</text>
+  <text x="332" y="1662" class="code">    fn map_transforms_left_branch() {</text>
+  <text x="332" y="1680" class="code">        let s: Sum&lt;i32, &amp;str&gt; = Sum::left(3);</text>
+  <text x="332" y="1698" class="code">        assert_eq!(map(s, |n| n + 1), Sum::Left { value: 4 });</text>
+  <text x="332" y="1716" class="code">    }</text>
+  <text x="332" y="1744" class="code">    #[test]</text>
+  <text x="332" y="1762" class="code">    fn and_then_chains_left_branch() {</text>
+  <text x="332" y="1780" class="code">        let s: Sum&lt;i32, &amp;str&gt; = Sum::left(3);</text>
+  <text x="332" y="1798" class="code">        assert_eq!(and_then(s, |n| Sum::left(n*2)), Sum::Left { value: 6 });</text>
+  <text x="332" y="1816" class="code">    }</text>
+  <text x="332" y="1844" class="code">}</text>
+
+  <!-- ─────────── RIGHT card ─────────── -->
+  <rect x="820" y="200" width="280" height="22" class="card-header"/>
+  <text x="832" y="215" class="badge badge-dag">.dag</text>
+  <rect x="820" y="222" width="280" height="638" class="card"/>
+
+  <!-- RIGHT tints: primitive · helpers · library · domain (no app, no tests at right) -->
+  <rect x="822" y="224" width="276" height="60"  class="tint-primitive"/>
+  <rect x="822" y="292" width="276" height="60"  class="tint-helpers"/>
+  <rect x="822" y="360" width="276" height="120" class="tint-library"/>
+  <rect x="822" y="488" width="276" height="370" class="tint-domain"/>
+
+  <text x="832" y="244" class="layer">// PRIMITIVE</text>
+  <text x="832" y="264" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="282" class="code">  Left{value:A} | Right{value:B}</text>
+
+  <text x="832" y="312" class="layer">// HELPERS</text>
+  <text x="832" y="332" class="code">type Result&lt;T, E&gt; =</text>
+  <text x="832" y="350" class="code">  Sum&lt;E, T&gt;</text>
+
+  <text x="832" y="380" class="layer">// LIBRARY</text>
+  <text x="832" y="400" class="code">type ApiResponse&lt;T&gt; =</text>
+  <text x="832" y="418" class="code">  Result&lt;T, HttpError&gt;</text>
+  <text x="832" y="446" class="code">type HttpError {</text>
+  <text x="832" y="464" class="code">  status: Int; body: Str</text>
+  <text x="832" y="478" class="code">}</text>
+
+  <text x="832" y="508" class="layer">// DOMAIN</text>
+  <text x="832" y="528" class="code">type LoginRequest {</text>
+  <text x="832" y="546" class="code">  email: Str</text>
+  <text x="832" y="564" class="code">  password: Str</text>
+  <text x="832" y="582" class="code">}</text>
+  <text x="832" y="610" class="code">type Credentials {</text>
+  <text x="832" y="628" class="code">  email: Str; hash: Bytes</text>
+  <text x="832" y="646" class="code">}</text>
+  <text x="832" y="674" class="code">type User {</text>
+  <text x="832" y="692" class="code">  id: UserId; email: Str</text>
+  <text x="832" y="710" class="code">}</text>
+  <text x="832" y="738" class="code">type UserSession {</text>
+  <text x="832" y="756" class="code">  user_id: UserId</text>
+  <text x="832" y="774" class="code">  expires_at: Timestamp</text>
+  <text x="832" y="792" class="code">}</text>
+
+  <text x="20" y="1890" class="punchline">Layers stack on the right. Logic on the left only at layers where you actually write code. The middle expands the lot — including a test module you didn't write.</text>
 </svg>
