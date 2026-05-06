@@ -1,6 +1,6 @@
 # R3 PB — `regen_lens.rs` consumer audit (carrier-independent, docs-only)
 
-**Status:** AUDIT artifact (docs-only, carrier-independent). Authored 2026-05-01 by PB Manager continuation per Director follow-up on inbox #1149 — bounded post-#1347 planning slice that maps `src/v3/compiler/src/bin/regen_lens.rs`'s consumer / build / CI / call surfaces and the exact handoff points for the future `BinShim` carrier + instance + emitter + §7.2 equivalence fixture, **without** waiting on or inventing the carrier.
+**Status:** AUDIT artifact (docs-only, carrier-independent). Authored 2026-05-01 by PB Manager continuation per Director follow-up on inbox #1149 — bounded post-#1347 planning slice that maps `src/v3/compiler/src/bin/regen_lens.rs`'s consumer / build / CI / call surfaces and the exact handoff points for **`BinShim` instance + emitter + §7.2 equivalence** (substrate `BinShim` carrier is on `main`; this audit does **not** invent carrier fields).
 
 **Parent authorities:**
 - [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §4 (Item 5 emit pattern), §4.3 (dissolution path), §5.1 (sub-gate decomposition), §7.2 (BinShim equivalence fixture).
@@ -13,13 +13,13 @@ This audit does NOT introduce authority. Every cell cites a live file/line on or
 
 ## Scope
 
-Carrier-independent dependency map for the future sub-gate-3 retirement worker. Names every consumer / build / CI / call / test / doc surface that participates in the cutover from the hand-Rust `regen_lens.rs` to the `.dag`-emitted equivalent. **Does NOT** propose carrier shape, emit semantics, or implementation order — those are quick-newt's territory + Substrate Manager's territory + future carrier-landing PR's territory.
+Carrier-independent dependency map for the future sub-gate-3 retirement worker. Names every consumer / build / CI / call / test / doc surface that participates in the cutover from the hand-Rust `regen_lens.rs` to the `.dag`-emitted equivalent. **Does NOT** propose emit semantics or implementation order — carrier shape lives in `src/v3/std/bin_shim.dag`; instance / emitter / §7.2 sequencing remain PB + Substrate dispatch per linked briefs.
 
 ## Non-overlap reminder
 
 - **This audit:** consumer / handoff map. Docs-only.
 - **quick-newt** (separate session): retirement-readiness implementation attempt path → see `r3-pb-regen-lens-first-binshim-target-retirement-readiness.md` referenced above.
-- **Substrate Manager**: `BinShim` carrier-type shape (not yet on main; STOP+PING tracked in #1347).
+- **Substrate Manager**: `BinShim` carrier regressions + **P1** if instance authoring surfaces carrier-shape pressure (`BinShim` record is on `main`; not “waiting on carrier landing”).
 - **PB framework PR (#1347):** `dsl/std/runtime/bin_shims/` framework directory + naming convention. Authored.
 
 ## Source surface (the file itself)
@@ -31,7 +31,7 @@ Carrier-independent dependency map for the future sub-gate-3 retirement worker. 
 | Header docstring | "Unified lens-regen driver. Narrow host shim for `src/v3/compiler/regen.dag`: reads every `data <name>_entry: LensRegistryEntry` record out of the bootstrap Dag, compiles the referenced `.dag` lens, and writes the `emit_rust_module` projection to the declared output path." (line 1-6) |
 | Entry-point shape | `fn main() -> ExitCode` (line 33) — already returns a `std::process::ExitCode`, structurally close to the design-doc §4.2 `entry: () -> std.process.ProcessExit` contract. Re-declaring it as a `BinShim.entry` does NOT require evolving the substrate `ProcessExit` shape. |
 | `LENS_REGISTRY_ENTRY_TYPE` | `&str = "LensRegistryEntry"` (line 26) — string-keyed lookup against `regen.dag`'s `data <name>_entry: LensRegistryEntry` records. |
-| Authority source | `src/v3/compiler/regen.dag` — the bin reads 11 `LensRegistryEntry` records here (verified `grep -c "_entry: LensRegistryEntry" src/v3/compiler/regen.dag`). |
+| Authority source | `src/v3/compiler/regen.dag` — the bin reads **9** `data …_entry: LensRegistryEntry` rows (`rg -n '^data .*_entry: LensRegistryEntry'`). A broader `_entry: LensRegistryEntry` match counts comment lines too — use the anchored query for totals (see §Delta — 2026-05-05). |
 
 ## Internal crate imports (the bin's PB-Runtime-equivalent surfaces)
 
@@ -53,7 +53,7 @@ These imports are what the future `BinShim` emitter must end up calling from emi
 |---|---|---|
 | **Cargo bin entry** | `src/v3/compiler/Cargo.toml`: `[[bin]] name = "regen_lens" path = "src/bin/regen_lens.rs"` | `path` updates to the emitted location once the file is generated. The `name = "regen_lens"` and CLI invocation surface stay stable so the nine-bin Cargo manifest's authority surface is unchanged (binary name is what tooling and diagnostics key on). |
 | **`build.rs` `REGEN_OUTPUTS`** | `src/v3/compiler/build.rs:479-513` (25 entries on origin/main HEAD at audit time) | Add the emitted shim's path to `REGEN_OUTPUTS` so SG-0's `sg0_generated_partition_is_producer_owned` invariant counts the file as generated. The current `REGEN_OUTPUTS` lists every per-lens `lens_*_generated.rs` (the bin's *outputs*) but NOT the bin itself — `regen_lens.rs` is the producer, not a generated artifact. After retirement, the bin moves from "hand-authored producer" to "generated artifact" and the manifest grows by 1. |
-| **`GENERATED_FILES` runtime constant** | Built from `REGEN_OUTPUTS` per `build.rs:520-526`, exposed as `v3_compiler::generated_files::GENERATED_FILES`. | Auto-updates when `REGEN_OUTPUTS` grows; no separate edit. The bin imports this exact constant (line 22), so its own re-emission produces a consistent self-reference. |
+| **`GENERATED_FILES` runtime constant** | `REGEN_OUTPUTS` (`build.rs:479-513`) is iterated into the emitted manifest (`build.rs:514-526` writes `out_dir/v3_generated_files.rs` with `pub static GENERATED_FILES: &[&str]`); exposed as `v3_compiler::generated_files::GENERATED_FILES`. | Auto-updates when `REGEN_OUTPUTS` grows; no separate edit. The bin imports this exact constant (`regen_lens.rs` line 22), so its own re-emission produces a consistent self-reference. |
 | **Package `v3-compiler` declares nine explicit `[[bin]]` targets** (`regen_bootstrap`, `regen_lens`, `regen_parse`, `regen_parse_tables`, `regen_tokenize`, `regen_v3`, `emit_method_template_projection`, `self_host_fixed_point`, `r1c_e_emit_gates`) | `src/v3/compiler/Cargo.toml:47-85` `[[bin]]` blocks | Other bins follow the same template after `regen_lens` lands as the canonical first slice (per design-doc §4.3 + BinShim brief §"First slice"). They are NOT in scope for sub-gate 3 — but they ARE in scope for the broader BinShim retirement program once the carrier and pattern stabilize. |
 
 ## SG-0 census surface
