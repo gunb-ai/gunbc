@@ -540,7 +540,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 ### §10.2 Per-Mgr canvas escalations (compiling as canvases land)
 
-#### §10.2.1 R3 Verification Mgr (cool-owl-579, #1740) — 2 escalations
+#### §10.2.1 R3 Verification Mgr (cool-owl-579, #1740) — 6 escalations (full canvas absorption)
 
 **V1. Pattern A (DimensionReport-typed family) blocks executable / net bridge shrink** (canvas item 1, structural)
 
@@ -554,6 +554,30 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 **V2. SymbolicCostExprEquals reads as coverage while runner returns NYI** (canvas item 2, structural)
 - **Needs**: coverage/completeness accounting decision — mark NYI claims incomplete in aggregation OR schedule evaluator-backed comparison slice.
 - **Plan integration**: §1.1; ratification opens Q-NYI-Accounting in §10.3.
+
+**V3. Evaluator wall vs Verification cross-program lanes — closure-criteria alignment** (canvas item 3, structural)
+- **Description**: For each Verification acceptance row, decide which predicates must execute in R3 vs remain honest NYI with explicit incomplete classification until evaluator lands. Risk: harness-heavy progress (`.dag` fixtures + `run_claim` / integration tests) proceeds while runtime-complete demonstrations remain blocked where predicates require evaluator execution.
+- **Needs**: Director + R3 Evaluator Mgr + PM — closure-criteria scope decision per acceptance row.
+- **R3 zero-debt impact**: must NOT claim R3 Verification "complete" while cross-program rows silently wait on evaluator; either shrink scope or extend close predicate.
+- **Plan integration**: §1.6 demonstration principle minimum bar (per Director finding 1.1) addresses partially; §10.3 Q-Verification-NYI-Carry-Forward names the carry-forward classification decision.
+
+**V4. Worker idle surfaces — bandwidth, not substrate bug** (canvas item 4, bandwidth)
+- **Description**: bold-crane-790 + cool-heron-521 idle with no active PR after CI/ratchet churn; execution-ready Verification slices not queued at Mgr granularity.
+- **Needs**: PM §3 dispatch with PR-sized specs (files + acceptance + ROADMAP row), not open-ended "continue R3".
+- **R3 zero-debt impact**: bandwidth risk if plan assumes parallel workers without packaged tasks.
+- **Plan integration**: addressed by §3 lane-status snapshot + §9 weekly cadence (lane-owning Mgr packages PR-sized specs); follows from Director cadence pattern.
+
+**V5. SB5+6 PR-history (PR #1804) — heuristic pass ≠ closed audit** (canvas item 5, reporting)
+- **Description**: Phase-2 R2/R3-era PR debt table on PR #1804 is path-filtered + column heuristics; not yet per-PR body/ledger grep with row-by-row inversion-test discipline.
+- **Needs**: PM defines next pass — widen/narrow path union vs require PR-body debt citations for every row.
+- **R3 zero-debt impact**: reporting debt if misread as "verified"; must NOT become a hidden "we closed history" claim.
+- **Plan integration**: §5 already labels Phase 2 partials as "expected ranges; Phase 3 compile populates verified counts" (per Director finding 6.3); V5 reinforces — Phase 3 compile must apply per-PR body/ledger grep discipline, not re-import heuristic table.
+
+**V6. ValueBody Rust↔.dag mirror drift / missing isomorphism gate** (canvas item 6, RED-adjacent)
+- **Description**: ROADMAP records novel internal-taxonomy drift risk: live Rust `ValueBody` vs `.dag` `ValueBody*` mirror mismatch with no CI isomorphism gate. Tests can pass while mirror diverges.
+- **Needs**: Director + R3 Substrate Mgr (mirror authority) + Brian — is structural-isomorphism / conformance gate in R3 close, or explicit post-R3 carry with named owner?
+- **R3 zero-debt impact**: HIGH if "zero internal fiction" is literal R3-close definition. Verification cannot unilaterally close this.
+- **Plan integration**: §10.3 Q-ValueBody-Isomorphism — escalation requires Substrate Mgr authority to scope.
 
 #### §10.2.2 R3 Grounding Mgr (bold-ferret-748, #1745) — 5+ escalations
 
@@ -638,6 +662,8 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 | Q-Emit-Shim-Handoff | Grounding direct execution vs PB/Substrate/v2-retirement consumption for `emit/rust_target.rs` family | Grounding consumes PB/v2-retirement milestones; no Grounding direct execution on these files | RATIFIED-by-default |
 | Q-Coercion-Fold-Scratch | Lane placement for `ScratchIntExamples` retirement | Grounding owns close after LanguageSpec projection executable | RATIFIED-by-default |
 | Q-MachineConstraint-Carrier | Substrate carrier for `MachineConstraint<C>` independent axis (per Brian directive 2026-05-06 — concrete types emerge from algebra × machine-constraint interaction; `i64` = `Int × MachineWidth<64>` consequence, NOT primary entity) | Substrate Mgr authors `MachineConstraint<C>` carrier + interaction lookup; folds into T-Numeric-Construction continuation (algebra side already in flight); surfaces as new Substrate sub-program. Required for Class 1 substrate-gap-class closure per §1.4. | OPEN — Substrate Mgr + Director scoping needed (NEW 2026-05-06 from Brian inline at PR #1808 line 69) |
+| Q-Verification-NYI-Carry-Forward | Closure-criteria alignment for cross-program Verification rows: which predicates must execute in R3 vs remain honest NYI with explicit incomplete classification until evaluator lands? | Per §1.6 demonstration-gate minimum bar (Director finding 1.1): predicates without runtime evaluator execution canNOT claim "GREEN" closure; honest NYI classification with explicit carry-forward owner required. R3-Verification rows that depend on evaluator runtime that's NYI at R3 close → explicit NYI + named carry-forward Mgr (NOT silent assumption of evaluator landing). | RATIFIED-by-default per Director finding 1.1 minimum bar; closure-ledger reports separate "demonstration-executes" vs "static-fact" status per row (per §1.6). Verification Mgr ratifies per-row carry-forward classification at lane-close audit. |
+| Q-ValueBody-Isomorphism | ValueBody Rust↔.dag mirror drift gate — structural-isomorphism / conformance gate in R3 close, OR explicit post-R3 carry with named owner? Mirror divergence risk + no CI isomorphism gate currently. | Per `feedback_isomorphism_or_generation_for_mirrors`: Rust↔.dag mirrors need generation-or-isomorphism-test, not hand-maintenance. R3 zero-debt-close framing implies isomorphism gate IN R3 scope — gate fires at R3 close requiring CI conformance test. Owner: R3 Substrate Mgr (mirror authority) + Verification Mgr (test-only pressure). | OPEN — Director + R3 Substrate Mgr + Brian scoping needed (NEW 2026-05-06 from Verification Mgr canvas item 6) |
 
 ---
 
