@@ -1,5 +1,5 @@
 ---
-status: RATIFIED 2026-05-06 (Q-Unit-1..5 ratified by Director at gunbc#828 #issuecomment-... 2026-05-06; Scale value `Unit` renamed to `One` to avoid name shadowing with outer `Unit<Q, S>` carrier)
+status: RATIFIED 2026-05-06 (Q-Unit-1..5 ratified by Director at gunbc#828 #issuecomment-4385412256 (2026-05-06); Scale value `Unit` renamed to `One` to avoid name shadowing with outer `Unit<Q, S>` carrier)
 authority parent: R3 Substrate Manager (#1739)
 ratification: Director feedback on S9 at gunbc#828 inbox response 2026-05-06 (zesty-bear-812) — "several Phase-3 refinements are likely dimensional/unit-of-measure, not value-restriction predicates ... the right shape is likely a Unit<Quantity, Scale> axis"
 roadmap row: cross-references docs/briefs/r3-substrate-s9-t-numeric-construction-worker.md Phase-3
@@ -89,7 +89,13 @@ Milliseconds ≡ Unit<Time, Milli>   ⊗ underlying<Int>
 (`Duration` and `Seconds` collapse under this shape. May or may
 not be intended — see Q-Unit-3 below.)
 
-### Open question: Instant vs Duration axis
+### Open question: Instant vs Duration axis (pre-ratification — Q-Unit-2 RATIFIED 2-axis; this section deferred to R4 C6)
+
+> Note: the snippets below use the pre-rename `Unit` Scale value
+> (\`Time<Duration, Unit>\`); they are pre-Q-Unit-1-rename
+> design exploration, deferred to R4 C6 Aspect-axis follow-up.
+> When the Aspect axis lands in R4, the value should re-render
+> with the ratified `One` Scale value.
 
 `EpochMs` is conceptually different from `Duration`: it's a
 **time-instant** (point on a timeline relative to epoch), not a
@@ -160,7 +166,7 @@ type (`Time × Unit`). Is this intended?
   Requires a `BoundScale` type-level constraint distinguishing
   "scale variable at runtime" from "scale = Unit".
 
-**Recommendation**: collapse — `Seconds = type Duration<Scale = Unit>`
+**Recommendation**: collapse — `Seconds = type Duration<Scale = One>`
 or `Seconds = Duration` with `Duration` always at `Scale<One>`.
 The "scale variable at runtime" form is a generalization; if no
 consumer demands it, do not introduce.

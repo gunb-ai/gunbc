@@ -1,7 +1,7 @@
 ---
-status: draft (worker brief; Q-Unit-1..5 RATIFIED at gunbc#828 #issuecomment-... 2026-05-06; dispatchable when worker pin assigned)
+status: draft (worker brief; Q-Unit-1..5 RATIFIED at gunbc#828 #issuecomment-4385412256 (2026-05-06); dispatchable when worker pin assigned)
 authority parent: R3 Substrate Manager (#1739)
-ratification: Director ratified Q-Unit-1..5 at gunbc#828 #issuecomment-... 2026-05-06 (zesty-bear-812). Scale value `Unit` renamed to `One` per Q-Unit-1.
+ratification: Director ratified Q-Unit-1..5 at gunbc#828 #issuecomment-4385412256 (2026-05-06) (zesty-bear-812). Scale value `Unit` renamed to `One` per Q-Unit-1.
 roadmap row: cross-references docs/briefs/r3-substrate-s9-t-numeric-construction-worker.md Phase-3
 authority docs:
   - docs/briefs/r3-substrate-s9-unit-quantity-carrier-canvas.md (RATIFIED canvas; this brief consumes the ratified shape)
@@ -223,7 +223,7 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
    names Phase-3 reframe table; this brief lands the carrier
    to satisfy the table. No competing brief.
 3. **Design-doc match?** Director ratification on canvas
-   (gunbc#828 #issuecomment-... 2026-05-06) is the design-doc
+   (gunbc#828 #issuecomment-4385412256 (2026-05-06)) is the design-doc
    anchor. Worker re-reads canvas RATIFICATION section before
    authoring.
 4. **Citations live?** Canvas commit `5f22fd06e` records the
@@ -241,7 +241,7 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
 ## Provenance
 
 Drafted 2026-05-06 per Q-Unit-1..5 RATIFIED at gunbc#828
-#issuecomment-... 2026-05-06 (zesty-bear-812). Canvas at
+#issuecomment-4385412256 (2026-05-06; zesty-bear-812). Canvas at
 `docs/briefs/r3-substrate-s9-unit-quantity-carrier-canvas.md`
 ratification banner records the 5-Q ratification + Scale rename.
 Worker pin TBD — dispatchable when idle pool refreshes

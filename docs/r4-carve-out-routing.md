@@ -97,17 +97,28 @@ to follow-up brief.
 rule) needs rounding-mode-aware emission. Consumer-demand-driven,
 not speculative.
 
-### C6 — Unit/Quantity carrier per S9 Phase-3 boundary
+### C6 — Aspect-axis (PointKind) follow-on for `EpochMs` and instant-shaped refinements
 
-**R3 status**: S9 Phase-3 expects to STOP-AND-ESCALATE on dimensional
-refinements (`Duration`, `Milliseconds`, `Seconds`, `EpochMs`) —
-these are unit-of-time semantics, not value-restriction predicates.
-Per `feedback_reason_not_label`, the predicate name is the label,
-not the reason; the reason is "this carries time-unit semantics".
-**Substrate shape question**: covered in companion canvas
-`docs/briefs/r3-substrate-s9-unit-quantity-carrier-canvas.md`.
-**R4 dispatch trigger**: Director ratifies the Unit/Quantity
-carrier shape; Substrate Mgr authors the carrier brief; emission
+**R3 status**: 2-axis `Measure<Quantity, Scale>` carrier landing IS
+in R3 (Q-Unit-1..5 RATIFIED; outer carrier name re-canvas in
+flight at gunbc#828 post-`Unit<Q,S>` collision with kernel `Unit`).
+S9 Phase-3 dimensional refinements `Duration` / `Seconds` /
+`Milliseconds` reframe to outer-Refined / inner-Measure form and
+land in R3.
+
+**Carved to R4**: the **Aspect axis** (`PointKind = Magnitude |
+Instant | Rate` or equivalent) — adds a third axis distinguishing
+duration-shaped from instant-shaped from rate-shaped quantities.
+`EpochMs` (instant-shaped) requires Aspect to land correctly; per
+Q-Unit-2 RATIFIED 2-axis Phase-1, `EpochMs` defers to R4 alongside
+the Aspect-axis introduction. `Frequency` and `DataRate` (Quantity
+values currently in 2-axis) may re-fold under Aspect when it
+lands; accepted as future cleanup.
+
+**R4 dispatch trigger**: a second instant-shaped or rate-shaped
+consumer beyond `EpochMs` surfaces concrete demand for Aspect axis
+(per `feedback_construction_over_ratchets` — no speculative
+landing). Substrate Mgr authors Aspect-axis carrier brief; emission
 consumers (Grounding) wire downstream.
 
 ## Cascade messages (cross-Mgr consumption)
@@ -133,11 +144,12 @@ consumers (Grounding) wire downstream.
 - **C5** (rounding-mode): Grounding does NOT need rounding-mode-
   aware emission in R3. If a specific Grounding row needs it,
   surface as concrete consumer demand for C5 R4 dispatch trigger.
-- **C6** (Unit/Quantity): Grounding emission of dimensional
-  refinements (`Duration`, etc.) waits on Unit/Quantity carrier
-  landing post-S9 Phase-3 STOP. If Grounding has Phase-1 rows
-  that need these refinements, coordinate with Substrate Mgr on
-  R3 carrier authoring vs R4 carve-out.
+- **C6** (Aspect-axis follow-on): 2-axis `Measure<Q, S>` carrier
+  landing is in R3 (Substrate Mgr authoring + Unit/Quantity worker
+  brief). Grounding consumes 2-axis dimensional refinements
+  (`Duration`, `Milliseconds`, `Seconds`) in R3 emission. R4 C6
+  scope is the Aspect-axis introduction for `EpochMs` (instant-
+  shaped) + future instant/rate-shaped refinements only.
 
 ### To Debt-Paydown Mgr (#1744) — drift items
 
@@ -161,7 +173,7 @@ When the R4 program plan is authored, the items above are inputs:
    across all 4 lenses
 4. C4 — additional MachineConstraint axes per consumer demand
 5. C5 — rounding-mode product-shape extension per consumer demand
-6. C6 — Unit/Quantity carrier landing + dimensional-refinement migration
+6. C6 — Aspect-axis (PointKind) follow-on for `EpochMs` and future instant/rate-shaped refinements (2-axis Measure carrier already in R3)
 
 ## Provenance
 
