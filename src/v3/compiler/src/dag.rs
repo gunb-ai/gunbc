@@ -101,7 +101,7 @@ impl NodeId {
         self.0 as usize
     }
 
-    pub(crate) fn raw(self) -> u32 {
+    pub fn raw(self) -> u32 {
         self.0
     }
 }

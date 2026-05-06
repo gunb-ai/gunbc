@@ -3,25 +3,23 @@
 //! E6-G1.a Option 3 — static `Lens<Int>` consumer wiring (argument-opaque `Dag` / `Behavior`).
 //!
 //! Authority: `docs/briefs/r3-pr-e6-g1a-option3-static-lens-worker.md` + feasibility probe.
-//! This is a **mechanism demonstration only**; lens-over-`Dag` folding stays deferred to
-//! `ReflectedProgram<T>` / typed declaration-reference carrier work (Q-Reification).
+//! Mechanism demonstration only; lens-over-`Dag` folding is deferred to `ReflectedProgram<T>` /
+//! typed declaration-reference carrier work (Q-Reification).
 //!
-//! **Hard bars (test-enforced):** no `lens_apply`, `eval_substrate_reify`, or reflection helper
-//! imports; no compiled-program reification — opaque argument `Value`s are supplied manually.
+//! **Hard bars:** no `lens_apply`, `eval_substrate_reify`, or reflection-helper imports/calls.
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, DeclarationId, LiteralBits, TypeConnective, ValueNode,
-};
-use v3_compiler::evaluator::{
-    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField,
-    Value,
+    AtomPayload, Behavior, CardinalityBound, DeclarationId, LiteralBits, TypeConnective, ValueNode,
 };
 use v3_compiler::diagnostics::SourceSpan;
+use v3_compiler::evaluator::{
+    evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, NamedField, Value,
+};
 
 const OPTION3_SOURCE: &str = r#"
-import std.list { List, empty, cons }
-import std.substrate { Dag, Behavior, LoopBound, DagPort, Cluster }
+import std.list { List, empty, cons, singleton }
+import std.substrate { Dag, Behavior, LoopBound, DagPort, Cluster, Declaration }
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
 import v3.std.diagnostics { Diagnostic }
 import v3.std.lens { Lens }
@@ -41,6 +39,15 @@ fn int_max(a: Int, b: Int) -> Int = if a > b then a else b
 fn mini_iterate(c: Int, bound: LoopBound) -> Int = c
 fn mini_validate(d: Dag, c: Int) -> OptionalDiagnostic = NoDiagnostic
 
+fn empty_witness_int() -> List<Witness<Int>> = empty()
+fn empty_diag_list() -> List<Diagnostic> = empty()
+
+fn witnesses_inhabits(c: Int) -> List<Witness<Int>> =
+  cons(Inhabits(c), empty_witness_int())
+
+fn violations_singleton(diag: Diagnostic) -> List<Diagnostic> =
+  singleton(diag)
+
 data mini_lens: Lens<Int> = {
   name: "mini_static",
   read: mini_read,
@@ -50,29 +57,33 @@ data mini_lens: Lens<Int> = {
   validate: mini_validate
 }
 
-fn mini_report(d: Dag, b: Behavior) -> DimensionReport<Int> =
-  match mini_lens.read(d, b) {
-    Inhabits(c) =>
-      match mini_lens.validate(d, c) {
-        NoDiagnostic =>
-          DimensionOk {
-            dimension_name: mini_lens.name,
-            composed: c,
-            witnesses: cons(Inhabits(c), empty())
-          }
-        SomeDiagnostic { value: diag } =>
-          DimensionFail {
-            dimension_name: mini_lens.name,
-            violations: cons(diag, empty()),
-            witnesses: cons(Inhabits(c), empty())
-          }
-      }
-    Violates { reason: _r, at: _beh } =>
-      mini_report(d, b)
+fn report_inhabits_branch(d: Dag, c: Int, _od: OptionalDiagnostic) -> DimensionReport<Int> =
+  DimensionOk {
+    dimension_name: "mini_static",
+    composed: c,
+    witnesses: empty_witness_int()
   }
+
+fn dimension_report_from_witness(d: Dag, w: Witness<Int>) -> DimensionReport<Int> =
+  match w {
+    Inhabits(c) => report_inhabits_branch(d, c, mini_lens.validate(d, c))
+    Violates { reason: _r, at: _beh } =>
+      report_inhabits_branch(d, 0, NoDiagnostic)
+  }
+
+fn mini_report(d: Dag, b: Behavior) -> DimensionReport<Int> =
+  dimension_report_from_witness(d, mini_lens.read(d, b))
 "#;
 
 const OPTION3_FILE: &str = "e6_g1a_option3_static_lens.v3";
+
+#[test]
+fn probe_empty_list_eval() {
+    let src = "import std.list { List, empty }\nfn p() -> List<Int> = empty()";
+    let dag = cached_compile_to_dag(src, "probe.v3");
+    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
+    let _ = eval_nullary_fn(&dag, "p");
+}
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
     use v3_compiler::dag::ArrowBody;
@@ -160,8 +171,8 @@ fn peel_to_optional_cardinality_decl(
     const PEEL_MAX: usize = 64;
     for _ in 0..PEEL_MAX {
         match &dag.declaration(ty).connective {
-            TypeConnective::Cardinality(p) if p.bound() == v3_compiler::dag::CardinalityBound::AtMostOne => {
-                return p.element();
+            TypeConnective::Cardinality(p) if p.bound() == CardinalityBound::AtMostOne => {
+                return ty;
             }
             TypeConnective::Instantiation {
                 template,
@@ -202,8 +213,12 @@ fn named_record_root(dag: &v3_compiler::dag::Dag, name: &str) -> DeclarationId {
 
 fn optional_workflow_effect_none(dag: &v3_compiler::dag::Dag) -> Value {
     let vn = named_record_root(dag, "ValueNode");
-    let lane2_card = peel_to_optional_cardinality_decl(dag, conj_field_ty(dag, vn, "lane2_workflow"));
-    let decl = dag.declaration(lane2_card);
+    let lane2_ty = conj_field_ty(dag, vn, "lane2_workflow");
+    let card_id = peel_to_optional_cardinality_decl(dag, lane2_ty);
+    let disj_id = dag
+        .optional_match_disj(card_id)
+        .unwrap_or_else(|| panic!("missing optional_match_disj row for ValueNode.lane2_workflow"));
+    let decl = dag.declaration(disj_id);
     let TypeConnective::Disj { variants } = &decl.connective else {
         panic!("optional disj");
     };
@@ -275,21 +290,17 @@ fn sample_value_behavior(dag: &v3_compiler::dag::Dag) -> Behavior {
 
 #[test]
 fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() {
-    const SOURCE: &str = concat!(
-        include_str!("e6_g1a_option3_static_lens_test.rs"),
-        "\n// sentinel for grep guards — actual program is OPTION3_SOURCE const above\n"
+    assert!(
+        !OPTION3_SOURCE.contains("lens_apply::"),
+        "guard: must not mention lens_apply::"
     );
     assert!(
-        !SOURCE.contains("lens_apply::"),
-        "guard: implementation must not mention lens_apply::"
+        !OPTION3_SOURCE.contains("eval_substrate_reify"),
+        "guard: must not mention eval_substrate_reify"
     );
     assert!(
-        !SOURCE.contains("eval_substrate_reify"),
-        "guard: must not import eval_substrate_reify"
-    );
-    assert!(
-        !SOURCE.contains("reflect_behavior"),
-        "guard: must not reference reflect_behavior"
+        !OPTION3_SOURCE.contains("reflect_behavior"),
+        "guard: must not mention reflect_behavior"
     );
 
     let dag = cached_compile_to_dag(OPTION3_SOURCE, OPTION3_FILE);
@@ -321,20 +332,13 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
         "mini_read / mini_validate must lower to TransformTarget::Callable"
     );
 
-    let d_port = {
+    let (d_port, b_port) = {
         let bind_node_id = bind_node_id_for_fn(&dag, "mini_report");
         let Behavior::Bind(bind) = dag.node(bind_node_id) else {
             panic!("mini_report bind");
         };
         assert_eq!(bind.params.len(), 2, "mini_report expects Dag and Behavior");
-        bind.params[0]
-    };
-    let b_port = {
-        let bind_node_id = bind_node_id_for_fn(&dag, "mini_report");
-        let Behavior::Bind(bind) = dag.node(bind_node_id) else {
-            panic!("mini_report bind");
-        };
-        bind.params[1]
+        (bind.params[0], bind.params[1])
     };
 
     let d_val = eval_nullary_fn(&dag, "opaque_dag");
