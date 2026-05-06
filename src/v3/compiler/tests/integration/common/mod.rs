@@ -33,7 +33,7 @@ pub mod substrate_receipts;
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
 };
-pub use list_variant_tags::find_list_empty_constructor_tag;
+pub use list_variant_tags::{find_list_cons_constructor_tag, find_list_empty_constructor_tag};
 pub use r1_gates_bridge::{
     assert_p0_host_sentinel_and_rest_gate_passes, assert_p0_repeat_string_correct_gate_passes,
 };

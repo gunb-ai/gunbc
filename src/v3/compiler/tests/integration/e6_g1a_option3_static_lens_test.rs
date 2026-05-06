@@ -23,7 +23,9 @@
 //! body-evaluable here). That keeps #1844 / #1853 witness-flow acceptance: the same
 //! `Inhabits(c)` payload from the read path feeds both `composed` and the report witness list.
 
-use crate::common::{cached_compile_to_dag, find_list_empty_constructor_tag};
+use crate::common::{
+    cached_compile_to_dag, find_list_cons_constructor_tag, find_list_empty_constructor_tag,
+};
 use v3_compiler::dag::{
     AtomPayload, Behavior, CardinalityBound, DeclarationId, LiteralBits, TransformTarget,
     TypeConnective, ValueNode,
@@ -126,6 +128,83 @@ fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::
         panic!("user def");
     };
     bind_id.node_id()
+}
+
+fn disj_variant_tag_ty_from_ty(
+    dag: &v3_compiler::dag::Dag,
+    mut decl_id: DeclarationId,
+    variant_label: &str,
+) -> DeclarationId {
+    const PEEL_MAX: usize = 64;
+    for _ in 0..PEEL_MAX {
+        let decl = dag.declaration(decl_id);
+        match &decl.connective {
+            TypeConnective::Disj { variants } => {
+                return variants
+                    .iter()
+                    .find(|v| v.label == variant_label)
+                    .unwrap_or_else(|| panic!("missing variant `{variant_label}`"))
+                    .ty;
+            }
+            TypeConnective::Instantiation {
+                template,
+                arguments: _,
+            } => {
+                decl_id = *template;
+            }
+            TypeConnective::Atom(AtomPayload::ResolvedByStructure(next))
+            | TypeConnective::Atom(AtomPayload::ResolvedByName(next)) => {
+                decl_id = *next;
+            }
+            _ => panic!(
+                "unexpected connective peeling `{variant_label}` from {decl_id:?}: {:?}",
+                decl.connective
+            ),
+        }
+    }
+    panic!("peel depth");
+}
+
+fn witness_list_singleton_inhabits(
+    dag: &v3_compiler::dag::Dag,
+    list_witness_ty: DeclarationId,
+    c: i64,
+) -> Value {
+    let list_id = dag
+        .declaration_by_name("List")
+        .expect("bootstrap must define `List`")
+        .id;
+    let elem_witness_ty = match &dag.declaration(list_witness_ty).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if *template == list_id && arguments.len() == 1 => arguments[0].value,
+        other => panic!("expected List<Witness<…>>, got {other:?}"),
+    };
+    let cons_tag = find_list_cons_constructor_tag(dag, list_witness_ty);
+    let empty_tag = find_list_empty_constructor_tag(dag, list_witness_ty);
+    let inhabits_tag = disj_variant_tag_ty_from_ty(dag, elem_witness_ty, "Inhabits");
+    let head = Value::VariantValue {
+        tag: inhabits_tag,
+        payload: Box::new(Value::LiteralValue(LiteralBits::Int(c))),
+    };
+    let tail = Value::VariantValue {
+        tag: empty_tag,
+        payload: Box::new(Value::RecordValue(vec![])),
+    };
+    Value::VariantValue {
+        tag: cons_tag,
+        payload: Box::new(Value::RecordValue(vec![
+            NamedField {
+                label: "head".to_string(),
+                value: head,
+            },
+            NamedField {
+                label: "tail".to_string(),
+                value: tail,
+            },
+        ])),
+    }
 }
 
 fn disj_variant_constructor_id(
@@ -387,6 +466,7 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
         panic!("expected DimensionReport variant Value, got {out:?}");
     };
     let dim_ok = disj_variant_constructor_id(&dag, "DimensionReport", "DimensionOk");
+    let witness_list_ty = conj_field_ty(&dag, dim_ok, "witnesses");
     assert_eq!(
         *tag, dim_ok,
         "Inhabits path must produce DimensionOk; got non-Ok tag"
@@ -420,9 +500,11 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
         .find(|f| f.label == "witnesses")
         .map(|f| &f.value)
         .expect("witnesses");
-    assert!(
-        value_contains_int_literal(witnesses, 1),
-        "witness list must carry the same `Inhabits(c)` payload as `composed` (c = 1 from mini_read)"
+    let expected_witnesses = witness_list_singleton_inhabits(&dag, witness_list_ty, 1);
+    assert_eq!(
+        witnesses,
+        &expected_witnesses,
+        "witness list must be `Cons {{ head: Inhabits(c), tail: Empty }}` with c matching `composed` (#1844 / #1853 witness-flow)"
     );
 }
 
@@ -473,17 +555,6 @@ fn e6_g1a_option3_fixture_lowers_mini_validate_as_callable_transform() {
         }),
         "mini_validate must lower to TransformTarget::Callable(mini_validate)"
     );
-}
-
-fn value_contains_int_literal(v: &Value, needle: i64) -> bool {
-    match v {
-        Value::LiteralValue(LiteralBits::Int(i)) => *i == needle,
-        Value::RecordValue(fs) => fs
-            .iter()
-            .any(|f| value_contains_int_literal(&f.value, needle)),
-        Value::VariantValue { payload, .. } => value_contains_int_literal(payload, needle),
-        _ => false,
-    }
 }
 
 // INVARIANTS P1 / P5 — checkable receipt: this integration crate must not build if the cited

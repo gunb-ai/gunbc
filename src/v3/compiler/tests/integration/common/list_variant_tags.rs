@@ -7,6 +7,59 @@
 use v3_compiler::dag::{Dag, DeclarationId, TypeConnective};
 
 /// Returns the `DeclarationId` for `List<elem>.Empty` matching `list_ty` (`List<elem>`).
+/// Returns the `DeclarationId` for `List<elem>.Cons` matching `list_ty` (`List<elem>`).
+///
+/// Mirrors [`find_list_empty_constructor_tag`]: the lowered graph must already contain an
+/// `Instantiation` row for this `Cons` at the same element type (the fixture seeds one via
+/// `Cons { head: …, tail: … }` in expression position).
+pub fn find_list_cons_constructor_tag(dag: &Dag, list_ty: DeclarationId) -> DeclarationId {
+    let list_decl = dag
+        .declaration_by_name("List")
+        .expect("bootstrap must define `List`");
+    let list_id = list_decl.id;
+    let cons_arm_ty = match &list_decl.connective {
+        TypeConnective::Disj { variants } => {
+            variants
+                .iter()
+                .find(|v| v.label == "Cons")
+                .expect("List.Cons arm")
+                .ty
+        }
+        other => panic!("`List` must be a Disj, got {other:?}"),
+    };
+    let elem_value = match &dag.declaration(list_ty).connective {
+        TypeConnective::Instantiation {
+            template,
+            arguments,
+        } if *template == list_id && arguments.len() == 1 => arguments[0].value,
+        other => {
+            panic!("expected `List<elem>` instantiation for list_ty={list_ty:?}, got {other:?}")
+        }
+    };
+    dag.declarations()
+        .iter()
+        .find_map(|decl| {
+            let TypeConnective::Instantiation {
+                template,
+                arguments,
+            } = &decl.connective
+            else {
+                return None;
+            };
+            (*template == cons_arm_ty
+                && arguments.len() == 2
+                && arguments[0].value == elem_value
+                && arguments[1].value == list_ty)
+                .then_some(decl.id)
+        })
+        .unwrap_or_else(|| {
+            panic!(
+                "no existing `Instantiation` for List<..>.Cons with element type {elem_value:?}; \
+                 lower at least one `Cons {{ head: …, tail: … }}` at that list type in the same compile unit"
+            )
+        })
+}
+
 pub fn find_list_empty_constructor_tag(dag: &Dag, list_ty: DeclarationId) -> DeclarationId {
     let list_decl = dag
         .declaration_by_name("List")
