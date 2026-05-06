@@ -1060,6 +1060,31 @@ fn test_registered_predicate_placeholder_works_outside_types_dag() {
     );
 }
 
+/// S9 Slice 2.5 Path (a) Rung 3 cement: `brand("X")` body synthesis produces
+/// a **real** refinement (not a placeholder). The synthesized body is
+/// `subject == subject` (Comparison(Eq) reflexive) — semantically `true` for
+/// every carrier value, and references the bind subject so the
+/// unused-parameter lens doesn't flag it.
+#[test]
+fn test_brand_lowers_to_real_refinement_body_not_placeholder() {
+    let f = "dsl/std/integer.dag";
+    let dag = cached_compile_to_dag("type B = NonEmptyStr where brand(\"B\")", f);
+    let decl = dag
+        .declaration_by_name("B")
+        .expect("type alias `B` should exist");
+    let pred_id = decl
+        .refinement
+        .expect("`brand` refinement must produce a real `Declaration::refinement`");
+    let pred = dag.declaration(pred_id);
+    if let Some(label) = pred.name.as_deref() {
+        assert!(
+            !label.contains("predicate not lowered"),
+            "`brand` must lower to a real refinement body, not placeholder; \
+             got label {label:?}"
+        );
+    }
+}
+
 /// S9 Slice 2.5 Path (a) Rung 3 cement: `gt_zero` body synthesis produces a
 /// **real** refinement (not a placeholder). `synthesize_predicate_body`
 /// lowers `gt_zero` to `subject > 0`, which `build_refinement_predicate_declaration`

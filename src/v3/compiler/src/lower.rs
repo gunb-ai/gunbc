@@ -948,6 +948,22 @@ fn synthesize_predicate_body(
             args: vec![subject_var(), int_literal(0)],
             span,
         }),
+        "brand" => {
+            // `brand("X")` is a structural-only predicate — it tags the alias
+            // with a brand identity but imposes no value-level constraint.
+            // Body shape: `subject == subject` (Comparison(Eq) reflexive
+            // application) — semantically `true` for every carrier value
+            // (reflexivity), and importantly *references the bind subject*
+            // so the unused-parameter lens (`m2_lens_unused_parameters_migration_test`)
+            // doesn't flag the synthesized refinement param as unused.
+            // Plain `Literal(Bool(true))` would discharge correctly but
+            // would surface as unused-param in lens-self-analysis.
+            Some(SurfaceExpr::Operator {
+                op: OperatorKind::Comparison(ComparisonOp::Eq),
+                args: vec![subject_var(), subject_var()],
+                span,
+            })
+        }
         // range body synthesis disabled pending investigation: synthesizing
         // `subject >= min && subject <= max` for the existing types.dag
         // Int-where-range declarations (RetryCount, HttpStatus, Port,
