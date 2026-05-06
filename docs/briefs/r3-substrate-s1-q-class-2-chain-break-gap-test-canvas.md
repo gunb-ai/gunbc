@@ -4,12 +4,12 @@ authority parent: R3 Substrate Manager (#1739)
 ratification: Director disposition 2026-05-06 directs Substrate Mgr to surface gap-test candidate per option (a)
 roadmap row: docs/r3-program-plan.md §10.3 Q-Class-2-Chain-Break + §1.8 ledger row #61
 authority docs:
-  - docs/r3-program-plan.md:75 (§4.2 Class 2 chain-break)
-  - docs/r3-program-plan.md:258 (ledger row #61 — DECLARED, RED until Q-LBP-R3-Closeability resolves)
-  - docs/r3-program-plan.md:366-368 (two resolution paths (a)/(b))
-  - docs/r3-program-plan.md:974 (Q-Class-2-Chain-Break disposition)
+  - docs/r3-program-plan.md §4.2 (Class 2 chain-break)
+  - docs/r3-program-plan.md §1.8 ledger row #61 (DECLARED, RED until Q-LBP-R3-Closeability resolves)
+  - docs/r3-program-plan.md §4.2 (two resolution paths (a)/(b))
+  - docs/r3-program-plan.md §"Open questions" Q-Class-2-Chain-Break disposition
   - docs/audit/r3-debt-sweep-2026-05-06.md §3 (YELLOW chain rule)
-  - docs/r3-structure.md:174 (gap-test definition)
+  - docs/r3-structure.md §"Acceptance — `.dag` gates" (gap-test definition)
   - docs/r3-design-schedule-2026-05-06.md §1 S1
 gates:
   - substrate_gap_function_valued_data_closed (#61)
@@ -30,7 +30,7 @@ This is a **Mgr-tier canvas**, not a worker brief. Output is a
 recommended gap-test shape + traceability argument to GREEN; worker
 dispatch (if any) follows Director ratification of the candidate.
 
-## Class 2 statement (per `r3-structure.md:174`)
+## Class 2 statement (per `r3-structure.md` §"Acceptance — `.dag` gates")
 
 > `substrate_gap_function_valued_data_closed` — `Lens<C>` instance
 > with function-typed payload executes through evaluator and produces
@@ -130,8 +130,11 @@ This canvas is the Substrate-Mgr-side surface for Director ratification of:
 3. **Design-doc match?** `r3-program-plan.md` §10.3 Q-Class-2-Chain-Break
    names option (a) re-pick + option (b) LBP escalation. Director
    disposition 2026-05-06 selects (a). Canvas surfaces (a) candidate.
-4. **Citations live?** `r3-program-plan.md:75, 258, 366-368, 974` and
-   `r3-structure.md:174` verified at HEAD 2026-05-06.
+4. **Citations live?** `r3-program-plan.md` §4.2 + §1.8 ledger
+   row #61 + §"Open questions" Q-Class-2-Chain-Break, plus
+   `r3-structure.md` §"Acceptance — `.dag` gates" verified at
+   HEAD 2026-05-06. Section-anchor / quote form per citation
+   discipline; no bare line numbers.
 5. **Carrier dissolves the bridge?** Gap-test is structural
    demonstration, not a carrier. The "bridge" being dissolved is the
    YELLOW chain-rule violation in §1.8 row #61: re-picking the

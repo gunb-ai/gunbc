@@ -6,7 +6,7 @@ roadmap row: docs/r3-program-plan.md §1.8 ledger row #61 (substrate_gap_functio
 authority docs:
   - docs/briefs/r3-substrate-s1-q-class-2-chain-break-gap-test-canvas.md (canvas this brief consumes)
   - docs/r3-program-plan.md §10.3 Q-Class-2-Chain-Break (Director disposition + ratification record)
-  - docs/r3-structure.md:174 (Class 2 gap-test definition)
+  - docs/r3-structure.md §"Acceptance — `.dag` gates" (Class 2 gap-test definition)
   - docs/briefs/r3-pr-e6-g0d-constructor-runtime-execution-worker.md (Evaluator E1 prerequisite)
   - docs/briefs/r3-t-e-p-producer-broadening-worker.md (T-E-P Phase 1 prerequisite)
 gates:

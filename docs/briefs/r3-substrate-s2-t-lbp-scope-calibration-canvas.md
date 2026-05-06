@@ -4,9 +4,9 @@ authority parent: R3 Substrate Manager (#1739) + Verification Manager (#1740) cr
 ratification: Director needs Substrate canvas detail before engaging Q-Lens-Behavioral-Parity-R3-Closeability (E3 RED)
 roadmap row: docs/r3-program-plan.md §10 Q-LBP-R3-Closeability + §1.8 ledger rows #79-#83 (T-LBP), #61 (Class 2), #88-#95 (T-LAS), #54 (timing-lens), #57-#59 (T-LSA)
 authority docs:
-  - docs/r3-structure.md:38 (T-LBP lane definition; L-XL sized; cross-program Substrate+Verification)
-  - docs/r3-structure.md:140-145 (T-LBP gate IDs)
-  - docs/r3-structure.md:209 (lane row + 4 sub-slices)
+  - docs/r3-structure.md §"Summary" T-LBP lane (L-XL sized; cross-program Substrate+Verification)
+  - docs/r3-structure.md §"Acceptance — `.dag` gates" T-LBP gate IDs
+  - docs/r3-structure.md §"Lane structure" (lane row + 4 sub-slices)
   - docs/v3-lens-capability-register.md (PROXY/STUB/PARTIAL classifications)
   - docs/r3-program-plan.md §10 Q-LBP-R3-Closeability
   - docs/r3-design-schedule-2026-05-06.md §1 S2
@@ -24,7 +24,7 @@ gates:
 
 Director needs Substrate-side canvas detail before engaging
 Q-Lens-Behavioral-Parity-R3-Closeability (currently E3 RED — no
-executable close path identified). Per `r3-structure.md:209` T-LBP
+executable close path identified). Per `r3-structure.md` §"Lane structure" T-LBP
 has 4 sub-slices. This canvas surfaces, for each lens, the specific
 substrate / runtime / consumer blockers that gate
 "PROXY/STUB/PARTIAL → BEHAVIORALLY COMPLETE", and names option
@@ -48,7 +48,7 @@ of register status; worker re-verifies at HEAD before ratification).
 
 ### Lens 1 — `complexity` (currently PROXY)
 
-Sub-slice scope (per `r3-structure.md:209`): symbolic CostExpr full
+Sub-slice scope (per `r3-structure.md` §"Lane structure"): symbolic CostExpr full
 algebra (Sum/Mul/Log/Const) consumed by lens; work/span dimension
 split; asymptotic classification; cementing test against frozen
 v2-oracle snapshot.
@@ -164,7 +164,7 @@ new lens shape, not in T-LBP scope). T-LSA still feasible under (b).
 
 **Cascade impact**: massive. T-LAS, T-WAD, T-LSA all carry to R4 or
 later. R3 critical-path collapses. Recursive-flex thesis claim
-(`r3-structure.md:42`) un-cashes for R3.
+(`r3-structure.md` §"Summary" recursive-flex thesis claim) un-cashes for R3.
 
 **Recommendation against (c)** unless Director judges that R3 close
 horizon is fundamentally incompatible with any T-LBP work.
@@ -209,7 +209,7 @@ horizon is fundamentally incompatible with any T-LBP work.
    this canvas is the scope-calibration response to E3 RED.
 3. **Design-doc match?** `v3-lens-capability-register.md` is the
    anchor. Worker re-reads at dispatch.
-4. **Citations live?** Verified at HEAD 2026-05-06: `r3-structure.md:38, 140-145, 209`
+4. **Citations live?** Verified at HEAD 2026-05-06: `r3-structure.md` §"Summary" + §"Acceptance — `.dag` gates" + §"Lane structure"
    and design schedule §1 S2.
 5. **Carrier dissolves the bridge?** N/A — canvas is scope-calibration
    not carrier landing. The "bridge" is the YELLOW chain rule

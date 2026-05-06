@@ -4,8 +4,8 @@ authority parent: R3 Substrate Manager (#1739)
 ratification: Brian directive 2026-05-06 (chat) — algebra × machine-constraints interaction modeling; concrete types as products of independent axes
 roadmap row: docs/r3-program-plan.md §4.1 Class 1 (parser/grammar surface) + §1.8 ledger row #60
 authority docs:
-  - docs/r3-program-plan.md:428 (Class 1 modeling target — independent constraint models)
-  - docs/r3-program-plan.md:60 (substrate_gap_parser_grammar_closed)
+  - docs/r3-program-plan.md §4.1 (Class 1 modeling target — independent constraint models)
+  - docs/r3-program-plan.md §1.4 (substrate_gap_parser_grammar_closed)
   - docs/r3-design-schedule-2026-05-06.md §1 S3
   - docs/audit/r3-debt-sweep-2026-05-06.md (Class 1 5-criteria Pass)
 gates:
@@ -197,7 +197,7 @@ substrate; Grounding consumes. Coordinate Phase-3/4 hand-off receipts.
    primary authority. No design-doc precedent; this brief IS the
    design surface. Director ratification of carrier shape required
    before parser-grammar Phase-2 dispatch.
-4. **Citations live?** `r3-program-plan.md:428, 60` and design
+4. **Citations live?** `r3-program-plan.md` §4.1 + §1.4 and design
    schedule §1 S3 verified at HEAD 2026-05-06.
 5. **Carrier dissolves the bridge?** Yes — `substrate_gap_parser_grammar_closed`
    #60 5-criteria Pass requires (a) substrate carriers
