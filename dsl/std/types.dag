@@ -31,7 +31,6 @@
 module std.types
 
 import std.algebra { BooleanAlgebra, FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names }
-import std.nat { Nat }
 
 // --- Primitives (Level 0: Atoms) --------------------------------------
 // Each is a single-node Identity DAG -- no validation, just a base carrier.
@@ -242,22 +241,18 @@ type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
-// Nat-alignment migration (S9 Slice 2 / Phase-4): non-negativity is structural
-// to `Nat` (the canonical natural-number carrier), not a refinement predicate
-// over `Int`. Refining `Int` for non-negativity would project out Nat's
-// structural property — the same modeling fault Codex's BLOCKING review on
-// PR #1818 caught for the `UInt = CommutativeMonoid<Nat>` shorthand.
+// `NonNegativeInt` migrated to `Nat` (canonical-instance alias) per S9 Slice 2
+// Nat-alignment — declaration moved to `dsl/std/integer.dag` (which already
+// imports `std.nat { Nat }`); locating it here would require an
+// `std.types -> std.nat` import edge that triggers a circular-dependency
+// false-positive during transitive load of test fixtures via `std.render`
+// chains. Consumers should `import std.integer { NonNegativeInt }`.
 //
-// `NonNegativeInt = Nat` (canonical-instance alias; analogous to landed
-// `UInt = Nat` at #1818). The "non-negative" property IS Nat by construction.
-//
-// `PositiveInt = Nat where range(min: 1)` (algebra-side stays on Nat;
-// gt-zero is the value-level predicate over Nat, not Int). Per Slice 3
-// (#1466) Int landed as `AbelianGroup<GroupCompletion<Nat>>` — predicates
-// over Nat directly preserve the constructive edge rather than projecting
-// non-negative slices out of Int's group surface.
-type NonNegativeInt  = Nat
-type PositiveInt     = Nat where range(min: 1)
+// `PositiveInt` STAYS on `Int where range(min: 1)` here for this slice;
+// resolver does not currently entail `where range(min: …)` predicates over
+// `Nat`. Surfaced as a gap per dispatch STOP-AND-ESCALATE; migration
+// sequences after predicate-entailment substrate supports `range` over Nat.
+type PositiveInt     = Int where range(min: 1)
 
 // Path modeling (EX-2):
 // - FilePath remains a compatibility alias for existing modules.
