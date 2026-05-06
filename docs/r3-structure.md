@@ -137,12 +137,12 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `e_p_call_pattern_lookup_authoritative` — `CallPattern` lookup is authoritative substrate query (no parallel Rust derivation)
   - `e_p_sub_value_relation_per_call_landed` — `SubValueRelation` per-call landing complete
 
-- **T-Lens-Behavioral-Parity** (NEW 2026-05-02; gate IDs added 2026-05-06 to §"Acceptance" per codex BLOCKING).
-  - `complexity_lens_behaviorally_complete` — symbolic CostExpr full algebra consumed; work/span split; asymptotic classification; cementing test against frozen v2-oracle snapshot
-  - `cost_lens_behaviorally_complete` — `Dimension<SymbolicCost>` wiring; `SizeVar` value semantics; cementing test against frozen v2-oracle snapshot
-  - `parallelism_lens_behaviorally_complete` — Stage 2e parallelism walk port from Rust to `.dag`; rewired via `lane2_workflow_at` / `std.effects`
-  - `effect_enumeration_lens_behaviorally_complete` — resource-threading migration; ambient metadata removal; full `OperationEffect` retirement
-  - `lens_capability_register_zero_proxy_zero_stub` — register status updated to ZERO PROXY / ZERO STUB at R3 close (per `docs/v3-lens-capability-register.md`)
+- **T-Lens-Behavioral-Parity** (NEW 2026-05-02; gate IDs added 2026-05-06 to §"Acceptance" per codex BLOCKING; **R3 scope narrowed to complexity + cost lenses only** per Q-Lens-Behavioral-Parity-R3-Closeability option (b) RATIFIED 2026-05-06 at [gunbc#828 #issuecomment-4385329180](https://github.com/gunb-ai/gunbc/issues/828#issuecomment-4385329180); parallelism + effect_enum carved to R4 per `docs/r4-carve-out-routing.md` C1+C2; #83 register narrowed to in-R3 lenses per C3).
+  - `complexity_lens_behaviorally_complete` — **IN R3** — symbolic CostExpr full algebra consumed; work/span split; asymptotic classification; cementing test against frozen v2-oracle snapshot
+  - `cost_lens_behaviorally_complete` — **IN R3** — `Dimension<SymbolicCost>` wiring; `SizeVar` value semantics; cementing test against frozen v2-oracle snapshot
+  - `parallelism_lens_behaviorally_complete` — **CARVED to R4 (C1)** per `docs/r4-carve-out-routing.md` — Stage 2e parallelism walker port from Rust to `.dag`; rewire via `lane2_workflow_at` / `std.effects`. Substrate exists; port + rewire in R4 Substrate continuation
+  - `effect_enumeration_lens_behaviorally_complete` — **CARVED to R4 (C2)** per `docs/r4-carve-out-routing.md` — 4c caller-side effect-set pinning carrier requires P1 substrate-fact-introduction not landed in R3 horizon
+  - `lens_capability_register_zero_proxy_zero_stub` — **NARROWED scope (C3) IN R3** — register status ZERO PROXY / ZERO STUB **for in-scope lenses (complexity + cost) only** at R3 close per `docs/v3-lens-capability-register.md`; parallelism + effect_enum entries documented as R4-carved
 
 - **T-Tests-As-Data-Completeness** (NEW 2026-05-02; gate IDs added 2026-05-06 to §"Acceptance" per codex BLOCKING).
   - `every_rust_test_ports_to_dag_or_generated` — every Rust test ports to `.dag` TestClaim or generated target-language test code (thesis facet 3)
