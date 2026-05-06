@@ -127,7 +127,7 @@ Worker MUST STOP and escalate to PB Manager (which escalates to Director if cros
 - Design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) — §4.1 bin-shim class enumeration; §4.2 `BinShim` carrier-shape sketch + emitter shape; §4.3 dissolution path; §4.4 first-time-bootstrap compatibility; §5.1 R3-T-LensProducer-Retirement sub-gate decomposition; §5.4 PB/Substrate/Evaluator boundary; §6 anti-bridge invariants; §7.2 BinShim equivalence fixture; §7.3 No-new-bin-shim-hand-Rust fixture (with substrate prerequisite call-out).
 - T-LensProducer-Retirement parent lane: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-LensProducer-Retirement row.
 - Sibling R3-PB lane (separate scope, gated separately): T-FixedPoint planning brief — [`docs/briefs/r3-pb-t-fixedpoint-worker.md`](r3-pb-t-fixedpoint-worker.md).
-- Substrate-fact-introduction procedure (escalation path): `INVARIANTS.md:94` §"Procedure: substrate-fact introduction".
+- Substrate-fact-introduction procedure (escalation path): [`INVARIANTS.md#p1-modeling-faithfulness`](../../INVARIANTS.md#p1-modeling-faithfulness) (Procedure).
 - SG-0 census authority + generated-file partition: `src/v3/compiler/tests/integration/sg0_census_test.rs` (`EXPECTED_HAND_AUTHORED_NON_TEST` + `GENERATED_FILES`); `src/v3/compiler/build.rs` `REGEN_OUTPUTS`.
 - First-shim source (unchanged until retirement): `src/v3/compiler/src/bin/regen_lens.rs`.
 - First-target readiness (planning only): [`r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
