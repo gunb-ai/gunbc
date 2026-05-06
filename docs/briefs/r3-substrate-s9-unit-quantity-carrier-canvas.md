@@ -1,5 +1,5 @@
 ---
-status: draft (Mgr-tier canvas; surfaces design question for Director ratification per S9 Phase-3 boundary feedback)
+status: RATIFIED 2026-05-06 (Q-Unit-1..5 ratified by Director at gunbc#828 #issuecomment-... 2026-05-06; Scale value `Unit` renamed to `One` to avoid name shadowing with outer `Unit<Q, S>` carrier)
 authority parent: R3 Substrate Manager (#1739)
 ratification: Director feedback on S9 at gunbc#828 inbox response 2026-05-06 (zesty-bear-812) — "several Phase-3 refinements are likely dimensional/unit-of-measure, not value-restriction predicates ... the right shape is likely a Unit<Quantity, Scale> axis"
 roadmap row: cross-references docs/briefs/r3-substrate-s9-t-numeric-construction-worker.md Phase-3
@@ -12,6 +12,20 @@ gates: cross-references §1.8 ledger rows #20-#23 (refinements that may reframe)
 ---
 
 # R3 Substrate S9 Phase-3 — Unit/Quantity carrier canvas
+
+## RATIFICATION (2026-05-06, zesty-bear-812 at gunbc#828)
+
+Director ratified Q-Unit-1..5 with one rename:
+
+| Question | Outcome |
+|---|---|
+| **Q-Unit-1** Carrier name | RATIFIED `Unit<Quantity, Scale>` **with rename**: Scale value `Unit` → `One` (avoids shadowing outer carrier) |
+| **Q-Unit-2** 2-axis Phase-1 | RATIFIED. Aspect axis defers to R4 (consumer-demand-driven). `Frequency`/`DataRate` may re-fold when Aspect lands; accept as future cleanup |
+| **Q-Unit-3** Duration/Seconds collapse | RATIFIED collapse: `Seconds = Duration ≡ Unit<Time, One>`. Scale-agnostic `Duration<S>` form deferred until ≥2 consumers ask |
+| **Q-Unit-4** Composition order | RATIFIED outer-Refined / inner-Unit (`Refined<Unit<...>, predicate>`) |
+| **Q-Unit-5** Practice 4 marks | RATIFIED. `Unit<Q, S>` 🟢 PRIMITIVE; `Quantity` / `Scale` 🟡 SCAFFOLD with "consumed by ≥1 emission rule" trigger |
+
+**Worker-facing impact**: shape below reflects ratified form. Scale enum's `Unit` value renamed to `One` throughout this canvas; subsequent worker brief authoring inherits the renamed shape.
 
 ## Purpose
 
@@ -53,7 +67,7 @@ data Scale =
   | Nano    // 10^-9
   | Micro   // 10^-6
   | Milli   // 10^-3
-  | Unit    // 10^0
+  | One     // 10^0  (RATIFIED rename from `Unit` per Director 2026-05-06 — avoids shadowing outer `Unit<Q, S>` carrier)
   | Kilo    // 10^3
   | Mega    // 10^6
   | Giga    // 10^9
@@ -67,9 +81,9 @@ data Unit<Q, S> = Phantom  // 🟢 PRIMITIVE — Q: Quantity, S: Scale
 Phase-3 dimensional refinements emit as products:
 
 ```
-Duration     ≡ Quantity<Time>      ⊗ Scale<Unit>   ⊗ underlying<Int>
-Seconds      ≡ Quantity<Time>      ⊗ Scale<Unit>   ⊗ underlying<Int>
-Milliseconds ≡ Quantity<Time>      ⊗ Scale<Milli>  ⊗ underlying<Int>
+Duration     ≡ Unit<Time, One>     ⊗ underlying<Int>
+Seconds      ≡ Unit<Time, One>     ⊗ underlying<Int>   // collapses with Duration per Q-Unit-3 RATIFIED
+Milliseconds ≡ Unit<Time, Milli>   ⊗ underlying<Int>
 ```
 
 (`Duration` and `Seconds` collapse under this shape. May or may
@@ -147,7 +161,7 @@ type (`Time × Unit`). Is this intended?
   "scale variable at runtime" from "scale = Unit".
 
 **Recommendation**: collapse — `Seconds = type Duration<Scale = Unit>`
-or `Seconds = Duration` with `Duration` always at `Scale<Unit>`.
+or `Seconds = Duration` with `Duration` always at `Scale<One>`.
 The "scale variable at runtime" form is a generalization; if no
 consumer demands it, do not introduce.
 
@@ -157,8 +171,8 @@ Under Unit-typed shape, predicates like `non_negative` /
 `gt_zero` still apply. Composition shape:
 
 ```
-Duration         ≡ Refined<Unit<Time, Unit>, non_negative>  ⊗ underlying<Int>
-PositiveDuration ≡ Refined<Unit<Time, Unit>, gt_zero>       ⊗ underlying<Int>
+Duration         ≡ Refined<Unit<Time, One>, non_negative>  ⊗ underlying<Int>
+PositiveDuration ≡ Refined<Unit<Time, One>, gt_zero>       ⊗ underlying<Int>
 ```
 
 Is `Refined<Unit<...>, predicate>` the right composition order?
@@ -195,7 +209,7 @@ Under ratified Unit/Quantity carrier:
 |---|---|---|
 | `Char` | `Refined<Int, valid_unicode_codepoint>` | 🟢 PRIMITIVE |
 | `EpochMs` | **deferred to Aspect-axis follow-up** | (deferred) |
-| `Duration` | `Refined<Unit<Time, Unit>, non_negative>` | 🟢 |
+| `Duration` | `Refined<Unit<Time, One>, non_negative>` | 🟢 |
 | `Milliseconds` | `Refined<Unit<Time, Milli>, non_negative>` | 🟢 |
 | `Seconds` | type alias for `Duration` (Q-Unit-3 = collapse) | 🟢 |
 | `RetryCount` | `Refined<NonNegativeInt, retry_semantics>` | 🟢 |
