@@ -8,6 +8,8 @@
 
 **Carve-out routing (IN R3 vs R4):** [`docs/r4-carve-out-routing.md`](../r4-carve-out-routing.md) **C1–C3** — **complexity** + **cost** lenses **IN R3**; **parallelism** + **effect_enumeration** **carved to R4**; register gate **#83** narrowed to in-scope lenses only.
 
+**Single authority (INVARIANTS §P2):** Option **(b)** obligation text is **`docs/r3-structure.md`** §"Acceptance" T-Lens-Behavioral-Parity **plus** the matching Summary lane bullet (item **14**) **plus** the §"Lane structure" table row — updated in lockstep. **This brief** elaborates Verification receipts only; it does **not** define lane scope independently of `r3-structure.md`.
+
 **Lane acceptance:** [`docs/r3-structure.md`](../r3-structure.md) §"Acceptance" T-Lens-Behavioral-Parity — gates **#79–#83** in [`docs/r3-program-plan.md`](../r3-program-plan.md) §1.8.
 
 ## In-R3 obligations (Verification-owned or cross-program)
@@ -16,7 +18,7 @@
 | --- | --- | --- |
 | 79 | `complexity_lens_behaviorally_complete` | Cementing tests + `ClaimResult` diagnostics; consumes T-E-P producer evidence; aligns witness shapes with [`r3-v-witness-shape-pattern-survey.md`](r3-v-witness-shape-pattern-survey.md) |
 | 80 | `cost_lens_behaviorally_complete` | Same — shared producer dependency as complexity (S2 matrix lens 2) |
-| 73 | `lens_behavioral_parity_demonstration` | Per-lens demo matching **frozen** v2-oracle snapshot (plan §1.6 — **not** live v2 consumer) |
+| 73 | `lens_behavioral_parity_demonstration` | Per **in-R3** lens demo (complexity, cost) matching **frozen** v2-oracle snapshot (plan §1.6 — **not** live v2 consumer); carved lenses **R4** |
 | 83 | `lens_capability_register_zero_proxy_zero_stub` | Receipt that register lists **ZERO PROXY / ZERO STUB** for **complexity + cost only**; **document** R4-carved rows per **C3** |
 
 ## Out of R3 (partner discipline)
