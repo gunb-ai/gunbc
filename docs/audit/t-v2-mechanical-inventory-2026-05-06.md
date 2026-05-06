@@ -1,0 +1,222 @@
+# T-V2-Retirement — Mechanical Inventory / Consumer Census (2026-05-06 refresh)
+
+**Status:** AUDIT artifact (docs-only; no code changes; no `src/v2/` deletion; no Cargo edge removal). Authored 2026-05-06 by PB Manager continuation per dispatch on inbox #1768 (sleek-eagle-514). Refreshes the per-surface inventory in [`docs/audit/t-v2-retirement-migration-matrix.md`](t-v2-retirement-migration-matrix.md) §2 against current `origin/main` HEAD.
+
+**HEAD verified:** `2d26ed2b3` (`origin/main` at refresh time; same tree merged into `session/sleek-eagle-514` for this audit).
+
+**This is an inventory refresh, not a decision.** It does not propose carrier shape, migration order, or G-1/G-2 sequencing — those remain S-1 / Substrate-Manager territory per [`docs/audit/t-v2-retirement-audit.md`](t-v2-retirement-audit.md) §1 STOP conditions and [`docs/briefs/r3-pb-tv2-s1-input-packet.md`](../briefs/r3-pb-tv2-s1-input-packet.md) §"Decision checklist". Every cell below cites a live grep / file/line on `2d26ed2b3`.
+
+## Scope
+
+Mechanical census: enumerate every workspace `v2_compiler` / `v2-compiler` / `src/v2/` consumer in `src/` + `tests/` + `Cargo.toml` at HEAD, attach grep receipts, and cross-link each row to the migration-matrix surface it refreshes. **Forbidden by dispatch:** deleting `src/v2/`, removing Cargo edges, mutating any v2 file. None of those are touched here.
+
+## Search authority
+
+All counts use the audit-sanctioned search command from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review):
+
+```sh
+grep -rEln 'src/v2/|\bv2_compiler(_tests)?\b' src/ tests/
+```
+
+Substantive vs cosmetic split per #1338 §3.1: substantive = `use` / call / function-signature / type reference; cosmetic = doc-comment / string literal / README mention.
+
+---
+
+## 1. Population census at HEAD `2d26ed2b3`
+
+### 1.1 Population A — internal to `src/v2/tests` crate (16 files)
+
+These import `v2_compiler::*` from inside the v2 tests crate. Internal to v2 → fall with **G-2** (workspace member removal of `src/v2/tests`). Do **NOT** count against G-1.
+
+```
+src/v2/tests/src/bootstrap.rs
+src/v2/tests/src/bug_sentinel_ratchet.rs
+src/v2/tests/src/derive_bound_fail_closed_test.rs
+src/v2/tests/src/diagnostics.rs
+src/v2/tests/src/effects.rs
+src/v2/tests/src/helpers.rs
+src/v2/tests/src/infer_semantics.rs
+src/v2/tests/src/int_pow_bounded_test.rs
+src/v2/tests/src/lib.rs
+src/v2/tests/src/parse.rs
+src/v2/tests/src/pb_method_template_projection_consumability.rs
+src/v2/tests/src/peano_materialization_cap_test.rs
+src/v2/tests/src/pipeline.rs
+src/v2/tests/src/render_repeat_test.rs
+src/v2/tests/src/source_audit.rs
+src/v2/tests/src/sub_value_lattice_factor_test.rs
+```
+
+**Receipt:**
+```sh
+$ ls src/v2/tests/src/ | wc -l
+16
+$ ls src/v2/tests/src/
+(16 files as listed above)
+```
+
+**Delta vs migration matrix §2.1:** matrix listed 13 importers + 2 non-importing (lib.rs, bug_sentinel_ratchet.rs) = 15 files. **HEAD = 16.** New file: `pb_method_template_projection_consumability.rs` (added post-`66edec52`). No matrix update is required for G-1 disposition — Population A retires as a unit under G-2 regardless of file count — but the matrix's "13 v2-using test files" / "15 total" framing is now stale.
+
+**Migration disposition (unchanged from matrix §2.1):** none individually. Crate retires as a unit when G-2's workspace-member removal fires. Per-test coverage migration (if any) is PM/S-1 territory; flagged in matrix §6.1.
+
+### 1.2 Population B — substantive G-1 consumers outside `src/v2/`
+
+#### B.1 Test files (2)
+
+Both files appear in matrix §3.1 / §3.2; cited construct still present at HEAD.
+
+| File | Substantive references at HEAD | Drift vs matrix |
+|---|---|---|
+| `src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs` | L9: `use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};`<br>L10: `use v2_compiler::v2_interpreter::{self, Value};`<br>L11: `use v2_compiler_tests::helpers::resolve_imports_transitively;` | None — matrix §3.1 "Current dependency" cell still accurate. |
+| `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs` | L1209: `fn v2_profile_to_v3(p: v2_compiler::std_algebra::AlgebraProfile) -> AlgebraProfile {`<br>L1210: `use v2_compiler::std_algebra::AlgebraProfile as V2;`<br>L1222: `let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();` | Line numbers drifted: matrix §3.2 cited L991/L992-993/L1005; HEAD = L1209 / L1210 / L1222. Construct unchanged (still `v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` test). |
+
+**Receipt:**
+```sh
+$ grep -rEn '^use v2_compiler|::v2_compiler::|let .* = v2_compiler::|fn .*v2_compiler::|v2_compiler::[a-z_]+::' src/v3/ \
+    | grep -v 'src/v2/'
+src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs:9:use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
+src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs:10:use v2_compiler::v2_interpreter::{self, Value};
+src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs:11:use v2_compiler_tests::helpers::resolve_imports_transitively;
+src/v3/compiler/src/dag.rs:1793:/// `v2_compiler::std_algebra::kernel_algebra_profile` remains only as a   ← doc-comment, NOT substantive
+src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs:1209:    fn v2_profile_to_v3(p: v2_compiler::std_algebra::AlgebraProfile) -> AlgebraProfile {
+src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs:1210:        use v2_compiler::std_algebra::AlgebraProfile as V2;
+src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs:1222:    let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();
+```
+
+The dag.rs L1793 hit is a single doc-comment (drifted from matrix §2.3's listing of L526/L983/L1562/L1598/L1602/L3102 — none of those line numbers carry `v2_compiler` references at HEAD; the doc-comment now lives at L1793 only). Population C, not B.
+
+#### B.2 Cargo path-dep edges (2)
+
+| Edge | Location at HEAD | Drift vs matrix |
+|---|---|---|
+| `v2-compiler = { path = "../../v2/stage0" }` | `src/v3/compiler/Cargo.toml:37` | Matrix §3.3 cited L32; HEAD = L37 (5-line drift). Edge unchanged. |
+| `v2-compiler-tests = { path = "../../v2/tests" }` | `src/v3/compiler/Cargo.toml:38` | Matrix §3.3 cited L33; HEAD = L38 (5-line drift). Edge unchanged. |
+
+**Receipt:**
+```sh
+$ grep -nE 'v2-(compiler|compiler-tests)' src/v3/compiler/Cargo.toml
+37:v2-compiler = { path = "../../v2/stage0" }
+38:v2-compiler-tests = { path = "../../v2/tests" }
+```
+
+#### B.3 G-1 closure surface count
+
+**Population B at HEAD = 4 surfaces** (2 test files + 2 Cargo edges) — same shape as matrix §2.2; only line-number drift in citations.
+
+### 1.3 Population C — cosmetic references (not G-1; cleaned up at G-2)
+
+Doc-comments, string literals, README mentions. **NOT** G-1 consumers.
+
+#### C.1 Files inventoried in matrix §2.3 (refreshed citations)
+
+| File | Kind | Matrix-cited lines | HEAD lines | Delta |
+|---|---|---|---|---|
+| `src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs` | string literal `"src/v2/complexity.dag (5488L)"` | L140 | L140 | unchanged |
+| `src/v3/compiler/src/dag.rs` | doc-comments | L526/L983/L1562/L1598/L1602/L3102 | **L1793 only** (single ref at HEAD; cited lines no longer carry `v2_compiler`) | **drift — matrix line set stale** |
+| `src/v3/lenses/complexity.dag` | doc-comment | L13 | L13 | unchanged |
+| `src/v3/std/anthropic_operations.dag` | doc-comment | L20 | L20 | unchanged |
+| `src/v3/std/rust_method_template_contracts.dag` | doc-comment + legacy emit chain note | L21 | L21 | unchanged |
+| `src/v3/SELF_HOSTING.md` | doc reference | (unspecified) | L25, L27, L1216, L1217, L1218, L1219, L1220 | inventoried |
+
+#### C.2 Files NOT in matrix §2.3 — surfaces added since `66edec52`
+
+These are cosmetic-only references not yet listed in the matrix; surfacing here so S-1 / G-2 cleanup sweep has a complete map.
+
+| File | Kind | Lines |
+|---|---|---|
+| `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs` | doc-comment | L29 |
+| `src/v3/compiler/tests/integration/pb_method_template_projection_dag_emit_test.rs` | doc-comments | L28, L54 |
+| `dsl/tools/purity_check.dag` | shell-script literal in `concat(...)` invocation | L157 |
+| `dsl/std/node.dag` | doc-comment | L9 |
+| `dsl/std/constructors.dag` | doc-comment | L52 |
+| `dsl/std/syntax.dag` | doc-comment | L79 |
+| `dsl/extdeps/llm/openai.dag` | doc-comment | L90 |
+| `dsl/extdeps/languages/python/syntax.dag` | doc-comment | L43 |
+| `dsl/gunbc/compiler.dag` | doc-comment + `data compiler_source: SourceRoot = { path: "src/v2" }` | L29, L53 |
+| `dsl/gunbc/tools/review_codex.dag` | reviewer-prompt string mentioning `src/v2` | L75 |
+
+**Note on `dsl/gunbc/compiler.dag:53`:** this is a `data` declaration setting `compiler_source.path = "src/v2"`. It is **not** a Rust import or substantive code consumer; it's a configuration-data row pointing at the v2 source tree as compile input. Whether it shifts to a v3-side path under G-2 is a question for S-1 (whether `compiler.dag`'s `compiler_source` retargets, or whether the `compiler.dag` itself gets refactored when v2 retires). **No disposition proposed here** — just inventoried.
+
+**Receipt:**
+```sh
+$ grep -rEn 'src/v2' src/v3/ dsl/ | grep -v Binary
+(output as inventoried in C.1 + C.2 above)
+```
+
+### 1.4 Workspace-level Cargo.toml (root)
+
+The workspace `Cargo.toml` (repo root) declares both v2 crates as workspace members and carries a v2-compiler-specific dev-profile override:
+
+| Line | Construct |
+|---|---|
+| L6 | `"src/v2/stage0",` (workspace member) |
+| L8 | `"src/v2/tests",` (workspace member) |
+| L58 | comment: `# debug_assert! in v2-compiler, not just ownership checks — acceptable` |
+| L61 | `[profile.dev.package.v2-compiler]` (dev-profile override section header) |
+
+**Receipt:**
+```sh
+$ grep -nE 'src/v2|v2-(compiler|compiler-tests)' Cargo.toml
+6:    "src/v2/stage0",
+8:    "src/v2/tests",
+58:# debug_assert! in v2-compiler, not just ownership checks — acceptable
+61:[profile.dev.package.v2-compiler]
+```
+
+**Migration mapping:**
+- L6, L8 — **G-2 (workspace member removal)**, not G-1. Matches matrix §2.1 "crate retires as a unit when G-2's workspace-member removal fires".
+- L58, L61 (and the `[profile.dev.package.v2-compiler]` section body that follows) — cosmetic Population-C-equivalent at workspace scope. Cleaned up alongside G-2 deletion. **No edit proposed here.**
+
+The matrix does not currently inventory the root `Cargo.toml` profile section; flagged as a minor gap (G-2 sweep, not G-1).
+
+---
+
+## 2. Cross-reference table
+
+Each Population B / C row above maps back to a migration-matrix surface and (where applicable) a decision in [`r3-pb-tv2-s1-input-packet.md`](../briefs/r3-pb-tv2-s1-input-packet.md).
+
+| HEAD surface | Matrix § | Input-packet decision | Population |
+|---|---|---|---|
+| `p0_std_render_repeat_string_test.rs` | §3.1 | Decision 1 (replace vs delete) | B |
+| `m2_substrate_inhabitance_test.rs::v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` | §3.2 | Decision 2 (cross-program routing) | B |
+| `src/v3/compiler/Cargo.toml:37-38` | §3.3 | Decision 3 (atomic deletion mechanics) | B |
+| Population A (16 files in `src/v2/tests/src/`) | §2.1 + §6.1 | (G-2 territory; no G-1 decision) | A |
+| `dsl/extdeps/languages/{rust,python,go}/emit.dag` legacy chain | §4 | Decision 4 (gate timing) | (G-2 prereq, not G-1) |
+| `dsl/std/verification.dag` (v2-era) vs `src/v3/std/verification.dag` | §5 | Decision 5 (Substrate-routed) | (G-2 prereq, not G-1) |
+| `src/v3/compiler/src/dag.rs` doc-comments | §2.3 | (cosmetic — sweep at G-2) | C |
+| `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs:29`, `pb_method_template_projection_dag_emit_test.rs:28,54` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
+| `dsl/tools/purity_check.dag:157`, `dsl/std/{node,constructors,syntax}.dag`, `dsl/extdeps/{llm/openai,languages/python/syntax}.dag`, `dsl/gunbc/{compiler,tools/review_codex}.dag` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
+| Root `Cargo.toml` L6/L8/L58/L61 | (not in matrix) | (G-2 — workspace removal + profile section sweep) | A-equivalent at workspace scope |
+
+---
+
+## 3. Summary deltas vs migration matrix `66edec52`
+
+The matrix's structural map (Populations A/B/C, G-1 vs G-2 split, ownership routing) is **unchanged**. Only refresh-class deltas at HEAD `2d26ed2b3`:
+
+1. **Population A:** 15 → 16 files (added `pb_method_template_projection_consumability.rs`). Same disposition (G-2 unit retirement).
+2. **Population B test-file line citations drifted:** `m2_substrate_inhabitance_test.rs` L991/L992-993/L1005 → L1209/L1210/L1222. Same construct (`v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`); structurally unchanged.
+3. **Population B Cargo edge line citations drifted:** `src/v3/compiler/Cargo.toml:32-33` → `:37-38`. Edges unchanged.
+4. **Population C dag.rs line set drifted:** matrix listed 6 lines (L526/L983/L1562/L1598/L1602/L3102); HEAD has a single doc-comment at L1793 only. Net Population C count for that file decreased from 6 → 1.
+5. **Population C gap-fill:** 10 additional files carry cosmetic `src/v2` references (per §1.3 C.2). All doc-comment / string-literal; no substantive consumer added.
+6. **Workspace-Cargo.toml inventory gap:** root `Cargo.toml` v2 lines (L6/L8/L58/L61) not previously inventoried. Surfaced here.
+
+**G-1 closure surface count: 4 (unchanged from matrix §2.2).** No new substantive `v2_compiler` consumer has surfaced since `66edec52`; the retirement work scope is unchanged.
+
+---
+
+## 4. Constraints honored (verbatim from dispatch)
+
+- ✅ No `src/v2/` deletion.
+- ✅ No `v2-compiler` / `v2-compiler-tests` Cargo edge removal.
+- ✅ No code touched (this PR adds one new docs-only file).
+- ✅ No migration disposition decided (all routings remain matrix / S-1 / Substrate-Manager territory).
+
+## Cross-refs
+
+- Parent audit: [`docs/audit/t-v2-retirement-audit.md`](t-v2-retirement-audit.md) (#1338).
+- Per-surface migration matrix (the doc this inventory refreshes): [`docs/audit/t-v2-retirement-migration-matrix.md`](t-v2-retirement-migration-matrix.md) (#1346/#1379).
+- G-1 readiness receipt: [`docs/briefs/r3-pb-tv2-g1-readiness-receipt.md`](../briefs/r3-pb-tv2-g1-readiness-receipt.md) (#1446).
+- S-1 input packet (decision routing PB cannot make): [`docs/briefs/r3-pb-tv2-s1-input-packet.md`](../briefs/r3-pb-tv2-s1-input-packet.md).
+- PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](../briefs/r2-pure-bootstrap-manager.md).
+- Lane authority: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-V2-Retirement row.
