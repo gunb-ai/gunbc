@@ -380,12 +380,14 @@ The split mirrors the existing T-CostLens-Composition split: substrate authors c
 
 ## §7. Cascade gates
 
-Per [`docs/r3-structure.md`](r3-structure.md):
+Per [`docs/r3-structure.md`](r3-structure.md) + [`docs/r4-carve-out-routing.md`](r4-carve-out-routing.md):
 
-- **Internal cascade**: T-Lens-Behavioral-Parity must reach BEHAVIORALLY COMPLETE before T-Lens-Application-Surface dispatches. Reason: a `complexity_violation_compile_error_demonstrated` TestClaim requires the complexity lens to actually compute correct asymptotic classes (not just the depth proxy currently shipped). Likewise for cost / parallelism / effect_enumeration. Behavioral parity gives lens-application substantive semantics.
-- **External cascade**: R2-Evaluator landed (per the standard R3 worker-dispatch precondition).
+- **Substantive-semantics principle:** each worked example requires its corresponding lens to be **behaviorally substantive** — a `complexity_violation_compile_error_demonstrated` TestClaim requires the complexity lens to compute correct asymptotic classes (not just the depth proxy currently shipped). Likewise cost / parallelism for their respective demos.
+- **R3 program reconciliation (T-LBP option (b) RATIFIED 2026-05-06):** R3 T-LBP closes **complexity + cost** behavioral completeness only; **parallelism** + **effect_enumeration** completeness carve to **R4** (C1/C2). Therefore **R3** T-Lens-Application-Surface lands substrate **88–91** + demos **92–94** after **complexity+cost** parity + register **C3** — without waiting for parallelism / effect_enum completeness.
+- **Gate #95 / §4.4:** `opt_in_iteration_parallelism_via_lens_application_demonstrated` requires the **parallelism** lens implementation referenced in §4.4 (T-LBP slice 3). That lens’s behavioral completeness is **R4-carved (C1)**; **#95** **carves alongside it** — **do not** claim **#95** PASSING as part of **R3** thesis close (**INVARIANTS** P2 single authority).
+- **External cascade:** R2-Evaluator landed (per the standard R3 worker-dispatch precondition).
 
-Pre-cascade *design-doc* work is permitted (this doc); pre-cascade *substrate work* (carriers landing, fold-integration code) waits for T-Lens-Behavioral-Parity COMPLETE.
+Pre-cascade *design-doc* work is permitted (this doc); pre-cascade *substrate work* for carriers consumed by **R3** demos **92–94** waits for **R3** T-LBP (**complexity+cost**) COMPLETE + **C3**; substrate+demo work keyed solely on **#95** waits on **R4** parallelism parity per bullet above.
 
 ## §8. Resolved design questions
 
@@ -451,14 +453,14 @@ Five design questions surfaced during authoring. Per `feedback_design_before_imp
 
 ---
 
-All five questions resolved. Implementation can proceed without further Director ratification on these specific points. Cascade gates (T-Lens-Behavioral-Parity COMPLETE for §8.3 enforcement-flip) and external dependencies (R2-Evaluator landed) remain as the only outstanding preconditions.
+All five questions resolved. Implementation can proceed without further Director ratification on these specific points. Cascade gates: **R3** LAS substrate+demos **88–94** wait on **complexity+cost** T-LBP COMPLETE + **C3**; **#95** waits on **R4** parallelism parity (**C1**). External dependency: R2-Evaluator landed.
 
 ## §9. Relationship to existing authority
 
 This design doc extends:
 
 - [`docs/lens-library-design.md`](lens-library-design.md) §3 — the existing file-glob `LensApplication`. **No changes to existing carrier**; this doc adds `EnforcedApplication` + `IntrospectApplication` as sibling carriers with structural section references.
-- [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) — the lens-capability register tracking PROXY/STUB/PARTIAL/COMPLETE status per lens. This design assumes T-Lens-Behavioral-Parity has driven all four target lenses to COMPLETE before T-Lens-Application-Surface implementation begins.
+- [`docs/v3-lens-capability-register.md`](v3-lens-capability-register.md) — the lens-capability register tracking PROXY/STUB/PARTIAL/COMPLETE status per lens. **R3 (option b):** LAS demos **92–94** assume **complexity + cost** reach COMPLETE first; **`opt_in_iteration_parallelism_via_lens_application_demonstrated` (#95)** assumes **parallelism** COMPLETE and is **R4-carved (C1)** alongside that lens per `r4-carve-out-routing.md`. **R4 horizon:** register reaches ZERO PROXY / ZERO STUB across all four behavioral lenses per `r4-carve-out-routing.md` **C3** closing paragraph.
 - [`docs/design-lens-framework.md`](design-lens-framework.md) — the `Lens<C>` framework. This design adds one fold-pass extension (lens-application discovery + budget comparison) but does not modify the underlying `Lens<C>` shape.
 - [`../INVARIANTS.md`](../INVARIANTS.md) C-8 (fail-closed compilation) — load-bearing for §3 (no Warning, no Silent policies).
 - [`../INVARIANTS.md`](../INVARIANTS.md) P2 (boundary discipline) — load-bearing for §8.2 (single-authority for `(lens, section)` pairs).
@@ -487,4 +489,4 @@ Total estimate (per L-XL sizing in the lane row): substrate carriers + fold-pass
 
 ---
 
-**This document is a design spec, not a ship target.** It resolves the structural design questions blocking T-Lens-Application-Surface lane dispatch. The lane itself runs once cascade gates clear (T-Lens-Behavioral-Parity COMPLETE + R2-Evaluator landed). All §8 design questions resolved in-doc; no Director ratification required before substrate authoring begins.
+**This document is a design spec, not a ship target.** It resolves the structural design questions blocking T-Lens-Application-Surface lane dispatch. The lane runs when cascade gates clear per §**7** (**R3** vs **R4** split for option **(b)**) + R2-Evaluator landed. All §8 design questions resolved in-doc; no Director ratification required before substrate authoring begins within that split.
