@@ -1,0 +1,131 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 620" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <defs>
+    <style>
+      .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
+      .sub { font-size: 12px; fill: #57606a; }
+      .label { font-size: 10px; font-weight: 700; fill: #57606a; letter-spacing: 0.10em; }
+      .badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
+      .badge-rust   { fill: #ce422b; }
+      .badge-python { fill: #3776ab; }
+      .badge-go     { fill: #00add8; }
+      .badge-dag    { fill: #57606a; }
+      .code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; fill: #1f2328; }
+      .card { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
+      .card-header { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
+    </style>
+  </defs>
+
+  <text x="20" y="30" class="title">Add types. Same languages.</text>
+  <text x="20" y="48" class="sub">Three types × three languages — nine pieces of code. The rules didn't change.</text>
+
+  <text x="20" y="78" class="label">YOU WRITE</text>
+  <text x="320" y="78" class="label">COMPILER GENERATES</text>
+
+  <!-- ───── ROW 1: Pair ───── -->
+  <rect x="20" y="90" width="280" height="22" class="card-header"/>
+  <rect x="20" y="112" width="280" height="120" class="card"/>
+  <text x="32" y="106" class="badge badge-dag">.dag</text>
+  <text x="32" y="134" class="code">type Pair&lt;A, B&gt; {</text>
+  <text x="32" y="152" class="code">  first: A</text>
+  <text x="32" y="170" class="code">  second: B</text>
+  <text x="32" y="188" class="code">}</text>
+
+  <!-- Pair × Rust -->
+  <rect x="320" y="90" width="280" height="22" class="card-header"/>
+  <rect x="320" y="112" width="280" height="120" class="card"/>
+  <text x="332" y="106" class="badge badge-rust">RUST</text>
+  <text x="332" y="134" class="code">pub struct Pair&lt;A, B&gt; {</text>
+  <text x="332" y="152" class="code">    pub first: A,</text>
+  <text x="332" y="170" class="code">    pub second: B,</text>
+  <text x="332" y="188" class="code">}</text>
+
+  <!-- Pair × Python -->
+  <rect x="620" y="90" width="280" height="22" class="card-header"/>
+  <rect x="620" y="112" width="280" height="120" class="card"/>
+  <text x="632" y="106" class="badge badge-python">PYTHON</text>
+  <text x="632" y="134" class="code">@dataclass</text>
+  <text x="632" y="152" class="code">class Pair(Generic[A, B]):</text>
+  <text x="632" y="170" class="code">    first: A</text>
+  <text x="632" y="188" class="code">    second: B</text>
+
+  <!-- Pair × Go -->
+  <rect x="920" y="90" width="240" height="22" class="card-header"/>
+  <rect x="920" y="112" width="240" height="120" class="card"/>
+  <text x="932" y="106" class="badge badge-go">GO</text>
+  <text x="932" y="134" class="code">type Pair[A, B any] struct {</text>
+  <text x="932" y="152" class="code">    First  A</text>
+  <text x="932" y="170" class="code">    Second B</text>
+  <text x="932" y="188" class="code">}</text>
+
+  <!-- ───── ROW 2: Sum ───── -->
+  <rect x="20" y="252" width="280" height="22" class="card-header"/>
+  <rect x="20" y="274" width="280" height="140" class="card"/>
+  <text x="32" y="268" class="badge badge-dag">.dag</text>
+  <text x="32" y="296" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="32" y="314" class="code">    Left  { value: A }</text>
+  <text x="32" y="332" class="code">  | Right { value: B }</text>
+
+  <!-- Sum × Rust -->
+  <rect x="320" y="252" width="280" height="22" class="card-header"/>
+  <rect x="320" y="274" width="280" height="140" class="card"/>
+  <text x="332" y="268" class="badge badge-rust">RUST</text>
+  <text x="332" y="296" class="code">pub enum Sum&lt;A, B&gt; {</text>
+  <text x="332" y="314" class="code">    Left  { value: A },</text>
+  <text x="332" y="332" class="code">    Right { value: B },</text>
+  <text x="332" y="350" class="code">}</text>
+
+  <!-- Sum × Python -->
+  <rect x="620" y="252" width="280" height="22" class="card-header"/>
+  <rect x="620" y="274" width="280" height="140" class="card"/>
+  <text x="632" y="268" class="badge badge-python">PYTHON</text>
+  <text x="632" y="296" class="code">@dataclass</text>
+  <text x="632" y="314" class="code">class Left(Generic[A]):  value: A</text>
+  <text x="632" y="332" class="code">class Right(Generic[B]): value: B</text>
+  <text x="632" y="350" class="code">Sum = Union[Left[A], Right[B]]</text>
+
+  <!-- Sum × Go -->
+  <rect x="920" y="252" width="240" height="22" class="card-header"/>
+  <rect x="920" y="274" width="240" height="140" class="card"/>
+  <text x="932" y="268" class="badge badge-go">GO</text>
+  <text x="932" y="296" class="code">type Sum[A, B any] interface{</text>
+  <text x="932" y="314" class="code">  isSum() }</text>
+  <text x="932" y="332" class="code">type Left[A any]  struct{ V A }</text>
+  <text x="932" y="350" class="code">type Right[B any] struct{ V B }</text>
+
+  <!-- ───── ROW 3: Option ───── -->
+  <rect x="20" y="434" width="280" height="22" class="card-header"/>
+  <rect x="20" y="456" width="280" height="120" class="card"/>
+  <text x="32" y="450" class="badge badge-dag">.dag</text>
+  <text x="32" y="478" class="code">type Option&lt;T&gt; =</text>
+  <text x="32" y="496" class="code">    Some { value: T }</text>
+  <text x="32" y="514" class="code">  | None</text>
+
+  <!-- Option × Rust -->
+  <rect x="320" y="434" width="280" height="22" class="card-header"/>
+  <rect x="320" y="456" width="280" height="120" class="card"/>
+  <text x="332" y="450" class="badge badge-rust">RUST</text>
+  <text x="332" y="478" class="code">pub enum Option&lt;T&gt; {</text>
+  <text x="332" y="496" class="code">    Some { value: T },</text>
+  <text x="332" y="514" class="code">    None,</text>
+  <text x="332" y="532" class="code">}</text>
+
+  <!-- Option × Python -->
+  <rect x="620" y="434" width="280" height="22" class="card-header"/>
+  <rect x="620" y="456" width="280" height="120" class="card"/>
+  <text x="632" y="450" class="badge badge-python">PYTHON</text>
+  <text x="632" y="478" class="code">@dataclass</text>
+  <text x="632" y="496" class="code">class Some(Generic[T]): value: T</text>
+  <text x="632" y="514" class="code">class _None: pass</text>
+  <text x="632" y="532" class="code">Option = Union[Some[T], _None]</text>
+
+  <!-- Option × Go -->
+  <rect x="920" y="434" width="240" height="22" class="card-header"/>
+  <rect x="920" y="456" width="240" height="120" class="card"/>
+  <text x="932" y="450" class="badge badge-go">GO</text>
+  <text x="932" y="478" class="code">type Option[T any] interface{</text>
+  <text x="932" y="496" class="code">  isOpt() }</text>
+  <text x="932" y="514" class="code">type Some[T any] struct{ V T }</text>
+  <text x="932" y="532" class="code">type None_ struct{}</text>
+
+  <text x="20" y="600" class="sub">Adding a type adds <tspan font-style="italic">one row</tspan>. The columns (the rules) are unchanged.</text>
+</svg>
