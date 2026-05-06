@@ -6,11 +6,11 @@
 # carry an explicit pairing class (retirement / Director budget / deferral).
 #
 # On pull_request, the declared `SG-0 hand-path delta:` must match the net
-# change to EXPECTED_* census string rows as counted from
-# `git diff origin/main...HEAD` (adds minus removes of
-# `    "src/v3/compiler/...",` lines). Heuristic: ignores edits that only touch
-# comments, tests, or non-array strings; if a legitimate census edit does not
-# match the counter, escalate to Director rather than weakening the gate.
+# change to **hand-authored** census path literals only:
+# `EXPECTED_HAND_AUTHORED_NON_TEST`, `EXPECTED_HAND_AUTHORED_TEST`, and
+# `EXPECTED_HAND_AUTHORED_FRAGMENTS` (not `EXPECTED_GENERATED_*` or other
+# string inventories in the same file). Counts are derived from
+# `git show origin/main:…` vs `git show HEAD:…` (see `sg0_count_hand_expect_paths_at`).
 #
 # Authority: ROADMAP.md (SG-0 PR-window net-shrink discipline) +
 # `.github/PULL_REQUEST_TEMPLATE.md` "SG-0 net-shrink discipline" section.
@@ -104,15 +104,57 @@ sg0_validate_pr_body_format() {
   return 0
 }
 
-# Net change to EXPECTED_* hand-path string rows (see header).
+# Count path-string rows in EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}
+# only (ROADMAP / PR-template authority). stdin = full `sg0_census_test.rs`.
+sg0_count_hand_expect_paths_from_stdin() {
+  awk '
+    BEGIN { hand = 0; count = 0 }
+    /^const EXPECTED_HAND_AUTHORED_FRAGMENTS:/ {
+      if (/\];/) {
+        line = $0
+        while (match(line, /"src\/v3\/compiler\/[^"]+"/)) {
+          count++
+          line = substr(line, RSTART + RLENGTH)
+        }
+        next
+      }
+      hand = 1
+      next
+    }
+    /^const EXPECTED_HAND_AUTHORED_NON_TEST:/ { hand = 1; next }
+    /^const EXPECTED_HAND_AUTHORED_TEST:/ { hand = 1; next }
+    hand == 1 {
+      if ($0 ~ /^];/) {
+        hand = 0
+        next
+      }
+      if ($0 ~ /^    "src\/v3\/compiler\/[^"]+",[[:space:]]*$/) count++
+      next
+    }
+    END { print count + 0 }
+  '
+}
+
+sg0_count_hand_expect_paths_at() {
+  local treeish=$1
+  local content
+  if ! content=$(git show "${treeish}:${SG0_CENSUS}" 2>/dev/null); then
+    echo "::error::cannot read ${SG0_CENSUS} at ${treeish}" >&2
+    return 1
+  fi
+  if [ -z "$content" ]; then
+    echo "::error::empty ${SG0_CENSUS} at ${treeish}" >&2
+    return 1
+  fi
+  printf '%s\n' "$content" | sg0_count_hand_expect_paths_from_stdin
+}
+
+# Net hand-authored path rows: HEAD minus origin/main (see header).
 sg0_net_path_delta_from_git_diff() {
-  local diff_out adds rems
-  diff_out=$(git diff origin/main...HEAD -- "$SG0_CENSUS")
-  adds=$(printf '%s\n' "$diff_out" | grep -E '^\+\s{4}"src/v3/compiler/[^"]+",\s*$' | wc -l)
-  rems=$(printf '%s\n' "$diff_out" | grep -E '^\-\s{4}"src/v3/compiler/[^"]+",\s*$' | wc -l)
-  adds=${adds// /}
-  rems=${rems// /}
-  echo $((10#${adds:-0} - 10#${rems:-0}))
+  local base head
+  base=$(sg0_count_hand_expect_paths_at "origin/main") || return 1
+  head=$(sg0_count_hand_expect_paths_at "HEAD") || return 1
+  echo $((head - base))
 }
 
 self_test() {
@@ -201,9 +243,9 @@ if ! sg0_validate_pr_body_format "$body"; then
   exit 1
 fi
 
-computed_net=$(sg0_net_path_delta_from_git_diff)
+computed_net=$(sg0_net_path_delta_from_git_diff) || exit 1
 if [ "${SG0_DECLARED_INT:-}" -ne "$computed_net" ]; then
-  echo "::error::SG-0 hand-path delta mismatch: PR body declares net ${SG0_DECLARED_INT} path(s) in EXPECTED_HAND_* \`\"src/v3/compiler/...\",\` rows, but \`git diff origin/main...HEAD -- ${SG0_CENSUS}\` counts net adds−removes of those lines as ${computed_net}. Fix the PR description or the census edit; if the diff shape is a legitimate edge case this counter misses, escalate to Director to extend the counter (see script header)."
+  echo "::error::SG-0 hand-path delta mismatch: PR body declares net ${SG0_DECLARED_INT} hand-authored path(s) in EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}, but \`git show origin/main:${SG0_CENSUS}\` vs \`git show HEAD:${SG0_CENSUS}\` counts ${computed_net} net change. Fix the PR description or the census edit; if the edit is a legitimate edge case this counter misses, escalate to Director (see script header)."
   exit 1
 fi
 
