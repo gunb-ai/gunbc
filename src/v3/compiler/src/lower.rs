@@ -1321,29 +1321,41 @@ fn lower_parameter_refinements_phase(
 /// identifier to the refined base type `T`. Authors write the subject as the
 /// alias name; there is no separate hidden parameter symbol.
 ///
-/// **Predicate registry (S9 Slice 2.5 — Path 3 RATIFIED at gunbc#828
-/// `issuecomment-4390333451`).** Predicates whose names live in
-/// [`KNOWN_PREDICATES`] (e.g. `range`, `pattern`, `non_empty`,
-/// `brand`, `format`, `gt_zero`) lower to a placeholder `Declaration::refinement`
-/// (see [`alloc_registered_refinement_placeholder`]) so the parsed `where` is
-/// not dropped silently and downstream sees a named carrier; the actual
-/// `Bool` predicate body is not lowered (helper resolution is not yet
-/// substrate-uniform). Unregistered predicate names fall through to live
-/// resolution in [`build_refinement_predicate_declaration`] and surface
-/// `Diagnostic::ResolveError` if unresolved.
+/// **Predicate registry (S9 Slice 2.5 — Option A revised RATIFIED at
+/// gunbc#828 `issuecomment-4392245968`, post Path 3 / Path (a) cascade).**
+/// Each `where` clause is dispatched per [`validate_where_clause`]:
+/// - **Registered + valid carrier + valid arg shape**: if
+///   [`registered_predicate_synthesized_body`] returns `Some`, the predicate
+///   lowers to a real `Bool` body via
+///   [`build_refinement_predicate_declaration`] (currently `gt_zero`).
+///   Otherwise it gets a `Conj`-shaped placeholder via
+///   [`alloc_registered_refinement_placeholder`] (P3 facts-flow-forward —
+///   alias still carries a named refinement; body synthesis is the named
+///   follow-on rung; currently `range` / `non_empty` / `brand`).
+/// - **Registered but malformed** (carrier-incompatible, arg-shape mismatch,
+///   duplicate field, bare-with-empty-call): fail-closed via
+///   `Diagnostic::ResolveError`, no refinement allocated.
+/// - **Unregistered** (e.g. `pattern`, `format`, `content` — STRUCTURALLY
+///   ABSENT from [`KNOWN_PREDICATES`] until Q-Regex-Primitive lands as a
+///   separate substrate-fact-introduction): falls through to live resolution
+///   in [`build_refinement_predicate_declaration`], which surfaces a
+///   `Diagnostic::ResolveError` since the predicate name does not resolve as
+///   a callable. The 11 `dsl/std/types.dag` declarations that previously
+///   used these predicates have dropped their where-clauses with inline
+///   restoration receipts pointing at the Q-Regex-Primitive landing.
 ///
 /// Replaces the prior PB-1 file-path special case
 /// (`span.file == "dsl/std/types.dag"`). Per
-/// `feedback_no_textual_enforcement_bridges`: gating structural behavior on a
-/// textual file identifier was the anti-pattern; the registry IS the
+/// `feedback_no_textual_enforcement_bridges`: gating structural behavior on
+/// a textual file identifier was the anti-pattern; the registry IS the
 /// substrate-faithful authority for predicate-name resolution.
 ///
 /// **Dissolution (retire the placeholder branch when):** the bootstrap
-/// supplies resolved `Bool`-level helpers / realizations for these registered
-/// predicate calls so predicate lowering is diagnostic-clean; at that point
-/// every registered predicate routes through the live
-/// [`build_refinement_predicate_declaration`] path and the registry can be
-/// retired.
+/// supplies a body synthesis for each remaining registered predicate
+/// (Gap 1 discharge mechanism for `non_empty` / `brand`; Gap 3
+/// integer-routing fix for `range`); at that point every registered
+/// predicate routes through the live [`build_refinement_predicate_declaration`]
+/// path and the placeholder allocation can be deleted.
 fn lower_type_alias_refinements_phase(
     dag: &mut Dag,
     module: &SurfaceModule,
