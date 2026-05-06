@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 540" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 700" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
@@ -13,68 +13,69 @@
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">Add a fact and a consumer.</text>
-  <text x="20" y="48" class="sub">Two types and two functions in .dag — one Rust module that ties them together.</text>
+  <text x="20" y="30" class="title">Layer in another fact and consumer.</text>
+  <text x="20" y="48" class="sub">Source on the wings barely moved. The middle doubled.</text>
 
-  <text x="20"   y="78" class="col-label">BUSINESS LOGIC</text>
-  <text x="320"  y="78" class="col-label">RUST — GENERATED</text>
-  <text x="820"  y="78" class="col-label">FACTS</text>
+  <text x="20"  y="78" class="col-label">BUSINESS LOGIC</text>
+  <text x="320" y="78" class="col-label">RUST — GENERATED</text>
+  <text x="820" y="78" class="col-label">FACTS</text>
 
-  <!-- LEFT: business logic .dag -->
+  <!-- LEFT: 2 functions -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
-  <rect x="20" y="110" width="280" height="328" class="card"/>
+  <rect x="20" y="110" width="280" height="298" class="card"/>
   <text x="32" y="130" class="code">fn swap&lt;A, B&gt;(</text>
   <text x="32" y="148" class="code">    p: Pair&lt;A, B&gt;</text>
   <text x="32" y="166" class="code">) -&gt; Pair&lt;B, A&gt; =</text>
-  <text x="32" y="184" class="code">  Pair {</text>
-  <text x="32" y="202" class="code">    first:  p.second,</text>
-  <text x="32" y="220" class="code">    second: p.first,</text>
-  <text x="32" y="238" class="code">  }</text>
-  <text x="32" y="278" class="code">fn unwrap_str(</text>
-  <text x="32" y="296" class="code">    s: Sum&lt;Str, Str&gt;</text>
-  <text x="32" y="314" class="code">) -&gt; Str =</text>
-  <text x="32" y="332" class="code">  match s {</text>
-  <text x="32" y="350" class="code">    Left  { value } =&gt; value</text>
-  <text x="32" y="368" class="code">    Right { value } =&gt; value</text>
-  <text x="32" y="386" class="code">  }</text>
+  <text x="32" y="184" class="code">  Pair { first:  p.second,</text>
+  <text x="32" y="202" class="code">         second: p.first }</text>
+  <text x="32" y="240" class="code">fn unwrap_str(</text>
+  <text x="32" y="258" class="code">    s: Sum&lt;Str, Str&gt;</text>
+  <text x="32" y="276" class="code">) -&gt; Str =</text>
+  <text x="32" y="294" class="code">  match s {</text>
+  <text x="32" y="312" class="code">    Left  { value } =&gt; value</text>
+  <text x="32" y="330" class="code">    Right { value } =&gt; value</text>
+  <text x="32" y="348" class="code">  }</text>
 
-  <!-- CENTER: generated Rust -->
+  <!-- CENTER: full Rust emission -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
   <text x="332" y="103" class="badge badge-rust">RUST</text>
-  <rect x="320" y="110" width="480" height="408" class="card"/>
-  <text x="332" y="130" class="code">pub struct Pair&lt;A, B&gt; {</text>
-  <text x="332" y="148" class="code">    pub first: A,</text>
-  <text x="332" y="166" class="code">    pub second: B,</text>
-  <text x="332" y="184" class="code">}</text>
-  <text x="332" y="212" class="code">pub enum Sum&lt;A, B&gt; {</text>
-  <text x="332" y="230" class="code">    Left  { value: A },</text>
-  <text x="332" y="248" class="code">    Right { value: B },</text>
-  <text x="332" y="266" class="code">}</text>
-  <text x="332" y="304" class="code">pub fn swap&lt;A, B&gt;(</text>
-  <text x="332" y="322" class="code">    p: Pair&lt;A, B&gt;,</text>
-  <text x="332" y="340" class="code">) -&gt; Pair&lt;B, A&gt; {</text>
-  <text x="332" y="358" class="code">    Pair {</text>
-  <text x="332" y="376" class="code">        first:  p.second,</text>
-  <text x="332" y="394" class="code">        second: p.first,</text>
-  <text x="332" y="412" class="code">    }</text>
+  <rect x="320" y="110" width="480" height="558" class="card"/>
+  <text x="332" y="130" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="148" class="code">pub struct Pair&lt;A, B&gt; { pub first: A, pub second: B }</text>
+  <text x="332" y="176" class="code">impl&lt;A, B&gt; Pair&lt;A, B&gt; {</text>
+  <text x="332" y="194" class="code">    pub fn new(first: A, second: B) -&gt; Self { Self { first, second } }</text>
+  <text x="332" y="212" class="code">}</text>
+  <text x="332" y="240" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="258" class="code">pub enum Sum&lt;A, B&gt; {</text>
+  <text x="332" y="276" class="code">    Left  { value: A },</text>
+  <text x="332" y="294" class="code">    Right { value: B },</text>
+  <text x="332" y="312" class="code">}</text>
+  <text x="332" y="340" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
+  <text x="332" y="358" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
+  <text x="332" y="376" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
+  <text x="332" y="394" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
+  <text x="332" y="412" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
   <text x="332" y="430" class="code">}</text>
-  <text x="332" y="458" class="code">pub fn unwrap_str(</text>
-  <text x="332" y="476" class="code">    s: Sum&lt;String, String&gt;,</text>
-  <text x="332" y="494" class="code">) -&gt; String {</text>
-  <text x="332" y="512" class="code">    match s { Sum::Left{value}=&gt;value,Sum::Right{value}=&gt;value }</text>
+  <text x="332" y="468" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;) -&gt; Pair&lt;B, A&gt; {</text>
+  <text x="332" y="486" class="code">    Pair { first: p.second, second: p.first }</text>
+  <text x="332" y="504" class="code">}</text>
+  <text x="332" y="532" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
+  <text x="332" y="550" class="code">    match s {</text>
+  <text x="332" y="568" class="code">        Sum::Left  { value } =&gt; value,</text>
+  <text x="332" y="586" class="code">        Sum::Right { value } =&gt; value,</text>
+  <text x="332" y="604" class="code">    }</text>
+  <text x="332" y="622" class="code">}</text>
 
-  <!-- RIGHT: facts .dag -->
+  <!-- RIGHT: 2 type defs -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
-  <rect x="820" y="110" width="280" height="158" class="card"/>
+  <rect x="820" y="110" width="280" height="118" class="card"/>
   <text x="832" y="130" class="code">type Pair&lt;A, B&gt; {</text>
-  <text x="832" y="148" class="code">  first: A</text>
-  <text x="832" y="166" class="code">  second: B</text>
-  <text x="832" y="184" class="code">}</text>
-  <text x="832" y="220" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="238" class="code">    Left  { value: A }</text>
-  <text x="832" y="256" class="code">  | Right { value: B }</text>
+  <text x="832" y="148" class="code">  first: A; second: B</text>
+  <text x="832" y="166" class="code">}</text>
+  <text x="832" y="200" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="218" class="code">  Left{value:A}|Right{value:B}</text>
 
-  <text x="20" y="528" class="sub">Source on the wings stayed compact. The middle holds a working module — types, functions, the lot.</text>
+  <text x="20" y="688" class="sub">Wings: ~18 lines. Middle: ~36 lines. Each fact you add costs you 2-3 lines and nets you a working impl block of derives, constructors, and predicates.</text>
 </svg>

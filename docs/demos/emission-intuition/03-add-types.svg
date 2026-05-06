@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 800" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1240" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
@@ -13,17 +13,17 @@
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">More facts. More consumers.</text>
-  <text x="20" y="48" class="sub">Four types, four small functions. Source on the wings grew a little — the module in the middle grew more.</text>
+  <text x="20" y="30" class="title">Layer in two more.</text>
+  <text x="20" y="48" class="sub">Source on the wings still scans on a phone. The middle has tripled.</text>
 
-  <text x="20"   y="78" class="col-label">BUSINESS LOGIC</text>
-  <text x="320"  y="78" class="col-label">RUST — GENERATED</text>
-  <text x="820"  y="78" class="col-label">FACTS</text>
+  <text x="20"  y="78" class="col-label">BUSINESS LOGIC</text>
+  <text x="320" y="78" class="col-label">RUST — GENERATED</text>
+  <text x="820" y="78" class="col-label">FACTS</text>
 
-  <!-- LEFT: business logic .dag (4 functions) -->
+  <!-- LEFT: 4 functions -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
-  <rect x="20" y="110" width="280" height="558" class="card"/>
+  <rect x="20" y="110" width="280" height="568" class="card"/>
   <text x="32" y="130" class="code">fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;)</text>
   <text x="32" y="148" class="code">  -&gt; Pair&lt;B, A&gt; =</text>
   <text x="32" y="166" class="code">  Pair { first:  p.second,</text>
@@ -47,59 +47,78 @@
   <text x="32" y="538" class="code">    Err { _ }     =&gt; d</text>
   <text x="32" y="556" class="code">  }</text>
 
-  <!-- CENTER: generated Rust -->
+  <!-- CENTER: full Rust emission for 4 types -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
   <text x="332" y="103" class="badge badge-rust">RUST</text>
-  <rect x="320" y="110" width="480" height="660" class="card"/>
-  <text x="332" y="130" class="code">pub struct Pair&lt;A, B&gt; { pub first: A, pub second: B }</text>
-  <text x="332" y="158" class="code">pub enum Sum&lt;A, B&gt; {</text>
-  <text x="332" y="176" class="code">    Left  { value: A },</text>
-  <text x="332" y="194" class="code">    Right { value: B },</text>
+  <rect x="320" y="110" width="480" height="1108" class="card"/>
+  <text x="332" y="130" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="148" class="code">pub struct Pair&lt;A, B&gt; { pub first: A, pub second: B }</text>
+  <text x="332" y="176" class="code">impl&lt;A, B&gt; Pair&lt;A, B&gt; {</text>
+  <text x="332" y="194" class="code">    pub fn new(first: A, second: B) -&gt; Self { Self { first, second } }</text>
   <text x="332" y="212" class="code">}</text>
-  <text x="332" y="240" class="code">pub enum Option&lt;T&gt; {</text>
-  <text x="332" y="258" class="code">    Some { value: T },</text>
-  <text x="332" y="276" class="code">    None,</text>
+  <text x="332" y="240" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="258" class="code">pub enum Sum&lt;A, B&gt; {</text>
+  <text x="332" y="276" class="code">    Left  { value: A }, Right { value: B },</text>
   <text x="332" y="294" class="code">}</text>
-  <text x="332" y="322" class="code">pub enum Result&lt;T, E&gt; {</text>
-  <text x="332" y="340" class="code">    Ok  { value: T },</text>
-  <text x="332" y="358" class="code">    Err { error: E },</text>
-  <text x="332" y="376" class="code">}</text>
-  <text x="332" y="414" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;) -&gt; Pair&lt;B, A&gt; {</text>
-  <text x="332" y="432" class="code">    Pair { first: p.second, second: p.first }</text>
-  <text x="332" y="450" class="code">}</text>
-  <text x="332" y="478" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
-  <text x="332" y="496" class="code">    match s {</text>
-  <text x="332" y="514" class="code">        Sum::Left  { value } =&gt; value,</text>
-  <text x="332" y="532" class="code">        Sum::Right { value } =&gt; value,</text>
-  <text x="332" y="550" class="code">    }</text>
-  <text x="332" y="568" class="code">}</text>
-  <text x="332" y="596" class="code">pub fn or_else&lt;T&gt;(o: Option&lt;T&gt;, d: T) -&gt; T {</text>
-  <text x="332" y="614" class="code">    match o { Option::Some{value}=&gt;value, Option::None=&gt;d }</text>
-  <text x="332" y="632" class="code">}</text>
-  <text x="332" y="660" class="code">pub fn unwrap_or&lt;T, E&gt;(r: Result&lt;T, E&gt;, d: T) -&gt; T {</text>
-  <text x="332" y="678" class="code">    match r {</text>
-  <text x="332" y="696" class="code">        Result::Ok  { value }    =&gt; value,</text>
-  <text x="332" y="714" class="code">        Result::Err { error: _ } =&gt; d,</text>
-  <text x="332" y="732" class="code">    }</text>
-  <text x="332" y="750" class="code">}</text>
+  <text x="332" y="322" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
+  <text x="332" y="340" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
+  <text x="332" y="358" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
+  <text x="332" y="376" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
+  <text x="332" y="394" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
+  <text x="332" y="412" class="code">}</text>
+  <text x="332" y="440" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="458" class="code">pub enum Option&lt;T&gt; { Some { value: T }, None }</text>
+  <text x="332" y="486" class="code">impl&lt;T&gt; Option&lt;T&gt; {</text>
+  <text x="332" y="504" class="code">    pub fn some(value: T) -&gt; Self { Self::Some { value } }</text>
+  <text x="332" y="522" class="code">    pub fn none() -&gt; Self { Self::None }</text>
+  <text x="332" y="540" class="code">    pub fn is_some(&amp;self) -&gt; bool { matches!(self, Self::Some {..}) }</text>
+  <text x="332" y="558" class="code">    pub fn is_none(&amp;self) -&gt; bool { matches!(self, Self::None) }</text>
+  <text x="332" y="576" class="code">}</text>
+  <text x="332" y="604" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="622" class="code">pub enum Result&lt;T, E&gt; {</text>
+  <text x="332" y="640" class="code">    Ok { value: T }, Err { error: E },</text>
+  <text x="332" y="658" class="code">}</text>
+  <text x="332" y="686" class="code">impl&lt;T, E&gt; Result&lt;T, E&gt; {</text>
+  <text x="332" y="704" class="code">    pub fn ok(value: T)  -&gt; Self { Self::Ok  { value } }</text>
+  <text x="332" y="722" class="code">    pub fn err(error: E) -&gt; Self { Self::Err { error } }</text>
+  <text x="332" y="740" class="code">    pub fn is_ok(&amp;self)  -&gt; bool { matches!(self, Self::Ok  {..}) }</text>
+  <text x="332" y="758" class="code">    pub fn is_err(&amp;self) -&gt; bool { matches!(self, Self::Err {..}) }</text>
+  <text x="332" y="776" class="code">}</text>
+  <text x="332" y="814" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;) -&gt; Pair&lt;B, A&gt; {</text>
+  <text x="332" y="832" class="code">    Pair { first: p.second, second: p.first }</text>
+  <text x="332" y="850" class="code">}</text>
+  <text x="332" y="878" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
+  <text x="332" y="896" class="code">    match s {</text>
+  <text x="332" y="914" class="code">        Sum::Left  { value } =&gt; value,</text>
+  <text x="332" y="932" class="code">        Sum::Right { value } =&gt; value,</text>
+  <text x="332" y="950" class="code">    }</text>
+  <text x="332" y="968" class="code">}</text>
+  <text x="332" y="996" class="code">pub fn or_else&lt;T&gt;(o: Option&lt;T&gt;, d: T) -&gt; T {</text>
+  <text x="332" y="1014" class="code">    match o {</text>
+  <text x="332" y="1032" class="code">        Option::Some { value } =&gt; value,</text>
+  <text x="332" y="1050" class="code">        Option::None           =&gt; d,</text>
+  <text x="332" y="1068" class="code">    }</text>
+  <text x="332" y="1086" class="code">}</text>
+  <text x="332" y="1114" class="code">pub fn unwrap_or&lt;T, E&gt;(r: Result&lt;T, E&gt;, d: T) -&gt; T {</text>
+  <text x="332" y="1132" class="code">    match r {</text>
+  <text x="332" y="1150" class="code">        Result::Ok  { value }    =&gt; value,</text>
+  <text x="332" y="1168" class="code">        Result::Err { error: _ } =&gt; d,</text>
+  <text x="332" y="1186" class="code">    }</text>
+  <text x="332" y="1204" class="code">}</text>
 
-  <!-- RIGHT: facts .dag (4 type defs) -->
+  <!-- RIGHT: 4 type defs -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
-  <rect x="820" y="110" width="280" height="358" class="card"/>
+  <rect x="820" y="110" width="280" height="298" class="card"/>
   <text x="832" y="130" class="code">type Pair&lt;A, B&gt; {</text>
-  <text x="832" y="148" class="code">  first: A</text>
-  <text x="832" y="166" class="code">  second: B</text>
-  <text x="832" y="184" class="code">}</text>
-  <text x="832" y="218" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="236" class="code">    Left  { value: A }</text>
-  <text x="832" y="254" class="code">  | Right { value: B }</text>
-  <text x="832" y="288" class="code">type Option&lt;T&gt; =</text>
-  <text x="832" y="306" class="code">    Some { value: T }</text>
-  <text x="832" y="324" class="code">  | None</text>
-  <text x="832" y="358" class="code">type Result&lt;T, E&gt; =</text>
-  <text x="832" y="376" class="code">    Ok  { value: T }</text>
-  <text x="832" y="394" class="code">  | Err { error: E }</text>
+  <text x="832" y="148" class="code">  first: A; second: B</text>
+  <text x="832" y="166" class="code">}</text>
+  <text x="832" y="200" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="832" y="218" class="code">  Left{value:A}|Right{value:B}</text>
+  <text x="832" y="252" class="code">type Option&lt;T&gt; =</text>
+  <text x="832" y="270" class="code">  Some{value:T} | None</text>
+  <text x="832" y="304" class="code">type Result&lt;T, E&gt; =</text>
+  <text x="832" y="322" class="code">  Ok{value:T} | Err{error:E}</text>
 
-  <text x="20" y="790" class="sub">Source on the wings is still scannable. The middle column is doing the heavy lifting.</text>
+  <text x="20" y="1228" class="sub">Wings: ~30 lines. Middle: ~80+ lines. Every fact you add brings its full impl block with it for free.</text>
 </svg>

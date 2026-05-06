@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 1180" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1120 2000" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
@@ -14,17 +14,17 @@
     </style>
   </defs>
 
-  <text x="20" y="30" class="title">Now scale.</text>
-  <text x="20" y="48" class="sub">Six types, six consumers. The wings still fit on a page. The middle is a real working module.</text>
+  <text x="20" y="30" class="title">Layer in two recursive ones.</text>
+  <text x="20" y="48" class="sub">Six facts, six functions. Compact source. The middle keeps growing.</text>
 
-  <text x="20"   y="78" class="col-label">BUSINESS LOGIC</text>
-  <text x="320"  y="78" class="col-label">RUST — GENERATED</text>
-  <text x="820"  y="78" class="col-label">FACTS</text>
+  <text x="20"  y="78" class="col-label">BUSINESS LOGIC</text>
+  <text x="320" y="78" class="col-label">RUST — GENERATED</text>
+  <text x="820" y="78" class="col-label">FACTS</text>
 
-  <!-- LEFT: business logic .dag (6 functions) -->
+  <!-- LEFT: 6 functions -->
   <rect x="20" y="88" width="280" height="22" class="card-header"/>
   <text x="32" y="103" class="badge badge-dag">.dag</text>
-  <rect x="20" y="110" width="280" height="998" class="card"/>
+  <rect x="20" y="110" width="280" height="828" class="card"/>
   <text x="32" y="130" class="code">fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;)</text>
   <text x="32" y="148" class="code">  -&gt; Pair&lt;B, A&gt; =</text>
   <text x="32" y="166" class="code">  Pair { first:  p.second,</text>
@@ -33,7 +33,7 @@
   <text x="32" y="236" class="code">    s: Sum&lt;Str, Str&gt;) -&gt; Str =</text>
   <text x="32" y="254" class="code">  match s {</text>
   <text x="32" y="272" class="code">    Left  { value } =&gt; value</text>
-  <text x="32" y="290" class="code">    Right { value } =&gt; value</text>
+  <text x="32" y="290" class="code">    Right { value } =&gt; value </text>
   <text x="32" y="308" class="code">  }</text>
   <text x="32" y="342" class="code">fn or_else&lt;T&gt;(</text>
   <text x="32" y="360" class="code">    o: Option&lt;T&gt;, d: T) -&gt; T =</text>
@@ -64,60 +64,101 @@
   <text x="32" y="858" class="code">        depth(right))</text>
   <text x="32" y="876" class="code">  }</text>
 
-  <!-- CENTER: generated Rust -->
+  <!-- CENTER: full Rust emission for 6 types + 6 fns -->
   <rect x="320" y="88" width="480" height="22" class="card-header"/>
   <text x="332" y="103" class="badge badge-rust">RUST</text>
-  <rect x="320" y="110" width="480" height="998" class="card"/>
-  <text x="332" y="130" class="code">pub struct Pair&lt;A, B&gt; { pub first: A, pub second: B }</text>
-  <text x="332" y="158" class="code">pub enum Sum&lt;A, B&gt; {</text>
-  <text x="332" y="176" class="code">    Left  { value: A }, Right { value: B },</text>
-  <text x="332" y="194" class="code">}</text>
-  <text x="332" y="222" class="code">pub enum Option&lt;T&gt; { Some { value: T }, None }</text>
-  <text x="332" y="250" class="code">pub enum Result&lt;T, E&gt; {</text>
-  <text x="332" y="268" class="code">    Ok  { value: T }, Err { error: E },</text>
-  <text x="332" y="286" class="code">}</text>
-  <text x="332" y="314" class="code">pub enum List&lt;T&gt; {</text>
-  <text x="332" y="332" class="code">    Cons { head: T, tail: Box&lt;List&lt;T&gt;&gt; },</text>
-  <text x="332" y="350" class="code">    Nil,</text>
-  <text x="332" y="368" class="code">}</text>
-  <text x="332" y="396" class="code">pub enum Tree&lt;T&gt; {</text>
-  <text x="332" y="414" class="code">    Leaf { value: T },</text>
-  <text x="332" y="432" class="code">    Node { left:  Box&lt;Tree&lt;T&gt;&gt;,</text>
-  <text x="332" y="450" class="code">           right: Box&lt;Tree&lt;T&gt;&gt; },</text>
-  <text x="332" y="468" class="code">}</text>
-  <text x="332" y="506" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;) -&gt; Pair&lt;B, A&gt; {</text>
-  <text x="332" y="524" class="code">    Pair { first: p.second, second: p.first }</text>
-  <text x="332" y="542" class="code">}</text>
-  <text x="332" y="570" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
-  <text x="332" y="588" class="code">    match s {</text>
-  <text x="332" y="606" class="code">        Sum::Left  { value } =&gt; value,</text>
-  <text x="332" y="624" class="code">        Sum::Right { value } =&gt; value,</text>
-  <text x="332" y="642" class="code">    }</text>
-  <text x="332" y="660" class="code">}</text>
-  <text x="332" y="688" class="code">pub fn or_else&lt;T&gt;(o: Option&lt;T&gt;, d: T) -&gt; T {</text>
-  <text x="332" y="706" class="code">    match o { Option::Some{value}=&gt;value, Option::None=&gt;d }</text>
-  <text x="332" y="724" class="code">}</text>
-  <text x="332" y="752" class="code">pub fn unwrap_or&lt;T, E&gt;(r: Result&lt;T, E&gt;, d: T) -&gt; T {</text>
-  <text x="332" y="770" class="code">    match r {</text>
-  <text x="332" y="788" class="code">        Result::Ok  { value }    =&gt; value,</text>
-  <text x="332" y="806" class="code">        Result::Err { error: _ } =&gt; d,</text>
-  <text x="332" y="824" class="code">    }</text>
-  <text x="332" y="842" class="code">}</text>
-  <text x="332" y="870" class="code">pub fn length&lt;T&gt;(l: List&lt;T&gt;) -&gt; i64 {</text>
-  <text x="332" y="888" class="code">    match l {</text>
-  <text x="332" y="906" class="code">        List::Cons { tail, .. } =&gt; 1 + length(*tail),</text>
-  <text x="332" y="924" class="code">        List::Nil =&gt; 0,</text>
-  <text x="332" y="942" class="code">    }</text>
-  <text x="332" y="960" class="code">}</text>
-  <text x="332" y="988" class="code">pub fn depth&lt;T&gt;(t: Tree&lt;T&gt;) -&gt; i64 {</text>
-  <text x="332" y="1006" class="code">    match t {</text>
-  <text x="332" y="1024" class="code">        Tree::Leaf { .. } =&gt; 1,</text>
-  <text x="332" y="1042" class="code">        Tree::Node { left, right } =&gt;</text>
-  <text x="332" y="1060" class="code">            1 + std::cmp::max(depth(left), depth(right)),</text>
-  <text x="332" y="1078" class="code">    }</text>
-  <text x="332" y="1096" class="code">}</text>
+  <rect x="320" y="110" width="480" height="1858" class="card"/>
+  <text x="332" y="130" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="148" class="code">pub struct Pair&lt;A, B&gt; { pub first: A, pub second: B }</text>
+  <text x="332" y="176" class="code">impl&lt;A, B&gt; Pair&lt;A, B&gt; {</text>
+  <text x="332" y="194" class="code">    pub fn new(first: A, second: B) -&gt; Self { Self { first, second } }</text>
+  <text x="332" y="212" class="code">}</text>
+  <text x="332" y="240" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="258" class="code">pub enum Sum&lt;A, B&gt; { Left { value: A }, Right { value: B } }</text>
+  <text x="332" y="286" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
+  <text x="332" y="304" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
+  <text x="332" y="322" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
+  <text x="332" y="340" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
+  <text x="332" y="358" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
+  <text x="332" y="376" class="code">}</text>
+  <text x="332" y="404" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="422" class="code">pub enum Option&lt;T&gt; { Some { value: T }, None }</text>
+  <text x="332" y="450" class="code">impl&lt;T&gt; Option&lt;T&gt; {</text>
+  <text x="332" y="468" class="code">    pub fn some(value: T) -&gt; Self { Self::Some { value } }</text>
+  <text x="332" y="486" class="code">    pub fn none() -&gt; Self { Self::None }</text>
+  <text x="332" y="504" class="code">    pub fn is_some(&amp;self) -&gt; bool { matches!(self, Self::Some {..}) }</text>
+  <text x="332" y="522" class="code">    pub fn is_none(&amp;self) -&gt; bool { matches!(self, Self::None) }</text>
+  <text x="332" y="540" class="code">}</text>
+  <text x="332" y="568" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="586" class="code">pub enum Result&lt;T, E&gt; { Ok { value: T }, Err { error: E } }</text>
+  <text x="332" y="614" class="code">impl&lt;T, E&gt; Result&lt;T, E&gt; {</text>
+  <text x="332" y="632" class="code">    pub fn ok(value: T)  -&gt; Self { Self::Ok  { value } }</text>
+  <text x="332" y="650" class="code">    pub fn err(error: E) -&gt; Self { Self::Err { error } }</text>
+  <text x="332" y="668" class="code">    pub fn is_ok(&amp;self)  -&gt; bool { matches!(self, Self::Ok  {..}) }</text>
+  <text x="332" y="686" class="code">    pub fn is_err(&amp;self) -&gt; bool { matches!(self, Self::Err {..}) }</text>
+  <text x="332" y="704" class="code">}</text>
+  <text x="332" y="732" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="750" class="code">pub enum List&lt;T&gt; {</text>
+  <text x="332" y="768" class="code">    Cons { head: T, tail: Box&lt;List&lt;T&gt;&gt; },</text>
+  <text x="332" y="786" class="code">    Nil,</text>
+  <text x="332" y="804" class="code">}</text>
+  <text x="332" y="832" class="code">impl&lt;T&gt; List&lt;T&gt; {</text>
+  <text x="332" y="850" class="code">    pub fn cons(head: T, tail: List&lt;T&gt;) -&gt; Self {</text>
+  <text x="332" y="868" class="code">        Self::Cons { head, tail: Box::new(tail) }</text>
+  <text x="332" y="886" class="code">    }</text>
+  <text x="332" y="904" class="code">    pub fn nil() -&gt; Self { Self::Nil }</text>
+  <text x="332" y="922" class="code">    pub fn is_cons(&amp;self) -&gt; bool { matches!(self, Self::Cons {..}) }</text>
+  <text x="332" y="940" class="code">    pub fn is_nil(&amp;self)  -&gt; bool { matches!(self, Self::Nil) }</text>
+  <text x="332" y="958" class="code">}</text>
+  <text x="332" y="986" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
+  <text x="332" y="1004" class="code">pub enum Tree&lt;T&gt; {</text>
+  <text x="332" y="1022" class="code">    Leaf { value: T },</text>
+  <text x="332" y="1040" class="code">    Node { left: Box&lt;Tree&lt;T&gt;&gt;, right: Box&lt;Tree&lt;T&gt;&gt; },</text>
+  <text x="332" y="1058" class="code">}</text>
+  <text x="332" y="1086" class="code">impl&lt;T&gt; Tree&lt;T&gt; {</text>
+  <text x="332" y="1104" class="code">    pub fn leaf(value: T) -&gt; Self { Self::Leaf { value } }</text>
+  <text x="332" y="1122" class="code">    pub fn node(left: Tree&lt;T&gt;, right: Tree&lt;T&gt;) -&gt; Self {</text>
+  <text x="332" y="1140" class="code">        Self::Node { left: Box::new(left), right: Box::new(right) }</text>
+  <text x="332" y="1158" class="code">    }</text>
+  <text x="332" y="1176" class="code">    pub fn is_leaf(&amp;self) -&gt; bool { matches!(self, Self::Leaf {..}) }</text>
+  <text x="332" y="1194" class="code">    pub fn is_node(&amp;self) -&gt; bool { matches!(self, Self::Node {..}) }</text>
+  <text x="332" y="1212" class="code">}</text>
+  <text x="332" y="1250" class="code">pub fn swap&lt;A, B&gt;(p: Pair&lt;A, B&gt;) -&gt; Pair&lt;B, A&gt; {</text>
+  <text x="332" y="1268" class="code">    Pair { first: p.second, second: p.first }</text>
+  <text x="332" y="1286" class="code">}</text>
+  <text x="332" y="1314" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
+  <text x="332" y="1332" class="code">    match s {</text>
+  <text x="332" y="1350" class="code">        Sum::Left  { value } =&gt; value,</text>
+  <text x="332" y="1368" class="code">        Sum::Right { value } =&gt; value,</text>
+  <text x="332" y="1386" class="code">    }</text>
+  <text x="332" y="1404" class="code">}</text>
+  <text x="332" y="1432" class="code">pub fn or_else&lt;T&gt;(o: Option&lt;T&gt;, d: T) -&gt; T {</text>
+  <text x="332" y="1450" class="code">    match o {</text>
+  <text x="332" y="1468" class="code">        Option::Some { value } =&gt; value,</text>
+  <text x="332" y="1486" class="code">        Option::None           =&gt; d,</text>
+  <text x="332" y="1504" class="code">    }</text>
+  <text x="332" y="1522" class="code">}</text>
+  <text x="332" y="1550" class="code">pub fn unwrap_or&lt;T, E&gt;(r: Result&lt;T, E&gt;, d: T) -&gt; T {</text>
+  <text x="332" y="1568" class="code">    match r {</text>
+  <text x="332" y="1586" class="code">        Result::Ok  { value }    =&gt; value,</text>
+  <text x="332" y="1604" class="code">        Result::Err { error: _ } =&gt; d,</text>
+  <text x="332" y="1622" class="code">    }</text>
+  <text x="332" y="1640" class="code">}</text>
+  <text x="332" y="1668" class="code">pub fn length&lt;T&gt;(l: &amp;List&lt;T&gt;) -&gt; i64 {</text>
+  <text x="332" y="1686" class="code">    match l {</text>
+  <text x="332" y="1704" class="code">        List::Cons { tail, .. } =&gt; 1 + length(tail),</text>
+  <text x="332" y="1722" class="code">        List::Nil =&gt; 0,</text>
+  <text x="332" y="1740" class="code">    }</text>
+  <text x="332" y="1758" class="code">}</text>
+  <text x="332" y="1786" class="code">pub fn depth&lt;T&gt;(t: &amp;Tree&lt;T&gt;) -&gt; i64 {</text>
+  <text x="332" y="1804" class="code">    match t {</text>
+  <text x="332" y="1822" class="code">        Tree::Leaf { .. } =&gt; 1,</text>
+  <text x="332" y="1840" class="code">        Tree::Node { left, right } =&gt;</text>
+  <text x="332" y="1858" class="code">            1 + std::cmp::max(depth(left), depth(right)),</text>
+  <text x="332" y="1876" class="code">    }</text>
+  <text x="332" y="1894" class="code">}</text>
 
-  <!-- RIGHT: facts .dag (6 type defs) -->
+  <!-- RIGHT: 6 type defs -->
   <rect x="820" y="88" width="280" height="22" class="card-header"/>
   <text x="832" y="103" class="badge badge-dag">.dag</text>
   <rect x="820" y="110" width="280" height="528" class="card"/>
@@ -125,22 +166,19 @@
   <text x="832" y="148" class="code">  first: A; second: B</text>
   <text x="832" y="166" class="code">}</text>
   <text x="832" y="200" class="code">type Sum&lt;A, B&gt; =</text>
-  <text x="832" y="218" class="code">    Left  { value: A }</text>
-  <text x="832" y="236" class="code">  | Right { value: B }</text>
-  <text x="832" y="270" class="code">type Option&lt;T&gt; =</text>
-  <text x="832" y="288" class="code">    Some { value: T }</text>
-  <text x="832" y="306" class="code">  | None</text>
-  <text x="832" y="340" class="code">type Result&lt;T, E&gt; =</text>
-  <text x="832" y="358" class="code">    Ok  { value: T }</text>
-  <text x="832" y="376" class="code">  | Err { error: E }</text>
-  <text x="832" y="410" class="code">type List&lt;T&gt; =</text>
-  <text x="832" y="428" class="code">    Cons { head: T,</text>
-  <text x="832" y="446" class="code">           tail: List&lt;T&gt; }</text>
-  <text x="832" y="464" class="code">  | Nil</text>
-  <text x="832" y="498" class="code">type Tree&lt;T&gt; =</text>
-  <text x="832" y="516" class="code">    Leaf { value: T }</text>
-  <text x="832" y="534" class="code">  | Node { left:  Tree&lt;T&gt;,</text>
-  <text x="832" y="552" class="code">           right: Tree&lt;T&gt; }</text>
+  <text x="832" y="218" class="code">  Left{value:A}|Right{value:B}</text>
+  <text x="832" y="252" class="code">type Option&lt;T&gt; =</text>
+  <text x="832" y="270" class="code">  Some{value:T} | None</text>
+  <text x="832" y="304" class="code">type Result&lt;T, E&gt; =</text>
+  <text x="832" y="322" class="code">  Ok{value:T} | Err{error:E}</text>
+  <text x="832" y="356" class="code">type List&lt;T&gt; =</text>
+  <text x="832" y="374" class="code">    Cons { head: T,</text>
+  <text x="832" y="392" class="code">           tail: List&lt;T&gt; }</text>
+  <text x="832" y="410" class="code">  | Nil</text>
+  <text x="832" y="444" class="code">type Tree&lt;T&gt; =</text>
+  <text x="832" y="462" class="code">    Leaf { value: T }</text>
+  <text x="832" y="480" class="code">  | Node { left:  Tree&lt;T&gt;,</text>
+  <text x="832" y="498" class="code">           right: Tree&lt;T&gt; }</text>
 
-  <text x="20" y="1170" class="punchline">A few inches of source on each wing. A real Rust module in the middle. Swap "Rust" for any target — the wings don't change.</text>
+  <text x="20" y="1990" class="punchline">Wings: ~50 lines. Middle: ~170 lines. Add another fact — wings grow by 3, middle grows by 15. The source stays trivial to maintain; the centerpiece is what runs.</text>
 </svg>
