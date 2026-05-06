@@ -6389,8 +6389,7 @@ pub(crate) fn eval_constructor_variant_payload_fields(
         return Some(fields);
     }
     for decl in dag.declarations() {
-        if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id))
-        {
+        if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id)) {
             return Some(fields);
         }
     }

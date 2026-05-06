@@ -654,7 +654,8 @@ pub mod evaluator {
                     });
                 }
 
-                if let Some(labels) = crate::lower::constructor_record_field_labels(dag, callee_decl)
+                if let Some(labels) =
+                    crate::lower::constructor_record_field_labels(dag, callee_decl)
                 {
                     if operands.len() != labels.len() {
                         return Err(EvalError::TransformArityMismatch {
@@ -821,19 +822,19 @@ pub mod evaluator {
 
     #[cfg(test)]
     mod tests {
+        use super::NamedField;
         use super::{
             eval_node, eval_port, eval_value, evaluate_body, EvalError, EvalFrame, EvalFrameError,
             EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
         };
+        use crate::compile_to_dag;
         use crate::dag::{
             ArithmeticOp, ArrowBody, Behavior, BranchPattern, Cluster, ComparisonOp, Dag,
             DeclarationId, IntraClusterCall, LiteralBits, LogicalOp, LoopBound, MemberDescent,
             NodeId, NonEmptyList, NonSingletonList, OperatorKind, Path, PayloadBinding, PortId,
             TransformTarget, TypeConnective,
         };
-        use crate::compile_to_dag;
         use crate::diagnostics::SourceSpan;
-        use super::NamedField;
 
         fn span() -> SourceSpan {
             SourceSpan::new("evaluator_frame.unit", 0, 1)
@@ -858,6 +859,222 @@ pub mod evaluator {
             EvalStrategy::ApplicativeOrder {
                 input_order: InputEvaluationOrder::LeftFirst,
             }
+        }
+
+        fn bind_node_id_for_fn(dag: &Dag, fn_name: &str) -> NodeId {
+            let decl = dag
+                .declaration_by_name(fn_name)
+                .unwrap_or_else(|| panic!("missing fn `{fn_name}`"));
+            let TypeConnective::Arrow { body, .. } = &decl.connective else {
+                panic!("`{fn_name}` must be Arrow");
+            };
+            let ArrowBody::UserDefined(bind_id) = body else {
+                panic!("`{fn_name}` must be UserDefined");
+            };
+            bind_id.node_id()
+        }
+
+        fn first_resolved_variant_tag_in_bind_body(dag: &Dag, fn_name: &str) -> DeclarationId {
+            let entry = bind_node_id_for_fn(dag, fn_name);
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("expected Bind");
+            };
+            let mut stack = vec![bind.value];
+            while let Some(port) = stack.pop() {
+                let Some(producer) = dag.port(port).produced_by else {
+                    continue;
+                };
+                match dag.node(producer) {
+                    Behavior::Branch(branch) => {
+                        for path in &branch.paths {
+                            if let BranchPattern::ResolvedVariant(decl) = &path.pattern {
+                                return *decl;
+                            }
+                        }
+                    }
+                    Behavior::Bind(inner) => stack.push(inner.value),
+                    _ => {}
+                }
+            }
+            panic!("no ResolvedVariant pattern in `{fn_name}` body");
+        }
+
+        fn template_decl_id_for_callable_constructor_in_fn(
+            dag: &Dag,
+            fn_name: &str,
+        ) -> DeclarationId {
+            let entry = bind_node_id_for_fn(dag, fn_name);
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("expected Bind");
+            };
+            let mut stack = vec![bind.value];
+            while let Some(port) = stack.pop() {
+                let Some(producer) = dag.port(port).produced_by else {
+                    continue;
+                };
+                match dag.node(producer) {
+                    Behavior::Transform(t) => {
+                        if let TransformTarget::Callable(callee) = t.target {
+                            return match &dag.declaration(callee).connective {
+                                TypeConnective::Instantiation { template, .. } => *template,
+                                _ => callee,
+                            };
+                        }
+                    }
+                    Behavior::Bind(inner) => stack.push(inner.value),
+                    _ => {}
+                }
+            }
+            panic!("no TransformTarget::Callable in `{fn_name}` body");
+        }
+
+        #[test]
+        fn e6_g0d_variant_constructor_executes_to_variant_value() {
+            let src = "type MaybeInt = Some { value: Int } | None\n\
+                        fn pack(x: Int) -> MaybeInt = Some { value: x }\n";
+            let dag = compile_to_dag(src, "e6_g0d_variant.v3").expect("compile");
+            let expected_tag = template_decl_id_for_callable_constructor_in_fn(&dag, "pack");
+            let entry = bind_node_id_for_fn(&dag, "pack");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
+            };
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(42)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::VariantValue { tag, payload } = value else {
+                panic!("expected VariantValue, got {value:?}");
+            };
+            assert_eq!(tag, expected_tag);
+            let Value::RecordValue(fields) = *payload else {
+                panic!("expected record payload");
+            };
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].label, "value");
+            assert_eq!(fields[0].value, Value::LiteralValue(LiteralBits::Int(42)));
+        }
+
+        #[test]
+        fn e6_g0d_record_constructor_preserves_declaration_field_order() {
+            let src = "type R { a: Int, b: Int }\n\
+                        fn mk() -> R = { b: 7, a: 5 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_record.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "mk");
+            let mut state = empty_state();
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::RecordValue(fields) = value else {
+                panic!("expected RecordValue, got {value:?}");
+            };
+            assert_eq!(
+                fields,
+                vec![
+                    NamedField {
+                        label: "a".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Int(5)),
+                    },
+                    NamedField {
+                        label: "b".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Int(7)),
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn e6_g0d_generic_variant_constructor_tag_matches_resolved_variant_pattern() {
+            let src = "type Maybe<T> = Some(T) | None\n\
+                        fn pack_int(x: Int) -> Maybe<Int> = Some(x)\n\
+                        fn probe(x: Int) -> Int = match pack_int(x) { Some(p) => p, None => 0 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_gen_variant.v3").expect("compile");
+            let expected_tag = first_resolved_variant_tag_in_bind_body(&dag, "probe");
+            let entry = bind_node_id_for_fn(&dag, "pack_int");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
+            };
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(99)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::VariantValue { tag, payload } = value else {
+                panic!("expected VariantValue");
+            };
+            assert_eq!(
+                tag, expected_tag,
+                "tag must be template variant id (matches BranchPattern::ResolvedVariant), not an anonymous Instantiation id"
+            );
+            let Value::RecordValue(fields) = *payload else {
+                panic!("expected record payload");
+            };
+            assert_eq!(fields.len(), 1);
+            assert_eq!(fields[0].value, Value::LiteralValue(LiteralBits::Int(99)));
+        }
+
+        #[test]
+        fn e6_g0d_generic_record_constructor_preserves_template_field_order() {
+            let src = "type PairAB<A, B> { first: A, second: B }\n\
+                        fn mk() -> PairAB<Int, Bool> = { second: true, first: 3 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_gen_record.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "mk");
+            let mut state = empty_state();
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::RecordValue(fields) = value else {
+                panic!("expected RecordValue");
+            };
+            assert_eq!(
+                fields,
+                vec![
+                    NamedField {
+                        label: "first".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Int(3)),
+                    },
+                    NamedField {
+                        label: "second".to_string(),
+                        value: Value::LiteralValue(LiteralBits::Bool(true)),
+                    },
+                ]
+            );
+        }
+
+        #[test]
+        fn e6_g0d_nullary_variant_constructor_empty_record_payload() {
+            let src = "type U = Z | S { n: Int }\n\
+                        fn zed() -> U = Z\n";
+            let dag = compile_to_dag(src, "e6_g0d_nullary.v3").expect("compile");
+            let expected_tag = template_decl_id_for_callable_constructor_in_fn(&dag, "zed");
+            let entry = bind_node_id_for_fn(&dag, "zed");
+            let mut state = empty_state();
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            let Value::VariantValue { tag, payload } = value else {
+                panic!("expected VariantValue");
+            };
+            assert_eq!(tag, expected_tag);
+            let Value::RecordValue(fields) = *payload else {
+                panic!("expected record payload");
+            };
+            assert!(fields.is_empty());
+        }
+
+        #[test]
+        fn e6_g0d_variant_constructor_round_trips_through_branch_match() {
+            let src = "type MaybeInt = Some { value: Int } | None\n\
+                        fn pack(x: Int) -> MaybeInt = Some { value: x }\n\
+                        fn unpack(x: Int) -> Int = match pack(x) { Some { value: v } => v, None => 0 }\n";
+            let dag = compile_to_dag(src, "e6_g0d_roundtrip.v3").expect("compile");
+            let entry = bind_node_id_for_fn(&dag, "unpack");
+            let Behavior::Bind(bind) = dag.node(entry) else {
+                panic!("bind");
+            };
+            let x_port = bind.params[0];
+            let frame =
+                EvalFrame::from_bindings([(x_port, Value::LiteralValue(LiteralBits::Int(11)))])
+                    .expect("frame");
+            let mut state = EvalStateStack::with_root_frame(frame);
+            let value = evaluate_body(&dag, entry, &mut state, eager_strategy()).expect("eval");
+            assert_eq!(value, Value::LiteralValue(LiteralBits::Int(11)));
         }
 
         #[test]
