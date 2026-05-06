@@ -26,9 +26,11 @@
 pub mod budgeted;
 pub mod cached_compile;
 pub mod determinism_fixtures;
+pub mod list_variant_tags;
 pub mod r1_gates_bridge;
 pub mod substrate_receipts;
 
+pub use list_variant_tags::find_list_empty_constructor_tag;
 pub use cached_compile::{
     cached_compile_any, cached_compile_outcome, cached_compile_to_dag, CachedCompileOutcome,
 };
