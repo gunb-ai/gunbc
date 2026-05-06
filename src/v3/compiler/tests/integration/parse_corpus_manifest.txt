@@ -11,7 +11,7 @@ dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
 dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
-dsl/std/types.dag	108	208427	62d4496326d878d4
+dsl/std/types.dag	108	208427	8faea50e52a2bcb8
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	f6a6c0d08e3081bb
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
@@ -40,7 +40,7 @@ src/v3/std/cross_target_coverage.dag	10	373515	814a9a617f609ad3
 src/v3/std/diagnostics.dag	11	21478	7d2e9e73d74e5adb
 src/v3/std/dimensions.dag	21	39170	c6833b618a39e0af
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
-src/v3/std/emit_model.dag	44	82642	350e3581bbca7873
+src/v3/std/emit_model.dag	44	83040	71640f0720ab903a
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	16839	22cffc76152e82dd
 src/v3/std/go_method_template_contracts.dag	14	133273	43ccd439b5e388ea
 src/v3/std/induction.dag	56	88794	e405e1549cf2fe08
