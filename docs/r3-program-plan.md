@@ -260,9 +260,18 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 ## §5. Bridge inventory snapshot
 
-**Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (PR #1804 lane). Phase 2 sweep deliverables landed §1.1–§2.2 covering all **66 `.rs` files** in `src/v3/compiler/src/` (excluding `emit/`) — file-level audit count, NOT SG-0 hand-Rust authority count. SG-0 authority lives in [`src/v3/compiler/tests/integration/sg0_census_test.rs`](../src/v3/compiler/tests/integration/sg0_census_test.rs) (`EXPECTED_HAND_AUTHORED_NON_TEST` = 46 paths, `EXPECTED_HAND_AUTHORED_TEST` = 89 paths, `EXPECTED_HAND_AUTHORED_FRAGMENTS` = 1 path; total = 136 paths covering broader scope than `src/v3/compiler/src/`). The 66-file audit is per-file classification work (Class A-G assignment), distinct from SG-0 census authority (path inclusion).
+**Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (PR #1804 lane). Phase 2 sweep deliverables landed §1.1–§2.2.
 
-Plus 35 v3 std mirror entries + 112 R2/R3-era PRs.
+**Apples-to-apples count discipline** (per `feedback_corrections_must_grep_verify_source` + INVARIANTS P1 single-authority):
+
+- **66 `.rs` files** in `src/v3/compiler/src/` (excluding `emit/`) — file-level scope of quiet-boar-160's per-file audit work (Class A-G assignment per audited file). Filesystem count.
+- **41 SG-0 NON_TEST entries** for the same scope (`src/v3/compiler/src/` excluding `emit/`) per [`src/v3/compiler/tests/integration/sg0_census_test.rs`](../src/v3/compiler/tests/integration/sg0_census_test.rs) `EXPECTED_HAND_AUTHORED_NON_TEST` filter. SG-0 ratchet authority for this scope.
+- **66 - 41 = 25 file-system files NOT in SG-0 NON_TEST**: generated, build artifacts, or otherwise outside SG-0 hand-Rust ratchet scope.
+- **SG-0 census authority full scope** (broader than this scope): `EXPECTED_HAND_AUTHORED_NON_TEST` = 46 paths total / `EXPECTED_HAND_AUTHORED_TEST` = 89 paths / `EXPECTED_HAND_AUTHORED_FRAGMENTS` = 1 path; **total = 136 paths**.
+
+The 66-file audit is per-file classification work distinct from SG-0 census authority (path inclusion). Both counts are useful for different purposes: 66 = audit scope; 41 = SG-0 ratchet for that scope; 136 = SG-0 ratchet total.
+
+Plus 35 v3 std mirror entries + 112 R2/R3-era PRs (covered by §1.3 + §2.1/§2.2 of PR #1804 sweep deliverables).
 
 This plan section reports cumulative bridge counts; PR #1804 holds the per-row inventory.
 
