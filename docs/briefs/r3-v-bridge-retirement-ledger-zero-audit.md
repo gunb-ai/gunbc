@@ -9,6 +9,16 @@ authoring, and no new `TestPredicate` variants.
 in `src/v3/std/verification.dag` owns the fold predicate; `docs/r3-structure.md`
 L87-L92 names the five bridge gates and the unified ledger-zero gate.
 
+## Grep hygiene (SB5/6 + §3 P4 / V6 alignment)
+
+Phase-2 PM compile correlates merged PR history to ledger / predicate churn using the same **three path anchors** as the SB5/6 bridge appendix on PR [#1804](https://github.com/gunb-ai/gunbc/pull/1804):
+
+1. `src/v3/std/bridge_ledger.dag`
+2. `src/v3/compiler/tests/fixtures/r3_bridge_retirement_ledger_zero.dag`
+3. `src/v3/std/verification.dag`
+
+**Receipt commands** (numeric PR-window filters are PM-pass parameters — not hard-coded here) live in [`docs/r3-design-schedule-2026-05-06.md`](../r3-design-schedule-2026-05-06.md) §3 PB Mgr → **P4 — Verification V6 alignment + grep hygiene**. That subsection ties **§2 V6** (`bridge_retirement_ledger_zero` audit cadence, bold-crane) to PB-side doc hygiene without diluting gate ownership: Verification executes the gate; PB/Substrate retire bridge evidence in owning lanes.
+
 ## Summary
 
 The production fixture from PR #1352 is structurally wired:
