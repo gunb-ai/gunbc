@@ -78,18 +78,21 @@ sg0_validate_pr_body_format() {
       echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a \`SG-0 pairing:\` line"
       return 1
     fi
+    # Flatten pairing line + continuation so evidence may sit on the next line
+    # (template: "that line or immediately after") while grep(1) does not span '\n' with '.'.
+    pairing_flat=$(printf '%s\n' "$pairing_block" | tr '\n' ' ')
     if printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(a\)'; then
-      if ! printf '%s\n' "$pairing_block" | grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)'; then
+      if ! printf '%s\n' "$pairing_flat" | grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)'; then
         echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
         return 1
       fi
     elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(b\)'; then
-      if ! printf '%s\n' "$pairing_block" | grep -qE 'https://|http://'; then
+      if ! printf '%s\n' "$pairing_flat" | grep -qE 'https://|http://'; then
         echo "::error::SG-0 pairing (b) must cite a Director-budget URL (http(s):// on the pairing line or the line immediately after)"
         return 1
       fi
     elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(c\)'; then
-      if ! printf '%s\n' "$pairing_block" | grep -qiE '\(c\).*dispatch'; then
+      if ! printf '%s\n' "$pairing_flat" | grep -qiE '\(c\).*dispatch'; then
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         return 1
       fi
@@ -143,6 +146,8 @@ self_test() {
   run_case "(a) without path evidence" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) deferred only' fail
   run_case "(c) without dispatch" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) later' fail
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
+  run_case "(a) path evidence on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a)\nremoved src/v3/compiler/src/foo.rs' pass
+  run_case "(c) dispatch on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c)\nfollow-up dispatch: TM-0 lane' pass
   run_case "mid-line SG-0 pairing mention ignored" $'SG-0 hand-path delta: +1\nNarrative: not SG-0 pairing: (b) https://trap.example\nSG-0 pairing: (b) https://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "only mid-line pairing substring" $'SG-0 hand-path delta: +1\nNote: not SG-0 pairing: (b) https://x.com' fail
 
