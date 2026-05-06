@@ -16,10 +16,14 @@ use v3_compiler::evaluator::{
 use v3_compiler::lens_apply::reify_substrate_dag_value_for_eval;
 
 const G1A_SOURCE: &str = r#"
-import std.list { empty, fold }
+import std.list { List, empty, fold }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
+import v3.std.diagnostics { Diagnostic }
 import v3.std.lens { Lens }
+
+fn tc1_empty_witnesses() -> List<Witness<Int>> = empty()
+fn tc1_empty_violations() -> List<Diagnostic> = empty()
 
 fn lens_read(d: Dag, b: Behavior) -> Witness<Int> { Inhabits(1) }
 fn int_add(a: Int, b: Int) -> Int = a + b
@@ -51,15 +55,15 @@ fn tc1_static_dimension_fold(d: Dag) -> DimensionReport<Int> =
   match tc1_static_lens.validate(d, tc1_composed(d)) {
     NoDiagnostic =>
       DimensionOk {
-        dimension_name: tc1_static_lens.name,
+        dimension_name: "tc1_static",
         composed: tc1_composed(d),
-        witnesses: empty()
+        witnesses: tc1_empty_witnesses()
       }
     SomeDiagnostic { value: _diag } =>
       DimensionFail {
-        dimension_name: tc1_static_lens.name,
-        violations: empty(),
-        witnesses: empty()
+        dimension_name: "tc1_static",
+        violations: tc1_empty_violations(),
+        witnesses: tc1_empty_witnesses()
       }
   }
 
@@ -67,15 +71,15 @@ fn tc1_static_dimension_fold_eta(d: Dag) -> DimensionReport<Int> =
   match tc1_static_lens.validate(d, 0 + tc1_composed(d)) {
     NoDiagnostic =>
       DimensionOk {
-        dimension_name: tc1_static_lens.name,
+        dimension_name: "tc1_static",
         composed: 0 + tc1_composed(d),
-        witnesses: empty()
+        witnesses: tc1_empty_witnesses()
       }
     SomeDiagnostic { value: _diag } =>
       DimensionFail {
-        dimension_name: tc1_static_lens.name,
-        violations: empty(),
-        witnesses: empty()
+        dimension_name: "tc1_static",
+        violations: tc1_empty_violations(),
+        witnesses: tc1_empty_witnesses()
       }
   }
 "#;
