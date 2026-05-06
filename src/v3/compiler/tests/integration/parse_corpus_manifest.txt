@@ -10,7 +10,7 @@ dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
 dsl/std/string_type.dag	4	1910	119741c6fb9de2e3
-dsl/std/types.dag	108	208708	bce8ecd6ccabfb30
+dsl/std/types.dag	109	209031	d29695ebd0e85363
 src/v3/compiler/operators.dag	5	47160	b75a91c65bf8a242
 src/v3/compiler/parse_tables.dag	43	92946	f6a6c0d08e3081bb
 src/v3/compiler/pipeline.dag	26	47032	a13b41aa379fd167
