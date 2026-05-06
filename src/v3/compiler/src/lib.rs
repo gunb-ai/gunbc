@@ -620,7 +620,7 @@ pub mod evaluator {
                         crate::lower::eval_constructor_variant_payload_fields(dag, callee_decl)
                     else {
                         return Err(EvalError::BadTransformOperands {
-                            reason: "Callable target declaration is not an Arrow type",
+                            reason: "variant constructor payload fields could not be resolved",
                         });
                     };
                     if operands.len() != fields.len() {

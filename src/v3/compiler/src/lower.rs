@@ -6381,19 +6381,59 @@ pub(crate) fn constructor_record_field_labels(
 /// only the callee, fall back to trying each declaration as an outer prefix
 /// until the existing substrate walk succeeds — still a single authority
 /// (`variant_payload_fields_for_lowering`), not a parallel registry.
+///
+/// **Dissolution trigger:** delete this scan when `TransformTarget::Callable` (or
+/// adjacent transform metadata) threads the same outer expected-type
+/// `DeclarationId` the lowerer used at the constructor site, so the second
+/// argument to [`variant_payload_fields_for_lowering`] is authoritative without
+/// enumeration.
+///
+/// In `debug_assertions` builds, every successful prefix is checked to agree with
+/// the returned resolution so silent ambiguity cannot hide inconsistent payload
+/// shapes during development.
 pub(crate) fn eval_constructor_variant_payload_fields(
     dag: &Dag,
     callee_decl: DeclarationId,
 ) -> Option<Vec<(String, DeclarationId)>> {
+    let fields = if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
+        fields
+    } else {
+        let mut found = None;
+        for decl in dag.declarations() {
+            if let Some(fields) =
+                variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id))
+            {
+                found = Some(fields);
+                break;
+            }
+        }
+        found?
+    };
+    #[cfg(debug_assertions)]
+    debug_assert_variant_payload_prefix_scan_is_unambiguous(dag, callee_decl, &fields);
+    Some(fields)
+}
+
+#[cfg(debug_assertions)]
+fn debug_assert_variant_payload_prefix_scan_is_unambiguous(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    chosen: &[(String, DeclarationId)],
+) {
     if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, None) {
-        return Some(fields);
+        debug_assert_eq!(
+            fields, chosen,
+            "eval_constructor_variant_payload_fields: None-outer payload disagrees with chosen resolution"
+        );
     }
     for decl in dag.declarations() {
         if let Some(fields) = variant_payload_fields_for_lowering(dag, callee_decl, Some(decl.id)) {
-            return Some(fields);
+            debug_assert_eq!(
+                fields, chosen,
+                "eval_constructor_variant_payload_fields: prefix-scan payload disagrees with chosen resolution"
+            );
         }
     }
-    None
 }
 
 fn variant_payload_fields_for_lowering_with_subst(
