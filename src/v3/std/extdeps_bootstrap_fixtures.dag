@@ -37,6 +37,7 @@ type BootstrapFixtureSet {
   python_method_template_contracts: BootstrapFixture
   go_method_template_contracts: BootstrapFixture
   anthropic_operations: BootstrapFixture
+  cross_target_coverage: BootstrapFixture
 }
 
 data bootstrap_fixture_authority: BootstrapFixtureSet = {
@@ -54,5 +55,8 @@ data bootstrap_fixture_authority: BootstrapFixtureSet = {
   },
   anthropic_operations: {
     virtual_path: "src/v3/std/anthropic_operations.dag"
+  },
+  cross_target_coverage: {
+    virtual_path: "src/v3/std/cross_target_coverage.dag"
   }
 }
