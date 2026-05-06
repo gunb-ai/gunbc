@@ -38,11 +38,13 @@ sg0_validate_pr_body_format() {
   local body="$1"
   local delta_line token need_pairing pairing_block
 
-  if ! printf '%s\n' "$body" | grep -qE '^SG-0 hand-path delta:'; then
+  # Use here-strings (not `printf … | grep`) so `pipefail` + early `grep -q`
+  # exit cannot SIGPIPE the writer on large PR bodies.
+  if ! grep -qE '^SG-0 hand-path delta:' <<<"$body"; then
     echo "::error::PR body missing required line starting with \`SG-0 hand-path delta:\`"
     return 1
   fi
-  delta_line=$(printf '%s\n' "$body" | grep -E '^SG-0 hand-path delta:' | head -1)
+  delta_line=$(grep -E '^SG-0 hand-path delta:' <<<"$body" | head -1)
   token=${delta_line#SG-0 hand-path delta:}
   # shellcheck disable=SC2086
   token=$(echo "$token" | awk '{print $1; exit}')
@@ -67,13 +69,13 @@ sg0_validate_pr_body_format() {
   fi
 
   if [ "$need_pairing" -eq 1 ]; then
-    pairing_block=$(printf '%s\n' "$body" | awk '
+    pairing_block=$(awk '
       /^[[:space:]]*SG-0 pairing:/ {
         print
         if (getline > 0) print
         exit
       }
-    ')
+    ' <<<"$body")
     if [ -z "$pairing_block" ]; then
       echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a \`SG-0 pairing:\` line"
       return 1
@@ -81,18 +83,18 @@ sg0_validate_pr_body_format() {
     # Flatten pairing line + continuation so evidence may sit on the next line
     # (template: "that line or immediately after") while grep(1) does not span '\n' with '.'.
     pairing_flat=$(printf '%s\n' "$pairing_block" | tr '\n' ' ')
-    if printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(a\)'; then
-      if ! printf '%s\n' "$pairing_flat" | grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)'; then
+    if grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(a\)' <<<"$pairing_block"; then
+      if ! grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
         return 1
       fi
-    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(b\)'; then
-      if ! printf '%s\n' "$pairing_flat" | grep -qE 'https://|http://'; then
+    elif grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(b\)' <<<"$pairing_block"; then
+      if ! grep -qE 'https://|http://' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (b) must cite a Director-budget URL (http(s):// on the pairing line or the line immediately after)"
         return 1
       fi
-    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(c\)'; then
-      if ! printf '%s\n' "$pairing_flat" | grep -qiE '\(c\).*dispatch'; then
+    elif grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(c\)' <<<"$pairing_block"; then
+      if ! grep -qiE '\(c\).*dispatch' <<<"$pairing_flat"; then
         echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
         return 1
       fi

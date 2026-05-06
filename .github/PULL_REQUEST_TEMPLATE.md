@@ -99,6 +99,8 @@ dispatch.
 Authority: ROADMAP.md bullet *SG-0 PR-window net-shrink discipline*.
 -->
 
+**CI reads raw PR description text.** The lines the gate matches must start at column 0 with `SG-0 hand-path delta:` and (when required) `SG-0 pairing:` — a leading markdown list marker (`- …`) or bold wrapper on the same line will **not** satisfy the checker. Paste the two lines below the checklist into the description body as plain text (you can keep the bullets as a personal reminder).
+
 - **Paste into PR description — `SG-0 hand-path delta:`** ___
 
 - **Paste into PR description — `SG-0 pairing:`** ___ (`n/a` unless delta is strict `+N`, `N>0`)
