@@ -78,10 +78,37 @@ type UInt128 = Semiring<Word128>
 // layer-3 carrier. Slice §6 (cascade) migrates downstream consumers off
 // `OrderedRing<Word*>` for the abstract `Int` algebra path.
 //
-// `UInt = UInt64` remains the legacy default alias until the cascade slice;
-// per design doc `UInt IS Nat`, but per-row migration is §6's job.
+// `UInt` is the abstract unsigned-integer algebra. Per the design-doc
+// authority `UInt IS Nat`, the faithful pivot is the direct alias —
+// `Nat` is already `CommutativeSemiring<Magnitude>` (additive monoid +
+// multiplicative monoid + distribution + commutativity on both), which
+// IS the unsigned-integer algebra surface. Wrapping `Nat` in
+// `CommutativeMonoid<Nat>` (or `Monoid<Nat>`) would project out the
+// multiplicative structure and the multiplicative identity `1`,
+// violating P2 facts-flow-forward — the substrate cannot structurally
+// name "the additive monoid projection of Nat" without dropping
+// Nat's other monoid. The brief's `CommutativeMonoid<Nat>` shorthand
+// is anemic for the same reason `Int = AbelianGroup<Nat>` would be
+// unfaithful: it discards substrate facts already established at the
+// Nat layer.
+//
+// (Asymmetry with `Int` is structural: `Int` requires additive
+// inverses that Nat lacks, so the explicit `GroupCompletion<Nat>`
+// carrier is necessary to introduce them honestly. `UInt` requires no
+// new operations beyond what Nat already carries, so no new carrier
+// or projection is needed — the alias IS the algebra.)
+//
+// The fixed-width storage rows above (`UInt8`..`UInt128`) stay on
+// `Semiring<Word*>`; only this default alias is the construction-chain
+// abstract carrier. Slice §6 (cascade) migrates downstream consumers
+// off `Semiring<Word*>` for the abstract `UInt` algebra path. Concrete
+// emission entries (parametric `Compose<Algebra, MachineConstraint>`
+// per Q-MachineConstraint-Carrier sub-decision 2; e.g.,
+// `UInt<32> ≡ Compose<CommutativeSemiring, MachineWidth<32>>` →
+// Rust `u32`) gate on S3 `MachineConstraint<C>` landing per S9 brief
+// STOP-AND-ESCALATE.
 type Int = AbelianGroup<GroupCompletion<Nat>>
-type UInt = UInt64
+type UInt = Nat
 
 // ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
 //
