@@ -29,7 +29,8 @@ module std.machine_constraints
 // - Pattern 4 (dimensional): fails — word width is an irreducible machine fact at this layer.
 // Verdict: terminal at machine-width axis scope.
 //
-// P2 / P5 — **TRACKED PARAMETER GAP** (reviewer-facing; closes “prose-only Nat index” concern):
+// P2 / P5 — **TRACKED PARAMETER GAP / bounded scaffold** (INVARIANTS.md § P5 scaffold boundaries —
+//   named dissolution trigger below; closes “prose-only Nat index” / “unbounded phantom” reviews):
 // - **P2 (Boundary discipline, INVARIANTS.md § P2):** `bits` is phantom; v3 `.dag` surface grammar
 //   here does **not** attach a structural `bits : Nat` bound. The Nat-magnitude intent above is
 //   **single-authority documentation** plus **Grounding lowering** enforcement — not a second,

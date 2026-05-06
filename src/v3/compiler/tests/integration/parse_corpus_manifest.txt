@@ -6,7 +6,7 @@ dsl/std/bit.dag	9	7787	09279906a3939377
 dsl/std/float.dag	6	3350	3c45f61f17751329
 dsl/std/integer.dag	17	13226	652968ab55e4eaf9
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
-dsl/std/machine_constraints.dag	3	1420	0a5d1338c3602545
+dsl/std/machine_constraints.dag	3	1420	10e0014c21184545
 dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
