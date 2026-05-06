@@ -4,7 +4,7 @@
 
 **HEAD verified:** `2d26ed2b3` (initial inventory authoring against `origin/main` at refresh time). Methodology deltas applied during follow-up (regex coverage fix, C-data split extension to `compiler.dag:270`, line-completeness sweep) re-validated against `origin/main` after the #1848 squash-merge — line citations spot-checked at the post-merge tree (PB Mgr review confirmed `:53` / `:270` / `p0:L25` still resolve). Future refreshes should re-pin HEAD and re-run the unified grep in §"Search authority" before citing line numbers.
 
-**This is an inventory refresh, not a decision.** It does not propose carrier shape, migration order, or G-1/G-2 sequencing — those remain S-1 / Substrate-Manager territory per [`docs/audit/t-v2-retirement-audit.md`](t-v2-retirement-audit.md) §1 STOP conditions and [`docs/briefs/r3-pb-tv2-s1-input-packet.md`](../briefs/r3-pb-tv2-s1-input-packet.md) §"Decision checklist". Every cell below cites a live grep / file/line on `2d26ed2b3`.
+**This is an inventory refresh, not a decision.** It does not propose carrier shape, migration order, or G-1/G-2 sequencing — those remain S-1 / Substrate-Manager territory per [`docs/audit/t-v2-retirement-audit.md`](t-v2-retirement-audit.md) §1 STOP conditions and [`docs/briefs/r3-pb-tv2-s1-input-packet.md`](../briefs/r3-pb-tv2-s1-input-packet.md) §"Decision checklist". Initial cells cite live grep / file/line on `2d26ed2b3`; follow-up additions (per "HEAD verified" note above) re-validated against post-#1848-merge `origin/main`. Future refreshes should re-pin HEAD per §"Search authority" before citing line numbers — line citations may drift on busy `main`.
 
 ## Scope
 
