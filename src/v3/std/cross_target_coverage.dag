@@ -1,0 +1,119 @@
+// v3.std.cross_target_coverage -- L6 EmissionPathProjection substrate
+// carrier slice (R3 L6, Phase-1 carrier-only).
+//
+// Per Director Option 2 + sub-questions §4.A=(a) / §4.B=List / §4.C=(i) /
+// §4.D=(b) RATIFIED at gunbc#828 #issuecomment-4377533390 (2026-05-05).
+// Worker brief: `docs/briefs/r3-l6-emission-path-projection-substrate-worker.md`
+// (parent worktree). Routing receipt:
+// `docs/briefs/r3-substrate-l6-per-row-projection-routing-decision.md`.
+//
+// HEADER NOTE (mandatory, per brief §1):
+//   Option (c) -- a generated mirror of `v3_compiler::dag::TypeConnective`
+//   and `v3_compiler::dag::Behavior` -- is the correct dissolution target
+//   for the hand-declared `FormAxis` / `BehaviorAxis` below, once a
+//   substrate-`Disj`-mirroring generator exists. The (a) hand-declared form
+//   here is interim until that generator lands. Per Director ratification of
+//   §4.A at gunbc#828 #issuecomment-4377533390.
+//
+// SCOPE (Phase-1 carrier slice):
+//   - Six type declarations (`ShapeATarget`, `FormAxis`, `BehaviorAxis`,
+//     `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`).
+//   - Empty `data emission_path_projections: List<EmissionPathProjection> = []`.
+//
+// NOT in scope (per Director §4.D=(b)):
+//   - Row population (42 Phase-1 rows of `Cardinality x Transform x <target>`)
+//     -> Grounding follow-up (#1745).
+//   - `coverage.rs` conversion from list-non-empty projection to per-row
+//     union over `emission_path_projections` -> Grounding follow-up.
+//   - Per-row key-bijection ratchet activation -> Grounding follow-up.
+//
+// CITATION DISCIPLINE (per `brief-authoring-checklist.md`): Practice 4
+// reference uses `docs/modeling-discipline.md#4-coproduct-dissolution`
+// anchor + inline rule-text quote: "Any new Rust enum with N >= 2 variants
+// must have a checkpoint comment naming its classification (🟢/🟡/🔴),
+// with a ledger entry if GREEN or a named trigger if YELLOW."
+
+module v3.std.cross_target_coverage
+
+import v3.std.methods { MethodRef }
+
+// --- ShapeATarget ---------------------------------------------------------
+//
+// PRACTICE 4 CHECKPOINT: 🟢 TERMINAL
+// Closed set of v3 target languages (Rust / Python / Go). Adding a target
+// is a substrate-scope event (new emitter, new method-template contracts),
+// NOT a row-level addition. Any new variant requires a P1 substrate-fact-
+// introduction procedure on this declaration directly; row-level addition
+// is not authorized.
+type ShapeATarget = Rust | Python | Go
+
+// --- FormAxis -------------------------------------------------------------
+//
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD
+// Hand-declared mirror of `v3_compiler::dag::TypeConnective` discriminants
+// (six variants in substrate-declaration order, verified against
+// `src/v3/compiler/src/dag.rs` `pub enum TypeConnective` at this slice's
+// authoring HEAD). The cross-product walker only needs the discriminant
+// identity for L6 lookup; payloads are not mirrored.
+//
+// Dissolution trigger (per Director ratification of §4.A at
+// gunbc#828 #issuecomment-4377533390): substrate-`Disj`-mirroring generator
+// (option (c)). Generator landing retires this hand-declared form. New
+// connectives are added here only via the P1 substrate-fact-introduction
+// procedure on the upstream Rust enum first.
+type FormAxis = Atom | Conj | Disj | Arrow | Cardinality | Instantiation
+
+// --- BehaviorAxis ---------------------------------------------------------
+//
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD
+// Hand-declared mirror of `v3_compiler::dag::Behavior` discriminants (five
+// variants in L1 model order, verified against `src/v3/compiler/src/dag.rs`
+// `pub enum Behavior` at this slice's authoring HEAD). The cross-product
+// walker only needs the discriminant identity; payloads are not mirrored.
+//
+// Same dissolution trigger as `FormAxis`: substrate-`Disj`-mirroring
+// generator (option (c)) per Director ratification of §4.A.
+type BehaviorAxis = Value | Transform | Branch | Loop | Bind
+
+// --- MethodTemplateContractKey -------------------------------------------
+//
+// 1:1 row-identity key for joining `EmissionPathProjection` rows back to
+// `MethodTemplateContract` source rows in
+// `{rust,python,go}_method_template_contracts.dag`. No string-name
+// dispatch; the typed `target` + `dag_method` pair is the join authority
+// (honors C2 orthogonality per Option 2).
+type MethodTemplateContractKey {
+  target: ShapeATarget
+  dag_method: MethodRef
+}
+
+// --- EmissionCell ---------------------------------------------------------
+//
+// One cell in the (FormAxis x BehaviorAxis) cross product. The L6 walker
+// enumerates all 30 (form x behavior) cells per target and reports per-cell
+// coverage; the per-row `cells` list on `EmissionPathProjection` records
+// which cells the row covers (Phase-1 rows are all single-element
+// `[{ connective: Cardinality, behavior: Transform }]`).
+type EmissionCell {
+  connective: FormAxis
+  behavior: BehaviorAxis
+}
+
+// --- EmissionPathProjection ----------------------------------------------
+//
+// Per-row projection: `row_identity` keys back to the source
+// `MethodTemplateContract` row; `cells` is the list of (form, behavior)
+// cells covered by that row's emission path. Replaces the list-non-empty
+// proxy in `coverage.rs` with a typed row-local fact.
+type EmissionPathProjection {
+  row_identity: MethodTemplateContractKey
+  cells: List<EmissionCell>
+}
+
+// --- emission_path_projections (empty data state) ------------------------
+//
+// Slice ships EMPTY. Grounding's follow-up PR (#1745) populates the 42
+// Phase-1 rows (single-element `cells: [{connective: Cardinality,
+// behavior: Transform}]` per row). The empty-state assertion is this
+// slice's load-bearing claim that no row drift sneaks in via this PR.
+data emission_path_projections: List<EmissionPathProjection> = []
