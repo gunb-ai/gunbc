@@ -3771,6 +3771,55 @@ impl Dag {
         self.declarations.push(declaration);
     }
 
+    /// Test-only: materialize `List<elem>.Empty` as a fresh `Instantiation` declaration id.
+    ///
+    /// Generic `empty()` / `List` `Empty` are not yet body-evaluable in the public
+    /// eager evaluator, but integration tests still need structurally valid
+    /// `Value::VariantValue` tags when hand-assembling substrate carriers (e.g. an
+    /// argument-opaque `Dag` record).
+    #[cfg(test)]
+    pub fn test_materialize_list_empty_variant_tag(&mut self, list_ty: DeclarationId) -> DeclarationId {
+        let list_decl_id = self
+            .declaration_by_name("List")
+            .expect("bootstrap must load `List`")
+            .id;
+        let empty_template = match &self.declaration(list_decl_id).connective {
+            TypeConnective::Disj { variants } => variants
+                .iter()
+                .find(|v| v.label == "Empty")
+                .expect("List.Empty variant")
+                .ty,
+            _ => panic!("`List` must lower as a Disj"),
+        };
+        let arguments = match &self.declaration(list_ty).connective {
+            TypeConnective::Instantiation {
+                template,
+                arguments,
+            } if *template == list_decl_id && arguments.len() == 1 => arguments.clone(),
+            other => panic!("expected `List<elem>` instantiation, got {other:?}"),
+        };
+        let span = self.declaration(list_ty).span.clone();
+        let id = self.alloc_declaration_id();
+        self.push_declaration(Declaration {
+            id,
+            name: None,
+            connective: TypeConnective::Instantiation {
+                template: empty_template,
+                arguments,
+            },
+            type_params: Vec::new(),
+            phantom_params: Vec::new(),
+            meta_tag: None,
+            specialization_parent: None,
+            inhabits: None,
+            value_body: None,
+            refinement: None,
+            nominal_opacity: None,
+            span,
+        });
+        id
+    }
+
     /// Mutable access to a declaration, scoped to lowering's second pass where
     /// Identifier atoms get their `resolved: Some(_)` slot filled in. No
     /// external mutator; resolution is an internal phase of lowering.

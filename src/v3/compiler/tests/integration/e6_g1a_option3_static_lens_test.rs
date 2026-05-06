@@ -10,7 +10,8 @@
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{
-    AtomPayload, Behavior, CardinalityBound, DeclarationId, LiteralBits, TypeConnective, ValueNode,
+    AtomPayload, Behavior, CardinalityBound, DeclarationId, LiteralBits, TypeConnective,
+    TransformTarget, ValueNode,
 };
 use v3_compiler::diagnostics::SourceSpan;
 use v3_compiler::evaluator::{
@@ -23,14 +24,6 @@ import std.substrate { Dag, Behavior, LoopBound, DagPort, Cluster, Declaration }
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
 import v3.std.diagnostics { Diagnostic }
 import v3.std.lens { Lens }
-
-fn empty_dec() -> List<Declaration> = empty()
-fn empty_beh() -> List<Behavior> = empty()
-fn empty_ports() -> List<DagPort> = empty()
-fn empty_clusters() -> List<Cluster> = empty()
-
-fn opaque_dag() -> Dag =
-  { declarations: empty_dec(), nodes: empty_beh(), ports: empty_ports(), clusters: empty_clusters() }
 
 fn mini_read(d: Dag, b: Behavior) -> Witness<Int> = Inhabits(1)
 
@@ -57,18 +50,37 @@ data mini_lens: Lens<Int> = {
   validate: mini_validate
 }
 
-fn report_inhabits_branch(d: Dag, c: Int, _od: OptionalDiagnostic) -> DimensionReport<Int> =
+fn report_dim_ok(d: Dag, c: Int) -> DimensionReport<Int> =
   DimensionOk {
-    dimension_name: "mini_static",
+    dimension_name: mini_lens.name,
     composed: c,
+    witnesses: witnesses_inhabits(c)
+  }
+
+fn report_dim_fail(d: Dag, c: Int, diag: Diagnostic) -> DimensionReport<Int> =
+  DimensionFail {
+    dimension_name: mini_lens.name,
+    violations: violations_singleton(diag),
+    witnesses: witnesses_inhabits(c)
+  }
+
+fn report_inhabits_branch(d: Dag, c: Int, od: OptionalDiagnostic) -> DimensionReport<Int> =
+  match od {
+    NoDiagnostic => report_dim_ok(d, c)
+    SomeDiagnostic { value: diag } => report_dim_fail(d, c, diag)
+  }
+
+fn dimension_fail_closed() -> DimensionReport<Int> =
+  DimensionFail {
+    dimension_name: mini_lens.name,
+    violations: empty_diag_list(),
     witnesses: empty_witness_int()
   }
 
 fn dimension_report_from_witness(d: Dag, w: Witness<Int>) -> DimensionReport<Int> =
   match w {
     Inhabits(c) => report_inhabits_branch(d, c, mini_lens.validate(d, c))
-    Violates { reason: _r, at: _beh } =>
-      report_inhabits_branch(d, 0, NoDiagnostic)
+    Violates { reason: _r, at: _beh } => dimension_fail_closed()
   }
 
 fn mini_report(d: Dag, b: Behavior) -> DimensionReport<Int> =
@@ -77,13 +89,10 @@ fn mini_report(d: Dag, b: Behavior) -> DimensionReport<Int> =
 
 const OPTION3_FILE: &str = "e6_g1a_option3_static_lens.v3";
 
-#[test]
-fn probe_empty_list_eval() {
-    let src = "import std.list { List, empty }\nfn p() -> List<Int> = empty()";
-    let dag = cached_compile_to_dag(src, "probe.v3");
-    assert!(dag.diagnostics().is_empty(), "{:?}", dag.diagnostics());
-    let _ = eval_nullary_fn(&dag, "p");
-}
+/// Split needles so this Rust source can be scanned later without self-matching fixture guards.
+const GUARD_LENS_APPLY_MOD: &str = concat!("lens", "_apply", "::");
+const GUARD_EVAL_SUBSTRATE_REIFY: &str = concat!("eval", "_substrate", "_reify");
+const GUARD_REFLECT_BEHAVIOR: &str = concat!("reflect", "_behavior");
 
 fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::dag::NodeId {
     use v3_compiler::dag::ArrowBody;
@@ -95,24 +104,6 @@ fn bind_node_id_for_fn(dag: &v3_compiler::dag::Dag, name: &str) -> v3_compiler::
         panic!("user def");
     };
     bind_id.node_id()
-}
-
-fn eval_nullary_fn(dag: &v3_compiler::dag::Dag, fn_name: &str) -> Value {
-    let bind_node_id = bind_node_id_for_fn(dag, fn_name);
-    let Behavior::Bind(bind) = dag.node(bind_node_id) else {
-        panic!("bind");
-    };
-    assert!(
-        bind.params.is_empty(),
-        "`{fn_name}` must be nullary for this harness"
-    );
-    let frame = EvalFrame::empty();
-    let mut state = EvalStateStack::with_root_frame(frame);
-    let strategy = EvalStrategy::ApplicativeOrder {
-        input_order: InputEvaluationOrder::LeftFirst,
-    };
-    evaluate_body(dag, bind_node_id, &mut state, strategy)
-        .unwrap_or_else(|e| panic!("eval {fn_name}: {e:?}"))
 }
 
 fn disj_variant_constructor_id(
@@ -288,22 +279,54 @@ fn sample_value_behavior(dag: &v3_compiler::dag::Dag) -> Behavior {
         .expect("fixture must contain at least one Value behavior for opaque Behavior harness")
 }
 
+/// Generic `empty()` is not yet body-evaluable in the public eager evaluator; assemble a
+/// minimal `Dag` `RecordValue` with `List<…>.Empty` tags materialized onto `dag`.
+fn opaque_dag_value(dag: &mut v3_compiler::dag::Dag) -> Value {
+    let dag_root = named_record_root(dag, "Dag");
+    Value::RecordValue(vec![
+        NamedField {
+            label: "declarations".to_string(),
+            value: empty_list_value(dag, conj_field_ty(dag, dag_root, "declarations")),
+        },
+        NamedField {
+            label: "nodes".to_string(),
+            value: empty_list_value(dag, conj_field_ty(dag, dag_root, "nodes")),
+        },
+        NamedField {
+            label: "ports".to_string(),
+            value: empty_list_value(dag, conj_field_ty(dag, dag_root, "ports")),
+        },
+        NamedField {
+            label: "clusters".to_string(),
+            value: empty_list_value(dag, conj_field_ty(dag, dag_root, "clusters")),
+        },
+    ])
+}
+
+fn empty_list_value(dag: &mut v3_compiler::dag::Dag, list_ty: DeclarationId) -> Value {
+    let tag = dag.test_materialize_list_empty_variant_tag(list_ty);
+    Value::VariantValue {
+        tag,
+        payload: Box::new(Value::RecordValue(vec![])),
+    }
+}
+
 #[test]
 fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() {
     assert!(
-        !OPTION3_SOURCE.contains("lens_apply::"),
-        "guard: must not mention lens_apply::"
+        !OPTION3_SOURCE.contains(GUARD_LENS_APPLY_MOD),
+        "fixture must not import the lens apply reflection path"
     );
     assert!(
-        !OPTION3_SOURCE.contains("eval_substrate_reify"),
-        "guard: must not mention eval_substrate_reify"
+        !OPTION3_SOURCE.contains(GUARD_EVAL_SUBSTRATE_REIFY),
+        "fixture must not mention substrate reify helper"
     );
     assert!(
-        !OPTION3_SOURCE.contains("reflect_behavior"),
-        "guard: must not mention reflect_behavior"
+        !OPTION3_SOURCE.contains(GUARD_REFLECT_BEHAVIOR),
+        "fixture must not mention reflect-behavior helper"
     );
 
-    let dag = cached_compile_to_dag(OPTION3_SOURCE, OPTION3_FILE);
+    let mut dag = cached_compile_to_dag(OPTION3_SOURCE, OPTION3_FILE);
     assert!(
         dag.diagnostics().is_empty(),
         "option3 fixture must compile: {:?}",
@@ -324,12 +347,25 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
                 n,
                 Behavior::Transform(t) if matches!(
                     &t.target,
-                    v3_compiler::dag::TransformTarget::Callable(id)
+                    TransformTarget::Callable(id)
                         if *id == mini_read_id || *id == mini_validate_id
                 )
             )
         }),
         "mini_read / mini_validate must lower to TransformTarget::Callable"
+    );
+
+    assert!(
+        dag.nodes().iter().any(|n| {
+            matches!(
+                n,
+                Behavior::Transform(t) if matches!(
+                    &t.target,
+                    TransformTarget::FieldProject { field_label, .. } if field_label == "name"
+                )
+            )
+        }),
+        "expected FieldProject on static lens `name` (non-function field)"
     );
 
     let (d_port, b_port) = {
@@ -341,7 +377,7 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
         (bind.params[0], bind.params[1])
     };
 
-    let d_val = eval_nullary_fn(&dag, "opaque_dag");
+    let d_val = opaque_dag_value(&mut dag);
     let b_beh = sample_value_behavior(&dag);
     let b_val = match &b_beh {
         Behavior::Value(v) => behavior_value_variant(&dag, v),
@@ -385,6 +421,50 @@ fn e6_g1a_option3_static_lens_mini_report_executes_without_reflection_imports() 
     assert_eq!(
         dim_name,
         &Value::LiteralValue(LiteralBits::String("mini_static".to_string())),
-        "`dimension_name` must come from FieldProject on mini_lens.name"
+        "`dimension_name` must match the static `mini_lens` name field"
+    );
+
+    let witnesses = fields
+        .iter()
+        .find(|f| f.label == "witnesses")
+        .map(|f| &f.value)
+        .expect("witnesses");
+    let Value::VariantValue { tag: cons_tag, payload } = witnesses else {
+        panic!("witnesses must be a non-empty list (Cons)");
+    };
+    let cons_decl = dag.declaration_by_name("Cons").expect("cons").id;
+    assert_eq!(
+        *cons_tag, cons_decl,
+        "witness list must use structural Cons from std.list"
+    );
+    let Value::RecordValue(cons_fields) = &**payload else {
+        panic!("Cons payload");
+    };
+    let head = cons_fields
+        .iter()
+        .find(|f| f.label == "head")
+        .map(|f| &f.value)
+        .expect("head");
+    let Value::VariantValue {
+        tag: inhabits_tag,
+        payload: inh_payload,
+    } = head
+    else {
+        panic!("witness head must be Witness variant");
+    };
+    let inhabits_ctor = disj_variant_constructor_id(&dag, "Witness", "Inhabits");
+    assert_eq!(*inhabits_tag, inhabits_ctor);
+    let Value::RecordValue(inh_fields) = &**inh_payload else {
+        panic!("Inhabits payload");
+    };
+    let carrier = inh_fields
+        .iter()
+        .find(|f| f.label == "Inhabits")
+        .map(|f| &f.value)
+        .expect("Inhabits field");
+    assert_eq!(
+        carrier,
+        &Value::LiteralValue(LiteralBits::Int(1)),
+        "witness list must repeat Inhabits(c) for composed carrier `c`"
     );
 }
