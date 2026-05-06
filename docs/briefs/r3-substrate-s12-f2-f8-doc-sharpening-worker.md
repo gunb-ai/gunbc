@@ -1,5 +1,5 @@
 ---
-status: draft (worker brief; cascade-clearance trigger fired post-#1820 merge 2026-05-06; dispatchable now)
+status: RETIRED 2026-05-06 — Director ratified option (2) retirement at gunbc#828 #issuecomment-4385873... post smart-ram-167 substrate-state STOP. F2 absorbed by 2026-05-04 routing + #1662 closure (`Result/DivError span.file-keyed` retired); F8 topical concerns distributed across live rows (Class 5 Gap 3 / Character-level / Filename-sentinel-bridges) with their own owners and dissolution paths. Doc-discipline goals absorbed by per-Mgr citation paydown (#issuecomment-4385583247 routing). Worker pin freed.
 authority parent: R3 Substrate Manager (#1739)
 ratification: B6 RATIFIED single bundled Mgr-tier doc-sharpening PR per Substrate canvas + R3 design schedule §1 S12
 roadmap row: ROADMAP F2 (`.v3` filename-suffix grammar dispatch) + F8 (bootstrap load-order/exclusion authority) — both rows retire on PR land
