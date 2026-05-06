@@ -792,7 +792,21 @@ Substantive cross-program review surfacing ctrl-side coupling concerns + structu
 
 **Plan integration**: 6 new escalations added to §10.3 (Q-Class-6 / Q-Timeline-Risk-Alternates / Q-Plan-vs-Structure-Drift / Q-WEDGE-A / Q-Tier4-Inclusion / Q-Lens-Self-App-Stronger-Demo / Q-Director-PM-Redundancy). Y-3 deferred to canonical ledger absorption.
 
-#### §10.2.5 R3 PB Mgr (neat-bear-351, #1742) — pending canvas response (as-of 2026-05-06T01:52Z)
+#### §10.2.5 R3 PB Mgr (neat-bear-351, #1742) — full review absorbed 2026-05-06T02:20Z (final Mgr — 8 of 8 reviewers complete)
+
+PB Mgr's substantive review on PR #1808 + canvas/refinements receipt at gunbc#846 #issuecomment-4384374658. Refinements A/B + YELLOW chain rule received and applied to PB lane work in flight. 5 plan poke-holes:
+
+**F1 (§2.2 sequencing reversed — material)**: Plan §2.2 said T-FixedPoint → T-LensProducer-Retirement → ... → v2. But r3-structure.md §"Lane structure" T-FixedPoint row names "SG-0 zero from T-LensProducer-Retirement" as R2-close dependency — i.e., T-LP-Retirement feeds T-FixedPoint, NOT reverse. **Fix**: §2.2 sequence corrected — T-LensProducer-Retirement completes (step 1) → T-FixedPoint (step 2; gated on SG-0 zero) → v2 deletion (step 4 post-FP+LP).
+
+**F2 (§3 PB rows still TBD)**: honest acknowledgment — placeholders remain until PM compile merges sweep + audit PRs. PB Mgr will replace TBD with named dispatches once those land. No fix — accurate reporting.
+
+**F3 (§1.6 / §4.5 "PB-Runtime demo" for LensProducer not execution-ready)**: `lens_apply` reflection via PB-Runtime is right Class-5 sub-gate shape but NOT execution-ready demo gate until Item 4 + Row-4 equivalence receipts exist (per `docs/design-pb-runtime-interpreter.md` §5.1 + convergence matrix). Better near-term: retirement state-check + doc receipts. **Fix**: §1.6 row reframed from `lens_producer_retirement_demonstration` → `lens_producer_retirement_executable_witness` (DEFERRED to Row-4 receipts; "demonstration" status re-promotes when Row-4 + Item 4 receipts exist).
+
+**F4 (Q3 boundary fuzz)**: "PB owns all v2 retirement" too coarse. Grounding items (emit shim / LanguageSpec / coercion-fold scratch) are v2-shaped but not obviously PB-only. Need explicit split matrix. → **Q-V2-Retirement-Boundary-Matrix** in §10.3.
+
+**F5 (§2.3 bridge sequencing — parallel-authority risk)**: §2.3 "`include_str!` retires post-T-FixedPoint" looks like new ordering detail vs r3-structure.md distribution map. → **Q-Bridge-Retirement-Sequencing-Authority** in §10.3 (move sequencing to r3-structure.md authoritative row).
+
+**Standing**: PB Mgr will re-read PR #1808 at sha at HEAD before next PB-authored sweep row or PR-debt flag.
 
 #### §10.2.6 R3 Debt-Paydown Mgr (quiet-otter-416) — full canvas + plan-poke-hole absorbed at sha `e41e4fbe8` (2026-05-06)
 
