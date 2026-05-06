@@ -115,15 +115,28 @@ data mini_lens: Lens<Int> = {
 }
 
 fn mini_report(d: Dag, b: Behavior) -> DimensionReport<Int> =
-  match mini_lens.validate(d, 1) {
-    NoDiagnostic =>
-      DimensionOk {
-        dimension_name: mini_lens.name,
-        composed: 1,
-        witnesses: ...
+  match mini_lens.read(d, b) {
+    Inhabits(c) =>
+      match mini_lens.validate(d, c) {
+        NoDiagnostic =>
+          DimensionOk {
+            dimension_name: mini_lens.name,
+            composed: c,
+            witnesses: singleton_witness(Inhabits(c))
+          }
+        SomeDiagnostic { value: diag } =>
+          DimensionFail {
+            dimension_name: mini_lens.name,
+            violations: singleton_diagnostic(diag),
+            witnesses: singleton_witness(Inhabits(c))
+          }
       }
-    SomeDiagnostic { value: _diag } =>
-      DimensionFail { ... }
+    Violates { reason: diag, at: beh } =>
+      DimensionFail {
+        dimension_name: mini_lens.name,
+        violations: singleton_diagnostic(diag),
+        witnesses: singleton_witness(Violates { reason: diag, at: beh })
+      }
   }
 ```
 
@@ -131,6 +144,13 @@ The implementation test may bind `d` and `b` directly in the evaluator frame
 using existing `Value` carriers, but the representative must not inspect either
 argument. If any body needs to project fields from `d` or `b`, the probe has
 crossed back into reflected-program reification and must STOP.
+
+The `singleton_witness` / `singleton_diagnostic` helpers above are placeholders
+for whatever declared list constructor surface is live at implementation time.
+The implementation may choose an equivalent already-declared list producer, but
+it must not replace the witness list with an unrelated literal or empty list:
+the `Witness<C>` returned by `mini_lens.read(d, b)` must flow into the
+`DimensionReport<C>`.
 
 ## Feasibility Checks
 
@@ -146,7 +166,11 @@ Before authoring an implementation brief, verify at HEAD:
    carriers only, and no executed body inspects them.
 4. Report constructors for `Witness<C>`, `OptionalDiagnostic`, and
    `DimensionReport<C>` execute through E6-G0d constructor runtime support.
-5. The representative avoids `LoopBound::Descent`; any iteration uses
+5. `mini_report` or its final equivalent calls `mini_lens.read(d, b)` and uses
+   the returned `Witness<C>` to choose the report path and populate report
+   witnesses/composed/fail fields as appropriate. A report built from only
+   literals is not sufficient.
+6. The representative avoids `LoopBound::Descent`; any iteration uses
    cardinality-only behavior or no loop.
 
 ## Feasibility Outcomes
@@ -166,6 +190,9 @@ Acceptance for the implementation brief:
   `ReflectedProgram<T>` / typed declaration-reference carrier work;
 - compile-to-evaluate test proves the static lens value is consumed;
 - lens function fields execute through `TransformTarget::Callable`;
+- the implementation test fails if `mini_lens.read(d, b)` is removed, bypassed,
+  or replaced by a literal carrier; the returned `Witness<C>` must feed the
+  `DimensionReport<C>`;
 - non-function field reads execute through `FieldProject` where the live
   representative uses them, such as `mini_lens.name` or
   `mini_lens.sequential.identity`;
