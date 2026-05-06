@@ -5,6 +5,13 @@
 # declarations in the PR body so net *adds* to `EXPECTED_HAND_AUTHORED_*`
 # carry an explicit pairing class (retirement / Director budget / deferral).
 #
+# On pull_request, the declared `SG-0 hand-path delta:` must match the net
+# change to EXPECTED_* census string rows as counted from
+# `git diff origin/main...HEAD` (adds minus removes of
+# `    "src/v3/compiler/...",` lines). Heuristic: ignores edits that only touch
+# comments, tests, or non-array strings; if a legitimate census edit does not
+# match the counter, escalate to Director rather than weakening the gate.
+#
 # Authority: ROADMAP.md (SG-0 PR-window net-shrink discipline) +
 # `.github/PULL_REQUEST_TEMPLATE.md` "SG-0 net-shrink discipline" section.
 #
@@ -17,11 +24,92 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+SG0_CENSUS='src/v3/compiler/tests/integration/sg0_census_test.rs'
+
 usage() {
   echo "usage: $0 [--self-test | --check-body-only]" >&2
   echo "  --self-test / --check-body-only take no additional arguments." >&2
   echo "  pull_request: requires GITHUB_EVENT_NAME=pull_request, PR_BODY," >&2
   echo "  and origin/main fetch so git diff origin/main...HEAD is meaningful." >&2
+}
+
+# Sets SG0_DECLARED_INT (signed net paths claimed in PR body).
+sg0_validate_pr_body_format() {
+  local body="$1"
+  local delta_line token need_pairing pairing_block
+
+  if ! printf '%s\n' "$body" | grep -qE '^SG-0 hand-path delta:'; then
+    echo "::error::PR body missing required line starting with \`SG-0 hand-path delta:\`"
+    return 1
+  fi
+  delta_line=$(printf '%s\n' "$body" | grep -E '^SG-0 hand-path delta:' | head -1)
+  token=${delta_line#SG-0 hand-path delta:}
+  # shellcheck disable=SC2086
+  token=$(echo "$token" | awk '{print $1; exit}')
+  if [ -z "$token" ]; then
+    echo "::error::SG-0 hand-path delta line has no numeric token"
+    return 1
+  fi
+
+  need_pairing=0
+  if [[ "$token" =~ ^\+0$ ]] || [[ "$token" == "0" ]]; then
+    need_pairing=0
+    SG0_DECLARED_INT=0
+  elif [[ "$token" =~ ^-([1-9][0-9]*)$ ]]; then
+    need_pairing=0
+    SG0_DECLARED_INT=$((0 - BASH_REMATCH[1]))
+  elif [[ "$token" =~ ^\+([1-9][0-9]*)$ ]]; then
+    need_pairing=1
+    SG0_DECLARED_INT=${BASH_REMATCH[1]}
+  else
+    echo "::error::Unrecognized SG-0 hand-path delta token: $token (use signed integers: 0, +0, -N, +N)"
+    return 1
+  fi
+
+  if [ "$need_pairing" -eq 1 ]; then
+    pairing_block=$(printf '%s\n' "$body" | awk '
+      /^[[:space:]]*SG-0 pairing:/ {
+        print
+        if (getline > 0) print
+        exit
+      }
+    ')
+    if [ -z "$pairing_block" ]; then
+      echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a \`SG-0 pairing:\` line"
+      return 1
+    fi
+    if printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(a\)'; then
+      if ! printf '%s\n' "$pairing_block" | grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)'; then
+        echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
+        return 1
+      fi
+    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(b\)'; then
+      if ! printf '%s\n' "$pairing_block" | grep -qE 'https://|http://'; then
+        echo "::error::SG-0 pairing (b) must cite a Director-budget URL (http(s):// on the pairing line or the line immediately after)"
+        return 1
+      fi
+    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(c\)'; then
+      if ! printf '%s\n' "$pairing_block" | grep -qiE '\(c\).*dispatch'; then
+        echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
+        return 1
+      fi
+    else
+      echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks \`SG-0 pairing: (a)\`, \`(b)\`, or \`(c)\`"
+      return 1
+    fi
+  fi
+  return 0
+}
+
+# Net change to EXPECTED_* hand-path string rows (see header).
+sg0_net_path_delta_from_git_diff() {
+  local diff_out adds rems
+  diff_out=$(git diff origin/main...HEAD -- "$SG0_CENSUS")
+  adds=$(printf '%s\n' "$diff_out" | grep -E '^\+\s{4}"src/v3/compiler/[^"]+",\s*$' | wc -l)
+  rems=$(printf '%s\n' "$diff_out" | grep -E '^\-\s{4}"src/v3/compiler/[^"]+",\s*$' | wc -l)
+  adds=${adds// /}
+  rems=${rems// /}
+  echo $((10#${adds:-0} - 10#${rems:-0}))
 }
 
 self_test() {
@@ -71,64 +159,7 @@ if [ "${1:-}" = --check-body-only ]; then
     usage
     exit 2
   fi
-  body=${PR_BODY:-}
-  if ! printf '%s\n' "$body" | grep -qE '^SG-0 hand-path delta:'; then
-    echo "::error::PR body missing required line starting with \`SG-0 hand-path delta:\`"
-    exit 1
-  fi
-  delta_line=$(printf '%s\n' "$body" | grep -E '^SG-0 hand-path delta:' | head -1)
-  token=${delta_line#SG-0 hand-path delta:}
-  # shellcheck disable=SC2086
-  token=$(echo "$token" | awk '{print $1; exit}')
-  if [ -z "$token" ]; then
-    echo "::error::SG-0 hand-path delta line has no numeric token"
-    exit 1
-  fi
-
-  need_pairing=0
-  if [[ "$token" =~ ^\+0$ ]] || [[ "$token" == "0" ]]; then
-    need_pairing=0
-  elif [[ "$token" =~ ^-([1-9][0-9]*)$ ]]; then
-    need_pairing=0
-  elif [[ "$token" =~ ^\+([1-9][0-9]*)$ ]]; then
-    need_pairing=1
-  else
-    echo "::error::Unrecognized SG-0 hand-path delta token: $token (use signed integers: 0, +0, -N, +N)"
-    exit 1
-  fi
-
-  if [ "$need_pairing" -eq 1 ]; then
-    pairing_block=$(printf '%s\n' "$body" | awk '
-      /^[[:space:]]*SG-0 pairing:/ {
-        print
-        if (getline > 0) print
-        exit
-      }
-    ')
-    if [ -z "$pairing_block" ]; then
-      echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks a \`SG-0 pairing:\` line"
-      exit 1
-    fi
-    if printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(a\)'; then
-      if ! printf '%s\n' "$pairing_block" | grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)'; then
-        echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
-        exit 1
-      fi
-    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(b\)'; then
-      if ! printf '%s\n' "$pairing_block" | grep -qE 'https://|http://'; then
-        echo "::error::SG-0 pairing (b) must cite a Director-budget URL (http(s):// on the pairing line or the line immediately after)"
-        exit 1
-      fi
-    elif printf '%s\n' "$pairing_block" | grep -qE '^[[:space:]]*SG-0 pairing:[[:space:]]*\(c\)'; then
-      if ! printf '%s\n' "$pairing_block" | grep -qiE '\(c\).*dispatch'; then
-        echo "::error::SG-0 pairing (c) must name follow-up dispatch (include \"dispatch\" on the pairing line or the line immediately after)"
-        exit 1
-      fi
-    else
-      echo "::error::SG-0 hand-path delta is a strict net add ($token) but PR body lacks \`SG-0 pairing: (a)\`, \`(b)\`, or \`(c)\`"
-      exit 1
-    fi
-  fi
+  sg0_validate_pr_body_format "${PR_BODY:-}" || exit 1
   exit 0
 fi
 
@@ -154,10 +185,19 @@ if ! git rev-parse -q --verify origin/main >/dev/null 2>&1; then
   exit 0
 fi
 
-if ! git diff --name-only origin/main...HEAD | grep -Fxq 'src/v3/compiler/tests/integration/sg0_census_test.rs'; then
+if ! git diff --name-only origin/main...HEAD | grep -Fxq "$SG0_CENSUS"; then
   exit 0
 fi
 
 body=${PR_BODY:-}
-export PR_BODY=$body
-exec bash "$ROOT/scripts/check-pr-sg0-net-shrink-discipline.sh" --check-body-only
+if ! sg0_validate_pr_body_format "$body"; then
+  exit 1
+fi
+
+computed_net=$(sg0_net_path_delta_from_git_diff)
+if [ "${SG0_DECLARED_INT:-}" -ne "$computed_net" ]; then
+  echo "::error::SG-0 hand-path delta mismatch: PR body declares net ${SG0_DECLARED_INT} path(s) in EXPECTED_HAND_* \`\"src/v3/compiler/...\",\` rows, but \`git diff origin/main...HEAD -- ${SG0_CENSUS}\` counts net adds−removes of those lines as ${computed_net}. Fix the PR description or the census edit; if the diff shape is a legitimate edge case this counter misses, escalate to Director to extend the counter (see script header)."
+  exit 1
+fi
+
+exit 0
