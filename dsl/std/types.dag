@@ -241,8 +241,22 @@ type SemVer       = String where pattern("^\\d+\\.\\d+\\.\\d+")
 type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
-type PositiveInt     = Int where range(min: 1)
-type NonNegativeInt  = Int where range(min: 0)
+// Nat-alignment migration (S9 Slice 2 / Phase-4): non-negativity is structural
+// to `Nat` (the canonical natural-number carrier), not a refinement predicate
+// over `Int`. Refining `Int` for non-negativity would project out Nat's
+// structural property — the same modeling fault Codex's BLOCKING review on
+// PR #1818 caught for the `UInt = CommutativeMonoid<Nat>` shorthand.
+//
+// `NonNegativeInt = Nat` (canonical-instance alias; analogous to landed
+// `UInt = Nat` at #1818). The "non-negative" property IS Nat by construction.
+//
+// `PositiveInt = Nat where range(min: 1)` (algebra-side stays on Nat;
+// gt-zero is the value-level predicate over Nat, not Int). Per Slice 3
+// (#1466) Int landed as `AbelianGroup<GroupCompletion<Nat>>` — predicates
+// over Nat directly preserve the constructive edge rather than projecting
+// non-negative slices out of Int's group surface.
+type NonNegativeInt  = Nat
+type PositiveInt     = Nat where range(min: 1)
 
 // Path modeling (EX-2):
 // - FilePath remains a compatibility alias for existing modules.
