@@ -190,7 +190,9 @@ if ! git rev-parse -q --verify origin/main >/dev/null 2>&1; then
   exit 0
 fi
 
-if ! git diff --name-only origin/main...HEAD | grep -Fxq "$SG0_CENSUS"; then
+# Census unchanged vs origin/main — path-limited diff only (avoid
+# `git diff --name-only … | grep -q` + pipefail + SIGPIPE false-negative).
+if git diff --quiet origin/main...HEAD -- "$SG0_CENSUS"; then
   exit 0
 fi
 
