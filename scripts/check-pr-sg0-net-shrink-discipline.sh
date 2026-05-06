@@ -84,8 +84,10 @@ sg0_validate_pr_body_format() {
     # (template: "that line or immediately after") while grep(1) does not span '\n' with '.'.
     pairing_flat=$(printf '%s\n' "$pairing_block" | tr '\n' ' ')
     if grep -qE '^SG-0 pairing:[[:space:]]*\(a\)' <<<"$pairing_block"; then
-      if ! grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+[^[:space:]]+)' <<<"$pairing_flat"; then
-        echo "::error::SG-0 pairing (a) must name removed paths (.rs paths, multi-segment / paths, or \"removed …\" on the pairing line or the line immediately after)"
+      # (a) evidence: .rs token, multi-segment / path, or "removed" followed by a path-shaped token
+      # (not bare "removed <word>" — same-PR retirement must name real removed paths per ROADMAP).
+      if ! grep -qE '\(a\).*(\.[rR][sS]\>|[[:alnum:]_-]{2,}/[[:alnum:]_./-]+|removed[[:space:]]+(src/v3/compiler/[[:alnum:]_./-]+|[[:alnum:]_./-]+\.[rR][sS]|[[:alnum:]_./-]+\.[tT][xX][tT]))' <<<"$pairing_flat"; then
+        echo "::error::SG-0 pairing (a) must name removed paths (.rs / .txt tokens, multi-segment / paths, or \"removed\" followed by \`src/v3/compiler/…\` or a *.rs / *.txt path on the pairing line or the line immediately after)"
         return 1
       fi
     elif grep -qE '^SG-0 pairing:[[:space:]]*\(b\)' <<<"$pairing_block"; then
@@ -188,6 +190,7 @@ self_test() {
   run_case "malformed negative delta token" $'SG-0 hand-path delta: -not-a-number' fail
   run_case "bare (b) without URL" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)' fail
   run_case "(a) without path evidence" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) deferred only' fail
+  run_case "(a) removed without path-shaped token" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a) removed not-a-path' fail
   run_case "(c) without dispatch" $'SG-0 hand-path delta: +1\nSG-0 pairing: (c) later' fail
   run_case "(b) URL on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (b)\nhttps://github.com/gunb-ai/gunbc/issues/1' pass
   run_case "(a) path evidence on following line" $'SG-0 hand-path delta: +1\nSG-0 pairing: (a)\nremoved src/v3/compiler/src/foo.rs' pass
