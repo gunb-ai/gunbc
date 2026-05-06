@@ -80,6 +80,12 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
 
+**Two distinct Pass surfaces** (per Debt-Paydown Mgr poke-hole 2026-05-06 — clarification prevents conflating predicates):
+- **Lane `.dag` TestClaim gates (70 total)**: per-lane closure predicates passing via `.dag` evaluation, runtime demonstration, or CI consumer (per §1.7 status taxonomy).
+- **`r3_debt_paydown_zero_remaining`**: standing-program ledger predicate — no tracked ROADMAP debt rows survive R3 close (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" + §1.5 tracked-debt inclusion list).
+
+Both must hold for R3 close. "70 gates green" alone does not satisfy zero-debt; "zero debt rows" alone does not satisfy lane closure.
+
 **Tracked-debt inclusion list for `r3_debt_paydown_zero_remaining`** (per Director poke-hole 2026-05-06 finding 3.1; closes definition gap):
 
 - **Counts toward zero**: ROADMAP open `- **` rows under "Post-merge debt" sections; sweep-doc §1 Class A/B/C/F/G entries (per §1.3 inclusion criteria); §10 RED-flagged escalation items.
@@ -255,7 +261,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 | T-Lens-Application-Surface | Substrate + Verification | YELLOW | r3-substrate-tests-as-data-carrier-slice-1-stop-ping | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
 | T-Workflow-As-Data | Substrate | YELLOW | r3-v-bridge-row-* + design-timing-lens | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
 | T-Lens-Self-Application | Verification | RED | (waits on Workflow-As-Data + LAS) | T-Workflow-As-Data + T-Lens-Application-Surface | post-WAD+LAS |
-| T-Debt-Paydown (standing) | Debt-Paydown | YELLOW | (TBD from canvas) | per-PR rule + drift-item reconciliation | continuous |
+| T-Debt-Paydown (standing) | Debt-Paydown | YELLOW | PR #1807 (SG-0 PR-body / diff-reconcile gate; OPEN); PR #1566 (rollup hygiene; OPEN/DRAFT per `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`); Tier-1 dispatch-brief drift sweep (`docs/audit/r3-dispatch-brief-drift-sweep-2026-05-05.md`) verified | per-PR rule + drift-item reconciliation (Q7) + velocity-tripwire reporting cadence + closure-receipt cadence + SG-0 PR-window net-shrink discipline | continuous (per Debt-Paydown Mgr poke-hole 2026-05-06 — TBD framing replaced with concrete in-flight anchors) |
 
 **Status legend**: GREEN = no open work, awaiting close audit. YELLOW = work in flight. RED = blocked on upstream.
 
@@ -475,7 +481,17 @@ These edges parallel the global + Verification critical paths; Grounding lane co
 
 ## §7. PR-authoring contract
 
-Per R3 Debt-Paydown standing program (`r3-structure.md` §"Standing program — R3 Debt-Paydown" + INVARIANTS §P5):
+Per R3 Debt-Paydown standing program (`r3-structure.md` §"Standing program — R3 Debt-Paydown" + INVARIANTS §P5). **Four owned mechanisms** mirrored from canonical authority (per Debt-Paydown Mgr poke-hole 2026-05-06):
+- **(1) Per-PR discipline rule**: §7.1 (debt-receipt)
+- **(2) Velocity tripwire**: §7.6 (introduction:dissolution ratio enforcement)
+- **(3) Closure-receipt cadence**: §7.7 (per-tracked-debt-row receipt cadence)
+- **(4) SG-0 PR-window net-shrink discipline**: §7.8 (Director-ratified merge gate)
+
+Plus discipline-application:
+- §7.2 Ratchet-only-down (SG-0 zero-floor)
+- §7.3 Anticipation discipline
+- §7.4 Section/symbol anchors over line numbers
+- §7.5 Grep-verify against source authority
 
 ### §7.1 Per-PR debt-receipt
 
@@ -507,6 +523,18 @@ Per `feedback_section_anchors_over_line_numbers` (validated PRs #1776, #1787, #1
 ### §7.5 Grep-verify against source authority
 
 Per `feedback_corrections_must_grep_verify_source`: any correction-of-a-relay must grep-verify against source authority before relaying. Cross-references aren't verification.
+
+### §7.6 Velocity tripwire (Debt-Paydown owned mechanism #2)
+
+Per `INVARIANTS.md §P5` Dispatch-Discipline Mechanisms (c): **introduction:dissolution PR ratio ≥3:1 in any 7-day window** triggers Director review of ad-hoc lane dispatch. R3 Debt-Paydown Mgr surfaces tripwire readings to Director on cadence (per `r3-structure.md` §"Standing program — R3 Debt-Paydown"). Tripwire fire = signal that introduction is outpacing dissolution; not an automatic block, but a Director-review-required event.
+
+### §7.7 Closure-receipt cadence (Debt-Paydown owned mechanism #3)
+
+Per `r3-structure.md` §"Standing program — R3 Debt-Paydown": every tracked-debt row retires with a PR receipt before R3 close. The receipt names: (a) the row being retired, (b) the structural event that retires it, (c) the PR landing the retirement. Vague deferrals rejected (per INVARIANTS §P5 Dispatch-Discipline Mechanisms (b)). Closure-ledger entry per receipt; aggregation feeds `r3_debt_paydown_zero_remaining` predicate.
+
+### §7.8 SG-0 PR-window net-shrink discipline (Debt-Paydown owned mechanism #4)
+
+Per Director ratification + ROADMAP authority + `.github/PULL_REQUEST_TEMPLATE.md`: every PR touching SG-0 census surfaces (`src/v3/compiler/tests/integration/sg0_census_test.rs` `EXPECTED_HAND_AUTHORED_*` arrays) MUST carry net-shrink discipline — additions paired with removals OR explicit Director allocation citing the program shape. CI enforcement via `scripts/check-pr-sg0-net-shrink-discipline.sh` (gate `pr_anticipation_discipline_ci_active` per §1 closure-gate set). This is a **merge-discipline gate**, NOT a `.dag` TestClaim — separate Pass surface from lane gates (per §1 two-Pass-surfaces clarification). Routed to R3 Debt-Paydown Mgr (#1744 #issuecomment-4383628247).
 
 ---
 
