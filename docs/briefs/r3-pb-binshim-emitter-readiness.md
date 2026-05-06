@@ -1,6 +1,6 @@
 # R3 PB — BinShim Rust emitter readiness (PB-owned planning slice)
 
-**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-05-01 by PB Manager continuation per inbox #1150 / #1134 — **emitter boundary** after `BinShim` carrier landing (#1361), **before** `regen_lens_shim` instance merge is required and **without** authoring the §7.2 equivalence `TestClaim` (PB-assigned §7.2 worker under the BinShim retirement dispatch — not this readiness slice). **Mechanical HEAD refresh 2026-05-06** (warm-ant-877 / [#1895](https://github.com/gunb-ai/gunbc/issues/1895)): loader / build facts in §"Implementation slice STOP" re-pinned to `origin/main` **`831080dee`**.
+**Status:** PROPOSAL (planning artifact, dispatch-gated). Authored 2026-05-01 by PB Manager continuation per inbox #1150 / #1134 — **emitter boundary** after `BinShim` carrier landing (#1361), **before** `regen_lens_shim` instance merge is required and **without** authoring the §7.2 equivalence `TestClaim` (PB-assigned §7.2 worker under the BinShim retirement dispatch — not this readiness slice). **Mechanical HEAD refresh 2026-05-06** (warm-ant-877 / [#1895](https://github.com/gunb-ai/gunbc/issues/1895)): loader / build facts in §"Implementation slice STOP" re-pinned to `origin/main` **`54419badf`** — `docs(briefs): Lens<EmissionProvenance> worker brief — PM-authored, Director-ratified (#1902)`.
 
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation per `docs/r3-structure.md` §"Manager structure" Item 1).
 
