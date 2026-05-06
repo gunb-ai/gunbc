@@ -1,45 +1,65 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 740 260" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 480" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
-    </marker>
     <style>
       .title { font-size: 17px; font-weight: 600; fill: #1f2328; }
       .sub { font-size: 12px; fill: #57606a; }
-      .label { font-size: 10px; font-weight: 700; fill: #57606a; letter-spacing: 0.10em; }
+      .row-label { font-size: 10px; font-weight: 700; fill: #57606a; letter-spacing: 0.10em; }
       .badge { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; }
       .badge-rust   { fill: #ce422b; }
       .badge-python { fill: #3776ab; }
-      .badge-go     { fill: #00add8; }
-      .badge-ts     { fill: #3178c6; }
       .badge-dag    { fill: #57606a; }
       .code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; fill: #1f2328; }
       .card { fill: #ffffff; stroke: #d0d7de; stroke-width: 1; }
       .card-header { fill: #f6f8fa; stroke: #d0d7de; stroke-width: 1; }
-      .arrow { stroke: #8b949e; stroke-width: 1.4; fill: none; marker-end: url(#arrow); }
     </style>
   </defs>
 
   <text x="20" y="30" class="title">Start small.</text>
-  <text x="20" y="48" class="sub">One type. One language. One piece of code.</text>
+  <text x="20" y="48" class="sub">One type. One little function that uses it. One language. The compiler emits both.</text>
 
-  <text x="20" y="78" class="label">YOU WRITE</text>
-  <rect x="20" y="88" width="240" height="22" class="card-header"/>
-  <rect x="20" y="110" width="240" height="100" class="card"/>
-  <text x="32" y="104" class="badge badge-dag">.dag</text>
-  <text x="32" y="132" class="code">type Pair&lt;A, B&gt; {</text>
-  <text x="32" y="150" class="code">  first: A</text>
-  <text x="32" y="168" class="code">  second: B</text>
-  <text x="32" y="186" class="code">}</text>
+  <!-- ROW 1: TYPES -->
+  <text x="20" y="78" class="row-label">TYPES — the compositional model</text>
 
-  <path d="M 270 150 L 308 150" class="arrow"/>
+  <rect x="20" y="88" width="320" height="22" class="card-header"/>
+  <text x="32" y="103" class="badge badge-dag">.dag</text>
+  <rect x="20" y="110" width="320" height="78" class="card"/>
+  <text x="32" y="130" class="code">type Sum&lt;A, B&gt; =</text>
+  <text x="32" y="148" class="code">    Left  { value: A }</text>
+  <text x="32" y="166" class="code">  | Right { value: B }</text>
 
-  <text x="320" y="78" class="label">COMPILER GENERATES</text>
-  <rect x="320" y="88" width="400" height="22" class="card-header"/>
-  <rect x="320" y="110" width="400" height="100" class="card"/>
-  <text x="332" y="104" class="badge badge-rust">RUST</text>
-  <text x="332" y="132" class="code">pub struct Pair&lt;A, B&gt; {</text>
-  <text x="332" y="150" class="code">    pub first: A,</text>
-  <text x="332" y="168" class="code">    pub second: B,</text>
-  <text x="332" y="186" class="code">}</text>
+  <rect x="360" y="88" width="380" height="22" class="card-header"/>
+  <text x="372" y="103" class="badge badge-rust">RUST</text>
+  <rect x="360" y="110" width="380" height="78" class="card"/>
+  <text x="372" y="130" class="code">pub enum Sum&lt;A, B&gt; {</text>
+  <text x="372" y="148" class="code">    Left  { value: A },</text>
+  <text x="372" y="166" class="code">    Right { value: B },</text>
+  <text x="372" y="184" class="code">}</text>
+
+  <!-- ROW 2: LOGIC -->
+  <text x="20" y="228" class="row-label">LOGIC — someone actually calling it</text>
+
+  <rect x="20" y="238" width="320" height="22" class="card-header"/>
+  <text x="32" y="253" class="badge badge-dag">.dag</text>
+  <rect x="20" y="260" width="320" height="148" class="card"/>
+  <text x="32" y="280" class="code">fn unwrap_str(</text>
+  <text x="32" y="298" class="code">    s: Sum&lt;Str, Str&gt;</text>
+  <text x="32" y="316" class="code">) -&gt; Str =</text>
+  <text x="32" y="334" class="code">  match s {</text>
+  <text x="32" y="352" class="code">    Left  { value } =&gt; value</text>
+  <text x="32" y="370" class="code">    Right { value } =&gt; value</text>
+  <text x="32" y="388" class="code">  }</text>
+
+  <rect x="360" y="238" width="380" height="22" class="card-header"/>
+  <text x="372" y="253" class="badge badge-rust">RUST</text>
+  <rect x="360" y="260" width="380" height="148" class="card"/>
+  <text x="372" y="280" class="code">pub fn unwrap_str(</text>
+  <text x="372" y="298" class="code">    s: Sum&lt;String, String&gt;,</text>
+  <text x="372" y="316" class="code">) -&gt; String {</text>
+  <text x="372" y="334" class="code">    match s {</text>
+  <text x="372" y="352" class="code">        Sum::Left  { value } =&gt; value,</text>
+  <text x="372" y="370" class="code">        Sum::Right { value } =&gt; value,</text>
+  <text x="372" y="388" class="code">    }</text>
+  <text x="372" y="406" class="code">}</text>
+
+  <text x="20" y="450" class="sub">A type and one consumer of it. The compiler emits a working Rust module from the .dag.</text>
 </svg>
