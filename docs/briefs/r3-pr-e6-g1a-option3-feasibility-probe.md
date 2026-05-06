@@ -154,11 +154,16 @@ Before authoring an implementation brief, verify at HEAD:
 ### Outcome A — Viable Representative Found
 
 Author a revised worker brief that replaces the original `Dag`/TC1-reflection
-representative with the accepted already-evaluator-shaped representative.
-That brief may dispatch an implementation PR only after Director review.
+representative with the accepted argument-opaque representative. Director
+review accepted this representative shape as sufficient for E6-G1.a's narrow
+mechanism-demonstration scope: static lens value consumption, static
+function-field calls, field projection, and report construction.
 
 Acceptance for the implementation brief:
 
+- acceptance gate explicitly says: lens consumer-wiring mechanism
+  demonstration; lens-over-`Dag` folding is deferred to
+  `ReflectedProgram<T>` / typed declaration-reference carrier work;
 - compile-to-evaluate test proves the static lens value is consumed;
 - lens function fields execute through `TransformTarget::Callable`;
 - non-function field reads execute through `FieldProject` where the live
@@ -168,7 +173,19 @@ Acceptance for the implementation brief:
   declared constructors;
 - test fails if it imports `lens_apply`, `eval_substrate_reify`, or reflection
   helpers;
-- PR body explicitly says reflected-program `Dag` folding remains deferred.
+- PR body explicitly says reflected-program `Dag` folding remains deferred;
+- cementing-test discipline for static lenses is not part of E6-G1.a Outcome A
+  acceptance. It waits behind Q-Reification and the reflected-program carrier
+  landing.
+
+Verification V1 cascade routing:
+
+- If Verification can demonstrate TC1 eta-equivalence with the
+  argument-opaque representative, V1 and E3 remain paired in the same release
+  step.
+- If TC1 eta-equivalence requires a real lens-over-`Dag` fold, V1 unpairs from
+  this E3 slice and waits for Q-Reification / carrier landing. This does not
+  block the E6-G1.a Outcome A mechanism demonstration.
 
 ### Outcome B — No Honest Representative Exists
 
