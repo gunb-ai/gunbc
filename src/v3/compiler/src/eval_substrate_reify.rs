@@ -9,18 +9,22 @@
 //! no inheritance of `reflect_program_dag_nodes_in_file` narrowing.
 
 use crate::behavior_field_reflection;
-use crate::dag::{Dag, FieldValue};
+use crate::dag::{Dag, FieldValue, LiteralBits};
 use crate::evaluator::{NamedField, Value};
 use crate::lens_apply::{empty_substrate_list_value, LensApplyError};
 use crate::lower;
 
 /// Convert structural [`FieldValue`] (from [`behavior_field_reflection`]) into [`Value`].
+///
+/// [`FieldValue::Reference`] carries a [`DeclarationId`]. The locked five-variant
+/// [`Value`] model (`runtime.dag`) has no declaration-reference inhabitant; this
+/// bridge encodes ids as [`LiteralBits::Int`] of the raw handle for evaluator
+/// plumbing (E6-G1.a). Revisit when PB-Runtime exposes a typed declaration handle
+/// in [`Value`].
 pub fn field_value_to_eval_value(dag: &Dag, fv: &FieldValue) -> Result<Value, LensApplyError> {
     match fv {
         FieldValue::Literal(bits) => Ok(Value::LiteralValue(bits.clone())),
-        FieldValue::Reference(_) => Err(LensApplyError::SubstrateReflect(
-            "FieldValue::Reference is not reified into evaluator Value (E6-G1.a)",
-        )),
+        FieldValue::Reference(id) => Ok(Value::LiteralValue(LiteralBits::Int(id.raw() as i64))),
         FieldValue::List(_) => Err(LensApplyError::SubstrateReflect(
             "FieldValue::List is not reified; reflection uses Cons spines",
         )),
@@ -41,7 +45,7 @@ pub fn field_value_to_eval_value(dag: &Dag, fv: &FieldValue) -> Result<Value, Le
             constructor,
             payload,
         } => {
-            let field_defs = lower::eval_constructor_variant_payload_fields(dag, *constructor)
+            let field_defs = lower::eval_constructor_variant_payload_fields(dag, *constructor, None)
                 .ok_or(LensApplyError::SubstrateReflect(
                     "variant constructor payload fields missing",
                 ))?;
@@ -80,8 +84,7 @@ pub fn field_value_to_eval_value(dag: &Dag, fv: &FieldValue) -> Result<Value, Le
 pub fn reify_compiled_dag_as_substrate_value(program: &Dag) -> Result<Value, LensApplyError> {
     let empty_fv = empty_substrate_list_value(program)?;
     let empty_val = field_value_to_eval_value(program, &empty_fv)?;
-    let nodes_fv =
-        behavior_field_reflection::reflect_behavior_list(program, program.nodes().as_slice())?;
+    let nodes_fv = behavior_field_reflection::reflect_behavior_list(program, program.nodes())?;
     let nodes_val = field_value_to_eval_value(program, &nodes_fv)?;
     Ok(Value::RecordValue(vec![
         NamedField {

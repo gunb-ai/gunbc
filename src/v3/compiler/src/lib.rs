@@ -616,8 +616,15 @@ pub mod evaluator {
                     _ => callee_decl,
                 };
                 if crate::lower::declaration_is_disj_variant_arm(dag, variant_tag_template) {
-                    let Some(fields) =
-                        crate::lower::eval_constructor_variant_payload_fields(dag, callee_decl)
+                    let outer_instantiation = dag
+                        .port_opt(&t.output)
+                        .and_then(|p| p.value_type())
+                        .map(|ty| ty.declaration);
+                    let Some(fields) = crate::lower::eval_constructor_variant_payload_fields(
+                        dag,
+                        callee_decl,
+                        outer_instantiation,
+                    )
                     else {
                         return Err(EvalError::BadTransformOperands {
                             reason: "variant constructor payload fields could not be resolved",

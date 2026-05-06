@@ -5,15 +5,15 @@
 //! Authority: `docs/briefs/r3-pr-e6-g1a-static-lens-fold-dispatch-packet.md` (slice boundary +
 //! acceptance gates). User `data … : Dag = …` literals remain class-5 blocked; the ratchet
 //! reifies a substrate `Dag` [`v3_compiler::evaluator::Value`] via
-//! [`v3_compiler::lens_apply::reify_substrate_dag_value_for_eval`] (reflection spine parity with
-//! `reflect_program_dag_nodes_in_file`).
+//! [`v3_compiler::eval_substrate_reify::reify_compiled_dag_as_substrate_value`] (whole-program
+//! `program.nodes()` order; no `source_file` filter).
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{ArrowBody, Behavior, TypeConnective};
+use v3_compiler::eval_substrate_reify::reify_compiled_dag_as_substrate_value;
 use v3_compiler::evaluator::{
     evaluate_body, EvalFrame, EvalStateStack, EvalStrategy, InputEvaluationOrder, Value,
 };
-use v3_compiler::lens_apply::reify_substrate_dag_value_for_eval;
 
 const G1A_SOURCE: &str = r#"
 import std.list { List, empty, fold }
@@ -121,7 +121,7 @@ fn e6_g1a_static_lens_fold_executes_tc1_dimension_report_pair() {
         dag.diagnostics().iter().collect::<Vec<_>>()
     );
 
-    let d_value = reify_substrate_dag_value_for_eval(&dag, G1A_FILE)
+    let d_value = reify_compiled_dag_as_substrate_value(&dag)
         .expect("reify substrate Dag Value for evaluator");
 
     let left = eval_dimension_report_fn(&dag, "tc1_static_dimension_fold", d_value.clone());
