@@ -1,6 +1,7 @@
 # R3 PR-E E5 LoopBound Descent STOP Packet
 
-**Status:** STOP for implementation. `git-metadata-unavailable`.
+**Status:** STOP for implementation. Receipt: `git-metadata-unavailable`
+(audit packet recorded without recoverable local commit metadata).
 
 This packet is the R3 Evaluator E5 audit deliverable. It packages the accepted
 `LoopBound::Descent` residual audit for Director/Substrate coordination. The
