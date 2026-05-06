@@ -6,7 +6,11 @@
 //! acceptance gates). User `data … : Dag = …` literals remain class-5 blocked; the ratchet
 //! reifies a substrate `Dag` [`v3_compiler::evaluator::Value`] via
 //! [`v3_compiler::eval_substrate_reify::reify_compiled_dag_as_substrate_value`] (whole-program
-//! `program.nodes()` order; no `source_file` filter).
+//! `program.nodes()` order; no `source_file` filter). The fixture uses an explicit list walk
+//! (`tc1_composed_step`) instead of `std.list.fold`: the std `fold` arrow is still
+//! `ArrowBody::Unparsed` in the bootstrap dag (not executable in E3), and the recursion checker
+//! requires the **first** parameter to descend structurally — so the walked `List<Behavior>` is
+//! the first argument, with the `Dag` carried as the third.
 
 use crate::common::cached_compile_to_dag;
 use v3_compiler::dag::{ArrowBody, Behavior, TypeConnective};
@@ -16,7 +20,7 @@ use v3_compiler::evaluator::{
 };
 
 const G1A_SOURCE: &str = r#"
-import std.list { List, empty, fold }
+import std.list { List, empty }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic, DimensionReport }
 import v3.std.diagnostics { Diagnostic }
@@ -24,6 +28,23 @@ import v3.std.lens { Lens }
 
 fn tc1_empty_witnesses() -> List<Witness<Int>> = empty()
 fn tc1_empty_violations() -> List<Diagnostic> = empty()
+
+/// List catamorphism specialized to this ratchet (not `std.list.fold`: std body is `Unparsed`).
+/// Parameter order places the recursive `List` first so the compiler's descent check sees
+/// `payload.tail` as structurally smaller.
+fn tc1_composed_step(list: List<Behavior>, acc: Int, d: Dag) -> Int =
+  match list {
+    Empty => acc
+    Cons(payload) =>
+      tc1_composed_step(
+        payload.tail,
+        match tc1_static_lens.read(d, payload.head) {
+          Inhabits(c) => int_add(acc, c)
+          Violates { reason: r, at: beh } => acc
+        },
+        d
+      )
+  }
 
 fn lens_read(d: Dag, b: Behavior) -> Witness<Int> { Inhabits(1) }
 fn int_add(a: Int, b: Int) -> Int = a + b
@@ -41,15 +62,7 @@ data tc1_static_lens: Lens<Int> = {
 }
 
 fn tc1_composed(d: Dag) -> Int =
-  fold(
-    d.nodes,
-    tc1_static_lens.sequential.identity,
-    |acc, b|
-      match tc1_static_lens.read(d, b) {
-        Inhabits(c) => int_add(acc, c)
-        Violates { reason: r, at: beh } => acc
-      }
-  )
+  tc1_composed_step(d.nodes, tc1_static_lens.sequential.identity, d)
 
 fn tc1_static_dimension_fold(d: Dag) -> DimensionReport<Int> =
   match tc1_static_lens.validate(d, tc1_composed(d)) {

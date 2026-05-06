@@ -2839,25 +2839,11 @@ pub(crate) fn user_defined_bind_node_for_callable_target(
     span: &SourceSpan,
 ) -> Option<NodeId> {
     match resolve_callable_target(dag, callee_decl, transform_input_ports, span) {
-        CallableTargetResolution::Resolved { signature, .. } => match &signature.body {
+        CallableTargetResolution::Resolved { signature, .. } => match signature.body {
             ArrowBody::UserDefined(bind_id) => Some(bind_id.node_id()),
-            b => {
-                eprintln!(
-                    "user_defined_bind_node: Resolved but non-UD body: {:?} callee={:?}",
-                    b, callee_decl
-                );
-                None
-            }
+            _ => None,
         },
-        CallableTargetResolution::Retry => {
-            eprintln!(
-                "user_defined_bind_node: Retry callee={:?} inputs={}",
-                callee_decl,
-                transform_input_ports.len()
-            );
-            None
-        }
-        CallableTargetResolution::Fail(_) => None,
+        CallableTargetResolution::Retry | CallableTargetResolution::Fail(_) => None,
     }
 }
 
