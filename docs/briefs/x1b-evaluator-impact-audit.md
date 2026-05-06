@@ -367,7 +367,8 @@ any of the following hold at S1 authoring time:
 - **Audit collapses to "already covered."** If a future
   substrate slice lands `CalleeRef` directly and X1.a's
   `PathCall` retires (per the X1.a worker brief's tracking
-  gate, `r3-pr-e6-g0b-x1a-static-field-call-worker.md:226-232`),
+  gate, `r3-pr-e6-g0b-x1a-static-field-call-worker.md`
+  §"Paired-dispatch / dissolution discipline (INVARIANTS P5)"),
   re-evaluate whether X1.b is still needed at all — the
   parameter-callee form may lower directly through
   `CalleeRef::Port(ArrowPortRef)` without an intermediate
