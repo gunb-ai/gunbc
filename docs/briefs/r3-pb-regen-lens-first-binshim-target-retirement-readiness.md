@@ -20,7 +20,7 @@
 
 | Object | What “live” means | Retirement blocker until |
 |--------|-------------------|---------------------------|
-| **`BinShim` carrier** | Substrate-declared record type per design doc section 4.2 (`entrypoint_name`, `description`, `entry: … → std.process.ProcessExit`); path is Substrate dispatch (e.g. `dsl/std/runtime/bin_shim.dag` or equivalent). | **Substrate Manager** lands carrier via `INVARIANTS.md` substrate-fact introduction (P1) if not already on `main`. **STOP:** carrier-shape pressure during instance authoring → P1 to Substrate, not ad-hoc PB edits to the type (design doc section 5.4). |
+| **`BinShim` carrier** | Substrate-declared record type per design doc section 4.2; live shape: `entrypoint_name`, `description`, `entry: DeclarationRef` in [`src/v3/std/bin_shim.dag`](../../src/v3/std/bin_shim.dag). | **Landed on `main`** — verified `origin/main @ 194ddb7a8` (warm-ant-877 mechanical audit, 2026-05-06). **`BinShim` carrier introduction is not a remaining retirement blocker.** Retirement remains gated on Item 5 emit pattern, `regen_lens_main` + instance row, §7.2, Item 4 convergence, §7.3 disposition — see §Dispatch-ready row. **STOP:** carrier-shape pressure during instance authoring → Substrate Manager P1 per design doc section 5.4 — **do not** invent fields ad hoc from the PB lane.
 | **`std.process.ProcessExit`** | Entry functions return the existing substrate carrier (design doc section 4.2 cites `dsl/std/process.dag`). | **Substrate** (already authoritative on `main` at design-lock authoring; re-verify at dispatch). Owner for regression: **Substrate Manager**. |
 | **Item 5 emit pattern** | `.dag` emitter translates each `BinShim` data instance to one `AUTO-GENERATED` Rust `main` template (design doc section 4.2); mirrors other Rust emit modules (anti-bridge invariant #4). | **PB Manager** — BinShim brief deliverable 2; implementation worker TBD at dispatch. **STOP:** parallel emit logic / divergence from `dsl/extdeps/languages/rust/emit.dag` shape → escalate per [`r3-pb-binshim-retirement-worker.md`](r3-pb-binshim-retirement-worker.md) STOP section. |
 | **`data regen_lens_shim: BinShim = { … }`** | Pure-data witness of the current `regen_lens` pipeline under `dsl/std/runtime/bin_shims/` (paths TBD per BinShim program). | **PB-assigned worker** owning `dsl/std/runtime/bin_shims/` (declaration framework + per-shim rows per BinShim brief deliverable 1). *Do not* conflate this checklist’s author with that write scope. |
@@ -74,7 +74,7 @@ Green for **sub-gate 3 retirement worker dispatch** when **all** are true (cumul
 1. R2 close — **done** (#1275 per sub-gate 3 brief).
 2. R2-Evaluator stable — **Evaluator Manager**.
 3. Item 4 landed; `pb_runtime_equivalent_to_evaluator_on_corpus` evaluates true — **PB-Runtime + Evaluator owners**.
-4. Substrate-owned `BinShim` carrier on `main` — **Substrate Manager**.
+4. Substrate-owned `BinShim` carrier on `main` — **Substrate Manager**. **Mechanically verified** on `origin/main @ 194ddb7a8` (`src/v3/std/bin_shim.dag`; warm-ant-877, 2026-05-06) — this criterion is **not** the active blocker for the retirement chain.
 5. `std.process.ProcessExit` verified on `main` — **Substrate Manager** (verification).
 6. BinShim emit pattern landed — **PB Manager** (deliverable 2).
 7. `data regen_lens_shim: BinShim` authored under `dsl/std/runtime/bin_shims/` — **PB-assigned bin_shims worker** (declaration framework + instance scope).

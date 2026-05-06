@@ -51,16 +51,16 @@ These imports are what the future `BinShim` emitter must end up calling from emi
 
 | Surface | Live location (verified) | Cutover delta |
 |---|---|---|
-| **Cargo bin entry** | `src/v3/compiler/Cargo.toml`: `[[bin]] name = "regen_lens" path = "src/bin/regen_lens.rs"` | `path` updates to the emitted location once the file is generated. The `name = "regen_lens"` and CLI invocation surface stay stable so the 8-bin Cargo manifest's authority surface is unchanged. |
-| **`build.rs` `REGEN_OUTPUTS`** | `src/v3/compiler/build.rs:479-516` (25 entries on origin/main HEAD at audit time) | Add the emitted shim's path to `REGEN_OUTPUTS` so SG-0's `sg0_generated_partition_is_producer_owned` invariant counts the file as generated. The current `REGEN_OUTPUTS` lists every per-lens `lens_*_generated.rs` (the bin's *outputs*) but NOT the bin itself — `regen_lens.rs` is the producer, not a generated artifact. After retirement, the bin moves from "hand-authored producer" to "generated artifact" and the manifest grows by 1. |
+| **Cargo bin entry** | `src/v3/compiler/Cargo.toml`: `[[bin]] name = "regen_lens" path = "src/bin/regen_lens.rs"` | `path` updates to the emitted location once the file is generated. The `name = "regen_lens"` and CLI invocation surface stay stable so the nine-bin Cargo manifest's authority surface is unchanged (binary name is what tooling and diagnostics key on). |
+| **`build.rs` `REGEN_OUTPUTS`** | `src/v3/compiler/build.rs:479-513` (25 entries on origin/main HEAD at audit time) | Add the emitted shim's path to `REGEN_OUTPUTS` so SG-0's `sg0_generated_partition_is_producer_owned` invariant counts the file as generated. The current `REGEN_OUTPUTS` lists every per-lens `lens_*_generated.rs` (the bin's *outputs*) but NOT the bin itself — `regen_lens.rs` is the producer, not a generated artifact. After retirement, the bin moves from "hand-authored producer" to "generated artifact" and the manifest grows by 1. |
 | **`GENERATED_FILES` runtime constant** | Built from `REGEN_OUTPUTS` per `build.rs:520-526`, exposed as `v3_compiler::generated_files::GENERATED_FILES`. | Auto-updates when `REGEN_OUTPUTS` grows; no separate edit. The bin imports this exact constant (line 22), so its own re-emission produces a consistent self-reference. |
-| **Package `v3-compiler` declares eight `[[bin]]` targets**: `regen_bootstrap`, `regen_lens`, `regen_parse`, `regen_parse_tables`, `regen_tokenize`, `regen_v3`, `self_host_fixed_point`, `r1c_e_emit_gates` | `src/v3/compiler/Cargo.toml` `[[bin]]` blocks | Other bins follow the same template after `regen_lens` lands as the canonical first slice (per design-doc §4.3 + BinShim brief §"First slice"). They are NOT in scope for sub-gate 3 — but they ARE in scope for the broader BinShim retirement program once the carrier and pattern stabilize. |
+| **Package `v3-compiler` declares nine explicit `[[bin]]` targets** (`regen_bootstrap`, `regen_lens`, `regen_parse`, `regen_parse_tables`, `regen_tokenize`, `regen_v3`, `emit_method_template_projection`, `self_host_fixed_point`, `r1c_e_emit_gates`) | `src/v3/compiler/Cargo.toml:47-85` `[[bin]]` blocks | Other bins follow the same template after `regen_lens` lands as the canonical first slice (per design-doc §4.3 + BinShim brief §"First slice"). They are NOT in scope for sub-gate 3 — but they ARE in scope for the broader BinShim retirement program once the carrier and pattern stabilize. |
 
 ## SG-0 census surface
 
 | Authority | Live location (verified) | Cutover delta |
 |---|---|---|
-| `EXPECTED_HAND_AUTHORED_NON_TEST` | `src/v3/compiler/tests/integration/sg0_census_test.rs:174` lists `"src/v3/compiler/src/bin/regen_lens.rs"` | Remove the entry. SG-0 census decreases by 1; `REGEN_OUTPUTS` grows by 1 (above). Both updates land atomically in the same retirement PR. |
+| `EXPECTED_HAND_AUTHORED_NON_TEST` | `src/v3/compiler/tests/integration/sg0_census_test.rs:237` lists `"src/v3/compiler/src/bin/regen_lens.rs"` (table `EXPECTED_HAND_AUTHORED_NON_TEST` begins `:211`) | Remove the entry. SG-0 census decreases by 1; `REGEN_OUTPUTS` grows by 1 (above). Both updates land atomically in the same retirement PR. |
 | Census comment trail | `sg0_census_test.rs:50-67` documents the 2026 SG-6 cutover that folded 4 per-lens regen bins + `regen_infer_helpers` into the unified `regen_lens` shim. | Future entry: comment annotation that `regen_lens.rs` retired via Item-5 BinShim emit pattern + `data regen_lens_shim` instance under `dsl/std/runtime/bin_shims/regen_lens.dag`. |
 
 ## Test surface (consumers that exercise the bin or its registry)
@@ -98,13 +98,13 @@ This is the load-bearing audit deliverable: a per-handoff row naming exactly wha
 
 | Handoff | Owner | Consumes from this audit | What that PR adds |
 |---|---|---|---|
-| **`type BinShim` carrier landing** | Substrate Manager (per design-doc §5.4 + #1347 STOP+PING) | Field requirements named in design-doc §4.2's example `data regen_lens_shim: BinShim = { name: "regen_lens", entry: regen_lens, ... }`: a `name` field whose value is the **Cargo `[[bin]]` target name** (e.g. `"regen_lens"` per `src/v3/compiler/Cargo.toml`'s `[[bin]] name = "regen_lens"` block), and `entry: () -> std.process.ProcessExit` whose structural model is the bin's existing `fn main() -> ExitCode` (line 33). Whatever pipeline-composition fields the §4.2 sketch settles on are Substrate Manager's call. **Not derivable from `LENS_REGISTRY_ENTRY_TYPE` at line 26** — that constant is the registry-entry meta-tag string the bin uses to look up `LensRegistryEntry` records inside `regen.dag`, not a property of the bin-shim itself. | `type BinShim { ... }` declaration in `dsl/std/runtime/bin_shim.dag` (or wherever Substrate picks). |
+| **`type BinShim` carrier** | Substrate Manager — **landed on main** (`src/v3/std/bin_shim.dag:19-23`) | Live substrate record: `entrypoint_name: NonEmptyStr`, `description: String`, `entry: DeclarationRef` (points at a `.dag` entry function for the shim body — see [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md) naming convention). Design-doc §4.2 sketches historically used a `name` field; scheduled work keys off **`entrypoint_name`** matching the Cargo `[[bin]]` name (`"regen_lens"`). **`entry` resolves in substrate** to the declaration named by the ref — not to `LENS_REGISTRY_ENTRY_TYPE` at line 26 of `regen_lens.rs`, which tags rows inside `regen.dag`. Hand-Rust `fn main() -> ExitCode` (line 33) remains the behavioral model for §7.2 until `.dag` entry replaces it. | No further carrier-introduction PR required for retirement chain; regressions remain Substrate-owned per §5.4. |
 | **`data regen_lens_shim: BinShim` instance authoring** | PB Manager (R3 worker, dispatched by PB on carrier landing) | Field values from the audit's "Source surface" + "Internal crate imports" tables. The `entry` field references a `regen_lens_main` declaration that fold-mirrors the current `fn main` body via the locked PB-Runtime emit pattern. | New file `dsl/std/runtime/bin_shims/regen_lens.dag` per the framework convention in PR #1347. |
 | **BinShim emit pattern (the `.dag` emitter)** | PB Manager (R3 worker) | The bin's import surface (the 5 internal crates listed above) — the emitter must produce emitted Rust that calls these same crate APIs, since they are NOT being retired (they're producer-side authority). | New `.dag` emitter program analogous to `dsl/extdeps/languages/rust/emit.dag` per design-doc §4.2 + anti-bridge invariant #4. |
 | **§7.2 equivalence fixture authoring** | PB Manager (R3 worker) — same retirement PR | The behavioral spec from the bin's docstring + `sg6_regen_lens_cli_smoke_regenerates_named_entry_without_drift` test (which IS the runtime evidence base). The fixture asserts: emitted-Rust + hand-Rust produce identical regenerated `lens_*_generated.rs` output for every `LensRegistryEntry` in `regen.dag`. | TestClaim `regen_lens_bin_shim_emits_behaviorally_equivalent_to_hand_rust` per design-doc §7.2 locked name. |
 | **Cargo `path` flip** | PB Manager (same retirement PR) | The Cargo `[[bin]]` block at `Cargo.toml` (above). | `path = "src/bin/regen_lens.rs"` updates to whatever absolute path the emitted file lands at (or stays the same if the emitter writes to the same path). |
-| **`REGEN_OUTPUTS` extension** | PB Manager (same retirement PR) | The list at `build.rs:479-516` (25 entries on origin/main HEAD at audit time). | Add `"src/v3/compiler/src/bin/regen_lens.rs"` (the now-emitted path). |
-| **SG-0 census drop** | PB Manager (same retirement PR) | `sg0_census_test.rs:174`. | Remove the entry. |
+| **`REGEN_OUTPUTS` extension** | PB Manager (same retirement PR) | The list at `build.rs:479-513` (25 entries on origin/main HEAD at audit time). | Add `"src/v3/compiler/src/bin/regen_lens.rs"` (the now-emitted path). |
+| **SG-0 census drop** | PB Manager (same retirement PR) | `sg0_census_test.rs:237`. | Remove the entry. |
 | **Doc status flips** | PB Manager (same retirement PR) | The 4 doc references in §"Documentation surface" above. | Mark RESOLVED/MET/closed as appropriate. |
 
 ## STOP / report-instead-of-invent
@@ -145,6 +145,21 @@ Observed deltas:
 
 No carrier/emitter implementation is implied by these deltas. The current cutover blocker is not "find the `BinShim` carrier"; it is "provide a non-fabricated `regen_lens_main` entry target and loader story, then author the instance/emitter/§7.2/SG-0 changes in their assigned slices."
 
+## Delta — 2026-05-06 mechanical verification (warm-ant-877 dispatch)
+
+Repro pin: `origin/main @ 194ddb7a8e3cb033698e4f6749f93f436afde354`.
+
+PB Manager dispatch: close honest checklist rows with **docs + mechanical audits** only — no `BinShim` carrier-field invention, no `.dag` instance authoring.
+
+| Audit | Command / surface | Result |
+|---|---|---|
+| Registry data rows | `rg -n '^data .*_entry: LensRegistryEntry' src/v3/compiler/regen.dag` | **9** rows |
+| Cargo bins | `src/v3/compiler/Cargo.toml:47-85` | **9** `[[bin]]` targets; `regen_lens` at `:52-54` |
+| Producer manifest | `src/v3/compiler/build.rs:479-513` | **25** `REGEN_OUTPUTS` paths; still **no** `src/v3/compiler/src/bin/regen_lens.rs` |
+| SG-0 census | `sg0_census_test.rs` | `regen_lens.rs` path string at **:237**; `EXPECTED_HAND_AUTHORED_NON_TEST` at `:211-293` |
+| Instance directory | `dsl/std/runtime/bin_shims/` | **README.md only** (no `regen_lens.dag`) — row #1 / `regen_lens_main` STOP still authoritative per README §"Substrate prerequisite" |
+| Carrier | `src/v3/std/bin_shim.dag:19-23` | Unchanged live `BinShim` record |
+
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §4 (Item 5 emit pattern), §4.3 (dissolution path), §5.1 (sub-gate decomposition), §7.2 (BinShim equivalence fixture).
@@ -154,4 +169,4 @@ No carrier/emitter implementation is implied by these deltas. The current cutove
 - Quick-newt's parallel readiness checklist: [`docs/briefs/r3-pb-regen-lens-first-binshim-target-retirement-readiness.md`](r3-pb-regen-lens-first-binshim-target-retirement-readiness.md).
 - PB Manager brief: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#program-scope-t-pb-post-r1-only) — R3 continuation table row for BinShim instances + emit pattern + retirement dispatch.
 - Substrate-fact-introduction procedure: [`INVARIANTS.md`](../../INVARIANTS.md) §P1.
-- Live source paths cited (anchor for future workers): `src/v3/compiler/src/bin/regen_lens.rs`, `src/v3/compiler/regen.dag`, `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs:479-516`, `src/v3/compiler/tests/integration/sg0_census_test.rs:174`, `src/v3/compiler/tests/integration/lens_register_correspondence_test.rs`, `src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs`, `scripts/slow-test-exemptions.txt:78`, `dsl/std/process.dag:39` (`type ProcessExit`).
+- Live source paths cited (anchor for future workers): `src/v3/compiler/src/bin/regen_lens.rs`, `src/v3/compiler/regen.dag`, `src/v3/compiler/Cargo.toml`, `src/v3/compiler/build.rs:479-513`, `src/v3/compiler/tests/integration/sg0_census_test.rs:237`, `src/v3/compiler/tests/integration/lens_register_correspondence_test.rs`, `src/v3/compiler/tests/integration/sg6_hand_authored_census_test.rs`, `scripts/slow-test-exemptions.txt:78`, `dsl/std/process.dag:39` (`type ProcessExit`).
