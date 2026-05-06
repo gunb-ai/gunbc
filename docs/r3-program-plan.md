@@ -87,6 +87,31 @@ R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown
 
 Predicate cannot be satisfied by deletion-of-rows-without-actual-resolution; each retiring row requires named PR receipt OR closure-ledger entry citing the structural event that ends the row's existence.
 
+### §1.7 Closure-criteria status — DECLARATIONS-ONLY staging (per openai-pro meta-review 2026-05-06)
+
+**This plan + r3-structure.md DECLARE 70 closure gates. The declarations are NOT YET load-bearing closure predicates — no consumer infrastructure verifies them at HEAD.**
+
+Per openai-pro meta-review on PR #1808 sha `cf249389` ([#issuecomment-4384405832](https://github.com/gunb-ai/gunbc/pull/1808#issuecomment-4384405832)) PAUSE_AND_REGROUP verdict — structurally honest framing of where this PR sits in the closure-evidence chain:
+
+**Per-gate status taxonomy:**
+
+- **DECLARED** — gate id + Pass condition exists in `r3-structure.md` §"Acceptance" or this plan §1. Document-level only.
+- **CONSUMER_LANDED** — the consumer (CI check, `.dag` TestClaim runner executing through Evaluator, manual demonstration receipt) executes the Pass condition + can fail-closed if violated.
+- **PASSING** — consumer landed AND Pass condition currently true.
+
+**Status at HEAD (PR #1808 sha at this commit)**: ~all 70 gates are **DECLARED**; very few have CONSUMER_LANDED status (existing `pb_self_compile_fixed_point` + `tier3_*_mirror_dissolved` + similar pre-R3-plan gates have consumers; the 16 NEW gates added 2026-05-06 in this PR are DECLARED-only).
+
+**R3 close criteria implies CONSUMER_LANDED for all 70 gates**: declarations alone don't satisfy `r3_debt_paydown_zero_remaining` or the substrate-gap-class closures or the demonstration principle. Per Brian directive `feedback_no_textual_enforcement_bridges` + Director poke-hole 2026-05-06 finding 1.1 (demo-gate minimum bar) — closure requires runtime-executable verification, not document-level claims.
+
+**Consumer infrastructure to land before R3 close**:
+- **T-Tests-As-Data-Completeness lane** (existing R3 lane): every test ports to `.dag` TestClaim or generated target-language test code; predicates execute via Evaluator. Closes the predicate→consumer gap for substrate-gap-class + Pattern-A predicate gates.
+- **R3 Debt-Paydown PR-anticipation gate** (added 2026-05-06): `pr_anticipation_discipline_ci_active` — CI verifiably enforces §7 PR-authoring contract via `scripts/check-pr-sg0-net-shrink-discipline.sh`. Closes the predicate→consumer gap for going-forward debt-discipline gates.
+- **Demonstration-gate minimum bar consumer** (per §1.6): each demonstration gate requires runtime-executable demonstration; lane-owning Mgr authors the consumer alongside gate declaration. Closes the predicate→consumer gap for the 10 NEW demonstration gates.
+
+**This PR's scope is intentionally declarations + plan; consumer authoring happens in subsequent PRs by lane-owning Mgrs** (per `feedback_bundle_workstreams_per_pr` — single coordinated authority drop here, distinct PRs for consumer infrastructure).
+
+The honest framing: this PR is **planning + declaration substrate** for R3 close, NOT R3-close-evidence. Without this label, downstream readers might misinterpret declarations as load-bearing closure predicates.
+
 ### §1.6 Demonstration principle (Brian-ratified 2026-05-06)
 
 **Every feature comes with a demonstration.** Generalizes Q5 (free-consequences demonstration) to a structural requirement: every R3 lane MUST include at least one demonstration-shaped TestClaim — a runtime-executable claim that exercises the lane's deliverable end-to-end, not just static-fact assertions about substrate shape.
