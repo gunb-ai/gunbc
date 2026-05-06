@@ -1,12 +1,14 @@
 # R3 Pattern-A — TC1 first executable slice (V1) Worker Brief
 
-**Status:** DISPATCH-READY — **Q-PAFS Path A ACCEPTED** 2026-05-06 (Brian Director countersign; **authority** = committed [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 rows at `HEAD`; PR [#1824](https://github.com/gunb-ai/gunbc/pull/1824) is the **merge record** on `main`). Policy-layer fork closed; implementation still coordinates **Evaluator E3** (**E6-G1.a** static lens fold) in the **same release step** as this slice.
+**Status:** **ADJUSTMENT-PENDING** on **Q-Reification** (Director / PM cross-relay 2026-05-06) — **Q-PAFS Path A** remains **ACCEPTED** (PR [#1824](https://github.com/gunb-ai/gunbc/pull/1824) merge record on `main`). **E3 / G1.a** is under **structural STOP** (Evaluator: compiled-Dag → evaluator-`Value` reification — e.g. PR #1841 respin thread). **V1 dispatch is downstream of Q-Reification ratification** (Options: (1) typed carrier, (2) sanctioned reification bridge, (3) revised E3 representative) **in addition to** existing **V6 clean-checkpoint** (bold-crane) + Path A scope. **Pre-auth queue:** keep this brief as the anchor — apply **narrow patches** when ratification lands (especially under Option 3); do **not** replace wholesale at ratification.
 
 **Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — absorbed formal-grounding / Pattern-A cluster (not a fourth lane; see [`docs/r3-structure.md`](../r3-structure.md) §"Manager structure").
 
 **Ratified scope narrative (engineering brief):** [`docs/briefs/r3-v-tc1-eta-equivalence-deeper-analysis.md`](r3-v-tc1-eta-equivalence-deeper-analysis.md) §"DESIGN — Q-PAFS first executable slice (Pattern-A / TC1)" **Path A** — TC1 **static representative** via **E6-G1.a** (finite Director-visible lens set + fixed eta pair; `BinaryDimensionReportEquals` consumer envelope per [`docs/briefs/r3-v-pattern-a-coverage-rollup.md`](r3-v-pattern-a-coverage-rollup.md)).
 
 **Program plan:** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 rows **Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, **Q-EVAL-Lens-Fold-First-Slice** — **ACCEPTED 2026-05-06 (Path A / G1.a)**.
+
+**Director routing:** canonical authority for **Q-Reification** propagates via Director audit ([gunbc#828](https://github.com/gunb-ai/gunbc/issues/828)) following Q-PAFS-style resolution; Verification consumes outcome — **no Implementation dispatch** until STOP clears + brief patched.
 
 ## §1.8 closure predicate (this slice)
 
@@ -29,7 +31,7 @@ Gates **#12–#14** (TC2 / TC3 / RustDagIsomorphism executables) stay **DECLARED
 
 - First **executable** TC1 slice under **Path A** only: static representative **E6-G1.a**; consumer remains **`BinaryDimensionReportEquals`** over two typed `DimensionReport<C>` reports once producers exist.
 - Verification-owned: **TestClaim** wiring, integration tests, fixture **naming** for strict-fire slice, and **coverage** of the ratified representative set (no universal quantification in V1).
-- Coordinated same-step landing of **Evaluator E3** / **E6-G1.a** (Evaluator Mgr [#1743](https://github.com/gunb-ai/gunbc/issues/1743)) — Verification does **not** own evaluator internals; this brief names the **interface** dependency.
+- Coordinated landing of **Evaluator E3** / **E6-G1.a** (Evaluator Mgr [#1743](https://github.com/gunb-ai/gunbc/issues/1743)) with this slice **after** **Q-Reification** + E3 STOP resolution (may or may not remain same-release-step; interface contract is the ratified producer shape, not calendar pairing) — Verification does **not** own evaluator internals; this brief names the **interface** dependency.
 
 ## Scope (out) — STOP+PING
 
@@ -46,7 +48,7 @@ Hold **without** widening by inertia:
 
 | Dependency | Owner | Why |
 | --- | --- | --- |
-| **E6-G1.a static lens fold** | Evaluator Mgr | Two structurally named programs produce typed `DimensionReport<C>` through evaluator-owned fold — **same release step** as V1 slice per ACCEPTED bundle. |
+| **E6-G1.a static lens fold** | Evaluator Mgr | Two structurally named programs produce typed `DimensionReport<C>` through evaluator-owned fold — **blocked until Q-Reification + E3 STOP resolve**; cadence may align with V1 post-ratification (no longer policy-hard “same release step” while STOP is open). |
 | **T-Substrate-Lens-Primitive + lens producer retirement progress** | Substrate / PB lanes | Path A assumes existing fold machinery; no parallel `lens_apply` interpretation for the fold receipts. |
 | **Representative lens set + eta pair declaration refs** | Substrate (facts) + Verification (fixture refs) | Finite, Director-visible set enumerated in `.dag` / declarations — not “all `Lens<C>`” in V1. |
 
