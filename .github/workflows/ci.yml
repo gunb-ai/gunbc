@@ -318,7 +318,10 @@ jobs:
   # DB-8 — fixed-point ratchet infrastructure (Lane 3 Stage 3c prep). Staged until
   # Lane 1 Stage 1e closes: do not block merges on this job yet.
   self_host_ratchet:
-    if: github.event.pull_request.draft != true
+    # Run on main pushes only while staged. A cancelled `continue-on-error`
+    # PR job still reports as a failed check, which makes this advisory ratchet
+    # merge-blocking before Lane 1e graduation.
+    if: github.event_name == 'push'
     runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
     timeout-minutes: 45
     needs: [v3]
