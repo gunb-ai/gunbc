@@ -5856,7 +5856,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 2069, 2086),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3186, 3203),
         });
         declarations.push(Declaration {
             id: DeclarationId(71),
@@ -5870,7 +5870,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 2069, 2086),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3186, 3203),
         });
         declarations.push(Declaration {
             id: DeclarationId(72),
@@ -5889,7 +5889,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3159, 3209),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 4276, 4326),
         });
         declarations.push(Declaration {
             id: DeclarationId(73),
@@ -5903,7 +5903,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3159, 3209),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 4276, 4326),
         });
         declarations.push(Declaration {
             id: DeclarationId(74),
@@ -5919,7 +5919,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3159, 3209),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 4276, 4326),
         });
         declarations.push(Declaration {
             id: DeclarationId(75),
@@ -13990,7 +13990,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("dsl/std/machine_constraints.dag", 3202, 3209),
+            span: SourceSpan::new("dsl/std/machine_constraints.dag", 4319, 4326),
         });
         declarations.push(Declaration {
             id: DeclarationId(442),
