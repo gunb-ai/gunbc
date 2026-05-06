@@ -132,6 +132,34 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `auto_memoization_no_caching_for_one_shot` — single-call sites do not emit memoization scaffolding; memoization predicates compose `Lens<Purity>·Lens<Cost>` rather than firing universally
   - `cross_target_optimization_constant_fold_consistent` — for the certification corpus, every emitted target program's `Lens<SymbolicCost>` reading post-emission equals its `Lens<SymbolicCost>` reading pre-emission minus the constant-folded subtree's algebra cost (same structural shrink applied across Rust/Python/Go via the LanguageSpec realization-cost composition; structural-fold equality, not byte/string match on emitted source)
   - `cross_target_optimization_cost_structurally_derived` — for the certification corpus, the cost-lens reading of the emitted target program (composed via `Lens<SymbolicCost>·LanguageSpec` per T-CostLens-Composition) equals the structural composition of (a) `.dag` algebra-level cost from `Lens<SymbolicCost>` + (b) per-primitive realization cost from the target's LanguageSpec — **no runtime measurement**; both readings are structural folds over substrate. Same shape as `coercion_cost_equals_complexity_by_construction` from T-CostLens-Composition; this gate restates that structural property over the certification corpus to operationalize the "cost lens drives lowering, not target-specific heuristics" free-consequence claim. Runtime perf measurement is post-R3 (per Design challenge #7 — measurable-or-deferred; R3 deliverable is structural close)
+- **T-E-P-Producer-Broadening** (NEW 2026-05-02; foundational substrate; gate IDs added 2026-05-06 to §"Acceptance" per codex BLOCKING — were declared in §"Lane structure" prose only).
+  - `e_p_per_call_descent_evidence_full_coverage` — per-call `DescentEvidence` producer covers all live call sites (parity with first slice's recursive-self-call + arithmetic-descent baseline)
+  - `e_p_call_pattern_lookup_authoritative` — `CallPattern` lookup is authoritative substrate query (no parallel Rust derivation)
+  - `e_p_sub_value_relation_per_call_landed` — `SubValueRelation` per-call landing complete
+
+- **T-Lens-Behavioral-Parity** (NEW 2026-05-02; gate IDs added 2026-05-06 to §"Acceptance" per codex BLOCKING).
+  - `complexity_lens_behaviorally_complete` — symbolic CostExpr full algebra consumed; work/span split; asymptotic classification; cementing test against frozen v2-oracle snapshot
+  - `cost_lens_behaviorally_complete` — `Dimension<SymbolicCost>` wiring; `SizeVar` value semantics; cementing test against frozen v2-oracle snapshot
+  - `parallelism_lens_behaviorally_complete` — Stage 2e parallelism walk port from Rust to `.dag`; rewired via `lane2_workflow_at` / `std.effects`
+  - `effect_enumeration_lens_behaviorally_complete` — resource-threading migration; ambient metadata removal; full `OperationEffect` retirement
+  - `lens_capability_register_zero_proxy_zero_stub` — register status updated to ZERO PROXY / ZERO STUB at R3 close (per `docs/v3-lens-capability-register.md`)
+
+- **T-Tests-As-Data-Completeness** (NEW 2026-05-02; gate IDs added 2026-05-06 to §"Acceptance" per codex BLOCKING).
+  - `every_rust_test_ports_to_dag_or_generated` — every Rust test ports to `.dag` TestClaim or generated target-language test code (thesis facet 3)
+  - `forall_exists_quantifier_substrate_landed` — `ForAll` / `Exists` quantifier substrate authored
+  - `program_generator_carrier_landed` — `ProgramGenerator` substrate carrier authored (property-based testing surface)
+  - `lens_cementing_test_discipline_complete` — every `.dag` lens has cementing test against frozen v2-oracle on same source
+
+- **T-Lens-Application-Surface** (NEW 2026-05-02; gate IDs added 2026-05-06 to §"Acceptance" per codex BLOCKING).
+  - `lens_application_carrier_landed` — `EnforcedApplication<Output, Budget>` + `IntrospectApplication<Output>` carriers landed
+  - `section_ref_substrate_landed` — `SectionRef` (DeclarationScope/NodeScope disjoint sum) carrier landed
+  - `lens_enforcement_carrier_landed` — per-lens `LensEnforcement<Output, Budget>` projection + violation-relation declarations co-located with each lens
+  - `enforce_violation_routing_landed` — Enforce-mode violation routing through `DiagnosticSeverity` (CompileError | Warning | Silent fail-closed-compatible binary per design doc §3 + INVARIANTS C-8)
+  - `complexity_violation_compile_error_demonstrated` — first worked example: `apply_lens(complexity, fn, Enforce { ... })` fires compile error when budget exceeded
+  - `crdt_cost_basis_demonstrated` — second worked example: CRDT cost basis applied via `apply_lens`
+  - `memory_peak_cost_basis_demonstrated` — third worked example: memory-peak cost basis
+  - `opt_in_iteration_parallelism_via_lens_application_demonstrated` — fourth worked example: opt-in cross-iteration parallelism via `Lens<Iteration-Independence>`
+
 - **T-Workflow-As-Data** (NEW 2026-05-04; observation-driven lens-shape class).
   - `workflow_substrate_carriers_landed` — workflow grammar in `.dag` (`std.workflow` carriers); supports CI / build / internal-compiler workflows uniformly without per-shape special-casing
   - `timing_lens_carrier_landed` — `Lens<TimingMeasurement>` carrier authored per Substrate Mgr STOP+PING design receipt for `docs/design-timing-lens.md`; `TimingMeasurement` + `TimingObservationSet` + `TimingBudget` carriers live; `Output` is projection/report distinguishing `Observed | Missing | Ambiguous | Stale` (fail-closed enforcement on non-observed states per `feedback_fail_closed_discipline`)
