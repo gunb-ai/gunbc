@@ -13,8 +13,13 @@ supersedes: docs/briefs/r3-426-sfp-subdoc-design-call-surfacing.md (surfacing pa
 `docs/invariants/strict-forward-progress.md` carries
 **bounded-execution** content; reviewer usage of the name "Strict
 Forward Progress" carries the **dissolution-progress** meaning
-(see `INVARIANTS.md:314`). `INVARIANTS.md` flags the drift in three
-places (`:253`, `:273`, `:315`) as "future cleanup."
+(see the **Strict Forward Progress** bullet under
+`INVARIANTS.md#p5-progress-is-dissolution` Related rules).
+`INVARIANTS.md` flags the drift in three places — the
+`> Note on naming.` blockquote and the **Bounded forward execution**
+bullet under `INVARIANTS.md#p4-decidability` Related rules, plus
+the `*Note:*` sub-bullet beneath the SFP bullet under
+`INVARIANTS.md#p5-progress-is-dissolution` — as "future cleanup."
 
 Director ratified option (a): **rename + author new**, preserving
 the SFP name attached to the reviewer-usage meaning.
@@ -25,21 +30,25 @@ the SFP name attached to the reviewer-usage meaning.
    docs/invariants/bounded-forward-execution.md`. Content unchanged.
 2. Author a fresh `docs/invariants/strict-forward-progress.md`
    carrying the dissolution-progress concept. Source the canonical
-   statement from `INVARIANTS.md:314` ("a change counts as progress
-   only if it reduces ad-hoc state, duplicate authority, or implicit
-   behavior; transitional scaffolds need explicit dissolution paths
-   and cannot become the new steady state"). Cross-link the
-   bounded-execution subdoc as a sibling concern, not a parent.
+   statement from the **Strict Forward Progress** bullet under
+   `INVARIANTS.md#p5-progress-is-dissolution` Related rules
+   ("a change counts as progress only if it reduces ad-hoc state,
+   duplicate authority, or implicit behavior; transitional
+   scaffolds need explicit dissolution paths and cannot become the
+   new steady state"). Cross-link the bounded-execution subdoc as
+   a sibling concern, not a parent.
 3. Update `INVARIANTS.md`:
-   - `:253` — rewrite the "Note on naming" block: drop the drift
-     caveat; redirect the bounded-execution pointer to
-     `bounded-forward-execution.md`; affirm SFP name now points at
-     the dissolution-progress subdoc.
-   - `:273` — rewrite the bounded-forward-execution bullet's
-     subdoc reference to point at `bounded-forward-execution.md`.
-   - `:315` — delete the "*Note:*" block (drift caveat) entirely;
-     SFP bullet's subdoc reference now points at the freshly
-     authored `strict-forward-progress.md`.
+   - **`> Note on naming.` blockquote under `#p4-decidability`
+     Related rules** — rewrite: drop the drift caveat; redirect
+     the bounded-execution pointer to `bounded-forward-execution.md`;
+     affirm SFP name now points at the dissolution-progress subdoc.
+   - **`**Bounded forward execution**` bullet under `#p4-decidability`
+     Related rules** — rewrite the subdoc reference to point at
+     `bounded-forward-execution.md`.
+   - **`*Note:*` sub-bullet beneath the SFP bullet under
+     `#p5-progress-is-dissolution`** — delete entirely (drift
+     caveat); SFP bullet's subdoc reference now points at the
+     freshly authored `strict-forward-progress.md`.
 4. `rg "strict-forward-progress\.md"` across the tree; update any
    reference whose intent was bounded-execution (subdoc content)
    to `bounded-forward-execution.md`. References whose intent was
@@ -55,7 +64,10 @@ the SFP name attached to the reviewer-usage meaning.
 - Two subdocs exist: `bounded-forward-execution.md` (renamed,
   content unchanged) + freshly authored `strict-forward-progress.md`
   (dissolution-progress).
-- `INVARIANTS.md:253/273/315` updated; drift caveats removed.
+- The three drift sites in `INVARIANTS.md` (the `> Note on naming.`
+  blockquote and **Bounded forward execution** bullet under
+  `#p4-decidability`, plus the `*Note:*` sub-bullet under
+  `#p5-progress-is-dissolution`) updated; drift caveats removed.
 - `rg "strict-forward-progress\.md"` shows no references with
   bounded-execution intent.
 - `cargo fmt --all --check` clean (no Rust changes; defensive).
@@ -82,8 +94,13 @@ the SFP name attached to the reviewer-usage meaning.
 3. **Design-doc match?** Director's ratification message at
    `#issuecomment-4377264483` names option (a) with the exact
    file moves used here.
-4. **Citations live?** `INVARIANTS.md:253,273,314,315` verified at
-   HEAD (2026-05-05).
+4. **Citations live?** Four prose sites in `INVARIANTS.md` verified
+   at HEAD (2026-05-05): `> Note on naming.` blockquote and
+   **Bounded forward execution** bullet under `#p4-decidability`
+   Related rules; **Strict Forward Progress** bullet and its
+   `*Note:*` sub-bullet under `#p5-progress-is-dissolution`
+   Related rules. Worker re-locates by prose excerpt at dispatch
+   (anchors stable; line numbers drift).
 5. **Carrier dissolves the bridge?** N/A; pure documentation
    reorganization, not substrate work.
 
