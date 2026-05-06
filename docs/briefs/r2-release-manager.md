@@ -19,7 +19,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 | R2 closure demo coordination (Goal 6) | `docs/r2-structure.md` Goal 6 + structural-acceptance-per-lane-close discipline | LIVE on spawn (no separate brief; demo IS the structural acceptance gate per Director directive) |
 | B-wave Tier 0 through-merge | #810 §5 dispatch ordering | **LANDED** — B1 [#820](https://github.com/gunb-ai/gunbc/pull/820), B2 [#817](https://github.com/gunb-ai/gunbc/pull/817), B3 [#821](https://github.com/gunb-ai/gunbc/pull/821) merged to `main` **2026-04-26 (UTC)** per GitHub merge metadata (fail-closed P3 leak fixes; receipts on those PRs). |
 | B-wave Tier 2 (B5/B6/B7) | #810 §5 + [`debt-paydown-synthesis-2026-04-25.md` §"Tier 2" items 5–7](debt-paydown-synthesis-2026-04-25.md) | **LANDED in code/docs:** **B5** RESOLVED 2026-04-27 — structural gate `src/v3/compiler/tests/integration/r2_b5_loop_construction_closure_test.rs`; synthesis §5; [`r2-release-b5-loop-construction-closure-audit-worker.md`](r2-release-b5-loop-construction-closure-audit-worker.md) closed as receipt. **B6** RESOLVED 2026-04-26 — checklist + ROADMAP row per synthesis §6. **B7** RESOLVED 2026-04-27 — [#1014](https://github.com/gunb-ai/gunbc/pull/1014) per synthesis §7 (`patch_lower_helpers_*` retirement). Cross-manager brief: [`r2-release-b7-priority-hint-relay-to-pure-bootstrap.md`](r2-release-b7-priority-hint-relay-to-pure-bootstrap.md). |
-| Discipline framework central reporting | INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (c) + ROADMAP.md "Integration-reflection cadence" velocity-tripwire | LIVE on spawn (mechanism wired via PRs #810 + #812) |
+| Discipline framework central reporting | INVARIANTS.md#p5-progress-is-dissolution "Dispatch-Discipline Mechanisms" (c) + ROADMAP.md "Integration-reflection cadence" velocity-tripwire | LIVE on spawn (mechanism wired via PRs #810 + #812) |
 | Thesis-claim coverage mapping | `docs/r2-structure.md` Open call 1 + `docs/thesis/r2-r3-thesis-mapping.md` (LIVE post-#1078) | LANDED via #1078 — initial mapping complete; refresh as lanes close |
 | R2 closure ledger | `docs/r2-structure.md` Manager structure section 7 | LIVE on spawn (tracks lane-close green status across all 6 other managers; sub-gate progress for T-LensProducer-Retirement R3 continuation) |
 | v2 retirement coordination | `docs/r2-structure.md` Transition mechanics v2-retirement note | LIVE on spawn (**post-R3** operational per `docs/r2-structure.md` §"R2 Release Manager" — moved from post-R2 to post-R3 with the R3 structured-program reframe; tracked but not gated) |
@@ -41,7 +41,7 @@ R2's smallest cross-cutting deliverables + release coordination + demo + discipl
 7. **B1, B2, B3 Tier 0 through-merge** — **complete at HEAD** — #820 / #817 / #821 merged **2026-04-26 (UTC)** per GitHub merge metadata. Standing: surface regressions only; no open Tier-0 coordination queue for this tranche.
 8. **R2 demo coordination** — surface "it runs" artifacts at each lane close per **structural-acceptance-per-lane-close discipline** (the demo IS the structural gate; no separate authoring).
 9. **Closure ledger** — track lane-close green status across all 6 other managers; surface unblocked work to idle workers; coordinate v2 retirement post-R3 (per `docs/r2-structure.md` §"R2 Release Manager" — v2 retirement moved from post-R2 to post-R3 with the R3 structured-program reframe); track sub-gate progress for T-LensProducer-Retirement R3 continuation per Director directive. **Live artifact: [`docs/r2-closure-ledger.md`](../r2-closure-ledger.md)** — also carries the signal-receiver protocol (cross-manager queue channel; what counts as a receipt; cadence touchpoints with velocity-tripwire reporting).
-10. **Velocity-tripwire reporting** — each integration-reflection cadence pass, report introduction:dissolution PR ratio across all manager-authored work; surface ≥3:1 readings to Director per INVARIANTS.md §P5 (c). Manual sweep for dissolution-bearing feature PRs first per calibration caveat.
+10. **Velocity-tripwire reporting** — each integration-reflection cadence pass, report introduction:dissolution PR ratio across all manager-authored work; surface ≥3:1 readings to Director per INVARIANTS.md#p5-progress-is-dissolution (c). Manual sweep for dissolution-bearing feature PRs first per calibration caveat.
 11. **Substrate Manager bottleneck watch** — per `docs/r2-structure.md` watch condition: if Substrate becomes the new bottleneck (workers idle >7 days waiting for Substrate-authored briefs), surface to Director and recommend B4 split into dedicated B4 Identity-Carrier Manager.
 
 ## Cross-program dependencies
@@ -140,7 +140,7 @@ Spawn refresh, 2026-04-28 (post-#1078, status-refresh against landed PRs):
 ## Cross-refs
 
 - Parent: `docs/r2-structure.md` §"R2 Release Manager"
-- Discipline framework: INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (a)/(b)/(c)
+- Discipline framework: INVARIANTS.md#p5-progress-is-dissolution "Dispatch-Discipline Mechanisms" (a)/(b)/(c)
 - Cadence wiring: ROADMAP.md "Integration-reflection cadence" + velocity-tripwire reporting
 - Structural-acceptance-per-lane-close discipline: `docs/r2-structure.md` (Director-locked 2026-04-28)
 - §6a source: `docs/design-substrate-carrier-port-program.md §6a` (decision locked Option 3; live receipt landed)
