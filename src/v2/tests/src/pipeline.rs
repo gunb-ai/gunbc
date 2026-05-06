@@ -7549,9 +7549,10 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
     }
 
     #[derive(serde::Deserialize)]
-    #[serde(tag = "type", rename_all = "snake_case")]
+    #[serde(tag = "type")]
     enum Citation {
-        CharLocation {
+        #[serde(rename = "char_location")]
+        Char {
             cited_text: String,
             document_index: i64,
             document_title: Option<String>,
@@ -7559,7 +7560,8 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             start_char_index: i64,
             end_char_index: i64,
         },
-        PageLocation {
+        #[serde(rename = "page_location")]
+        Page {
             cited_text: String,
             document_index: i64,
             document_title: Option<String>,
@@ -7567,7 +7569,8 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             start_page_number: i64,
             end_page_number: i64,
         },
-        ContentBlockLocation {
+        #[serde(rename = "content_block_location")]
+        ContentBlock {
             cited_text: String,
             document_index: i64,
             document_title: Option<String>,
@@ -7575,13 +7578,15 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
             start_block_index: i64,
             end_block_index: i64,
         },
-        WebSearchResultLocation {
+        #[serde(rename = "web_search_result_location")]
+        WebSearchResult {
             cited_text: String,
             encrypted_index: String,
             title: Option<String>,
             url: String,
         },
-        SearchResultLocation {
+        #[serde(rename = "search_result_location")]
+        SearchResult {
             cited_text: String,
             source: String,
             title: Option<String>,
@@ -7659,7 +7664,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
     let body: Body = serde_json::from_value(wire).expect("representative Anthropic 200 wire");
     let citations = body.content[0].citations.as_ref().unwrap();
     match &citations[0] {
-        Citation::CharLocation {
+        Citation::Char {
             cited_text,
             document_index,
             document_title,
@@ -7677,7 +7682,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         _ => panic!("expected char_location citation"),
     }
     match &citations[1] {
-        Citation::PageLocation {
+        Citation::Page {
             cited_text,
             document_index,
             document_title,
@@ -7695,7 +7700,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         _ => panic!("expected page_location citation"),
     }
     match &citations[2] {
-        Citation::ContentBlockLocation {
+        Citation::ContentBlock {
             cited_text,
             document_index,
             document_title,
@@ -7713,7 +7718,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         _ => panic!("expected content_block_location citation"),
     }
     match &citations[3] {
-        Citation::WebSearchResultLocation {
+        Citation::WebSearchResult {
             cited_text,
             encrypted_index,
             title,
@@ -7727,7 +7732,7 @@ fn anthropic_messages_200_residual_fields_round_trip_representative_wire() {
         _ => panic!("expected web_search_result_location citation"),
     }
     match &citations[4] {
-        Citation::SearchResultLocation {
+        Citation::SearchResult {
             cited_text,
             source,
             title,
