@@ -344,11 +344,11 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     // `method_template_contract_test.rs` until testgen covers
     // reflected-Dag structural assertions over std/ row authorities.
     "src/v3/compiler/tests/integration/cross_target_coverage_carrier_test.rs",
-    "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // E6-G1.a Option 3 — static `Lens<Int>` + `mini_report` mechanism demonstration
     // (Director #1853 brief; witness-flow + TESTING.md split + `include_str!` brief
     // receipts per #1857). SG-0 ratchet: new hand-authored integration test.
     "src/v3/compiler/tests/integration/e6_g1a_option3_static_lens_test.rs",
+    "src/v3/compiler/tests/integration/e_i_lane_induction_preflight_test.rs",
     // T-Ground-Engine Phase-1 loader-close (PR #776, Director-approved
     // Path 2): hand-Rust integration test pinning
     // `Dag::rust_pilot_primitives()` type-structure walk + the
