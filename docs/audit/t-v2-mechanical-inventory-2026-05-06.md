@@ -12,11 +12,13 @@ Mechanical census: enumerate every workspace `v2_compiler` / `v2-compiler` / `sr
 
 ## Search authority
 
-All counts use the audit-sanctioned search shape from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review). Note the matrix-cited path set was `src/ tests/`, but the repo has no top-level `tests/` directory — Rust integration tests live under `src/<crate>/tests/`. Reproducible form for current tree:
+All counts use the audit-sanctioned search shape from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review), broadened to also catch the hyphenated Cargo dep names (`v2-compiler` / `v2-compiler-tests`) — `\bv2_compiler\b` only matches the underscored module-path form, so the matrix-cited regex misses Cargo.toml dep edges in a single sweep. The matrix-cited path set was `src/ tests/`, but the repo has no top-level `tests/` directory — Rust integration tests live under `src/<crate>/tests/`. Single unified census for current tree:
 
 ```sh
-grep -rEln 'src/v2/|\bv2_compiler(_tests)?\b' src/
+grep -rEln 'src/v2/|\bv2[-_]compiler(_tests|-tests)?\b' src/ Cargo.toml dsl/
 ```
+
+This single command catches every surface enumerated below in one pass: `src/v2/` paths, `v2_compiler` / `v2_compiler_tests` Rust module-path uses, AND `v2-compiler` / `v2-compiler-tests` Cargo dep names. Earlier inventory passes used narrower patterns and produced split receipts; this unified form is the canonical reproduction command for future refreshes.
 
 Substantive vs cosmetic split per #1338 §3.1: substantive = `use` / call / function-signature / type reference; cosmetic = doc-comment / string literal / README mention.
 
@@ -132,10 +134,19 @@ These are cosmetic-only references not yet listed in the matrix; surfacing here 
 | `dsl/std/syntax.dag` | doc-comment | L79 |
 | `dsl/extdeps/llm/openai.dag` | doc-comment | L90 |
 | `dsl/extdeps/languages/python/syntax.dag` | doc-comment | L43 |
-| `dsl/gunbc/compiler.dag` | doc-comment + `data compiler_source: SourceRoot = { path: "src/v2" }` | L29, L53 |
+| `dsl/gunbc/compiler.dag` | doc-comment | L29 |
 | `dsl/gunbc/tools/review_codex.dag` | reviewer-prompt string mentioning `src/v2` | L75 |
+| `dsl/gunbc/tools/ci_runner.dag` | doc-comment containing example `cargo run -p v2-compiler` invocation | L16 |
 
-**Note on `dsl/gunbc/compiler.dag:53`:** this is a `data` declaration setting `compiler_source.path = "src/v2"`. It is **not** a Rust import or substantive code consumer; it's a configuration-data row pointing at the v2 source tree as compile input. Whether it shifts to a v3-side path under G-2 is a question for S-1 (whether `compiler.dag`'s `compiler_source` retargets, or whether the `compiler.dag` itself gets refactored when v2 retires). **No disposition proposed here** — just inventoried.
+#### C.3 `.dag` configuration-data references — NOT cosmetic
+
+These are **typed `data` declarations** in `.dag` modules (substrate/config rows), distinct from doc-comments / string literals. They are load-bearing values consumed by the compile pipeline; treating them as "cosmetic Population C" would let G-2 retirement strand the value or silently retarget a config field. Each row gets a named disposition rather than the C-class "sweep at G-2" default.
+
+| Surface | Construct | Role | Population | G-1 / G-2 routing |
+|---|---|---|---|---|
+| `dsl/gunbc/compiler.dag:53` | `data compiler_source: SourceRoot = { path: "src/v2" }` | Configuration row pointing the compiler-source `SourceRoot` at the v2 source tree. Consumed as compile input; not a Rust import. | **C-data** (not C-cosmetic) | **G-2 prerequisite**, not G-1. Disposition is **routed to S-1** (PM-authored worker brief): does `compiler_source.path` retarget to a v3-side root when v2 retires, or does `compiler.dag`'s self-compile target itself refactor under T-FixedPoint / SG-0 = 0 closure? **No disposition proposed here**; flagged so S-1 enumerates it explicitly rather than letting it slip into a Population C cleanup pass that would silently drop the path value. |
+
+**Why this matters:** Population C's "sweep at G-2" default assumes refs are doc-comments / string literals where deletion or rewording is purely cosmetic. A `data` declaration's path field is a typed value the bootstrap consumes — silently rewriting it during a cosmetic sweep would either point the field at nothing (`compiler_source` becomes invalid) or quietly retarget the compile root without an authoring-time decision. Flagged here as a C-data row with named G-2 routing so S-1's scope coverage (input-packet Decision 6) can include it explicitly.
 
 **Receipt:**
 ```sh
@@ -198,7 +209,8 @@ The matrix's structural map (Populations A/B/C, G-1 vs G-2 split, ownership rout
 2. **Population B test-file line citations drifted:** `m2_substrate_inhabitance_test.rs` L991/L992-993/L1005 → L1209/L1210/L1222. Same construct (`v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority`); structurally unchanged.
 3. **Population B Cargo edge line citations drifted:** `src/v3/compiler/Cargo.toml:32-33` → `:37-38`. Edges unchanged.
 4. **Population C dag.rs line set drifted:** matrix listed 6 lines (L526/L983/L1562/L1598/L1602/L3102); HEAD has a single doc-comment at L1793 only. Net Population C count for that file decreased from 6 → 1.
-5. **Population C gap-fill:** 10 additional files carry cosmetic `src/v2` references (per §1.3 C.2). All doc-comment / string-literal; no substantive consumer added.
+5. **Population C gap-fill:** 11 additional files carry cosmetic `src/v2` references (per §1.3 C.2 + `dsl/gunbc/tools/ci_runner.dag:16` added in 2026-05-06 follow-up). All doc-comment / string-literal; no substantive Rust consumer added.
+6. **Population C-data split (2026-05-06 follow-up):** `dsl/gunbc/compiler.dag:53` `data compiler_source: SourceRoot = { path: "src/v2" }` reclassified out of C-cosmetic into a new **C-data** row (§1.3 C.3) with named G-2 routing to S-1, since it's a typed config value not a doc-comment.
 6. **Workspace-Cargo.toml inventory gap:** root `Cargo.toml` v2 lines (L6/L8/L58/L61) not previously inventoried. Surfaced here.
 
 **G-1 closure surface count: 4 (unchanged from matrix §2.2).** No new substantive `v2_compiler` consumer has surfaced since `66edec52`; the retirement work scope is unchanged.
