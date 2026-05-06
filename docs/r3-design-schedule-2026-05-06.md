@@ -334,6 +334,18 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Lane scope**: ROADMAP debt-row retirement + velocity-tripwire enforcement + closure-receipt cadence + per-PR discipline rule.
 
+**Partition** (per Debt-Paydown Mgr partition response 2026-05-06 at gunbc#846 #issuecomment-4385074935):
+
+| Item | Status | Next step |
+|---|---|---|
+| **DP1** Q-Drift-Reconcile single PR | DISPATCH-NOW | Single Debt-Paydown worker thread; scope = one reconciliation PR + §1.8 row retirements feeding `r3_debt_paydown_zero_remaining` |
+| **DP2** SG-0 PR-window CI gate | **IN-FLIGHT at PR #1807** | scripts/check-pr-sg0-net-shrink-discipline.sh + workflow + template + ROADMAP; closure target = §1.8 gate #75 |
+| **DP3** Velocity tripwire | CONTINUOUS | Standing cadence slice (P5 ratio surfacing); recurring Mgr report + Director queue pings on threshold trips; no single landed event |
+| **DP4** Closure-receipt cadence | CONTINUOUS | Lane ops / receipts discipline; feeds `r3_debt_paydown_zero_remaining` Pass surface |
+| **DP5** #1566 rollup hygiene | HOLD pending DRAFT close | Deferred worker; no idle burn until trigger clears |
+
+No §6 items currently Director-blocked; §7 CP items stay out-of-lane unless they become prerequisites.
+
 ### DP1 — Q-Drift-Reconcile single PR
 
 **Scope**: 3 drift items single-PR reconciliation:
