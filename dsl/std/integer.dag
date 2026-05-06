@@ -110,6 +110,28 @@ type UInt128 = Semiring<Word128>
 type Int = AbelianGroup<GroupCompletion<Nat>>
 type UInt = Nat
 
+// Nat-alignment refinement (S9 Slice 2 / Phase-4, partial).
+// NonNegativeInt formerly lived in dsl/std/types.dag refining Int with a
+// non-negative range predicate. Slice 2 Nat-alignment (dispatch
+// gunbc#1739 issuecomment-4389870320) migrates the algebra-side carrier to
+// Nat: non-negativity is structural to Nat by construction (the canonical
+// natural-number carrier), not a refinement over Int. Refining Int for
+// non-negativity projects out Nat's structural property — the same modeling
+// fault Codex's BLOCKING review on PR #1818 caught for UInt as a
+// CommutativeMonoid wrap of Nat. Declared here (not in std.types) because
+// this module imports std.nat directly; locating in std.types would require
+// an std.types to std.nat import edge that triggers a circular-dependency
+// false-positive during transitive load of test fixtures via std.render
+// chains.
+//
+// PositiveInt remains in std.types refining Int for this slice — the
+// resolver does not currently entail predicate ranges over Nat (only over
+// Int and Int-row carriers). Per dispatch STOP-AND-ESCALATE bullet 2
+// (predicate-entailment failure), surfacing as a gap; PositiveInt's
+// Nat-alignment sequences after predicate-entailment substrate supports
+// ranges over Nat.
+type NonNegativeInt = Nat
+
 // ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
 //
 // **Substrate-declared ordering authority** for diagnostic enumeration (narrow→wide).
