@@ -202,6 +202,9 @@ jobs:
       # miss, first compile + link on ubuntu-latest) can spend minutes — keep
       # headroom beyond a tight 120s; per-test discipline lives in
       # `tests/common/budgeted.rs` (DEFAULT_BUDGET_MS).
+      # Tracked headroom: ratchet this ceiling back toward 300s once cold
+      # lane2d CI runs regularly complete under 300s after fixture compile
+      # amortization lands for the remaining Stage 2d cases.
       - name: v3 tests (Stage 2d integration module, 360s cold-compile-safe budget)
         run: |
           start=$(date +%s)
