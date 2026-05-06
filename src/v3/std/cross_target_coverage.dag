@@ -36,6 +36,24 @@
 module v3.std.cross_target_coverage
 
 import v3.std.methods { MethodRef }
+import std.methods {
+  all_method,
+  any_method,
+  append_method,
+  chars_method,
+  count_method,
+  enumerate_method,
+  filter_method,
+  first_method,
+  flat_map_method,
+  join_method,
+  last_method,
+  skip_method,
+  sort_by_method,
+  split_method,
+  string_contains_method,
+  take_method
+}
 
 // --- ShapeATarget ---------------------------------------------------------
 //
@@ -166,4 +184,46 @@ type EmissionPathProjection {
 // Phase-1 rows (single-element `cells: [{connective: Cardinality,
 // behavior: Transform}]` per row). The empty-state assertion is this
 // slice's load-bearing claim that no row drift sneaks in via this PR.
-data emission_path_projections: List<EmissionPathProjection> = []
+data emission_path_projections: List<EmissionPathProjection> = [
+  { row_identity: { target: Rust, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Rust, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: last_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: first_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: enumerate_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: chars_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Python, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: split_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: filter_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: any_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: all_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: flat_map_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: skip_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: take_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: sort_by_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: append_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
+  { row_identity: { target: Go, dag_method: { decl: string_contains_method } }, cells: [{ connective: Cardinality, behavior: Transform }] }
+]
