@@ -1,10 +1,13 @@
 ---
 status: draft (worker brief; Director ratified Path 3 at gunbc#828 #issuecomment-4390333451 / 2026-05-06; dispatchable now)
 authority parent: R3 Substrate Manager (#1739)
-ratification: Path 3 RATIFIED at gunbc#828 #issuecomment-4390333451 (zesty-bear-812). Predicate-registry landing + PB-1 shim retirement bundled.
+ratification: Option A revised RATIFIED at gunbc#1739 #issuecomment-4392329709 (zesty-bear-812, 2026-05-06). Builds on Path 3 → Path (a) → Path 2 cascade; final shape: 4 predicates body-synthesize via Gap 1; pattern/format/content STRUCTURALLY ABSENT (not pending-with-placeholder); ~12 types.dag declarations migrate to drop where-clauses with Q-Regex restoration receipts; PB-1 shim FULLY RETIRED.
 roadmap row: extends T-Numeric-Construction (S9 Slice 2.5); resolver-substrate slice landing
 authority docs:
-  - gunbc#828 #issuecomment-4390333451 (Path 3 ratification)
+  - gunbc#1739 #issuecomment-4392329709 (Option A revised RATIFICATION — final shape; supersedes Path 3 / Path (a) / Path 2 cascade)
+  - gunbc#1739 #issuecomment-4392081719 (Option 4 REJECTED — fail-closed-with-named-dep at registry layer rejected on C-8)
+  - gunbc#828 #issuecomment-4392116215 (migration-cost catalog — 12 types.dag + 1 extdep)
+  - gunbc#828 #issuecomment-4390333451 (prior Path 3 ratification — historical context)
   - gunbc#828 #issuecomment-4390275410 (3-path scope-expansion surface)
   - gunbc#1746 #issuecomment-4390253616 (proud-lynx-311 pre-flight DFS — PB-1 shim asymmetry finding)
   - PR #1840 (partial Slice 2 receipt; NonNegativeInt = Nat MERGED)
@@ -201,32 +204,36 @@ follow-on Q-Regex-Primitive substrate-fact-introduction.
   (no partial implementation; same-slice-dissolution discipline)
 - **non_empty + brand body synthesis**: lands via Gap 1 discharge
   mechanism (`non_empty(s)` → `s != ""`; `brand` → trivially-true)
-- **pattern / format / content**: **PENDING DIRECTOR RATIFICATION**
-  on scope shape. Director rejected Option 4 (pending_substrate
-  warning placeholder) at gunbc#1739 #issuecomment-4392081719 (2026-05-06).
-  Options A (extdeps + types.dag consumer migration off
-  pattern/format/content prior to slice landing), B (Q-Regex-Primitive
-  bundled into slice scope), and C (typed fail-closed exception
-  with named trigger covering existing std/types.dag usages until
-  Q-Regex lands) await ratification. Migration-cost catalog
-  surfaced at gunbc#828 #issuecomment-4392116215. Worker DOES NOT
-  proceed on pattern/format/content body shape until Director
-  ratifies one of A/B/C; STOP-AND-ESCALATE if dispatched before
-  ratification lands.
-- **Within types.dag**: existing pattern/format/content usages
-  shape gates on Director ratification (above). Until then,
-  PB-1 shim coverage of those usages remains the operative behavior;
-  shim retirement Deliverable 3 likewise gates on the chosen path
-  (Option A retires shim cleanly; Option B retires shim post-Q-Regex;
-  Option C retires shim with named-trigger exception path retained)
-- **PB-1 shim**: retirement shape gates on Options A/B/C ratification
-  (above). Director hard scope bar #3 ("PB-1 retirement non-negotiable
-  in same slice") still binds the *gt_zero / range / non_empty / brand*
-  half — those four predicates retire shim coverage cleanly via Gap 1.
-  pattern/format/content shim coverage retires per the chosen path
-  (A: post-migration / B: post-Q-Regex / C: replaced by named-trigger
-  exception). No path leaves PB-1 alive as a parallel-authority shim
-  on slice landing
+- **pattern / format / content**: **STRUCTURALLY ABSENT from registry**
+  per Director Option A revised RATIFICATION at gunbc#1739
+  #issuecomment-4392329709 (2026-05-06). NOT pending-with-placeholder;
+  predicates simply do not exist in the registry namespace.
+  User-code `where pattern(...)` / `where format(...)` /
+  `where content(...)` produces `Diagnostic::ResolveError` naming
+  Q-Regex-Primitive as the unblock substrate-fact-introduction
+  follow-on. Structural rejection — fail-closed via absence, not
+  fail-closed via placeholder
+- **Types.dag migration scope**: ~12 refined-type declarations using
+  pattern/format/content where-clauses migrate to drop those
+  where-clauses. Each migration receipt as **inline comment** on
+  the type: "pattern check pending Q-Regex-Primitive landing;
+  restore where-clause when registry re-includes pattern."
+  Worker DFS-catalogs the 12 declarations at dispatch (substrate-state
+  grep at HEAD); count is approximate from migration-cost catalog
+  at gunbc#828 #issuecomment-4392116215, worker reframes to actual
+  HEAD count
+- **Extdep migration**: `sts_endpoint` declaration adapts as needed.
+  If `Url`'s where-clause drops, `sts_endpoint: String` works
+  automatically — likely no separate migration needed; worker
+  confirms at dispatch
+- **PB-1 shim**: FULLY RETIRED — no exception, no preserved branch.
+  `span.file == "dsl/std/types.dag"` special-case removed from
+  `lower_type_alias_refinements_phase` per Director hard scope bar #3
+- **Q-Regex-Primitive**: surfaces as **separate substrate-fact-
+  introduction follow-on** with its own brief / worker pin / Director
+  ratification cycle when concretely needed. Bundling regex primitive
+  into Slice 2.5 explicitly REJECTED (Option B; XXL scope; violates
+  bundled-scope discipline at gunbc#1739 #issuecomment-4392225548)
 - **Carrier-check at `788d6acb4`**: retained as structural improvement
 
 ## Slice — single PR per Director ratification
@@ -236,13 +243,15 @@ parallel-authority drift between "predicate registry exists in part
 of the codebase" vs "shim still active for legacy seed declarations."
 
 Phase ordering (PR-internal):
-1. DFS catalog of shim-dependent declarations (PR body inventory)
-2. Registry infrastructure landing (Deliverable 2)
-3. `gt_zero` primitive enrollment (Deliverable 1)
-4. PB-1 shim retirement (Deliverable 3)
-5. Existing predicate migration verification (Deliverable 4)
-6. `PositiveInt` consumer update (Deliverable 5)
-7. Bootstrap snapshot regen + parse corpus manifest refresh
+1. DFS catalog of shim-dependent declarations + pattern/format/content where-clause usages at HEAD (PR body inventory; ~12 types.dag + 1 extdep expected per migration-cost catalog, worker reframes to actual count)
+2. Registry infrastructure landing (Deliverable 2) — 4 predicates only (gt_zero / range / non_empty / brand)
+3. `gt_zero` / `range` / `non_empty` / `brand` primitive enrollment + Gap 1 discharge mechanism (Deliverable 1 + Gap 1)
+4. Types.dag migration: drop pattern/format/content where-clauses with inline Q-Regex restoration comment per declaration
+5. Extdep adaptation (`sts_endpoint`) if needed
+6. PB-1 shim retirement — full removal of `span.file == "dsl/std/types.dag"` branch (Deliverable 3)
+7. `PositiveInt` consumer update (Deliverable 5)
+8. Bootstrap snapshot regen + parse corpus manifest refresh
+9. User-code-fail-closed cementing test: `where pattern(...)` produces `Diagnostic::ResolveError` naming Q-Regex-Primitive
 
 ## Acceptance
 
@@ -250,24 +259,31 @@ Phase ordering (PR-internal):
   Nat only (Int-side EXPLICITLY OUT-OF-SCOPE per Deliverable 1);
   predicate body lowered with arg-shape validation (zero-arg form
   for `gt_zero`); mismatched-carrier produces `Diagnostic::ResolveError`
-- **All 7 registered predicates** (`gt_zero`, `range`, `pattern`,
-  `non_empty`, `brand`, `format`, `content`) carry **carrier+argument
-  contract verification at lower-time**; placeholder lowering REMOVED
-  from registry path; mismatched-carrier or malformed-argument
-  produces `Diagnostic::ResolveError` per Path (a) RATIFICATION
-- **4 of 7 predicates body-synthesized in same slice** (`gt_zero`
-  / `range` / `non_empty` / `brand`) per Path 2 RATIFICATION:
+- **4 registered predicates** (`gt_zero` / `range` / `non_empty` /
+  `brand`) carry **carrier+argument contract verification at
+  lower-time**; placeholder lowering REMOVED from registry path;
+  mismatched-carrier or malformed-argument produces
+  `Diagnostic::ResolveError` per Path (a) RATIFICATION
+- **4 of 4 in-scope predicates body-synthesized in same slice** per
+  Option A revised RATIFICATION:
   - `gt_zero(x)` → `x > 0`
   - `range(x, min: m, max: M)` → `x >= m && x <= M` (per-field)
   - `non_empty(s)` → `s != ""` via Gap 1 discharge mechanism
   - `brand` → trivially-true via Gap 1 discharge mechanism
-- **3 of 7 predicates** (`pattern` / `format` / `content`):
-  acceptance shape **PENDING DIRECTOR RATIFICATION** of Options
-  A/B/C (Director rejected Option 4 fail-closed-with-named-dep at
-  gunbc#1739 #issuecomment-4392081719 (2026-05-06)). Worker does not
-  land final shape on these three until ratification arrives; if
-  brief dispatched pre-ratification, STOP and surface. Once
-  ratified, brief absorbs the chosen path verbatim before authoring
+- **`pattern` / `format` / `content`: STRUCTURALLY ABSENT from
+  registry** per Option A revised. User-code `where pattern(...)`
+  produces `Diagnostic::ResolveError` naming Q-Regex-Primitive as
+  unblock substrate-fact-introduction follow-on. No "named but not
+  checked" path remains for any registered predicate
+- **Types.dag migration**: ~12 refined-type declarations drop
+  where-pattern/where-format/where-content clauses with inline-comment
+  receipts pointing to Q-Regex-Primitive restoration path. Worker
+  DFS-catalogs actual count at HEAD at dispatch
+- **Extdep migration**: `sts_endpoint` adapts (likely non-issue if
+  Url's where-clause drop handles it automatically; worker confirms)
+- **No "named but not checked" path** remains for any registered
+  predicate; all 4 body-synthesize, the 3 omitted predicates are
+  structurally absent
 - **Gap 1 discharge mechanism landed in same slice**: extends
   `scalar_literal_requires_refinement_discharge` (or equivalent)
   to evaluate trivial-true + basic-comparison predicates against
