@@ -26,7 +26,7 @@ surfaced that the original Slice 2.5 framing ("primitive + 1
 consumer") is structurally impossible:
 
 - Inside `dsl/std/types.dag`: `Nat where gt_zero` would ride the
-  PB-1 shim at `lower.rs:821-835` (`lower_type_alias_refinements_phase`)
+  PB-1 shim at `src/v3/compiler/src/lower.rs` (`lower_type_alias_refinements_phase` doc-block) (`lower_type_alias_refinements_phase`)
   which special-cases `span.file == "dsl/std/types.dag"` to absorb
   unresolved predicates with placeholder refinement. Cheap path,
   but requires moving NonNegativeInt back to types.dag (retriggers
@@ -60,8 +60,15 @@ Original Slice 2.5 scope. Add `gt_zero` to the predicate vocabulary:
   #issuecomment-4390199218 — `gt_zero` IS the reason for "Nat without
   zero" / "Nat above structural bound"; `range(min: 1)` is misleading
   label)
-- Likely also extensible to Int if generalization is cheap; worker
-  judgment on whether Int-side gt_zero is in scope or future
+- **Int-side `gt_zero` extensibility EXPLICITLY OUT-OF-SCOPE**
+  for Slice 2.5. Named consumer demand is `PositiveInt` only;
+  no in-slice Int-side `gt_zero` consumer exists. Per
+  `feedback_construction_over_ratchets`: do not speculatively
+  extend predicate-carrier compatibility ahead of named consumer
+  demand. If a future Int-side consumer surfaces, that's a
+  separate substrate-fact-introduction (P1 procedure) brief
+  with its own consumer-demand receipt. Worker authoring-side
+  judgment is **bounded**: register `gt_zero` for Nat only.
 
 ### Deliverable 2 — predicate registry infrastructure
 
@@ -84,7 +91,7 @@ Resolver-side substrate-fact-introduction (P1 procedure):
 Dissolve `lower_type_alias_refinements_phase` `span.file == "dsl/std/types.dag"`
 special-case:
 
-1. Remove the file-path-special-case branch at `lower.rs:821-835`
+1. Remove the file-path-special-case branch at `src/v3/compiler/src/lower.rs` (`lower_type_alias_refinements_phase` doc-block)
 2. Replace placeholder-refinement absorption with registry-resolved
    refinement
 3. Confirm shim's ratchet purpose ("would emit diagnostics in the
@@ -149,7 +156,7 @@ Phase ordering (PR-internal):
 ## Acceptance
 
 - `gt_zero` primitive predicate enrolled in registry; resolves over
-  Nat (and Int if generalized)
+  Nat only (Int-side EXPLICITLY OUT-OF-SCOPE per Deliverable 1)
 - Predicate registry infrastructure landed; sole authority for
   predicate-name resolution
 - PB-1 shim retired (`span.file == "dsl/std/types.dag"` branch
