@@ -80,7 +80,8 @@ substitute for the audit.
 
    **Practice 4 dissolution-ledger marks (mandatory on the live
    declaration).** Per `docs/modeling-discipline.md` Practice 4
-   (Step 4 of the type-introduction checklist), each variant of
+   (coproduct dissolution; "What to check" rule at
+   `docs/modeling-discipline.md:131`), each variant of
    the new `TransformDispatch` enum MUST carry its 🟢/🟡/🔴 mark
    as a doc comment on the variant itself, copying the per-variant
    ledger from `design-prereq-x-ho-field-call.md` §Prereq-X1

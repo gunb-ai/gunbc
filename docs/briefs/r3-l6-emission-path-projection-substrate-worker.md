@@ -34,9 +34,11 @@ follow-up row-population PR + `coverage.rs` conversion (per §4.D=(b)).
 1. Author new file `src/v3/std/cross_target_coverage.dag` containing:
 
    Each new coproduct / sum declaration MUST carry a 🟢/🟡/🔴
-   classification annotation per `docs/modeling-discipline.md`
-   Practice 4 (Step 4 of the type-introduction checklist;
-   `INVARIANTS.md#p1-modeling-faithfulness` worked example).
+   checkpoint-comment classification per `docs/modeling-discipline.md`
+   Practice 4 (coproduct dissolution; the "What to check" rule at
+   `docs/modeling-discipline.md:131` — checkpoint comment naming
+   classification, ledger entry if GREEN, named trigger if YELLOW).
+   Implements `INVARIANTS.md#p1-modeling-faithfulness`.
    The classifications below are pre-determined; worker copies
    them verbatim into the live source:
 
