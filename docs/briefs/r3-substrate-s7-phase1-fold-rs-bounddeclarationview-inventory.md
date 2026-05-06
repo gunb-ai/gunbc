@@ -8,6 +8,13 @@
 *(canonical S7 worker brief — **tracked on `main`** at this path; this inventory
 PR does not add or rename that file; STOP / Phase boundaries defer to it.)*
 
+**Merge-base audit (not in this PR diff — auditable on `main`):** That path is
+present on `origin/main` as git blob **`ac843c5817358785979409dc30deaba94fb28de5`**
+(path cited above; introduced **`7153efb51`** “R3 Substrate”, **#1825**).
+Mechanical check before merge:  
+`git cat-file -t ac843c5817358785979409dc30deaba94fb28de5` → `blob`, or  
+`git show origin/main:docs/briefs/r3-substrate-s7-pr-f-bounddeclaration-consumer-worker.md | head -n 5`.
+
 This file mirrors the PR-body inventory for traceability in-tree.
 
 ---
