@@ -111,14 +111,20 @@ at brief-landing.
 ### Phase 2 — S9 Phase-3 dimensional reframe consumer
 
 Update S9 Phase-3 dimensional refinements to consume Measure-typed
-shape. Per Q-Unit-3 RATIFIED collapse + Q-Unit-4 outer-Refined /
-inner-Measure composition order:
+shape. Per Q-Unit-3 RATIFIED collapse. Q-Refined-Phantom-Composition
+RATIFIED option (c) at gunbc#828 (2026-05-06): predicates do NOT
+attach at the Measure (phantom) layer; outer-Refined / inner-Measure
+is the **conceptual model only** — literal `Refined<Measure<...>, predicate>`
+form is **deferred to value-typed-integration follow-up**. At Phase-2
+landing, dimensional semantics ride on the `Quantity` tag (e.g.,
+"non-negative time-magnitude" IS what `Quantity = Time` means in
+this model):
 
 | S9 Phase-3 declaration | Measure-typed shape | Practice 4 |
 |---|---|---|
-| `Duration` | `Refined<Measure<Time, One>, non_negative>` | 🟢 PRIMITIVE |
+| `Duration` | `Measure<Time, One>` (Quantity tag carries non-negative-magnitude semantics; predicate deferred per (c)) | 🟢 PRIMITIVE |
 | `Seconds` | type alias for `Duration` (collapse per Q-Unit-3) | 🟢 |
-| `Milliseconds` | `Refined<Measure<Time, Milli>, non_negative>` | 🟢 |
+| `Milliseconds` | `Measure<Time, Milli>` (predicate deferred per (c)) | 🟢 |
 | `EpochMs` | **DEFERRED** to R4 C6 (Aspect-axis follow-up) | — |
 
 Refined predicate `non_negative` applies at the Measure-typed level
@@ -170,8 +176,9 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
   Inline comments on the source are mandatory; PR-body summary
   is supplementary, not substitute.
 - S9 Phase-3 `Duration` / `Seconds` / `Milliseconds`
-  declarations updated to Measure-typed `Refined<Measure<Time, ...>, ...>`
-  shape (Q-Unit-4 RATIFIED outer-Refined / inner-Unit).
+  declarations updated to Measure-typed shape (`Measure<Time, ...>`
+  without predicate per Q-Refined-Phantom-Composition (c) RATIFIED;
+  Quantity tag carries dimensional semantics).
 - `EpochMs` retained with SCAFFOLD comment naming R4 C6 trigger;
   NOT migrated.
 - Grounding Mgr (#1745) cross-program handoff receipt in PR body
