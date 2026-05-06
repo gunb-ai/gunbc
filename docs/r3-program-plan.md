@@ -1,6 +1,11 @@
 # R3 Program Plan — 2026-05-06
 
-**Status:** **DRAFT — under PM authorship + Mgr-canvas absorption.** Phase 1 (skeleton + closure criteria + lane status) authored; Phase 2 (per-Mgr escalation absorption) compiles canvas responses as they arrive on inboxes #1739–#1745. Phase 3 (Director ratification) closes Q1–Q7 in §10. Plan PR opens after §10 escalations clear.
+**Status:** **PR #1808 OPEN; iterating.** Plan is the live authority for path-to-R3-close. Phase 1 (skeleton + closure criteria + lane status) authored; Phase 2 (per-Mgr escalation absorption) ongoing — 5 of 8 reviewers complete (Verification + Director + Grounding + Substrate + Debt-Paydown); 3 pending (PB / Evaluator / Research PM). Q1–Q7 ratified per Brian directive 2026-05-06; live RED escalations remain in §10.3 (most notably Q-Lens-Behavioral-Parity-R3-Closeability requiring Director scope-calibration).
+
+**Merge gates** (distinct from PR-open status — per openai-pro 2026-05-06 finding):
+- **PR open**: ✓ at sha `d1bfbbe22`
+- **Plan PR merge-eligible**: open RED escalations in §10.3 acknowledged + tracked (not necessarily resolved); PR can merge with RED items in flight provided they're explicitly tracked + assigned routing
+- **R3 close** (NOT plan PR merge): all 75 closure gates GREEN + `r3_debt_paydown_zero_remaining` + comprehensive sweep zero-debt + Director resolution on Q-Lens-Behavioral-Parity-R3-Closeability scope + other §10.3 RED items resolved per their owners
 
 **Purpose.** Forward-looking program plan for **R3 close with zero debt**. Per user directive 2026-05-05 (gunbc#846): *"clear dependency graph from here to R3 close"* + *"surface escalations now and solve them"*.
 
@@ -590,7 +595,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 
 ## §10. Open ratification questions / escalation register
 
-**Status**: live. PM compiles per-Mgr canvas escalations as they arrive; surfaces consolidated list to Brian + Director for resolution. Plan PR opens after all blocking items resolved.
+**Status**: live. PM compiles per-Mgr canvas escalations as they arrive; surfaces consolidated list to Brian + Director for resolution. **Plan PR (#1808) is OPEN; merge-eligibility distinct from R3-close** — PR merges with §10.3 RED items in flight provided they're explicitly tracked + assigned routing; R3 close requires all RED items resolved per their owners (per openai-pro 2026-05-06 finding — distinguish PR-open vs merge-eligible vs R3-closure-eligible).
 
 ### §10.1 PM-surfaced ratifications (Q1–Q7 from gunbc#846 reply 2026-05-06)
 
@@ -733,13 +738,16 @@ Substrate Mgr's full forward-looking escalation canvas (per gunbc#846 #issuecomm
 
 #### §10.2.4 R3 Evaluator Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
 
-#### §10.2.4 R3 Evaluator Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
-
 #### §10.2.5 R3 PB Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
 
-#### §10.2.6 R3 Debt-Paydown Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
+#### §10.2.6 R3 Debt-Paydown Mgr (quiet-otter-416) — full canvas + plan-poke-hole absorbed at sha `e41e4fbe8` (2026-05-06)
 
-(Per Director poke-hole 2026-05-06 finding 6.1: timestamp added to clarify these are point-in-time placeholders. Plan PR opens after canvas compile completes.)
+Substrate canvas + plan-poke-hole both folded in. Key absorptions:
+- **§1 Two-Pass-surfaces clarification**: lane TestClaim gates (75 total) AND `r3_debt_paydown_zero_remaining` are distinct Pass surfaces; both must hold for R3 close
+- **§7 four-mechanism structure** (per `r3-structure.md` §"Standing program — R3 Debt-Paydown" canonical authority): added §7.6 Velocity tripwire + §7.7 Closure-receipt cadence + §7.8 SG-0 PR-window net-shrink discipline
+- **§3 T-Debt-Paydown row** updated from "(TBD from canvas)" → YELLOW with PR #1807 + PR #1566 + Tier-1 dispatch-brief-drift-sweep anchors
+
+(Per Director poke-hole 2026-05-06 finding 6.1: timestamps clarify point-in-time placeholders for the 2 still-pending Mgrs above. Per openai-pro 2026-05-06: PR #1808 is OPEN; merge-eligibility distinct from R3-close-eligibility per the new §10 status header above.)
 
 ### §10.3 Net escalations awaiting decision
 
