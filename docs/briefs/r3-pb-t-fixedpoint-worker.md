@@ -53,7 +53,7 @@ Scanning aid only: each cell defers to the cited sections for wording, STOP rule
 
 ## Two-horizon framing (load-bearing — do not collapse)
 
-Per `r3-structure.md` §"Acceptance — `.dag` gates" T-FixedPoint entry ("Two-horizon clarification" sub-bullet) and `r2-structure.md` §"R1 closure criteria" (the "`pb_self_compile_fixed_point` two-horizon semantics" paragraph), the predicate name `pb_self_compile_fixed_point` carries **two horizons**:
+Per [`docs/r3-structure.md`](../r3-structure.md#acceptance--dag-gates) §"T-FixedPoint" and [`docs/r2-structure.md`](../r2-structure.md#r1-closure-criteria), the predicate name `pb_self_compile_fixed_point` carries **two horizons**:
 
 | Horizon | Acceptance | Where |
 |---|---|---|
@@ -76,7 +76,7 @@ These dependencies are cumulative: R2-Evaluator → T-LensProducer-Retirement (X
 
 ## Acceptance gate (`.dag`)
 
-Per `r2-pure-bootstrap-manager.md` §"Acceptance" + `r3-structure.md` §"Acceptance — `.dag` gates" T-FixedPoint entry (`pb_self_compile_fixed_point` row + "Two-horizon clarification" sub-bullet):
+Per [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md#acceptance--dag-gates) §"Acceptance — `.dag` gates" + [`docs/r3-structure.md`](../r3-structure.md#acceptance--dag-gates) §"T-FixedPoint":
 
 **`pb_self_compile_fixed_point_strong`** — authored as a `.dag` `TestSuite` **composing two existing `TestPredicate` variants** at `src/v3/std/verification.dag`. The suite splits the strong horizon into **two structurally distinct claim shapes** (per codex BLOCKING review on sha `f851b3b7`: collapsing the rustc-bootstrap closure with per-target emission byte-stability into one row hides two different determinism properties):
 
@@ -228,7 +228,7 @@ When the R3 Verification Manager spawns (per `r3-structure.md` §"Manager struct
 
 - Parent manager: [`docs/briefs/r2-pure-bootstrap-manager.md`](r2-pure-bootstrap-manager.md) §"Owns (R3 continuation)" + §"Acceptance" `pb_self_compile_fixed_point_strong`
 - Lane authority: [`docs/r3-structure.md`](../r3-structure.md) §"Lane structure" T-FixedPoint row + §"Design challenge 4" Director-locked SG-0 decision
-- Two-horizon authority: [`docs/r2-structure.md`](../r2-structure.md) §"R1 closure criteria" + [`docs/r3-structure.md`](../r3-structure.md) §"Acceptance — `.dag` gates" T-FixedPoint entry ("Two-horizon clarification" sub-bullet)
+- Two-horizon authority: [`docs/r2-structure.md`](../r2-structure.md#r1-closure-criteria) §"R1 closure criteria" + [`docs/r3-structure.md`](../r3-structure.md#acceptance--dag-gates) §"T-FixedPoint" two-horizon clarification
 - Thesis-facet mapping: [`docs/thesis/r2-r3-thesis-mapping.md`](../thesis/r2-r3-thesis-mapping.md) row 136 (Facet 2)
 - SG-0 floor authority: [`docs/design-pure-bootstrap-zero.md`](../design-pure-bootstrap-zero.md) §`First-time bootstrap` (≤1 trampoline rule)
 - DB-8 ratchet design (mechanical authority): [`docs/design-fixed-point-ratchet.md`](../design-fixed-point-ratchet.md)
