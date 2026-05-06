@@ -28,7 +28,11 @@ coupled substrate gaps that this brief lands as **one bundled slice**.
 
 1. **`IntervalInt::ExactInterval` host-repr gap**: `src/v3/compiler/src/int_literal_ranges.rs` parses all integer ranges as `i128` host representation; `u128::MAX` exceeds `i128` range. `dsl/extdeps/languages/rust/primitives.dag` explicitly defers `u128` because of this. Substrate widening required (BigInt-based or alternative encoding).
 
-2. **`RustPrimitive` row shape gap**: `RustPrimitive` rows in `dsl/extdeps/languages/rust/primitives.dag` carry only static `range_min_inclusive` / `range_max_inclusive` strings; no structural `BoundDeclaration`-valued field. Platform-dependent rows (isize / usize) cannot populate without ad-hoc string encoding (which would be the bridge anti-pattern Director rejected).
+2. **Bound-carrier wiring gap on actual row surface**: the live row surface used by `src/v3/spec/rust.dag` is `TargetIntegerTypeInhabitance` (with bound-field type `TargetIntegerInhabitanceBound`) imported from `v3.std.emit_model` — NOT a generic `RustPrimitive` carrier. Per codex BLOCKING at PR #1910 sha 2ed1046e Finding #3: `BoundDeclaration` is live in `src/v3/std/substrate.dag` but NOT wired into `TargetIntegerInhabitanceBound`. Two options:
+   - **Option (i)**: refactor `TargetIntegerInhabitanceBound` to embed/wrap `BoundDeclaration` (consume the existing substrate)
+   - **Option (ii)**: retarget the isize/usize rows to populate the existing `TargetIntegerInhabitanceBound` directly via its current variant set (worker DFS-catalogs the variant set at HEAD; if PlatformDependent variant already exists on `TargetIntegerInhabitanceBound`, no carrier refactor needed)
+
+Worker DFS at dispatch decides; brief expects (ii) is likely if PlatformDependent variant already exists on `TargetIntegerInhabitanceBound`, but (i) is the fallback if the live carrier doesn't carry platform-dependent semantics.
 
 3. **`spec/rust.dag` PlatformDependentFact row population**: `src/v3/spec/rust.dag` has no Rust PlatformDependentFact row entries for isize / usize. Co-located with (2) — same brief / PR per "necessary structural fix" exception.
 

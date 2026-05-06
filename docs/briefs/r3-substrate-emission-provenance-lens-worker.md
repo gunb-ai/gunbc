@@ -64,64 +64,46 @@ the rule-enumeration axis.
 
 ## Scope
 
-### Deliverable 1 — `EmissionProvenance` + `EmissionOrigin` carriers
+### Deliverable 1 — `EmissionProvenance` carrier (record form)
 
 Author carriers in `src/v3/std/`. Per codex Finding 1 reshape (typed-sum
 origin, NOT optional-pair-with-runtime-invariant — applied in PR #1902
 at 0110f739d before supersession):
 
 ```dag
-type EmissionOrigin = SubstrateDeclMirror(SourceSpan) | FoldRuleAutoEmit(EmissionRule)
-
 type EmissionProvenance {
-  emitted_line: Int      // line number in emitted target output
-  origin: EmissionOrigin // structural fail-closed: every entry HAS an origin
+  emitted_line: Int                  // line number in emitted target output
+  rule: EmissionRule                 // MANDATORY — every emitted line is produced by some rule
+                                     //   (even trivial mirror-rules); type system enforces
+  source_span: Option<SourceSpan>    // OPTIONAL — populated when the rule's input traces to a
+                                     //   `.dag` source declaration; absent for purely structural
+                                     //   emissions (e.g., headers, fixed scaffolding)
 }
 ```
+
+**Reshape rationale** (per codex BLOCKING at PR #1910 sha 2ed1046e Finding #1): earlier typed-sum form `EmissionOrigin = SubstrateDeclMirror(SourceSpan) | FoldRuleAutoEmit(EmissionRule)` conflated two orthogonal axes. A single emitted line genuinely can have BOTH attributions — e.g., `#[derive(Debug)]` emitted on a Foo enum has rule=`derive_for_disj` AND source-span attribution to the Foo declaration in the `.dag` source. The two facts are not mutually exclusive; modeling them as sum variants forced false either-or framing. Record (product) form with mandatory rule + optional span is faithful to actual emission semantics and structurally fail-closed (rule presence enforced by type system; never both-absent).
 
 `EmissionRule` is the carrier landed by T-Rule-Enumeration (α sum type
 or β named-string lookup, whichever shape T-Rule-Enumeration ratified).
 Worker imports the rule-name carrier verbatim; brief does NOT re-author it.
 
-**Practice 4 classification**: 🟢 GREEN (terminal) — `EmissionOrigin`
-is a closed sum type with structural enumeration; both arms have
-non-trivial carriers. No richer source exists; the variants trace
-to the actual two emission origin classes (substrate-decl mirror vs
-LangSpec rule emission). No 🟡 YELLOW or 🔴 RED classification applies.
+**Practice 4 classification**: N/A — `EmissionProvenance` is a record
+(product), not a sum (coproduct). Practice 4 coproduct-dissolution
+rubric (🟢 / 🟡 / 🔴) applies to N≥2-variant sum types; record types
+are structurally classified by their field set, not coproduct status.
 
-**Terminal receipt** (per `docs/modeling-discipline.md#4-coproduct-dissolution` "GREEN (terminal) — no richer source exists"; documenting attempted dissolutions and why they fail):
+The earlier draft used a typed-sum `EmissionOrigin` shape with GREEN
+classification + terminal receipt; codex BLOCKING at PR #1910 sha
+2ed1046e Finding #1 surfaced that the sum framing was mis-modeled
+(the two facts can co-inhabit; sum forces false either-or). Record
+form with mandatory `rule: EmissionRule` + optional `source_span:
+Option<SourceSpan>` is the faithful shape. No Practice 4 ledger
+entry needed; structural fail-closed is enforced by `rule` field's
+required-presence in the record type.
 
-- *Attempted dissolution 1: collapse into single carrier with parameterized
-  origin*. Form: `EmissionOrigin = Origin(SourceSpan?, EmissionRule?)`.
-  FAILS — this is the optional-pair-with-runtime-invariant shape that
-  codex BLOCKING rejected (PR #1902 finding 1) as non-structural
-  fail-closed. Both-absent invariant relies on runtime assertion, not
-  type-system enforcement. Non-terminal: there's no richer-source
-  derivation; it's a *weaker* shape that loses fail-closed structure.
-- *Attempted dissolution 2: factor into common richer source*. The two
-  arms carry orthogonal payload types — `SourceSpan` (file/byte-range
-  triple from existing diagnostics substrate) vs `EmissionRule` (named
-  rule from emission code). No common richer source they both project
-  from; they describe two structurally distinct origin classes.
-- *Attempted dissolution 3: third arm for unattributable lines*. STOP
-  trigger #3 explicitly forbids adding an `Unknown` variant — that's
-  the placeholder anti-pattern Director rejected on Slice 2.5 (Option 4
-  fail-closed-with-named-dep). If a third origin class surfaces
-  during cementing test, that's a substrate-fact-introduction cascade
-  (separate brief), not silent variant-extension.
-
-Conclusion: 🟢 GREEN terminal at this scope. The two-arm sum is the
-faithful representation of "every emitted line came from substrate-decl
-mirror OR LangSpec rule emission"; there is no richer source.
-
-**§1.8 ledger entry for GREEN classification** (per
-`docs/modeling-discipline.md#4-coproduct-dissolution` — *"checkpoint
-comment naming its classification (🟢/🟡/🔴), with a ledger entry if
-GREEN"*): `emission_origin_classification_green` (or canonical
-project-naming convention) — sibling row to the parent
-`emission_provenance_lens_landed` gate. Worker authors both ledger
-rows + in-source `// 🟢 GREEN (terminal)` checkpoint comment on the
-live `EmissionOrigin` declaration.
+No §1.8 sibling-row needed (record-type, not coproduct; Practice 4
+ledger-entry-if-GREEN rubric doesn't apply). Parent gate
+`emission_provenance_lens_landed` is the sole row.
 
 ### Deliverable 2 — `Lens<List<EmissionProvenance>>` instance
 
@@ -130,12 +112,14 @@ Author lens instance per Director-locked 6-field shape:
 - `name: "EmissionProvenance"` (or canonical project-naming convention)
 - `read: fn(Dag, Behavior) -> Witness<List<EmissionProvenance>>` —
   per-Behavior fold computing the provenance list. For each emitted
-  line attributable to this Behavior:
-  - Line directly mirrors a Behavior/Declaration → `SubstrateDeclMirror(span)`
-  - Line emitted by LangSpec rule → `FoldRuleAutoEmit(rule)` where
-    `rule: EmissionRule` is looked up from emission code's named-rule
-    dispatch (T-Rule-Enumeration carrier)
-  - Missing-origin case CANNOT occur structurally (typed sum; no None)
+  line attributable to this Behavior, populate:
+  - `rule: EmissionRule` — the rule that produced this line (always
+    present; trivial-mirror rules count). Looked up from emission
+    code's named-rule dispatch (T-Rule-Enumeration carrier)
+  - `source_span: Option<SourceSpan>` — populated when the rule's
+    input traces to a `.dag` source declaration; absent for purely
+    structural emissions (e.g., headers, fixed scaffolding rules
+    that don't have a per-line source-decl input)
 - `sequential: Monoid<List<EmissionProvenance>>` — list-concat monoid
   (`empty: []`, `concat: [...] ++ [...]`)
 - `branch: (List, List) -> List` — concat over both arms (static
@@ -146,11 +130,11 @@ Author lens instance per Director-locked 6-field shape:
   substrate-state-grep on actual emission semantics; STOP if assumption
   breaks
 - `validate: fn(Dag, List<EmissionProvenance>) -> OptionalDiagnostic` —
-  validation surface is reduced (typed-sum EmissionOrigin makes
-  "both-absent" structurally impossible). Aggregate validation:
-  surface diagnostic if rule-name in `FoldRuleAutoEmit(rule)` refers
+  record form makes "rule absent" structurally impossible (type system
+  enforces). Aggregate validation: surface diagnostic if `rule` refers
   to a name not in `EmissionRule` enumeration (mechanically caught by
-  type system if α; runtime check if β with named dissolution trigger)
+  type system if α; runtime check if β with named dissolution trigger);
+  optional-`source_span` absence is structurally legal, NOT a diagnostic
 
 Per `feedback_compositional_not_templating`: per-Behavior fold composes
 to per-line view at the visualization layer (flatten the per-Behavior
@@ -166,9 +150,11 @@ Author cementing test that:
 4. **Verifies**: every emitted line has a corresponding
    `EmissionProvenance` entry in the per-Behavior aggregate; flatten
    to per-line view matches emitted-line numbering
-5. **Verifies origin classes**: ≥1 `SubstrateDeclMirror` arm fires; ≥1
-   `FoldRuleAutoEmit` arm fires; both span/rule references resolve to
-   real substrate facts
+5. **Verifies field population**: every entry's `rule` resolves to a
+   real `EmissionRule` carrier value; ≥1 entry has `source_span: Some(...)`
+   (substrate-decl-traceable); ≥1 entry has `source_span: None`
+   (structural-only emission); span-Some entries' SourceSpan resolves
+   to a real `.dag` Behavior/Declaration in the input source
 6. **Fail-closed paths**: missing rule-name carrier (precondition broke
    post-merge) → test errors out
 
@@ -184,7 +170,7 @@ Grounding-side visualization-consumer wiring in this PR).
 Phase ordering (PR-internal):
 1. Verify precondition: T-Rule-Enumeration on main; rule-name carrier
    exists; emission code dispatches via named-rule lookup
-2. Author `EmissionOrigin` + `EmissionProvenance` carriers (Deliverable 1)
+2. Author `EmissionProvenance` record carrier (Deliverable 1)
 3. Author `Lens<List<EmissionProvenance>>` instance (Deliverable 2)
 4. Author cementing test (Deliverable 3)
 5. Verify all standard ratchets green
@@ -192,10 +178,11 @@ Phase ordering (PR-internal):
 
 ## Acceptance
 
-- `EmissionOrigin` typed-sum + `EmissionProvenance` record landed in
-  `src/v3/std/` with Practice 4 in-source `// 🟢 GREEN (terminal)`
-  checkpoint comment + §1.8 ledger entry for GREEN classification
-  (`emission_origin_classification_green` sibling row)
+- `EmissionProvenance` record carrier landed in `src/v3/std/` with
+  mandatory `rule: EmissionRule` field + optional
+  `source_span: Option<SourceSpan>` field. Record form per codex
+  BLOCKING reshape (PR #1910 sha 2ed1046e Finding #1) — replaces
+  earlier typed-sum framing; Practice 4 N/A (record, not coproduct)
 - `Lens<List<EmissionProvenance>>` instance landed per 6-field
   Director-locked shape; T-CostLens-Composition precedent verified for
   shape parity
@@ -221,11 +208,11 @@ Phase ordering (PR-internal):
   per LoopBound, NOT once): STOP — surface to Substrate Mgr; lens
   iterate field shape may need rework
 - **Cementing test reveals provenance gap** — emitted line that the
-  per-Behavior fold cannot attribute (i.e., a third origin class beyond
-  SubstrateDeclMirror / FoldRuleAutoEmit): STOP — typed sum
-  EmissionOrigin needs a third variant (substrate-fact-introduction
-  cascade); surface to Mgr. Do NOT add an `Unknown` variant — that's
-  the placeholder anti-pattern Director rejected on Slice 2.5
+  per-Behavior fold cannot attribute to any rule: STOP. Record form
+  requires `rule` populated; rule absence indicates emission code path
+  not covered by T-Rule-Enumeration carrier (substrate-fact-introduction
+  cascade). Do NOT add a sentinel rule like "Unknown" — surface to
+  Substrate Mgr
 - **Bundled-scope drift**: do NOT bundle T-Rule-Enumeration edits or
   Grounding-side visualization-consumer wiring into this PR
 
@@ -234,7 +221,7 @@ Phase ordering (PR-internal):
 1. **Substrate exists?** At brief-author time:
    - `Lens<C>` carrier landed (`src/v3/std/lens.dag`, 🟢 TERMINAL) ✓
    - `EmissionRule` carrier — gates on T-Rule-Enumeration landing
-   - `EmissionOrigin` / `EmissionProvenance` carriers — this brief is producer
+   - `EmissionProvenance` record carrier — this brief is producer
    - Lens instance — this brief is producer
 2. **Existing brief?** PM-authored proposal at PR #1902 (merged at
    54419badf) is the prior artifact; this brief revises per Substrate
@@ -243,9 +230,10 @@ Phase ordering (PR-internal):
    + Lens<C> Director-locked shape. T-CostLens-Composition is shape
    precedent
 4. **Citations live?** Worker re-verifies at dispatch
-5. **Carrier dissolves the bridge?** Yes — typed-sum `EmissionOrigin`
-   dissolves the "is this line span-attributable or rule-attributable?"
-   bridge structurally (closed sum; no third silent class). Per-Behavior
+5. **Carrier dissolves the bridge?** Yes — record `EmissionProvenance`
+   with mandatory `rule` + optional `source_span` dissolves the
+   "what produced this emitted line?" bridge structurally (rule field
+   always present; no None possible; type system enforces). Per-Behavior
    `Lens<List<EmissionProvenance>>` composes to per-line view at
    visualization layer per `feedback_compositional_not_templating`
 
