@@ -71,3 +71,28 @@ The material residual classifications are:
 - Runner/test-predicate authority: `SymbolicCostExprEquals` and related
   predicate execution gaps live under the R3 plan V2 and ROADMAP Pattern B
   runner-freeze rows, not in the #1275-#1500 `lib.rs` body-evaluator sweep.
+
+## Phase 3 Compile Handoff
+
+Feed these rows into the broader `docs/audit/r3-debt-sweep-2026-05-06.md`
+Phase 3 compile as evaluator-slice evidence only; this receipt does not claim
+global bridge counts.
+
+- **Pattern C / evaluator runtime mirror evidence:** #1387 establishes the
+  Rust evaluator `Value` execution surface that mirrors the substrate runtime
+  value family for body evaluation. Treat it as R2 evaluator capacity evidence,
+  with retirement pressure owned by the PB-zero / v3-authoritative runtime path.
+- **Pattern A / runtime-prereq evidence:** #1476 is the active Descent row.
+  It should feed the Phase 3 compile through
+  `Q-EVAL-Descent-Termination-Contract`, not as a closed evaluator item.
+- **Pattern A / callable-report evidence:** #1407 and #1496 are historical
+  prerequisites for E6 callable execution. Constructor runtime execution is
+  closed by #1813; the compile should carry only the live G1.a static
+  lens fold/report production pressure and the G1.b generic-dispatch hold on
+  X1.b S1/S3.
+- **Pattern B / runner predicate evidence:** #1484 should feed the
+  `SymbolicCostExprEquals` runner/test-predicate row, with no claim that the
+  body evaluator regressed or introduced a parallel analyzer.
+- **Do-not-promote rows:** #1459 and #1466 should remain out of evaluator
+  causal history unless a later compile pass supplies narrower PR-body or
+  file-diff evidence.
