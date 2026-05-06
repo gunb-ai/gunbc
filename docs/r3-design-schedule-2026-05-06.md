@@ -134,6 +134,14 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Lane scope**: T-V-L4-L7-Direct + T-V-L5-Corpus + T-Free-Consequences-Demonstration + T-Tests-As-Data-Completeness + T-Lens-Self-Application + cross-program portion of T-Lens-Behavioral-Parity + cross-program portion of T-Lens-Application-Surface + `bridge_retirement_ledger_zero` audit gate.
 
+**Worker partition** (per Verification Mgr partition response 2026-05-06 at gunbc#846 #issuecomment-4385074816):
+
+| Track | Worker | Items | Status |
+|---|---|---|---|
+| **A — executable / ledger** | bold-crane-790 (#1748) | V1 (TC1 hold pending Q-PAFS + EVAL-3) + V6 (active) | V6 ACTIVE; V1 standby |
+| **B — corpus / demos / data** | cool-heron-521 (#1766) | V2 + V4 + V5 (all post-R2-Evaluator-gated) | Prep now (design + skeleton); closure waits triggers |
+| **C — Mgr-reserved / cross-lane** | cool-owl-579 (this lane) | V3 (post-cascade) + V7 (hold) | V3 sequenced per §8; V7 design-first only |
+
 ### V1 — Pattern-A executable cluster (TC1 first; pending Director countersignature on Q-PAFS)
 
 **Scope**: 5 NEW Pattern-A executable gates need consumer infrastructure:
@@ -173,11 +181,11 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 **Dispatch trigger**: post-R2-Evaluator + T-CostLens-Composition (cost-related claims).
 **Closure predicate**: §1.8 gates #43-#52.
 
-### V6 — `bridge_retirement_ledger_zero` audit gate
+### V6 — `bridge_retirement_ledger_zero` audit gate (ACTIVE)
 
 **Scope**: unified ledger reports 0 named identity bridges remaining. 5 sub-bridges retire (2 Substrate-owned + 3 PB-owned).
 
-**Dispatch trigger**: ongoing (audit cadence).
+**Dispatch trigger**: ongoing (audit cadence). **Worker** (per Verification Mgr 2026-05-06): bold-crane-790 — ACTIVE.
 **Closure predicate**: gate #36 reaches PASSING.
 
 ### V7 — ValueBody isomorphism gate design (Q-ValueBody-Isomorphism)
