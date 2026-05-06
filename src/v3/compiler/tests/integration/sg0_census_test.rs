@@ -332,7 +332,8 @@ const EXPECTED_HAND_AUTHORED_TEST: &[&str] = &[
     "src/v3/compiler/tests/integration/common/mod.rs",
     "src/v3/compiler/tests/integration/common/r1_gates_bridge.rs",
     "src/v3/compiler/tests/integration/common/substrate_receipts.rs",
-    // R3 L6 carrier slice (#1819 follow-on, Director Option 2 RATIFIED at
+    // R3 L6 carrier slice (PR #1842; Measure-carrier precedent at #1819,
+    // Director Option 2 RATIFIED at
     // gunbc#828 #issuecomment-4377533390): slice-active ratchet for
     // `cross_target_coverage.dag` (six type declarations exist;
     // `emission_path_projections == []`). Stays hand-Rust alongside
