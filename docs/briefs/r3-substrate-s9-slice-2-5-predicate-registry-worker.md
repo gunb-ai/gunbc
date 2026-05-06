@@ -172,15 +172,46 @@ predicates without carrier+argument contract verification at
 lower-time produce silent acceptance ("named but not checked"),
 which crosses P3 fail-closed.
 
-Director Path (a) RATIFICATION expands scope:
-- Predicate-body lowering for **all 7 registered predicates**
-  (`gt_zero`, `range`, `pattern`, `non_empty`, `brand`, `format`,
-  `content`)
-- Per-predicate arg-shape validation
-- Placeholder lowering REMOVED from registry path
-- L → XL absorption acknowledged; multi-session work expected
-- Carrier-check at `788d6acb4` retained as structural improvement;
-  predicate-body lowering builds on top
+Director Path (a) RATIFICATION expanded scope; Path 2 ratification
+at gunbc#828 #issuecomment-4391985613 narrowed it after Rung 3 STOP
+(gunbc#1746 #issuecomment-4391946213) surfaced two real
+substrate-fact-introduction gaps:
+
+**Gap 1** (discharge cascade): `scalar_literal_requires_refinement_discharge`
+treats any non-placeholder refinement as needing static discharge;
+doesn't actually evaluate trivial-true + basic-comparison predicates
+against scalar literals at lower-time. 18+ spurious diagnostics
+surfaced when `non_empty` / `brand` body synthesis attempted.
+
+**Gap 2** (no regex primitive): `pattern` / `format` / `content`
+body synthesis requires substrate primitives (`regex_match` /
+format-specific predicates / content-typing) that don't exist in
+`dsl/std/`.
+
+Path 2 RATIFIED extends scope by Gap 1 only; defers Gap 2 to
+follow-on Q-Regex-Primitive substrate-fact-introduction.
+
+### Path 2 deliverable shape
+
+- **gt_zero / range body synthesis**: already landed at `5f3c40c3a`
+  (`gt_zero(x)` → `x > 0`; `range(x, min: m, max: M)` → `x >= m && x <= M`)
+- **Gap 1 discharge mechanism**: extends discharge to evaluate
+  trivial-true + basic-comparison predicates against scalar literals
+  at lower-time. **L-class substrate work; lands in same slice**
+  (no partial implementation; same-slice-dissolution discipline)
+- **non_empty + brand body synthesis**: lands via Gap 1 discharge
+  mechanism (`non_empty(s)` → `s != ""`; `brand` → trivially-true)
+- **pattern / format / content**: fail-closed-with-named-dep at
+  user-code authoring layer. Diagnostic: `Diagnostic::ResolveError`
+  explicitly names Q-Regex-Primitive as the unblock dependency.
+  **NOT placeholder semantics** — structural rejection per
+  `feedback_fail_closed_discipline`.
+- **Within types.dag**: existing pattern/format/content usages
+  discharge through Gap 1 mechanism (Substrate Mgr discretion;
+  if any usage doesn't fit Gap 1 reach, STOP and surface)
+- **PB-1 shim**: FULLY RETIRED (file-path-special-case dissolved
+  per Director hard scope bar #3)
+- **Carrier-check at `788d6acb4`**: retained as structural improvement
 
 ## Slice — single PR per Director ratification
 
@@ -208,6 +239,23 @@ Phase ordering (PR-internal):
   contract verification at lower-time**; placeholder lowering REMOVED
   from registry path; mismatched-carrier or malformed-argument
   produces `Diagnostic::ResolveError` per Path (a) RATIFICATION
+- **4 of 7 predicates body-synthesized in same slice** (`gt_zero`
+  / `range` / `non_empty` / `brand`) per Path 2 RATIFICATION:
+  - `gt_zero(x)` → `x > 0`
+  - `range(x, min: m, max: M)` → `x >= m && x <= M` (per-field)
+  - `non_empty(s)` → `s != ""` via Gap 1 discharge mechanism
+  - `brand` → trivially-true via Gap 1 discharge mechanism
+- **3 of 7 predicates fail-closed-with-named-dependency** (`pattern`
+  / `format` / `content`): `Diagnostic::ResolveError` at user-code
+  authoring layer explicitly names `Q-Regex-Primitive` as unblock
+  dependency. **NOT placeholder semantics** — structural rejection
+  per `feedback_fail_closed_discipline`. No "named but not checked"
+  path remains for any registered predicate
+- **Gap 1 discharge mechanism landed in same slice**: extends
+  `scalar_literal_requires_refinement_discharge` (or equivalent)
+  to evaluate trivial-true + basic-comparison predicates against
+  scalar literals at lower-time. Same-slice-dissolution discipline:
+  no partial implementation
 - Predicate registry infrastructure landed; sole authority for
   predicate-name resolution
 - PB-1 shim retired (`span.file == "dsl/std/types.dag"` branch
