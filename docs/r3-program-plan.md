@@ -160,16 +160,23 @@ For each predicate not yet GREEN, what's blocking + sequence to close.
 
 ### §2.2 v2 retirement (2 predicates)
 
-**Blockers** (per Grounding Mgr canvas, bold-ferret-748, item #2): PR-F (`BoundDeclaration` consumer + Rust `ReferenceModel<T>` axes) blocks T-Ground-Rust; T-NumericConstruction-ApproximateField blocks Rust float rows.
-
-**Sequence** (from `r3-structure.md` §"Lane structure" → T-V2-Retirement row):
+**Sequence** (from `r3-structure.md` §"Lane structure" → T-V2-Retirement row; Grounding Mgr poke-hole 2026-05-06 finding 2 corrected dependency direction):
 1. T-FixedPoint completes (PB Mgr) — `compiler.dag` self-compile fixed-point
 2. T-LensProducer-Retirement completes (PB Mgr) — 3 hand-Rust files retired
-3. PR-F lands (T-Ground-Rust unblocks)
-4. Float carrier migration (T-NumericConstruction-ApproximateField)
-5. v2 directory deletion + test-consumer audit (T-V2-Retirement)
+3. T-Numeric-Construction `Int<N>` refinement landing (path-(a) coordination — v2 refinement-syntax blocker per `r3-structure.md` §"Lane structure" → T-Numeric-Construction row)
+4. v2 directory deletion + test-consumer audit (T-V2-Retirement)
 
 **ETA**: 4-8 weeks; longest-path lane in R3.
+
+**Distinct Grounding-side dependency branch (NOT v2-retirement prerequisite — moved out per Grounding Mgr poke-hole 2026-05-06 finding 2)**:
+
+PR-F (`BoundDeclaration` consumer + Rust `ReferenceModel<T>` axes) + Float migration (T-NumericConstruction-ApproximateField) are blockers for **full Rust primitive grounding** (T-Ground-Rust complete-coverage) + downstream **L5 cross-target consistency**, NOT for `v2_directory_deleted` gate.
+
+Sequence (Grounding-side):
+1. PR-F lands (Substrate Mgr; unblocks T-Ground-Rust Phase 1: `u128`, `isize`, `usize`, walker arms, pilot mirror)
+2. Float carrier migration (T-NumericConstruction-ApproximateField → `Float32/Float64 = ApproximateField<Word*>`; unblocks Rust float rows)
+3. T-Ground-Rust full-coverage (post-PR-F + post-Float)
+4. T-V-L5-Corpus closes once L4 corpus + Shape A grounding (Rust + Python) both ready
 
 ### §2.3 BridgeLedgerZero (1 predicate)
 
@@ -188,13 +195,13 @@ Each retires per its natural-owner program prerequisites. Verification Mgr's `br
 
 ### §2.4 5 substrate-gap classes (5 predicates)
 
-**Class 1 (parser/grammar)**: closes with T-V2-Retirement parser path (post-T-FixedPoint).
+**Class 1 (parser/grammar)**: closes with T-V2-Retirement parser path (post-T-FixedPoint + post-T-LensProducer-Retirement + post-T-Numeric-Construction `Int<N>`).
 **Class 2 (function-valued data)**: closes with T-Lens-Application-Surface (post-T-Lens-Behavioral-Parity).
-**Class 3 (file-ingestion)**: closes with T-Workflow-As-Data file-ingestion grammar.
-**Class 4 (workflow/scheduling)**: closes with T-Workflow-As-Data CI-workflow-as-dag.
-**Class 5 (reflection-closure)**: closes with T-LensProducer-Retirement.
+**Class 3 (file-ingestion)**: closes with T-Workflow-As-Data file-ingestion grammar (post-T-Lens-Behavioral-Parity).
+**Class 4 (workflow/scheduling)**: closes with T-Workflow-As-Data CI-workflow-as-dag (post-T-Lens-Behavioral-Parity).
+**Class 5 (reflection-closure)**: closes with T-LensProducer-Retirement (gated on T-FixedPoint via PB cascade chain — NOT parallel-to-LBP per Director poke-hole 2026-05-06 finding 2.4 correction).
 
-**ETA**: All 5 parallel-eligible post-T-Lens-Behavioral-Parity; 4-8 weeks total.
+**ETA**: Classes 2/3/4 parallel-eligible post-T-Lens-Behavioral-Parity COMPLETE. Class 1 + Class 5 cascade-gated (Class 1 on T-V2-Retirement chain; Class 5 on T-LensProducer-Retirement which depends on T-FixedPoint). 4-8 weeks total for parallel-eligible classes; cascade-gated classes track longer.
 
 ---
 
@@ -212,7 +219,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 | T-FixedPoint | PB | YELLOW | (TBD from PB canvas) | SG-0 zero from T-LensProducer | (TBD) |
 | T-Numeric-Construction | Substrate | YELLOW | T-NumericConstruction-ApproximateField; #1523 landed | Float migration + Real/base-carrier convention (Grounding canvas item 2) | (TBD) |
 | T-Omni-Shape-B | Release | RED | (post-R2-Evaluator + Shape A targets) | dependencies | (TBD) |
-| T-Anthropic-Wire | Substrate | GREEN-pending | (audit) | None | near-term |
+| T-Anthropic-Wire | Substrate | RED | #1702 CLOSED + preserved on `codex/cc1-target-integer-structural-fold` at sha `51c6a4a`; held pending Substrate variant-aware projection metadata carrier | Q-Anthropic-Variant-Aware (per Grounding Mgr poke-hole 2026-05-06 finding 3 — §3 corrected from GREEN-pending to RED-blocked) | post-Substrate-projection-carrier |
 | T-Bridge-Retirement | Verification (ledger) | YELLOW | per-bridge dispatches | 5 sub-bridges retire | post-T-FixedPoint |
 | T-CostLens-Composition | Substrate | YELLOW | (TBD from Substrate canvas) | R2-Evaluator + R2-T-Substrate-Lens-Primitive | (TBD) |
 | T-V2-Retirement | PB | RED | r3-tv2-* briefs | T-FixedPoint + T-LensProducer | longest-path |
@@ -293,6 +300,8 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 **Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (PR #1804 lane). Phase 2 sweep deliverables landed §1.1–§2.2.
 
+**Cross-PR dependency** (per Grounding Mgr poke-hole 2026-05-06 finding 1 — authority hierarchy correctness): the audit doc above is on PR #1804 (claude APPROVE on sha `450502c3`), NOT on `main` or this PR's branch. **Plan PR #1808 is sequenced to land AFTER PR #1804 merges** to prevent this plan section from citing a missing authority. PR #1804 is doc-only + mergeable + approved; expected to merge before PR #1808.
+
 **Status (2026-05-06)**: per-class counts below are PRE-Phase-3-compile expected ranges from Director's bridge-class framework. Phase 2 sweep deliverables (PR #1804 §1.1–§2.2) have landed substantive partial data; **Phase 3 compile** populates verified-at-HEAD counts replacing these expected ranges before plan PR opens (per Director poke-hole 2026-05-06 finding 6.3).
 
 **Apples-to-apples count discipline** (per `feedback_corrections_must_grep_verify_source` + INVARIANTS P1 single-authority):
@@ -320,10 +329,11 @@ This plan section reports cumulative bridge counts; PR #1804 holds the per-row i
 
 **Authoritative counts populate via PR #1804 §1.A–§1.G as Mgr canvases land**. Net-bridge count at R3 close is 0 (per `bridge_retirement_ledger_zero` + 5 substrate-gap-class closure gates). Each bridge has a named dissolution trigger; bridges without triggers escalate to substrate gap requiring named R3 lane (per [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) §4 anticipation discipline).
 
-**Drift items from Phase 2 sweep** (3 known; surfaced for §10 reconciliation):
-- `#1638` ROADMAP retired but ledger Open
-- `#1499` transitional fence disposition
-- `declaration_by_name` retired/Open conflict
+**Drift items from Phase 2 sweep** (per Grounding Mgr poke-hole 2026-05-06 finding 5 normalization — earlier list double-counted #1638/declaration_by_name as same issue + omitted CollectionOps drift):
+
+- **`declaration_by_name` ROADMAP↔ledger drift**: ROADMAP says `declaration_by_name(...) pattern in emit` retired by PR #1638; `docs/debt/r3-debt-paydown-ledger-2026-05-02.md` still marks `declaration_by_name(...) emit pattern` Open. Single-row reconciliation needed.
+- **#1499 transitional fence ledger-row gap**: ROADMAP transitional-fence retirement not reflected in ledger row.
+- **CollectionOps / StringOps / MapOps stale ledger refresh**: ROADMAP records CollectionOps fold + map progress, but ledger row says `Partial (fold)` and text says `concat / length / map` remain open. Ledger refresh needed.
 
 ---
 
@@ -395,9 +405,19 @@ R3 close = all ~71 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive 
 
 Verification-internal path runs in parallel with global chain post-R2-Evaluator. Plus parallel longest single-lane path: **T-V2-Retirement** depends on T-FixedPoint + T-LensProducer-Retirement.
 
-Plus the parallel longest-path: **T-V2-Retirement** depends on T-FixedPoint + T-LensProducer-Retirement; longest single-lane path.
+**Grounding-side dependency branches** (per Grounding Mgr poke-hole 2026-05-06 finding 4 — closes G10 by surfacing Grounding-driven re-dispatch edges in §6):
 
-**Estimated R3 close**: 8-12 weeks from 2026-05-06, gated on T-V2-Retirement + T-Lens-Self-Application both completing.
+| Upstream node | Grounding trigger | Worker-ready dispatch | Close predicate |
+|---|---|---|---|
+| PR-F (`BoundDeclaration` consumer + Rust `ReferenceModel<T>`) | Substrate Mgr lands carrier | T-Ground-Rust Phase 1 (`u128`, `isize`, `usize`, walker arms, pilot mirror) | full Rust primitive grounding + L5 readiness |
+| `EmissionPathProjection` carrier (Substrate; per `docs/briefs/r3-substrate-l6-per-row-projection-routing-decision.md`) | Substrate Mgr lands carrier | L6 CrossTarget-Meta row population + `coverage.rs` conversion | L6 cross-product fold gate |
+| Variant-aware typed REST response projection carrier (Substrate) | Substrate Mgr lands carrier | #1702 Anthropic re-dispatch | T-Anthropic-Wire close + Q-Anthropic-Variant-Aware resolve |
+| Real LanguageSpec projection (Substrate / LanguageSpec) | LanguageSpec projection executable | Coercion-Fold `ScratchIntExamples` + `TargetInhabitance` retirement in `src/v3/grounding_coercion_fold` | Q-Coercion-Fold-Scratch close |
+| F10 cleanup (`dsl/extdeps/tools.dag` `install_hint`) | next Grounding signal PR or explicit small cleanup PR | Grounding worker dispatches | M5 cleanup close |
+
+These edges parallel the global + Verification critical paths; Grounding lane consumers wait on upstream Substrate carrier landing.
+
+**Estimated R3 close**: 8-12 weeks from 2026-05-06, gated on T-V2-Retirement + T-Lens-Self-Application both completing. **PROVISIONAL** (per Director poke-hole 2026-05-06 finding 6.4).
 
 ---
 
