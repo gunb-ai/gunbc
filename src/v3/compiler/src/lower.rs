@@ -946,31 +946,97 @@ fn arg_shape_mismatch(spec: &PredicateSpec, expr: &SurfaceExpr) -> Option<String
 /// - **`gt_zero`**: subject `> 0`. Equivalent for both `Nat` and `Int`
 ///   carriers (Nat's structural lower bound is 0; gt_zero is "above
 ///   structural bound").
+/// - **`range`**: subject `>= min` / `<= max` / both, depending on which
+///   record fields are present. Numeric primitives in scope; arg-shape
+///   validation already guaranteed Int-literal field values when reaching
+///   this point.
 ///
 /// Pending substrate (returns `None` — falls through to placeholder for now):
-/// - `range`, `non_empty`, `brand`, `format`, `content`, `pattern` —
-///   sequenced after `gt_zero` proves the synthesis pattern.
+/// - `non_empty` / `brand` — small substrate work pending.
+/// - `pattern` / `format` / `content` — STOP-AND-ESCALATE candidates per
+///   S9 Slice 2.5 brief; require regex-primitive substrate-fact-introduction
+///   (Q-Regex-Primitive) that has not landed.
 fn synthesize_predicate_body(
     spec: &PredicateSpec,
     predicate: &SurfaceExpr,
     bind_name: &str,
 ) -> Option<SurfaceExpr> {
     let span = expr_span(predicate);
+    let subject_var = || SurfaceExpr::Var {
+        name: bind_name.to_string(),
+        span: span.clone(),
+    };
+    let int_literal = |value: i64| SurfaceExpr::Literal {
+        value: SurfaceLiteral::Int(value),
+        span: span.clone(),
+    };
     match spec.name {
         "gt_zero" => Some(SurfaceExpr::Operator {
             op: OperatorKind::Comparison(ComparisonOp::Gt),
-            args: vec![
-                SurfaceExpr::Var {
-                    name: bind_name.to_string(),
-                    span: span.clone(),
-                },
-                SurfaceExpr::Literal {
-                    value: SurfaceLiteral::Int(0),
-                    span: span.clone(),
-                },
-            ],
+            args: vec![subject_var(), int_literal(0)],
             span,
         }),
+        "range" => {
+            // arg-shape validation has already confirmed:
+            //   - exactly 1 SurfaceExpr::Record arg
+            //   - each field name is in {"min", "max"} (no duplicates)
+            //   - each field value is SurfaceLiteral::Int(_)
+            // …so the extraction below is total over the validated shape.
+            let SurfaceExpr::Call { args, .. } = predicate else {
+                return None;
+            };
+            let SurfaceExpr::Record { fields, .. } = args.first()? else {
+                return None;
+            };
+            let mut min_value: Option<i64> = None;
+            let mut max_value: Option<i64> = None;
+            for field in fields {
+                let SurfaceExpr::Literal {
+                    value: SurfaceLiteral::Int(n),
+                    ..
+                } = &field.value
+                else {
+                    return None;
+                };
+                match field.name.as_str() {
+                    "min" => min_value = Some(*n),
+                    "max" => max_value = Some(*n),
+                    _ => return None,
+                }
+            }
+            let mut clauses: Vec<SurfaceExpr> = Vec::with_capacity(2);
+            if let Some(m) = min_value {
+                clauses.push(SurfaceExpr::Operator {
+                    op: OperatorKind::Comparison(ComparisonOp::Ge),
+                    args: vec![subject_var(), int_literal(m)],
+                    span: span.clone(),
+                });
+            }
+            if let Some(m) = max_value {
+                clauses.push(SurfaceExpr::Operator {
+                    op: OperatorKind::Comparison(ComparisonOp::Le),
+                    args: vec![subject_var(), int_literal(m)],
+                    span: span.clone(),
+                });
+            }
+            match clauses.len() {
+                0 => None,
+                1 => clauses.pop(),
+                _ => {
+                    let mut iter = clauses.into_iter();
+                    let mut acc = iter.next()?;
+                    for next in iter {
+                        let combined_span = span.clone();
+                        acc = SurfaceExpr::Operator {
+                            op: OperatorKind::Logical(LogicalOp::And),
+                            args: vec![acc, next],
+                            span: combined_span,
+                        };
+                    }
+                    Some(acc)
+                }
+            }
+        }
         _ => None,
     }
 }
