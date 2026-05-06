@@ -1,5 +1,5 @@
 ---
-status: draft (worker brief; AUTHORED 2026-05-06; dispatch HOLDS pending Director ratification on Q-MachineConstraint-Grammar-Shape bikeshed)
+status: draft (worker brief; AUTHORED 2026-05-06; dispatchable per Q-MC sub-decision 3 ratification at gunbc#828 #issuecomment-4385530115 — Candidate C user surface `Int<N>` desugars to Candidate D substrate `Compose<Int, MachineWidth<N>>` parametrically)
 authority parent: R3 Substrate Manager (#1739)
 ratification: dispatchable per Q-MachineConstraint sub-decisions RATIFIED at gunbc#828 #issuecomment-4385530115 (sub-decision 2: parametric Compose<Algebra, MachineConstraint> type-level interaction); brief authored against post-#1856 substrate state
 roadmap row: T-Numeric-Construction (S3 Phase-2; S3 Phase-1 carrier slice landed at #1856) + §1.8 ledger row #60 (substrate_gap_parser_grammar_closed)
@@ -52,82 +52,53 @@ Per Q-MachineConstraint sub-decision 3 RATIFIED (gunbc#828 #issuecomment-4385530
 The brief lands the **parser surface** that allows users to write the
 interaction syntax in `.dag` source.
 
-## Director ratification HOLD — Q-MachineConstraint-Grammar-Shape bikeshed
+## Grammar shape — RATIFIED per Q-MC sub-decision 3
 
-Phase-2 dispatch HOLDS pending Director ratification on grammar shape.
-Three primary candidates surfaced in S3 parent brief Phase-2 section:
+Q-MachineConstraint sub-decision 3 (Brian directive 2026-05-06 at
+gunbc#828 #issuecomment-4385530115) is the canonical authority:
 
-### Candidate A — `@`-form: `Int @ Width<32>`
+> **(3) Type-level spelling** — `Int<64>` parses/elaborates as
+> `Compose<Int, MachineWidth<64>>` parametrically; first slot is the
+> **algebraic concept** (fully-applied carrier+witness composite —
+> `Int = AbelianGroup<GroupCompletion<Nat>>` per #1466), second slot
+> is the machine-constraint axis.
 
-```
-data sts_endpoint: Int @ Width<32> = ...
-```
+**User-facing surface**: `Int<N>` (Candidate C in earlier bikeshed)
 
-- Reads as "Int annotated with machine-width-32 axis"
-- Annotation-style; `@` operator novel in DSL
-- Pro: visually distinct; minimal precedent collision
-- Con: introduces `@` operator; may collide with future annotation features
-  (e.g., `@deprecated`, `@inline` etc. — though DSL has no annotation
-  precedent)
+**Substrate elaboration**: `Compose<Int, MachineWidth<N>>` (Candidate D)
 
-### Candidate B — `with`-form: `Int with MachineWidth<32>`
+Both are correct — they are surface vs substrate. Parser desugars
+C → D parametrically; user can also write D directly. Aliases
+(`type Int32 = Compose<...>`) emerge as DSL convention naturally.
 
-```
-data sts_endpoint: Int with MachineWidth<32> = ...
-```
+Earlier brief candidates A (`@`-form) and B (`with`-form) are REJECTED
+per Director assessment — A introduces a new operator without DSL
+precedent; B reserves a new keyword that conflicts with potential
+record-update / extension syntax.
 
-- Reads naturally as "Int with the machine-width-32 axis attached"
-- Pro: prose-like; reads cleanly
-- Con: `with` keyword may collide with future record-update / extension
-  syntax; verbose
+### Discipline confirmation (per Director response)
 
-### Candidate C — operator-form: `Int<32>` (positional generic)
-
-```
-data sts_endpoint: Int<32> = ...
-```
-
-- Reads as "Int parameterized by 32" — standard generic-type syntax
-- Pro: fits existing DSL convention (e.g., `Refined<Int, predicate>`,
-  `List<T>`, `Field<Word32>`); no new keyword
-- Con: positional encoding of machine-axis — `32` is implicitly
-  `MachineWidth<32>`; loses explicit naming. Could be misread as
-  literal-int-arg (e.g., `Compose<AbelianGroup, MachineWidth<bits>>` with
-  bits = 32 might be confused with Int containing 32 of something)
-
-### Candidate D (Substrate Mgr surface) — explicit-Compose form: `Compose<AbelianGroup, MachineWidth<32>>`
-
-```
-data sts_endpoint: Compose<AbelianGroup, MachineWidth<32>> = ...
-```
-
-- No new grammar; directly uses landed `Compose<,>` carrier
-- Pro: zero parser change; substrate carriers ARE the user surface
-- Con: verbose; `Int<32>` aliases or candidates A/B may still emerge as
-  desugar shape
-
-### Director ratification ask (Q-MachineConstraint-Grammar-Shape)
-
-Pick (A / B / C / D) or surface alternative shape. Each candidate has
-parser/lowerer implications:
-- A or B: parser extension to recognize new syntax form; lowerer maps to
-  `Compose<...>` carrier
-- C: parser already handles generic-type-args (e.g., `List<T>`); lowerer
-  pattern-matches on numeric-literal-arg → MachineWidth desugar
-- D: no parser change needed; user writes `Compose<...>` literally; type
-  aliases (e.g., `type Int32 = Compose<AbelianGroup, MachineWidth<32>>`)
-  provide convenience names
-
-Phase-2 dispatch fires immediately on ratification.
+- `feedback_compositional_not_templating`: D's compositional shape
+  preserved structurally; C is convenience aliasing the reason
+- `feedback_naming_is_aliasing`: type-system sees through the alias
+- `feedback_reason_not_label`: substrate (D) IS the reason; C is the
+  canonical label
+- `feedback_construction_over_ratchets`: parser extension is minimal
+  (numeric-literal-position recognition; well-bounded)
 
 ## Slice (post-ratification scope)
 
 ### Phase 2.1 — Parser surface
 
-Author parser extension per ratified candidate (A / B / C / D):
-- For A/B: lex new operator/keyword; parse position; AST node; lower to `Compose<...>`
-- For C: extend generic-type-arg parser to recognize numeric literal positions and desugar to `MachineWidth<N>` (e.g., `Int<32>` → `Compose<AbelianGroup, MachineWidth<32>>`)
-- For D: no parser change; minor; likely combined with type-alias convention sweep
+Author parser extension per Q-MC sub-decision 3 (RATIFIED shape):
+- Extend generic-type-arg parser to recognize numeric-literal positions
+  in the second slot (e.g., `Int<32>`, `UInt<64>`, `Real<64>`, `Nat<8>`)
+- Elaborator desugars `Algebra<N>` → `Compose<Algebra, MachineWidth<N>>`
+  parametrically (first slot is the fully-applied algebraic concept;
+  second slot is the machine-constraint axis)
+- Direct `Compose<Algebra, MachineWidth<N>>` user-authored form continues
+  to work unchanged (no parser change needed for D-form; type aliases
+  like `type Int32 = Compose<...>` emerge as DSL convention naturally)
 
 ### Phase 2.2 — Bootstrap demonstrator + ≥3 emission pairs
 
@@ -159,8 +130,10 @@ folds into parent worker brief Acceptance bullets, NOT separate dispatch
 
 ## Acceptance
 
-- Parser handles ratified interaction syntax (A / B / C / D) — surface
-  documented per Director ratification choice
+- Parser handles ratified interaction syntax: `Algebra<N>` user-surface
+  desugars to `Compose<Algebra, MachineWidth<N>>` substrate per Q-MC
+  sub-decision 3 (gunbc#828 #issuecomment-4385530115); direct
+  `Compose<...>` form continues to work unchanged
 - ≥3 algebra×machine-axis pairs visible in std seed bootstrap
   demonstrator (per Q-MachineConstraint sub-decision 5)
 - Cross-reference to S9 Phase-1 Step 3 emission entries brief
@@ -217,9 +190,10 @@ folds into parent worker brief Acceptance bullets, NOT separate dispatch
    that phase
 3. **Design-doc match?** Q-MachineConstraint sub-decision 3 RATIFIED
    (gunbc#828 #issuecomment-4385530115) names the parametric
-   `Compose<...>` shape; this brief lands the user-facing parser
-   surface for that shape. Grammar bikeshed (A/B/C/D) is open at
-   Director ratification
+   `Compose<...>` shape AND the user-facing surface (`Int<N>`
+   desugars to `Compose<Int, MachineWidth<N>>` parametrically).
+   Both surface and substrate elaboration are ratified — Candidate C
+   and D in the earlier brief draft
 4. **Citations live?** Verified at HEAD post-#1856. Worker re-verifies
    at dispatch
 5. **Carrier dissolves the bridge?** Yes — Phase-1 substrate carriers
@@ -236,10 +210,19 @@ Drafted 2026-05-06 post-#1856 merge per Director freed-pool pressure
 at gunbc#828 #issuecomment-4392095857 + Tier-1 brief-queue
 commitment at gunbc#846 #issuecomment-4390098574 (2/5 in queue).
 
-Dispatch HOLDS pending Director ratification on
-Q-MachineConstraint-Grammar-Shape (A / B / C / D / alternative).
-Worker pin valiant-ant-72 holds; freed-pool until ratification +
-brief landing.
+Dispatchable per Q-MC sub-decision 3 ratification (Brian directive
+2026-05-06 at gunbc#828 #issuecomment-4385530115). Earlier "HOLD
+pending Q-MachineConstraint-Grammar-Shape" framing was redundant —
+sub-decision 3 already ratified `Int<N>` user surface + `Compose<Int,
+MachineWidth<N>>` substrate elaboration. Brief revised to reference
+the ratified shape directly.
+
+Substrate Mgr discipline pin (per Director gentle observation at
+gunbc#1739 #issuecomment-4392382517): ratification-state-grep before
+authoring a Director-ratification ask — grep `docs/r3-program-plan.md`
+§10.3 + Q-* set for the question's domain. Folded into standing
+dispatch-checklist alongside substrate-state-grep / same-slice-
+dissolution / verifiable-triple / bundled-scope.
 
 Cross-references S9 Phase-1 Step 3 brief at
 `docs/briefs/r3-substrate-s9-phase-1-step-3-emission-entries-worker.md`
