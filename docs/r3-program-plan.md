@@ -206,7 +206,7 @@ Sequence (Grounding-side):
 ### §2.3 BridgeLedgerZero (1 predicate)
 
 **Sub-bridges** (`r3-structure.md` §"Lane structure" → T-Bridge-Retirement row distribution map):
-- **Substrate-owned (2)**: `SourceSpan.file` participation checks; `mark_bootstrap_secret_nominal_opacity()`
+- **Substrate-owned (2)**: `SourceSpan.file` participation checks (hand-Rust audit sites only — `bootstrap.rs:519` doc-comment + `:137` / `:287` / `:309` hardcoded path strings; per Substrate Mgr poke-hole 2026-05-06 Y4 scope-clarification: codegen-emitted `SourceSpan::new(...)` offsets in `bootstrap_generated.rs` are a separate generated-file bridge shape, NOT counted as Substrate-owned manual hand-Rust); `mark_bootstrap_secret_nominal_opacity()`
 - **PB-owned (3)**: canonical lens-name dispatch; `include_str!` side channels (e.g., `pipeline_authority.rs`); `patch_lower_helpers_*` residual
 
 Each retires per its natural-owner program prerequisites. Verification Mgr's `bridge_retirement_ledger_zero` gate audits cross-program reporting cadence.
@@ -221,7 +221,7 @@ Each retires per its natural-owner program prerequisites. Verification Mgr's `br
 ### §2.4 5 substrate-gap classes (5 predicates)
 
 **Class 1 (parser/grammar)**: closes with T-V2-Retirement parser path (post-T-FixedPoint + post-T-LensProducer-Retirement + post-T-Numeric-Construction `Int<N>`).
-**Class 2 (function-valued data)**: closes with T-Lens-Application-Surface (post-T-Lens-Behavioral-Parity).
+**Class 2 (function-valued data)**: closes with T-Lens-Application-Surface (post-T-Lens-Behavioral-Parity). **Cascade dependency caveat** (per Substrate Mgr poke-hole 2026-05-06 R2): Class 2 closure transitively depends on T-Lens-Behavioral-Parity which is itself flagged RED in §10.3 Q-Lens-Behavioral-Parity-R3-Closeability (Substrate Mgr E3 — *"I don't know how to close this in R3 timeline"*). Class 2 closure status inherits the LBP scope-calibration outcome: if LBP scope reframed (option (b)/(c)) covering 1-2 lenses for R3, Class 2 gap-test must be reachable through the in-R3-scope subset; if LBP carved to R4 entirely, Class 2 closure also moves. **Resolution path**: Q-Lens-Behavioral-Parity-R3-Closeability decision determines Class 2 closure eligibility.
 **Class 3 (file-ingestion)**: closes with T-Workflow-As-Data file-ingestion grammar (post-T-Lens-Behavioral-Parity).
 **Class 4 (workflow/scheduling)**: closes with T-Workflow-As-Data CI-workflow-as-dag (post-T-Lens-Behavioral-Parity).
 **Class 5 (reflection-closure)**: closes with T-LensProducer-Retirement (gated on T-FixedPoint via PB cascade chain — NOT parallel-to-LBP per Director poke-hole 2026-05-06 finding 2.4 correction).
@@ -244,7 +244,7 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 | T-FixedPoint | PB | YELLOW | (TBD from PB canvas) | SG-0 zero from T-LensProducer | (TBD) |
 | T-Numeric-Construction | Substrate | YELLOW | T-NumericConstruction-ApproximateField; #1523 landed | Float migration + Real/base-carrier convention (Grounding canvas item 2) | (TBD) |
 | T-Omni-Shape-B | Release | RED | (post-R2-Evaluator + Shape A targets) | dependencies | (TBD) |
-| T-Anthropic-Wire | Substrate | RED | #1702 CLOSED + preserved on `codex/cc1-target-integer-structural-fold` at sha `51c6a4a`; held pending Substrate variant-aware projection metadata carrier | Q-Anthropic-Variant-Aware (per Grounding Mgr poke-hole 2026-05-06 finding 3 — §3 corrected from GREEN-pending to RED-blocked) | post-Substrate-projection-carrier |
+| T-Anthropic-Wire | Substrate | YELLOW | 3 coproduct worker briefs dispatched on PR #1782 wait-window (`r3-coproduct-1-openai-chat-message-full-worker.md` + `coproduct-2-anthropic-tool-result-content-wire-worker.md` + `coproduct-3-anthropic-messages-200-residual-worker.md`); plus 2 OPEN closure tags at HEAD: `dsl/extdeps/llm/anthropic.dag` `:189` (`closure:anthropic_messages_200_residual` — variant_pending: thinking|tool_use|redacted_thinking|web_search|server_tool_use + json_pending: container) + `:68` (`closure:anthropic_tool_result_additive_blocks` — missing: document|search_result|tool_reference) | three coproduct slices land + variant-aware projection carrier authored | post-#1782 merge + 3 follow-up paydown PRs (per Substrate Mgr poke-hole 2026-05-06 R1 — corrected from RED to YELLOW; Q-Anthropic-Variant-Aware closure scope per §10.3 covers the 3-paydown-vs-carrier-only question) |
 | T-Bridge-Retirement | Verification (ledger) | YELLOW | per-bridge dispatches | 5 sub-bridges retire | post-T-FixedPoint |
 | T-CostLens-Composition | Substrate | YELLOW | (TBD from Substrate canvas) | R2-Evaluator + R2-T-Substrate-Lens-Primitive | (TBD) |
 | T-V2-Retirement | PB | RED | r3-tv2-* briefs | T-FixedPoint + T-LensProducer | longest-path |
@@ -317,6 +317,19 @@ Pass condition:
 **Owner Mgr**: Substrate Mgr (T-Workflow-As-Data lane).
 
 ### §4.4 Class 4 — workflow/scheduling
+
+**Substrate-prerequisite enumeration** (per Substrate Mgr poke-hole 2026-05-06 R3 — closure path requires named carriers, not "we'll figure it out later"):
+
+CI-workflow-as-`.dag`-data requires substrate carriers that **do NOT exist in `dsl/std/` today**:
+- **Trigger-event sum**: `WorkflowTrigger = Push | PullRequest | Cron<Schedule> | Manual<Inputs>`
+- **Step-graph substrate**: `WorkflowStep` (run command + dependencies + outputs) + `WorkflowMatrix<Axes>` (parameter expansion)
+- **Secret-binding semantics**: `WorkflowSecret<Name>` (provider-typed, opaque-at-rest, scoped-by-step)
+- **Runner-resource refs**: `RunnerResource<C>` (compute class, OS, hardware)
+- **Workflow-as-Dag substrate**: `Workflow<Trigger, Steps, Resources>` carrier composing the above
+
+These carriers route to **Q-Workflow-As-Data-Carriers** (NEW 2026-05-06 from Substrate Mgr poke-hole R3) in §10.3 — Substrate Mgr authoring scope; required substrate prerequisites for Class 4 closure path.
+
+
 
 **What this class names**: bridges where workflow/scheduling logic exists in non-`.dag` form (CI YAML, build orchestration scripts, hand-Rust workflow control flow).
 
@@ -712,7 +725,8 @@ Substrate Mgr's full forward-looking escalation canvas (per gunbc#846 #issuecomm
 | Q-R2-IB-Closure | #1778 R2 Impossible-Bugs queue closure (warm-dove-810; nested optional codegen bypass) | PM-coordination item tracked in Brian-Q queue at #828; remains Brian-disposition pending; not blocking R3 plan PR | TRACKED (per Director poke-hole 2026-05-06 finding 5.2) |
 | Q-1807-Cleanup | #1807 SG-0 net-shrink discipline rollout — branch contains 5 of 9 files = #1797-resurrection per Director critique at #1807 #issuecomment-4383967713 | PM-coordination item; Director ratifies cleanup approach (Option A force-push vs Option B cherry-pick); affects §7.2 anticipation-discipline rollout via R3 Debt-Paydown lane | OPEN — Director decision needed (per Director poke-hole 2026-05-06 finding 5.3) |
 | Q-PR-Anticipation-Gate | Add `pr_anticipation_discipline_ci_active` closure gate (CI verifiably enforcing §7 anticipation discipline) | Add to §1 closure-gate set; owner R3 Debt-Paydown Mgr (already routed at #1744 #issuecomment-4383628247); fires when `scripts/check-pr-sg0-net-shrink-discipline.sh` is in CI workflow + self-test passes | RATIFIED-by-default (per Director poke-hole 2026-05-06 finding 3.2) |
-| Q-PR-F | PR-F priority + sequencing (BoundDeclaration consumer + Rust ReferenceModel<T>) | Schedule into critical path post-T-E-P-Producer-Broadening; Substrate Mgr executes PR-F as Substrate-lane work | RATIFIED-by-default |
+| Q-PR-F | PR-F priority + sequencing (BoundDeclaration consumer + Rust ReferenceModel<T>) | **Bandwidth-aware dispatch** (per Substrate Mgr poke-hole 2026-05-06 Y3 — Substrate's queued workers are saturated): PR-F is 2-axis substantial work. Per Substrate Mgr canvas D: only loyal-wolf + valiant-ant fully idle; proud-lynx/smart-ram/valiant-ibex holding on #1794 cascade. Dispatch worker = loyal-wolf-828 OR valiant-ant-72 (Substrate Mgr selects); brief shape = T-E-P-Producer-Broadening adjacent (per `docs/briefs/r3-t-e-p-producer-broadening-worker.md` precedent); critical-path slot = post-#1782 wait-window close + parallel to T-E-P dispatch (B3). Substrate Mgr authors brief + dispatches. | RATIFIED-by-default-with-bandwidth-routing |
+| Q-Workflow-As-Data-Carriers | Substrate carriers for CI-workflow-as-`.dag`-data Class 4 closure path: `WorkflowTrigger` sum + `WorkflowStep`/`WorkflowMatrix` step-graph + `WorkflowSecret<Name>` binding + `RunnerResource<C>` + `Workflow<Trigger, Steps, Resources>` composing carrier | Substrate Mgr authors carriers as part of T-Workflow-As-Data lane; sequenced post-T-Lens-Behavioral-Parity COMPLETE (per `r3-structure.md` §"Dependency on R2"); folds into existing T-Workflow-As-Data scope without new lane spawn. Required for Class 4 substrate-gap-class closure per §1.4. | OPEN — Substrate Mgr scoping needed (NEW 2026-05-06 from Substrate Mgr poke-hole R3) |
 | Q-Anthropic-Variant-Aware | Variant-aware typed REST response projection carrier shape | Defer #1702 re-dispatch until Substrate authors variant-aware projection metadata carrier; #1702 branch preserved | RATIFIED-by-default |
 | Q-Emit-Shim-Handoff | Grounding direct execution vs PB/Substrate/v2-retirement consumption for `emit/rust_target.rs` family | Grounding consumes PB/v2-retirement milestones; no Grounding direct execution on these files | RATIFIED-by-default |
 | Q-Coercion-Fold-Scratch | Lane placement for `ScratchIntExamples` retirement | Grounding owns close after LanguageSpec projection executable | RATIFIED-by-default |
