@@ -58,7 +58,7 @@
   <text x="332" y="268" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
   <text x="332" y="286" class="code">}</text>
   <text x="332" y="314" class="layer">// helpers — derived aliases + combinators</text>
-  <text x="332" y="334" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
+  <text x="332" y="334" class="code">pub type Result&lt;T, E&gt; = Sum&lt;T, E&gt;;</text>
   <text x="332" y="362" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
   <text x="332" y="380" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
   <text x="332" y="398" class="code">    match s {</text>
@@ -98,7 +98,7 @@
   <text x="832" y="168" class="code">  Left{value:A} | Right{value:B}</text>
   <text x="832" y="208" class="layer">// HELPERS</text>
   <text x="832" y="228" class="code">type Result&lt;T, E&gt; =</text>
-  <text x="832" y="246" class="code">  Sum&lt;E, T&gt;</text>
+  <text x="832" y="246" class="code">  Sum&lt;T, E&gt;</text>
   <text x="832" y="286" class="layer">// LIBRARY</text>
   <text x="832" y="306" class="code">type ApiResponse&lt;T&gt; =</text>
   <text x="832" y="324" class="code">  Result&lt;T, HttpError&gt;</text>

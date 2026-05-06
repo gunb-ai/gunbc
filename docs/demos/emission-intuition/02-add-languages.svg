@@ -62,7 +62,7 @@
   <text x="332" y="230" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
   <text x="332" y="248" class="code">    pub fn is_right(&amp;self) -&gt; bool { matches!(self, Self::Right {..}) }</text>
   <text x="332" y="266" class="code">}</text>
-  <text x="332" y="294" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
+  <text x="332" y="294" class="code">pub type Result&lt;T, E&gt; = Sum&lt;T, E&gt;;</text>
   <text x="332" y="332" class="code">pub fn unwrap_str(s: Sum&lt;String, String&gt;) -&gt; String {</text>
   <text x="332" y="350" class="code">    match s {</text>
   <text x="332" y="368" class="code">        Sum::Left  { value } =&gt; value,</text>
@@ -93,7 +93,7 @@
   <text x="832" y="168" class="code">  Left{value:A} | Right{value:B}</text>
   <text x="832" y="208" class="layer">// HELPERS (alias)</text>
   <text x="832" y="228" class="code">type Result&lt;T, E&gt; =</text>
-  <text x="832" y="246" class="code">  Sum&lt;E, T&gt;</text>
+  <text x="832" y="246" class="code">  Sum&lt;T, E&gt;</text>
 
   <text x="20" y="740" class="sub">Two layers of facts. The helpers on the left know about the primitive — and they're enough to power everything that comes next.</text>
 </svg>

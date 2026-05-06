@@ -146,7 +146,7 @@
 
   <!-- CENTER — helpers (green) -->
   <text x="332" y="416" class="layer">// helpers</text>
-  <text x="332" y="436" class="code">pub type Result&lt;T, E&gt; = Sum&lt;E, T&gt;;</text>
+  <text x="332" y="436" class="code">pub type Result&lt;T, E&gt; = Sum&lt;T, E&gt;;</text>
   <text x="332" y="464" class="code">pub fn map&lt;A, B, C&gt;(s: Sum&lt;A, B&gt;, f: impl FnOnce(A) -&gt; C)</text>
   <text x="332" y="482" class="code">    -&gt; Sum&lt;C, B&gt; {</text>
   <text x="332" y="500" class="code">    match s {</text>
@@ -244,7 +244,7 @@
 
   <text x="832" y="312" class="layer">// HELPERS</text>
   <text x="832" y="332" class="code">type Result&lt;T, E&gt; =</text>
-  <text x="832" y="350" class="code">  Sum&lt;E, T&gt;</text>
+  <text x="832" y="350" class="code">  Sum&lt;T, E&gt;</text>
 
   <text x="832" y="380" class="layer">// LIBRARY</text>
   <text x="832" y="400" class="code">type ApiResponse&lt;T&gt; =</text>
