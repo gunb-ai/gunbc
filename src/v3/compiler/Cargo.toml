@@ -28,6 +28,10 @@ empty-substrate-for-tests = []
 #
 # `libc` is Unix-only: process-group + kill for `ExecuteCommand` (PB-Runtime).
 [dependencies]
+# R3 Substrate Rust-primitive-full-coverage (Director Path A RATIFIED at
+# gunbc#1739 #issuecomment-4392731264): `IntervalInt::ExactInterval` host
+# repr widens to `BigInt` to admit `u128::MAX`.
+num-bigint = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { version = "0.2", default-features = false }

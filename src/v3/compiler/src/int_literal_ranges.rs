@@ -34,6 +34,8 @@
 
 use std::collections::HashSet;
 
+use num_bigint::BigInt;
+
 use crate::dag::{
     AtomPayload, Behavior, Dag, DeclarationId, FieldValue, LiteralBits, PortId, TypeConnective,
     ValueBody,
@@ -43,6 +45,13 @@ use crate::types::TypeShape;
 
 /// Q1 `Interval<Int>` instance carried from String-decimal range facts (not `LiteralBits::Int`
 /// widening — producer brief).
+///
+/// **Host repr:** `min` / `max` are arbitrary-precision `BigInt` so `u128::MAX` (and any future
+/// wider-than-i128 primitive) is representable structurally without per-width host-repr variant
+/// explosion. Per Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264 (R3 Substrate
+/// Rust-primitive-full-coverage bundled brief). The previous narrow `i128` host-repr deferred the
+/// `u128` row in `dsl/extdeps/languages/rust/primitives.dag` because `u128::MAX` exceeds `i128`
+/// range; that gap is closed by the `BigInt` host repr here.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum IntervalInt {
     /// Closed interval — substrate `range_*_inclusive` facts for a fixed-width target primitive.
@@ -50,8 +59,8 @@ pub(crate) enum IntervalInt {
         target_name: String,
         min_decimal: String,
         max_decimal: String,
-        min: i128,
-        max: i128,
+        min: BigInt,
+        max: BigInt,
     },
     /// Value-domain unbounded integer (e.g. arbitrary-precision target). Universal-accept for any
     /// i64-representable literal magnitude.
@@ -85,7 +94,7 @@ impl IntervalInt {
     /// range facts may exceed `i64` (e.g. `u64::MAX`); literals above `i64::MAX` are rejected at
     /// tokenization until the deferred Int128 carrier lane lands.
     pub(crate) fn contains_i64(&self, value: i64) -> bool {
-        let value = i128::from(value);
+        let value = BigInt::from(value);
         match self {
             IntervalInt::Unbounded => true,
             IntervalInt::ExactInterval { min, max, .. } => *min <= value && value <= *max,
@@ -177,8 +186,8 @@ fn nat_decimal_literal_interval() -> IntervalInt {
         target_name: "Nat".to_string(),
         min_decimal: "0".to_string(),
         max_decimal: i64::MAX.to_string(),
-        min: 0,
-        max: i128::from(i64::MAX),
+        min: BigInt::from(0),
+        max: BigInt::from(i64::MAX),
     }
 }
 
@@ -710,12 +719,12 @@ pub(crate) fn validate_rust_pilot_integer_primitives(dag: &mut Dag) {
             continue;
         }
 
-        let (min_n, max_n) = match (min_s.parse::<i128>(), max_s.parse::<i128>()) {
+        let (min_n, max_n) = match (min_s.parse::<BigInt>(), max_s.parse::<BigInt>()) {
             (Ok(mn), Ok(mx)) => (mn, mx),
             _ => {
                 dag.attach_diagnostic(malformed_integer_range_fact(
                     format!(
-                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse to i128"
+                        "rust_pilot_primitives IntegerPrimitive range [{min_s}, {max_s}] must parse as a decimal integer"
                     ),
                     default_span.clone(),
                 ));
