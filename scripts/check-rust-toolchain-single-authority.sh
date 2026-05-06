@@ -73,8 +73,9 @@ fi
 
 # Indented YAML key `toolchain:` under `with:` for `actions-rust-lang/setup-rust-toolchain`
 # ignores rust-toolchain.toml — forbid that pairing only (not unrelated `toolchain:` keys
-# in other actions). Implemented with a small Python scan (bounded step walk); see PR #1794
-# codex review (narrow authority boundary vs raw file-wide grep).
+# in other actions). Python scan walks each `toolchain:` line up to its Actions step head,
+# then scans the **full** step (through the next sibling `-` at the same list indent) so a
+# pathological `with.toolchain` **before** `uses: …/setup-rust-toolchain` cannot evade the check.
 if ! command -v python3 >/dev/null 2>&1; then
   echo "::error::python3 is required for workflow toolchain guard (setup-rust-toolchain scope)"
   exit 2
@@ -88,7 +89,22 @@ import sys
 SETUP = "actions-rust-lang/setup-rust-toolchain"
 
 
-def violation_in_file(wf_path: pathlib.Path):
+def _step_span(lines, step_start):
+    """Return [step_start, end) line indices for one GitHub Actions `steps:` list item."""
+    m0 = re.match(r"^(\s*)-\s", lines[step_start])
+    if not m0:
+        return step_start, min(step_start + 1, len(lines))
+    base = len(m0.group(1))
+    k = step_start + 1
+    while k < len(lines):
+        m = re.match(r"^(\s*)-\s", lines[k])
+        if m is not None and len(m.group(1)) == base:
+            break
+        k += 1
+    return step_start, k
+
+
+def violation_in_file(wf_path):
     lines = wf_path.read_text(encoding="utf-8").splitlines()
     for i, line in enumerate(lines):
         m_tc = re.match(r"^(\s+)toolchain\s*:", line)
@@ -103,13 +119,14 @@ def violation_in_file(wf_path: pathlib.Path):
             j -= 1
         if j < 0:
             continue
-        block = "\n".join(lines[j : i + 1])
+        _, k = _step_span(lines, j)
+        block = "\n".join(lines[j:k])
         if SETUP in block:
             return i + 1, line.strip()
     return None
 
 
-def main() -> int:
+def main():
     workflows_dir = pathlib.Path(sys.argv[1])
     repo_root = pathlib.Path(sys.argv[2])
     files = sorted(workflows_dir.glob("*.yml")) + sorted(workflows_dir.glob("*.yaml"))
