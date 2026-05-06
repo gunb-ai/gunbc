@@ -7,7 +7,7 @@ If this PR adds, modifies, or expands a hand-Rust file under `src/v3/`
 — including Rust tests under `src/v3/compiler/tests/` and any other
 hand-authored `.rs` in the v3 tree, since they are part of the SG-0
 census (T-PB-A non-test subset OR T-PB-B test subset) — fill in the
-"Per-PR dissolution gate" section below per INVARIANTS.md §P5
+"Per-PR dissolution gate" section below per INVARIANTS.md#p5-progress-is-dissolution
 "Dispatch-Discipline Mechanisms" (b).
 PRs that touch only `.dag` source, generated Rust, docs, non-Rust
 test fixtures, or hand-Rust outside `src/v3/` may delete the gate
@@ -45,7 +45,7 @@ Evaluator brief **(1)** as appropriate; do not duplicate PB-owned implementation
 ## Per-PR dissolution gate (required for new/expanded hand-Rust under `v3/`)
 
 <!--
-Per INVARIANTS.md §P5 "Dispatch-Discipline Mechanisms" (b): no new or
+Per INVARIANTS.md#p5-progress-is-dissolution "Dispatch-Discipline Mechanisms" (b): no new or
 expanded hand-Rust under `src/v3/` without a single, checkable receipt.
 Fill the single bullet under the gate using **exactly one** of the
 three dispositions below — not a mix, not a vague umbrella phrase.
@@ -109,7 +109,7 @@ Authority: ROADMAP.md bullet *SG-0 PR-window net-shrink discipline*.
 
 <!--
 Per docs/briefs/r3-debt-paydown-program-coordination.md (#1518) and
-INVARIANTS.md §P5(c).
+INVARIANTS.md#p5-progress-is-dissolution (Dispatch-Discipline Mechanisms — velocity tripwire).
 
 Fill this section with a single-checkable receipt for tracked ROADMAP debt
 rows touched by this PR. This is separate from the hand-Rust dissolution
