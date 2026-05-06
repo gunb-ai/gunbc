@@ -171,6 +171,113 @@ Mgrs author per-gate spec citing the (a)/(b)/(c) satisfaction; closure-ledger en
 
 This principle is NOT a separate lane; it's a per-lane gate-shape requirement applied uniformly. Closes when each lane has at least one runtime-executable demonstration gate green.
 
+### §1.8 Canonical R3 Closure-Authority Ledger (per openai-pro meta-review structural recommendation; Brian B2 path-(b) ratified 2026-05-06)
+
+**Single canonical view of all 75 closure gates** — consolidates per-lane enumeration in `r3-structure.md` §"Acceptance" + plan §1.5 count summary + §1.6 demonstration audit + §1.7 status taxonomy into one row-per-gate table. Eliminates "duplicate authority" class of cross-doc consistency findings (per openai-pro 2026-05-06 PAUSE_AND_REGROUP verdict).
+
+**Predicate-family legend**:
+- **substrate-shape**: declarations of carriers/types/algebra in `dsl/std/` (state-fact)
+- **state-check**: file-deleted / count-zero / refactor-complete (post-condition fact)
+- **demonstration**: runtime-executable demo per §1.6 minimum bar (a/b/c)
+- **DimensionReport-typed**: Pattern A predicate returning `DimensionReport<C>`
+- **SymbolicCost-typed**: cost-predicate family (`SymbolicCost`-typed)
+- **Dag-iso**: structural Dag isomorphism (RustDagIsomorphism)
+- **ledger-count**: bridge ledger zero count (Pattern E ratchet)
+- **structural-fold**: emit/eval match, cross-target consistency, structural cost composition
+- **alg-law-witness**: algebraic-law witness construction (L7)
+- **fixed-point**: bit-identical compile (T-FixedPoint)
+- **CI-discipline**: CI-enforced PR-authoring contract gate
+- **substrate-gap-class**: conjunctive closure-criterion over existing lane work (per §1.4)
+
+**Status legend** (per §1.7): DECLARED (doc-level only) / CONSUMER_LANDED (consumer verifies Pass) / PASSING (consumer + condition true).
+
+| # | Gate ID | Family | Owner Lane | Status | Notes |
+|---|---|---|---|---|---|
+| 1 | `tier3_termination_mirror_dissolved` | state-check | T-Tier3-Dissolution | DECLARED | r3-structure.md §Acceptance |
+| 2 | `tier3_computation_mirror_dissolved` | state-check | T-Tier3-Dissolution | DECLARED | r3-structure.md §Acceptance |
+| 3 | `tier3_induction_mirror_dissolved` | state-check | T-Tier3-Dissolution | DECLARED | r3-structure.md §Acceptance |
+| 4 | `tier3_effect_carrier_mirror_dissolved` | state-check | T-Tier3-Dissolution | DECLARED | r3-structure.md §Acceptance |
+| 5 | `lens_apply_dot_rs_retired` | state-check | T-LensProducer-Retirement | DECLARED | gated on PB-Runtime interpreter-as-data |
+| 6 | `lens_testgen_dot_rs_retired` | state-check | T-LensProducer-Retirement | DECLARED | same gate as #5 |
+| 7 | `regen_lens_dot_rs_retired` | state-check | T-LensProducer-Retirement | DECLARED | gated on PB-1 bin-shim emit pattern |
+| 8 | `sg0_non_test_zero` | state-check | T-LensProducer-Retirement | DECLARED | SG-0 EXPECTED_HAND_AUTHORED_NON_TEST count = 0 |
+| 9 | `l4_emit_eval_match` | structural-fold | T-V-L4-L7-Direct | DECLARED (skeleton/staged per Verification Mgr poke-hole) | per-program emit ↔ eval algebraic equality |
+| 10 | `l7_algebraic_laws_witnessed` | alg-law-witness | T-V-L4-L7-Direct | DECLARED (skeleton/staged) | exhaustive per-(algebra, inhabitant, law) coverage |
+| 11 | `tc1_eta_equivalence_executable` | DimensionReport-typed | T-V-L4-L7-Direct | DECLARED (NEW 2026-05-06) | runtime prereq: G1.a static-rep OR G1.b generic + eta relation |
+| 12 | `tc2_church_rosser_executable` | DimensionReport-typed | T-V-L4-L7-Direct | DECLARED (NEW 2026-05-06) | runtime prereq: second strategy/input order + strategy-keyed report |
+| 13 | `tc3_pattern_a_second_mover_executable` | DimensionReport-typed | T-V-L4-L7-Direct | DECLARED (NEW 2026-05-06) | runtime prereq: Descent execution proof (E5) + eval-step producer |
+| 14 | `rust_dag_isomorphism_executable` | Dag-iso | T-V-L4-L7-Direct | DECLARED (NEW 2026-05-06) | runtime prereq: shape-report producers |
+| 15 | `l5_cross_target_consistency` | structural-fold | T-V-L5-Corpus | DECLARED | corpus-driven; depends on L4 + Shape A grounding |
+| 16 | `pb_self_compile_fixed_point` | fixed-point | T-FixedPoint | CONSUMER_LANDED (R1 horizon; R3 stronger interpretation) | bit-identical stage0 + emitted artifact |
+| 17 | `numeric_abstract_carriers_landed` | substrate-shape | T-Numeric-Construction | DECLARED | Magnitude/Nat/Int/Rational/Real chain |
+| 18 | `numeric_width_refinements_landed` | substrate-shape | T-Numeric-Construction | DECLARED | `Int<N>` / `Nat<N>` / `Real<N>` |
+| 19 | `numeric_aliases_align_to_refinements` | substrate-shape | T-Numeric-Construction | DECLARED | Int8/.../Int128 as refinements |
+| 20 | `numeric_inherited_bake_ins_dissolved` | substrate-shape | T-Numeric-Construction | DECLARED | Char/EpochMs/Duration consume abstract Int |
+| 21 | `int_refinement_overflow_proven_parametric` | structural-fold | T-Numeric-Construction | DECLARED | overflow caught for any width refinement |
+| 22 | `int_lit_full_magnitude_consumer` | substrate-shape | T-Numeric-Construction | DECLARED | IntLit accepts full magnitude range |
+| 23 | `string_audit_receipt` | state-check | T-Numeric-Construction | DECLARED | String audit landed |
+| 24 | `numeric_reframe_no_parallel_authority` | state-check | T-Numeric-Construction | DECLARED | old aliases removed |
+| 25 | `omni_openapi_backend_emission_demo` | demonstration | T-Omni-Shape-B | DECLARED | one workflow → OpenAPI + backend |
+| 26 | `omni_documentation_drift_lock_demo` | demonstration | T-Omni-Shape-B | DECLARED | Markdown drift-locks against impl |
+| 27 | `omni_sql_ddl_alternative_demo` | demonstration | T-Omni-Shape-B | DECLARED | alternative if OpenAPI defers |
+| 28 | `omni_layers_share_one_node_tree` | structural-fold | T-Omni-Shape-B | DECLARED | per-workflow `compile_to_dag` count = 1 |
+| 29 | `anthropic_wire_typed_serde_alignment` | substrate-shape | T-Anthropic-Wire | DECLARED | typed end-to-end |
+| 30 | `anthropic_unit_enum_role_serialization_correct` | structural-fold | T-Anthropic-Wire | DECLARED | role enum serializes correctly |
+| 31 | `bridge_source_span_file_participation_retired` | state-check | T-Bridge-Retirement | DECLARED | typed-identity-surface authority |
+| 32 | `bridge_mark_bootstrap_secret_nominal_opacity_retired` | state-check | T-Bridge-Retirement | DECLARED | Secret PR A continuation |
+| 33 | `bridge_canonical_lens_name_dispatch_retired` | state-check | T-Bridge-Retirement | DECLARED | DeclarationRef/typed identity |
+| 34 | `bridge_include_str_side_channels_retired` | state-check | T-Bridge-Retirement | DECLARED | substrate query surface |
+| 35 | `bridge_exact_string_patching_residual_retired` | state-check | T-Bridge-Retirement | DECLARED | umbrella for exact-string scaffolds |
+| 36 | `bridge_retirement_ledger_zero` | ledger-count | T-Bridge-Retirement | DECLARED | unified ledger reports 0 |
+| 37 | `cost_lens_reads_target_realization` | structural-fold | T-CostLens-Composition | DECLARED | structural fold over algebra+realization |
+| 38 | `coercion_cost_equals_complexity_by_construction` | structural-fold | T-CostLens-Composition | DECLARED | thesis unification holds structurally |
+| 39 | `no_coercion_cost_dimension` | substrate-shape | T-CostLens-Composition | DECLARED | no separate cost dimension |
+| 40 | `symbolic_cost_expr_equals_executable` | SymbolicCost-typed | T-CostLens-Composition | DECLARED (NEW 2026-05-06) | runtime prereq: cost lens/report producer |
+| 41 | `v2_oracle_no_remaining_test_consumers` | state-check | T-V2-Retirement | DECLARED | no .rs test consumes src/v2/ |
+| 42 | `v2_directory_deleted` | state-check | T-V2-Retirement | DECLARED | src/v2/ removed from workspace |
+| 43 | `auto_parallelism_independent_binds_emit_parallel` | demonstration | T-Free-Consequences-Demonstration | DECLARED | bind-independent → parallel emit |
+| 44 | `auto_parallelism_dependent_binds_emit_sequential` | demonstration | T-Free-Consequences-Demonstration | DECLARED | bind-dependence → serialized |
+| 45 | `auto_parallelism_branch_arms_serialize` | demonstration | T-Free-Consequences-Demonstration | DECLARED | branch arms sequenced |
+| 46 | `auto_loop_parallelism_provable_independence_emits_parallel` | demonstration | T-Free-Consequences-Demonstration | DECLARED | opt-in `Lens<Iteration-Independence>` |
+| 47 | `auto_loop_parallelism_unproven_falls_back_sequential` | demonstration | T-Free-Consequences-Demonstration | DECLARED | no heuristic auto-parallelization |
+| 48 | `auto_loop_parallelism_dependence_emits_sequential` | demonstration | T-Free-Consequences-Demonstration | DECLARED | provable dependence → sequential |
+| 49 | `auto_memoization_repeated_pure_call_cached` | demonstration | T-Free-Consequences-Demonstration | DECLARED | composes Lens<Purity>·Lens<Cost> |
+| 50 | `auto_memoization_no_caching_for_one_shot` | demonstration | T-Free-Consequences-Demonstration | DECLARED | no scaffolding for single-call |
+| 51 | `cross_target_optimization_constant_fold_consistent` | structural-fold | T-Free-Consequences-Demonstration | DECLARED | structural cost-shrink across targets |
+| 52 | `cross_target_optimization_cost_structurally_derived` | structural-fold | T-Free-Consequences-Demonstration | DECLARED | cost-lens reading structurally derived |
+| 53 | `workflow_substrate_carriers_landed` | substrate-shape | T-Workflow-As-Data | DECLARED | `std.workflow` carriers |
+| 54 | `timing_lens_carrier_landed` | substrate-shape | T-Workflow-As-Data | DECLARED | `Lens<TimingMeasurement>` carrier |
+| 55 | `shared_external_attachment_pattern_documented` | substrate-shape | T-Workflow-As-Data | DECLARED | `WorkflowObservationAnchor` + 6 invariants |
+| 56 | `ci_workflow_modeled_as_dag` | demonstration | T-Workflow-As-Data | DECLARED | at least one workflow as `.dag` data |
+| 57 | `lens_self_application_demonstrated` | demonstration | T-Lens-Self-Application | DECLARED | gunbc lenses applied to gunbc CI workflow |
+| 58 | `apply_lens_self_application_demonstrated` | demonstration | T-Lens-Self-Application | DECLARED | `apply_lens(timing, ci_workflow, Enforce)` |
+| 59 | `recursive_flex_demonstration_landed` | demonstration | T-Lens-Self-Application | DECLARED | narrative thesis claim cashes |
+| 60 | `substrate_gap_parser_grammar_closed` | substrate-gap-class | T-V2-Retirement + T-Numeric-Construction + Substrate (cross-lane) | DECLARED (NEW 2026-05-06) | conjunctive closure: `Int<64>`/`Real<64>`/`Nat<8>` interaction-modeling |
+| 61 | `substrate_gap_function_valued_data_closed` | substrate-gap-class | T-Lens-Application-Surface + T-E-P-Producer-Broadening | DECLARED (NEW 2026-05-06) | **CHAIN-BREAK** per Q-Class-2-Chain-Break — RED until Q-LBP-R3-Closeability resolves |
+| 62 | `substrate_gap_file_ingestion_closed` | substrate-gap-class | T-Workflow-As-Data | DECLARED (NEW 2026-05-06) | `.dag` program ingests external file w/o include_str! |
+| 63 | `substrate_gap_workflow_scheduling_closed` | substrate-gap-class | T-Workflow-As-Data + T-Lens-Self-Application | DECLARED (NEW 2026-05-06) | CI workflow as `.dag` data; substrate prereqs in §4.4 |
+| 64 | `substrate_gap_reflection_closure_closed` | substrate-gap-class | T-LensProducer-Retirement | DECLARED (NEW 2026-05-06) | `lens_apply.rs` reflection via PB-Runtime |
+| 65 | `tier3_dissolution_demonstration_executes` | demonstration | T-Tier3-Dissolution | DECLARED (NEW 2026-05-06) | Tier3-mirror-consumer `.dag` runs end-to-end |
+| 66 | `lens_producer_retirement_executable_witness` | demonstration | T-LensProducer-Retirement | DECLARED (NEW 2026-05-06) | DEFERRED to Row-4 receipts per PB Mgr F3 |
+| 67 | `numeric_construction_demonstration` | demonstration | T-Numeric-Construction | DECLARED (NEW 2026-05-06) | `Int<32>` + `Real<64>` round-trip |
+| 68 | `anthropic_wire_demonstration` | demonstration | T-Anthropic-Wire | DECLARED (NEW 2026-05-06) | deterministic mock; live-API NOT closure gate |
+| 69 | `bridge_retirement_demonstration` | demonstration | T-Bridge-Retirement | DECLARED (NEW 2026-05-06) | typed-identity-surface in production code |
+| 70 | `cost_lens_demonstration` | demonstration | T-CostLens-Composition | DECLARED (NEW 2026-05-06) | ≥2 algebra-instances + ≥1 recursive call |
+| 71 | `v3_self_host_demonstration` | demonstration | T-V2-Retirement | DECLARED (NEW 2026-05-06) | bootstrap PB-Runtime trampoline runs end-to-end |
+| 72 | `e_p_producer_demonstration` | demonstration | T-E-P-Producer-Broadening | DECLARED (NEW 2026-05-06) | call-site produces full descent evidence |
+| 73 | `lens_behavioral_parity_demonstration` | demonstration | T-Lens-Behavioral-Parity | DECLARED (NEW 2026-05-06) | matches frozen v2-oracle cementing-test snapshot |
+| 74 | `tests_as_data_demonstration` | demonstration | T-Tests-As-Data-Completeness | DECLARED (NEW 2026-05-06) | Rust test ports to `.dag` TestClaim + executes |
+| 75 | `pr_anticipation_discipline_ci_active` | CI-discipline | R3 Debt-Paydown (standing) | DECLARED (NEW 2026-05-06) | `scripts/check-pr-sg0-net-shrink-discipline.sh` in CI |
+
+**Plus standing-program ledger predicate** (NOT a lane gate; separate Pass surface per §1):
+- `r3_debt_paydown_zero_remaining` — no tracked-debt rows survive R3 close (per §1.5 inclusion list); ROADMAP `Post-merge debt` rows + sweep §1 Class A/B/C/F/G entries + §10 RED escalations.
+
+**R3 close = ALL 75 lane gates GREEN + `r3_debt_paydown_zero_remaining` GREEN** (per §1 Two distinct Pass surfaces).
+
+**Authoritative source per gate**: `r3-structure.md` §"Acceptance" carries the Pass-condition body for each row above. This ledger is the consolidated index — body lives in canonical archive.
+
+**Status update cadence**: Mgrs update the Status column (DECLARED → CONSUMER_LANDED → PASSING) as consumer infrastructure lands per their lane scope. PM compiles weekly per §9.1.
+
 ---
 
 ## §2. Per-predicate close path
