@@ -16,14 +16,6 @@
 //   payload.
 
 pub mod dag;
-/// Opaque numeric projections for the in-repo `tests/` harness when mirroring
-/// substrate-shaped [`Value`] carriers. This is not a language semantic surface.
-pub mod integration_test_support {
-    #[inline]
-    pub fn node_id_raw(id: crate::dag::NodeId) -> u32 {
-        id.raw()
-    }
-}
 pub mod diagnostics;
 pub mod pb_method_template_projection;
 pub mod pb_method_template_projection_dag_emit;
