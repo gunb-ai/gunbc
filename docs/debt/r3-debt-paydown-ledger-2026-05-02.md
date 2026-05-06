@@ -1,6 +1,6 @@
 # R3 Debt-Paydown Ledger
 
-**Date:** 2026-05-02
+**Date:** 2026-05-02 (**amended 2026-05-06** — DP1 / Q7 ledger↔ROADMAP reconciliation)
 **Owner:** R3 Debt-Paydown Manager
 **Authority parent:** [#1518](https://github.com/gunb-ai/gunbc/pull/1518)
 **Scope:** ROADMAP.md tracked-debt rows under `## Tracked debts -- 2026-04 analyses` through the 2026-05-04 Exploratory + Reflective paired-analysis ingestion, plus rows that explicitly route to the R3 standing debt-paydown program. (Original 2026-05-02 baseline extended on 2026-05-04 to absorb the F2/F5/F11/F12/R1 novel-finding routings; eight already-tracked findings from the same ingestion are confirmed against existing catalog rows rather than duplicated.)
@@ -13,15 +13,15 @@
 
 ## Baseline Counts
 
-This pass classifies 74 ROADMAP-tracked debt rows (69 baseline + 5 added 2026-05-04 from the Exploratory + Reflective analysis ingestion: F2, F5, F11, F12, R1):
+This pass classifies 74 ROADMAP-tracked debt rows (69 baseline + 5 added 2026-05-04 from the Exploratory + Reflective analysis ingestion: F2, F5, F11, F12, R1). **Amendment 2026-05-06 (DP1 / Q7):** ledger-only acknowledgment row for **#1499** added below — catalog table row count **75** (74 ROADMAP-sourced + 1 reconciliation acknowledgment).
 
 | Bucket | Count | Meaning |
 |---|---:|---|
-| Open implementation / retirement work | 44 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
+| Open implementation / retirement work | 43 | Needs a named retirement PR, executable gate, owner closure receipt, or disposition decision. |
 | Open / disposition pending | 1 | Open with a parked decision (e.g., await an upstream lane before classifying). |
 | Partially closed | 9 | Has a landed partial receipt but still names remaining work. |
 | Partial (fold) | 1 | Special-case partial closure (e.g., one variant landed, others pending). |
-| Retired / stale receipt row | 19 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
+| Retired / stale receipt row | 21 | ROADMAP already records retirement or stale-finding resolution; next action is ledger cleanup, not code. |
 
 The highest concentration is in Substrate-adjacent rows: operator authority, value-body / mirror isomorphism, illegal-state carriers, bootstrap diagnostics, and algebra-law conformance. The second concentration is PB/Verification scaffolding: `test_runner.rs`, author-now/fire-later claims, bridge-ledger open rows, and SG-0 hand-Rust growth.
 
@@ -47,7 +47,8 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | `dsl/std/effects.dag` vs `src/v3/std/effects.dag` | 2026-04 | Substrate / PB-zero | Open | Pick canonical home; collapse duplicate authority. |
 | `container_template_algebra_rows` duplicate aliases | 2026-04 | Substrate type reflection | Open | Alias reflection derives rows; hand table deleted. |
 | String-keyed authorities in `types.dag` / `coercion.dag` | 2026-04 | Substrate type reflection | Open | Structural declarations replace string-keyed tables. |
-| `declaration_by_name(...)` emit pattern | 2026-04 | Substrate / emit | Open | Typed substrate access with cached declaration ids. |
+| `declaration_by_name(...)` emit pattern | 2026-04 | Substrate / emit | Retired | **PR #1638** (`emit_production_code_has_no_declaration_by_name_calls` ratchet): production `emit*` uses cached `DeclarationId` via `EmitAnchorCache` / `EmitModelVariants`; aligns with ROADMAP tracked-debt row **RETIRED 2026-05-04**. Test-only fixture lookups out of scope per ROADMAP. |
+| `#1499` W1 `DifferentialEquals` harness + transitional carve-outs | 2026-05-06 | R3 Verification / Lane 1 | Retired | **PR #1499** — closes plan §533 **#1499 transitional fence ledger-row gap**: no predicate-passing ROADMAP row was missing; ledger had **no** prior row for this merge receipt. Explicit acknowledgment ties **#1499** body §“Transitional fences” to catalog (Q7 stratum B). |
 | `pipeline_authority.rs` dual-authoring drift | 2026-04 / 2026-04-30 | Substrate / PB | Open | Generate one surface from the other or mark `fn compile` non-authoritative until structural lowering. |
 | LLM service flattening | 2026-04 | Grounding services | Open | Service operations consume typed carriers and return typed outputs. |
 | GitHub auth model bypass | 2026-04 | Grounding GitHub extdeps | Retired | PR #1700 (`7b415f1eb`) closes ROADMAP:376: `github_token()` now returns full `GitHubAuthToken`; hardcoded GCP Secret Manager policy removed in favor of typed `GitHubAuthSource { credential_source, token_metadata }` using `CredentialSource::EnvVar` + `env_credential`, with declared metadata verification tracked separately. |
@@ -93,7 +94,7 @@ The highest concentration is in Substrate-adjacent rows: operator authority, val
 | SubValueRelation bounded-lattice law violation | 2026-05-01 | R3 Substrate + Verification | Retired | PR #1543 (`3c77a60c9`) stops claiming `BoundedLattice` in `src/v3/std/induction.dag`; PR #1542 extends the same Path B correction to `dsl/std/induction.dag` and the audit/design receipts. |
 | Emitter `as_bind().expect()` panic paths | 2026-05-01 | R3 Substrate / PB | Retired | PR #1548 (`0427f96f7`) landed the typed `BindNodeId` witness on `ArrowBody::UserDefined`; all six emitter sites consume `(*bind_id).bind(self.dag)`, guarded site uses `.bind_opt(dag)` returning typed `EmitError::MalformedUserDefinedCallable`. Local-typed-error path was rejected at design split as parallel-representation debt. |
 | `??` / `%` syntax authority mismatch | 2026-05-01 | R3 Substrate + Grounding | Retired | PR #1552 (`d9bda3e3d`) deletes the unsupported `dag` operator rows and gates syntax coverage with a 4-authority cross-validation gate. |
-| `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Partial (fold) | v3 `emit_model.CollectionOps.fold_contract` + per-target `MethodTemplateContract` for `fold_method` (brief: `docs/briefs/collectionops-algebra-reframe.md`); `concat` / `length` / `map` + `StringOps` / `MapOps` / `PartialFunction` + dsl `languages.dag` still open. Remaining fields: target templates reference algebra method contracts / declaration refs. |
+| `CollectionOps` / `StringOps` / `MapOps` duplicate operation surfaces | 2026-05-01 | R3 Grounding | Partial (fold) | Same strand as ROADMAP **CollectionOps / StringOps / MapOps duplicate algebra operation surfaces** row (`FreeMonoid` / `PartialFunction` vs per-target string templates). **Phase 1 (fold):** v3 `emit_model.CollectionOps.fold_contract` + per-target `MethodTemplateContract` for `fold_method` per `docs/briefs/collectionops-algebra-reframe.md`. **Open:** `concat` / `length` / `map` + `StringOps` / `MapOps` / `PartialFunction` + dsl `languages.dag`; target templates must reference algebra method contracts / declaration refs. |
 | Author-now/fire-later verification style | 2026-05-01 | R3 Verification | Open | Make one `BinaryDimensionReportEquals` claim actually execute. |
 | Typed-carrier-landed + Rust-mirror-remains pattern | 2026-05-01 | R3 PB debt discipline | Open | Pair mirror introductions with isomorphism/generation or deletion. |
 | BridgeLedgerZero known-open reporting | 2026-05-01 | R3 Verification | Retired | PR #1571 (`c3138a946`) lands the decreasing-open-count ratchet (`test(v3): add BridgeLedger open-count ratchet`); known-open count can no longer silently grow. Closes Bundle 4a. |
