@@ -69,7 +69,7 @@ Both files appear in matrix §3.1 / §3.2; cited construct still present at HEAD
 
 | File | Substantive references at HEAD | Drift vs matrix |
 |---|---|---|
-| `src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs` | L9: `use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};`<br>L10: `use v2_compiler::v2_interpreter::{self, Value};`<br>L11: `use v2_compiler_tests::helpers::resolve_imports_transitively;` | None — matrix §3.1 "Current dependency" cell still accurate. |
+| `src/v3/compiler/tests/integration/p0_std_render_repeat_string_test.rs` | L9: `use v2_compiler::v2_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};`<br>L10: `use v2_compiler::v2_interpreter::{self, Value};`<br>L11: `use v2_compiler_tests::helpers::resolve_imports_transitively;`<br>L25: `.map(\|d\| v2_compiler::v2_std_core::diagnostic_to_message(d.diagnostic.clone()))` | Matrix §3.1 "Current dependency" cell lists L9–L11 use-decls and is still accurate; **L25 is an additional substantive call site** (single body-of-test invocation of `v2_compiler::v2_std_core`) not enumerated in the matrix's `use`-only excerpt. Same disposition (Decision 1: replace vs delete) covers all four lines together — they retire as a unit when the file's v2 dependency lifts. |
 | `src/v3/compiler/tests/integration/m2_substrate_inhabitance_test.rs` | L1209: `fn v2_profile_to_v3(p: v2_compiler::std_algebra::AlgebraProfile) -> AlgebraProfile {`<br>L1210: `use v2_compiler::std_algebra::AlgebraProfile as V2;`<br>L1222: `let v2_map = v2_compiler::std_algebra::kernel_algebra_profile();` | Line numbers drifted: matrix §3.2 cited L991/L992-993/L1005; HEAD = L1209 / L1210 / L1222. Construct unchanged (still `v3_kernel_algebra_profile_mirror_matches_v2_stage0_authority` test). |
 
 **Receipt:**
@@ -118,7 +118,7 @@ Doc-comments, string literals, README mentions. **NOT** G-1 consumers.
 | `src/v3/lenses/complexity.dag` | doc-comment | L13 | L13 | unchanged |
 | `src/v3/std/anthropic_operations.dag` | doc-comment | L20 | L20 | unchanged |
 | `src/v3/std/rust_method_template_contracts.dag` | doc-comment + legacy emit chain note | L21 | L21 | unchanged |
-| `src/v3/SELF_HOSTING.md` | doc reference | (unspecified) | L25, L27, L1216, L1217, L1218, L1219, L1220 | inventoried |
+| `src/v3/SELF_HOSTING.md` | doc reference | (unspecified) | L25, L27, L1178, L1216, L1217, L1218, L1219, L1220 | inventoried (L1178 added in 2026-05-06 follow-up: `cargo test -p v2-compiler-tests ci_freshness` doc reference) |
 
 #### C.2 Files NOT in matrix §2.3 — surfaces added since `66edec52`
 
@@ -127,7 +127,7 @@ These are cosmetic-only references not yet listed in the matrix; surfacing here 
 | File | Kind | Lines |
 |---|---|---|
 | `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs` | doc-comment | L29 |
-| `src/v3/compiler/tests/integration/pb_method_template_projection_dag_emit_test.rs` | doc-comments | L28, L54 |
+| `src/v3/compiler/tests/integration/pb_method_template_projection_dag_emit_test.rs` | doc-comments | L24, L28, L54 |
 | `dsl/tools/purity_check.dag` | shell-script literal in `concat(...)` invocation | L157 |
 | `dsl/std/node.dag` | doc-comment | L9 |
 | `dsl/std/constructors.dag` | doc-comment | L52 |
@@ -145,6 +145,7 @@ These are **typed `data` declarations** in `.dag` modules (substrate/config rows
 | Surface | Construct | Role | Population | G-1 / G-2 routing |
 |---|---|---|---|---|
 | `dsl/gunbc/compiler.dag:53` | `data compiler_source: SourceRoot = { path: "src/v2" }` | Configuration row pointing the compiler-source `SourceRoot` at the v2 source tree. Consumed as compile input; not a Rust import. | **C-data** (not C-cosmetic) | **G-2 prerequisite**, not G-1. Disposition is **routed to S-1** (PM-authored worker brief): does `compiler_source.path` retarget to a v3-side root when v2 retires, or does `compiler.dag`'s self-compile target itself refactor under T-FixedPoint / SG-0 = 0 closure? **No disposition proposed here**; flagged so S-1 enumerates it explicitly rather than letting it slip into a Population C cleanup pass that would silently drop the path value. |
+| `dsl/gunbc/compiler.dag:270` | `data test_package: NonEmptyStr = "v2-compiler-tests"` | Configuration row naming the Cargo test package the compiler-pipeline test driver invokes (`cargo test -p v2-compiler-tests …`). Consumed as a typed string constant; not a Rust import. | **C-data** (not C-cosmetic) | **G-2 prerequisite**, not G-1. Disposition is **routed to S-1**: does `test_package` retarget to a v3-side test crate (e.g. `v3-compiler-tests`) when `v2-compiler-tests` is removed, or does the test-driver authoring change shape under T-FixedPoint? Tied to Cargo edge §B.2 retirement: when the Cargo dep is deleted (Decision 3), this constant either points at a stale crate name or must be retargeted in the same PR. **No disposition proposed here**; flagged for S-1 scope coverage. |
 
 **Why this matters:** Population C's "sweep at G-2" default assumes refs are doc-comments / string literals where deletion or rewording is purely cosmetic. A `data` declaration's path field is a typed value the bootstrap consumes — silently rewriting it during a cosmetic sweep would either point the field at nothing (`compiler_source` becomes invalid) or quietly retarget the compile root without an authoring-time decision. Flagged here as a C-data row with named G-2 routing so S-1's scope coverage (input-packet Decision 6) can include it explicitly.
 
@@ -210,7 +211,8 @@ The matrix's structural map (Populations A/B/C, G-1 vs G-2 split, ownership rout
 3. **Population B Cargo edge line citations drifted:** `src/v3/compiler/Cargo.toml:32-33` → `:37-38`. Edges unchanged.
 4. **Population C dag.rs line set drifted:** matrix listed 6 lines (L526/L983/L1562/L1598/L1602/L3102); HEAD has a single doc-comment at L1793 only. Net Population C count for that file decreased from 6 → 1.
 5. **Population C gap-fill:** 11 additional files carry cosmetic `src/v2` references (per §1.3 C.2 + `dsl/gunbc/tools/ci_runner.dag:16` added in 2026-05-06 follow-up). All doc-comment / string-literal; no substantive Rust consumer added.
-6. **Population C-data split (2026-05-06 follow-up):** `dsl/gunbc/compiler.dag:53` `data compiler_source: SourceRoot = { path: "src/v2" }` reclassified out of C-cosmetic into a new **C-data** row (§1.3 C.3) with named G-2 routing to S-1, since it's a typed config value not a doc-comment.
+6. **Population C-data split (2026-05-06 follow-up):** two typed `data` declarations reclassified out of C-cosmetic into a new **C-data** sub-class (§1.3 C.3) with named G-2 routing to S-1, since they're typed config values not doc-comments: `dsl/gunbc/compiler.dag:53` (`compiler_source.path = "src/v2"`) and `dsl/gunbc/compiler.dag:270` (`test_package = "v2-compiler-tests"`).
+7. **Inventory line-completeness follow-up (2026-05-06):** Population B's `p0_std_render_repeat_string_test.rs` substantive references expanded from 3 (L9–L11 use-decls) to 4 (added L25 body-of-test call to `v2_compiler::v2_std_core::diagnostic_to_message`); Population C `pb_method_template_projection_dag_emit_test.rs` lines expanded from L28/L54 to L24/L28/L54; Population C `SELF_HOSTING.md` line set added L1178. Earlier inventory used file-level enumeration and missed in-file additional references; the unified single-grep census in §"Search authority" now produces line-level enumeration.
 6. **Workspace-Cargo.toml inventory gap:** root `Cargo.toml` v2 lines (L6/L8/L58/L61) not previously inventoried. Surfaced here.
 
 **G-1 closure surface count: 4 (unchanged from matrix §2.2).** No new substantive `v2_compiler` consumer has surfaced since `66edec52`; the retirement work scope is unchanged.
