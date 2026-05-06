@@ -115,8 +115,9 @@ of the type-introduction checklist" — no such checklist exists.
 - Director redirect on the paydown form (gunbc#828
   #issuecomment-4385391... follow-on) flagged that the bare
   line-number replacement (`:131`) is the same drift class.
-- Corpus sweeps at `2dc92f34f` (initial) + `<this-commit>`
-  (anchor/quote conversion) closed both vectors.
+- Corpus sweeps at `2dc92f34f` (initial Step-4 paydown) +
+  `b4cae5299` (anchor/quote conversion + checklist rewrite)
+  closed both vectors.
 
 ## Audit receipt format
 

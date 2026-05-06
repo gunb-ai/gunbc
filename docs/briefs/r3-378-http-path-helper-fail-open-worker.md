@@ -81,8 +81,11 @@ missed these. Row remains REAL, not partially-dissolved.
    and `:103`. No new substrate.
 2. **Existing brief?** None for this row. Audit ledger references
    only (`docs/debt/r3-debt-paydown-ledger-2026-05-02.md` row 41).
-3. **Design-doc match?** No design-doc; ROADMAP row plus INVARIANTS.md
-   C-8 fail-closed are the authority.
+3. **Design-doc match?** No design-doc; ROADMAP row plus
+   `INVARIANTS.md#p3-fail-closed` (Principle P3 — *"missing
+   support rejects rather than fabricates"*; C-8 is the canonical
+   fail-closed rule + nine C-series sentinel instances) are the
+   authority.
 4. **Citations live?** `dsl/std/http_path.dag:95,99,107,111` verified
    at HEAD by the wait-window audit.
 5. **Carrier dissolves the bridge?** Yes — `MalformedPathSegment`
