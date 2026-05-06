@@ -596,6 +596,13 @@ fn build_refinement_predicate_declaration(
 /// Argument-shape contract for a registered predicate. Matched against the
 /// parsed `SurfaceExpr` at the predicate's call position. See [`KNOWN_PREDICATES`]
 /// for the full registry doc + the substrate-fact-introduction receipt.
+// 🟢 TERMINAL — implementation-layer coproduct over the parsed `SurfaceExpr`
+// shapes that registered `where`-predicates may legitimately carry. Each
+// variant is anchored in a parser-fact (`Bare` ↔ `SurfaceExpr::Var`;
+// `SingleStringLiteral` ↔ `SurfaceExpr::Call { args: [Literal::String(_)] }`;
+// `NumericRecord` ↔ `Call { args: [Record { fields: [Int-literal-fields] }] }`)
+// — not a scaffold to dissolve. Variant set grows when a new predicate enters
+// `KNOWN_PREDICATES` with a different parsed-arg shape.
 #[derive(Debug, Clone, Copy)]
 enum PredicateArgShape {
     /// Bare predicate — no argument list, must parse as `SurfaceExpr::Var`.
@@ -742,6 +749,12 @@ fn carrier_chain_names(dag: &Dag, decl_id: DeclarationId) -> Vec<String> {
 /// `issuecomment-4390760353`: registered predicates must validate carrier
 /// **and** argument shape; mismatches fail-closed via `Diagnostic::ResolveError`
 /// rather than silently take a placeholder.
+//
+// 🟢 TERMINAL — implementation-layer coproduct over the three outcomes
+// `validate_where_clause` produces: registered+valid (placeholder/synthesis
+// path), registered+malformed (fail-closed diagnostic), unregistered
+// (fall-through to live resolution). Not a scaffold; the three outcomes are
+// the structural surface of registry dispatch.
 enum PredicateValidation {
     /// Predicate name is registered, carrier is allowed, and argument shape
     /// matches the spec. Eligible for placeholder allocation.
@@ -1043,6 +1056,11 @@ fn synthesize_predicate_body(
 /// returning a placeholder for the whole clause silently weakens the
 /// enforceable `gt_zero` fact. Returning a mixed-result variant lets the
 /// caller fail-closed instead.
+//
+// 🟢 TERMINAL — implementation-layer coproduct over the three per-clause
+// body-synthesis outcomes (all leaves synthesized / all leaves placeholder /
+// mixed → fail-closed). Not a scaffold; preserves per-leaf facts
+// representation needed to satisfy openai-pro REQUEST_CHANGES at PR #1846.
 enum BodySynthOutcome {
     /// Every leaf synthesized; combined body lowers via the live predicate
     /// declaration path.

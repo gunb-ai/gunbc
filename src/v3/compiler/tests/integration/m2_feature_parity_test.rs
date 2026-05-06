@@ -1126,6 +1126,9 @@ fn test_brand_takes_placeholder_pending_mixed_clause_fix() {
 /// must have actual refinement-body lowering, not placeholder semantics.
 #[test]
 fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
+    use v3_compiler::dag::{ArrowBody, Behavior, LiteralBits, TransformTarget, TypeConnective};
+    use v3_compiler::operators::{ComparisonOp, OperatorKind};
+
     let f = "dsl/std/integer.dag";
     let dag = cached_compile_to_dag("type Pos = Nat where gt_zero", f);
     let decl = dag
@@ -1142,6 +1145,50 @@ fn test_gt_zero_lowers_to_real_refinement_body_not_placeholder() {
              got label {label:?}"
         );
     }
+    // openai-pro REQUEST_CHANGES at PR #1846 (`e1ec3d1a`): assert the
+    // published carrier shape, not just "non-placeholder". `PositiveInt`'s
+    // substrate contract depends on `gt_zero` being exactly `> 0`; a
+    // regression that lowered to `subject == subject` / `true` / any other
+    // real-but-wrong body would still have satisfied the prior assertion.
+    let TypeConnective::Arrow { body, .. } = &pred.connective else {
+        panic!(
+            "`gt_zero` refinement should be `Arrow`-shaped; got connective={:?}",
+            pred.connective
+        );
+    };
+    let ArrowBody::UserDefined(bind_node_id) = body else {
+        panic!("`gt_zero` Arrow body should be `UserDefined`; got {body:?}");
+    };
+    let bind = bind_node_id
+        .bind_opt(&dag)
+        .expect("Bind node id should resolve to a `Behavior::Bind`");
+    // The bind's value port is the output of the lowered predicate
+    // expression. Find the Transform whose output is the bind's value.
+    let value_port = bind.value;
+    let producer = dag
+        .nodes()
+        .iter()
+        .find_map(|node| match node {
+            Behavior::Transform(t) if t.output == value_port => Some(t),
+            _ => None,
+        })
+        .expect("`gt_zero` body should be produced by a Transform node");
+    match &producer.target {
+        TransformTarget::Operator(OperatorKind::Comparison(ComparisonOp::Gt)) => {}
+        other => panic!("`gt_zero` body should be `Comparison(Gt)`; got {other:?}"),
+    }
+    // The Gt operator has 2 inputs: subject and literal 0. Find the Value
+    // node feeding one of the input ports with `LiteralBits::Int(0)`.
+    let zero_literal = producer.inputs.iter().any(|input_port| {
+        dag.nodes().iter().any(|node| match node {
+            Behavior::Value(v) => v.output == *input_port && v.data == LiteralBits::Int(0),
+            _ => false,
+        })
+    });
+    assert!(
+        zero_literal,
+        "`gt_zero` body's Gt operator should have a literal `Int(0)` input"
+    );
 }
 
 /// S9 Slice 2.5 Path (a) cement: registered predicate applied to a
