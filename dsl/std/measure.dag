@@ -1,18 +1,37 @@
-// std/measure.dag -- Unit/Quantity carrier (algebra-axis dimensional shape).
+// std/measure.dag -- Measure / Quantity / Scale carrier (algebra-axis
+// dimensional shape).
 //
-// Per Q-Unit-1..5 RATIFIED at gunbc#828 #issuecomment-4385412256 (2026-05-06)
-// and Q-Unit-1-Recanvas RATIFIED at gunbc#828 #issuecomment-4385539791
+// Per Q-Unit-1..5 RATIFIED at gunbc#828 #issuecomment-4385412256 (2026-05-06),
+// Q-Unit-1-Recanvas RATIFIED at gunbc#828 #issuecomment-4385539791
 // (outer carrier renamed from `Unit` to `Measure` to avoid collision with
-// kernel `Unit` terminal-object type at `dsl/std/types.dag`).
+// kernel `Unit` terminal-object type at `dsl/std/types.dag`), and
+// Q-Refined-Phantom-Composition option (c) RATIFIED 2026-05-06 (literal
+// `Refined<Measure<...>, predicate>` form deferred to value-typed integration
+// follow-up; this layer carries dimensional semantics via the `Quantity` /
+// `Scale` tags only — no predicate refinement at the Measure level).
 //
-// Authority: `docs/briefs/r3-substrate-s9-unit-quantity-carrier-canvas.md`
-// (RATIFICATION banner). Worker brief:
-// `docs/briefs/r3-substrate-unit-quantity-carrier-worker.md`.
+// Authority anchors (cited by rule-text quote per
+// `brief-authoring-checklist.md`; bare line-number cites prohibited):
+//   - Practice 4 (`docs/modeling-discipline.md#4-coproduct-dissolution`):
+//     "Any new Rust enum with N >= 2 variants must have a checkpoint
+//     comment naming its classification (🟢/🟡/🔴), with a ledger entry
+//     if GREEN or a named trigger if YELLOW."
+//   - `feedback_construction_over_ratchets`: "Don't build the predicate
+//     ahead of consumer demand."
+//   - `feedback_reason_not_label`: "The predicate name is the label;
+//     the reason is the carrier's semantic content."
+// Director ratifications recorded in gunbc#828 issue comments cited above.
+// Worker brief lives outside this checkout (parent worktree); cross-program
+// review reaches the brief through the gunbc#828 ratification thread.
 //
 // Scope (Phase-1 carrier landing):
-//   - `Measure<Q, S>` — phantom-parameter carrier for dimensional types.
-//   - `Quantity` — what is being measured (Time, Length, Mass, ...).
-//   - `Scale` — SI decimal scale exponent (Atto..Exa, with `One` = 10^0).
+//   - `Measure<Q, S>` -- phantom-parameter carrier for dimensional types.
+//   - `Quantity`      -- what is being measured (Time, Length, Mass, ...).
+//   - `Scale`         -- SI decimal scale exponent (Atto..Exa, `One` = 10^0).
+//   - `scale_exponent(s: Scale) -> Int` -- structural exponent query
+//     (typed exponent authority; lets Grounding consumers and downstream
+//     algebraic consumers project a Scale value to its decimal exponent
+//     without re-encoding the table at each call site).
 //
 // NOT in scope (deferred per brief):
 //   - Aspect axis (PointKind / Magnitude / Instant / Rate) -> R4 C6.
@@ -20,28 +39,25 @@
 //   - 3-axis `AlgebraMachineRoundingProduct` -> R4 C5.
 //
 // COMPOSITION (S9 Phase-3 reframe per Q-Unit-4 RATIFIED outer-Refined /
-// inner-Measure):
+// inner-Measure, with option (c) deferral of the literal Refined wrapper):
 //
-//   Duration     := Refined<Measure<Time, One>,   non_negative>
-//   Milliseconds := Refined<Measure<Time, Milli>, non_negative>
-//   Seconds      := Duration  (collapse per Q-Unit-3 RATIFIED)
+//   Duration     :=  Measure<Time, One>     (Quantity-tagged; predicate deferred)
+//   Milliseconds :=  Measure<Time, Milli>   (Quantity-tagged; predicate deferred)
+//   Seconds      :=  Duration               (Q-Unit-3 collapse)
 //
-// Predicates apply at the Measure-typed level: `non_negative` is
-// "this duration is non-negative", not "this Int that happens to be
-// milliseconds is non-negative". This satisfies
-// `feedback_reason_not_label` -- the predicate name is the label,
-// the reason is "this carries time-unit semantics".
+// `Measure<Q, S>` is a phantom-parameter carrier: it has no runtime value
+// structure. The semantic content of "non-negative time-magnitude" is
+// carried by the `Quantity = Time` tag itself; predicate-bearing refinement
+// is a downstream concern when `Refined<>` consumes a base with actual
+// numeric inhabitants. Forward-flag: when value-typed dimensional refinement
+// integration arrives, revisit the literal `Refined<Measure<Time, One>,
+// non_negative>` form per Q-Unit-4 RATIFIED.
 
 module std.measure
 
 // --- Quantity: what is being measured -------------------------------------
 //
 // PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD
-// Reference: `docs/modeling-discipline.md#4-coproduct-dissolution`
-//   "Any new Rust enum with N >= 2 variants must have a checkpoint
-//   comment naming its classification (🟢/🟡/🔴), with a ledger entry
-//   if GREEN or a named trigger if YELLOW."
-//
 // Dissolution trigger (Q-Unit-5 RATIFIED): "all Quantity values consumed
 // by >= 1 Grounding emission rule". Until each value gates a real
 // emission rule (Grounding consumer demonstrates need), the carrier
@@ -69,6 +85,13 @@ type Quantity =
 // `One` is the unscaled identity (10^0) -- RATIFIED rename from `Unit`
 // per Q-Unit-1 to avoid shadowing the outer carrier name and the
 // kernel terminal-object `Unit` type.
+//
+// Scale is a typed exponent authority, not bare labels: the
+// `scale_exponent` query below is the structural projection from a
+// Scale value to its decimal exponent. Grounding consumers MUST go
+// through `scale_exponent` rather than re-encoding the SI table per
+// call site (single-source-of-truth invariant; cf. T-Numeric-Construction
+// "single numeric authority" pattern).
 type Scale =
     Atto       // 10^-18
   | Femto      // 10^-15
@@ -84,6 +107,34 @@ type Scale =
   | Peta       // 10^15
   | Exa        // 10^18
 
+// --- scale_exponent: typed exponent authority -----------------------------
+//
+// Structural projection from `Scale` to its SI decimal exponent. This is
+// the canonical query Grounding consumers and any downstream algebraic
+// consumer (e.g., scale-arithmetic for unit conversion) bind against,
+// rather than the bare variant names. Centralizing the table here means
+// adding a new Scale value updates the exponent authority in one place.
+//
+// Total over all `Scale` inhabitants; exponents are i64-representable
+// (range [-18, 18] in this enumeration).
+fn scale_exponent(s: Scale) -> Int {
+  match s {
+    Atto  => -18
+    Femto => -15
+    Pico  => -12
+    Nano  =>  -9
+    Micro =>  -6
+    Milli =>  -3
+    One   =>   0
+    Kilo  =>   3
+    Mega  =>   6
+    Giga  =>   9
+    Tera  =>  12
+    Peta  =>  15
+    Exa   =>  18
+  }
+}
+
 // --- Measure<Q, S>: phantom-parameter dimensional carrier -----------------
 //
 // PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE
@@ -94,4 +145,32 @@ type Scale =
 // Per-target representation (Rust `std::time::Duration`, Python
 // `datetime.timedelta`, Go `time.Duration`, etc.) is Grounding's job
 // per Q-Unit-4 RATIFIED.
+//
+// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
+//   Denotationally `<Q>` must inhabit `Quantity` and `<S>` must inhabit
+//   `Scale` for `Measure<Q, S>` to carry dimensional semantics. The current
+//   substrate has no parametric where-clause syntax (e.g., `<Q, S> where
+//   Q : Quantity, S : Scale`), so this declaration accepts any type-
+//   reference for `<Q>` / `<S>` at the parser/lower level. All intended
+//   consumers in Phase-1 / Phase-2 of the carrier landing instantiate with
+//   the ratified Quantity / Scale values (`Measure<Time, One>`,
+//   `Measure<Time, Milli>`, etc.); the constraint holds for those sole
+//   consumers by construction.
+//
+//   Same gap as `GroupCompletion<M>` / `FieldOfFractions<R>` in
+//   `dsl/std/algebra.dag` (where-clause syntax is a substrate-feature
+//   lane, not per-carrier ceremony). Mechanical Quantity / Scale
+//   inhabitance witnesses are not declared at this layer for the same
+//   substrate reason.
+//
+//   **Dissolution trigger:** when constrained-inhabitance / parametric
+//   where-clause syntax lands in the substrate (separate substrate-feature
+//   lane), tighten this declaration to require `<Q> : Quantity, <S> :
+//   Scale`. Existing call sites continue to type-check by construction.
+//
+// HARD BOUNDARIES (per Q-Unit RATIFIED + option (c) RATIFIED):
+//   - Phantom-parameter only -- no runtime payload, no value-level
+//     refinement (`non_negative` etc.) at this layer per option (c).
+//   - No mechanical Measure-witness derivation declared here -- same
+//     substrate gap as `GroupCompletion<M>`; inhabitance lens follow-up.
 type Measure<Q, S>
