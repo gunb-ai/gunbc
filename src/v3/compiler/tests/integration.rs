@@ -51,6 +51,8 @@ mod bridge_lower_helpers_patch_zero_residual_test;
 mod canonical_lens_bridge_ratchet_test;
 #[path = "integration/cementing/cementing_lens_registry_dispatch_test.rs"]
 mod cementing_lens_registry_dispatch_test;
+#[path = "integration/cross_target_coverage_carrier_test.rs"]
+mod cross_target_coverage_carrier_test;
 #[path = "integration/e_i_lane_induction_preflight_test.rs"]
 mod e_i_lane_induction_preflight_test;
 #[path = "integration/extdeps_rust_primitives_loader_test.rs"]
