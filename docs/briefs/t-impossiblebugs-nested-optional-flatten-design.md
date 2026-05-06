@@ -6,7 +6,7 @@
 
 ## TL;DR
 
-**Recommendation: bypass-feasible.** v3 substrate already has `TypeConnective::Cardinality { element, bound: CardinalityBound }` as a first-class connective (`src/v3/compiler/src/dag.rs:395`); the cardinality-substrate gate THESIS:343 names is the **v2** state described in `docs/architecture.md:109`, and v3 is past it. `T??` parses today, lowers to nested `Cardinality { bound: AtMostOne, .. }`, and is structurally distinct from `T?` only because nothing collapses the outer wrap. The fix is (a) one predicate `cardinality_idempotent_target` owning the `AtMostOne ∧ AtMostOne` rule, (b) one allocator `alloc_cardinality_decl` that consults it, and **(c) API closure on `TypeConnective::Cardinality`'s payload** so the variant cannot be constructed outside the allocator — mechanical enforcement of "illegal states unrepresentable," not by-convention. Implementation lane is **M** (revised from S after API-closure requirement landed; see §Q3 *API closure*). (Original draft proposed lower-only XS, then constructor-helper-by-convention S; revised post-PR #798 review — see §Q3 *Revision*.)
+**Recommendation: bypass-feasible.** v3 substrate already has `TypeConnective::Cardinality { element, bound: CardinalityBound }` as a first-class connective (`src/v3/compiler/src/dag.rs:395`); the cardinality-substrate gate THESIS §"Build orchestration, effects, and bounded execution" names is the **v2** state described in `docs/architecture.md` §"Where We Are (current compiler primitives)", and v3 is past it. `T??` parses today, lowers to nested `Cardinality { bound: AtMostOne, .. }`, and is structurally distinct from `T?` only because nothing collapses the outer wrap. The fix is (a) one predicate `cardinality_idempotent_target` owning the `AtMostOne ∧ AtMostOne` rule, (b) one allocator `alloc_cardinality_decl` that consults it, and **(c) API closure on `TypeConnective::Cardinality`'s payload** so the variant cannot be constructed outside the allocator — mechanical enforcement of "illegal states unrepresentable," not by-convention. Implementation lane is **M** (revised from S after API-closure requirement landed; see §Q3 *API closure*). (Original draft proposed lower-only XS, then constructor-helper-by-convention S; revised post-PR #798 review — see §Q3 *Revision*.)
 
 ## Q1 — Surface-upstream check: does `T??` parse?
 
@@ -37,7 +37,7 @@ Tokenizer (`src/v3/compiler/src/tokenize_generated.rs:240`) maps `b'?'` to `Toke
 
 ## Q2 — Substrate-attachment: what's the cardinality state in v3?
 
-**v3 substrate is past the cardinality bridge.** `architecture.md:109` describes the **v2** state — `return_cardinality` enum on Node with 142 construction sites, marked "Bridge — dissolve into edge existence." v3 has done that dissolution: `TypeConnective::Cardinality` is a first-class variant of the connective sum at `src/v3/compiler/src/dag.rs:395-398`:
+**v3 substrate is past the cardinality bridge.** `docs/architecture.md` §"Where We Are (current compiler primitives)" describes the **v2** state — `return_cardinality` enum on Node with 142 construction sites, marked "Bridge — dissolve into edge existence." v3 has done that dissolution: `TypeConnective::Cardinality` is a first-class variant of the connective sum at `src/v3/compiler/src/dag.rs:395-398`:
 
 ```rust
 Cardinality {
@@ -235,7 +235,7 @@ The guard predicate is exactly: outer bound `AtMostOne` *and* inner bound `AtMos
 
 ### Why not "needs upstream substrate design"
 
-The cardinality substrate THESIS:343 names as the gate is the **v2** state (`return_cardinality` enum, 142 sites). v3 has already promoted Cardinality to a first-class connective. There is no upstream substrate work to do — the substrate is in place; only the idempotent-meet rule at the construction site is missing. Adding that rule is not substrate redesign; it's a one-site invariant attached to existing substrate.
+The cardinality substrate gate named by THESIS §"Build orchestration, effects, and bounded execution" is the **v2** state (`return_cardinality` enum, 142 sites). v3 has already promoted Cardinality to a first-class connective. There is no upstream substrate work to do — the substrate is in place; only the idempotent-meet rule at the construction site is missing. Adding that rule is not substrate redesign; it's a one-site invariant attached to existing substrate.
 
 ### Why not "park"
 
@@ -248,4 +248,4 @@ The bypass is bounded (M; see §Dispatch profile), well-scoped (specific to `AtM
 
 ## Closing signal
 
-`bright-moth-390` recommends Director author the bypass implementation brief described in §Q4 and dispatch to the next idle worker. No upstream blockers identified. The cardinality-substrate gate THESIS:343 names is closed (in v3) by virtue of `TypeConnective::Cardinality` being a first-class connective, not a bridge enum.
+`bright-moth-390` recommends Director author the bypass implementation brief described in §Q4 and dispatch to the next idle worker. No upstream blockers identified. The cardinality-substrate gate named by THESIS §"Build orchestration, effects, and bounded execution" is closed (in v3) by virtue of `TypeConnective::Cardinality` being a first-class connective, not a bridge enum.
