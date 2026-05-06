@@ -8,17 +8,19 @@
 
 ## Scope
 
-Mechanical census: enumerate every workspace `v2_compiler` / `v2-compiler` / `src/v2/` consumer in `src/` + `tests/` + `Cargo.toml` at HEAD, attach grep receipts, and cross-link each row to the migration-matrix surface it refreshes. **Forbidden by dispatch:** deleting `src/v2/`, removing Cargo edges, mutating any v2 file. None of those are touched here.
+Mechanical census: enumerate every workspace `v2_compiler` / `v2-compiler` / `src/v2` consumer in `src/` + `Cargo.toml` + `dsl/` at HEAD, attach grep receipts, and cross-link each row to the migration-matrix surface it refreshes. **Forbidden by dispatch:** deleting `src/v2/`, removing Cargo edges, mutating any v2 file. None of those are touched here.
 
 ## Search authority
 
-All counts use the audit-sanctioned search shape from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review), broadened to also catch the hyphenated Cargo dep names (`v2-compiler` / `v2-compiler-tests`) — `\bv2_compiler\b` only matches the underscored module-path form, so the matrix-cited regex misses Cargo.toml dep edges in a single sweep. The matrix-cited path set was `src/ tests/`, but the repo has no top-level `tests/` directory — Rust integration tests live under `src/<crate>/tests/`. Single unified census for current tree:
+All counts use the audit-sanctioned search shape from [migration matrix §1](t-v2-retirement-migration-matrix.md) (corrected per #1338 review), broadened to also catch the hyphenated Cargo dep names (`v2-compiler` / `v2-compiler-tests`) and bare-string `src/v2` literals without a trailing slash — `\bv2_compiler\b` only matches the underscored module-path form, and `src/v2/` requires a trailing slash so it misses values like `path: "src/v2"`. The matrix-cited path set was `src/ tests/`, but the repo has no top-level `tests/` directory — Rust integration tests live under `src/<crate>/tests/`. Single unified census for current tree:
 
 ```sh
-grep -rEln 'src/v2/|\bv2[-_]compiler(_tests|-tests)?\b' src/ Cargo.toml dsl/
+grep -rEln 'src/v2\b|\bv2[-_]compiler(_tests|-tests)?\b' src/ Cargo.toml dsl/
 ```
 
-This single command catches every surface enumerated below in one pass: `src/v2/` paths, `v2_compiler` / `v2_compiler_tests` Rust module-path uses, AND `v2-compiler` / `v2-compiler-tests` Cargo dep names. Earlier inventory passes used narrower patterns and produced split receipts; this unified form is the canonical reproduction command for future refreshes.
+The `src/v2\b` form (word-boundary, no trailing-slash requirement) matches `src/v2/...` paths, `"src/v2"` string literals, `src/v2.dag` / `src/v2-…` references, etc. without false-positives on `src/v23` or `src/v2something`. This single command catches every surface enumerated below in one pass: `src/v2` paths in any context, `v2_compiler` / `v2_compiler_tests` Rust module-path uses, AND `v2-compiler` / `v2-compiler-tests` Cargo dep names. Earlier inventory passes used narrower patterns and produced split receipts; this unified form is the canonical reproduction command for future refreshes.
+
+**Regex evolution log** (for matrix-doc reconciliation): matrix `\bv2_compiler(_tests)?\b` → inventory v1 same → inventory v2 (commit `7442c9265`) `src/v2/|\bv2[-_]compiler(_tests|-tests)?\b` (added Cargo-dep-name coverage) → **inventory v3 (this commit) `src/v2\b|\bv2[-_]compiler(_tests|-tests)?\b`** (drops trailing-slash requirement so the `path: "src/v2"` value is rediscovered by the canonical command, addressing review).
 
 Substantive vs cosmetic split per #1338 §3.1: substantive = `use` / call / function-signature / type reference; cosmetic = doc-comment / string literal / README mention.
 
@@ -197,7 +199,9 @@ Each Population B / C row above maps back to a migration-matrix surface and (whe
 | `dsl/std/verification.dag` (v2-era) vs `src/v3/std/verification.dag` | §5 | Decision 5 (Substrate-routed) | (G-2 prereq, not G-1) |
 | `src/v3/compiler/src/dag.rs` doc-comments | §2.3 | (cosmetic — sweep at G-2) | C |
 | `src/v3/compiler/src/pb_method_template_projection_dag_emit.rs:29`, `pb_method_template_projection_dag_emit_test.rs:28,54` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
-| `dsl/tools/purity_check.dag:157`, `dsl/std/{node,constructors,syntax}.dag`, `dsl/extdeps/{llm/openai,languages/python/syntax}.dag`, `dsl/gunbc/{compiler,tools/review_codex}.dag` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
+| `dsl/tools/purity_check.dag:157`, `dsl/std/{node,constructors,syntax}.dag`, `dsl/extdeps/{llm/openai,languages/python/syntax}.dag`, `dsl/gunbc/compiler.dag:29`, `dsl/gunbc/tools/{review_codex,ci_runner}.dag` | (not in matrix) | (cosmetic — sweep at G-2) | C (gap-fill) |
+| **`dsl/gunbc/compiler.dag:53`** `data compiler_source: SourceRoot = { path: "src/v2" }` | (not in matrix) | **Decision 6 scope coverage (S-1 routes)** | **C-data** (G-2 prereq, named disposition) |
+| **`dsl/gunbc/compiler.dag:270`** `data test_package: NonEmptyStr = "v2-compiler-tests"` | (not in matrix) | **Decision 6 scope coverage (S-1 routes)**; tied to **§B.2 Decision 3** Cargo edge retirement | **C-data** (G-2 prereq, named disposition) |
 | Root `Cargo.toml` L6/L8/L58/L61 | (not in matrix) | (G-2 — workspace removal + profile section sweep) | A-equivalent at workspace scope |
 
 ---
@@ -213,7 +217,8 @@ The matrix's structural map (Populations A/B/C, G-1 vs G-2 split, ownership rout
 5. **Population C gap-fill:** 11 additional files carry cosmetic `src/v2` references (per §1.3 C.2 + `dsl/gunbc/tools/ci_runner.dag:16` added in 2026-05-06 follow-up). All doc-comment / string-literal; no substantive Rust consumer added.
 6. **Population C-data split (2026-05-06 follow-up):** two typed `data` declarations reclassified out of C-cosmetic into a new **C-data** sub-class (§1.3 C.3) with named G-2 routing to S-1, since they're typed config values not doc-comments: `dsl/gunbc/compiler.dag:53` (`compiler_source.path = "src/v2"`) and `dsl/gunbc/compiler.dag:270` (`test_package = "v2-compiler-tests"`).
 7. **Inventory line-completeness follow-up (2026-05-06):** Population B's `p0_std_render_repeat_string_test.rs` substantive references expanded from 3 (L9–L11 use-decls) to 4 (added L25 body-of-test call to `v2_compiler::v2_std_core::diagnostic_to_message`); Population C `pb_method_template_projection_dag_emit_test.rs` lines expanded from L28/L54 to L24/L28/L54; Population C `SELF_HOSTING.md` line set added L1178. Earlier inventory used file-level enumeration and missed in-file additional references; the unified single-grep census in §"Search authority" now produces line-level enumeration.
-6. **Workspace-Cargo.toml inventory gap:** root `Cargo.toml` v2 lines (L6/L8/L58/L61) not previously inventoried. Surfaced here.
+8. **Workspace-Cargo.toml inventory gap:** root `Cargo.toml` v2 lines (L6/L8/L58/L61) not previously inventoried. Surfaced here.
+9. **Regex coverage fix (2026-05-06 follow-up):** unified census widened from `src/v2/|\bv2[-_]compiler…` → `src/v2\b|\bv2[-_]compiler…` so `path: "src/v2"` (no trailing slash) is matched by the canonical command. Without this fix the C-data row at `dsl/gunbc/compiler.dag:53` would not be rediscovered by the cited unified grep — which is the surface the C-data split was created to flag.
 
 **G-1 closure surface count: 4 (unchanged from matrix §2.2).** No new substantive `v2_compiler` consumer has surfaced since `66edec52`; the retirement work scope is unchanged.
 
@@ -227,7 +232,7 @@ The migration-matrix §1 cites `grep -rEln '...' src/ tests/`. The `tests/` argu
 
 - ✅ No `src/v2/` deletion.
 - ✅ No `v2-compiler` / `v2-compiler-tests` Cargo edge removal.
-- ✅ No code touched (this PR adds one new docs-only file).
+- ✅ No code touched. The original PR (#1848) added one new docs-only file at this path; the follow-up PR (#1850) edits that file in place to address codex BLOCKING review findings — no additional files added or removed.
 - ✅ No migration disposition decided (all routings remain matrix / S-1 / Substrate-Manager territory).
 
 ## Cross-refs
