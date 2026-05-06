@@ -146,10 +146,10 @@ L6 (`l6_structural_form_coverage`) was moved out of this lane during the engine-
   - `tier3_dissolution_demonstration_executes` — at least one Tier3-mirror-consumer `.dag` program runs end-to-end via Evaluator
   - `lens_producer_retirement_demonstration` — `lens_apply` reflection routes via PB-Runtime on representative lens program
   - `numeric_construction_demonstration` — end-to-end program using `Int<32>` + `Real<64>` round-trip executes
-  - `anthropic_wire_demonstration` — full request/response cycle executes against Anthropic API or mock
+  - `anthropic_wire_demonstration` — full request/response cycle executes against **deterministic mock** (per `docs/r3-program-plan.md` §1.6 + Director poke-hole 2026-05-06 finding 4.3 + openai-pro 2026-05-06 finding 3 — hermetic-first per TESTING.md; live-API testing tracked separately as CI cadence concern, NOT a closure gate)
   - `bridge_retirement_demonstration` — at least one retired-bridge replacement path executes (e.g., typed-identity-surface used in production code)
   - `cost_lens_demonstration` — cost lens reads representative target program and composes algebra+realization cost end-to-end
-  - `v2_retirement_demonstration` — bootstrap path through PB-Runtime trampoline executes (the v3-only path runs end-to-end after v2 deletion)
+  - `v3_self_host_demonstration` — bootstrap path through PB-Runtime trampoline executes end-to-end; v3-only self-host pipeline runs without v2 fallback (per `docs/r3-program-plan.md` §1.6 + Director poke-hole 2026-05-06 finding 4.1 + openai-pro 2026-05-06 finding 4 — gate name aligned across both docs; reframed from prior `v2_retirement_demonstration` to direct positive-statement form)
   - `e_p_producer_demonstration` — representative call site produces full descent evidence at runtime
   - `lens_behavioral_parity_demonstration` — each lens (complexity / cost / parallelism / effect_enumeration) demonstrates on representative input + matches v2 oracle
   - `tests_as_data_demonstration` — at least one Rust test ports to `.dag` TestClaim and executes via Evaluator

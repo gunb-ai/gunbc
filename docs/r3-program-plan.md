@@ -315,9 +315,9 @@ Pass condition:
 
 ## §5. Bridge inventory snapshot
 
-**Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (consolidated into this PR; PR #1804 superseded). PM-authored Phase 1 framework + §4 anticipation discipline + §3 GREEN/YELLOW/RED rubric live; Phase 2-3 inventory (per-class bridge enumeration) populates via Mgr canvas + PR comments as canvases compile.
+**Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (in this PR — PR #1804 superseded; sweep framework consolidated). PM-authored Phase 1 framework + §4 anticipation discipline + §3 GREEN/YELLOW/RED rubric live in the audit doc; Phase 3 compile populates per-row inventory.
 
-**Status (2026-05-06)**: per-class counts below are PRE-Phase-3-compile expected ranges from Director's bridge-class framework. Phase 2 sweep deliverables (PR #1804 §1.1–§2.2) have landed substantive partial data; **Phase 3 compile** populates verified-at-HEAD counts replacing these expected ranges before plan PR opens (per Director poke-hole 2026-05-06 finding 6.3).
+**Status (2026-05-06)**: per-class counts below are PRE-Phase-3-compile expected ranges from Director's bridge-class framework. Phase 2 partial deliverables landed as PR comments on the now-superseded PR #1804 comment thread (compiler-core `.rs` audit / emit subdir audit / v3 std `.dag` mirror audit / R2-R3-era PR debt history); **Phase 3 compile** folds those historical comment-thread deliverables into the audit doc in this PR, populating verified-at-HEAD counts before plan PR opens (per Director poke-hole 2026-05-06 finding 6.3).
 
 **Apples-to-apples count discipline** (per `feedback_corrections_must_grep_verify_source` + INVARIANTS P1 single-authority):
 
@@ -328,11 +328,11 @@ Pass condition:
 
 The 66-file audit is per-file classification work distinct from SG-0 census authority (path inclusion). Both counts are useful for different purposes: 66 = audit scope; 41 = SG-0 ratchet for that scope; 136 = SG-0 ratchet total.
 
-Plus 35 v3 std mirror entries + 112 R2/R3-era PRs (covered by §1.3 + §2.1/§2.2 of PR #1804 sweep deliverables).
+Plus 35 v3 std mirror entries + 112 R2/R3-era PRs (Phase 2 audit work landed as PR comments on now-superseded PR #1804 comment thread; Phase 3 compile folds into the audit doc in this PR).
 
-This plan section reports cumulative bridge counts; PR #1804 holds the per-row inventory.
+This plan section reports cumulative bridge counts; **the audit doc in this PR (`docs/audit/r3-debt-sweep-2026-05-06.md`) holds the schema + framework** — Phase 3 compile populates per-row inventory.
 
-**Phase 2 inventory shape** (counts populate post-canvas-completion; **expected ranges** below are pre-Phase-2-completion estimates from Director's bridge-class framework, NOT compiled facts — see PR #1804 for authoritative per-row inventory as canvases land):
+**Phase 2 inventory shape** (counts populate post-canvas-completion; **expected ranges** below are pre-Phase-2-completion estimates from Director's bridge-class framework, NOT compiled facts — Phase 3 compile of the audit doc in this PR folds historical Phase-2 deliverables from PR #1804 comment thread into authoritative per-row inventory):
 
 - **Class A (substrate-gap-blocked)**: expected range ~15-20 bridges; awaiting Mgr canvas enumeration.
 - **Class B (Pattern-A NYI predicates)**: count = 7 (this count IS authoritative — predicates pre-named in framework): TC1, TC2, TC3, free-consequences, RustDagIsomorphism, BridgeLedgerZero, SymbolicCostExprEquals.
@@ -342,7 +342,7 @@ This plan section reports cumulative bridge counts; PR #1804 holds the per-row i
 - **Class F (operator-ontology-duplication)**: expected range — awaiting canvas.
 - **Class G (local-small)**: expected range — distributed across lanes; awaiting canvas.
 
-**Authoritative counts populate via PR #1804 §1.A–§1.G as Mgr canvases land**. Net-bridge count at R3 close is 0 (per `bridge_retirement_ledger_zero` + 5 substrate-gap-class closure gates). Each bridge has a named dissolution trigger; bridges without triggers escalate to substrate gap requiring named R3 lane (per [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) §4 anticipation discipline).
+**Authoritative counts populate via Phase 3 compile of [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) §1.A–§1.G in this PR** (Phase 2 partial deliverables on now-superseded PR #1804 comment thread fold in during Phase 3). Net-bridge count at R3 close is 0 (per `bridge_retirement_ledger_zero` + 5 substrate-gap-class closure gates). Each bridge has a named dissolution trigger; bridges without triggers escalate to substrate gap requiring named R3 lane (per audit doc §4 anticipation discipline).
 
 **Drift items from Phase 2 sweep** (per Grounding Mgr poke-hole 2026-05-06 finding 5 normalization — earlier list double-counted #1638/declaration_by_name as same issue + omitted CollectionOps drift):
 
@@ -409,9 +409,8 @@ R3 close = all 70 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive s
 
 1. T-E-P-Producer-Broadening (Substrate, foundational)
 2. → T-Lens-Behavioral-Parity (cross-program, 4 sub-slices)
-3. → T-Lens-Application-Surface (cross-program)
-4. → T-Workflow-As-Data (Substrate)
-5. → T-Lens-Self-Application (Verification, demonstration)
+3. → **(T-Lens-Application-Surface PARALLEL T-Workflow-As-Data)** — both gated by T-Lens-Behavioral-Parity COMPLETE; neither depends on the other (per Director poke-hole 2026-05-06 finding 2.3 + openai-pro 2026-05-06 finding 2)
+4. → T-Lens-Self-Application (Verification, demonstration; depends on BOTH T-Lens-Application-Surface AND T-Workflow-As-Data)
 
 **Verification-internal critical path** (longest verification path; parallel to global chain):
 
