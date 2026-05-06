@@ -1,6 +1,6 @@
 # R3 Pattern-A — TC1 first executable slice (V1) Worker Brief
 
-**Status:** DISPATCH-READY — **Q-PAFS Path A ACCEPTED** 2026-05-06 (Brian Director countersign; PR #1824). Policy-layer fork closed; implementation still coordinates **Evaluator E3** (**E6-G1.a** static lens fold) in the **same release step** as this slice.
+**Status:** DISPATCH-READY — **Q-PAFS Path A ACCEPTED** 2026-05-06 (Brian Director countersign; **authority** = committed [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 rows at `HEAD`; PR [#1824](https://github.com/gunb-ai/gunbc/pull/1824) is the **merge record** on `main`). Policy-layer fork closed; implementation still coordinates **Evaluator E3** (**E6-G1.a** static lens fold) in the **same release step** as this slice.
 
 **Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — absorbed formal-grounding / Pattern-A cluster (not a fourth lane; see [`docs/r3-structure.md`](../r3-structure.md) §"Manager structure").
 

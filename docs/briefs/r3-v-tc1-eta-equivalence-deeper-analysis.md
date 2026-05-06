@@ -1,9 +1,12 @@
 # R3 TC1 Eta-Equivalence Deeper Structural Verification Analysis
 
 **Status:** **ACCEPTED** (2026-05-06 — Brian Director countersign: Path **A** / **G1.a**).
-**Canonical ratification:** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 rows
-**Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, and **Q-EVAL-Lens-Fold-First-Slice** (PR
-[#1824](https://github.com/gunb-ai/gunbc/pull/1824) lands the table receipt). **Path
+**Canonical ratification:** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 — rows
+**Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, and **Q-EVAL-Lens-Fold-First-Slice**
+(**ACCEPTED** 2026-05-06, Path **A**). **Sole authority** = the committed §10.3 table at
+repo `HEAD` (not any PR description). PR [#1824](https://github.com/gunb-ai/gunbc/pull/1824)
+is the **merge record** that landed the countersign row text on `main`; later PRs only
+edit surrounding briefs/citations. **Path
 check:** ratification lives in the committed file `docs/r3-program-plan.md`; from this
 brief the relative link `../r3-program-plan.md` resolves to that path (same `docs/`
 directory as `docs/briefs/`). This brief is the **engineering scope narrative** aligned
