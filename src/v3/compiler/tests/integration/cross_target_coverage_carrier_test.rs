@@ -12,24 +12,18 @@
 //!    (typed-substrate read; no string scan): `ShapeATarget`, `FormAxis`,
 //!    `BehaviorAxis`, `MethodTemplateContractKey`, `EmissionCell`,
 //!    `EmissionPathProjection`.
-//! 2. `emission_path_projections == []` — the empty-state predicate. The
-//!    slice ships with the data declaration empty by design; populated
-//!    rows are scoped to Grounding's follow-up per §4.D=(b). The empty
-//!    assertion is the slice's load-bearing claim that no row drift
-//!    sneaks in via this PR.
-//!
-//! **What this slice DEFERS (per §4.D=(b)):**
-//!
-//! Per-row key bijection between `emission_path_projections` and the union
-//! of `*_method_template_contracts` rows is the activation gate Grounding
-//! flips on in the row-population follow-up PR. The bijection scaffold
-//! lives there, not here — at HEAD `emission_path_projections: []` and the
-//! source contract lists are non-empty, so a strict bijection cannot pass
-//! while this slice ships empty. That's why the bijection check belongs
-//! in Grounding's row-population PR (#1745).
+//! 2. `emission_path_projections` is populated exactly once per current
+//!    Phase-1 `MethodTemplateContract` source row: Rust 13, Python 16, Go 12
+//!    (41 total). Each row projects to the single Phase-1 cell
+//!    `Cardinality x Transform`.
 
-use v3_compiler::dag::{Dag, Declaration, TypeConnective, ValueBody};
+use std::collections::HashSet;
+
+use v3_compiler::dag::{Dag, Declaration, DeclarationId, FieldValue, TypeConnective, ValueBody};
 use v3_compiler::generated_full_bootstrap_dag;
+use v3_compiler::pb_method_template_projection::{
+    method_template_contract_rows, MethodTemplateTarget,
+};
 
 const SHAPE_A_TARGET: &str = "ShapeATarget";
 const FORM_AXIS: &str = "FormAxis";
@@ -38,6 +32,8 @@ const METHOD_TEMPLATE_CONTRACT_KEY: &str = "MethodTemplateContractKey";
 const EMISSION_CELL: &str = "EmissionCell";
 const EMISSION_PATH_PROJECTION: &str = "EmissionPathProjection";
 const EMISSION_PATH_PROJECTIONS_DATA: &str = "emission_path_projections";
+const CARDINALITY: &str = "Cardinality";
+const TRANSFORM: &str = "Transform";
 
 #[test]
 fn cross_target_coverage_six_carrier_types_present() {
@@ -210,8 +206,126 @@ fn emission_path_projection_record_fields_match_ratified_shape() {
     );
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum ProjectionTarget {
+    Rust,
+    Python,
+    Go,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct ProjectionKey {
+    target: ProjectionTarget,
+    dag_method: DeclarationId,
+}
+
+fn field<'a>(fields: &'a [(String, FieldValue)], name: &str) -> &'a FieldValue {
+    fields
+        .iter()
+        .find(|(label, _)| label == name)
+        .map(|(_, value)| value)
+        .unwrap_or_else(|| panic!("record missing `{name}` field: {fields:?}"))
+}
+
+fn variant_label<'a>(dag: &'a Dag, axis_name: &str, value: &FieldValue) -> &'a str {
+    let FieldValue::Variant { constructor, .. } = value else {
+        panic!("expected `{axis_name}` variant value, got {value:?}");
+    };
+    let axis = dag
+        .declaration_by_name(axis_name)
+        .unwrap_or_else(|| panic!("`{axis_name}` axis declaration missing"));
+    let TypeConnective::Disj { variants } = &axis.connective else {
+        panic!("`{axis_name}` must be Disj, got {:?}", axis.connective);
+    };
+    variants
+        .iter()
+        .find(|variant| variant.ty == *constructor)
+        .map(|variant| variant.label.as_str())
+        .unwrap_or_else(|| panic!("constructor {constructor:?} not found in `{axis_name}`"))
+}
+
+fn projection_target(dag: &Dag, value: &FieldValue) -> ProjectionTarget {
+    match variant_label(dag, SHAPE_A_TARGET, value) {
+        "Rust" => ProjectionTarget::Rust,
+        "Python" => ProjectionTarget::Python,
+        "Go" => ProjectionTarget::Go,
+        other => panic!("unknown ShapeATarget variant `{other}`"),
+    }
+}
+
+fn projection_key(dag: &Dag, row: &FieldValue) -> ProjectionKey {
+    let FieldValue::Record(fields) = row else {
+        panic!("EmissionPathProjection row must be a record, got {row:?}");
+    };
+    let row_identity = field(fields, "row_identity");
+    let FieldValue::Record(identity_fields) = row_identity else {
+        panic!("row_identity must be a MethodTemplateContractKey record, got {row_identity:?}");
+    };
+    let target = projection_target(dag, field(identity_fields, "target"));
+    let dag_method = field(identity_fields, "dag_method");
+    let FieldValue::Record(method_ref_fields) = dag_method else {
+        panic!("dag_method must be a MethodRef record, got {dag_method:?}");
+    };
+    let decl = field(method_ref_fields, "decl");
+    let FieldValue::Reference(dag_method) = decl else {
+        panic!("MethodRef.decl must be a declaration reference, got {decl:?}");
+    };
+    ProjectionKey {
+        target,
+        dag_method: *dag_method,
+    }
+}
+
+fn assert_single_phase1_cell(dag: &Dag, row_index: usize, row: &FieldValue) {
+    let FieldValue::Record(fields) = row else {
+        panic!("EmissionPathProjection row {row_index} must be a record, got {row:?}");
+    };
+    let cells = field(fields, "cells");
+    let FieldValue::List(cells) = cells else {
+        panic!("EmissionPathProjection row {row_index}.cells must be a list, got {cells:?}");
+    };
+    assert_eq!(
+        cells.len(),
+        1,
+        "Phase-1 projection row {row_index} must carry exactly one cell"
+    );
+    let FieldValue::Record(cell_fields) = &cells[0] else {
+        panic!("EmissionPathProjection row {row_index}.cells[0] must be a record");
+    };
+    assert_eq!(
+        variant_label(dag, FORM_AXIS, field(cell_fields, "connective")),
+        CARDINALITY,
+        "Phase-1 projection row {row_index} must project connective Cardinality"
+    );
+    assert_eq!(
+        variant_label(dag, BEHAVIOR_AXIS, field(cell_fields, "behavior")),
+        TRANSFORM,
+        "Phase-1 projection row {row_index} must project behavior Transform"
+    );
+}
+
+fn source_method_template_keys(dag: &Dag) -> HashSet<ProjectionKey> {
+    let mut keys = HashSet::new();
+    for (target, projection_target) in [
+        (MethodTemplateTarget::Rust, ProjectionTarget::Rust),
+        (MethodTemplateTarget::Python, ProjectionTarget::Python),
+        (MethodTemplateTarget::Go, ProjectionTarget::Go),
+    ] {
+        let rows = method_template_contract_rows(dag, target).unwrap_or_else(|err| {
+            panic!("project {target:?} MethodTemplateContract rows: {err:?}")
+        });
+        for row in rows {
+            keys.insert(ProjectionKey {
+                target: projection_target,
+                dag_method: row.dag_method,
+            });
+        }
+    }
+    keys
+}
+
 #[test]
-fn emission_path_projections_data_is_empty_list() {
+fn emission_path_projections_data_matches_phase1_source_row_bijection() {
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name(EMISSION_PATH_PROJECTIONS_DATA)
@@ -230,12 +344,30 @@ fn emission_path_projections_data_is_empty_list() {
              `List<EmissionPathProjection>`); got {body:?}"
         );
     };
-    assert!(
-        rows.is_empty(),
-        "Phase-1 carrier slice ships `emission_path_projections` EMPTY; \
-         row population is Grounding's follow-up (#1745) per §4.D=(b). \
-         Got {} row(s).",
-        rows.len()
+    let source_keys = source_method_template_keys(&dag);
+    assert_eq!(
+        source_keys.len(),
+        41,
+        "current Phase-1 source rows must be Rust 13 + Python 16 + Go 12"
+    );
+    assert_eq!(
+        rows.len(),
+        source_keys.len(),
+        "emission_path_projections must have exactly one row per current Phase-1 source row"
+    );
+
+    let mut projection_keys = HashSet::new();
+    for (row_index, row) in rows.iter().enumerate() {
+        assert_single_phase1_cell(&dag, row_index, row);
+        let key = projection_key(&dag, row);
+        assert!(
+            projection_keys.insert(key),
+            "duplicate EmissionPathProjection key at row {row_index}: {key:?}"
+        );
+    }
+    assert_eq!(
+        projection_keys, source_keys,
+        "emission_path_projections keys must bijectively match MethodTemplateContract source rows"
     );
     // The list's declared element type must be `EmissionPathProjection`. The
     // data declaration's `connective` records the typed list shape (e.g.,
