@@ -156,8 +156,10 @@ structural comparison rather than shape-valid `NotYetImplemented`.
 Lane 1 and Lane 2 are runtime/corpus patterns, not `Lens<C>` instances.
 
 Lane 1 L4 and L7 are still pending R3 implementation work per
-`docs/v3-modeling-analysis.md:1774-1777` and
-`docs/thesis/r2-r3-thesis-mapping.md:65-68`. The live runner surfaces listed
+[`docs/v3-modeling-analysis.md`](../v3-modeling-analysis.md) §"Tier 3 — Verification from structure"
+(L4–L7 status rows) and
+[`docs/thesis/r2-r3-thesis-mapping.md`](../thesis/r2-r3-thesis-mapping.md) §"Disposition table — Tier 3 (Verification from structure)"
+(L4 / L7 disposition rows). The live runner surfaces listed
 above are scaffolds, not closure claims. L4 is expected to use
 `DifferentialEquals` over `rust_emit_output` and `dag_eval_output`;
 `dag_eval_output` still requires real PR-B body evaluation, and the failure
