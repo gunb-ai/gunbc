@@ -227,5 +227,10 @@ brief landing.
 Cross-references S9 Phase-1 Step 3 brief at
 `docs/briefs/r3-substrate-s9-phase-1-step-3-emission-entries-worker.md`
 (worker pin proud-lynx-311). Both briefs together close
-`substrate_gap_parser_grammar_closed` Class 1 5-criteria Pass via
-parser-side (this brief) + emission-side (S9 Phase-1 Step 3).
+**criteria 1-4 of `substrate_gap_parser_grammar_closed` Class 1
+5-criteria Pass** via parser-side (this brief) + emission-side
+(S9 Phase-1 Step 3). **Criterion 5 (v2-oracle parity)** may carve
+to a separate slice per Phase 2.3 / STOP-AND-ESCALATE bullet 1
+language (consistent throughout this brief — same 4-of-5 framing).
+Full 5/5 Pass closes when criterion 5 cementing test lands as
+separate substrate work.
