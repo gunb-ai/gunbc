@@ -30,7 +30,7 @@
   </defs>
 
   <text x="20" y="30" class="title">Four layers, color-coded — and the tests come along.</text>
-  <text x="20" y="48" class="sub">Each layer gets a color. Watch how each layer contributes facts, logic, or both — and how the middle materializes everything plus a test module.</text>
+  <text x="20" y="48" class="sub">Each layer gets a color. Italic // auto markers in the middle flag lines that the structural fold emits without any .dag source. The TESTS panel is qualified for R3 — gunbc does not emit tests today.</text>
 
   <!-- ───── Layered legend ───── -->
   <rect x="20" y="62" width="1080" height="98" class="legend-frame"/>
@@ -63,8 +63,8 @@
 
   <!-- Row: Tests -->
   <rect x="252" y="132" width="14" height="14" class="legend-swatch tint-tests"/>
-  <text x="272" y="143" class="legend-text">Tests (auto-emitted)</text>
-  <text x="272" y="158" class="legend-meta">no source — emitted from the structural fold</text>
+  <text x="272" y="143" class="legend-text">Tests (R3 deliverable)</text>
+  <text x="272" y="158" class="legend-meta">not emitted today; T-Tests-As-Data lane will deliver</text>
 
   <text x="20"  y="190" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
   <text x="320" y="190" class="col-label">RUST — GENERATED</text>
@@ -137,7 +137,7 @@
   <text x="332" y="244" class="layer">// primitive</text>
   <text x="332" y="264" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
   <text x="332" y="282" class="code">pub enum Sum&lt;A, B&gt; { Left { value: A }, Right { value: B } }</text>
-  <text x="332" y="310" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {</text>
+  <text x="332" y="310" class="code">impl&lt;A, B&gt; Sum&lt;A, B&gt; {                            <tspan class="layer">// auto — fold rule</tspan></text>
   <text x="332" y="328" class="code">    pub fn left(value: A)  -&gt; Self { Self::Left  { value } }</text>
   <text x="332" y="346" class="code">    pub fn right(value: B) -&gt; Self { Self::Right { value } }</text>
   <text x="332" y="364" class="code">    pub fn is_left(&amp;self)  -&gt; bool { matches!(self, Self::Left  {..}) }</text>
@@ -164,7 +164,8 @@
   <text x="332" y="704" class="code">pub type ApiResponse&lt;T&gt; = Result&lt;T, HttpError&gt;;</text>
   <text x="332" y="732" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
   <text x="332" y="750" class="code">pub struct HttpError { pub status: i32, pub body: String }</text>
-  <text x="332" y="778" class="code">impl HttpError {</text>
+  <text x="332" y="778" class="code">impl HttpError {                                    <tspan class="layer">// auto — fold rule</tspan></text>
+
   <text x="332" y="796" class="code">    pub fn new(status: i32, body: String) -&gt; Self { Self { status, body } }</text>
   <text x="332" y="814" class="code">}</text>
   <text x="332" y="842" class="code">pub fn validate(req: LoginRequest)     -&gt; ApiResponse&lt;Credentials&gt; { unimplemented!() }</text>
@@ -181,7 +182,8 @@
   <text x="332" y="1016" class="code">pub struct User { pub id: UserId, pub email: String }</text>
   <text x="332" y="1034" class="code">#[derive(Debug, Clone, PartialEq, Eq, Hash)]</text>
   <text x="332" y="1052" class="code">pub struct UserSession { pub user_id: UserId, pub expires_at: Timestamp }</text>
-  <text x="332" y="1080" class="code">impl LoginRequest {</text>
+  <text x="332" y="1080" class="code">impl LoginRequest {                                 <tspan class="layer">// auto — fold rule</tspan></text>
+
   <text x="332" y="1098" class="code">    pub fn new(email: String, password: String) -&gt; Self {</text>
   <text x="332" y="1116" class="code">        Self { email, password }</text>
   <text x="332" y="1134" class="code">    }</text>
@@ -202,7 +204,7 @@
   <text x="332" y="1390" class="code">}</text>
 
   <!-- CENTER — tests (teal) -->
-  <text x="332" y="1424" class="layer">// tests — emitted from the structural fold</text>
+  <text x="332" y="1424" class="layer">// tests — R3 DELIVERABLE (T-Tests-As-Data lane; not emitted today)</text>
   <text x="332" y="1444" class="code">#[cfg(test)]</text>
   <text x="332" y="1462" class="code">mod tests {</text>
   <text x="332" y="1480" class="code">    use super::*;</text>
