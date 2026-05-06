@@ -1,6 +1,11 @@
 # R3 TC1 Eta-Equivalence Deeper Structural Verification Analysis
 
-**Status:** **ACCEPTED** (2026-05-06 — Brian Director countersign: Path **A** / **G1.a**). Bundled with [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 **Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, and **Q-EVAL-Lens-Fold-First-Slice** (PR [#1824](https://github.com/gunb-ai/gunbc/pull/1824)). **Worker dispatch:** [`r3-v-pattern-a-tc1-v1-worker.md`](r3-v-pattern-a-tc1-v1-worker.md).
+**Status:** **ACCEPTED** (2026-05-06 — Brian Director countersign: Path **A** / **G1.a**).
+**Canonical ratification:** [`docs/r3-program-plan.md`](../r3-program-plan.md) §10.3 rows
+**Q-PAFS**, **Q-Pattern-A-First-Slice-Subscope**, and **Q-EVAL-Lens-Fold-First-Slice** (PR
+[#1824](https://github.com/gunb-ai/gunbc/pull/1824) lands the table receipt). This brief
+is the **engineering scope narrative** aligned to that row. **Worker dispatch:**
+[`r3-v-pattern-a-tc1-v1-worker.md`](r3-v-pattern-a-tc1-v1-worker.md).
 
 **Lifecycle**
 
@@ -144,9 +149,9 @@ Verification drift.
 | RustDagIsomorphism before TC1? | **Not** under Q-PAFS default; **Path C** only with Director reorder. |
 | Universal vs representative for first fire? | **Representative finite set** for slice one; universal quantification is a **later** ratchet question (see Open Questions). |
 
-**Surface for Director countersign (ACCEPTED):** Path A as written + explicit acknowledgment
-that PM default and **DESIGN** engineering choice align; any deviation (e.g., Path C first)
-is Director-owned scope calibration.
+**ACCEPTED (2026-05-06):** Path **A** countersigned by Brian ("approved path A countersign");
+program-plan §10.3 rows updated; any deviation from Path A (e.g., Path C first) is a new
+Director/Brian scope calibration — not silent Verification drift.
 
 ## Lens-Framework Anchors
 

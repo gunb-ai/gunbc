@@ -2,7 +2,7 @@
 
 **Status:** DISPATCH-READY — **Q-PAFS Path A ACCEPTED** 2026-05-06 (Brian Director countersign; PR #1824). Policy-layer fork closed; implementation still coordinates **Evaluator E3** (**E6-G1.a** static lens fold) in the **same release step** as this slice.
 
-**Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — absorbed formal-grounding / Pattern-A cluster (not a fourth lane; see `r3-structure.md` §"Manager structure").
+**Parent:** [`docs/briefs/r3-verification-manager.md`](r3-verification-manager.md) — absorbed formal-grounding / Pattern-A cluster (not a fourth lane; see [`docs/r3-structure.md`](../r3-structure.md) §"Manager structure").
 
 **Ratified scope authority:** [`docs/briefs/r3-v-tc1-eta-equivalence-deeper-analysis.md`](r3-v-tc1-eta-equivalence-deeper-analysis.md) §"DESIGN — Q-PAFS first executable slice (Pattern-A / TC1)" **Path A** — TC1 **static representative** via **E6-G1.a** (finite Director-visible lens set + fixed eta pair; `BinaryDimensionReportEquals` consumer envelope per [`docs/briefs/r3-v-pattern-a-coverage-rollup.md`](r3-v-pattern-a-coverage-rollup.md)).
 

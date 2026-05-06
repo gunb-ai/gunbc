@@ -95,6 +95,7 @@ Each lane closes under a structural acceptance gate authored as a `.dag` `TestCl
 - [`r3-v-l4-l7-direct-worker.md`](r3-v-l4-l7-direct-worker.md) — Lane 1 standby brief.
 - [`r3-v-l5-corpus-worker.md`](r3-v-l5-corpus-worker.md) — Lane 2 standby brief.
 - [`r3-v-free-consequences-worker.md`](r3-v-free-consequences-worker.md) — Lane 3 standby brief.
+- [`r3-v-pattern-a-tc1-v1-worker.md`](r3-v-pattern-a-tc1-v1-worker.md) — Pattern-A V1 (TC1 first executable slice; Q-PAFS Path A **ACCEPTED** 2026-05-06).
 - [`r3-v-formal-grounding-tc-bundle.md`](r3-v-formal-grounding-tc-bundle.md) — absorbed-responsibility TC1/TC2/TC3 bundle (NOT a lane; audit-cadence artifact per `r3-structure.md` §"Manager structure" Item 2 3-lane authority).
 
 **Pending (post-spawn manager authors autonomously):**

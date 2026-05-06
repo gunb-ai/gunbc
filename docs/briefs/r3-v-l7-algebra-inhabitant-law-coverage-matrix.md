@@ -11,10 +11,7 @@ variants are proposed here.
 - Path-grounded sources verified at HEAD with `git cat-file -e`:
   `dsl/std/algebra.dag`, `docs/r3-structure.md`, and
   `docs/briefs/r3-v-l7-algebra-coverage-matrix.md`.
-- [`docs/r3-structure.md`](../r3-structure.md) §"Acceptance" — gate row
-  `section_ref_substrate_landed` under **T-Lens-Application-Surface**, and the
-  **Demonstration principle** worked-example row `crdt_cost_basis_demonstrated`,
-  expand T-V-L4-L7-Direct to exhaustive per-(algebra, inhabitant, law) witness coverage.
+- [`docs/r3-structure.md`](../r3-structure.md) §"Summary" — numbered lane **T-Verification-L4-L7-Direct** (L4 emit/eval match + L7 algebraic-law witnesses; **scope expanded 2026-05-02**: per-(algebra, inhabitant, law) witness coverage exhaustive), **and** §"Plus 3 fold-ins (no new lanes; Director-ratified 2026-05-02)" — bullet **T-V-L4-L7-Direct exhaustive witness coverage** (`l7_algebraic_laws_witnessed` catches per-inhabitant bug classes such as SymbolicCost product-zero per PR #1430 §A). **Acceptance gate row** for the same lane: §"Acceptance — `.dag` gates"` sub-list **T-Verification-L4-L7-Direct** — `l7_algebraic_laws_witnessed`.
 - PR #1419 is the direct lineage: it authored 17 enum-backed
   `(algebra, law)` rows for the current `AlgebraicLawKind` surface.
 - `dsl/std/algebra.dag:30-47` defines the law-emergence table;
