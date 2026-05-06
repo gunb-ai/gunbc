@@ -11,7 +11,7 @@
 
 **Authority hierarchy** (all three docs land in this PR — single coordinated authority drop):
 - [`docs/r3-structure.md`](r3-structure.md) — **architectural-decision archive**. Lane definitions, manager structure, design-challenges resolution, dependency-on-R2 spec. Authoritative for *what R3 is*. Updated in this PR to absorb new closure gates.
-- [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) — **bridge inventory snapshot framework** (PM-authored Phase 1 framework; codex APPROVE on prior sha `860e175d`; Phase 2-3 inventory populates as Mgr canvases compile via PR comments). Authoritative for *what bridges exist now*. Consolidated into this PR per Grounding Mgr poke-hole 2026-05-06 finding 1 + codex BLOCKING on PR #1808 sha `0719d7a6` line 9 (eliminates cross-PR dependency on prior PR #1804 — superseded).
+- [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) — **bridge inventory framework** (PM-authored Phase 1; codex APPROVE on prior sha `860e175d`). **Authority scope**: framework discipline only — §1 schema + §3 GREEN/YELLOW/RED rubric + §3.A STRUCTURAL grandfathering + §4 anticipation discipline ARE landed and authoritative. **NOT yet authoritative for per-row inventory**: Class A/B/C/D/E/F/G sections carry `[Mgr canvas populates rows]` placeholders (per openai-pro 2026-05-06 finding 6 — authority claim downgraded to framework-only until Phase 3 compile populates rows from PR #1804 comment-thread Phase 2 deliverables). Consolidated into this PR per Grounding Mgr poke-hole 2026-05-06 finding 1 + codex BLOCKING on PR #1808 sha `0719d7a6` line 9 (eliminates cross-PR dependency on prior PR #1804 — superseded).
 - **THIS DOC** — **forward-looking dependency-graph + escalation register**. Authoritative for *path from here to R3 close + open ratifications*.
 
 Cross-link discipline: this plan never restates lane definitions from `r3-structure.md`; cites them by section/symbol per `feedback_section_anchors_over_line_numbers`.
@@ -161,7 +161,7 @@ Mgrs author per-gate spec citing the (a)/(b)/(c) satisfaction; closure-ledger en
 | T-V2-Retirement | deletion gates (state-check) | + `v3_self_host_demonstration` — bootstrap path through PB-Runtime trampoline executes end-to-end; v3-only self-host pipeline runs without v2 fallback (Director poke-hole 2026-05-06 finding 4.1: reframed from `v2_retirement_demonstration` "deletion's inverse" to direct positive-statement form) |
 | T-Free-Consequences-Demonstration | 10 demo gates ✓ | (existing — full demo suite) |
 | T-E-P-Producer-Broadening | substrate-shape gates | + `e_p_producer_demonstration` — representative call site produces full descent evidence at runtime |
-| T-Lens-Behavioral-Parity | parity-complete gates | + `lens_behavioral_parity_demonstration` — each lens (complexity/cost/parallelism/effect_enumeration) demonstrates on representative input + matches v2 oracle |
+| T-Lens-Behavioral-Parity | parity-complete gates | + `lens_behavioral_parity_demonstration` — each lens (complexity/cost/parallelism/effect_enumeration) demonstrates on representative input + matches **frozen v2-oracle cementing-test snapshot** (per `r3-structure.md` §"Lane structure" → T-Lens-Behavioral-Parity row "cementing test against v2 oracle on same source"). Snapshot is captured pre-v2-retirement; demo at R3 close consumes the frozen receipt, NOT a live v2 oracle — preserves `v2_oracle_no_remaining_test_consumers` gate (per openai-pro 2026-05-06 finding 5 — v2-oracle conflict resolved) |
 | T-Tests-As-Data-Completeness | substrate-shape gates | + `tests_as_data_demonstration` — at least one Rust test ports to .dag TestClaim and executes |
 | T-Lens-Application-Surface | 4 worked-example demos ✓ | (existing) |
 | T-Workflow-As-Data | `ci_workflow_modeled_as_dag` ✓ | (existing) |
@@ -593,7 +593,7 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 **Week of 2026-06-10–2026-06-17**: T-V2-Retirement parser path begins; substrate-gap-class 1 close target.
 **Week of 2026-06-24–2026-07-01**: T-Workflow-As-Data executes; substrate-gap-classes 3+4 close.
 **Week of 2026-07-08–2026-07-15**: T-Lens-Self-Application demo; recursive-flex demonstration cashes.
-**Target R3 close**: 2026-08-01 ± 2 weeks. **PROVISIONAL** (per Director poke-hole 2026-05-06 finding 6.4) — estimate based on Mgr-canvas inputs landing per §3, which is incomplete pending 4 canvas responses (Substrate / Evaluator / PB / Debt-Paydown). Re-estimate after canvas compile completes; confidence interval may widen.
+**Target R3 close**: 2026-08-01 ± 2 weeks. **PROVISIONAL** (per Director poke-hole 2026-05-06 finding 6.4 + Research PM R-2 risk-weighted alternates pending). All 8 of 8 reviewers complete (per §3 status header — updated 2026-05-06 sha `ddfc3f84c`); estimate not blocked on canvas-pending state. Re-estimate as standing escalations resolve (Q-Lens-Behavioral-Parity-R3-Closeability scope-calibration is the highest-leverage timeline driver) + Q-Timeline-Risk-Alternates risk-weighted branches land per Research PM R-2 (separate commit). Confidence interval may widen with C1-class candidate-gap surfacing or thesis-edit scope expansion.
 
 (Refinement after Q1–Q7 ratification + canvas compile.)
 
