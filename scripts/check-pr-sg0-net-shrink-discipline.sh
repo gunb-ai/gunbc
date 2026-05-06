@@ -111,6 +111,11 @@ sg0_validate_pr_body_format() {
 
 # Count path-string rows in EXPECTED_HAND_AUTHORED_{NON_TEST,TEST,FRAGMENTS}
 # only (ROADMAP / PR-template authority). stdin = full `sg0_census_test.rs`.
+# Assumptions: `rustfmt` keeps a trailing comma on each multi-line path row (the
+# block counter matches `,` at EOL). `EXPECTED_HAND_AUTHORED_FRAGMENTS` today is
+# a one-line `&[...];` const (inline scan); a multi-line reformatted block would
+# fall through to the same `hand==1` arm as NON_TEST/TEST — extend explicitly if
+# both shapes must diverge.
 sg0_count_hand_expect_paths_from_stdin() {
   awk '
     BEGIN { hand = 0; count = 0 }
