@@ -215,6 +215,8 @@ mod t_demo_fixture_test {
 
     const FIXTURE: &str = "src/v3/compiler/tests/t_demo/t_demo_fixtures.dag";
 
+    static T_DEMO_FIXTURE_DAG: OnceLock<Dag> = OnceLock::new();
+
     /// Byte-sync with `t_demo_structural_cost_obligation_gate.source` in `t_demo_fixtures.dag`.
     const T_DEMO_STRUCTURAL_COST_OBLIGATION_CLAIM_SOURCE: &str = "fn pair_score(xs: List<Int>) -> Int = fold(xs, 0, |outer, x| outer + fold(xs, 0, |inner, y| inner + x + y))\nlet complexity_demo_out: Int = pair_score(cons(1, singleton(2)))\n";
 
@@ -228,8 +230,6 @@ mod t_demo_fixture_test {
     fn compile_fixture(source: &str) -> Dag {
         cached_compile_to_dag(source, FIXTURE)
     }
-
-    static T_DEMO_FIXTURE_DAG: OnceLock<Dag> = OnceLock::new();
 
     fn cached_t_demo_fixture_dag() -> &'static Dag {
         T_DEMO_FIXTURE_DAG.get_or_init(|| compile_fixture(&fixture_source()))
