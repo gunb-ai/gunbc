@@ -86,12 +86,13 @@ fn r3_pb_runtime_evaluator_corpus_seed_suite_stays_deferred_until_row4_producers
             .unwrap_or_else(|| {
                 panic!("missing `{expected_claim}` in `{SUITE_NAME}` results: {results:?}")
             });
-        // Load-bearing Row-4 ratchet: today `test_runner.rs::eval_differential_equals`
-        // must compile the claim source, then stay typed-NotYetImplemented until
-        // the real PB-Runtime and R2-Evaluator producers land.
+        // Load-bearing Row-4 ratchet: the unsupported PB-Runtime / R2-Evaluator
+        // producer pair must stay typed-NotYetImplemented until the real
+        // producers land. Source byte-sync and independent seed compilation are
+        // covered by `r3_pb_runtime_evaluator_corpus_seed_sources_compile_and_match_authority_files`.
         assert!(
             matches!(&result.result, ClaimResult::NotYetImplemented(_)),
-            "{} should compile its corpus source but remain deferred on the Row-4 producer pair; got {:?}",
+            "{} should remain deferred on the Row-4 producer pair; got {:?}",
             result.claim_name,
             result.result
         );
