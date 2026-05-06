@@ -265,6 +265,23 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 **Lane scope**: R3 Evaluator continuation work — runtime prereqs for Pattern A predicates + lens runtime execution + constructor/field-call execution per E6 G0a/G0b/G0c/G0d work.
 
+**Worker partition** (per Evaluator Mgr partition response 2026-05-06 at gunbc#846 #issuecomment-4385081532):
+
+| Item | Status | Routing |
+|---|---|---|
+| **E1** E6-G0d constructor runtime execution | **DISPATCHED 2026-05-06** | valiant-carp-10 (#1767 #issuecomment-4385079490). Scope: evaluator-only `src/v3/compiler/src/lib.rs`; brief authority = #1784 G0d worker brief |
+| **E2** E5 Descent termination contract consumer | HELD | Trigger = Substrate carrier `descent_execution_proof` landing via quick-koi/quick-crab path; sharp-ibex #1799 remains STOP/audit, not consumer wiring yet |
+| **E3** E6-G1.a static lens fold | HELD | Trigger = Director countersignature on Q-PAFS / Q-EVAL-Lens-Fold-First-Slice; no worker dispatch until that fires |
+| **E4** E6-G1.b generic dispatch | HELD | Trigger = post-G1.a + post-Substrate X1.b S1/S3 |
+| **E5** X1.b S1 TransformDispatch coordination | **DONE** | Cross-lane status update sent to Substrate Mgr (quick-crab-830) at #1739 #issuecomment-4385080388 |
+
+**Additional state notes**:
+- #1784 G0d brief at head `61c90a65`: `fmt` / `ci` / `v3` green; `self_host_ratchet` in progress post-main merge. Does NOT block E1 dispatch — brief content stable + approved; final merge waits on check.
+- #1799 E5 STOP packet: `fmt` / `ci` / `v3` green; `self_host_ratchet` in progress. Held semantically behind Substrate termination contract.
+- warm-dove #1778: passing/held; no new code work assigned (existing PR needs Director/PM disposition).
+
+No additional PM/Director ratification needed from Evaluator for E1/E5. E3 still needs Director countersignature before dispatch.
+
 ### E1 — E6-G0d constructor runtime execution (RATIFIED Mgr executes)
 
 **Scope**: authorize evaluator implementation slice in `src/v3/compiler/src/lib.rs` for non-Arrow constructor `Callable`, using existing `Value::RecordValue` / `Value::VariantValue`. Brief at `docs/briefs/r3-pr-e6-g0d-constructor-runtime-execution-worker.md` (#1784 ready).
