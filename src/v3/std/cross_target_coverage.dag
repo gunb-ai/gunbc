@@ -18,14 +18,12 @@
 // SCOPE (Phase-1 carrier slice):
 //   - Six type declarations (`ShapeATarget`, `FormAxis`, `BehaviorAxis`,
 //     `MethodTemplateContractKey`, `EmissionCell`, `EmissionPathProjection`).
-//   - Empty `data emission_path_projections: List<EmissionPathProjection> = []`.
+//   - Populated `data emission_path_projections: List<EmissionPathProjection>`
+//     for the current Phase-1 row-list authorities.
 //
 // NOT in scope (per Director §4.D=(b)):
-//   - Row population (42 Phase-1 rows of `Cardinality x Transform x <target>`)
-//     -> Grounding follow-up (#1745).
-//   - `coverage.rs` conversion from list-non-empty projection to per-row
-//     union over `emission_path_projections` -> Grounding follow-up.
-//   - Per-row key-bijection ratchet activation -> Grounding follow-up.
+//   - Non-Phase-1 row population beyond the current row-list authorities.
+//   - Additional non-`Cardinality x Transform` cells.
 //
 // CITATION DISCIPLINE (per `brief-authoring-checklist.md`): Practice 4
 // reference uses `docs/modeling-discipline.md#4-coproduct-dissolution`
@@ -180,10 +178,11 @@ type EmissionPathProjection {
 
 // --- emission_path_projections (empty data state) ------------------------
 //
-// Slice ships EMPTY. Grounding's follow-up PR (#1745) populates the 42
-// Phase-1 rows (single-element `cells: [{connective: Cardinality,
-// behavior: Transform}]` per row). The empty-state assertion is this
-// slice's load-bearing claim that no row drift sneaks in via this PR.
+// Grounding follow-up population for the current Phase-1 row-list authorities:
+// Rust 13, Python 16, Go 12 (41 total). Each row carries the single
+// Phase-1 cell `Cardinality x Transform`. This intentionally follows the
+// source row lists at HEAD; `go_method_template_contracts.dag` documents why
+// Go `chars` is not part of Phase 1.
 data emission_path_projections: List<EmissionPathProjection> = [
   { row_identity: { target: Rust, dag_method: { decl: count_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
   { row_identity: { target: Rust, dag_method: { decl: join_method } }, cells: [{ connective: Cardinality, behavior: Transform }] },
