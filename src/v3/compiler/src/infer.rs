@@ -35,8 +35,8 @@ use crate::dag::{
     substrate_div_error_type_decl_suppressed_for_emit,
     substrate_result_type_decl_suppressed_for_emit, ArithmeticOp, ArrowBody, AtomPayload, Behavior,
     BindNode, BindNodeId, CardinalityBound, Dag, Declaration, DeclarationId, Field, LiteralBits,
-    Lookup, NominalOpacity, PhantomParameter, PortId, PortState, TemplateArgument, TransformNode,
-    TransformTarget, TypeConnective,
+    Lookup, NominalOpacity, NodeId, PhantomParameter, PortId, PortState, TemplateArgument,
+    TransformNode, TransformTarget, TypeConnective,
 };
 use crate::diagnostics::{
     declaration_display_name, example_source_for_decl, witness_correction_for_decl, Correction,
@@ -2823,6 +2823,41 @@ fn resolve_callable_target(
         template,
         arguments,
         signature,
+    }
+}
+
+/// Executable `Bind` root for [`TransformTarget::Callable`], including generic
+/// instantiations and higher-order template arguments resolved by
+/// [`resolve_callable_target`].
+///
+/// Returns [`None`] for constructor dispatch, arrow-as-data, external realizations,
+/// or any inference outcome other than a resolved user [`ArrowBody::UserDefined`].
+pub(crate) fn user_defined_bind_node_for_callable_target(
+    dag: &Dag,
+    callee_decl: DeclarationId,
+    transform_input_ports: &[PortId],
+    span: &SourceSpan,
+) -> Option<NodeId> {
+    match resolve_callable_target(dag, callee_decl, transform_input_ports, span) {
+        CallableTargetResolution::Resolved { signature, .. } => match &signature.body {
+            ArrowBody::UserDefined(bind_id) => Some(bind_id.node_id()),
+            b => {
+                eprintln!(
+                    "user_defined_bind_node: Resolved but non-UD body: {:?} callee={:?}",
+                    b, callee_decl
+                );
+                None
+            }
+        },
+        CallableTargetResolution::Retry => {
+            eprintln!(
+                "user_defined_bind_node: Retry callee={:?} inputs={}",
+                callee_decl,
+                transform_input_ports.len()
+            );
+            None
+        }
+        CallableTargetResolution::Fail(_) => None,
     }
 }
 

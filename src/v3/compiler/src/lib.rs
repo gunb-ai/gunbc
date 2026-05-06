@@ -607,7 +607,15 @@ pub mod evaluator {
             }
             TransformTarget::Callable(callee_decl) => {
                 let callee_decl = *callee_decl;
-                if let Some(bind_node_id) = peel_to_arrow_user_defined_bind_node(dag, callee_decl) {
+                let bind_node_id =
+                    crate::infer::user_defined_bind_node_for_callable_target(
+                        dag,
+                        callee_decl,
+                        &t.inputs,
+                        &t.span,
+                    )
+                    .or_else(|| peel_to_arrow_user_defined_bind_node(dag, callee_decl));
+                if let Some(bind_node_id) = bind_node_id {
                     let Behavior::Bind(bind) = dag.node(bind_node_id) else {
                         return Err(EvalError::MissingNode { node: bind_node_id });
                     };
@@ -698,12 +706,6 @@ pub mod evaluator {
                     return Ok(Value::RecordValue(record_fields));
                 }
 
-                eprintln!(
-                    "DEBUG Callable fail: id={:?} name={:?} connective={:?}",
-                    callee_decl,
-                    dag.declaration(callee_decl).name,
-                    dag.declaration(callee_decl).connective
-                );
                 Err(EvalError::BadTransformOperands {
                     reason: "Callable target declaration is not an Arrow type",
                 })
