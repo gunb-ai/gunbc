@@ -23465,7 +23465,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2474, 2512),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5382, 5420),
         });
         declarations.push(Declaration {
             id: DeclarationId(874),
@@ -23506,7 +23506,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3312, 3384),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6220, 6292),
         });
         declarations.push(Declaration {
             id: DeclarationId(875),
@@ -23543,7 +23543,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3944, 4004),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6852, 6912),
         });
         declarations.push(Declaration {
             id: DeclarationId(876),
@@ -23568,7 +23568,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4388, 4469),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 7296, 7377),
         });
         declarations.push(Declaration {
             id: DeclarationId(877),
@@ -23593,7 +23593,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4902, 4971),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 7810, 7879),
         });
         declarations.push(Declaration {
             id: DeclarationId(878),
@@ -23618,7 +23618,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5317, 5418),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 8225, 8326),
         });
         declarations.push(Declaration {
             id: DeclarationId(879),
@@ -23638,7 +23638,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: Some(ValueBody::List(vec![])),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5780, 5845),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 8688, 8753),
         });
         declarations.push(Declaration {
             id: DeclarationId(880),
@@ -56887,7 +56887,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2494, 2498),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5402, 5406),
         });
         declarations.push(Declaration {
             id: DeclarationId(1948),
@@ -56901,7 +56901,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2501, 2507),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5409, 5415),
         });
         declarations.push(Declaration {
             id: DeclarationId(1949),
@@ -56915,7 +56915,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 2510, 2512),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5418, 5420),
         });
         declarations.push(Declaration {
             id: DeclarationId(1950),
@@ -56929,7 +56929,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3328, 3332),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6236, 6240),
         });
         declarations.push(Declaration {
             id: DeclarationId(1951),
@@ -56943,7 +56943,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3335, 3339),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6243, 6247),
         });
         declarations.push(Declaration {
             id: DeclarationId(1952),
@@ -56957,7 +56957,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3342, 3346),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6250, 6254),
         });
         declarations.push(Declaration {
             id: DeclarationId(1953),
@@ -56971,7 +56971,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3349, 3354),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6257, 6262),
         });
         declarations.push(Declaration {
             id: DeclarationId(1954),
@@ -56985,7 +56985,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3357, 3368),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6265, 6276),
         });
         declarations.push(Declaration {
             id: DeclarationId(1955),
@@ -56999,7 +56999,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3371, 3384),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6279, 6292),
         });
         declarations.push(Declaration {
             id: DeclarationId(1956),
@@ -57013,7 +57013,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3964, 3969),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6872, 6877),
         });
         declarations.push(Declaration {
             id: DeclarationId(1957),
@@ -57027,7 +57027,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3972, 3981),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6880, 6889),
         });
         declarations.push(Declaration {
             id: DeclarationId(1958),
@@ -57041,7 +57041,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3984, 3990),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6892, 6898),
         });
         declarations.push(Declaration {
             id: DeclarationId(1959),
@@ -57055,7 +57055,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 3993, 3997),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6901, 6905),
         });
         declarations.push(Declaration {
             id: DeclarationId(1960),
@@ -57069,7 +57069,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 4000, 4004),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 6908, 6912),
         });
         declarations.push(Declaration {
             id: DeclarationId(1961),
@@ -57089,7 +57089,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5398, 5416),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 8306, 8324),
         });
         declarations.push(Declaration {
             id: DeclarationId(1962),
@@ -57109,7 +57109,7 @@ fn bootstrapped_fixture_without_parse_surface_dag_declarations() -> Vec<Declarat
             value_body: None,
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 5812, 5840),
+            span: SourceSpan::new("src/v3/std/cross_target_coverage.dag", 8720, 8748),
         });
         declarations.push(Declaration {
             id: DeclarationId(1963),

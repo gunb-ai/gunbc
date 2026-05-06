@@ -45,6 +45,56 @@ import v3.std.methods { MethodRef }
 // NOT a row-level addition. Any new variant requires a P1 substrate-fact-
 // introduction procedure on this declaration directly; row-level addition
 // is not authorized.
+//
+// FOUR-PATTERN DISSOLUTION RECEIPT (per `feedback_coproduct_dissolution`
+// — required for 🟢 TERMINAL stamp; mirrors the DB-18 / DB-9 / DB-16
+// pattern at `docs/design-db18-workflow-effect-carrier.md` §"Dissolution
+// receipt"):
+//
+//   Pattern 1 (Fact placement — multiple consumers, different DAG
+//   locations). All three variants attach to the same `ShapeATarget`-typed
+//   slot at the same DAG location: the `target` field of
+//   `MethodTemplateContractKey` (and the `target` field of every
+//   `MethodTemplateContract` row at `{rust,python,go}_method_template_
+//   contracts.dag`). The variant discriminates WHICH TARGET LANGUAGE,
+//   not WHERE THE TARGET FACT LIVES. No fact-placement compression to
+//   dissolve. ✓ does not apply.
+//
+//   Pattern 2 (Variant-is-data — same shape, different label). The three
+//   variants have NO payload (zero-field constructors). They are pure
+//   tags, but the tag identity governs which method-template-contract
+//   list authoritatively drives Grounding emission for that target:
+//   `Rust` → `rust_method_template_contracts`, `Python` →
+//   `python_method_template_contracts`, `Go` → `go_method_template_
+//   contracts`. Each tag is a typed dispatch key into a separate
+//   substrate authority list. Collapsing to a single labeled string
+//   (e.g., `target_name: String`) would re-introduce string-name
+//   dispatch — exactly the discipline-violation Option 2's typed
+//   `target: ShapeATarget` shape was ratified to prevent (per Director
+//   §4.C=(i) RATIFIED at gunbc#828 #issuecomment-4377533390). The tag
+//   IS the dispatch authority, not redundant labeling. ✓ does not apply.
+//
+//   Pattern 3 (Algebraic-form — traces to intro/elim of algebraic
+//   structures). Target identity is not an algebraic operation: there
+//   is no `target_compose` / `target_unit` / `target_inverse` operation
+//   over `{Rust, Python, Go}`. The set is enumerated by Director
+//   ratification (Shape A target identity per `r2-grounding-manager.md`'s
+//   portability requirements), not derived from a categorical structure.
+//   ✓ does not apply.
+//
+//   Pattern 4 (Dimensional — flat enum hides M-dimensional record). The
+//   three targets do not factor into orthogonal coordinates. Target
+//   identity is not `{ paradigm: SystemsLang | Scripting,
+//   typing_discipline: Static | Dynamic, ... }` — Rust / Python / Go
+//   each carry their own irreducible portability profile (per-target
+//   primitives + per-target method-template contracts + per-target
+//   emit). A coordinate decomposition would force partial-record
+//   semantics where each dimension's meaning depends on the target
+//   tag, which is the coproduct-tag pattern in disguise. ✓ does not
+//   apply.
+//
+// Conclusion: `ShapeATarget`'s 3-variant coproduct is structurally
+// irreducible. The coproduct is the correct shape. Stamp: 🟢 TERMINAL.
 type ShapeATarget = Rust | Python | Go
 
 // --- FormAxis -------------------------------------------------------------
