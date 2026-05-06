@@ -247,36 +247,38 @@ Each retires per its natural-owner program prerequisites. Verification Mgr's `br
 
 ---
 
-## §3. Lane status snapshot
+## §3. Lane status snapshot — delta-only over `r3-structure.md` §"Lane structure"
 
-One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane-owning Mgr; PM compiles for Director cadence reporting.
+**Authority**: lane name / Mgr / scope / R2-close-dependency live in [`docs/r3-structure.md`](r3-structure.md) §"Lane structure" canonical table (per codex BLOCKING 2026-05-06 finding 1 — single-authority discipline; plan does NOT replicate lane definitions).
 
-| Lane | Mgr | Status | Current dispatch | Blocker | ETA-to-close |
-|---|---|---|---|---|---|
-| T-Tier3-Dissolution | PB | YELLOW | (TBD from PB canvas) | (TBD) | (TBD) |
-| T-LensProducer-Retirement | PB | YELLOW | (TBD from PB canvas) | T-FixedPoint + R2-Evaluator | (TBD) |
-| T-V-L4 (emit/eval match) | Verification | YELLOW | r3-v-l4-l7-direct-* briefs | Pattern A first slice (Q-PAFS) + corpus build-out | (TBD) |
-| T-V-L7 (algebraic-law witness coverage) | Verification | YELLOW | r3-v-l7-algebra-coverage-matrix briefs | per-(algebra, inhabitant, law) exhaustive coverage gap | (TBD) |
-| T-V-L5-Corpus | Verification | RED | (waits on L4 corpus + Shape A grounding) | T-V-L4 corpus existing first | post-L4 |
-| T-FixedPoint | PB | YELLOW | (TBD from PB canvas) | SG-0 zero from T-LensProducer | (TBD) |
-| T-Numeric-Construction | Substrate | YELLOW | T-NumericConstruction-ApproximateField; #1523 landed | Float migration + Real/base-carrier convention (Grounding canvas item 2) | (TBD) |
-| T-Omni-Shape-B | Release | RED | (post-R2-Evaluator + Shape A targets) | dependencies | (TBD) |
-| T-Anthropic-Wire | Substrate | YELLOW | 3 coproduct worker briefs dispatched on PR #1782 wait-window (`r3-coproduct-1-openai-chat-message-full-worker.md` + `coproduct-2-anthropic-tool-result-content-wire-worker.md` + `coproduct-3-anthropic-messages-200-residual-worker.md`); plus 2 OPEN closure tags at HEAD: `dsl/extdeps/llm/anthropic.dag` `:189` (`closure:anthropic_messages_200_residual` — variant_pending: thinking|tool_use|redacted_thinking|web_search|server_tool_use + json_pending: container) + `:68` (`closure:anthropic_tool_result_additive_blocks` — missing: document|search_result|tool_reference) | three coproduct slices land + variant-aware projection carrier authored | post-#1782 merge + 3 follow-up paydown PRs (per Substrate Mgr poke-hole 2026-05-06 R1 — corrected from RED to YELLOW; Q-Anthropic-Variant-Aware closure scope per §10.3 covers the 3-paydown-vs-carrier-only question) |
-| T-Bridge-Retirement | Verification (ledger) | YELLOW | per-bridge dispatches | 5 sub-bridges retire | post-T-FixedPoint |
-| T-CostLens-Composition | Substrate | YELLOW | (TBD from Substrate canvas) | R2-Evaluator + R2-T-Substrate-Lens-Primitive | (TBD) |
-| T-V2-Retirement | PB | RED | r3-tv2-* briefs | T-FixedPoint + T-LensProducer | longest-path |
-| T-Free-Consequences-Demonstration | Verification | YELLOW | r3-v-free-consequences-worker | R2-Evaluator + T-CostLens-Composition | post-deps |
-| T-E-P-Producer-Broadening | Substrate | YELLOW | (TBD from Substrate canvas) | (foundational; in flight) | weeks |
-| T-Lens-Behavioral-Parity | Substrate + Verification | RED | post-T-E-P-Producer-Broadening | T-E-P-Producer-Broadening | post-T-E-P |
-| T-Tests-As-Data-Completeness | Verification | YELLOW | r3-v-tests-as-data-* briefs | TestClaim infra | (TBD) |
-| T-Lens-Application-Surface | Substrate + Verification | YELLOW | r3-substrate-tests-as-data-carrier-slice-1-stop-ping | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
-| T-Workflow-As-Data | Substrate | YELLOW | r3-v-bridge-row-* + design-timing-lens | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
-| T-Lens-Self-Application | Verification | RED | (waits on Workflow-As-Data + LAS) | T-Workflow-As-Data + T-Lens-Application-Surface | post-WAD+LAS |
-| T-Debt-Paydown (standing) | Debt-Paydown | YELLOW | PR #1807 (SG-0 PR-body / diff-reconcile gate; OPEN); PR #1566 (rollup hygiene; OPEN/DRAFT per `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`); Tier-1 dispatch-brief drift sweep (`docs/audit/r3-dispatch-brief-drift-sweep-2026-05-05.md`) verified | per-PR rule + drift-item reconciliation (Q7) + velocity-tripwire reporting cadence + closure-receipt cadence + SG-0 PR-window net-shrink discipline | continuous (per Debt-Paydown Mgr poke-hole 2026-05-06 — TBD framing replaced with concrete in-flight anchors) |
+**Plan authoritative columns** (delta-only — current dispatch / blocker / ETA-to-close): updated weekly by lane-owning Mgr; PM compiles for Director cadence. Lane name + Mgr columns retained as join-key only (not as second authority).
+
+| Lane (join-key only; defs in `r3-structure.md`) | Status | Current dispatch | Blocker | ETA-to-close |
+|---|---|---|---|---|
+| T-Tier3-Dissolution | YELLOW | (TBD from PB canvas) | (TBD) | (TBD) |
+| T-LensProducer-Retirement | YELLOW | (TBD from PB canvas) | T-FixedPoint + R2-Evaluator | (TBD) |
+| T-V-L4 (emit/eval match) | YELLOW | `r3-v-l4-l7-direct-*` briefs | Pattern A first slice (Q-PAFS) + corpus build-out | (TBD) |
+| T-V-L7 (algebraic-law witness coverage) | YELLOW | `r3-v-l7-algebra-coverage-matrix` briefs | per-(algebra, inhabitant, law) exhaustive coverage gap | (TBD) |
+| T-V-L5-Corpus | RED | (waits on L4 corpus + Shape A grounding) | T-V-L4 corpus existing first | post-L4 |
+| T-FixedPoint | YELLOW | (TBD from PB canvas) | SG-0 zero from T-LensProducer | (TBD) |
+| T-Numeric-Construction | YELLOW | T-NumericConstruction-ApproximateField; #1523 landed | Float migration + Real/base-carrier convention (Grounding canvas item 2) | (TBD) |
+| T-Omni-Shape-B | RED | (post-R2-Evaluator + Shape A targets) | dependencies | (TBD) |
+| T-Anthropic-Wire | YELLOW | 3 coproduct worker briefs dispatched on PR #1782 wait-window + 2 OPEN closure tags at HEAD (`dsl/extdeps/llm/anthropic.dag` `:189` + `:68`) | three coproduct slices land + variant-aware projection carrier authored | post-#1782 merge + 3 follow-up paydown PRs |
+| T-Bridge-Retirement | YELLOW | per-bridge dispatches | 5 sub-bridges retire | post-T-FixedPoint |
+| T-CostLens-Composition | YELLOW | (TBD from Substrate canvas) | R2-Evaluator + R2-T-Substrate-Lens-Primitive | (TBD) |
+| T-V2-Retirement | RED | `r3-tv2-*` briefs | T-FixedPoint + T-LensProducer | longest-path |
+| T-Free-Consequences-Demonstration | YELLOW | `r3-v-free-consequences-worker` | R2-Evaluator + T-CostLens-Composition | post-deps |
+| T-E-P-Producer-Broadening | YELLOW | (TBD from Substrate canvas) | (foundational; in flight) | weeks |
+| T-Lens-Behavioral-Parity | RED | post-T-E-P-Producer-Broadening | T-E-P-Producer-Broadening | post-T-E-P |
+| T-Tests-As-Data-Completeness | YELLOW | `r3-v-tests-as-data-*` briefs | TestClaim infra | (TBD) |
+| T-Lens-Application-Surface | YELLOW | `r3-substrate-tests-as-data-carrier-slice-1-stop-ping` | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
+| T-Workflow-As-Data | YELLOW | `r3-v-bridge-row-*` + `design-timing-lens` | T-Lens-Behavioral-Parity COMPLETE | post-LBP |
+| T-Lens-Self-Application | RED | (waits on Workflow-As-Data + LAS) | T-Workflow-As-Data + T-Lens-Application-Surface | post-WAD+LAS |
+| T-Debt-Paydown (standing) | YELLOW | PR #1807 (SG-0 PR-body / diff-reconcile gate; OPEN); PR #1566 (rollup hygiene; OPEN/DRAFT per `docs/debt/r3-debt-paydown-ledger-2026-05-02.md`); Tier-1 dispatch-brief drift sweep (`docs/audit/r3-dispatch-brief-drift-sweep-2026-05-05.md`) verified | per-PR rule + drift-item reconciliation (Q7) + velocity-tripwire reporting cadence + closure-receipt cadence + SG-0 PR-window net-shrink discipline | continuous |
 
 **Status legend**: GREEN = no open work, awaiting close audit. YELLOW = work in flight. RED = blocked on upstream.
 
-(Mgr canvases populating; full table compiles within ~24h per canvas T+24h soft deadline.)
+(Mgr canvases populating; full table compiles within ~24h per canvas T+24h soft deadline. Per codex 2026-05-06 BLOCKING finding 1: lane Mgr / scope / R2-close-dependency NOT replicated here — see `r3-structure.md` §"Lane structure" for authoritative metadata. This delta-only refactor closes Q-Plan-vs-Structure-Drift-Discipline option (a) per Research PM R-3.)
 
 ---
 

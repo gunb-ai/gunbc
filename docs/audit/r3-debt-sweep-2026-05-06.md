@@ -216,9 +216,11 @@ Contract applies to **PRs landing AFTER this framework merges** (not retroactive
 
 Identical message format. Each Mgr surfaces lane debt with grep-verified sourcing.
 
-**Remaining R3 standing Mgrs** (per `docs/r3-structure.md` §"Manager structure" canonical 9-standing-Mgr count; the 3 not in PM subtree): **R3 Release Mgr** (owns T-Omni-Shape-B + R3 closure ledger + R3 demo coordination; may be R2 Release Mgr continuation) + 2 others per the "8 + Debt-Paydown" enumeration (likely include Tier 3 Mgr if separate from PB continuation, and one additional R2-continuation Mgr). These Mgrs **coordinate via Director** (zesty-bear-812, gunbc#828) per cross-Mgr cadence; their lane debt + canvas surfaces flow through Director-relayed comments. Per codex BLOCKING on PR #1804 line 209 (2026-05-06): this clarification closes the silent-omission risk that 6 ≠ 9 implies (INVARIANTS P2 single-authority + P1 live-state).
+**Remaining R3 standing Mgrs** (per `docs/r3-structure.md` §"Manager structure" canonical 9-standing-Mgr count; the 3 not in PM subtree): **R3 Release Mgr** (owns T-Omni-Shape-B + R3 closure ledger + R3 demo coordination per `docs/r3-structure.md` §"Manager structure" line 223; may be R2 Release Mgr continuation) + **2 unenumerated others** — `docs/r3-structure.md` §"Manager structure" states "9 standing R3 managers (8 + Debt-Paydown)" but does NOT enumerate per Mgr explicitly beyond the 4 named modifications (Substrate continuation / Verification / R3 Release / Debt-Paydown). The remaining 2 of the canonical 9 are **not enumerated in canonical authority at HEAD** — Director-side enumeration TBD. Per codex BLOCKING 2026-05-06 finding 2 (P1 live-state): this is left as TBD per Director rather than guessed.
 
-No Mgr's lane debt is silently omitted — PM-subtree Mgrs report directly via canvas; non-subtree Mgrs report via Director relay.
+These 3 non-PM-subtree Mgrs (R3 Release + 2 TBD) **coordinate via Director** (zesty-bear-812, gunbc#828) per cross-Mgr cadence; their lane debt + canvas surfaces flow through Director-relayed comments. Per codex BLOCKING on PR #1804 line 209 (2026-05-06 finding 1): this clarification closes the silent-omission risk that 6 ≠ 9 implies (INVARIANTS P2 single-authority + P1 live-state).
+
+No Mgr's lane debt is silently omitted — PM-subtree Mgrs report directly via canvas; non-subtree Mgrs report via Director relay. Director enumeration of the 2 TBD Mgrs is a Phase 3 compile-pass surface (not blocking; per `docs/r3-program-plan.md` §10.3 implicit deferral).
 
 **Phase 3 (post-canvas)**: PM compiles Mgr responses + adds §2 hidden-debt audit + cross-references ROADMAP review + recent analyses. Surfaces compiled sweep for Director final ratification + R3 closure-criteria explicit list.
 
