@@ -117,6 +117,34 @@ Per dispatch directive — STOP if:
 
 Audit conclusions: **no missing authority, no contradictions, no carrier/schema invention.** Every cell traces to a live file/line on origin/main HEAD.
 
+## Delta — 2026-05-05 refresh vs current `origin/main`
+
+Repro pin: `origin/main @ 530c76ea76ce0163f5f11f9c525333a59940c2ee`.
+
+Refresh command surface:
+
+- `rg -n "regen_lens" .github/workflows scripts docs src/v3/compiler/tests/integration src/v3/compiler/Cargo.toml src/v3/compiler/build.rs dsl/std/runtime/bin_shims/README.md src/v3/std/bin_shim.dag src/v3/compiler/src/emit_rust_bin_shim.rs src/v3/compiler/src/process_exit.rs`
+- `rg -n "BinShim|ProcessExit|REGEN_OUTPUTS|GENERATED_FILES|EXPECTED_HAND_AUTHORED_NON_TEST" src/v3/compiler src/v3/std dsl/std/runtime docs/briefs/r3-pb-regen-lens-consumer-audit.md scripts .github/workflows docs/design-pb-runtime-interpreter.md docs/r3-structure.md docs/audit/t-v2-retirement-audit.md docs/design-reflection-completeness.md`
+- `rg -n "^data .*_entry: LensRegistryEntry" src/v3/compiler/regen.dag`
+
+Observed deltas:
+
+| Surface | Current anchor(s) | Delta vs original audit |
+|---|---|---|
+| **`BinShim` carrier** | `src/v3/std/bin_shim.dag:19-23`; `dsl/std/runtime/bin_shims/README.md:7`, `:19-27`, `:35` | The carrier is now live, not "not yet on main". Its live fields are `entrypoint_name: NonEmptyStr`, `description: String`, `entry: DeclarationRef`; the older audit handoff text that spoke generically about `name` is superseded by the README's `entrypoint_name` convention. This is a carrier-state refresh only; this audit still does not invent or edit carrier shape. |
+| **Per-shim instance blocker** | `dsl/std/runtime/bin_shims/README.md:38-45`; `docs/briefs/r3-pb-binshim-emitter-readiness.md:40-54`; `docs/briefs/r3-pb-binshim-row-1-decision-packet.md:7`, `:12`, `:24-29`, `:49` | The live blocker moved from carrier landing to the missing `.dag` entry function: no `regen_lens_main` / `*_main -> ProcessExit` target exists for `entry: DeclarationRef`. The row-#1 decision packet is a new planning consumer for this audit's map; it explicitly does not author `regen_lens_main`, `data regen_lens_shim`, emitter wiring, §7.2, `REGEN_OUTPUTS`, or retirement. |
+| **Host shell helper consumer** | `src/v3/compiler/src/emit_rust_bin_shim.rs:1-12`, `:20-63`, `:70-85`; `src/v3/compiler/tests/integration/sg0_census_test.rs:259`, `:1073-1076` | New hand-authored Rust consumer exists for PB-1 bin-shim shell text. It formats the generated `main.rs` wrapper around an entry function returning `ProcessExit`; it does not resolve `BinShim.entry`, wire Cargo, edit `build.rs`, or retire `regen_lens.rs`. It is SG-0 hand-authored today and therefore a consumer/handoff surface for future emitted shims. |
+| **Host `ProcessExit` mirror** | `src/v3/compiler/src/process_exit.rs:1-18`; `src/v3/compiler/tests/integration/sg0_census_test.rs:281-282` | New hand-authored host mirror exists for generated bin-shim shells to match on `ExitSuccess` / `ExitFailure`. This mirrors `dsl/std/process.dag` for emitted shell plumbing; it does not alter `regen_lens.rs`'s current `fn main() -> ExitCode` surface. |
+| **Cargo bin census** | `src/v3/compiler/Cargo.toml:47-85` | `v3-compiler` now declares **nine** explicit `[[bin]]` targets, not eight: `emit_method_template_projection` was added at `Cargo.toml:72-74`. `regen_lens` remains stable at `Cargo.toml:52-54` (`name = "regen_lens"`, `path = "src/bin/regen_lens.rs"`). |
+| **`REGEN_OUTPUTS` / `GENERATED_FILES` anchors** | `src/v3/compiler/build.rs:479-513`, `:514-526` | Line anchors moved, but semantics are unchanged: `REGEN_OUTPUTS` remains the producer-owned generated manifest, and `GENERATED_FILES` is still emitted from it. Current list has 25 string entries in `build.rs:480-512` (`rg -c '"src/v3/compiler'` over that slice); it still does **not** include `src/v3/compiler/src/bin/regen_lens.rs`. Retirement still adds the emitted shim path here atomically with the SG-0 census drop. |
+| **SG-0 census anchor** | `src/v3/compiler/tests/integration/sg0_census_test.rs:211-242`; `:237`; `:259`; `:281-282` | The line anchor for `EXPECTED_HAND_AUTHORED_NON_TEST` moved from the older `:174` citation to `:211`, and `regen_lens.rs` is now at `:237`. New adjacent hand-authored bin-shim support files (`emit_rust_bin_shim.rs`, `process_exit.rs`) are also listed and should not be confused with generated outputs. |
+| **Registry row count** | `src/v3/compiler/regen.dag:44`, `:50`, `:56`, `:62`, `:68`, `:74`, `:90`, `:96`, `:106` | The live registry has **nine** `data ..._entry: LensRegistryEntry` rows when counted with `rg -n "^data .*_entry: LensRegistryEntry"`. A broad text search/count for `_entry: LensRegistryEntry` returns 11 because `regen.dag:5` and `:13` are comments describing the pattern; future refreshes should use the anchored `^data` query for data-row count. |
+| **Cementing registry consumer** | `src/v3/compiler/tests/integration/cementing/cementing_lens_registry_dispatch_test.rs:340-395` | Newer cementing tests consume the same `LensRegistryEntry` authority to derive `regen_lens --lens <name>` keys required by the capability register. This is a registry-side consumer, not a direct bin implementation consumer, but it is part of the call/test map because the CLI selector namespace must remain stable. |
+| **CI wiring** | `.github/workflows/ci.yml:129-130`, `:195-204`, `:215-268`, `:274-310`; `scripts/slow-test-exemptions.txt:78` | Still no direct `regen_lens` invocation in `.github/workflows/`; the path remains indirect through `cargo test -p v3-compiler` in the v3 job and the SG-6 smoke test exemption. CI now also runs lens-surface gates in the same v3 job (`L-7`, `L-8`), but those scan lens files / generated lens wrappers, not `regen_lens.rs` directly. |
+| **Doc / planning consumers** | `dsl/std/runtime/bin_shims/README.md:49-61`; `docs/briefs/r3-pb-binshim-emitter-readiness.md:23-24`, `:32-37`, `:40-54`; `docs/briefs/r3-pb-binshim-row-1-decision-packet.md:24-29`; `docs/briefs/r3-pb-regen-lens-first-binshim-target-retirement-readiness.md:32-37`, `:80-83` | The surrounding planning docs now split the chain more finely: row #1 `regen_lens_main` entry function, row #2 `data regen_lens_shim`, row #3 emitter/shell, row #4 §7.2 equivalence, then `REGEN_OUTPUTS` + SG-0 retirement. This audit remains the consumer/build/CI/call map only. |
+
+No carrier/emitter implementation is implied by these deltas. The current cutover blocker is not "find the `BinShim` carrier"; it is "provide a non-fabricated `regen_lens_main` entry target and loader story, then author the instance/emitter/§7.2/SG-0 changes in their assigned slices."
+
 ## Cross-refs
 
 - Parent design lock: [`docs/design-pb-runtime-interpreter.md`](../design-pb-runtime-interpreter.md) §4 (Item 5 emit pattern), §4.3 (dissolution path), §5.1 (sub-gate decomposition), §7.2 (BinShim equivalence fixture).
