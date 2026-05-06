@@ -153,8 +153,11 @@ replaces the scratch surface:
 
 - No-projection input still fails closed with `FoldNotImplemented` or the
   landed typed equivalent.
-- Example 1: unbounded or absent program bound over multiple bound-distinct
+- Example 1a: absent or unspecified program bound over multiple bound-distinct
   declared candidates returns `UnderRefined { unspecified_axis: "bound" }`.
+- Example 1b: explicit `BoundDeclaration::StaticBound(Unbounded)` follows the
+  declared bound predicate and must not be collapsed into the absent-bound
+  diagnostic case.
 - Example 2: `Int(0..2^32)` selects the declared Rust `u32` inhabitance row by
   exact static-bound and algebra match.
 - Example 5: ambiguous algebra facts return
@@ -167,7 +170,9 @@ replaces the scratch surface:
   candidates, missing realization references, and unjoined rows fail closed.
 - A ratchet over `src/v3/grounding_coercion_fold/src` shows no surviving code
   references to `ScratchIntExamples`, `IntScratchExample`,
-  `TargetInhabitance::`, or `fold_design_doc_example_`.
+  the bare `TargetInhabitance` type authority, or
+  `fold_design_doc_example_`. Exact identifier matching must exclude successor
+  names such as `SelectedTargetInhabitance`.
 
 ## Verification
 
@@ -176,7 +181,7 @@ Run at minimum:
 ```bash
 cargo fmt --all --check
 cargo test -p v3-grounding-coercion-fold -- --nocapture
-rg -n "ScratchIntExamples|IntScratchExample|TargetInhabitance::|fold_design_doc_example_" src/v3/grounding_coercion_fold/src
+rg -n '\b(ScratchIntExamples|IntScratchExample|TargetInhabitance|fold_design_doc_example_[A-Za-z0-9_]*)\b' src/v3/grounding_coercion_fold/src
 ```
 
 If the landed executable projection requires bootstrap regeneration or parse
