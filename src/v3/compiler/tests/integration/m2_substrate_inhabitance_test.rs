@@ -1977,7 +1977,7 @@ fn target_integer_type_inhabitance_rows_are_structural_slice_b_receipt() {
                 rows
             );
             assert!(
-                rows.iter().any(|n| *n == "go_integer_inhabit_int_platform_dependent"),
+                rows.contains(&"go_integer_inhabit_int_platform_dependent"),
                 "expected Track B Go native `int` inhabitance row (PlatformDependentFact); got {:?}",
                 rows
             );
