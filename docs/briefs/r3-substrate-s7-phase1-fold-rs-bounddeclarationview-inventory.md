@@ -79,9 +79,13 @@ numeric lane receipts — it does not bypass Pattern D upstream.
 Targets such as Rust **`usize`** (and Go **`int`**) carry **platform-sized /
 kind-only** bounds per `design-emission-model.md` — matched via the outer
 `BoundDeclaration` sum (`PlatformDependent`), **not** by pretending their
-semantics are “wider `Interval<Int>` literals.” **`match_bound`** already has a
-**kind-only** arm for `BoundDeclarationView::PlatformDependent` (`fold.rs`
-`L118`).
+semantics are “wider `Interval<Int>` literals.” **`match_bound`** has a dedicated
+arm for **`BoundDeclarationView::PlatformDependent`** (`fold.rs` **`L118`**), but
+today it returns **`BoundMatch::DiffersKind` for every target shape** — i.e. **no
+selection reaches `Matches`** on this path until Track B lands **target-side
+`PlatformDependent` facts** in **`TargetIntegerTypeInhabitance`** (plus parsing)
+**and** extends the predicate with explicit **kind-only positive matches** (not
+just this placeholder arm).
 
 **Not wider `StaticBoundFact` (Q1):** Under **`design-emission-model.md` Q1**
 consolidation, **`PlatformDependent` is a distinct outer kind**, not an
