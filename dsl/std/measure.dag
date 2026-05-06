@@ -1,0 +1,97 @@
+// std/measure.dag -- Unit/Quantity carrier (algebra-axis dimensional shape).
+//
+// Per Q-Unit-1..5 RATIFIED at gunbc#828 #issuecomment-4385412256 (2026-05-06)
+// and Q-Unit-1-Recanvas RATIFIED at gunbc#828 #issuecomment-4385539791
+// (outer carrier renamed from `Unit` to `Measure` to avoid collision with
+// kernel `Unit` terminal-object type at `dsl/std/types.dag`).
+//
+// Authority: `docs/briefs/r3-substrate-s9-unit-quantity-carrier-canvas.md`
+// (RATIFICATION banner). Worker brief:
+// `docs/briefs/r3-substrate-unit-quantity-carrier-worker.md`.
+//
+// Scope (Phase-1 carrier landing):
+//   - `Measure<Q, S>` — phantom-parameter carrier for dimensional types.
+//   - `Quantity` — what is being measured (Time, Length, Mass, ...).
+//   - `Scale` — SI decimal scale exponent (Atto..Exa, with `One` = 10^0).
+//
+// NOT in scope (deferred per brief):
+//   - Aspect axis (PointKind / Magnitude / Instant / Rate) -> R4 C6.
+//   - Scale-agnostic `Duration<S>` parametric form -> needs >=2 consumers.
+//   - 3-axis `AlgebraMachineRoundingProduct` -> R4 C5.
+//
+// COMPOSITION (S9 Phase-3 reframe per Q-Unit-4 RATIFIED outer-Refined /
+// inner-Measure):
+//
+//   Duration     := Refined<Measure<Time, One>,   non_negative>
+//   Milliseconds := Refined<Measure<Time, Milli>, non_negative>
+//   Seconds      := Duration  (collapse per Q-Unit-3 RATIFIED)
+//
+// Predicates apply at the Measure-typed level: `non_negative` is
+// "this duration is non-negative", not "this Int that happens to be
+// milliseconds is non-negative". This satisfies
+// `feedback_reason_not_label` -- the predicate name is the label,
+// the reason is "this carries time-unit semantics".
+
+module std.measure
+
+// --- Quantity: what is being measured -------------------------------------
+//
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD
+// Reference: `docs/modeling-discipline.md#4-coproduct-dissolution`
+//   "Any new Rust enum with N >= 2 variants must have a checkpoint
+//   comment naming its classification (🟢/🟡/🔴), with a ledger entry
+//   if GREEN or a named trigger if YELLOW."
+//
+// Dissolution trigger (Q-Unit-5 RATIFIED): "all Quantity values consumed
+// by >= 1 Grounding emission rule". Until each value gates a real
+// emission rule (Grounding consumer demonstrates need), the carrier
+// is hand-modeled / speculative. Adding a new value without a
+// corresponding emission rule violates
+// `feedback_construction_over_ratchets`; new values require the P1
+// substrate-fact-introduction procedure with named consumer demand.
+type Quantity =
+    Time
+  | Length
+  | Mass
+  | Memory
+  | Information
+  | DataRate
+  | Frequency
+  | Count
+  | Currency
+
+// --- Scale: SI decimal scale exponent -------------------------------------
+//
+// PRACTICE 4 CHECKPOINT: 🟡 SCAFFOLD
+// Same dissolution trigger as `Quantity`: "all Scale values consumed by
+// >= 1 Grounding emission rule" (Q-Unit-5 RATIFIED).
+//
+// `One` is the unscaled identity (10^0) -- RATIFIED rename from `Unit`
+// per Q-Unit-1 to avoid shadowing the outer carrier name and the
+// kernel terminal-object `Unit` type.
+type Scale =
+    Atto       // 10^-18
+  | Femto      // 10^-15
+  | Pico       // 10^-12
+  | Nano       // 10^-9
+  | Micro      // 10^-6
+  | Milli      // 10^-3
+  | One        // 10^0   (identity scale; RATIFIED rename from `Unit` per Q-Unit-1)
+  | Kilo       // 10^3
+  | Mega       // 10^6
+  | Giga       // 10^9
+  | Tera       // 10^12
+  | Peta       // 10^15
+  | Exa        // 10^18
+
+// --- Measure<Q, S>: phantom-parameter dimensional carrier -----------------
+//
+// PRACTICE 4 CHECKPOINT: 🟢 PRIMITIVE
+// Phantom-parameter carrier: widening adds Quantity / Scale values, not
+// new Measure variants. The carrier itself has a single inhabitant per
+// (Q, S) pairing; the type parameters tag dimensional semantics for the
+// type system without runtime payload distinction at this layer.
+// Per-target representation (Rust `std::time::Duration`, Python
+// `datetime.timedelta`, Go `time.Duration`, etc.) is Grounding's job
+// per Q-Unit-4 RATIFIED.
+type Measure<Q, S>
