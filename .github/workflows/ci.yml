@@ -331,7 +331,7 @@ jobs:
     # Run on main pushes only while staged. A cancelled `continue-on-error`
     # PR job still reports as a failed check, which makes this advisory ratchet
     # merge-blocking before Lane 1e graduation.
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     # Same sizing rationale as `v3` above: cargo release builds +
     # determinism_test (5x emit matrix) + self_host_fixed_point bin
     # need >2 cores to clear the 30min cap. Hard-coded to
