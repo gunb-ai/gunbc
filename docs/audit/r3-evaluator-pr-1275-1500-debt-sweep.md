@@ -10,15 +10,26 @@ an implementation brief.
 
 **Verification inputs:** local `git log --all -- src/v3/compiler/src/lib.rs`,
 `gh pr view` for the PR rows below, live `src/v3/compiler/src/lib.rs`, and
-the current R3 routing docs:
+the current in-repo R3 routing docs:
 
 - `docs/r3-program-plan.md` §10.3, especially
   `Q-EVAL-Descent-Termination-Contract`,
   `Q-EVAL-Lens-Fold-First-Slice`, and
   `Q-Pattern-A-First-Slice-Subscope`.
-- `docs/briefs/r3-pr-e6-g0d-constructor-runtime-execution-worker.md`.
 - `docs/briefs/r3-pr-e6-lens-fold-readiness-audit.md`.
+- `docs/briefs/r3-pr-e6-g0d-constructor-runtime-execution-worker.md`,
+  as a pre-implementation worker brief and STOP-condition source, not as
+  current retirement authority.
 - `ROADMAP.md` Pattern B / `test_runner.rs` predicate-authority debt.
+
+**Authority caveat:** the in-repo routing text is not internally settled for
+E6-G0d. Live `src/v3/compiler/src/lib.rs` contains the E6-G0d constructor arm
+inside `eval_transform_node`, and `docs/r3-program-plan.md` has #1813-landed
+references. The same plan still carries `Q-EVAL-G0d-Dispatch` / EVAL-1 open
+wording, and the E6-G0d worker brief remains a docs-only pre-implementation
+brief. This receipt therefore treats constructor `Callable` as implemented in
+code but keeps the E6/Callable residual open for Phase 3 authority
+reconciliation until the evaluator and dispatch docs agree.
 
 ## Summary
 
@@ -34,10 +45,12 @@ The material residual classifications are:
 - #1476 keeps `LoopBound::Descent` fail-closed. This remains active and routes
   through the Substrate termination-proof carrier before Evaluator consume-side
   wiring.
-- #1407/#1496 left callable pressure for later E6 work. The non-Arrow
-  constructor `Callable` residual is now retired by E6-G0d / #1813. The
-  remaining E-series callable pressure is G1.a static lens fold/report
-  production; G1.b generic dispatch remains held on X1.b S1/S3.
+- #1407/#1496 left callable pressure for later E6 work. Live code now has an
+  E6-G0d constructor `Callable` arm, but the in-repo routing docs still carry
+  conflicting open-vs-landed wording. Keep the E6/Callable residual open for
+  Phase 3 authority reconciliation. The same handoff should preserve the live
+  split between G1.a static lens fold/report production and G1.b generic
+  dispatch held on X1.b S1/S3.
 - #1484 is not a body-evaluator regression. `SymbolicCostExprEquals` remains
   a runner/test-predicate gap tracked outside the `lib.rs` body evaluator.
 - #1459 and #1466 touched `lib.rs` via broader generated/substrate fallout,
@@ -50,7 +63,7 @@ The material residual classifications are:
 |---|---:|---|---|---|
 | #1374 `feat(evaluator): PR-E E2 EvalFrame lookup and Bind environment` | 2026-05-01T07:04:37Z | `EvalFrame` / evaluator stack lookup helpers in `lib.rs`. | Hand-Rust capacity slice inside the existing evaluator module. PR body explicitly excludes runtime carrier changes, list fallback, and body evaluation. | Consumed by later E1/E4/E5/Bind slices. No new debt row found. |
 | #1387 `feat(evaluator): PR-E E1 value behavior execution` | 2026-05-01T08:51:37Z | `Behavior::Value`, `eval_value`, `eval_port`, `eval_node`, and `evaluate_body`. | Hand-Rust evaluator capacity. Uses the Rust runtime `Value` mirror and constructs only `LiteralValue` in this slice. | Active foundation under the broader PB-zero hand-Rust retirement trajectory. |
-| #1407 `feat(evaluator): PR-E E3 eager Transform application` | 2026-05-01T20:04:31Z | `eval_transform_node` for supported operator targets. | Hand-Rust capacity plus explicit unsupported transform fences. These are fail-closed residuals, not hidden bridge carriers. | FieldProject and Arrow/UserDefined callable execution later retired by E6-G0c. Non-Arrow constructor `Callable` is retired by E6-G0d / #1813. Static lens fold/report production remains G1.a; generic dispatch remains G1.b held on X1.b S1/S3. |
+| #1407 `feat(evaluator): PR-E E3 eager Transform application` | 2026-05-01T20:04:31Z | `eval_transform_node` for supported operator targets. | Hand-Rust capacity plus explicit unsupported transform fences. These are fail-closed residuals, not hidden bridge carriers. | FieldProject and Arrow/UserDefined callable execution later retired by E6-G0c. Live `eval_transform_node` now includes the E6-G0d constructor arm, but the routing docs still conflict on whether G0d is landed. Carry the E6/Callable residual open into Phase 3 authority reconciliation, alongside G1.a static lens fold/report production and G1.b held on X1.b S1/S3. |
 | #1425 `fix(v3): P0 DB-8 receipt.json key pin + SG-0 census` | 2026-05-01T20:04:41Z | Touched `lib.rs`, but not evaluator-lane behavior. | Receipt-key / SG-0 census work outside the evaluator lane. | Not an evaluator debt row. |
 | #1426 `feat(evaluator): PR-E E4 Branch arm coverage` | 2026-05-01T21:29:41Z | `Behavior::Branch`, `eval_branch`, `Value::VariantValue`, branch frame/payload path execution. | Hand-Rust capacity plus explicit Bool literal-vs-variant identity gap. The PR deferred Bool `if` evaluation to shared substrate identity instead of adding a local map. | Retired by #1467/#1473 for evaluator and `lens_apply` Bool matching. |
 | #1459 `keen-swift-519` | 2026-05-02T03:49:09Z | Touched `lib.rs` amid broad generated/substrate changes. | No evaluator-specific hand-Rust/debt introduction identified from PR metadata available in this sweep. | Do not promote into evaluator causal history without narrower file/body evidence. |
@@ -59,15 +72,18 @@ The material residual classifications are:
 | #1473 `test(evaluator): cover Bool branch reification` | 2026-05-02T03:48:42Z | Evaluator tests in `lib.rs`. | Test-only hand-Rust; adds fail-closed coverage when Bool authority is missing. | Reinforces #1467 retirement. |
 | #1476 `feat(evaluator): PR-E E5 loop cardinality execution` | 2026-05-02T03:49:06Z | `Behavior::Loop`, cardinality execution, accumulator frame threading. | Hand-Rust capacity. Keeps `LoopBound::Descent` as a typed fail-closed residual. | Active. `docs/r3-program-plan.md` §10.3 routes this through `Q-EVAL-Descent-Termination-Contract`; evaluator consumes the Substrate proof token after that carrier lands. |
 | #1484 `feat(evaluator): PR-E E7 symbolic-cost-only analyze_complexity wrapper` | 2026-05-02T04:57:42Z | Touched `lib.rs`; primary wrapper is in `dimension.rs`. | Thin wrapper over the existing symbolic-cost analyzer. No parallel analyzer and no new variants per PR body. | `SymbolicCostExprEquals` remains a runner/test-predicate gap, tracked in `docs/r3-program-plan.md` V2 and ROADMAP Pattern B, not as a body-evaluator regression. |
-| #1496 `feat(evaluator): PR-E Bind callable entry` | 2026-05-02T08:33:41Z | `Behavior::Bind`, `eval_bind`, callable frame entry prerequisite. | Hand-Rust capacity. PR body excludes E6 lens fold, runner work, substrate changes, and new runtime carriers. | Consumed by E6-G0c/G0d and the G1 sequence. Current live pressure is G1.a static lens fold/report production; G1.b generic dispatch remains held on X1.b S1/S3. |
+| #1496 `feat(evaluator): PR-E Bind callable entry` | 2026-05-02T08:33:41Z | `Behavior::Bind`, `eval_bind`, callable frame entry prerequisite. | Hand-Rust capacity. PR body excludes E6 lens fold, runner work, substrate changes, and new runtime carriers. | Consumed by E6-G0c and the later E6/G1 sequence. Current live pressure is E6/Callable authority reconciliation, G1.a static lens fold/report production, and G1.b generic dispatch held on X1.b S1/S3. |
 
 ## Live Follow-Up Map
 
 - `LoopBound::Descent`: active fail-closed evaluator residual. Owner path is
   Substrate termination-proof carrier, then Evaluator consume-side wiring.
-- E6 callable/report path: constructor runtime execution is retired by #1813.
-  Next executable evaluator slice is G1.a static lens fold/report production.
-  G1.b generic dispatch stays deferred behind X1.b S1/S3.
+- E6 callable/report path: live code contains the E6-G0d constructor runtime
+  arm, but the in-repo routing docs still disagree on the G0d state. Phase 3
+  should keep the E6/Callable residual open until the dispatch authorities
+  reconcile the #1813 landing. G1.a static lens fold/report production remains
+  the next executable evaluator pressure, and G1.b generic dispatch stays
+  deferred behind X1.b S1/S3.
 - Runner/test-predicate authority: `SymbolicCostExprEquals` and related
   predicate execution gaps live under the R3 plan V2 and ROADMAP Pattern B
   runner-freeze rows, not in the #1275-#1500 `lib.rs` body-evaluator sweep.
@@ -86,8 +102,9 @@ global bridge counts.
   It should feed the Phase 3 compile through
   `Q-EVAL-Descent-Termination-Contract`, not as a closed evaluator item.
 - **Pattern A / callable-report evidence:** #1407 and #1496 are historical
-  prerequisites for E6 callable execution. Constructor runtime execution is
-  closed by #1813; the compile should carry only the live G1.a static
+  prerequisites for E6 callable execution. Live code has the E6-G0d
+  constructor arm, but the compile should keep E6/Callable open until the
+  routing docs reconcile #1813. The same row should carry G1.a static
   lens fold/report production pressure and the G1.b generic-dispatch hold on
   X1.b S1/S3.
 - **Pattern B / runner predicate evidence:** #1484 should feed the
