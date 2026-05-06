@@ -154,14 +154,16 @@ replaces the scratch surface:
 - No-projection input still fails closed with `FoldNotImplemented` or the
   landed typed equivalent.
 - Example 1a: absent or unspecified program bound over multiple bound-distinct
-  declared candidates returns `UnderRefined { unspecified_axis: "bound" }`.
+  declared candidates returns the typed bound-under-refinement diagnostic or
+  landed equivalent.
 - Example 1b: explicit `BoundDeclaration::StaticBound(Unbounded)` follows the
   declared bound predicate and must not be collapsed into the absent-bound
   diagnostic case.
 - Example 2: `Int(0..2^32)` selects the declared Rust `u32` inhabitance row by
   exact static-bound and algebra match.
 - Example 5: ambiguous algebra facts return
-  `UnderRefined { unspecified_axis: "algebra" }` before target selection.
+  the typed algebra-under-refinement diagnostic or landed equivalent before
+  target selection.
 - Example 6: overlarge `Int(0..2^65)` or no exact declared target row returns
   `NoInhabitant`.
 - Example 8: Rust, Python, and Go all select their declared i32-range
