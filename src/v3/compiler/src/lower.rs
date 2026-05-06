@@ -667,9 +667,7 @@ fn alloc_registered_refinement_placeholder(
     let id = dag.alloc_declaration_id();
     dag.push_declaration(Declaration {
         id,
-        name: Some(format!(
-            "<registered predicate not lowered: {alias_name}>"
-        )),
+        name: Some(format!("<registered predicate not lowered: {alias_name}>")),
         connective: TypeConnective::Conj { children: vec![] },
         type_params: Vec::new(),
         phantom_params: Vec::new(),
