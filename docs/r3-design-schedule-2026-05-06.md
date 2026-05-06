@@ -47,14 +47,18 @@ Carriers needed: `MachineConstraint<C>` + `MachineWidth<bits>` + interaction-loo
 
 ### S4 — Workflow* family carriers (Class 4)
 
-**Scope**: 5 carriers for CI-workflow-as-`.dag`-data per §4.4:
-- `WorkflowTrigger` (trigger-event sum: Push | PullRequest | Cron<Schedule> | Manual<Inputs>)
-- `WorkflowStep` (run command + dependencies + outputs) + `WorkflowMatrix<Axes>` (parameter expansion)
-- `WorkflowSecret<Name>` (provider-typed, opaque-at-rest, scoped-by-step)
-- `RunnerResource<C>` (compute class, OS, hardware)
-- `Workflow<Trigger, Steps, Resources>` composing carrier
+**Existing ontology audit prerequisite (per codex BLOCKING 2026-05-06)**: `dsl/extdeps/github/actions.dag` (218 lines) already declares `Workflow`, `WorkflowTrigger` (sum: `Push | PullRequest | Schedule | WorkflowDispatch | WorkflowCall`), `Job`, `Step`, `MatrixStrategy`, `RunnerSpec`, `WorkflowPermissions`, `ConcurrencySpec`, `DispatchInput`, etc. The S4 worker brief MUST audit `extdeps.github.actions` first and either (a) extend / refine the existing carriers via T-Workflow-As-Data lens-consumption-shape additions (preferred per `feedback_audit_adjacent_authority_first` + `feedback_parallel_representation_debt`), or (b) explicitly dissolve `extdeps.github.actions` with a migration path before introducing parallel carriers. **Names below are audit targets / preliminary additions, NOT a fresh ontology** — they reuse `extdeps.github.actions` types where they map cleanly and propose new types only where the lens-shape (e.g., observation-driven `WorkflowObservationAnchor` per Substrate Mgr design stance at gunbc#1130 comment-4374109666) doesn't exist yet.
 
-**Dispatch trigger**: post-T-Lens-Behavioral-Parity COMPLETE (per `r3-structure.md` §"Dependency on R2"; lens consumption needs lenses COMPLETE).
+**Scope (audit + delta against `extdeps.github.actions`)**:
+- `WorkflowTrigger` — already exists; potential refinement only (e.g., typed `Cron<Schedule>` over current `Schedule { cron: String }`)
+- `WorkflowStep` — already exists as `Step`; reuse name
+- `WorkflowMatrix<Axes>` — already exists as `MatrixStrategy`; potential parametric refinement
+- `RunnerResource<C>` — already exists as `RunnerSpec`; reuse or refine
+- `Workflow<Trigger, Steps, Resources>` — already exists as `Workflow`; potential parametric refinement only
+- `WorkflowSecret<Name>` — NEW (no equivalent in `extdeps.github.actions`); provider-typed, opaque-at-rest, scoped-by-step
+- `WorkflowObservationAnchor` + observation/measurement carriers — NEW (Shared External Attachment Pattern per Substrate Mgr design stance; not in current actions.dag)
+
+**Dispatch trigger**: post-T-Lens-Behavioral-Parity COMPLETE (per `r3-structure.md` §"Dependency on R2"; lens consumption needs lenses COMPLETE) **AND** post-`extdeps.github.actions` audit-and-delta receipt (Substrate Mgr to surface audit before worker dispatch).
 **Closure predicate**: §1.8 gates #53 (workflow_substrate_carriers_landed), #54 (timing_lens_carrier_landed), #55 (shared_external_attachment_pattern_documented), #56 (ci_workflow_modeled_as_dag), #62 (substrate_gap_file_ingestion_closed), #63 (substrate_gap_workflow_scheduling_closed).
 
 ### S5 — Variant-aware projection metadata carrier
@@ -144,14 +148,16 @@ Per Substrate Mgr partition response 2026-05-06: **demonstration gate scope fold
 
 ### V1 — Pattern-A executable cluster (TC1 first; pending Director countersignature on Q-PAFS)
 
-**Scope**: 5 NEW Pattern-A executable gates need consumer infrastructure:
+**Scope**: 4 NEW Pattern-A executable gates (DimensionReport-typed cluster) need consumer infrastructure here in V1:
 - TC1 (`tc1_eta_equivalence_executable`): static representative via E6-G1.a (PM-default; Q-Pattern-A-First-Slice-Subscope) — runtime prereq from Evaluator EVAL-3
 - TC2 (`tc2_church_rosser_executable`): second strategy/input order + strategy-keyed report
 - TC3 (`tc3_pattern_a_second_mover_executable`): Descent execution proof (E5) + eval-step producer
 - RustDagIsomorphism (`rust_dag_isomorphism_executable`): shape-report producers
 
+**Note (per codex BLOCKING 2026-05-06)**: the framework adds **5 NEW Pattern-A executable gates total** at PR #1809 (per `r3-program-plan.md:88`). The 5th — `symbolic_cost_expr_equals_executable` (§1.8 gate **#40**) — is **SymbolicCost-typed** (not DimensionReport-typed) and belongs to **T-CostLens-Composition** lane, not V1's TC cluster (per `r3-program-plan.md:755`: V1's DimensionReport-unblock fixes TC1/TC2/TC3 cluster but does NOT automatically fix SymbolicCostExprEquals — different predicate family, distinct runner work). Tracked separately under T-CostLens-Composition.
+
 **Dispatch trigger**: TC1 first slice — pending Director countersignature on Q-PAFS + EVAL-3 (E6-G1.a static lens fold landing).
-**Closure predicate**: §1.8 gates #11-#14 (4 Pattern-A executable) + cascades to BridgeLedgerZero net-shrink (gate #36).
+**Closure predicate**: §1.8 gates #11-#14 (4 Pattern-A executable, DimensionReport-typed) + cascades to BridgeLedgerZero net-shrink (gate #36). 5th gate (#40 `symbolic_cost_expr_equals_executable`, SymbolicCost-typed) closes via T-CostLens-Composition lane.
 
 ### V2 — L4 corpus + L7 exhaustive coverage
 
