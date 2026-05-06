@@ -79,10 +79,13 @@ substitute for the audit.
    Module-private payload fields; public accessors only.
 
    **Practice 4 dissolution-ledger marks (mandatory on the live
-   declaration).** Per `docs/modeling-discipline.md` Practice 4
-   (coproduct dissolution; "What to check" rule at
-   `docs/modeling-discipline.md:131`), each variant of
-   the new `TransformDispatch` enum MUST carry its 🟢/🟡/🔴 mark
+   declaration).** Per
+   `docs/modeling-discipline.md#4-coproduct-dissolution`
+   (Practice 4) — *"Any new Rust enum with N ≥ 2 variants must
+   have a checkpoint comment naming its classification (🟢/🟡/🔴),
+   with a ledger entry if GREEN or a named trigger if YELLOW."*
+   Each variant of the new `TransformDispatch` enum MUST carry its
+   🟢/🟡/🔴 mark
    as a doc comment on the variant itself, copying the per-variant
    ledger from `design-prereq-x-ho-field-call.md` §Prereq-X1
    (verified live at HEAD `:440-488`). Worker transcribes verbatim:

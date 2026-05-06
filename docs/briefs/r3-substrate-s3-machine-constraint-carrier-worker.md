@@ -50,11 +50,13 @@ landing).
 1. **Author `dsl/std/machine_constraints.dag`** introducing:
 
    Each new coproduct / sum declaration MUST carry a 🟢/🟡/🔴
-   checkpoint-comment classification per `docs/modeling-discipline.md`
-   Practice 4 (coproduct dissolution; the "What to check" rule at
-   `docs/modeling-discipline.md:131` — checkpoint comment naming
-   classification, ledger entry if GREEN, named trigger if YELLOW).
-   Implements `INVARIANTS.md#p1-modeling-faithfulness`.
+   checkpoint-comment classification per
+   `docs/modeling-discipline.md#4-coproduct-dissolution`
+   (Practice 4). Per the "What to check" rule there: *"Any new
+   Rust enum with N ≥ 2 variants must have a checkpoint comment
+   naming its classification (🟢/🟡/🔴), with a ledger entry if
+   GREEN or a named trigger if YELLOW."* Implements
+   `INVARIANTS.md` P1 (Modeling Faithfulness).
 
    - `MachineWidth<bits>` — phantom-parameter carrier; `bits: Nat`.
      **🟢 PRIMITIVE** — width values are Nat-valued; the carrier

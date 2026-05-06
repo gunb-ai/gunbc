@@ -74,25 +74,49 @@ Before authoring any of the brief sections above, answer **all five** in writing
 **Examples from #836:**
 - B4.2 fold_step_formal: brief assumed bridge skips on step-formal binding. Worker pre-flight audit revealed bridge actually skips on accumulator/element type eligibility. Carrier addressed wrong question. Brief reframed.
 
-## Citation discipline — Practice 4 / modeling-discipline references
+## Citation discipline — cross-doc references
 
-**Cite the live rule, not a fabricated checklist step.** When a
-brief requires the worker to mark new coproduct / sum declarations
-with a 🟢/🟡/🔴 classification, cite **Practice 4 (coproduct
-dissolution)** and the **"What to check" rule at
-`docs/modeling-discipline.md:131`** (checkpoint comment naming
-classification, ledger entry if GREEN, named trigger if YELLOW).
+**Cross-doc references in briefs MUST use section anchors or
+direct rule-text quotes. Bare line-number references
+(`file.md:NNN`) are PROHIBITED** — they drift silently on any
+doc edit above the cited line, going stale without surfacing
+in review.
 
-Do **not** cite "Step 4 of the type-introduction checklist" — there
-is no such checklist in `docs/modeling-discipline.md`. The doc lists
-4 dissolution patterns (set-membership / closed-set-tag / algebraic
-form / dimensional) and the checkpoint-comment rule is the
-"What to check" stanza at line 131, not a fifth step.
+**Stable forms** (use either):
 
-**Failure mode**: codex review on PR #1782 (2026-05-06) flagged the
-stale wording across multiple briefs; corpus sweep landed at
-`2dc92f34f`. Future briefs that copy old templates should normalize
-the citation before landing.
+1. **Section anchor**: e.g.,
+   `docs/modeling-discipline.md#4-coproduct-dissolution` —
+   GitHub auto-generates anchors from headings; survives any
+   line-number drift below.
+2. **Rule-text quote**: cite the rule directly. E.g., for the
+   coproduct-classification rule: per `docs/modeling-discipline.md`
+   Practice 4 ("Coproduct dissolution"): *"Any new Rust enum with
+   N ≥ 2 variants must have a checkpoint comment naming its
+   classification (🟢/🟡/🔴), with a ledger entry if GREEN or a
+   named trigger if YELLOW."* Self-contained; survives even doc
+   restructuring.
+
+If the rule has no stable anchor available, surface to the doc
+author to add one before citing.
+
+**Applies to all** cross-doc citations across briefs:
+`r3-program-plan.md`, `r3-structure.md`, `INVARIANTS.md`,
+`MODELING.md`, `modeling-discipline.md`, design-doc references,
+etc.
+
+**Specific to Practice 4 / coproduct classification**: cite
+`docs/modeling-discipline.md#4-coproduct-dissolution` (Practice 4)
+plus the "What to check" rule text inline. Do NOT cite "Step 4
+of the type-introduction checklist" — no such checklist exists.
+
+**Failure modes**:
+- Codex review on PR #1782 (2026-05-06) flagged fabricated
+  "Step 4 of the type-introduction checklist" wording.
+- Director redirect on the paydown form (gunbc#828
+  #issuecomment-4385391... follow-on) flagged that the bare
+  line-number replacement (`:131`) is the same drift class.
+- Corpus sweeps at `2dc92f34f` (initial) + `<this-commit>`
+  (anchor/quote conversion) closed both vectors.
 
 ## Audit receipt format
 
