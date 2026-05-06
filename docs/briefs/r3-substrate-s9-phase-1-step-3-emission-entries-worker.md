@@ -141,6 +141,6 @@ Phase ordering (PR-internal):
 
 ## Provenance
 
-Drafted 2026-05-06 post-#1856 merge per Tier-1 brief-queue commitment at gunbc#846 #issuecomment-4390098574 + Director auto-nudge on assignment #1858 at #issuecomment-4392... 2026-05-06.
+Drafted 2026-05-06 post-#1856 merge per Tier-1 brief-queue commitment at gunbc#846 #issuecomment-4390098574 + standing R3 Substrate Mgr cycle assignment at gunbc#1858.
 
 Cross-references S3 (`MachineConstraint<C>` carrier — landed at #1856) and S8 (`ApproximateField<F>` Float migration — pending; Phase 2 of S9 absorbs Real<N> emission). S9 worker pin proud-lynx-311 holds; this brief queues post-Slice-2.5-completion (currently rung-3 in flight) as natural follow-on.
