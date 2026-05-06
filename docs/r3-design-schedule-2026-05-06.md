@@ -370,7 +370,7 @@ No additional PM/Director ratification needed from Evaluator for E1/E5. **E3 dis
 | **G1** L6 row population | HELD | Trigger = Substrate S6 `EmissionPathProjection` carrier landing |
 | **G2** T-Ground-Rust full coverage | HELD | Trigger = Substrate S7 PR-F + S8 Float migration / Real base-carrier for float rows; #1783 remains draft as dispatch-guide staging artifact |
 | **G3** Coercion-Fold scratch retirement | HELD | Trigger = executable LanguageSpec projection |
-| **G4** F10 `install_hint` cleanup | **DISPATCHED 2026-05-06** | silent-badger-711 (#1774); see [gunbc#1774 #issuecomment-4385080257](https://github.com/gunb-ai/gunbc/issues/1774#issuecomment-4385080257) |
+| **G4** F10 `install_hint` cleanup | **DONE / NO-OP 2026-05-06** | silent-badger-711 (#1774) verified shape already present at HEAD `cde245713f89a08e11c4242e4bb1cd98e098a881`; no diff, no PR needed; `cargo test -p v2-compiler-tests` 482 passed / 0 failed. Closure signal at [gunbc#846 #issuecomment-4387302181](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4387302181). |
 | **G5** Anthropic #1702 re-dispatch | HELD | Trigger = Substrate S5 variant-aware projection metadata carrier + Q-Anthropic-Variant-Aware closure-scope ratification |
 
 No additional PM/Director ratification needed for G4. For G1/G2/G3/G5, schedule already names sufficient upstream triggers; Grounding dispatches as soon as triggers land. Grounding lane is largely consumer of Substrate work — most items HELD on Substrate cascade.
@@ -396,12 +396,18 @@ No additional PM/Director ratification needed for G4. For G1/G2/G3/G5, schedule 
 **Dispatch trigger**: post-Substrate/LanguageSpec projection executable.
 **Closure predicate**: Q-Coercion-Fold-Scratch closure.
 
-### G4 — F10 install_hint cleanup
+### G4 — F10 install_hint cleanup (DONE / NO-OP 2026-05-06)
 
-**Scope**: `dsl/extdeps/tools.dag` `install_hint` join semantics fix (per Substrate canvas G8).
+**Scope (verified)**: `dsl/extdeps/tools.dag` `install_hint` join semantics fix (per Substrate canvas G8).
 
-**Dispatch trigger**: now (small cleanup; bundle into next Grounding signal PR).
-**Closure predicate**: M5 cleanup close.
+**Closure outcome**: **DONE / NO-OP at HEAD `cde2457`** per Grounding Mgr (silent-badger-711) closure signal at [gunbc#846 #issuecomment-4387302181](https://github.com/gunb-ai/gunbc/issues/846#issuecomment-4387302181). Grep-verified at `dsl/extdeps/tools.dag:91-92`:
+- `install_hint` already implements `sources |> map(s => one_hint(source: s)) |> join(separator: " | ")`
+- `one_hint` (line 79) is the single per-source rendering authority
+- No sentinel-fold / `acc == ""` / `fold(init: "")` pattern present
+
+Verification: `cargo test -p v2-compiler-tests -- --nocapture` 482 passed / 0 failed / 55 ignored.
+
+**G4 closed** — no follow-up Grounding worker dispatch pending.
 
 ### G5 — Anthropic #1702 re-dispatch (post-variant-aware projection)
 
