@@ -83,13 +83,20 @@ Per S3 brief Phase 3 + Q-MachineConstraint sub-decision 6 (UNIVERSAL substrate):
 
 This brief produces the substrate emission entries. Grounding follow-on (G2 / T-Ground-Rust) consumes them. Cross-program handoff receipt documented in PR body.
 
-### Deliverable 4 — `numeric_construction_demonstration` (§1.8 #67) Acceptance bullet
+### Deliverable 4 — Producer-side substrate-axis verification (NOT end-to-end Rust emission)
 
-Per S9 brief Acceptance: end-to-end `Int<32>` + `Real<64>` round-trip demonstration runs via E6-G0d evaluator + Grounding Rust emission. Per Substrate Mgr partition response 2026-05-06: demonstration scope folded into parent worker brief Acceptance, NOT separate dispatch.
+Per Director bundled-scope discipline (gunbc#1739 #issuecomment-4392225548): Grounding consumer wiring (per-pair lowering rules + emitted-Rust-primitive verification) is parallel infrastructure DISALLOWED same-PR with substrate emission entries. The full §1.8 #67 `numeric_construction_demonstration` end-to-end Int<32> → Rust i32 round-trip is therefore a **Grounding G2 PR receipt**, NOT this brief's Acceptance.
 
-This brief absorbs the demo bullet:
-- Int<32> emission entry round-trips through evaluator: lower → execute → emit → Rust i32 produces correct numeric value
-- Real<64> demonstration NOT in this brief (gates on S8 Float migration land — separate cascade per S9 Phase 2)
+This brief lands producer-side verification only:
+- Each Int<N>/UInt<N> instantiation type-checks under landed `Compose<Algebra, MachineConstraint>` carrier (parametric resolution succeeds; algebraic-concept-name + MachineWidth<N> arguments accepted by the carrier)
+- Bootstrap snapshot + parse corpus manifest hold post-instantiation landing (no parser/lowerer regressions)
+- Cross-program handoff receipt to Grounding G2 names which entries are now consumable for lowering-rule authoring
+
+§1.8 #67 demonstration receipts split across both PRs:
+- Producer half (this brief): substrate emission entries exist; correct algebraic-concept slot-1 spellings; carrier accepts the parametric instantiations
+- Consumer half (Grounding G2 PR): Int<32> source DSL → lower → execute → emit Rust i32 → numeric value correct (full round-trip)
+
+If same-PR cross-program co-author is preferred at dispatch (e.g., to land §1.8 #67 in one PR), surface to Substrate Mgr to coordinate with Grounding Mgr; the bundled co-author shape is a separate ratification per bundled-scope discipline.
 
 ## Slice — single PR
 
@@ -97,7 +104,7 @@ Phase ordering (PR-internal):
 1. Author Int<N> instantiations (Deliverable 1)
 2. Author UInt<N> instantiations (Deliverable 2)
 3. Cross-program handoff receipt to Grounding Mgr (#1745) for G2 consumer wiring
-4. End-to-end demonstration Int<32> round-trip (Deliverable 4 — partial; Real<64> deferred to Phase 2)
+4. Producer-side substrate-axis verification (Deliverable 4 — type-check + carrier acceptance; full end-to-end demo deferred to Grounding G2 PR per bundled-scope discipline)
 5. Bootstrap snapshot regen + parse corpus manifest refresh
 
 ## Acceptance
@@ -108,10 +115,10 @@ Phase ordering (PR-internal):
   - `UInt<N>` first slot = `UInt` (fully-applied `CommutativeSemiring<Nat>`)
 - Machine-axis spellings consistent: `MachineWidth<bits>` per S3 ratified shape
 - Cross-program handoff receipt to Grounding Mgr (#1745) in PR body for G2 consumer wiring
-- `Int<32>` round-trip demonstration runs: source DSL → lower → execute via E6-G0d evaluator → emit Rust i32 → numeric value correct
+- Producer-side verification: each instantiation type-checks under `Compose<...>` carrier; bootstrap snapshot + parse corpus manifest hold (NO end-to-end Rust emission demonstration in this PR — Grounding G2 owns lowering rules + emit verification per bundled-scope discipline)
 - `Real<64>` demonstration EXPLICITLY OUT-OF-SCOPE (gates on S8 Float migration; Phase 2 absorbs)
 - §1.8 ledger rows #17 + #18 advance from DECLARED → PRODUCER_LANDED upon merge (not CONSUMER_LANDED — Grounding G2 follow-on PR carrying per-pair lowering rules + emitted-Rust-primitive verification is what advances the rows to CONSUMER_LANDED; this brief produces substrate emission entries, the consumer is owned by Grounding Mgr #1745). If same-PR Grounding consumer wiring is preferred at dispatch (cross-program co-author), surface to Substrate Mgr to coordinate with Grounding Mgr; default is split-PR producer-then-consumer per bundled-scope discipline (Director ratification at gunbc#1739 #issuecomment-4392225548 — parallel infrastructure DISALLOWED in same PR)
-- §1.8 ledger row #67 (`numeric_construction_demonstration`) Acceptance bullet partial — Int<32> half landed; Real<64> half via S8 cascade
+- §1.8 ledger row #67 (`numeric_construction_demonstration`) Acceptance bullet partial — producer half (substrate emission entries exist) landed; consumer half (full Int<32> → Rust i32 round-trip) via Grounding G2 PR; Real<64> half via S8 cascade + Phase-2 brief
 - `cargo test --workspace --exclude v2-compiler-tests` green (3 pre-existing v2-compiler --lib failures verified unrelated)
 - `cargo test -p v2-compiler-tests` green; strict-compile diagnostic ratchet at 0
 - `cargo clippy --all-targets -- -D warnings` clean
