@@ -1,0 +1,231 @@
+---
+status: draft (worker brief; AUTHORED 2026-05-06; dispatch HOLDS pending Director ratification on Q-MachineConstraint-Grammar-Shape bikeshed)
+authority parent: R3 Substrate Manager (#1739)
+ratification: dispatchable per Q-MachineConstraint sub-decisions RATIFIED at gunbc#828 #issuecomment-4385530115 (sub-decision 2: parametric Compose<Algebra, MachineConstraint> type-level interaction); brief authored against post-#1856 substrate state
+roadmap row: T-Numeric-Construction (S3 Phase-2; S3 Phase-1 carrier slice landed at #1856) + §1.8 ledger row #60 (substrate_gap_parser_grammar_closed)
+authority docs:
+  - docs/briefs/r3-substrate-s3-machine-constraint-carrier-worker.md (parent S3 brief; Phase-2 scope)
+  - PR #1856 (S3 Phase-1 carrier slice — `dsl/std/machine_constraints.dag` MERGED)
+  - gunbc#828 #issuecomment-4385530115 (Q-MachineConstraint sub-decisions)
+  - docs/r3-program-plan.md §1.4 (substrate_gap_parser_grammar_closed)
+gates:
+  - §1.8 ledger row #60 (substrate_gap_parser_grammar_closed) — Class 1 5-criteria Pass: substrate carriers ✓ (#1856) + parser handles generic interaction syntax + ≥3 algebra×constraint pairs emit + target primitives NOT primary substrate entities ✓ + v2-oracle parity
+worker pin: valiant-ant-72 (#1765) — S3 Phase-1 precedent owner; substrate-state context absorbed; freed-pool post-#1856
+---
+
+# R3 Substrate S3 Phase-2 — `Compose<Algebra, MachineConstraint>` parser-grammar surface
+
+## Context
+
+S3 Phase-1 carrier slice landed at PR #1856 (`dsl/std/machine_constraints.dag`
+on origin/main):
+- `MachineWidth<bits>` sole machine-axis carrier
+- `Compose<Algebra, MachineConstraint> = Phantom` parametric unary phantom sum
+- DSL grammar limitation noted: `data` declarations don't allow generic
+  parameters on the declaration name; worked around via `type` declaration
+
+**Phase-2 scope**: parser-grammar surface for the **interaction syntax** —
+the user-facing way to write `Int<64>` etc. that parses to
+`Compose<AbelianGroup, MachineWidth<64>>` shape.
+
+Per Q-MachineConstraint sub-decision 3 RATIFIED (gunbc#828 #issuecomment-4385530115):
+> "Type spelling: `Int<64> = Compose<AbelianGroup, MachineWidth<64>>`
+> parametrically. Equivalent under both algebra-side options per PR #1815."
+
+The brief lands the **parser surface** that allows users to write the
+interaction syntax in `.dag` source.
+
+## Director ratification HOLD — Q-MachineConstraint-Grammar-Shape bikeshed
+
+Phase-2 dispatch HOLDS pending Director ratification on grammar shape.
+Three primary candidates surfaced in S3 parent brief Phase-2 section:
+
+### Candidate A — `@`-form: `Int @ Width<32>`
+
+```
+data sts_endpoint: Int @ Width<32> = ...
+```
+
+- Reads as "Int annotated with machine-width-32 axis"
+- Annotation-style; `@` operator novel in DSL
+- Pro: visually distinct; minimal precedent collision
+- Con: introduces `@` operator; may collide with future annotation features
+  (e.g., `@deprecated`, `@inline` etc. — though DSL has no annotation
+  precedent)
+
+### Candidate B — `with`-form: `Int with MachineWidth<32>`
+
+```
+data sts_endpoint: Int with MachineWidth<32> = ...
+```
+
+- Reads naturally as "Int with the machine-width-32 axis attached"
+- Pro: prose-like; reads cleanly
+- Con: `with` keyword may collide with future record-update / extension
+  syntax; verbose
+
+### Candidate C — operator-form: `Int<32>` (positional generic)
+
+```
+data sts_endpoint: Int<32> = ...
+```
+
+- Reads as "Int parameterized by 32" — standard generic-type syntax
+- Pro: fits existing DSL convention (e.g., `Refined<Int, predicate>`,
+  `List<T>`, `Field<Word32>`); no new keyword
+- Con: positional encoding of machine-axis — `32` is implicitly
+  `MachineWidth<32>`; loses explicit naming. Could be misread as
+  literal-int-arg (e.g., `Compose<AbelianGroup, MachineWidth<bits>>` with
+  bits = 32 might be confused with Int containing 32 of something)
+
+### Candidate D (Substrate Mgr surface) — explicit-Compose form: `Compose<AbelianGroup, MachineWidth<32>>`
+
+```
+data sts_endpoint: Compose<AbelianGroup, MachineWidth<32>> = ...
+```
+
+- No new grammar; directly uses landed `Compose<,>` carrier
+- Pro: zero parser change; substrate carriers ARE the user surface
+- Con: verbose; `Int<32>` aliases or candidates A/B may still emerge as
+  desugar shape
+
+### Director ratification ask (Q-MachineConstraint-Grammar-Shape)
+
+Pick (A / B / C / D) or surface alternative shape. Each candidate has
+parser/lowerer implications:
+- A or B: parser extension to recognize new syntax form; lowerer maps to
+  `Compose<...>` carrier
+- C: parser already handles generic-type-args (e.g., `List<T>`); lowerer
+  pattern-matches on numeric-literal-arg → MachineWidth desugar
+- D: no parser change needed; user writes `Compose<...>` literally; type
+  aliases (e.g., `type Int32 = Compose<AbelianGroup, MachineWidth<32>>`)
+  provide convenience names
+
+Phase-2 dispatch fires immediately on ratification.
+
+## Slice (post-ratification scope)
+
+### Phase 2.1 — Parser surface
+
+Author parser extension per ratified candidate (A / B / C / D):
+- For A/B: lex new operator/keyword; parse position; AST node; lower to `Compose<...>`
+- For C: extend generic-type-arg parser to recognize numeric literal positions and desugar to `MachineWidth<N>` (e.g., `Int<32>` → `Compose<AbelianGroup, MachineWidth<32>>`)
+- For D: no parser change; minor; likely combined with type-alias convention sweep
+
+### Phase 2.2 — Bootstrap demonstrator + ≥3 emission pairs
+
+Per S3 brief Phase 4 + Q-MachineConstraint sub-decision 5 ("≥3 algebra × constraint pairs is minimum, not target"):
+- Author bootstrap demonstrator using ratified syntax: ≥3 algebra×machine-axis pairs visible in std seed
+- Cross-reference S9 Phase-1 Step 3 emission entries brief at
+  `docs/briefs/r3-substrate-s9-phase-1-step-3-emission-entries-worker.md`
+  (worker pin proud-lynx-311) for Int<32> / Int<64> / UInt<64> demonstrator
+
+### Phase 2.3 — Class 1 5-criteria Pass receipt
+
+Per `docs/r3-program-plan.md` §1.4: `substrate_gap_parser_grammar_closed`
+Pass requires:
+1. Substrate carriers exist ✓ (#1856)
+2. Parser handles generic interaction syntax (this Phase 2.1)
+3. ≥3 algebra×constraint pairs emit to target primitives (this Phase 2.2 + S9 Phase-1 step 3)
+4. Target primitives NOT primary substrate entities ✓ (#1856 framing)
+5. v2-oracle parity (cementing test)
+
+PR body documents Phase 2 closure of criteria 2 + 3 (via cross-reference to S9 Phase-1 Step 3).
+
+### Phase 2.4 — `numeric_construction_demonstration` (§1.8 #67) co-receipt
+
+Coordinated with S9 Phase-1 Step 3 brief: Int<32> round-trip demonstration
+runs through ratified syntax; emit Rust i32 produces correct numeric
+value. Substrate Mgr partition ratified that `numeric_construction_demonstration`
+folds into parent worker brief Acceptance bullets, NOT separate dispatch
+— per S9 Phase-1 Step 3 brief Deliverable 4.
+
+## Acceptance
+
+- Parser handles ratified interaction syntax (A / B / C / D) — surface
+  documented per Director ratification choice
+- ≥3 algebra×machine-axis pairs visible in std seed bootstrap
+  demonstrator (per Q-MachineConstraint sub-decision 5)
+- Cross-reference to S9 Phase-1 Step 3 emission entries brief
+  (`r3-substrate-s9-phase-1-step-3-emission-entries-worker.md`) for
+  per-pair emission lowering
+- §1.8 ledger row #60 (`substrate_gap_parser_grammar_closed`) advances
+  via Class 1 5-criteria receipt: criteria 1, 2, 3, 4 ✓; criterion 5
+  v2-oracle parity may queue separately
+- Bootstrap snapshot regen + parse corpus manifest refresh per ratified
+  parser change
+- `cargo test --workspace --exclude v2-compiler-tests` green
+- `cargo test -p v2-compiler-tests` green; strict-compile diagnostic
+  ratchet at 0
+- `cargo clippy --all-targets -- -D warnings` clean
+- `cargo fmt --all --check` clean
+- Citation discipline per `docs/briefs/brief-authoring-checklist.md`:
+  section anchors / rule-text quotes only; no bare `:NNN`
+- 5-question authority audit in PR body
+
+## STOP-AND-ESCALATE
+
+- **Ratified syntax conflicts with existing parser surface** (e.g.,
+  candidate A's `@` operator collides with annotation precedent that
+  surfaces during implementation): STOP — surface to Substrate Mgr;
+  Director re-ratification needed
+- **Lowerer desugar produces semantically wrong `Compose<...>` shape**
+  (e.g., candidate C's positional `Int<32>` → `Compose<AbelianGroup,
+  MachineWidth<32>>` ambiguous if position is "first generic arg" vs
+  "numeric literal arg"): STOP — surface as substrate-extension
+  question; positional encoding rules need explicit specification
+- **Bootstrap demonstrator landing breaks downstream consumers** (e.g.,
+  some `.dag` file expects `Int` to be the bare algebra-side carrier
+  not the desugar-target): STOP — surface; consumer migration may need
+  to land alongside parser change
+- **Class 1 v2-oracle parity (criterion 5) cannot land in same slice**
+  (e.g., v2 doesn't have the `Compose<...>` desugar; cementing test
+  shape needs separate substrate work): acceptable carve-out per S3
+  brief STOP-AND-ESCALATE bullet 1; Phase 2 closes 4-of-5 criteria;
+  criterion 5 surfaces as separate slice. Document in PR body.
+
+## Authority audit receipt
+
+1. **Substrate exists?** Phase-1 carriers landed at #1856 — verified by
+   Substrate Mgr independent grep:
+   - `MachineWidth<bits>` at `dsl/std/machine_constraints.dag` ✓
+   - `Compose<Algebra, MachineConstraint> = Phantom` at same file ✓
+   - Algebra-side carriers (`AbelianGroup`, `CommutativeSemiring`)
+     in `dsl/std/algebra.dag` (worker re-greps at dispatch)
+   - Parser does NOT yet recognize the interaction syntax; that's
+     this Phase 2 scope
+2. **Existing brief?** S3 parent brief
+   (`r3-substrate-s3-machine-constraint-carrier-worker.md`) names
+   Phase-2 in slice section. This brief is the dispatch packet for
+   that phase
+3. **Design-doc match?** Q-MachineConstraint sub-decision 3 RATIFIED
+   (gunbc#828 #issuecomment-4385530115) names the parametric
+   `Compose<...>` shape; this brief lands the user-facing parser
+   surface for that shape. Grammar bikeshed (A/B/C/D) is open at
+   Director ratification
+4. **Citations live?** Verified at HEAD post-#1856. Worker re-verifies
+   at dispatch
+5. **Carrier dissolves the bridge?** Yes — Phase-1 substrate carriers
+   landed but the parser-grammar surface that allows users to consume
+   them is the remaining gap. Phase-2 closes criteria 2 + 3 of Class
+   1 5-criteria Pass for `substrate_gap_parser_grammar_closed`. The
+   "bridge" is the parser-surface gap; this brief lands the parser
+   side. Cross-reference S9 Phase-1 Step 3 closes the emission side
+   (already authored in same Tier-1 batch)
+
+## Provenance
+
+Drafted 2026-05-06 post-#1856 merge per Director freed-pool pressure
+at gunbc#828 #issuecomment-4392095857 + Tier-1 brief-queue
+commitment at gunbc#846 #issuecomment-4390098574 (2/5 in queue).
+
+Dispatch HOLDS pending Director ratification on
+Q-MachineConstraint-Grammar-Shape (A / B / C / D / alternative).
+Worker pin valiant-ant-72 holds; freed-pool until ratification +
+brief landing.
+
+Cross-references S9 Phase-1 Step 3 brief at
+`docs/briefs/r3-substrate-s9-phase-1-step-3-emission-entries-worker.md`
+(worker pin proud-lynx-311). Both briefs together close
+`substrate_gap_parser_grammar_closed` Class 1 5-criteria Pass via
+parser-side (this brief) + emission-side (S9 Phase-1 Step 3).
