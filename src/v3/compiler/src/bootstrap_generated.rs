@@ -23727,287 +23727,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(225)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(238)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(262)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(240)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(231)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(229)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(219)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24026,14 +23746,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24047,7 +23767,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24055,7 +23775,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(216)),
+                                    FieldValue::Reference(DeclarationId(243)),
                                 )]),
                             ),
                         ]),
@@ -24066,14 +23786,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24087,7 +23807,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24095,7 +23815,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(215)),
+                                    FieldValue::Reference(DeclarationId(267)),
                                 )]),
                             ),
                         ]),
@@ -24106,14 +23826,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24127,7 +23847,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24135,7 +23855,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(232)),
+                                    FieldValue::Reference(DeclarationId(245)),
                                 )]),
                             ),
                         ]),
@@ -24146,14 +23866,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24167,7 +23887,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24175,7 +23895,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(260)),
+                                    FieldValue::Reference(DeclarationId(236)),
                                 )]),
                             ),
                         ]),
@@ -24186,14 +23906,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24207,7 +23927,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1961),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24215,7 +23935,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(266)),
+                                    FieldValue::Reference(DeclarationId(234)),
                                 )]),
                             ),
                         ]),
@@ -24226,14 +23946,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24247,7 +23967,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24255,7 +23975,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(225)),
+                                    FieldValue::Reference(DeclarationId(224)),
                                 )]),
                             ),
                         ]),
@@ -24266,14 +23986,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24287,7 +24007,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24295,7 +24015,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(238)),
+                                    FieldValue::Reference(DeclarationId(235)),
                                 )]),
                             ),
                         ]),
@@ -24306,14 +24026,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24327,7 +24047,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24335,7 +24055,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(262)),
+                                    FieldValue::Reference(DeclarationId(221)),
                                 )]),
                             ),
                         ]),
@@ -24346,14 +24066,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24367,7 +24087,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24375,7 +24095,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(240)),
+                                    FieldValue::Reference(DeclarationId(220)),
                                 )]),
                             ),
                         ]),
@@ -24386,14 +24106,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24407,7 +24127,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24415,7 +24135,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(231)),
+                                    FieldValue::Reference(DeclarationId(237)),
                                 )]),
                             ),
                         ]),
@@ -24426,14 +24146,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24447,7 +24167,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24455,7 +24175,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(229)),
+                                    FieldValue::Reference(DeclarationId(265)),
                                 )]),
                             ),
                         ]),
@@ -24466,14 +24186,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24487,7 +24207,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
+                                    constructor: DeclarationId(1967),
                                     payload: vec![],
                                 },
                             ),
@@ -24495,7 +24215,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(219)),
+                                    FieldValue::Reference(DeclarationId(271)),
                                 )]),
                             ),
                         ]),
@@ -24506,14 +24226,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -24527,487 +24247,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(230)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
                                     constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(216)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(215)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(232)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(260)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(266)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(261)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(217)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1962),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(264)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(225)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(238)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "dag_method".to_string(),
-                                FieldValue::Record(vec![(
-                                    "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(262)),
-                                )]),
-                            ),
-                        ]),
-                    ),
-                    (
-                        "cells".to_string(),
-                        FieldValue::List(vec![FieldValue::Record(vec![
-                            (
-                                "connective".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
-                                    payload: vec![],
-                                },
-                            ),
-                            (
-                                "behavior".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
-                                    payload: vec![],
-                                },
-                            ),
-                        ])]),
-                    ),
-                ]),
-                FieldValue::Record(vec![
-                    (
-                        "row_identity".to_string(),
-                        FieldValue::Record(vec![
-                            (
-                                "target".to_string(),
-                                FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
                                     payload: vec![],
                                 },
                             ),
@@ -25026,14 +24266,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25047,7 +24287,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1968),
                                     payload: vec![],
                                 },
                             ),
@@ -25055,7 +24295,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(216)),
+                                    FieldValue::Reference(DeclarationId(243)),
                                 )]),
                             ),
                         ]),
@@ -25066,14 +24306,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25087,7 +24327,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1968),
                                     payload: vec![],
                                 },
                             ),
@@ -25095,7 +24335,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(215)),
+                                    FieldValue::Reference(DeclarationId(267)),
                                 )]),
                             ),
                         ]),
@@ -25106,14 +24346,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25127,7 +24367,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1968),
                                     payload: vec![],
                                 },
                             ),
@@ -25135,7 +24375,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(232)),
+                                    FieldValue::Reference(DeclarationId(245)),
                                 )]),
                             ),
                         ]),
@@ -25146,14 +24386,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25167,7 +24407,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1968),
                                     payload: vec![],
                                 },
                             ),
@@ -25175,7 +24415,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(260)),
+                                    FieldValue::Reference(DeclarationId(236)),
                                 )]),
                             ),
                         ]),
@@ -25186,14 +24426,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25207,7 +24447,327 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(234)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(224)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(235)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(221)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(220)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(237)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(265)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(271)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1968),
                                     payload: vec![],
                                 },
                             ),
@@ -25226,14 +24786,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25247,7 +24807,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1968),
                                     payload: vec![],
                                 },
                             ),
@@ -25255,7 +24815,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(261)),
+                                    FieldValue::Reference(DeclarationId(222)),
                                 )]),
                             ),
                         ]),
@@ -25266,14 +24826,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25287,7 +24847,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1968),
                                     payload: vec![],
                                 },
                             ),
@@ -25295,7 +24855,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(217)),
+                                    FieldValue::Reference(DeclarationId(269)),
                                 )]),
                             ),
                         ]),
@@ -25306,14 +24866,14 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
@@ -25327,7 +24887,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "target".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1963),
+                                    constructor: DeclarationId(1969),
                                     payload: vec![],
                                 },
                             ),
@@ -25335,7 +24895,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                                 "dag_method".to_string(),
                                 FieldValue::Record(vec![(
                                     "decl".to_string(),
-                                    FieldValue::Reference(DeclarationId(264)),
+                                    FieldValue::Reference(DeclarationId(230)),
                                 )]),
                             ),
                         ]),
@@ -25346,14 +24906,454 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                             (
                                 "connective".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1968),
+                                    constructor: DeclarationId(1974),
                                     payload: vec![],
                                 },
                             ),
                             (
                                 "behavior".to_string(),
                                 FieldValue::Variant {
-                                    constructor: DeclarationId(1971),
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(243)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(267)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(235)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(221)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(220)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(237)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(265)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(271)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(266)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(222)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
+                                    payload: vec![],
+                                },
+                            ),
+                        ])]),
+                    ),
+                ]),
+                FieldValue::Record(vec![
+                    (
+                        "row_identity".to_string(),
+                        FieldValue::Record(vec![
+                            (
+                                "target".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1969),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "dag_method".to_string(),
+                                FieldValue::Record(vec![(
+                                    "decl".to_string(),
+                                    FieldValue::Reference(DeclarationId(269)),
+                                )]),
+                            ),
+                        ]),
+                    ),
+                    (
+                        "cells".to_string(),
+                        FieldValue::List(vec![FieldValue::Record(vec![
+                            (
+                                "connective".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1974),
+                                    payload: vec![],
+                                },
+                            ),
+                            (
+                                "behavior".to_string(),
+                                FieldValue::Variant {
+                                    constructor: DeclarationId(1977),
                                     payload: vec![],
                                 },
                             ),
