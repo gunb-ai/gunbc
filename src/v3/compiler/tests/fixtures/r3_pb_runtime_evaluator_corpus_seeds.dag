@@ -1,5 +1,6 @@
 // std.r3_pb_runtime_evaluator_corpus_seeds — PB-Runtime ↔ R2-Evaluator
 // Row-4 corpus seeds (1)–(2), author-now/fire-later.
+// See docs/briefs/r3-pb-runtime-equivalence-corpus-seed-audit.md.
 //
 // The producer declarations below are fixture-local DeclarationRef targets only.
 // `TestRunner::eval_differential_equals` intentionally returns NotYetImplemented

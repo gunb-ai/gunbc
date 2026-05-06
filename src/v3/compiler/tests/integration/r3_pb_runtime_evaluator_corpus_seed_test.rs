@@ -17,6 +17,7 @@ const FIXTURE_PATH: &str =
 const SUITE_NAME: &str = "r3_pb_runtime_evaluator_corpus_seed_suite";
 const INT_CLAIM: &str = "pb_eval_corpus_seed_int_arithmetic_deferred";
 const LIST_CLAIM: &str = "pb_eval_corpus_seed_list_fold_deferred";
+const EXPECTED_CLAIMS: [&str; 2] = [INT_CLAIM, LIST_CLAIM];
 const INT_SOURCE: &str = include_str!("../fixtures/r3_pb_eval_corpus/seed_int_arithmetic.v3");
 const LIST_SOURCE: &str = include_str!("../fixtures/r3_pb_eval_corpus/seed_list_fold.v3");
 
@@ -76,11 +77,18 @@ fn r3_pb_runtime_evaluator_corpus_seed_sources_compile_and_match_authority_files
 fn r3_pb_runtime_evaluator_corpus_seed_suite_stays_deferred_until_row4_producers_land() {
     let fixture = lower(FIXTURE_SOURCE, FIXTURE_PATH);
     let results = TestRunner::new(&fixture).run_suite(SUITE_NAME);
-    assert_eq!(results.len(), 2);
-    assert_eq!(results[0].claim_name, INT_CLAIM);
-    assert_eq!(results[1].claim_name, LIST_CLAIM);
+    assert_eq!(results.len(), EXPECTED_CLAIMS.len());
 
-    for result in results {
+    for expected_claim in EXPECTED_CLAIMS {
+        let result = results
+            .iter()
+            .find(|result| result.claim_name == expected_claim)
+            .unwrap_or_else(|| {
+                panic!("missing `{expected_claim}` in `{SUITE_NAME}` results: {results:?}")
+            });
+        // Load-bearing Row-4 ratchet: today `test_runner.rs::eval_differential_equals`
+        // must compile the claim source, then return this unsupported-producer
+        // receipt until the real PB-Runtime and R2-Evaluator producers land.
         assert!(
             matches!(
                 &result.result,
