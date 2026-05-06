@@ -109,8 +109,9 @@ fn code_opens_raw_or_byte_string_literal(bytes: &[u8], i: usize) -> bool {
 }
 
 /// Byte index after the last byte of a Rust escape sequence starting at `backslash`
-/// (`bytes[backslash] == b'\\'`). Matches the suffix forms used in character and byte
-/// literals (`\n`, `\xNN`, `\u{…}`, `\uXXXX`, …).
+/// (`bytes[backslash] == b'\\'`). Matches suffix forms used in character and byte
+/// literals (`\n`, `\t`, `\xNN`, `\u{…}`, …). Unicode escapes use **only** the braced
+/// `\u{…}` form in modern Rust; there is no separate `\uXXXX` tail to scan.
 fn integration_rs_escape_sequence_end(bytes: &[u8], backslash: usize) -> usize {
     debug_assert_eq!(bytes.get(backslash), Some(&b'\\'));
     let i = backslash + 1;
@@ -126,7 +127,6 @@ fn integration_rs_escape_sequence_end(bytes: &[u8], backslash: usize) -> usize {
             }
             (j + 1).min(bytes.len())
         }
-        b'u' => (backslash + 6).min(bytes.len()),
         _ => (backslash + 2).min(bytes.len()),
     }
 }
