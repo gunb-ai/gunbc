@@ -51,27 +51,29 @@ phases below; Substrate Mgr ratifies phase-by-phase.
 
 ### Phase 1 — Int / UInt direct construction (gates #17 / #18)
 
-1. **`Int` algebra carrier — group-completion of `Nat`-monoid**.
-   Author or verify `Int` declaration as projection of algebraic
-   structure + machine axis (`MachineConstraint<C>`). Per
-   substrate-modeling discipline: `Nat` is a commutative monoid
-   under addition (closure / associativity / identity / commutativity;
-   no inverses). `Int` is the additive Abelian group on integers
-   (carrier `Z`); the algebraic relationship to `Nat` is **explicit
-   group-completion** (Grothendieck construction —
-   `Int ≡ GroupCompletion<CommutativeMonoid<Nat>>`), NOT a
-   parameterization `AbelianGroup<Nat>` (which is unfaithful — Nat
-   does not satisfy group axioms; additive inverses are not
-   representable in Nat). Worker EITHER models `Int` directly as
-   `AbelianGroup` (terminal Abelian-group instance over `Z`,
-   `Nat` not a parameter) OR introduces explicit
-   `GroupCompletion<M>` substrate carrier consuming
-   commutative-monoid `M`. Decision lands in Phase-1 PR body
-   per P1 substrate-fact-introduction procedure.
-   Practice 4 classification: 🟢 PRIMITIVE if algebra-only;
-   🟡 SCAFFOLD if machine-axis composition is hand-modeled.
-2. **`UInt = Monoid<Nat>` algebra carrier**. Companion to `Int`;
-   non-negative monoid structure.
+1. **`Int` algebra carrier — ALREADY LANDED on main** at
+   `dsl/std/integer.dag:55` per Slice 3 PR #1466 (commit
+   `4ba0a6d04`). Form: `type Int = AbelianGroup<GroupCompletion<Nat>>`
+   per single-authority Q6 audit at
+   `docs/audit/t-numeric-construction-group-completion-6q.md`.
+   Compact `type Int = GroupCompletion<Nat>` was explicitly rejected.
+   Worker confirms HEAD state matches; no Int-side authoring
+   required for Phase-1.
+   (Historical note: this brief's earlier framing offered worker
+   choice between `AbelianGroup` terminal-primitive and
+   `GroupCompletion<CommutativeMonoid<Nat>>`; that framing was
+   superseded — the decision was already ratified via Q6 audit.
+   Do NOT model `Int` as `AbelianGroup<Nat>` — Nat lacks additive
+   inverses; this shape is unfaithful.)
+2. **`UInt` algebra carrier — MIGRATION required**. Current state:
+   `dsl/std/integer.dag:56` — `type UInt = UInt64` (legacy alias).
+   Brief target: `type UInt = CommutativeMonoid<Nat>` (consistent
+   with landed Option-B Int shape; Nat carrier under addition,
+   no inverses). Fixed-width rows `UInt8..UInt128` stay on legacy
+   `Semiring<Word*>` per existing rows policy in `integer.dag:39-44`
+   (worker re-greps at dispatch).
+   Practice 4 classification: 🟢 PRIMITIVE (algebra-only, no
+   machine-axis composition).
 3. **Concrete emission entries** in `AlgebraMachineProduct`
    (cross-program with Grounding Mgr):
    - `Int × MachineWidth<32> → Rust i32`
