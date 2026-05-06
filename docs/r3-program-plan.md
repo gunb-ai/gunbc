@@ -52,13 +52,17 @@ Owner: PB Mgr (T-V2-Retirement lane). No new predicates needed.
 Existing gate (`r3-structure.md` §"Acceptance" → T-Bridge-Retirement gates):
 - `bridge_retirement_ledger_zero` — unified ledger reports 0 named identity bridges remaining.
 
+**Bridge-class inclusion** (per Director poke-hole 2026-05-06 finding 1.2; closes count-criteria gap):
+- **Counts toward zero**: Class A (substrate-gap-blocked) + Class B (Pattern-A NYI predicates) + Class C (typed-carrier + Rust-mirror) + Class F (operator-ontology-duplication) + Class G (local-small).
+- **Excluded by-construction**: Class D (generated bridges with freshness gates — bounded scaffolds, not debt by intent per `r3-debt-sweep-2026-05-06.md` §Class D) + Class E (v2/v3 transition — retires at v2 retirement which has its own gate `v2_directory_deleted`).
+
 Owner: Verification Mgr (ledger gate); retirement work distributed per `r3-structure.md` §"Lane structure" → T-Bridge-Retirement row (2 Substrate-owned + 3 PB-owned).
 
 ### §1.4 5 substrate-gap classes closed (5 predicates — NEW; Brian-ratified scope)
 
 Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface, function-valued data, file-ingestion, workflow/scheduling, reflection-closure."* 
 
-**PM-recommended framing (Q2, §10): these are CLOSURE CRITERIA over existing lane work, NOT new separate lanes.** Each class closes when at least one representative gap-test executes through v3 cleanly — exercising the substrate carrier whose absence currently bridges to v2 / hand-Rust. Adds 5 TestClaims to the ledger; lane work distributes across existing 18 lanes.
+**PM-recommended framing (Q2, §10): these are CLOSURE CRITERIA over existing lane work, NOT new separate lanes.** Each class closes when **both**: (a) representative gap-test executes through v3 cleanly per Pass condition; AND (b) systematic enumeration of class-bridges shows count = 0 (or any survivors carry explicit Director allocation per §7.2 STRUCTURAL exception). Per Director poke-hole 2026-05-06 finding 1.3 — single-test-pass alone is sample-of-class, not closure-of-class; conjunctive predicate prevents class reading "GREEN" while real bridges in that class persist unexercised by the chosen representative.
 
 | Class | TestClaim gate | Representative gap-test | Lane(s) producing closure |
 |---|---|---|---|
@@ -72,9 +76,16 @@ Per `r3-debt-sweep-2026-05-06.md` §Class A (line 39): *"parser/grammar surface,
 
 ### §1.5 Closure-ledger total
 
-**Total R3 closure gates** (post-Q1 + Q2 ratification): existing 60+ gates from `r3-structure.md` §"Acceptance" + 5 new substrate-gap-class gates + per-lane demonstration gates (§1.6) = **~70 gates** across 18 lanes + 1 standing program.
+**Total R3 closure gates** (post-Q1 + Q2 ratification): existing 60+ gates from `r3-structure.md` §"Acceptance" + 5 new substrate-gap-class gates + per-lane demonstration gates (§1.6) + 1 PR-anticipation-discipline gate (§7) = **~71 gates** across 18 lanes + 1 standing program.
 
 R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown_zero_remaining`).
+
+**Tracked-debt inclusion list for `r3_debt_paydown_zero_remaining`** (per Director poke-hole 2026-05-06 finding 3.1; closes definition gap):
+
+- **Counts toward zero**: ROADMAP open `- **` rows under "Post-merge debt" sections; sweep-doc §1 Class A/B/C/F/G entries (per §1.3 inclusion criteria); §10 RED-flagged escalation items.
+- **Excluded by-construction**: PM-coordination items (Brian-Q queue, dispatch routing); scheduled-deletions-with-named-trigger (the trigger IS the resolution); retirement-receipts (post-resolution accounting); Class D bridges (bounded-scaffold freshness gates) and Class E bridges (v2/v3 transition — retires at v2 retirement which has its own gate).
+
+Predicate cannot be satisfied by deletion-of-rows-without-actual-resolution; each retiring row requires named PR receipt OR closure-ledger entry citing the structural event that ends the row's existence.
 
 ### §1.6 Demonstration principle (Brian-ratified 2026-05-06)
 
@@ -85,6 +96,15 @@ R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown
 - Demonstration gate runs the feature on a representative input and produces an observable result.
 - "Look, it runs" minimal artifact per `r3-structure.md` §"R3 demo discipline + omni-emission TDD".
 - Closure ledger reports demonstration-gate status separately from substrate-shape gates.
+
+**Demonstration-gate minimum bar** (per Director poke-hole 2026-05-06 finding 1.1; prevents Mgrs declaring static-fact gates as demonstrations):
+
+A runtime-executable demonstration gate satisfies §1.6 only if **all three**:
+- **(a) End-to-end execution**: runs through v3 evaluator end-to-end (NOT a static-fact assertion about declared types or compiler internals).
+- **(b) Observable output**: produces observable result — `DimensionReport<C>`, executable artifact (compiles + runs), runtime check result, or witness-construction output. The demonstration must produce something a reader can inspect.
+- **(c) Non-trivial input**: representative program with at least 2 distinct algebraic constructs (e.g., for a function lens demo: a function with ≥1 branch + ≥1 bind, not a one-line `id` function). Single-line fixtures do not satisfy.
+
+Mgrs author per-gate spec citing the (a)/(b)/(c) satisfaction; closure-ledger entries record observed output.
 
 **Per-lane demonstration audit** (RATIFIED 2026-05-06 per Brian directive at gunbc#846; Q5 generalized to demonstration principle in §10.1):
 
@@ -97,10 +117,10 @@ R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown
 | T-FixedPoint | `pb_self_compile_fixed_point` ✓ | (existing) |
 | T-Numeric-Construction | substrate-shape gates only | + `numeric_construction_demonstration` — end-to-end program using `Int<32>` + `Real<64>` round-trip executes |
 | T-Omni-Shape-B | `omni_openapi_backend_emission_demo` ✓ | (existing — multiple demos) |
-| T-Anthropic-Wire | wire alignment gates | + `anthropic_wire_demonstration` — full request/response cycle executes against Anthropic API or mock |
+| T-Anthropic-Wire | wire alignment gates | + `anthropic_wire_demonstration` — full request/response cycle executes against deterministic mock (live-API testing tracked separately as CI cadence concern, NOT closure gate per Director poke-hole 2026-05-06 finding 4.3 — avoids CI flakiness) |
 | T-Bridge-Retirement | `bridge_retirement_ledger_zero` (count-check) | + `bridge_retirement_demonstration` — at least one retired-bridge replacement path executes (e.g., typed-identity-surface used in production code) |
-| T-CostLens-Composition | structural-fold gates | + `cost_lens_demonstration` — cost lens reads representative target program and composes algebra+realization cost end-to-end |
-| T-V2-Retirement | deletion gates (state-check) | + `v2_retirement_demonstration` — bootstrap path through PB-Runtime trampoline executes (deletion's inverse: the v3-only path runs) |
+| T-CostLens-Composition | structural-fold gates | + `cost_lens_demonstration` — cost lens reads representative target program (≥2 algebra-instances composed, ≥1 recursive call, observable cost-bound output per (c)) and composes algebra+realization cost end-to-end |
+| T-V2-Retirement | deletion gates (state-check) | + `v3_self_host_demonstration` — bootstrap path through PB-Runtime trampoline executes end-to-end; v3-only self-host pipeline runs without v2 fallback (Director poke-hole 2026-05-06 finding 4.1: reframed from `v2_retirement_demonstration` "deletion's inverse" to direct positive-statement form) |
 | T-Free-Consequences-Demonstration | 10 demo gates ✓ | (existing — full demo suite) |
 | T-E-P-Producer-Broadening | substrate-shape gates | + `e_p_producer_demonstration` — representative call site produces full descent evidence at runtime |
 | T-Lens-Behavioral-Parity | parity-complete gates | + `lens_behavioral_parity_demonstration` — each lens (complexity/cost/parallelism/effect_enumeration) demonstrates on representative input + matches v2 oracle |
@@ -273,6 +293,8 @@ One row per lane: current state + blocker + ETA-to-close. Updated weekly by lane
 
 **Source-of-truth**: [`docs/audit/r3-debt-sweep-2026-05-06.md`](audit/r3-debt-sweep-2026-05-06.md) (PR #1804 lane). Phase 2 sweep deliverables landed §1.1–§2.2.
 
+**Status (2026-05-06)**: per-class counts below are PRE-Phase-3-compile expected ranges from Director's bridge-class framework. Phase 2 sweep deliverables (PR #1804 §1.1–§2.2) have landed substantive partial data; **Phase 3 compile** populates verified-at-HEAD counts replacing these expected ranges before plan PR opens (per Director poke-hole 2026-05-06 finding 6.3).
+
 **Apples-to-apples count discipline** (per `feedback_corrections_must_grep_verify_source` + INVARIANTS P1 single-authority):
 
 - **66 `.rs` files** in `src/v3/compiler/src/` (excluding `emit/`) — file-level scope of quiet-boar-160's per-file audit work (Class A-G assignment per audited file). Filesystem count.
@@ -319,35 +341,42 @@ T-E-P-Producer-Broadening  ────────────┐
    │ (Substrate, in flight)             │
    ▼                                    │
 T-Lens-Behavioral-Parity                │  Parallel:
-   │ (Substrate + Verification)          │  - T-FixedPoint (PB)
-   ▼                                    │  - T-LensProducer-Retirement (PB)
-T-Lens-Application-Surface              │  - T-CostLens-Composition (Substrate)
-   │ (Substrate + Verification)          │  - T-Tests-As-Data-Completeness (Verification)
-   ▼                                    │  - T-Numeric-Construction (Substrate)
-T-Workflow-As-Data ─────────┐           │  - T-Anthropic-Wire (Substrate)
-   │ (Substrate)             │           │
-   ▼                          │           ▼
-T-Lens-Self-Application       │   T-V2-Retirement (PB; longest-path)
-   │ (Verification)            │           │
-   ▼                          │           ▼
-substrate-gap-class 4 closed  │   v2_directory_deleted gate
-                              ▼
-                    substrate-gap-class 3 closed
-                              │
-                    Class 1 (parser) closes via T-V2-Retirement parser path
-                    Class 2 (function-valued) closes via T-Lens-Application-Surface
-                    Class 5 (reflection) closes via T-LensProducer-Retirement
+   │ (Substrate + Verification)          │  - T-FixedPoint (PB) ─────────────┐
+   ├──┐                                  │  - T-LensProducer-Retirement (PB) │
+   │  │                                  │  - T-CostLens-Composition         │
+   │  │ (parallel post-LBP COMPLETE)     │  - T-Tests-As-Data-Completeness   │
+   ▼  ▼                                  │  - T-Numeric-Construction ────────┼──┐ (parser-syntax
+T-Lens-Application-Surface               │  - T-Anthropic-Wire               │  │  blocker for v2)
+T-Workflow-As-Data                       │                                   │  │
+   │  │                                  │                                   │  │
+   ▼  ▼                                  │                                   ▼  ▼
+T-Lens-Self-Application                  │                              T-V2-Retirement (PB)
+   │ (Verification)                      │                                   │
+   ▼                                     │                                   ▼
+substrate-gap-class 3 + 4 closed         │                          v2_directory_deleted gate
+                                         │                                   │
+                                         ▼                                   ▼
+                              Class 1 (parser) closes via T-V2-Retirement parser path
+                              Class 2 (function-valued) closes via T-Lens-Application-Surface
+                              Class 5 (reflection) closes via T-LensProducer-Retirement
 
 Bridge-Retirement Ledger (Verification gate):
    - 2 Substrate-owned + 3 PB-owned bridges retire as natural-owner programs close
+   - T-FixedPoint completion is upstream prerequisite (PB-owned bridges retire alongside)
    - bridge_retirement_ledger_zero gate fires when count = 0
 
-Pattern A executable (7 predicates):
-   - First slice (TBD via Q-PAFS, §10) ratchets to executable
-   - Remaining 6 cascade post-first-slice; gated on R3-Evaluator runtime prerequisites
+Pattern A executable (4-family cluster — see §1.1):
+   - DimensionReport-typed family (TC1/TC2/TC3): first slice via Q-PAFS (Director countersignature pending)
+   - Remaining families (RustDagIsomorphism / SymbolicCostExprEquals / BridgeLedgerZero / Free-Consequences)
+     have separate unblock paths per §2.1
 
-R3 close = all ~65 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive sweep zero-debt-rows-remaining
+R3 close = all ~71 gates GREEN + r3_debt_paydown_zero_remaining + comprehensive sweep zero-debt-rows-remaining
 ```
+
+**Edges added in §6 graph per Director poke-hole 2026-05-06**:
+- T-Numeric-Construction → T-V2-Retirement (parser/grammar substrate path; finding 2.1)
+- T-FixedPoint → Bridge-Retirement Ledger (PB-owned bridge retirement cascades; finding 2.2)
+- T-Lens-Application-Surface and T-Workflow-As-Data parallel post-LBP COMPLETE (NOT sequential; finding 2.3 — both gated by T-Lens-Behavioral-Parity, neither depends on the other)
 
 **Two longest-dependency paths** (per `r3-structure.md` §"Dependency DAG" — Verification Mgr poke-hole 2026-05-06 surfaced this dual structure was missing from earlier framing):
 
@@ -451,9 +480,9 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 **Week of 2026-06-10–2026-06-17**: T-V2-Retirement parser path begins; substrate-gap-class 1 close target.
 **Week of 2026-06-24–2026-07-01**: T-Workflow-As-Data executes; substrate-gap-classes 3+4 close.
 **Week of 2026-07-08–2026-07-15**: T-Lens-Self-Application demo; recursive-flex demonstration cashes.
-**Target R3 close**: 2026-08-01 ± 2 weeks.
+**Target R3 close**: 2026-08-01 ± 2 weeks. **PROVISIONAL** (per Director poke-hole 2026-05-06 finding 6.4) — estimate based on Mgr-canvas inputs landing per §3, which is incomplete pending 4 canvas responses (Substrate / Evaluator / PB / Debt-Paydown). Re-estimate after canvas compile completes; confidence interval may widen.
 
-(Estimates based on Mgr-canvas inputs landing; refinement after Q1–Q7 ratification.)
+(Refinement after Q1–Q7 ratification + canvas compile.)
 
 ---
 
@@ -546,13 +575,15 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 - **R3 zero-debt impact**: main RED risk — if upstream carrier decisions are not scheduled as prerequisite plan nodes, Grounding cannot honestly close by R3.
 - **Plan integration**: this plan §6 Dependency DAG + §3 lane status (cross-Mgr dependency edges) directly addresses this; G10 closes when §6 graph is Mgr-validated.
 
-#### §10.2.3 R3 Substrate Mgr — pending canvas response
+#### §10.2.3 R3 Substrate Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
 
-#### §10.2.4 R3 Evaluator Mgr — pending canvas response
+#### §10.2.4 R3 Evaluator Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
 
-#### §10.2.5 R3 PB Mgr — pending canvas response
+#### §10.2.5 R3 PB Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
 
-#### §10.2.6 R3 Debt-Paydown Mgr — pending canvas response
+#### §10.2.6 R3 Debt-Paydown Mgr — pending canvas response (as-of 2026-05-06T00:30Z)
+
+(Per Director poke-hole 2026-05-06 finding 6.1: timestamp added to clarify these are point-in-time placeholders. Plan PR opens after canvas compile completes.)
 
 ### §10.3 Net escalations awaiting decision
 
@@ -564,7 +595,10 @@ Per `feedback_director_30min_cadence`: every 30 min — merge mergeable + accoun
 | Q-NYI-Accounting | NYI claim coverage/completeness accounting | Mark NYI incomplete in aggregation reporting; ratchet to executable per evaluator-slice landing | RATIFIED-by-default |
 | Q-Std-Carrier-Phasing | Rust std-carrier phasing (Option/Cardinal/HigherOrderMethodSpec/allocator-hasher) | Phase 1 = default-only/default-instance; later phases as separate Substrate slices post-Phase-1 | RATIFIED-by-default |
 | Q-Drift-Reconcile | Drift items routing (#1638, #1499, declaration_by_name) | Single Debt-Paydown worker reconciles all three → one PR closing rows in ledger + ROADMAP | RATIFIED-by-default |
-| Q-Pattern-Class-Naming | Substrate-gap-class TestClaim names | Names per §1.4 table | RATIFIED-by-default |
+| Q-Pattern-Class-Naming | Substrate-gap-class TestClaim names | **Q-Pattern-Class-Naming ratifies §1.4 table names verbatim as TestClaim identifiers** (per Director poke-hole 2026-05-06 finding 5.1 — explicit binding). Names: `substrate_gap_parser_grammar_closed`, `substrate_gap_function_valued_data_closed`, `substrate_gap_file_ingestion_closed`, `substrate_gap_workflow_scheduling_closed`, `substrate_gap_reflection_closure_closed`. | RATIFIED-by-default |
+| Q-R2-IB-Closure | #1778 R2 Impossible-Bugs queue closure (warm-dove-810; nested optional codegen bypass) | PM-coordination item tracked in Brian-Q queue at #828; remains Brian-disposition pending; not blocking R3 plan PR | TRACKED (per Director poke-hole 2026-05-06 finding 5.2) |
+| Q-1807-Cleanup | #1807 SG-0 net-shrink discipline rollout — branch contains 5 of 9 files = #1797-resurrection per Director critique at #1807 #issuecomment-4383967713 | PM-coordination item; Director ratifies cleanup approach (Option A force-push vs Option B cherry-pick); affects §7.2 anticipation-discipline rollout via R3 Debt-Paydown lane | OPEN — Director decision needed (per Director poke-hole 2026-05-06 finding 5.3) |
+| Q-PR-Anticipation-Gate | Add `pr_anticipation_discipline_ci_active` closure gate (CI verifiably enforcing §7 anticipation discipline) | Add to §1 closure-gate set; owner R3 Debt-Paydown Mgr (already routed at #1744 #issuecomment-4383628247); fires when `scripts/check-pr-sg0-net-shrink-discipline.sh` is in CI workflow + self-test passes | RATIFIED-by-default (per Director poke-hole 2026-05-06 finding 3.2) |
 | Q-PR-F | PR-F priority + sequencing (BoundDeclaration consumer + Rust ReferenceModel<T>) | Schedule into critical path post-T-E-P-Producer-Broadening; Substrate Mgr executes PR-F as Substrate-lane work | RATIFIED-by-default |
 | Q-Anthropic-Variant-Aware | Variant-aware typed REST response projection carrier shape | Defer #1702 re-dispatch until Substrate authors variant-aware projection metadata carrier; #1702 branch preserved | RATIFIED-by-default |
 | Q-Emit-Shim-Handoff | Grounding direct execution vs PB/Substrate/v2-retirement consumption for `emit/rust_target.rs` family | Grounding consumes PB/v2-retirement milestones; no Grounding direct execution on these files | RATIFIED-by-default |
