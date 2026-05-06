@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 use v3_compiler::compile_to_dag;
 use v3_compiler::dag::Dag;
-use v3_compiler::test_runner::{ClaimResult, TestClaimValue, TestRunner};
+use v3_compiler::test_runner::{ClaimEvaluation, ClaimResult, TestClaimValue, TestRunner};
 use v3_compiler::CompileError;
 
 const L4_FIXTURE: &str = include_str!("../fixtures/r3_verification_l4_emit_eval_match.dag");
@@ -73,6 +73,23 @@ fn cached_compile(
     })
 }
 
+/// Runs one named `TestClaim` from the L4 fixture on a larger stack. The compiled `Dag` is
+/// amortized via [`L4_DAG`]; each `#[test]` calls `run_claim` independently (no shared
+/// `ClaimEvaluation` vector — see TESTING.md, “Don’t use cross-test shared state” / `OnceLock`
+/// amortization carve-out).
+fn l4_run_named_claim(claim_name: &'static str) -> ClaimEvaluation {
+    run_on_larger_stack(move || {
+        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
+        let claim_decl = dag
+            .declaration_by_name(claim_name)
+            .unwrap_or_else(|| panic!("missing `{claim_name}` in {L4_FIXTURE_PATH}"));
+        let claim = TestClaimValue::from_declaration(claim_decl).unwrap_or_else(|reason| {
+            panic!("`{claim_name}` should lower to a structural TestClaim: {reason}");
+        });
+        TestRunner::new(dag).run_claim(&claim)
+    })
+}
+
 fn run_on_larger_stack<T>(f: impl FnOnce() -> T + Send + 'static) -> T
 where
     T: Send + 'static,
@@ -87,45 +104,60 @@ where
 
 #[test]
 fn r3_verification_l4_emit_eval_match_skeleton_passes_w1_emit_vs_eval() {
-    run_on_larger_stack(|| {
-        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
-        let results = TestRunner::new(dag).run_suite(L4_SUITE);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[0].claim_name, L4_CLAIM);
-        assert!(
-            matches!(results[0].result, ClaimResult::Pass),
-            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
-            results[0].result
-        );
-    });
+    let evaluation = l4_run_named_claim(L4_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_CLAIM);
+    assert!(
+        matches!(evaluation.result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (branch literal 3); got {:?}",
+        evaluation.result
+    );
 }
 
 #[test]
 fn r3_verification_l4_emit_eval_false_branch_passes_w1_emit_vs_eval() {
-    run_on_larger_stack(|| {
-        let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
-        let results = TestRunner::new(dag).run_suite(L4_SUITE);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[1].claim_name, L4_FALSE_CLAIM);
-        assert!(
-            matches!(results[1].result, ClaimResult::Pass),
-            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (false branch signed Int -4); got {:?}",
-            results[1].result
-        );
-    });
+    let evaluation = l4_run_named_claim(L4_FALSE_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_FALSE_CLAIM);
+    assert!(
+        matches!(evaluation.result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (false branch signed Int -4); got {:?}",
+        evaluation.result
+    );
 }
 
 #[test]
 fn r3_verification_l4_emit_eval_nested_branch_passes_w1_emit_vs_eval() {
+    let evaluation = l4_run_named_claim(L4_NESTED_CLAIM);
+    assert_eq!(evaluation.claim_name, L4_NESTED_CLAIM);
+    assert!(
+        matches!(evaluation.result, ClaimResult::Pass),
+        "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (nested branch Int 7); got {:?}",
+        evaluation.result
+    );
+}
+
+/// Suite-wide shape: exactly three named W1 claims, each passing (complements per-claim
+/// `run_claim` tests without pinning suite result order).
+#[test]
+fn r3_verification_l4_emit_eval_skeleton_suite_lists_three_named_claims() {
     run_on_larger_stack(|| {
         let dag = cached_compile(L4_FIXTURE, L4_FIXTURE_PATH, &L4_DAG);
         let results = TestRunner::new(dag).run_suite(L4_SUITE);
-        assert_eq!(results.len(), 3);
-        assert_eq!(results[2].claim_name, L4_NESTED_CLAIM);
+        assert_eq!(
+            results.len(),
+            3,
+            "`{L4_SUITE}` should wire exactly three W1 row claims"
+        );
+        for name in [L4_CLAIM, L4_FALSE_CLAIM, L4_NESTED_CLAIM] {
+            assert!(
+                results.iter().any(|r| r.claim_name == name),
+                "missing `{name}` in suite results: {results:?}"
+            );
+        }
         assert!(
-            matches!(results[2].result, ClaimResult::Pass),
-            "expected W1 DifferentialEquals(rust_emit_output, dag_eval_output) Pass (nested branch Int 7); got {:?}",
-            results[2].result
+            results
+                .iter()
+                .all(|r| matches!(r.result, ClaimResult::Pass)),
+            "every wired L4 W1 claim in `{L4_SUITE}` should Pass; got {results:?}"
         );
     });
 }
