@@ -6,6 +6,7 @@ dsl/std/bit.dag	9	7787	09279906a3939377
 dsl/std/float.dag	6	3350	3c45f61f17751329
 dsl/std/integer.dag	17	13226	652968ab55e4eaf9
 dsl/std/logic.dag	5	5614	bb0fc43f94c4374f
+dsl/std/machine_constraints.dag	3	1420	3a69b6bbb4fdda9b
 dsl/std/magnitude.dag	2	560	d1579da2ea458db8
 dsl/std/nat.dag	4	1895	9c5eb0ac8d25a015
 dsl/std/rational.dag	4	2379	3c3b86f7e18caf82
@@ -30,7 +31,7 @@ src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	12	54190	a430f932e3962ecb
 src/v3/std/approximate_field.dag	11	16862	d3bf5c7f2f410ce1
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
-src/v3/std/bootstrap_authority.dag	4	65384	b001a82f44210230
+src/v3/std/bootstrap_authority.dag	4	66427	908aa66838dfb9e6
 src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
