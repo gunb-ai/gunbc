@@ -262,11 +262,16 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
 5. **Carrier dissolves the bridge?** Yes — the bridge is
    `feedback_reason_not_label` violation in S9 Phase-3 forced
    `Refined<Int, predicate>` shape for dimensional refinements.
-   Unit/Quantity carrier provides the algebra-axis shape that
-   correctly carries dimensional semantics. Outer-Refined /
-   inner-Unit composition preserves the predicate-bearing
-   semantic chain (predicates over Measure-typed bases, not over
-   raw Ints).
+   Measure carrier provides the algebra-axis shape that correctly
+   carries dimensional semantics. Per Q-Refined-Phantom-Composition
+   (c) RATIFIED: at the Measure (phantom) layer, **dimensional
+   semantics ride on the `Quantity` tag (no predicate at this
+   layer)**; value-level predicate authority is **deferred to
+   value-typed integration follow-up** when `Refined<>` consumes
+   concrete value-typed bases. Until then, value-level constraints
+   (range, gt_zero, etc.) attach at the value-typed Int/UInt level
+   via `where`-sugar (current `dsl/std/types.dag` convention),
+   downstream of the dimensional reframe.
 
 ## Provenance
 
