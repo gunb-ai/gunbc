@@ -1,7 +1,7 @@
 ---
 status: RATIFIED 2026-05-06 (Q-Unit-1..5 ratified by Director at gunbc#828 #issuecomment-4385412256 (2026-05-06); Scale value `Unit` renamed to `One` to avoid name shadowing with outer `Unit<Q, S>` carrier)
 authority parent: R3 Substrate Manager (#1739)
-ratification: Director feedback on S9 at gunbc#828 inbox response 2026-05-06 (zesty-bear-812) — "several Phase-3 refinements are likely dimensional/unit-of-measure, not value-restriction predicates ... the right shape is likely a Unit<Quantity, Scale> axis"
+ratification: Director feedback on S9 at gunbc#828 inbox response 2026-05-06 (zesty-bear-812) — "several Phase-3 refinements are likely dimensional/unit-of-measure, not value-restriction predicates ... the right shape is likely a Measure<Quantity, Scale> axis"
 roadmap row: cross-references docs/briefs/r3-substrate-s9-t-numeric-construction-worker.md Phase-3
 authority docs:
   - docs/briefs/r3-substrate-s9-t-numeric-construction-worker.md (parent S9 brief)
@@ -19,9 +19,9 @@ Director ratified Q-Unit-1..5 with one rename:
 
 | Question | Outcome |
 |---|---|
-| **Q-Unit-1** Carrier name | RATIFIED `Unit<Quantity, Scale>` **with rename**: Scale value `Unit` → `One` (avoids shadowing outer carrier) |
+| **Q-Unit-1** Carrier name | RATIFIED `Measure<Quantity, Scale>` **with rename**: Scale value `Unit` → `One` (avoids shadowing outer carrier) |
 | **Q-Unit-2** 2-axis Phase-1 | RATIFIED. Aspect axis defers to R4 (consumer-demand-driven). `Frequency`/`DataRate` may re-fold when Aspect lands; accept as future cleanup |
-| **Q-Unit-3** Duration/Seconds collapse | RATIFIED collapse: `Seconds = Duration ≡ Unit<Time, One>`. Scale-agnostic `Duration<S>` form deferred until ≥2 consumers ask |
+| **Q-Unit-3** Duration/Seconds collapse | RATIFIED collapse: `Seconds = Duration ≡ Measure<Time, One>`. Scale-agnostic `Duration<S>` form deferred until ≥2 consumers ask |
 | **Q-Unit-4** Composition order | RATIFIED outer-Refined / inner-Unit (`Refined<Unit<...>, predicate>`) |
 | **Q-Unit-5** Practice 4 marks | RATIFIED. `Unit<Q, S>` 🟢 PRIMITIVE; `Quantity` / `Scale` 🟡 SCAFFOLD with "consumed by ≥1 emission rule" trigger |
 
@@ -46,7 +46,7 @@ carries time-unit semantics at milli scale", not "this Int satisfies
 some Boolean predicate P".
 
 This canvas surfaces the design question for Director ratification.
-**Output**: a ratified `Unit<Quantity, Scale>` (or equivalent)
+**Output**: a ratified `Measure<Quantity, Scale>` (or equivalent)
 carrier shape; S9 Phase-3 reframes from `Refined<Int, ...>` for
 the dimensional refinements; remaining 6 refinements (`Char`,
 `HttpStatus`, `Port`, `RetryCount`, `PositiveInt`, `NonNegativeInt`)
@@ -75,15 +75,15 @@ data Scale =
   | Peta    // 10^15
   | Exa     // 10^18
 
-data Unit<Q, S> = Phantom  // 🟢 PRIMITIVE — Q: Quantity, S: Scale
+data Measure<Q, S> = Phantom  // 🟢 PRIMITIVE — Q: Quantity, S: Scale (RATIFIED Q-Unit-1-Recanvas: name `Measure` chosen to avoid collision with kernel `Unit`)
 ```
 
 Phase-3 dimensional refinements emit as products:
 
 ```
-Duration     ≡ Unit<Time, One>     ⊗ underlying<Int>
-Seconds      ≡ Unit<Time, One>     ⊗ underlying<Int>   // collapses with Duration per Q-Unit-3 RATIFIED
-Milliseconds ≡ Unit<Time, Milli>   ⊗ underlying<Int>
+Duration     ≡ Measure<Time, One>     ⊗ underlying<Int>
+Seconds      ≡ Measure<Time, One>     ⊗ underlying<Int>   // collapses with Duration per Q-Unit-3 RATIFIED
+Milliseconds ≡ Measure<Time, Milli>   ⊗ underlying<Int>
 ```
 
 (`Duration` and `Seconds` collapse under this shape. May or may
@@ -129,13 +129,13 @@ whether to land 2-axis or 3-axis Phase-1.
 
 ### Q-Unit-1 — Carrier name + scope
 
-Is `Unit<Quantity, Scale>` the right name? Alternatives:
+Is `Measure<Quantity, Scale>` the right name? Alternatives:
 - `Dimension<Q, S>` (collides with existing `Dimension<C>` lens
   carrier — likely conflicts; not recommended)
 - `Quantity<Q, S>` (folds Quantity name into outer carrier)
 - `UnitOfMeasure<Q, S>`
 
-**Recommendation**: `Unit<Quantity, Scale>` — short, conventional,
+**Recommendation**: `Measure<Quantity, Scale>` — short, conventional,
 no naming collision with existing `Dimension<C>`.
 
 ### Q-Unit-2 — Phase-1 axes (2-axis vs 3-axis)
@@ -177,8 +177,8 @@ Under Unit-typed shape, predicates like `non_negative` /
 `gt_zero` still apply. Composition shape:
 
 ```
-Duration         ≡ Refined<Unit<Time, One>, non_negative>  ⊗ underlying<Int>
-PositiveDuration ≡ Refined<Unit<Time, One>, gt_zero>       ⊗ underlying<Int>
+Duration         ≡ Refined<Measure<Time, One>, non_negative>  ⊗ underlying<Int>
+PositiveDuration ≡ Refined<Measure<Time, One>, gt_zero>       ⊗ underlying<Int>
 ```
 
 Is `Refined<Unit<...>, predicate>` the right composition order?
@@ -215,8 +215,8 @@ Under ratified Unit/Quantity carrier:
 |---|---|---|
 | `Char` | `Refined<Int, valid_unicode_codepoint>` | 🟢 PRIMITIVE |
 | `EpochMs` | **deferred to Aspect-axis follow-up** | (deferred) |
-| `Duration` | `Refined<Unit<Time, One>, non_negative>` | 🟢 |
-| `Milliseconds` | `Refined<Unit<Time, Milli>, non_negative>` | 🟢 |
+| `Duration` | `Refined<Measure<Time, One>, non_negative>` | 🟢 |
+| `Milliseconds` | `Refined<Measure<Time, Milli>, non_negative>` | 🟢 |
 | `Seconds` | type alias for `Duration` (Q-Unit-3 = collapse) | 🟢 |
 | `RetryCount` | `Refined<NonNegativeInt, retry_semantics>` | 🟢 |
 | `HttpStatus` | `Refined<Int, range_100_599>` | 🟢 |

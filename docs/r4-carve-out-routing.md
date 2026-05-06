@@ -100,8 +100,11 @@ not speculative.
 ### C6 — Aspect-axis (PointKind) follow-on for `EpochMs` and instant-shaped refinements
 
 **R3 status**: 2-axis `Measure<Quantity, Scale>` carrier landing IS
-in R3 (Q-Unit-1..5 RATIFIED; outer carrier name re-canvas in
-flight at gunbc#828 post-`Unit<Q,S>` collision with kernel `Unit`).
+in R3 (Q-Unit-1..5 RATIFIED; outer carrier name finalized as
+`Measure<Q, S>` post-Q-Unit-1-Recanvas at gunbc#828
+#issuecomment-4385539791 — informal label "Unit/Quantity carrier"
+and formal type name `Measure<Q, S>` disambiguated here for
+future readers).
 S9 Phase-3 dimensional refinements `Duration` / `Seconds` /
 `Milliseconds` reframe to outer-Refined / inner-Measure form and
 land in R3.

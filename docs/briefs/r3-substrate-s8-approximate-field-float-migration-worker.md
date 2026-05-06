@@ -25,8 +25,8 @@ G2 audit: the modeling is wrong on two axes —
    `ApproximateField<F>` — which is the substrate target.
 2. **Width independence**: `Word32` / `Word64` is the wrong axis.
    Per S3 (`MachineConstraint<C>` carrier), machine width is an
-   independent axis from algebra. Float32 = `ApproximateField<Real>` ×
-   `MachineWidth<32>`; Float64 = `ApproximateField<Real>` ×
+   independent axis from algebra. Float32 = `ApproximateField<Rational>` ×
+   `MachineWidth<32>`; Float64 = `ApproximateField<Rational>` ×
    `MachineWidth<64>`. The base carrier `F` is the algebraic field
    being approximated (`Real` for IEEE-754 floats; potentially
    `Rational` or `Complex` for other approximation regimes).
@@ -34,7 +34,7 @@ G2 audit: the modeling is wrong on two axes —
 This brief is **parallel with S3** per Substrate Mgr partition
 response 2026-05-06 — they're independent axes. Brief cross-references
 S3 carriers; consumer work synthesizes both axes at the
-`AlgebraMachineProduct` interaction-lookup substrate.
+`Compose&lt;Algebra, MachineConstraint&gt;` interaction-lookup substrate.
 
 ## Slice
 
@@ -57,17 +57,25 @@ S3 carriers; consumer work synthesizes both axes at the
    - Which retain (commutativity / closure)?
    - Are rounding-mode parameters part of the carrier or a separate axis?
 
-2. **Author `Real` base-carrier** if not landed:
+2. **Author `Rational` base-carrier** if not landed:
 
    ```
-   data Real  // 🟢 PRIMITIVE — algebraic real numbers; structural fact
+   data Rational  // 🟢 PRIMITIVE — algebraic rationals; structural fact
    ```
 
    The `F` parameter on `ApproximateField<F>` is the field being
-   approximated. `Real` is the canonical instance for IEEE-754
-   floats; `Rational` is a possible alternative (rational
-   approximation / fixed-point). Phase-1 lands `Real` only;
-   `Rational` if needed for Phase-3 emission demonstration.
+   approximated. Per Q-MachineConstraint sub-decision 4 RATIFIED
+   (gunbc#828 #issuecomment-4385530115): `Real<64>` ≡
+   `Compose<ApproximateField<Rational>, MachineWidth<64>>` —
+   `Rational` is the algebra side, `MachineWidth<N>` is the machine
+   side, and `ApproximateField<...>` carries the algebra
+   approximation. Both algebra-approximation and machine-
+   approximation compose as independent axes per S3 ratified
+   `Compose<Algebra, MachineConstraint>`.
+
+   Phase-1 lands `Rational` only; `Real` is NOT a primary
+   substrate entity (concrete `Real<N>` types emit from the
+   `Compose<...>` interaction).
 
 ### Phase 2 — Float consumer migration
 
@@ -77,28 +85,21 @@ S3 carriers; consumer work synthesizes both axes at the
    notes record `Field<Word*>` shape but state may have drifted.
 
 2. **Migrate each consumer** from `Field<Word32>` /
-   `Field<Word64>` → `ApproximateField<Real>` × `MachineWidth<N>`
-   product. Consumers fall into two classes:
+   `Field<Word64>` → parametric `Compose<ApproximateField<Rational>,
+   MachineWidth<N>>` per S3 sub-decision 2 RATIFIED. Consumers
+   fall into two classes:
    - **Algebra-only consumers** (e.g., type inference, lens
-     analysis): consume `ApproximateField<Real>`; do not need
+     analysis): consume `ApproximateField<Rational>`; do not need
      machine width.
    - **Emission consumers** (e.g., Grounding Rust target): consume
-     the product `ApproximateField<Real> × MachineWidth<N>` via
-     `AlgebraMachineProduct` interaction-lookup (S3 carrier).
+     the parametric instantiation `Compose<ApproximateField<Rational>,
+     MachineWidth<N>>` (S3 carrier).
 
-3. **Cross-reference S3** at the interaction-lookup table:
+3. **Cross-reference S3** parametric instantiations:
 
    ```
-   AlgebraMachineProduct {
-     algebra: ApproximateField<Real>,
-     machine: MachineWidth<32>,
-     emits_to: Rust f32,
-   }
-   AlgebraMachineProduct {
-     algebra: ApproximateField<Real>,
-     machine: MachineWidth<64>,
-     emits_to: Rust f64,
-   }
+   Float<32> ≡ Compose<ApproximateField<Rational>, MachineWidth<32>>  // → Rust f32
+   Float<64> ≡ Compose<ApproximateField<Rational>, MachineWidth<64>>  // → Rust f64
    ```
 
    These are **demonstration entries** for Class 1 Pass criterion
@@ -129,7 +130,7 @@ S3 carriers; consumer work synthesizes both axes at the
 - `Field<Word32>` / `Field<Word64>` consumer migration complete;
   zero remaining references in non-test, non-archive `.dag` /
   `.rs` source.
-- `AlgebraMachineProduct` interaction entries for Float32 / Float64
+- `Compose&lt;Algebra, MachineConstraint&gt;` interaction entries for Float32 / Float64
   added (cross-references S3 substrate; coordinate timing —
   S3 must land carriers Phase-1 first).
 - Q-ApproximateField-Axiom-Set + Q-ApproximateField-Rounding-Mode
@@ -162,7 +163,7 @@ S3 carriers; consumer work synthesizes both axes at the
   this brief assumes** (e.g., `MachineWidth<bits>` carrier
   renamed or restructured): re-frame Phase-2 consumer migration
   to match S3 ratified shape. Brief assumes `MachineWidth<bits>`
-  + `AlgebraMachineProduct` table per S3 Phase-1; if S3 shifts,
+  + `Compose&lt;Algebra, MachineConstraint&gt;` table per S3 Phase-1; if S3 shifts,
   this brief shifts.
 - **Director ratifies `ApproximateField<F>` is not the right
   algebra-side shape** (e.g., prefers `IEEE754Float<N>` or

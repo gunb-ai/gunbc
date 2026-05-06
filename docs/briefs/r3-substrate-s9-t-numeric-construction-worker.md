@@ -39,7 +39,7 @@ authoring NOW (foundational; no Evaluator gating).
 
 **Cross-references**:
 - **S3** `MachineConstraint<C>` — machine-axis carriers; Int /
-  UInt / Float concrete primitives emit via `AlgebraMachineProduct`.
+  UInt / Float concrete primitives emit via `Compose&lt;Algebra, MachineConstraint&gt;`.
 - **S8** `ApproximateField<F>` — Float-specific algebra carrier.
   S8 owns Float migration; this brief covers Int / UInt + 10
   refinements.
@@ -74,7 +74,7 @@ phases below; Substrate Mgr ratifies phase-by-phase.
    (worker re-greps at dispatch).
    Practice 4 classification: 🟢 PRIMITIVE (algebra-only, no
    machine-axis composition).
-3. **Concrete emission entries** in `AlgebraMachineProduct`
+3. **Concrete emission entries** in `Compose&lt;Algebra, MachineConstraint&gt;`
    (cross-program with Grounding Mgr):
    - `Int × MachineWidth<32> → Rust i32`
    - `Int × MachineWidth<64> → Rust i64`
@@ -141,7 +141,7 @@ shape. Worker:
   Nat references in non-test source outside algebra-axis usage.
 - Practice 4 classification receipts for each new declaration.
 - Cross-program receipts with Grounding Mgr (#1745) for emission
-  consumer entries in `AlgebraMachineProduct`.
+  consumer entries in `Compose&lt;Algebra, MachineConstraint&gt;`.
 - §1.8 gates #17-#24 advance DECLARED → CONSUMER_LANDED phase by
   phase.
 - §1.8 gate #67 (`numeric_construction_demonstration`) folded into
@@ -163,7 +163,7 @@ shape. Worker:
 
 - **`MachineConstraint<C>` (S3) does not land before Phase-1
   emission entries**: this brief depends on S3 substrate for
-  `AlgebraMachineProduct` interaction table. Phase-1 algebra
+  `Compose&lt;Algebra, MachineConstraint&gt;` interaction table. Phase-1 algebra
   carriers can land independently; emission entries STOP until
   S3 lands. Coordinate sequencing with Substrate Mgr (#1739).
 - **`ApproximateField<F>` (S8) doesn't land before Phase-2

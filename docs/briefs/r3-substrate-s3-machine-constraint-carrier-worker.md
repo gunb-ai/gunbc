@@ -40,11 +40,22 @@ when:
 5. v2-oracle parity on the same source program produces equivalent
    target-language output.
 
-This brief lands the **substrate carrier slice**: `MachineConstraint<C>`
-+ `MachineWidth<bits>` + interaction-lookup substrate. Companion lanes
-land parser-grammar (separate downstream PR after carrier ratification)
-+ emitter wiring (Grounding Mgr coordination — cross-program at brief
-landing).
+This brief lands the **substrate carrier slice**: `MachineWidth<bits>`
++ parametric `Compose<Algebra, MachineConstraint>` interaction shape
+per Q-MachineConstraint-Carrier RATIFIED at gunbc#828
+#issuecomment-4385530115 (Brian directive 2026-05-06: *"universal
+substrate, ratify defaults"*; 6 sub-decisions — see PR #1817 + this
+brief's Phase-1).
+
+**Universal-substrate posture (Brian directive)**: every target
+carries machine-constraint facts as substrate. Targets lacking
+native machine-width semantics (Python `int` / `float`) handle
+omission at **Grounding-level discharge** — target-conditioned
+**lowering**, NOT target-conditioned substrate. The carrier is
+the same regardless of target.
+
+Companion lanes land parser-grammar (separate downstream PR) +
+emitter wiring (Grounding Mgr cross-program).
 
 ## Slice
 
@@ -66,42 +77,49 @@ landing).
      names "this width matters for emission" with the value carried
      in the phantom parameter. No variant enumeration; new widths
      are not new variants but new instances.
-   - `MachineConstraint<C>` — top-level machine-axis carrier with
-     phantom `C`. Subsumes `MachineWidth<bits>` and any future
-     machine-side axis (RegisterClass / EndianMode / Alignment).
-     **🟢 PRIMITIVE** — the carrier names the axis class; specific
-     instantiations (`MachineConstraint<MachineWidth<32>>`,
-     `MachineConstraint<EndianMode<Little>>`) project values onto
-     the axis.
 
-   Co-author the **Q-MachineConstraint-Axis-Enumeration** note
-   surfacing further axes for Director ratification:
-   - `RegisterClass<R>` (e.g., int / float / vector register class)
-   - `EndianMode<E>` (`Little` | `Big`)
-   - `Alignment<bytes>` (Nat-valued phantom)
+   Per Q-MachineConstraint sub-decision 1 RATIFIED: `MachineWidth<bits>`
+   is the **only** machine-axis carrier in R3. `RegisterClass<R>` /
+   `EndianMode<E>` / `Alignment<bytes>` / signedness-as-axis defer
+   post-R3 (no speculative landing per `feedback_construction_over_ratchets`).
+   Sub-decision 1 supersedes the prior "introduce
+   `MachineConstraint<C>` as top-level subsumer" framing — there
+   is no separate `MachineConstraint<C>` carrier; `MachineWidth<bits>`
+   IS the machine-axis carrier in R3 scope.
 
-   Phase-1 scope lands `MachineWidth` + `MachineConstraint` only.
-   Additional axes are surfaced for Director scope decision before
-   Phase-2 expansion.
-
-2. **Interaction-lookup substrate**. Add an `AlgebraMachineProduct`
-   record carrier:
+2. **Parametric `Compose<Algebra, MachineConstraint>` interaction
+   shape** per Q-MachineConstraint sub-decision 2 RATIFIED.
+   Lookup-maps (e.g., a record-keyed `AlgebraMachineProduct` table)
+   are EXPLICITLY REJECTED. Instead the interaction is
+   **type-level parametric composition**:
 
    ```
-   data AlgebraMachineProduct = {
-     algebra: AlgebraRef,
-     machine: MachineConstraintRef,
-     emits_to: TargetPrimitiveRef,
-   }
+   data Compose<Algebra, MachineConstraint> = Phantom
    ```
 
-   This is the **interaction substrate** — concrete-type emission
-   reads this table to find `Int × MachineWidth<32> → i32` mappings.
-   Co-located with Grounding Mgr's emit-shim consumption (cross-lane).
+   Type spelling per sub-decision 3: `Int<64>` ≡
+   `Compose<AbelianGroup, MachineWidth<64>>`. `Real<64>` ≡
+   `Compose<ApproximateField<Rational>, MachineWidth<64>>`
+   (sub-decision 4 — algebra approximation + machine approximation
+   compose as independent axes; both carried explicitly).
+
+   Practice 4 classification: `Compose<A, M>` is **🟢 PRIMITIVE**
+   — phantom-parameter carrier; widening adds Algebra / MachineConstraint
+   instantiations, not new variants.
 
 3. **Annotation classifications** for new declarations follow
-   Practice 4. Worker authors P1 receipts in PR body for each
-   substrate-fact introduction.
+   Practice 4 with **in-source checkpoint comments** on the live
+   declarations in `dsl/std/machine_constraints.dag` (the
+   load-bearing artifact per
+   `docs/modeling-discipline.md#4-coproduct-dissolution` "What
+   to check"). PR-body summary is supplementary, not substitute.
+
+4. **Algebra-side independence** per sub-decision 3: equivalent
+   under both algebra-side options from PR #1815 (Option A
+   canonical AbelianGroup vs Option B GroupCompletion-of-
+   CommutativeMonoid<Nat>). S3 brief does NOT block on S9 / Option-
+   A-vs-B selection — `Compose<AbelianGroup, MachineWidth<64>>`
+   reads identically under either Int algebra-side shape.
 
 ### Phase 2 — Parser-grammar surface (separate downstream PR)
 
@@ -114,17 +132,32 @@ vs operator-form).
 
 ### Phase 3 — Emit-shim consumption (Grounding Mgr coordination)
 
-Cross-program. Grounding Mgr (#1745) consumes
-`AlgebraMachineProduct` table to emit Rust target primitives. Brief
-G2 (`r3-structure.md` Lane T-Ground-Rust) is the consumer.
+Cross-program. Grounding Mgr (#1745) consumes the parametric
+`Compose<Algebra, MachineConstraint>` instantiations to emit
+target primitives. Brief G2 (`r3-structure.md` Lane T-Ground-Rust)
+is the consumer.
+
+Per sub-decision 6 (UNIVERSAL substrate, Brian directive): every
+target carries machine-constraint facts as substrate. Targets
+without native machine-width semantics (Python `int` / `float`)
+handle omission at **Grounding-level discharge** — target-conditioned
+lowering only, NOT target-conditioned substrate. The carrier
+shape is identical regardless of target.
 
 ### Phase 4 — ≥3 algebra × constraint pairs landed (Pass criterion 3)
 
-Demonstrate Class 1 closure with three concrete instantiations:
+Per sub-decision 5: ≥3 pairs is **minimum, not target**. Worker
+demonstrates Class 1 closure with at least three concrete
+instantiations:
 
-1. `Int × MachineWidth<32> → Rust i32`
-2. `Int × MachineWidth<64> → Rust i64`
-3. `UInt × MachineWidth<64> → Rust u64`
+1. `Compose<AbelianGroup, MachineWidth<32>>` (≡ `Int<32>`) → Rust `i32`
+2. `Compose<AbelianGroup, MachineWidth<64>>` (≡ `Int<64>`) → Rust `i64`
+3. `Compose<CommutativeMonoid, MachineWidth<64>>` (≡ `UInt<64>`) → Rust `u64`
+
+(Alternative: `Compose<ApproximateField<Rational>, MachineWidth<64>>`
+≡ `Real<64>` → Rust `f64` per sub-decision 4 covers the algebra-
+approximation × machine-approximation independent-composition case.
+Coordinate with S8 worker (quiet-boar-160) for the float entry.)
 
 These exercise the substrate but **target-primitive emission lives
 in Grounding Mgr lane**, not this brief. This brief produces the
@@ -133,8 +166,8 @@ substrate; Grounding consumes. Coordinate Phase-3/4 hand-off receipts.
 ## Acceptance
 
 - `dsl/std/machine_constraints.dag` lands with `MachineWidth<bits>`
-  + `MachineConstraint<C>` + `AlgebraMachineProduct` (records / phantom
-  carriers; no parser surface).
+  + `Compose<Algebra, MachineConstraint>` parametric carrier
+  (phantom carriers; no lookup-map; no parser surface).
 - Practice 4 classification receipts in PR body for each new
   declaration.
 - Q-MachineConstraint-Axis-Enumeration surfaced as a §note in PR

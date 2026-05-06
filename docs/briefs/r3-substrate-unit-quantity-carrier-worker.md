@@ -23,12 +23,15 @@ measure semantics, not value-restriction predicates over `Int`.
 Per `feedback_reason_not_label`: the predicate name is the label,
 the reason is "this carries time-unit semantics".
 
-This brief lands the **2-axis carrier** (`Unit<Quantity, Scale>`)
+This brief lands the **2-axis carrier** `Measure<Quantity, Scale>`
+(RATIFIED at gunbc#828 #issuecomment-4385539791 — Q-Unit-1-Recanvas
+chose `Measure<Q, S>` to avoid collision with kernel `Unit` at
+`dsl/std/types.dag` per valiant-ibex-312's substrate-state grep)
 and updates S9 Phase-3 reframe table consumers. EpochMs (Aspect-
 axis-shaped) defers to R4 C6 — explicitly out of scope for this
 brief.
 
-**Cross-program**: Grounding Mgr (#1745) consumes Unit-typed
+**Cross-program**: Grounding Mgr (#1745) consumes Measure-typed
 emission for dimensional refinements; coordinate emission scope
 at brief-landing.
 
@@ -36,7 +39,7 @@ at brief-landing.
 
 ### Phase 1 — Carrier landing
 
-1. **Author `dsl/std/units.dag`** (or canonical equivalent —
+1. **Author `dsl/std/measure.dag`** (or canonical equivalent —
    worker greps `dsl/std/` for existing Quantity / Scale / Unit
    declarations at dispatch; if any pre-exist, this brief is
    migration not landing).
@@ -70,7 +73,7 @@ at brief-landing.
      | Peta    // 10^15
      | Exa     // 10^18
 
-   data Unit<Q, S> = Phantom
+   data Measure<Q, S> = Phantom
    ```
 
    Practice 4 classification per
@@ -80,7 +83,7 @@ at brief-landing.
    entry if GREEN or a named trigger if YELLOW."* Marks per
    Q-Unit-5 RATIFIED:
 
-   - `Unit<Q, S>` → 🟢 PRIMITIVE (phantom-parameter carrier;
+   - `Measure<Q, S>` → 🟢 PRIMITIVE (phantom-parameter carrier;
      widening adds Quantity / Scale values, not new variants)
    - `Quantity` → 🟡 SCAFFOLD with named dissolution trigger:
      "all Quantity values consumed by ≥ 1 emission rule"
@@ -100,25 +103,25 @@ at brief-landing.
    - **Scale-agnostic `Duration<S>`** (parameterized for "any
      time-magnitude regardless of scale"): deferred per Q-Unit-3
      forward-flag. Until ≥ 2 consumers ask for the parametric form,
-     collapsed `Duration ≡ Unit<Time, One>` is correct.
+     collapsed `Duration ≡ Measure<Time, One>` is correct.
    - **3-axis `AlgebraMachineRoundingProduct`**: deferred to R4 C5
      (separate cascade; covered by S8 Q-ApproximateField-Rounding-
      Mode RATIFIED as separate axis).
 
 ### Phase 2 — S9 Phase-3 dimensional reframe consumer
 
-Update S9 Phase-3 dimensional refinements to consume Unit-typed
+Update S9 Phase-3 dimensional refinements to consume Measure-typed
 shape. Per Q-Unit-3 RATIFIED collapse + Q-Unit-4 outer-Refined /
-inner-Unit composition order:
+inner-Measure composition order:
 
-| S9 Phase-3 declaration | Unit-typed shape | Practice 4 |
+| S9 Phase-3 declaration | Measure-typed shape | Practice 4 |
 |---|---|---|
-| `Duration` | `Refined<Unit<Time, One>, non_negative>` | 🟢 PRIMITIVE |
+| `Duration` | `Refined<Measure<Time, One>, non_negative>` | 🟢 PRIMITIVE |
 | `Seconds` | type alias for `Duration` (collapse per Q-Unit-3) | 🟢 |
-| `Milliseconds` | `Refined<Unit<Time, Milli>, non_negative>` | 🟢 |
+| `Milliseconds` | `Refined<Measure<Time, Milli>, non_negative>` | 🟢 |
 | `EpochMs` | **DEFERRED** to R4 C6 (Aspect-axis follow-up) | — |
 
-Refined predicate `non_negative` applies at the Unit-typed level
+Refined predicate `non_negative` applies at the Measure-typed level
 (predicates over "durations" are semantically coherent; predicates
 over "raw Ints that happen to be milliseconds" are not).
 
@@ -131,7 +134,7 @@ trigger** — do NOT land it under a forced shape.
 
 Coordinate with Grounding Mgr (#1745) on dimensional emission:
 
-1. Grounding consumes `Unit<Q, S>`-typed values; emission rules
+1. Grounding consumes `Measure<Q, S>`-typed values; emission rules
    project Unit-tagged carriers to target-language types
    (Rust: `Duration` → `std::time::Duration` or `i64`-with-unit-
    tag; Python: `datetime.timedelta`; Go: `time.Duration`).
@@ -142,23 +145,23 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
    Grounding G2 follow-on. Worker DOES document the handoff
    receipt in PR body.
 3. If Grounding's Phase-1 emission scope does not consume any
-   Unit-typed values yet, the SCAFFOLD trigger on `Quantity` /
+   Measure-typed values yet, the SCAFFOLD trigger on `Quantity` /
    `Scale` does not fire — that's expected. The trigger fires
    per-consumer, not all-or-nothing.
 
 ## Acceptance
 
-- `dsl/std/units.dag` (or canonical equivalent path) lands with
-  `Unit<Q, S>` + `Quantity` + `Scale` declarations at the
+- `dsl/std/measure.dag` (or canonical equivalent path) lands with
+  `Measure<Q, S>` + `Quantity` + `Scale` declarations at the
   ratified shape.
 - **Practice 4 in-source checkpoint comments** on the live
-  declarations in `dsl/std/units.dag` (the load-bearing artifact
+  declarations in `dsl/std/measure.dag` (the load-bearing artifact
   per `docs/modeling-discipline.md#4-coproduct-dissolution`
   "What to check" — *"Any new Rust enum with N ≥ 2 variants
   must have a checkpoint comment naming its classification
   (🟢/🟡/🔴), with a ledger entry if GREEN or a named trigger
   if YELLOW."*). Specifically:
-  - `Unit<Q, S>` carries a 🟢 PRIMITIVE checkpoint comment
+  - `Measure<Q, S>` carries a 🟢 PRIMITIVE checkpoint comment
   - `Quantity` carries a 🟡 SCAFFOLD checkpoint comment naming
     the dissolution trigger ("all Quantity values consumed by
     ≥ 1 emission rule")
@@ -167,12 +170,12 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
   Inline comments on the source are mandatory; PR-body summary
   is supplementary, not substitute.
 - S9 Phase-3 `Duration` / `Seconds` / `Milliseconds`
-  declarations updated to Unit-typed `Refined<Unit<Time, ...>, ...>`
+  declarations updated to Measure-typed `Refined<Measure<Time, ...>, ...>`
   shape (Q-Unit-4 RATIFIED outer-Refined / inner-Unit).
 - `EpochMs` retained with SCAFFOLD comment naming R4 C6 trigger;
   NOT migrated.
 - Grounding Mgr (#1745) cross-program handoff receipt in PR body
-  (G2 / dimensional emission consumes Unit-typed values).
+  (G2 / dimensional emission consumes Measure-typed values).
 - `cargo test --workspace --exclude v2-compiler-tests` green.
 - `cargo test -p v2-compiler-tests` green; strict-compile
   diagnostic ratchet at 0.
@@ -190,7 +193,7 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
   in `dsl/std/`**: re-frame as consumer migration, not landing.
   PR receipt names existing carriers; worker grep at dispatch
   is mandatory.
-- **`Unit<Q, S>` collides with existing carrier name** (e.g.,
+- **`Measure<Q, S>` collides with existing carrier name** (e.g.,
   `Dimension<C>` lens carrier or any other `Unit`-named
   declaration): STOP. Re-canvas; alternative names per Q-Unit-1
   surfaced (`UnitOfMeasure<Q, S>` / `Quantity<Q, S>`). Director
@@ -208,11 +211,11 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
   do NOT silently grow `Quantity`. STOP — surface to Substrate
   Mgr; new value requires P1 procedure receipt + named consumer
   demand.
-- **Refined<Unit<...>, predicate> composition fails to type-check
+- **Refined<Measure<...>, predicate> composition fails to type-check
   in lowerer**: the substrate's `Refined<Base, predicate>`
   expects `Base` to be a concrete underlying type, not a phantom
   carrier. STOP — surface as substrate-extension question;
-  Refined may need to consume Unit-typed bases via a separate
+  Refined may need to consume Measure-typed bases via a separate
   bridge or carrier shape. Coordinate with Substrate Mgr.
 - **`Seconds = Duration` collapse breaks an existing consumer**
   (e.g., a consumer disambiguates `Seconds` from `Duration` at
@@ -224,10 +227,10 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
 
 1. **Substrate exists?** Per memory + draft-time grep:
    `Refined<Base, predicate>` substrate landed (annotation-
-   elimination Wave 1; memory note 2026-02-26). `Unit<Q, S>` /
+   elimination Wave 1; memory note 2026-02-26). `Measure<Q, S>` /
    `Quantity` / `Scale` do NOT exist in `dsl/std/`. This brief
    is substrate-fact-introduction (P1 procedure for `Quantity`
-   + `Scale` enums; phantom carrier for `Unit<Q, S>`). Worker
+   + `Scale` enums; phantom carrier for `Measure<Q, S>`). Worker
    re-greps at dispatch.
 2. **Existing brief?** Canvas
    `r3-substrate-s9-unit-quantity-carrier-canvas.md` is the
@@ -247,7 +250,7 @@ Coordinate with Grounding Mgr (#1745) on dimensional emission:
    Unit/Quantity carrier provides the algebra-axis shape that
    correctly carries dimensional semantics. Outer-Refined /
    inner-Unit composition preserves the predicate-bearing
-   semantic chain (predicates over Unit-typed bases, not over
+   semantic chain (predicates over Measure-typed bases, not over
    raw Ints).
 
 ## Provenance
