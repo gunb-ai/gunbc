@@ -89,6 +89,31 @@ non-trivial carriers. No richer source exists; the variants trace
 to the actual two emission origin classes (substrate-decl mirror vs
 LangSpec rule emission). No 🟡 YELLOW or 🔴 RED classification applies.
 
+**Terminal receipt** (per `docs/modeling-discipline.md#4-coproduct-dissolution` "GREEN (terminal) — no richer source exists"; documenting attempted dissolutions and why they fail):
+
+- *Attempted dissolution 1: collapse into single carrier with parameterized
+  origin*. Form: `EmissionOrigin = Origin(SourceSpan?, EmissionRule?)`.
+  FAILS — this is the optional-pair-with-runtime-invariant shape that
+  codex BLOCKING rejected (PR #1902 finding 1) as non-structural
+  fail-closed. Both-absent invariant relies on runtime assertion, not
+  type-system enforcement. Non-terminal: there's no richer-source
+  derivation; it's a *weaker* shape that loses fail-closed structure.
+- *Attempted dissolution 2: factor into common richer source*. The two
+  arms carry orthogonal payload types — `SourceSpan` (file/byte-range
+  triple from existing diagnostics substrate) vs `EmissionRule` (named
+  rule from emission code). No common richer source they both project
+  from; they describe two structurally distinct origin classes.
+- *Attempted dissolution 3: third arm for unattributable lines*. STOP
+  trigger #3 explicitly forbids adding an `Unknown` variant — that's
+  the placeholder anti-pattern Director rejected on Slice 2.5 (Option 4
+  fail-closed-with-named-dep). If a third origin class surfaces
+  during cementing test, that's a substrate-fact-introduction cascade
+  (separate brief), not silent variant-extension.
+
+Conclusion: 🟢 GREEN terminal at this scope. The two-arm sum is the
+faithful representation of "every emitted line came from substrate-decl
+mirror OR LangSpec rule emission"; there is no richer source.
+
 **§1.8 ledger entry for GREEN classification** (per
 `docs/modeling-discipline.md#4-coproduct-dissolution` — *"checkpoint
 comment naming its classification (🟢/🟡/🔴), with a ledger entry if

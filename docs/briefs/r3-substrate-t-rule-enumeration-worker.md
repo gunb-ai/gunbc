@@ -47,7 +47,11 @@ exists, or new file `langspec_emission_rules.dag`). Two shape options
 worker chooses via DFS:
 
 - **Option α (sum type)**: `type EmissionRule = DeriveForDisj | PredicatePerVariant | ConstructorPerConj | ...` — enumerated variants per current rule. **🟢 GREEN** if rule set is small (<20) and stable; closed sum.
-- **Option β (named-string list)**: `data emission_rules: List<RuleName>` where `RuleName = String` with discipline that emission code looks up by name. **🟡 YELLOW** with named dissolution trigger (rule-name typo'd at usage site won't fail closed; closed-sum form is structural).
+- **Option β (named-string list)**: `data emission_rules: List<RuleName>` where `RuleName = String` with discipline that emission code looks up by name. **🟡 YELLOW** with named dissolution trigger AND bounded scope per three-part bridge rule (`docs/modeling-discipline.md`):
+  - **Allowed call sites**: only `src/v3/compiler/src/emit/rust_target.rs` and any sibling emission files surfaced via grep at dispatch. β scaffold is NOT exposed beyond emission code; downstream consumers (e.g., `Lens<EmissionProvenance>`) consume only the closed-sum α form once graduated
+  - **Max lifetime**: until graduation gate `rule_name_typo_fail_closed_landed` lands (closed-sum α form replaces β; emission code dispatches via enum-variant rather than string-lookup)
+  - **Consumer policy**: new emission-introspection consumers MUST NOT depend on β; they author against α (closed-sum). β is interim during emission-code refactor only; new consumer code paths gate on α graduation
+  - Rule-name typo'd at usage site won't fail closed under β; that's the named graduation pressure
 
 **Mgr recommendation: α (sum type) if rule set is enumerable closed**. Worker DFS-catalogs current `render_named_template(...)` call sites at HEAD to count actual rule names; if count is reasonable (<20-30) and rules are structurally distinguished (not just template variants), α is the right shape. If rules turn out to be open-ended (template-name-as-data per LangSpec authoring convention), β with named dissolution trigger.
 
