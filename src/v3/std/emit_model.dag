@@ -60,7 +60,8 @@ type TargetIntegerTypeInhabitance {
 // the discriminant is KIND of bound attachment, not competing DAG slots. ✓ does not apply.
 //
 // **Pattern 2 — Variant-is-data.** `BoundUnspecified` is unit; `StaticBoundFact(IntInterval)` carries
-// substrate `Interval<Int>`. Distinct payloads — not label-only. ✓ does not apply.
+// substrate `Interval<Int>`; `PlatformDependentFact` is unit (kind-only target witness). Distinct
+// payloads — not label-only. ✓ does not apply.
 //
 // **Pattern 3 — Algebraic form.** Unspecified vs closed/static interval witness are different emission
 // authorities (defer vs inline Q1 interval); no shared intro/elim form. ✓ does not apply.
@@ -75,6 +76,10 @@ type TargetIntegerTypeInhabitance {
 type TargetIntegerInhabitanceBound
   = BoundUnspecified
   | StaticBoundFact(IntInterval)
+  // Target-side kind witness mirroring `BoundDeclaration::PlatformDependent`
+  // (`design-emission-model.md` §Q1): platform-sized integers (`usize`, Go `int`, …)
+  // use this variant instead of widening `StaticBoundFact` intervals.
+  | PlatformDependentFact
 
 type FieldBinding {
   dag_name: String
