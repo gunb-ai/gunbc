@@ -122,7 +122,7 @@
   <text x="832" y="148" class="code">  Left{value:A} | Right{value:B}</text>
   <text x="832" y="178" class="code">type Result&lt;T, E&gt; = Sum&lt;E, T&gt;</text>
   <rect x="820" y="220" width="240" height="18" rx="4" class="stable"/>
-  <text x="832" y="234" class="stable-text">SAME 5 LINES OF FACTS</text>
+  <text x="832" y="234" class="stable-text">SAME 3 LINES OF FACTS</text>
 
-  <text x="20" y="1230" class="punchline">5 lines of facts. ~70 lines of business logic on the left. ~150 lines of generated Rust in the middle. The fact never changed. The middle is what runs.</text>
+  <text x="20" y="1230" class="punchline">3 lines of facts. ~60 lines of business logic on the left. ~140 lines of generated Rust in the middle. The facts didn't change. The middle is what runs.</text>
 </svg>

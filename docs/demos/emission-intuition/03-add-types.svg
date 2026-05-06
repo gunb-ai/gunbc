@@ -17,7 +17,7 @@
   </defs>
 
   <text x="20" y="30" class="title">A library built from those helpers.</text>
-  <text x="20" y="48" class="sub">Same Sum on the right (with one alias). Library functions on the left use Sum at concrete types like Int and HttpError.</text>
+  <text x="20" y="48" class="sub">Same Sum on the right (with one alias). Library functions on the left use Sum with concrete types like Int and HttpError.</text>
 
   <text x="20"  y="78" class="col-label">BUSINESS LOGIC · HELPERS · LIBRARIES</text>
   <text x="320" y="78" class="col-label">RUST — GENERATED</text>
@@ -111,5 +111,5 @@
   <rect x="820" y="220" width="220" height="18" rx="4" class="stable"/>
   <text x="832" y="234" class="stable-text">FACTS GREW BY ONE LINE</text>
 
-  <text x="20" y="908" class="sub">Five lines of facts. The library on the left compounded — and the middle compounded faster.</text>
+  <text x="20" y="908" class="sub">Three lines of facts. The library on the left got longer — and the middle got longer faster.</text>
 </svg>

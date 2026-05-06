@@ -94,5 +94,5 @@
   <rect x="820" y="180" width="160" height="18" rx="4" class="stable"/>
   <text x="832" y="194" class="stable-text">FACTS UNCHANGED</text>
 
-  <text x="20" y="708" class="sub">The fact didn't move. The logic added a couple of helpers. The middle expanded by Sum's full impl block plus three Rust function bodies.</text>
+  <text x="20" y="708" class="sub">The facts didn't change. We added two helpers, and the middle grew to hold Sum's full impl block plus three Rust function bodies.</text>
 </svg>
