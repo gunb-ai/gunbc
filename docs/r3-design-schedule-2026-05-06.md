@@ -93,6 +93,9 @@ Prior `AbelianGroup<Nat>` references in r3-structure.md, r3-program-plan.md, thi
 - `WorkflowObservationAnchor` + observation/measurement carriers — NEW (Shared External Attachment Pattern per Substrate Mgr design stance; not in current actions.dag)
 
 **Dispatch trigger**: post-T-Lens-Behavioral-Parity COMPLETE (per `r3-structure.md` §"Dependency on R2"; lens consumption needs lenses COMPLETE) **AND** post-`extdeps.github.actions` audit-and-delta receipt (Substrate Mgr to surface audit before worker dispatch).
+
+**Audit-and-delta receipt (2026-05-06):** Landed on [gunbc#1771](https://github.com/gunb-ai/gunbc/issues/1771#issuecomment-4391856805) (quick-ferret-413); tracked assignment [#1873](https://github.com/gunb-ai/gunbc/issues/1873) **CLOSED**. The conjunctive trigger’s audit half is satisfied; **T-LBP COMPLETE** remains the remaining prerequisite before S4 substrate dispatch fires.
+
 **Closure predicate**: §1.8 gates #53 (workflow_substrate_carriers_landed), #54 (timing_lens_carrier_landed), #55 (shared_external_attachment_pattern_documented), #56 (ci_workflow_modeled_as_dag), #62 (substrate_gap_file_ingestion_closed), #63 (substrate_gap_workflow_scheduling_closed).
 
 ### S5 — Variant-aware projection metadata carrier
