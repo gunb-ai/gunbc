@@ -1,12 +1,12 @@
 # R3 PB — BinShim row #1 entry-function decision packet (Shape A/B/C disposition input)
 
-**Status:** DECISION-PACKET (docs-only; no implementation, no entry function, no instance row, no emitter, no §7.2 runnable claim, no carrier edits). Authored 2026-05-02 by R3 PB continuation (witty-tern-193) per inbox #1134 dispatch. Verified against `origin/main` HEAD `9cf6dd223` ("feat(evaluator): PR-E E7 — public-API integration tests for analyze_complexity", #1503).
+**Status:** DECISION-PACKET (docs-only; no implementation, no entry function, no instance row, no emitter, no §7.2 runnable claim, no carrier edits). Authored 2026-05-02 by R3 PB continuation (witty-tern-193) per inbox #1134 dispatch. Verified against `origin/main` HEAD `9cf6dd223` ("feat(evaluator): PR-E E7 — public-API integration tests for analyze_complexity", #1503). **HEAD-refresh re-verified 2026-05-06 against `origin/main` HEAD `831080dee`** ("feat(std): Q-MachineConstraint substrate — machine_constraints.dag + bootstrap", #1856), per PB Mgr dispatch #1890 (sleek-eagle-514): all cited surfaces still resolve (`dsl/std/process.dag` ProcessExit `:39` / ExitFailure `:41` / `exit_failure` helper `:50`; `src/v3/std/bin_shim.dag` BinShim carrier `:19` with `entrypoint_name: NonEmptyStr`; `dsl/std/runtime/bin_shims/` directory still framework-only, single `README.md`). Row-#1 NOT-LIVE verdict unchanged.
 
 **Owning manager:** Pure Bootstrap Manager (R2 → R3 continuation). This packet **routes a [P1](../../INVARIANTS.md#p1-modeling-faithfulness) question to Director / Substrate Manager / PB Manager**; it does not unilaterally pick a shape.
 
 **Purpose:** the head-of-chain blocker for the BinShim / `regen_lens` retirement chain is row #1 of [`docs/briefs/r3-pb-binshim-blocker-ledger.md`](r3-pb-binshim-blocker-ledger.md): no `regen_lens_main` (`fn` or `func`) entry function exists on main, and the published STOP at [`dsl/std/runtime/bin_shims/README.md`](../../dsl/std/runtime/bin_shims/README.md) §"Substrate prerequisite (STOP+PING — refreshed post-#1361)" rejects PB inventing even a fail-closed placeholder without [P1](../../INVARIANTS.md#p1-modeling-faithfulness) disposition. The Shape A / Shape B / Shape C menu is sketched in [`docs/briefs/r3-pb-binshim-emitter-readiness.md`](r3-pb-binshim-emitter-readiness.md) §"Implementation slice STOP" but never normalized into a single decision artifact. This packet is that artifact.
 
-**Verified row-#1 state (re-run on `origin/main` HEAD `9cf6dd223`):**
+**Verified row-#1 state (re-run on `origin/main` HEAD `831080dee`, 2026-05-06):**
 
 ```bash
 $ rg -n "^(fn|func) regen_lens_main|^(fn|func) .*_main.*ProcessExit" src/v3 dsl
@@ -15,7 +15,7 @@ $ ls dsl/std/runtime/bin_shims/
 README.md
 ```
 
-No real row-#1 implementation has become unblocked on main. This packet remains the right next slice.
+Earlier verification at HEAD `9cf6dd223` (2026-05-02) produced identical receipts. No real row-#1 implementation has become unblocked on main between those two HEADs (delta includes #1503 PR-E E7, T-Numeric-Construction S9, Q-MachineConstraint #1856, the T-V2 inventory work, and other R3 lane motion — none of which authored a `regen_lens_main` / `*_main -> ProcessExit` entry function or extended `dsl/std/runtime/bin_shims/` beyond `README.md`). This packet remains the right next slice; the Shape A/B/C disposition is still the head-of-chain blocker.
 
 ## Shape comparison (one row per option)
 
