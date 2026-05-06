@@ -42,8 +42,8 @@ fn tc1_composed(d: Dag) -> Int =
     tc1_static_lens.sequential.identity,
     |acc, b|
       match tc1_static_lens.read(d, b) {
-        Inhabits(c) => tc1_static_lens.sequential.op(acc, c)
-        Violates { reason, at } => acc
+        Inhabits(c) => int_add(acc, c)
+        Violates { reason: r, at: beh } => acc
       }
   )
 
@@ -51,14 +51,14 @@ fn tc1_static_dimension_fold(d: Dag) -> DimensionReport<Int> =
   match tc1_static_lens.validate(d, tc1_composed(d)) {
     NoDiagnostic =>
       DimensionOk {
-        dimension_name: tc1_static_lens.name;
-        composed: tc1_composed(d);
+        dimension_name: tc1_static_lens.name,
+        composed: tc1_composed(d),
         witnesses: empty()
       }
-    SomeDiagnostic { value } =>
+    SomeDiagnostic { value: _diag } =>
       DimensionFail {
-        dimension_name: tc1_static_lens.name;
-        violations: empty();
+        dimension_name: tc1_static_lens.name,
+        violations: empty(),
         witnesses: empty()
       }
   }
@@ -67,14 +67,14 @@ fn tc1_static_dimension_fold_eta(d: Dag) -> DimensionReport<Int> =
   match tc1_static_lens.validate(d, 0 + tc1_composed(d)) {
     NoDiagnostic =>
       DimensionOk {
-        dimension_name: tc1_static_lens.name;
-        composed: 0 + tc1_composed(d);
+        dimension_name: tc1_static_lens.name,
+        composed: 0 + tc1_composed(d),
         witnesses: empty()
       }
-    SomeDiagnostic { value } =>
+    SomeDiagnostic { value: _diag } =>
       DimensionFail {
-        dimension_name: tc1_static_lens.name;
-        violations: empty();
+        dimension_name: tc1_static_lens.name,
+        violations: empty(),
         witnesses: empty()
       }
   }
