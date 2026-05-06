@@ -17,7 +17,7 @@ Cross-link discipline: this plan never restates lane definitions from `r3-struct
 
 **Brian-ratified language (gunbc#846, 2026-05-05):** *"all 5 substrate-gap classes closed + v2 fully retired + Pattern A NYI predicates executable + BridgeLedgerZero ratcheting at zero."*
 
-PM-recommended TestClaim predicate set (**ratification pending Q1, §10**):
+PM-recommended TestClaim predicate set (RATIFIED 2026-05-06 per Brian directive at gunbc#846; Q1 in §10.1):
 
 ### §1.1 Pattern A NYI predicates executable (7 predicates)
 
@@ -82,7 +82,7 @@ R3 closes when ALL gates pass + zero tracked-debt rows survive (`r3_debt_paydown
 - "Look, it runs" minimal artifact per `r3-structure.md` §"R3 demo discipline + omni-emission TDD".
 - Closure ledger reports demonstration-gate status separately from substrate-shape gates.
 
-**Per-lane demonstration audit** (PM-recommended; ratification pending):
+**Per-lane demonstration audit** (RATIFIED 2026-05-06 per Brian directive at gunbc#846; Q5 generalized to demonstration principle in §10.1):
 
 | Lane | Existing demo gate | Needed demo gate (if missing) |
 |---|---|---|
