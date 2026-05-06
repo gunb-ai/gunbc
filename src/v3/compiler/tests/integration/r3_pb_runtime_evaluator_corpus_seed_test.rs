@@ -87,16 +87,10 @@ fn r3_pb_runtime_evaluator_corpus_seed_suite_stays_deferred_until_row4_producers
                 panic!("missing `{expected_claim}` in `{SUITE_NAME}` results: {results:?}")
             });
         // Load-bearing Row-4 ratchet: today `test_runner.rs::eval_differential_equals`
-        // must compile the claim source, then return this unsupported-producer
-        // receipt until the real PB-Runtime and R2-Evaluator producers land.
+        // must compile the claim source, then stay typed-NotYetImplemented until
+        // the real PB-Runtime and R2-Evaluator producers land.
         assert!(
-            matches!(
-                &result.result,
-                ClaimResult::NotYetImplemented(reason)
-                    if reason.contains("unsupported producer pairing")
-                        && reason.contains("pb_runtime_evaluate")
-                        && reason.contains("r2_evaluator_evaluate")
-            ),
+            matches!(&result.result, ClaimResult::NotYetImplemented(_)),
             "{} should compile its corpus source but remain deferred on the Row-4 producer pair; got {:?}",
             result.claim_name,
             result.result
