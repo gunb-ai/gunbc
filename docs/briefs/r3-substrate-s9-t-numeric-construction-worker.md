@@ -65,22 +65,29 @@ phases below; Substrate Mgr ratifies phase-by-phase.
    superseded — the decision was already ratified via Q6 audit.
    Do NOT model `Int` as `AbelianGroup<Nat>` — Nat lacks additive
    inverses; this shape is unfaithful.)
-2. **`UInt` algebra carrier — MIGRATION required**. Current state:
-   `dsl/std/integer.dag:56` — `type UInt = UInt64` (legacy alias).
-   Brief target: `type UInt = CommutativeMonoid<Nat>` (consistent
-   with landed Option-B Int shape; Nat carrier under addition,
-   no inverses). Fixed-width rows `UInt8..UInt128` stay on legacy
-   `Semiring<Word*>` per existing rows policy in `integer.dag:39-44`
-   (worker re-greps at dispatch).
-   Practice 4 classification: 🟢 PRIMITIVE (algebra-only, no
-   machine-axis composition).
-3. **Concrete emission entries** in `Compose&lt;Algebra, MachineConstraint&gt;`
-   (cross-program with Grounding Mgr):
-   - `Int × MachineWidth<32> → Rust i32`
-   - `Int × MachineWidth<64> → Rust i64`
-   - `Int × MachineWidth<128> → Rust i128`
-   - `UInt × MachineWidth<32> → Rust u32`
-   - `UInt × MachineWidth<64> → Rust u64`
+2. **`UInt` algebra carrier — LANDED at #1818** (`type UInt = Nat`,
+   commit on main 2026-05-06). Codex review on PR flagged BLOCKING
+   P2 facts-flow-forward violation on initial `CommutativeMonoid<Nat>`
+   form — the wrap projects out Nat's multiplicative monoid +
+   identity 1; Nat IS a `CommutativeSemiring` (addition + multiplication
+   + 0 + 1). Final landed form `type UInt = Nat` preserves the full
+   `CommutativeSemiring<Magnitude>` surface (UInt IS Nat per design
+   doc; canonical-instance form). Worker confirms HEAD state at
+   dispatch.
+3. **Concrete emission entries** via parametric
+   `Compose<Algebra, MachineConstraint>` (cross-program with
+   Grounding Mgr):
+   - `Int<32>` ≡ `Compose<AbelianGroup, MachineWidth<32>>` → Rust `i32`
+   - `Int<64>` ≡ `Compose<AbelianGroup, MachineWidth<64>>` → Rust `i64`
+   - `Int<128>` ≡ `Compose<AbelianGroup, MachineWidth<128>>` → Rust `i128`
+   - `UInt<32>` ≡ `Compose<CommutativeSemiring, MachineWidth<32>>` → Rust `u32`
+   - `UInt<64>` ≡ `Compose<CommutativeSemiring, MachineWidth<64>>` → Rust `u64`
+
+   Algebra-side labels per landed shapes: `Int = AbelianGroup<GroupCompletion<Nat>>`
+   (Slice 3 #1466) — algebra label is AbelianGroup; `UInt = Nat`
+   (#1818) — algebra label is CommutativeSemiring (Nat IS the
+   commutative semiring; both additive and multiplicative monoids
+   preserved per codex P2 review on #1818).
 
    Phase-1 lands the substrate; emission consumer landing is
    Grounding Mgr G2 (T-Ground-Rust).
