@@ -42,7 +42,7 @@
 
 module std.integer
 
-import std.algebra { OrderedRing, Semiring, AbelianGroup, GroupCompletion }
+import std.algebra { OrderedRing, Semiring, AbelianGroup, GroupCompletion, CommutativeMonoid }
 import std.bit { Byte, Word16, Word32, Word64, Word128 }
 import std.nat { Nat }
 
@@ -78,10 +78,28 @@ type UInt128 = Semiring<Word128>
 // layer-3 carrier. Slice §6 (cascade) migrates downstream consumers off
 // `OrderedRing<Word*>` for the abstract `Int` algebra path.
 //
-// `UInt = UInt64` remains the legacy default alias until the cascade slice;
-// per design doc `UInt IS Nat`, but per-row migration is §6's job.
+// `UInt` is the abstract unsigned-integer algebra: a `CommutativeMonoid`
+// over the `Nat` carrier (additive structure on the natural-number carrier;
+// closure / associativity / identity 0 / commutativity; no inverses, since
+// Nat lacks additive inverses by construction). This is the Phase-1
+// companion to Slice 3's Int alias-pivot, consistent with the landed
+// `Int = AbelianGroup<GroupCompletion<Nat>>` Option-B form (group-completion
+// of the commutative-monoid structure on Nat).
+//
+// Per T-Numeric-Construction S9 worker brief Phase-1 (R3 design schedule
+// §1 S9, ratified 2026-05-06): the brief authorizes `UInt = Monoid<Nat>`
+// or canonical `CommutativeMonoid` form; this alias picks the latter to
+// preserve the additive-commutativity axiom (UInt addition is commutative
+// over Nat).
+//
+// The fixed-width storage rows above (`UInt8`..`UInt128`) stay on
+// `Semiring<Word*>`; only this default alias is the construction-chain
+// abstract carrier. Slice §6 (cascade) migrates downstream consumers off
+// `Semiring<Word*>` for the abstract `UInt` algebra path. Concrete
+// emission entries (`UInt × MachineWidth<32> → Rust u32`, etc.) gate on
+// S3 `MachineConstraint<C>` landing per S9 brief STOP-AND-ESCALATE.
 type Int = AbelianGroup<GroupCompletion<Nat>>
-type UInt = UInt64
+type UInt = CommutativeMonoid<Nat>
 
 // ─── Diagnostic enumeration order (Modeling problem 4; slice 2) ─────────────
 //
