@@ -50,36 +50,51 @@ import std.machine_constraints { Compose, MachineWidth, PointerWidth }
 // Signed integers: ordered rings (add + negate + mul + compare)
 type Int8 = OrderedRing<Byte>
 type Int16 = OrderedRing<Word16>
-
-// S9 Phase-1 step 3 (Q-MachineConstraint sub-decision 2 RATIFIED at gunbc#828
-// #issuecomment-4385530115): Int<32>/Int<64>/Int<128> emission entries are
-// parametric `Compose<Algebra, MachineConstraint>` instantiations, NOT
-// AlgebraMachineProduct table rows. Algebra-side slot-1 = fully-applied
-// concept name `Int` (= AbelianGroup<GroupCompletion<Nat>> per #1466 Q6
-// audit), NOT bare `AbelianGroup` (Q-MC sub-decision 3 critical correction:
-// witness shape doesn't go in slot-1; the named concept does). Machine-axis
-// slot-2 = `MachineWidth<Word*>` — pre-#2156 (S3 Phase-2 parser-grammar for
-// type-level integer literals), the phantom-bits token slot uses landed
-// `std.bit` Word*N* carriers in lieu of literal `<32>` (structurally
-// analogous to IntPlatform's `MachineWidth<PointerWidth>` precedent at
-// `dsl/std/integer.dag:142-143`; tightens to `MachineWidth<32>` literal-Nat
-// spelling when #2156 lands).
-type Int32 = Compose<Int, MachineWidth<Word32>>
-type Int64 = Compose<Int, MachineWidth<Word64>>
-type Int128 = Compose<Int, MachineWidth<Word128>>
+type Int32 = OrderedRing<Word32>
+type Int64 = OrderedRing<Word64>
+type Int128 = OrderedRing<Word128>
 
 // Unsigned integers: semirings (add + mul, no negate)
 type UInt8 = Semiring<Byte>
 type UInt16 = Semiring<Word16>
+type UInt32 = Semiring<Word32>
+type UInt64 = Semiring<Word64>
+type UInt128 = Semiring<Word128>
 
-// S9 Phase-1 step 3 — UInt<N> emission entries. Slot-1 = `UInt` (= `Nat`
-// per #1818 / Codex P2 review framing — Nat IS the CommutativeSemiring
-// preserving both additive and multiplicative monoid structure); NOT bare
-// `CommutativeSemiring` (Q-MC sub-decision 3). Machine-axis slot-2 spelling
-// matches the Int<N> family (Word* token pre-#2156).
-type UInt32 = Compose<UInt, MachineWidth<Word32>>
-type UInt64 = Compose<UInt, MachineWidth<Word64>>
-type UInt128 = Compose<UInt, MachineWidth<Word128>>
+// S9 Phase-1 step 3 emission entries — parametric `Compose<Algebra, MachineConstraint>`
+// instantiations per Q-MachineConstraint sub-decision 2 RATIFIED at gunbc#828
+// #issuecomment-4385530115 (NOT AlgebraMachineProduct table rows).
+//
+// Authoring posture (additive, not migrating): legacy `Int32..Int128` /
+// `UInt32..UInt128` storage rows above stay on `OrderedRing<Word*>` /
+// `Semiring<Word*>` to preserve P2 facts-flow-forward for downstream Rust-
+// side mirrors (`src/v3/grounding_pilot/src/lib.rs` `dag_type_facts` +
+// `bootstrap_generated.rs` snapshot). These NEW `IntW*` / `UIntW*` aliases
+// land the parametric Compose form alongside; Grounding G2 (#1745) consumer
+// wiring + per-pair lowering rules + emitted-Rust-primitive verification
+// follow in a separate PR per bundled-scope discipline (Director gunbc#1739
+// #issuecomment-4392225548). When G2 + downstream Rust mirrors migrate,
+// legacy fixed-width storage rows can dissolve into these Compose entries.
+//
+// Slot-1 spelling = fully-applied algebraic-concept name (`Int` =
+// `AbelianGroup<GroupCompletion<Nat>>` per #1466 Q6 audit; `UInt` = `Nat`
+// per #1818 / Codex P2 framing) — NOT bare witness shape (Q-MC sub-decision
+// 3 critical correction: witness shape doesn't go in slot-1; the named
+// concept does).
+//
+// Slot-2 spelling = `MachineWidth<Word*N*>` — pre-#2156 (S3 Phase-2 parser-
+// grammar for type-level integer literals), the phantom-bits token slot
+// uses landed `std.bit` Word*N* carriers in lieu of literal `<32>` /
+// `<64>` / `<128>` (structurally analogous to IntPlatform's
+// `MachineWidth<PointerWidth>` precedent at `dsl/std/integer.dag:142-143`).
+// Tightens to `MachineWidth<32>` / `MachineWidth<64>` / `MachineWidth<128>`
+// literal-Nat spelling when #2156 lands; named dissolution trigger.
+type IntW32  = Compose<Int,  MachineWidth<Word32>>
+type IntW64  = Compose<Int,  MachineWidth<Word64>>
+type IntW128 = Compose<Int,  MachineWidth<Word128>>
+type UIntW32  = Compose<UInt, MachineWidth<Word32>>
+type UIntW64  = Compose<UInt, MachineWidth<Word64>>
+type UIntW128 = Compose<UInt, MachineWidth<Word128>>
 
 // Default aliases.
 //
