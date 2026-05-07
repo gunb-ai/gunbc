@@ -11,7 +11,7 @@
 ## The factoring claim
 
 **ε path proposes**: cost composition factors as **(target-agnostic-shape) × (target-specific-values)**, where:
-- **Target-agnostic-shape** = the abstract `SymbolicCost` algebra (7-variant: `ConstantCost`, `LinearCost`, `LogCost`, `LinearithmicCost`, `QuadraticCost`, `ExponentialCost`, `PolynomialCost(Int)`) + `Semiring<SymbolicCost>` composition (sequential / branch / iterate via `sum`/`product`)
+- **Target-agnostic-shape** = the abstract `SymbolicCost` algebra (7-variant per `src/v3/std/algebra.dag:181-188` at HEAD: `ConstantCost(Int)` | `LinearCost(SizeVariable)` | `PolynomialCost { var, degree }` | `ProductCost(NonSingletonList<SymbolicCost>)` | `SumCost(NonSingletonList<SymbolicCost>)` | `LogCost(SizeVariable)` | `UnknownCost(String)`) + `Semiring<SymbolicCost>` composition (sequential via `SumCost` / `ProductCost`; branch / iterate via algebra ops)
 - **Target-specific-values** = per-primitive realization-cost facts (`TypeRealization.cost: Int`, `CallableRealization.cost: Int`, etc.) loaded Rust-side at emit time
 
 If this factoring is **structurally honest**, cost composition can happen Rust-side: the Rust consumer reads the abstract `SymbolicCost` shape from the `.dag`-side lens output, then composes target-specific values via Rust-side data-flow (HashMap-build over realization rows, lookup, multiply by abstract structural coefficients).
