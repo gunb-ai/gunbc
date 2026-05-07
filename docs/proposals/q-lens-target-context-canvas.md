@@ -46,7 +46,7 @@ Refactor `Lens<C>::read` from `fn(Dag, Behavior) -> Witness<C>` to `fn(Dag, Beha
 - Future lenses that need target-context can use it without further substrate refactoring
 
 **Con**:
-- Threading cost across 15 existing lens instances (even if they ignore the parameter, signature change cascades)
+- **Threading cost across 15 existing lens instances** (quantified): ~15 lens instances × signature change (`fn(Dag, Behavior) -> Witness<C>` → `fn(Dag, Behavior, LanguageSpec) -> Witness<C>`) + 14 ignore-parameter patterns (`_lang_spec` per lens that doesn't substantively use target-context) + 1 cost-using consumer + cementing-test revalidation per ratchet-test discipline. Real but bounded cost; mechanical migration.
 - Forces target-context awareness on lens-fold-pass authority even when only one lens (cost) needs it
 - Lens<C> generic refactor requires its own canvas + worker brief (per `feedback_pre_authored_brief_queue`)
 
@@ -60,7 +60,7 @@ Author per-target lens instances: `cost_lens_rust`, `cost_lens_python`, `cost_le
 - Each lens instance is target-specific by construction
 
 **Con**:
-- **Explosion-by-target**: N targets × M target-context-needing lenses = N×M lens instances (3 targets × 1 cost-needing lens currently = 3 instances; grows to 9 if 3 lenses need target-context)
+- **Explosion-by-target with authoring multiplier**: N targets × M target-context-needing lenses = N×M lens instances. Each instance replicates the entire `Lens<C>` shape's authoring surface: per-target instance × 4 (carrier + monoid `sequential` + `branch` + `iterate`) authoring overhead. Concretely: 3 targets × 1 cost-needing lens currently = 3 instances × 4 = **12 authored fns**; grows to 36 if 3 lenses need target-context. Per `feedback_parallel_representation_debt`, N×M×4 multiplier is exactly the parallel-authority accumulation P2 prevents.
 - Lens-fold-pass authority must dispatch on target — substrate-side dispatch logic
 - Per-lens-per-target authoring duplicates lens shape; parallel-representation debt
 - Violates `feedback_parallel_representation_debt` (canonical-authority-consumption rule — Lens<C> exists; per-target instances multiply rather than consume)
@@ -110,7 +110,19 @@ Grep + analysis of `src/v3/lenses/` instances:
 - **variant_payload.dag**: structural; no target need
 - **lens_composition_associative_witness.dag**: meta-lens; no target need
 
-**Net finding**: cost.dag is the load-bearing target-context-needing lens at HEAD. emission_provenance.dag was previously framed as a secondary candidate but per emission_provenance.dag status header (`STRUCTURALLY TERMINAL; LENS-INSTANCE FIXTURE-BOUND; BEHAVIORALLY DEFERRED`; `read` body fail-closed `Empty` stub), the lens does NOT currently read target-context inside the fold — producer-side instrumentation records target-specific entries which the lens framework consumes via standard `Empty`/`Concat`. Whether emission_provenance constitutes a real N=2 trigger candidate is **ungrounded at HEAD** and re-evaluates when producer wiring lands. Other 13 lenses are target-agnostic per file headers / structural framing. **N=1 confirmed at HEAD**; N=2 is empirically open pending lens-completion cycles, not pre-claimable.
+**Net finding** (empirically grep-verified per PM canvas-review at gunbc#2181 c#4401624921):
+
+```
+$ grep -lc 'TypeRealization|CallableRealization|MethodTemplateContract|target_realization|realization_cost|LanguageSpec' src/v3/lenses/*.dag
+src/v3/lenses/cost.dag:3
+[14 other lenses]:0
+```
+
+**Only `cost.dag` has realization-row consumption refs at HEAD (3 hits)**. All 14 other lenses (including `emission_provenance.dag`) have ZERO refs to target-realization vocabulary. N=1 empirically grounded.
+
+emission_provenance.dag was speculatively framed as secondary candidate but per its file status header (`STRUCTURALLY TERMINAL; LENS-INSTANCE FIXTURE-BOUND; BEHAVIORALLY DEFERRED`; `read` body fail-closed `Empty` stub), the lens does NOT currently read target-context inside the fold — producer-side instrumentation records target-specific entries which the lens framework consumes via standard `Empty`/`Concat`. The grep result confirms: emission_provenance is NOT a target-realization-row consumer at HEAD. Re-evaluates when producer wiring lands.
+
+**N=1 confirmed at HEAD by grep**; N=2 is empirically open pending future lens-completion cycles surfacing target-realization consumption, not pre-claimable.
 
 This means option (i)'s threading cost is mostly mechanical (14 of 15 instances don't substantively use `LanguageSpec`). Option (ii)'s explosion-by-target is bounded too (cost × 3 targets + emission_provenance × 3 targets = 6 per-target instances if (ii) chosen) — but still violates parallel-representation discipline.
 
