@@ -227,10 +227,10 @@ Per blocking review on PR #1805 (codex sha:`72667918`): the §Delta row for B.2 
 | `int_pow_bounded` / `ceil_log` / `ceil_log_iter` | `:767` / `:802` / `:808` | `:765` / `:800` / `:806` | -3 lines each |
 | `master_theorem` / `derive_bound` | `:823` / `:897` | `:821` / `:895` | -3 lines each |
 | `peano_literal_materialization_cap` / `positive_descent_amount_from_positive_int` / `proportional_divisor_from_int_at_least_two` in `termination.dag` | `:140` / `:146` / `:162` | `:243` / `:251` / `:268` | **+103 / +105 / +106 lines** (`termination.dag` grew substantially between 530c76ea7 and 2c7d82031; symbols still live, named declarations unchanged) |
-| `grep -rcE '\b(derive_bound\|master_theorem)\b' src/v3/compiler/tests/` non-zero hits | zero | zero | none |
-| `grep -rcE '\b(int_pow_bounded\|ceil_log)\b' src/v3/compiler/tests/` non-zero hits | zero | zero | none |
-| `grep -rcE '\b(peano_literal_materialization_cap\|positive_descent_amount_from_positive_int\|proportional_divisor_from_int_at_least_two)\b' src/v3/compiler/tests/` non-zero hits | zero | zero | none |
-| `grep -rcE '\b(meet_sub_value\|join_sub_value)\b' src/v3/compiler/tests/` non-zero hits | zero | zero | none |
+| `grep -rnE '\b(derive_bound\|master_theorem)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(int_pow_bounded\|ceil_log)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(peano_literal_materialization_cap\|positive_descent_amount_from_positive_int\|proportional_divisor_from_int_at_least_two)\b' src/v3/compiler/tests/` | zero | zero | none |
+| `grep -rnE '\b(meet_sub_value\|join_sub_value)\b' src/v3/compiler/tests/` | zero | zero | none |
 | Non-Arrow `Callable` fail-closed in `src/v3/compiler/src/lib.rs` | `:581-585` originally; `~:579-585` at 530c76ea7 | `:674` (primary fail-closed branch) **plus a second site at `:2338`** with identical `reason: "Callable target declaration is not an Arrow type"` text — fail-closed shape unchanged, surface duplicated for additional dispatch path | line shifted within same function; **new second site** at `:2338` (same fail-closed semantics) |
 | `lower_constructor_invocation` produces `TransformTarget::Callable(target)` | `:7103-7119` (audit) / `:7103+` (530c76ea7) | `:7192-7202` | +~89 lines |
 | B.1 v2 imports in `p0_std_render_repeat_string_test.rs` | L9: `use v2_compiler::v2_compiler_compile::…`; L10: `use v2_compiler::v2_interpreter::…`; L11: `use v2_compiler_tests::helpers::…` | identical (L9-L11 unchanged) | none |
