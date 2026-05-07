@@ -776,6 +776,52 @@ fn ep_depth2(t: EpRecN) -> Int =
 }
 
 #[test]
+fn e_p_per_call_descent_evidence_classifies_nested_match_in_mutual_recursion_scc() {
+    // Phase-1 broadening Slice 3 — same nested-match shape as the
+    // self-recursive case, but inside a mutually-recursive cluster (SCC).
+    // The termination authority for clusters is `ClusterDescentChecker`,
+    // a separate code path from `descent_provable`. Both must apply the
+    // same nested-binding rule or the same termination fact has two
+    // authorities with different acceptance rules (single-authority
+    // INVARIANT violation).
+    //
+    // `ep_alpha`'s inner-match scrutinee `t1` is an outer-arm payload, not
+    // the parameter — only the nested-binding rule lets the cluster
+    // checker accept the inner arm's `ep_beta(t2)` call as descending.
+    let dag = compile_to_dag(
+        "\
+type EpListM = EpNilM | EpConsM(EpListM)
+fn ep_alpha(xs: EpListM) -> Int =
+  match xs {
+    EpConsM(t1) => match t1 {
+      EpConsM(t2) => ep_beta(t2),
+      EpNilM => 0
+    },
+    EpNilM => 0
+  }
+fn ep_beta(ys: EpListM) -> Int =
+  match ys { EpConsM(z) => ep_alpha(z), EpNilM => 0 }
+",
+        "e_p_nested_match_mutual_recursion.v3",
+    )
+    .expect("nested-match mutual-recursion fixture compiles (cluster checker accepts)");
+
+    let entries = per_call_descent_evidence(&dag);
+    let alpha_to_beta = entries
+        .iter()
+        .find(|e| e.caller == "ep_alpha" && e.callee == "ep_beta")
+        .expect("expected ep_alpha → ep_beta cluster edge in per-call side table");
+    // The structural fact this test pins is that the FIXTURE COMPILES —
+    // the cluster checker now accepts the nested-match descent shape
+    // consistently with `descent_provable`. (`ep_alpha` and `ep_beta`
+    // template through different declarations, so the per-call producer's
+    // same-template guard emits a `SubValueUnknown` for the cross-edge
+    // — that's the fail-closed cross-template default; in-SCC descent
+    // proofs are the cluster checker's authority, not this side table's.)
+    assert_eq!(alpha_to_beta.evidence.len(), 1);
+}
+
+#[test]
 fn e_p_per_call_descent_evidence_fails_closed_for_non_self_call() {
     let dag = compile_to_dag(
         "\
