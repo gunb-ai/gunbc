@@ -16,7 +16,7 @@
 module v3.std.approximate_field
 
 import std.algebra { Field }
-import std.types { PositiveInt }
+import std.integer { PositiveInt }
 
 // 🟢 TERMINAL at approximate-arithmetic policy scope. Rounding behavior is a
 // program-visible fact, and these modes are the durable closed policy axis;
