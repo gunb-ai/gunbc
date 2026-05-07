@@ -59,6 +59,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/std/diagnostics.dag": V3StdAuthority,
     "src/v3/std/dimensions.dag": V3StdAuthority,
     "src/v3/std/effects.dag": V3StdAuthority,
+    "src/v3/std/emission_provenance.dag": V3StdAuthority,
     "src/v3/std/emit_model.dag": V3StdAuthority,
     "src/v3/std/extdeps_bootstrap_fixtures.dag": V3StdAuthority,
     "src/v3/std/go_method_template_contracts.dag": V3StdAuthority,

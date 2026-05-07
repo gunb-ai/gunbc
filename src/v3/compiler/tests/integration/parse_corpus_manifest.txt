@@ -31,7 +31,7 @@ src/v3/std/anthropic_operations.dag	6	3404	a729e7662be9af5f
 src/v3/std/anthropic_schema.dag	12	54190	a430f932e3962ecb
 src/v3/std/approximate_field.dag	11	16864	fb342d17eec1c8ac
 src/v3/std/bin_shim.dag	4	2544	9ac96f1b3feafe47
-src/v3/std/bootstrap_authority.dag	4	66427	908aa66838dfb9e6
+src/v3/std/bootstrap_authority.dag	4	67475	1d59dad2bb459e05
 src/v3/std/bridge_ledger.dag	7	31662	ec3b4ea8c0455eb7
 src/v3/std/clean_emission.dag	15	23867	e7bc1e6145f4781e
 src/v3/std/computation.dag	18	36754	8023f388c3fb0918
@@ -40,6 +40,7 @@ src/v3/std/cross_target_coverage.dag	10	373515	814a9a617f609ad3
 src/v3/std/diagnostics.dag	11	21478	7d2e9e73d74e5adb
 src/v3/std/dimensions.dag	21	39170	c6833b618a39e0af
 src/v3/std/effects.dag	53	97984	1acdbeaa68acfd2e
+src/v3/std/emission_provenance.dag	6	4966	0e740954709fd178
 src/v3/std/emit_model.dag	44	83040	71640f0720ab903a
 src/v3/std/extdeps_bootstrap_fixtures.dag	4	16839	22cffc76152e82dd
 src/v3/std/go_method_template_contracts.dag	14	133273	43ccd439b5e388ea

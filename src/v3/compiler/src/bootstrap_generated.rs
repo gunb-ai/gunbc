@@ -22184,6 +22184,13 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
                         },
                     ),
                     (
+                        "src/v3/std/emission_provenance.dag".to_string(),
+                        FieldValue::Variant {
+                            constructor: DeclarationId(1880),
+                            payload: vec![],
+                        },
+                    ),
+                    (
                         "src/v3/std/emit_model.dag".to_string(),
                         FieldValue::Variant {
                             constructor: DeclarationId(1880),
@@ -22391,7 +22398,7 @@ fn bootstrapped_fixture_dag_declarations() -> Vec<Declaration> {
             )),
             refinement: None,
             nominal_opacity: None,
-            span: SourceSpan::new("src/v3/std/bootstrap_authority.dag", 1361, 4351),
+            span: SourceSpan::new("src/v3/std/bootstrap_authority.dag", 1361, 4409),
         });
         declarations.push(Declaration {
             id: DeclarationId(825),
