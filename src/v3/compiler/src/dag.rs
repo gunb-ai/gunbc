@@ -1658,7 +1658,7 @@ fn classify_call_argument(
 
 /// Phase-1 broadening: classify recursive-call arguments that name a match-arm
 /// payload binding whose scrutinee is the caller's parameter directly. The
-/// surface shape this catches is:
+/// surface shape this catches is the canonical positional cons-tail recursion:
 ///
 /// ```ignore
 /// type List = Nil | Cons(List)
@@ -1672,13 +1672,23 @@ fn classify_call_argument(
 /// fail-closed discipline as the existing arithmetic slice (left-operand only,
 /// integer literal only) keeps producer broadening incrementally provable.
 ///
-/// 🟡 SCAFFOLD on `InductiveField`: `BranchPattern::UnresolvedVariant` is the
-/// pre-resolution shape that current lowering emits for `match` arms (see
-/// `lower.rs` lowered match-arm path), so this slice fills `type_name` /
-/// `variant_name` from the textual variant tag and leaves `element_type`
-/// empty. Dissolution trigger: variant resolution wires `ResolvedVariant`
-/// declarations onto the `Path.pattern` and the field record carries a
-/// reflected `Declaration` reference.
+/// **Substrate-fact discipline.** `InductiveField` is consumer-facing
+/// substrate provenance (cost / complexity lenses project this through
+/// `sub_value_relation_to_call_pattern → CallPattern::ChildAccessorCall`).
+/// The producer therefore derives every field from authoritative DAG state:
+/// - `type_name` / `variant_name` from the parent-Disj lookup of the variant
+///   declaration the post-infer `resolve_branch_patterns` pass installed on
+///   the path (`crate::infer::resolve_branch_patterns` — `BranchPattern::ResolvedVariant`).
+/// - `field_name` from the variant `Conj`'s sole `_0` positional field
+///   label, **not** from the user-chosen pattern binding name. The binding
+///   name is a user-scope identifier (`Cons(tail) => length(tail)` and
+///   `Cons(t) => length(t)` are structurally identical descents); using it
+///   would publish an unstable accessor as substrate provenance.
+/// - `element_type` from the resolved name of the variant's payload type.
+///
+/// When any of those facts is unavailable — `UnresolvedVariant`, parent-Disj
+/// lookup miss, multi-field variant Conj on a positional pattern, anonymous
+/// payload type — the producer fails closed (`SubValueUnknown` upstream).
 fn match_payload_descent_relation(
     dag: &Dag,
     param: PortId,
@@ -1695,14 +1705,22 @@ fn match_payload_descent_relation(
             if binding.payload_port != arg {
                 continue;
             }
-            let (type_name, variant_name) = variant_labels_for_pattern(dag, &path.pattern);
+            let facts = variant_structural_facts(dag, &path.pattern)?;
+            // Positional payload (`VariantWith`): variant Conj has exactly
+            // one `_0`-style field. Multi-field variants are
+            // `VariantFields` lowering territory (record-payload slice) and
+            // are outside this helper's positional-payload contract.
+            let [(field_name, payload_ty)] = facts.payload_fields.as_slice() else {
+                return None;
+            };
+            let element_type = named_type_name(dag, *payload_ty)?;
             return Some(SubValueRelation::StrictSubValue {
                 field: InductiveField {
-                    type_name,
-                    variant_name,
-                    field_name: binding.binding_name.clone(),
+                    type_name: facts.type_name,
+                    variant_name: facts.variant_name,
+                    field_name: field_name.clone(),
                     shape: RecursionShape::DirectRecursion,
-                    element_type: String::new(),
+                    element_type,
                 },
                 factor: ShrinkFactor::UnitShrink,
             });
@@ -1711,18 +1729,66 @@ fn match_payload_descent_relation(
     None
 }
 
-fn variant_labels_for_pattern(dag: &Dag, pattern: &BranchPattern) -> (String, String) {
-    match pattern {
-        BranchPattern::UnresolvedVariant { name, .. } => (name.clone(), name.clone()),
-        BranchPattern::ResolvedVariant(decl) => {
-            let label = dag
-                .declaration(*decl)
-                .name
-                .clone()
-                .unwrap_or_else(|| format!("decl#{}", decl.raw()));
-            (label.clone(), label)
+/// Authoritative variant-structural facts derived from a resolved variant
+/// declaration. Returns `None` for `UnresolvedVariant` and for `ResolvedVariant`
+/// whose parent `Disj` cannot be located by scanning declarations — same
+/// fail-closed discipline as the rest of the per-call producer.
+struct VariantStructuralFacts {
+    type_name: String,
+    variant_name: String,
+    payload_fields: Vec<(String, DeclarationId)>,
+}
+
+fn variant_structural_facts(
+    dag: &Dag,
+    pattern: &BranchPattern,
+) -> Option<VariantStructuralFacts> {
+    let variant_decl_id = match pattern {
+        BranchPattern::ResolvedVariant(id) => *id,
+        BranchPattern::UnresolvedVariant { .. } => return None,
+    };
+    let (parent_decl, variants) = dag.declarations().iter().find_map(|decl| {
+        if let TypeConnective::Disj { variants } = &decl.connective {
+            if variants.iter().any(|f| f.ty == variant_decl_id) {
+                return Some((decl, variants));
+            }
+        }
+        None
+    })?;
+    let type_name = parent_decl.name.clone()?;
+    let variant_name = variants
+        .iter()
+        .find(|f| f.ty == variant_decl_id)
+        .map(|f| f.label.clone())?;
+    let payload_fields = match &dag.declaration(variant_decl_id).connective {
+        TypeConnective::Conj { children } => children
+            .iter()
+            .map(|f| (f.label.clone(), f.ty))
+            .collect::<Vec<_>>(),
+        _ => return None,
+    };
+    Some(VariantStructuralFacts {
+        type_name,
+        variant_name,
+        payload_fields,
+    })
+}
+
+/// Walk a declaration through `Instantiation` / structural-alias edges to a
+/// named declaration. Returns `None` when the chain bottoms out without a name
+/// (anonymous template fields, unresolved atoms, depth-limit hit).
+fn named_type_name(dag: &Dag, mut current: DeclarationId) -> Option<String> {
+    for _ in 0..CALLABLE_PROVENANCE_TEMPLATE_DEPTH_LIMIT {
+        let decl = dag.declaration(current);
+        if let Some(name) = &decl.name {
+            return Some(name.clone());
+        }
+        match &decl.connective {
+            TypeConnective::Instantiation { template, .. } => current = *template,
+            _ => return None,
         }
     }
+    None
 }
 
 fn arithmetic_descent_relation(
