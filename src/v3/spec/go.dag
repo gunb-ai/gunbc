@@ -91,23 +91,17 @@ data go_integer_inhabit_i32_at_program_bound: TargetIntegerTypeInhabitance = {
   type_realization: go_int32
 }
 
-// Native Go `int` — platform-sized; inhabitance uses unit `PlatformDependentFact`
-// (design-emission-model.md Q1) distinct from fixed-width `StaticBoundFact` rows.
-data go_native_int: TypeRealization = {
-  language: go_language
-  target: Int
-  carrier: "int"
-  is_copy: true
-  fields: []
-  cost: 1
-}
-
+// Native Go `int` — platform-sized bound witness only: unit `PlatformDependentFact`
+// (design-emission-model.md Q1), distinct from fixed-width `StaticBoundFact` rows.
+// `type_realization` must remain `go_int` — the sole Go `TypeRealization` for `target: Int`
+// (emit duplicate-realization fail-closed per `emit.rs`); carrier spelling stays `int64` until
+// substrate introduces a distinct primitive for native `int` vs `int64`.
 data go_integer_inhabit_int_platform_dependent: TargetIntegerTypeInhabitance = {
   language: go_language
   kernel_integer: Int
   algebra: Int
   bound: PlatformDependentFact
-  type_realization: go_native_int
+  type_realization: go_int
 }
 
 data go_bool: TypeRealization = {
