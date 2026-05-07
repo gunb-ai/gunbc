@@ -302,8 +302,15 @@ type SourceSpan {
 type Timestamp    = String
 type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
-type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
-type Seconds       = Int where range(min: 0), brand("Seconds")
+// Milliseconds/Seconds: brand half dropped pending per-leaf refinement
+// representation. Restore `, brand("Milliseconds")` /  `, brand("Seconds")`
+// once mixed-clause body-synthesis can preserve each fact (today's Mixed
+// path fail-closes when synthesizable + placeholder leaves combine; brand
+// body synthesis is held at placeholder so Milliseconds/Seconds combined
+// with range-body-synthesized triggers Mixed). Range half kept (now
+// body-synthesized to `subject >= 0`).
+type Milliseconds  = Int where range(min: 0)
+type Seconds       = Int where range(min: 0)
 
 // --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
 // Addresses deficit D15 from domain-modeling-comprehensive.md S9.

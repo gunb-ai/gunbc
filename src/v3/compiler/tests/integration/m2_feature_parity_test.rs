@@ -1068,7 +1068,10 @@ fn test_registered_predicate_placeholder_works_outside_types_dag() {
 #[test]
 fn test_mixed_synthesizable_and_placeholder_predicates_fails_closed() {
     let f = "dsl/std/integer.dag";
-    let dag = cached_compile_any("type M = Nat where gt_zero, range(max: 10)", f);
+    // Use `gt_zero` (synthesized) + `brand` (placeholder) — both registered
+    // and both allowed over Nat per `KNOWN_PREDICATES`, but brand is held at
+    // placeholder pending per-leaf refinement representation.
+    let dag = cached_compile_any("type M = Nat where gt_zero, brand(\"X\")", f);
     assert!(
         !dag.diagnostics().is_empty(),
         "mixed synthesizable + placeholder predicate clause must surface a \
@@ -1269,19 +1272,18 @@ fn test_bare_predicate_with_empty_call_args_fails_closed() {
     }
 }
 
-/// S9 Slice 2.5 Path (a) Rung 3 cement: `range` is registered, validated for
-/// carrier + arg-shape, and currently takes a placeholder body. Real body
-/// synthesis (`subject >= min && subject <= max`) was implemented but
-/// reverted because it cascaded through the integer-routing-witness walk and
-/// broke `int_literal_cardinality_test::let_annotated_uint8_*` (annotated
-/// `let x: UInt8 = N` resolved to `Int` instead of `UInt8`). Surfaced as a
-/// STOP-AND-ESCALATE substrate-extension question per Slice 2.5 brief —
-/// integer-routing needs to be insensitive to refinement-body declarations
-/// before `range` body synthesis can re-enable. Test cements that the
-/// placeholder path is exercised (parse + carrier validate works; body is
-/// just not lowered yet).
+/// S9 Slice 2.5 Path (a) Rung 3 cement: `range` body synthesis produces a
+/// **real** refinement (not a placeholder). `synthesize_predicate_body`
+/// lowers `range(min: m)` / `range(max: M)` / `range(min: m, max: M)` to
+/// the corresponding Comparison(Ge) / Comparison(Le) / And-combination Bool
+/// body. Initial enable hit a test-fixture brittleness in
+/// `int_literal_cardinality_test::let_annotated_uint8_*` — the test used
+/// `find_map(Value(LiteralBits::Int(5)))` and matched a synthesized literal
+/// from a types.dag `range(max: 5)` declaration before the user's literal.
+/// Resolved by filtering the test's literal lookup to the user-source span
+/// (`assert_int_value_port_resolves_to_uint8_in_file`).
 #[test]
-fn test_range_takes_placeholder_pending_routing_fix() {
+fn test_range_lowers_to_real_refinement_body_not_placeholder() {
     let f = "dsl/std/integer.dag";
     for src in [
         "type R = Int where range(min: 1)",
@@ -1294,17 +1296,15 @@ fn test_range_takes_placeholder_pending_routing_fix() {
             .expect("type alias `R` should exist");
         let pred_id = decl
             .refinement
-            .expect("`range` refinement must produce a `Declaration::refinement`");
+            .expect("`range` refinement must produce a real `Declaration::refinement`");
         let pred = dag.declaration(pred_id);
-        let label = pred
-            .name
-            .as_deref()
-            .expect("placeholder should carry a diagnostic name");
-        assert!(
-            label.contains("predicate not lowered"),
-            "`range` currently takes a placeholder pending routing fix \
-             (src={src:?}); got label {label:?}"
-        );
+        if let Some(label) = pred.name.as_deref() {
+            assert!(
+                !label.contains("predicate not lowered"),
+                "`range` must lower to a real refinement body, not placeholder \
+                 (src={src:?}); got label {label:?}"
+            );
+        }
     }
 }
 

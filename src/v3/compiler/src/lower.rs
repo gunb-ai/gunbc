@@ -975,16 +975,16 @@ fn synthesize_predicate_body(
         // lands so mixed clauses preserve each fact, or (b) range body
         // synthesis lands and the And combination is uniformly
         // synthesizable.
-        // range body synthesis disabled pending investigation: synthesizing
-        // `subject >= min && subject <= max` for the existing types.dag
+        // range body synthesis enabled. Note: synthesizing `subject >= min`
+        // / `subject <= max` for the existing `dsl/std/types.dag`
         // Int-where-range declarations (RetryCount, HttpStatus, Port,
-        // EpochMs, Duration, Milliseconds, Seconds) breaks the
-        // int_literal_cardinality_test::let_annotated_uint8_* tests —
-        // annotated `let x: UInt8 = 5` resolves to `Int` instead of `UInt8`.
-        // Cause is the synthesized refinement bodies cascading through the
-        // integer-routing-witness walk; needs targeted fix before re-enable.
-        // Surfacing as STOP per S9 Slice 2.5 brief substrate-extension question.
-        "range" if false => {
+        // EpochMs, Duration, Milliseconds, Seconds) creates additional
+        // `Value(LiteralBits::Int(N))` nodes in the DAG (one per record
+        // field). Tests that locate a value node by literal-bits alone
+        // (e.g. `int_literal_cardinality_test::let_annotated_uint8_*`)
+        // must filter by `span.file` to disambiguate the user's literal
+        // from the synthesized predicate-body literals.
+        "range" => {
             // arg-shape validation has already confirmed:
             //   - exactly 1 SurfaceExpr::Record arg
             //   - each field name is in {"min", "max"} (no duplicates)
