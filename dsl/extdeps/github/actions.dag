@@ -73,9 +73,16 @@ type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnviron
 // carrier folds into actions.dag rather than std.
 //
 // Coproduct dissolution classification (modeling-discipline.md Practice 4):
-// 🟢 TERMINAL. The three-way step/job/workflow scope split is the GitHub
-// Actions spec's binding-scope partition; the variant set is closed at
-// the provider level, not a scaffold awaiting refinement.
+// 🟡 SCAFFOLD. The three-way step/job/workflow scope split mirrors the
+// existing placement sites (`Step.env`, `Job.env`, `Workflow.env`) named
+// in the dissolution trigger below: once `WorkflowSecret` attaches at
+// those sites in Slice 3, scope becomes structural (a `WorkflowSecret`
+// living inside `Step.env` is step-scoped by placement; the explicit
+// `SecretScope` field duplicates that placement fact). Dissolution
+// trigger is therefore the SAME Slice 3 wiring that attaches the
+// carrier -- at that point `SecretScope` and the `scope` field on
+// `WorkflowSecret` collapse into the placement structure and the
+// coproduct can be dropped.
 //
 // Structural-consumer dissolution trigger:
 // `WorkflowSecret` is a Slice 1 carrier introduction; structural attachment
