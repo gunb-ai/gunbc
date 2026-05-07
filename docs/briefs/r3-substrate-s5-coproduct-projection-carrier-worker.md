@@ -50,8 +50,8 @@ These were flagged as STOP-and-PING in canvas; Director pre-ratified the disposi
 ## STOP / PING criteria
 
 - **STOP** before proceeding if:
-  - `DeclarationRef` typed-promotion question (substrate observation #1) cannot be answered locally — surface to Mgr (warm-wolf-698 / inbox #2068).
-  - `FieldRef` introduction cascades into emit/typecheck surfaces beyond `coproduct_projection.dag` and the chosen consumer paydown — surface scope-creep.
+  - Substrate observation #1 (`DeclarationRef` alias): evidence emerges mid-slice that the alias actively breaks something (e.g., string-identity bridge on Anthropic #1702 wire) — re-escalate; default disposition (b) otherwise applies without re-ping.
+  - Substrate observation #2 (`FieldRef` introduction): cascades into emit/typecheck surfaces beyond `coproduct_projection.dag` + the chosen consumer paydown — surface scope-creep.
   - At carrier-shape implementation time, `WireTagValue` typed-leaf shape forces a String<->typed adapter that has nontrivial bootstrap-regen impact — surface.
 - **PING** PB Mgr (#2074 / `warm-dove-618`) at carrier-landing time per Director's cross-Mgr coordination note: PB owns `T-LensProducer-Retirement` which may consume similar projection shapes. They may have downstream needs constraining the carrier. **This is a heads-up, not a same-slice blocker** — PB's input refines future iterations.
 
