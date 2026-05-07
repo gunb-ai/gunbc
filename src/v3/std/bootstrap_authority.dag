@@ -66,6 +66,7 @@ data bootstrap_authority: BootstrapAuthoritySet = {
     "src/v3/std/induction.dag": V3StdAuthority,
     "src/v3/std/integer_diagnostic_order.dag": V3StdAuthority,
     "src/v3/std/lens.dag": V3StdAuthority,
+    "src/v3/std/lens_application.dag": V3StdAuthority,
     "src/v3/std/list.dag": V3StdAuthority,
     "src/v3/std/lookup.dag": V3StdAuthority,
     "src/v3/std/methods.dag": V3StdAuthority,

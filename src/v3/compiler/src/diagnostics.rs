@@ -748,6 +748,27 @@ impl BootstrapAuthorityKey {
         Self(path)
     }
 
+    /// Typed witness for the kernel-`Bool` `inhabits` patch authority
+    /// (`dsl/std/types.dag` row of the substrate `bootstrap_authority`
+    /// set, classified `StdAuthority`). Encapsulates the path-string so
+    /// `bootstrap.rs` consumers do not name `dsl/std/types.dag` directly
+    /// — audit-row #2 retirement (bootstrap.rs slice 1 of 2). Reviewers
+    /// must treat new `for_*` accessors as additions to the witness
+    /// surface; each one represents a hand-Rust authority site.
+    pub(crate) fn for_kernel_bool() -> Self {
+        Self::new("dsl/std/types.dag")
+    }
+
+    /// Typed witness for the pipeline-authority row
+    /// (`src/v3/compiler/pipeline.dag` of the substrate
+    /// `bootstrap_authority` set, classified `CompilerAuthority`).
+    /// Encapsulates the path-string so `bootstrap.rs` consumers do not
+    /// name `src/v3/compiler/pipeline.dag` directly — audit-row #6
+    /// retirement (bootstrap.rs slice 1 of 2).
+    pub(crate) fn for_pipeline_authority() -> Self {
+        Self::new("src/v3/compiler/pipeline.dag")
+    }
+
     /// Canonical bootstrap-authority path. **Display only.** Consumers
     /// dispatching on attribution must use witness equality, not this
     /// string, to decide bootstrap membership; a string compare against
