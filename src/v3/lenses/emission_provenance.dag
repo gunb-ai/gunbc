@@ -28,7 +28,6 @@
 module lenses.emission_provenance
 
 import std.list { List, Empty, concat }
-import std.algebra { Monoid }
 import std.substrate { Dag, Behavior, LoopBound }
 import v3.std.dimensions { Witness, OptionalDiagnostic }
 import v3.std.lens { Lens }
