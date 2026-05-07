@@ -2,11 +2,15 @@
 
 **Sub-issue**: gunbc#1958 (parented under #1939 Substrate Mgr lane).
 **Sibling**: gunbc#1959 closed 2026-05-07 — already retired by PR #1272.
-**Authority anchors**: `docs/briefs/bridge-retirement-audit-sourcespan-family.md` (19-row enumeration); `docs/r3-program-plan.md:353` Substrate-owned scope clarification; `src/v3/std/bridge_ledger.dag` row `bridge_source_span_file_participation_retired` (status=`Proposed`).
+**Authority anchors**: `docs/briefs/bridge-retirement-audit-sourcespan-family.md` (19-row enumeration); `docs/r3-program-plan.md` **§5 Y4 scope-clarification** (current line 353 anchor — verify section heading at HEAD); `src/v3/std/bridge_ledger.dag` row `bridge_source_span_file_participation_retired` (status=`Proposed`).
+
+## Cross-Mgr prerequisite (same-slice blocking gate)
+
+`bridge_source_span_file_participation_retired` ratchet test (Verification-owned per `r3-v-bridge-ratchet-test-design.md`). If not yet authored at HEAD when worker starts, surface to Verification Mgr (#2075 / lane #1940) for ratchet authoring **AS A SAME-SLICE BLOCKING PREREQUISITE** — Substrate worker's PR does NOT merge until Verification's ratchet is in place. Do NOT proceed under "surface as follow-up" framing; the dissolution trigger (ratchet passing) IS a same-slice acceptance criterion. Sequence: Verification ratchet PR lands first → this Substrate retirement PR consumes it.
 
 ## Scope (Substrate-owned, narrow)
 
-Per **r3-program-plan.md §5 line 353** Y4 scope-clarification:
+Per **r3-program-plan.md §5 Y4 scope-clarification**:
 
 > Substrate-owned: `SourceSpan.file` participation checks (**hand-Rust audit sites only** —
 > `bootstrap.rs:519` doc-comment + `:137` / `:287` / `:309` hardcoded path strings;
@@ -44,7 +48,7 @@ Authority constants: `BOOL_TYPES_FILE` (`dsl/std/types.dag`), `PIPELINE_AUTHORIT
 1. `bootstrap.rs` no longer references `BOOL_TYPES_FILE` or `PIPELINE_AUTHORITY_FILE` outside doc-comments.
 2. The two diagnostic paths (kernel Bool not-found, pipeline-authority error) carry typed `DiagnosticAttribution::BootstrapAuthority` with the appropriate `BootstrapAuthorityKey` variant — verified by `kernel_bool_path_a_diagnostic_carries_bootstrap_authority_attribution` (already exists at `:519+`) extended for the pipeline path if not present.
 3. `src/v3/std/bridge_ledger.dag` row `bridge_source_span_file_participation_retired` advances `Proposed` → `Retired` for the Substrate-owned scope; ledger receipt mentions PR # + scope-narrowing (audit rows #2 + #6 only; rows #1, #3-5, #7-19 remain under their owners).
-4. `dag.rs::bridge_source_span_file_participation_retired` ratchet test (if not already authored — Verification-owned per `r3-v-bridge-ratchet-test-design.md`) passes; if test doesn't exist yet, surface to Verification Mgr (#1940) for ratchet authoring as cross-Mgr handoff.
+4. `dag.rs::bridge_source_span_file_participation_retired` ratchet test passes (authored by Verification per the **Cross-Mgr prerequisite** gate above; confirmed-present at HEAD before this PR merges).
 5. Bootstrap regen: `cargo test -p v3-compiler bootstrap_regen_fresh -- --ignored` clean (path-string deletion must not perturb regen byte-snapshot).
 6. Full suite: `cargo test --workspace --exclude v2-compiler-tests` green; `cargo clippy --all-targets -- -D warnings` clean.
 
