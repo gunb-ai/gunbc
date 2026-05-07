@@ -271,6 +271,9 @@ jobs:
           # ratchet); workflow-level `CARGO_TERM_COLOR=always` would otherwise
           # inject ANSI into cargo's stream.
           CARGO_TERM_COLOR: never
+          # See lane2d step above — bootstrap snapshot fn is at the 8MB stack
+          # cliff; bump to 16MB so future bootstrap growth doesn't gate merges.
+          RUST_MIN_STACK: 16777216
         run: |
           start=$(date +%s)
           RUSTC_BOOTSTRAP=1 cargo test -p v3-compiler -- -Z unstable-options --report-time 2>&1 | tee /tmp/v3-test-timings.log
