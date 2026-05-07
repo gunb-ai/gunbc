@@ -33,58 +33,21 @@
 use std::collections::HashSet;
 
 use crate::common::cached_compile_to_dag;
-use v3_compiler::dag::{ArrowBody, Dag, TypeConnective};
+use v3_compiler::dag::TypeConnective;
 use v3_compiler::generated_full_bootstrap_dag;
 
-fn conj_field_labels(dag: &Dag, name: &str) -> Vec<String> {
-    let decl = dag
-        .declaration_by_name(name)
-        .unwrap_or_else(|| panic!("`{name}` missing from compiled dag"));
-    match &decl.connective {
-        TypeConnective::Conj { children } => children.iter().map(|f| f.label.clone()).collect(),
-        other => panic!("`{name}` is not a Conj (record): {other:?}"),
-    }
-}
-
-fn disj_variant_labels(dag: &Dag, name: &str) -> Vec<String> {
-    let decl = dag
-        .declaration_by_name(name)
-        .unwrap_or_else(|| panic!("`{name}` missing from compiled dag"));
-    match &decl.connective {
-        TypeConnective::Disj { variants } => variants.iter().map(|v| v.label.clone()).collect(),
-        other => panic!("`{name}` is not a Disj (sum): {other:?}"),
-    }
-}
-
 #[test]
-fn emission_provenance_record_has_locked_three_field_shape() {
+fn emission_provenance_record_has_locked_three_field_shape_with_locked_field_types() {
     // Director-locked record shape per brief Deliverable 1
     // (codex BLOCKING reshape at PR #1910 sha 2ed1046e Finding #1
     // applied: record form, not coproduct; mandatory `rule` enforces
     // structural fail-closed; optional `source_span` is structurally
     // legal absence).
-    let dag = generated_full_bootstrap_dag();
-    let labels: HashSet<String> = conj_field_labels(&dag, "EmissionProvenance")
-        .into_iter()
-        .collect();
-    let expected: HashSet<&str> = ["emitted_line", "rule", "source_span"]
-        .into_iter()
-        .collect();
-    let actual_refs: HashSet<&str> = labels.iter().map(String::as_str).collect();
-    assert_eq!(
-        actual_refs, expected,
-        "EmissionProvenance must carry the Director-locked 3-field record shape \
-         (mandatory `rule: EmissionRule`, optional `source_span: OptionalSourceSpan`, \
-         positional `emitted_line: Int`); actual labels: {labels:?}"
-    );
-}
-
-#[test]
-fn emitted_line_is_positive_int_refinement_not_bare_int() {
-    // Codex BLOCKING finding (sha 6c7c3d85): line numbers are positive
-    // by construction (1-indexed). The carrier MUST type `emitted_line`
-    // as `PositiveInt` (`dsl/std/integer.dag:137`) so the type system
-    // enforces the invariant rather than leaving it as a comment.
+    //
+    // Per openai-pro NON-BLOCKING TESTING finding (sha 6251a1e5): also
+    // assert each field's *type* (not just label) so the test fails if
+    // `rule` stops being `EmissionRule` or `source_span` stops being
+    // `OptionalSourceSpan`.
     let dag = generated_full_bootstrap_dag();
     let decl = dag
         .declaration_by_name("EmissionProvenance")
@@ -95,39 +58,115 @@ fn emitted_line_is_positive_int_refinement_not_bare_int() {
             decl.connective
         );
     };
-    let emitted_line_field = children
-        .iter()
-        .find(|f| f.label == "emitted_line")
-        .expect("`emitted_line` field missing from EmissionProvenance");
+    let labels: Vec<&str> = children.iter().map(|f| f.label.as_str()).collect();
+    let expected_labels: HashSet<&str> = ["emitted_line", "rule", "source_span"]
+        .into_iter()
+        .collect();
+    let actual_labels: HashSet<&str> = labels.iter().copied().collect();
+    assert_eq!(
+        actual_labels, expected_labels,
+        "EmissionProvenance must carry the Director-locked 3-field record shape; \
+         actual labels: {labels:?}"
+    );
+
+    // Each field's type must resolve to the locked carrier — not a
+    // structural look-alike. If the carrier downstream weakens (e.g.,
+    // `rule: String` instead of `rule: EmissionRule`), this fails.
+    let emission_rule = dag
+        .declaration_by_name("EmissionRule")
+        .expect("EmissionRule missing from bootstrap");
+    let optional_source_span = dag
+        .declaration_by_name("OptionalSourceSpan")
+        .expect("OptionalSourceSpan missing from bootstrap");
     let positive_int = dag
         .declaration_by_name("PositiveInt")
         .expect("PositiveInt missing from bootstrap");
-    assert_eq!(
-        emitted_line_field.ty, positive_int.id,
-        "EmissionProvenance.emitted_line must be `PositiveInt`, not bare `Int` \
-         (1-indexed line coordinates are positive by construction; type system \
-         enforces the invariant per codex BLOCKING finding on PR #1928 sha 6c7c3d85)"
-    );
+
+    for field in children {
+        match field.label.as_str() {
+            "emitted_line" => assert_eq!(
+                field.ty, positive_int.id,
+                "EmissionProvenance.emitted_line must resolve to `PositiveInt`"
+            ),
+            "rule" => assert_eq!(
+                field.ty, emission_rule.id,
+                "EmissionProvenance.rule must resolve to `EmissionRule`"
+            ),
+            "source_span" => assert_eq!(
+                field.ty, optional_source_span.id,
+                "EmissionProvenance.source_span must resolve to `OptionalSourceSpan`"
+            ),
+            other => panic!("unexpected EmissionProvenance field: {other}"),
+        }
+    }
 }
 
+// Note: the standalone `emitted_line_is_positive_int_refinement_not_bare_int`
+// test (codex BLOCKING finding sha 6c7c3d85) is now subsumed by
+// `emission_provenance_record_has_locked_three_field_shape_with_locked_field_types`
+// above, which asserts each field's type explicitly (including
+// `emitted_line: PositiveInt`).
+
 #[test]
-fn optional_source_span_carries_none_and_some_arms() {
+fn optional_source_span_carries_none_and_some_arms_with_locked_payload() {
     // v3 std has no generic Option<T>; the typed-sum pattern is the
     // idiom (compare `OptionalDiagnostic` at `v3.std.dimensions`).
     // NoSourceSpan must be a structurally legal absence (NOT a
     // diagnostic) per Director `feedback_no_textual_enforcement_bridges`.
+    //
+    // Per openai-pro NON-BLOCKING TESTING finding (sha 6251a1e5):
+    // assert that the `SomeSourceSpan` variant payload resolves to the
+    // canonical `SourceSpan` carrier so the test fails if the payload
+    // gets weakened or renamed.
     let dag = generated_full_bootstrap_dag();
-    let variants: HashSet<String> = disj_variant_labels(&dag, "OptionalSourceSpan")
-        .into_iter()
-        .collect();
-    let expected: HashSet<&str> = ["NoSourceSpan", "SomeSourceSpan"].into_iter().collect();
-    let actual_refs: HashSet<&str> = variants.iter().map(String::as_str).collect();
+    let decl = dag
+        .declaration_by_name("OptionalSourceSpan")
+        .expect("OptionalSourceSpan missing from bootstrap");
+    let TypeConnective::Disj { variants } = &decl.connective else {
+        panic!(
+            "OptionalSourceSpan is not a Disj sum: {:?}",
+            decl.connective
+        );
+    };
+    let actual_labels: HashSet<&str> = variants.iter().map(|v| v.label.as_str()).collect();
+    let expected_labels: HashSet<&str> = ["NoSourceSpan", "SomeSourceSpan"].into_iter().collect();
     assert_eq!(
-        actual_refs, expected,
+        actual_labels, expected_labels,
         "OptionalSourceSpan must be the 2-variant typed-sum shape \
-         (NoSourceSpan structurally legal; SomeSourceSpan {{ value: SourceSpan }}); \
-         actual variants: {variants:?}"
+         (NoSourceSpan structurally legal; SomeSourceSpan {{ value: SourceSpan }})"
     );
+
+    // The `SomeSourceSpan` variant's payload type must resolve to the
+    // canonical `SourceSpan` from `dsl/std/types.dag` (re-exported via
+    // `v3.std.substrate`), not a structural look-alike. The
+    // `value` field on the variant payload is what carries the
+    // SourceSpan reference.
+    let some_variant = variants
+        .iter()
+        .find(|v| v.label == "SomeSourceSpan")
+        .expect("SomeSourceSpan variant missing");
+    let payload_decl = dag.declaration(some_variant.ty);
+    if let TypeConnective::Conj { children } = &payload_decl.connective {
+        let value_field = children
+            .iter()
+            .find(|f| f.label == "value")
+            .expect("SomeSourceSpan payload missing `value` field");
+        let source_span = dag
+            .declaration_by_name("SourceSpan")
+            .expect("SourceSpan missing from bootstrap");
+        assert_eq!(
+            value_field.ty, source_span.id,
+            "SomeSourceSpan.value must resolve to `SourceSpan`, not a structural look-alike"
+        );
+    } else {
+        // If the payload isn't a Conj-with-`value`, the variant shape
+        // has drifted; fail loudly.
+        panic!(
+            "SomeSourceSpan variant payload should be a record with a `value: SourceSpan` field; \
+             actual payload connective: {:?}",
+            payload_decl.connective
+        );
+    }
 }
 
 // Fixture-bound lens instance per the `mini_lens` precedent at
