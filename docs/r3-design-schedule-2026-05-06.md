@@ -105,12 +105,23 @@ Prior `AbelianGroup<Nat>` references in r3-structure.md, r3-program-plan.md, thi
 **Dispatch trigger**: gates #1702 re-dispatch + 3 follow-up paydown PRs (Anthropic / OpenAI ChatCompletion / OpenAI Responses).
 **Closure predicate**: §1.8 gates #29-#30 (T-Anthropic-Wire 2 gates) + Q-Anthropic-Variant-Aware closure-scope ratification (Director — carrier-only vs 3 paydowns; default = all 3 per Brian no-post-R3-deferral).
 
-### S6 — `EmissionPathProjection` carrier (L6)
+### S6 — `EmissionPathProjection` carrier (L6) — **CLOSED 2026-05-07**
 
 **Scope**: per `docs/briefs/r3-substrate-l6-per-row-projection-routing-decision.md` Option 2 — `EmissionPathProjection` keyed by `MethodTemplateContractKey`, `List<EmissionCell>`, target on the key, carrier empty first.
 
 **Dispatch trigger**: now (non-Evaluator-gated; can fire parallel to T-E-P-Producer-Broadening per B4).
 **Closure predicate**: gates Grounding L6 row population (post-merge); cross-lane handoff to Grounding Mgr per #1745.
+
+**Closure receipt** (PM ratified 2026-05-07 per Director #828 #issuecomment-4394697875 — Grounding Mgr sunny-koi-893 audit at gunbc#2063 #issuecomment-4394494437; PM grep-verified at HEAD `aa17cab98`):
+
+- **Carrier + populate**: PR #1842 (R3 L6: EmissionPathProjection carrier slice — `cross_target_coverage.dag`) merged 2026-05-06T18:22:31Z. `emission_path_projections` populated with 41 rows (Rust 13 + Python 16 + Go 12).
+- **Per-row projection conversion**: PR #1852 (R3 Grounding: convert L6 coverage to per-row projections) merged 2026-05-06T19:18:45Z. `coverage.rs:124` carries `ProjectionKey { target, dag_method }` per-row union with fail-closed errors (`MissingProjectionForSourceRow` / `ProjectionWithoutSourceRow` / `DuplicateProjectionKey`).
+- **Ratchet test**: `cross_target_coverage_carrier_test` (8 tests incl. `emission_path_projections_data_matches_phase1_source_row_bijection`) green at HEAD.
+- **Cross-lane handoff**: completing — work absorbed in same dispatch window (carrier + populate + conversion landed in 2 PRs 2026-05-06).
+
+L6 closure-gate authority is `l6_structural_form_coverage` in R2 T-Ground-CrossTarget-Meta lane per `r3-structure.md:87` engine-reframe correction; this S6 receipt records the R3-side substrate-cross-lane-handoff completion only.
+
+**Lesson absorbed (PM-side)**: brief #1979 (Grounding G1 L6 row-population worker brief) was authored 2026-05-07 implying the work as future when both halves had landed 2026-05-06. PM-side discipline added: grep-verify work-shape at brief-authoring time, not just dependency PR merge state. See `feedback_grep_verify_mgr_relayed_framings` extension 2026-05-07.
 
 ### S7 — PR-F (BoundDeclaration consumer + Rust ReferenceModel<T>)
 
